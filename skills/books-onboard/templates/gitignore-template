@@ -1,0 +1,5 @@
+.env
+.secrets/
+cache*.sqlite
+staging/*.tmp
+*.tmp

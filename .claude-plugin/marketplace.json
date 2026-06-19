@@ -1,0 +1,27 @@
+{
+  "name": "slashbooks",
+  "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
+  "owner": {
+    "name": "Gil Hildebrand"
+  },
+  "plugins": [
+    {
+      "name": "books",
+      "source": "./",
+      "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
+      "version": "0.1.0",
+      "license": "Apache-2.0",
+      "keywords": [
+        "books",
+        "accounting",
+        "cash-basis",
+        "banksync",
+        "stripe",
+        "mercury",
+        "quickbooks",
+        "accountant",
+        "finance"
+      ]
+    }
+  ]
+}

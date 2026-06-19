@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.secrets/
+*.egg-info/
+dist/
+build/
+.DS_Store
+cache*.sqlite
+.env
+
+# Editor swap files
+*.swp
+.*.swp
