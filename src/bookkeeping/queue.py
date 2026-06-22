@@ -599,6 +599,7 @@ def _write_confirmed_entry(
         session_id=session_id,
         ts=ts,
         intent_description=f"queue confirm source_id={source_id!r} category={category!r}",
+        source_transactions=[dict(txn)],
     )
 
     audit_log.append(

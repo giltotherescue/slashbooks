@@ -73,6 +73,35 @@ reconciliation/source index, plus native filtering on the ledger and review
 sheets. The CSV exports remain plain values for portability. If the Excel
 workbook is not available, the same data is provided as CSV files.
 
+For larger books, the owner can export only the sheets requested by the
+accountant or omit high-volume sheets such as the General Ledger:
+
+```sh
+books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
+  --sheets pnl,balance-sheet,trial-balance
+
+books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
+  --exclude-sheets general-ledger
+```
+
+The General Ledger can also use a narrower period than the package period:
+
+```sh
+books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
+  --gl-from 2026-10-01 --gl-to 2026-12-31
+```
+
+Slashbooks keeps a canonical SQLite ledger store and renders
+`books.beancount` as a deterministic compatibility snapshot. Accountants do not
+need to use the store directly, but it gives the system indexed reads/writes and
+a hash-chained audit-event table. To include the audit trail in a handoff, add
+`audit-log` to the sheet list:
+
+```sh
+books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
+  --sheets cover,pnl,balance-sheet,trial-balance,audit-log
+```
+
 ## Limits
 
 Slashbooks is currently scoped to simple cash-basis bookkeeping. It is not designed

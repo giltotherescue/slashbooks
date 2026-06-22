@@ -57,6 +57,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Generator, Iterator, Optional
 
+from ..ledger.store import default_store_path
 from ..ledger.validator import parse_ledger, validate
 
 
@@ -195,6 +196,33 @@ def _cache_ledger_sha(cache: Path) -> str | None:
         if conn is not None:
             conn.close()
     return row[0] if row else None
+
+
+def _store_meta(store_path: Path, key: str) -> str | None:
+    if not store_path.exists():
+        return None
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(store_path))
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
+    return str(row[0]) if row else None
+
+
+def _store_is_current(entity_path: Path) -> bool:
+    store_path = default_store_path(entity_path)
+    if not store_path.exists():
+        return False
+    if _store_meta(store_path, "canonical") == "true":
+        return True
+    ledger = _ledger_path(entity_path)
+    if not ledger.exists():
+        return False
+    return _store_meta(store_path, "source_ledger_sha256") == _sha256_of_file(ledger)
 
 
 def _read_cache_path(entity_path: Path) -> Path:
@@ -413,6 +441,13 @@ def open_cache(entity_path: Path | str, *, auto_regenerate: bool = True) -> sqli
     Returns a read-only connection (``PRAGMA query_only=ON``).
     """
     entity_path = Path(entity_path)
+
+    store_path = default_store_path(entity_path)
+    if _store_is_current(entity_path):
+        conn = sqlite3.connect(str(store_path))
+        conn.execute("PRAGMA query_only=ON")
+        conn.row_factory = sqlite3.Row
+        return conn
 
     if auto_regenerate and is_stale(entity_path):
         result = regenerate(entity_path)

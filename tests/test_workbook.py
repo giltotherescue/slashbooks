@@ -290,6 +290,76 @@ class TestAllCSVsProduced(unittest.TestCase):
         for p in result.csv_files:
             self.assertTrue(p.exists(), f"CSV file not found: {p}")
 
+    def test_selected_sheets_omit_general_ledger(self):
+        from src.bookkeeping.reports.workbook import generate_accountant_package
+
+        result = generate_accountant_package(
+            self.entity_dir,
+            FROM_DATE,
+            TO_DATE,
+            override=True,
+            sheets="pnl,trial-balance",
+        )
+        self.assertIsNone(result.error, f"Package generation failed: {result.error}")
+        self.assertEqual(
+            sorted(p.name for p in result.csv_files),
+            ["P-and-L.csv", "Trial-Balance.csv"],
+        )
+
+    def test_exclude_general_ledger_keeps_summary_plain_values(self):
+        from src.bookkeeping.reports.workbook import generate_accountant_package
+
+        result = generate_accountant_package(
+            self.entity_dir,
+            FROM_DATE,
+            TO_DATE,
+            override=True,
+            exclude_sheets="general-ledger",
+        )
+        self.assertIsNone(result.error, f"Package generation failed: {result.error}")
+        csv_names = {p.name for p in result.csv_files}
+        self.assertNotIn("General-Ledger.csv", csv_names)
+        self.assertIn("Summary.csv", csv_names)
+        summary_rows = _read_csv(_find_csv(result.output_dir, "Summary"))
+        self.assertNotIn("=", " ".join(cell for row in summary_rows for cell in row))
+
+    def test_general_ledger_can_use_narrower_period(self):
+        from src.bookkeeping.reports.workbook import generate_accountant_package
+
+        result = generate_accountant_package(
+            self.entity_dir,
+            FROM_DATE,
+            TO_DATE,
+            override=True,
+            sheets="general-ledger",
+            gl_from_date=date(2026, 3, 1),
+            gl_to_date=date(2026, 3, 31),
+        )
+        self.assertIsNone(result.error, f"Package generation failed: {result.error}")
+        rows = _read_csv(_find_csv(result.output_dir, "General-Ledger"))
+        all_text = " ".join(cell for row in rows for cell in row)
+        self.assertIn("2026-03-15", all_text)
+        self.assertNotIn("2026-01-15", all_text)
+
+    def test_audit_log_sheet_is_optional_and_store_backed(self):
+        from src.bookkeeping.ledger.migrate import migrate_beancount_to_store
+        from src.bookkeeping.reports.workbook import generate_accountant_package
+
+        migration = migrate_beancount_to_store(self.entity_dir, force=True)
+        self.assertTrue(migration, migration.error_message)
+        result = generate_accountant_package(
+            self.entity_dir,
+            FROM_DATE,
+            TO_DATE,
+            override=True,
+            sheets="audit-log",
+        )
+        self.assertIsNone(result.error, f"Package generation failed: {result.error}")
+        rows = _read_csv(_find_csv(result.output_dir, "Audit-Log"))
+        all_text = " ".join(cell for row in rows for cell in row)
+        self.assertIn("migration", all_text)
+        self.assertIn("record_hash", rows[0][6].lower().replace(" ", "_"))
+
     def test_summary_and_checks_csvs_are_plain_values(self):
         from src.bookkeeping.reports.workbook import generate_accountant_package
 

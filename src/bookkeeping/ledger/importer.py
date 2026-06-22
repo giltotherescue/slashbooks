@@ -53,10 +53,12 @@ from typing import Any, Callable
 
 from ..entity import Entity, load_entity
 from .auditlog import AuditLog, verify_chain
+from .migrate import migrate_beancount_to_store
 from .model import Entry, Open, Posting
+from .projections import render_store_ledger
 from .staging import StagingStore
+from .store import LedgerStore, default_store_path
 from .validator import validate
-from .writer import render_ledger
 from .normalize import normalize_description
 
 # ---------------------------------------------------------------------------
@@ -298,6 +300,7 @@ def _atomic_ledger_write(
     session_id: str,
     ts: str | None,
     intent_description: str,
+    source_transactions: list[dict[str, Any]] | None = None,
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -308,6 +311,7 @@ def _atomic_ledger_write(
             session_id=session_id,
             ts=ts,
             intent_description=intent_description,
+            source_transactions=source_transactions,
         )
 
 
@@ -319,21 +323,65 @@ def _atomic_ledger_write_unlocked(
     session_id: str,
     ts: str | None,
     intent_description: str,
+    source_transactions: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Execute the full atomic-write protocol and return the new file SHA-256.
+    """Execute the store-backed atomic-write protocol and return snapshot SHA-256.
 
     Protocol:
-      1. Append ``intent`` record and fsync (handled inside AuditLog.append).
-      2. Merge new opens/entries with existing ledger content.
-      3. Write ledger to ``books.beancount.tmp``, then os.replace.
-      4. Append ``ledger-sealed`` record.
+      1. Ensure the canonical SQLite store exists.
+      2. Insert opens/entries/source payloads in one SQLite transaction.
+      3. Append store audit events in the same transaction.
+      4. Render a deterministic ``books.beancount`` compatibility snapshot.
+      5. Append legacy JSONL audit records for close-start compatibility.
 
     Returns the SHA-256 of the written file.
     """
     books_path = entity.books_path
     tmp_path = books_path.with_suffix(".beancount.tmp")
 
-    # Step 1: intent.
+    store = _ensure_ledger_store(entity)
+    source_transactions = source_transactions or []
+    ledger_text = ""
+    with store.transaction() as conn:
+        store.append_audit_event(
+            "intent",
+            {
+                "session_id": session_id,
+                "description": intent_description,
+                "entries": len(new_entries),
+            },
+            conn,
+            ts=ts,
+        )
+        store.insert_opens(new_opens, conn)
+        store.insert_entries(new_entries, conn)
+        store.insert_source_transactions(source_transactions, conn, imported_at=ts)
+        store.set_meta("canonical", "true", conn)
+        store.set_meta("title", entity.entity_config.get("name", "Books"), conn)
+        store.append_audit_event(
+            "ledger-store-sealed",
+            {
+                "session_id": session_id,
+                "entries": len(new_entries),
+                "source_ids": [entry.source_id or "" for entry in new_entries],
+            },
+            conn,
+            ts=ts,
+        )
+        ledger_text = render_store_ledger(store.path, conn=conn)
+        errors = validate(ledger_text)
+        if errors:
+            raise ValueError(
+                f"Ledger validation failed after import: "
+                + "; ".join(str(e) for e in errors[:5])
+            )
+
+    tmp_path.write_text(ledger_text, encoding="utf-8")
+    os.replace(str(tmp_path), str(books_path))
+
+    file_sha256 = _sha256_file(books_path)
+
+    # Keep the legacy JSONL audit surface intact for existing integrity checks.
     audit_log.append(
         "intent",
         ts=ts,
@@ -341,55 +389,6 @@ def _atomic_ledger_write_unlocked(
         description=intent_description,
     )
 
-    # Step 2: read existing ledger content (if any).
-    existing_text = ""
-    if books_path.exists():
-        existing_text = books_path.read_text(encoding="utf-8")
-
-    # Parse existing opens and entries.
-    from .validator import parse_ledger
-    if existing_text.strip():
-        parsed = parse_ledger(existing_text)
-        existing_opens: list[Open] = parsed["opens"]
-        existing_entries: list[Entry] = parsed["entries"]
-        existing_title: str = parsed.get("title", "Books")
-    else:
-        existing_opens = []
-        existing_entries = []
-        existing_title = "Books"
-
-    # Merge: existing + new (dedup opens by (date, account)).
-    existing_open_keys = {(o.date, o.account) for o in existing_opens}
-    merged_opens = list(existing_opens)
-    for o in new_opens:
-        if (o.date, o.account) not in existing_open_keys:
-            merged_opens.append(o)
-            existing_open_keys.add((o.date, o.account))
-
-    merged_entries = list(existing_entries) + list(new_entries)
-
-    # Render.
-    ledger_text = render_ledger(
-        opens=merged_opens,
-        entries=merged_entries,
-        balances=[],
-        title=existing_title,
-    )
-
-    # Validate before committing.
-    errors = validate(ledger_text)
-    if errors:
-        raise ValueError(
-            f"Ledger validation failed after import: "
-            + "; ".join(str(e) for e in errors[:5])
-        )
-
-    # Step 3: write via tmp + rename.
-    tmp_path.write_text(ledger_text, encoding="utf-8")
-    os.replace(str(tmp_path), str(books_path))
-
-    # Step 4: seal.
-    file_sha256 = _sha256_file(books_path)
     audit_log.append(
         "ledger-sealed",
         ts=ts,
@@ -398,6 +397,31 @@ def _atomic_ledger_write_unlocked(
     )
 
     return file_sha256
+
+
+def _ensure_ledger_store(entity: Entity) -> LedgerStore:
+    """Return an initialized canonical store for *entity*.
+
+    If only ``books.beancount`` exists, migrate it once.  If neither surface
+    exists yet, create an empty store and let the snapshot render later.
+    """
+    store_path = default_store_path(entity.path)
+    if store_path.exists():
+        store = LedgerStore(store_path)
+        store.initialize()
+        return store
+
+    if entity.books_path.exists():
+        result = migrate_beancount_to_store(entity.path, force=True)
+        if not result:
+            raise RuntimeError(f"Could not initialize ledger store: {result.error_message}")
+        return LedgerStore(result.store_path)
+
+    store = LedgerStore(store_path)
+    store.initialize()
+    store.set_meta("canonical", "true")
+    store.set_meta("title", entity.entity_config.get("name", "Books"))
+    return store
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +505,7 @@ def import_transactions(
 
     audit_log = AuditLog(entity.path / "audit-log.jsonl")
     staging = StagingStore(entity.staging_dir, audit_log)
+    store = _ensure_ledger_store(entity)
 
     result = ImportResult(session_id=session_id)
 
@@ -490,7 +515,20 @@ def import_transactions(
     # Self-heal seen-ids from the ledger: a crash between a ledger write and
     # the seen-ids update would otherwise let the next run import the same
     # source id twice. The ledger's own source-id metadata is authoritative.
-    if entity.books_path.exists():
+    if store.path.exists():
+        ledger_sids: list[str] = []
+        try:
+            ledger_sids = [
+                e.source_id
+                for e in store.load_entries()
+                if e.source_id and "reverses" not in {k for k, _ in e.meta}
+            ]
+        except Exception:
+            ledger_sids = []
+        missing = [s for s in ledger_sids if not staging.is_seen(s)]
+        if missing:
+            staging.bulk_mark_seen(missing)
+    elif entity.books_path.exists():
         from .validator import parse_ledger as _parse_ledger
         ledger_text = entity.books_path.read_text(encoding="utf-8")
         if ledger_text.strip():
@@ -508,6 +546,7 @@ def import_transactions(
     # Track accounts that need open directives.
     needed_opens: set[str] = set()
     source_ids_to_mark: list[str] = []
+    source_transactions_to_write: list[dict[str, Any]] = []
 
     for txn in normalized_txns:
         source_id = str(txn.get("id") or "")
@@ -528,7 +567,7 @@ def import_transactions(
         # Posted transaction.
 
         # Dedup: source ID is the sole dedup key for posted entries.
-        if staging.is_seen(source_id):
+        if staging.is_seen(source_id) or (source_id and store.source_exists(source_id)):
             result.skipped_duplicate += 1
             continue
 
@@ -617,6 +656,7 @@ def import_transactions(
 
         entries_to_write.append(entry)
         source_ids_to_mark.append(source_id)
+        source_transactions_to_write.append(dict(txn))
         result.new_entries += 1
 
     # Write to ledger if we have new entries.
@@ -637,6 +677,7 @@ def import_transactions(
             session_id=session_id,
             ts=ts,
             intent_description=f"import {len(entries_to_write)} entries",
+            source_transactions=source_transactions_to_write,
         )
 
         # Audit-log each entry written.
@@ -695,6 +736,12 @@ def _ledger_account_for_txn(txn: dict, mappings: dict[str, str] | None = None) -
 
 def _get_existing_opens(entity: Entity) -> set[str]:
     """Return the set of account names that already have open directives."""
+    store_path = default_store_path(entity.path)
+    if store_path.exists():
+        try:
+            return {item.account for item in LedgerStore(store_path).load_opens()}
+        except Exception:
+            pass
     books_path = entity.books_path
     if not books_path.exists():
         return set()

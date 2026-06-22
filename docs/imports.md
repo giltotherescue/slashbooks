@@ -120,6 +120,23 @@ The inventory command recognizes the files Slashbooks needs for migration checks
 - General Ledger, cash basis, for the backtest period
 - Transaction Detail by Account, cash basis, for the backtest period
 
+Slashbooks writes new imported entries into the canonical `ledger.sqlite` store
+and then regenerates `books.beancount` as a deterministic compatibility
+snapshot. The snapshot is still useful for inspection and tools that expect a
+plain ledger file, but indexed reports and reconciliation can read the store
+directly once it exists.
+
+For accountant handoffs with large transaction volume, export only the sheets
+needed or narrow the General Ledger period:
+
+```sh
+books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
+  --sheets pnl,balance-sheet,trial-balance
+
+books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
+  --gl-from 2026-10-01 --gl-to 2026-12-31
+```
+
 If you're not sure what to export yet, decide the Slashbooks start date first.
 For migrations, that date is the opening-balance cutover date; the prior day is
 the as-of date for opening-balance reports.

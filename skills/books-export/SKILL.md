@@ -102,6 +102,32 @@ python -m pip install -e ".[xlsx]"
 books export --entity <entity-path> --from <start-date> --to <end-date>
 ```
 
+For very large books or when the accountant asks for only specific schedules,
+use a comma-separated sheet list:
+
+```
+books export --entity <entity-path> --from <start-date> --to <end-date> \
+  --sheets pnl,balance-sheet,trial-balance
+```
+
+To keep the default package but omit a high-volume tab:
+
+```
+books export --entity <entity-path> --from <start-date> --to <end-date> \
+  --exclude-sheets general-ledger
+```
+
+To narrow only the General Ledger tab while keeping the package period:
+
+```
+books export --entity <entity-path> --from <start-date> --to <end-date> \
+  --gl-from <gl-start-date> --gl-to <gl-end-date>
+```
+
+To include the audit trail in the package, request `audit-log` as a sheet. The
+audit sheet is optional by default and is backed by the canonical store when it
+exists.
+
 If proceeding with an override:
 
 ```
@@ -119,7 +145,8 @@ contains in plain English:
   It has separate tabs for income and expenses (P&L), the balance sheet, the full
   trial balance, every transaction (general ledger), reconciliation results, a list
   of vendors who may need a 1099, any corrections we made to the books, and
-  structured open questions for owner/accountant follow-up." If the workbook was not created, say: "The CSV export was created,
+  structured open questions for owner/accountant follow-up. If requested, it also
+  includes an audit-log tab showing the hash-chained write history." If the workbook was not created, say: "The CSV export was created,
   but the optional Excel workbook dependency is not installed. Run
   `python -m pip install "agent-books[xlsx]"` and generate the export again if
   you want the `.xlsx` file."

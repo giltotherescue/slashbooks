@@ -64,6 +64,8 @@ from .statements import (
     trial_balance,
 )
 from ..reconcile import list_discrepancies
+from ..ledger.auditlog import AuditLog
+from ..ledger.store import LedgerStore, default_store_path
 from ..ledger.validator import parse_ledger
 from ..connectors.payroll import provider_spec
 
@@ -81,6 +83,54 @@ _HEADER_BG_COLOR = "#D9E1F2"
 
 # Default 1099 threshold; overridable via entity.json key vendor_1099_threshold
 _DEFAULT_1099_THRESHOLD = Decimal("600.00")
+
+_DEFAULT_SHEETS: tuple[str, ...] = (
+    "cover",
+    "pnl",
+    "balance-sheet",
+    "trial-balance",
+    "general-ledger",
+    "reconciliations",
+    "vendor-1099",
+    "adjustment-log",
+    "open-questions",
+    "summary",
+    "checks",
+    "source-index",
+)
+
+_SHEET_NAMES: dict[str, str] = {
+    "cover": "Cover",
+    "pnl": "P&L",
+    "profit-and-loss": "P&L",
+    "balance-sheet": "Balance Sheet",
+    "trial-balance": "Trial Balance",
+    "general-ledger": "General Ledger",
+    "gl": "General Ledger",
+    "reconciliations": "Reconciliations",
+    "vendor-1099": "Vendor 1099",
+    "adjustment-log": "Adjustment Log",
+    "open-questions": "Open Questions",
+    "summary": "Summary",
+    "checks": "Checks",
+    "source-index": "Source Index",
+    "audit-log": "Audit Log",
+}
+
+_SHEET_ALIASES: dict[str, str] = {
+    key: key for key in _SHEET_NAMES
+} | {
+    "p&l": "pnl",
+    "pl": "pnl",
+    "profit-loss": "pnl",
+    "bs": "balance-sheet",
+    "tb": "trial-balance",
+    "reconciliation": "reconciliations",
+    "vendor1099": "vendor-1099",
+    "1099": "vendor-1099",
+    "questions": "open-questions",
+    "audit": "audit-log",
+}
 
 
 def _render_account_name(account: str) -> str:
@@ -100,6 +150,41 @@ def _account_type(account: str) -> str:
 
 def _account_detail(account: str) -> str:
     return account.rsplit(":", 1)[-1] if account else ""
+
+
+def _split_sheet_names(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_items = value.split(",")
+    else:
+        raw_items = list(value)
+    return [str(item).strip() for item in raw_items if str(item).strip()]
+
+
+def _sheet_key(value: str) -> str:
+    normalized = value.strip().lower().replace("_", "-").replace(" ", "-")
+    key = _SHEET_ALIASES.get(normalized)
+    if key is None:
+        valid = ", ".join(sorted({k for k in _SHEET_NAMES if k != "profit-and-loss"}))
+        raise ValueError(f"Unknown sheet {value!r}. Valid sheets: {valid}")
+    if key == "profit-and-loss":
+        return "pnl"
+    if key == "gl":
+        return "general-ledger"
+    return key
+
+
+def _resolve_sheet_keys(
+    sheets: str | list[str] | tuple[str, ...] | None,
+    exclude_sheets: str | list[str] | tuple[str, ...] | None,
+) -> list[str]:
+    if sheets:
+        selected = [_sheet_key(item) for item in _split_sheet_names(sheets)]
+    else:
+        selected = list(_DEFAULT_SHEETS)
+    excluded = {_sheet_key(item) for item in _split_sheet_names(exclude_sheets)}
+    return [key for key in selected if key not in excluded]
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -1406,6 +1491,53 @@ def _build_source_index_rows(entity_path: Path) -> list[list[str]]:
     return rows
 
 
+def _build_audit_log_rows(entity_path: Path) -> list[list[str]]:
+    """Build optional audit log rows from the canonical store or JSONL log."""
+    rows: list[list[str]] = [
+        [
+            "Event ID",
+            "Timestamp",
+            "Type",
+            "Source ID",
+            "Session ID",
+            "Previous Hash",
+            "Record Hash",
+            "Payload",
+        ],
+    ]
+    store_path = default_store_path(entity_path)
+    if store_path.exists():
+        try:
+            for event in LedgerStore(store_path).load_audit_events():
+                payload = event.get("payload", {})
+                rows.append([
+                    str(event.get("id", "")),
+                    str(event.get("ts", "")),
+                    str(event.get("type", "")),
+                    str(payload.get("source_id") or payload.get("source-id") or ""),
+                    str(payload.get("session_id") or payload.get("session") or ""),
+                    str(event.get("prev_hash", "")),
+                    str(event.get("record_hash", "")),
+                    json.dumps(payload, sort_keys=True),
+                ])
+            return rows
+        except Exception:
+            pass
+
+    for idx, record in enumerate(AuditLog(entity_path / "audit-log.jsonl").all_records(), start=1):
+        rows.append([
+            str(idx),
+            str(record.get("ts", "")),
+            str(record.get("type", "")),
+            str(record.get("source_id", "")),
+            str(record.get("session_id", "")),
+            str(record.get("prev", "")),
+            "",
+            json.dumps({k: v for k, v in record.items() if k not in {"type", "ts", "prev"}}, sort_keys=True),
+        ])
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # CSV writer
 # ---------------------------------------------------------------------------
@@ -1569,6 +1701,10 @@ def generate_accountant_package(
     to_date: date,
     output_dir: Optional[Path | str] = None,
     override: bool = False,
+    sheets: str | list[str] | tuple[str, ...] | None = None,
+    exclude_sheets: str | list[str] | tuple[str, ...] | None = None,
+    gl_from_date: date | None = None,
+    gl_to_date: date | None = None,
 ) -> PackageResult:
     """Generate the full accountant export (CSV exports + optional XLSX).
 
@@ -1578,6 +1714,17 @@ def generate_accountant_package(
     The ``override`` flag is recorded in the cover sheet when used.
     """
     entity_path = Path(entity_path)
+    try:
+        selected_sheet_keys = _resolve_sheet_keys(sheets, exclude_sheets)
+    except ValueError as exc:
+        return PackageResult(
+            output_dir=Path(output_dir) if output_dir is not None else entity_path / "reports" / "accountant-export" / f"{from_date}_{to_date}",
+            sanity=SanityResult(checks=[]),
+            error=str(exc),
+        )
+    selected_set = set(selected_sheet_keys)
+    gl_from_date = gl_from_date or from_date
+    gl_to_date = gl_to_date or to_date
 
     # --- Load entity config ---
     entity_json_path = entity_path / "entity.json"
@@ -1637,16 +1784,21 @@ def generate_accountant_package(
             entry for entry in all_entries
             if from_date <= entry.date <= to_date
         ]
+        gl_entries = [
+            entry for entry in all_entries
+            if gl_from_date <= entry.date <= gl_to_date
+        ]
     except Exception:
         all_entries = None
         period_entries = None
+        gl_entries = None
 
     cover_rows = _build_cover_rows(entity_path, entity_name, from_date, to_date, sanity, override_used)
     pnl_rows = _statement_to_rows(pnl_result)
     bs_rows = _statement_to_rows(bs_result)
     prior_bs_rows = _statement_to_rows(prior_bs_result)
     tb_rows = _statement_to_rows(tb_result)
-    gl_rows = _build_general_ledger_rows(entity_path, from_date, to_date, entries=period_entries)
+    gl_rows = _build_general_ledger_rows(entity_path, gl_from_date, gl_to_date, entries=gl_entries)
     recon_rows = _build_reconciliation_rows(entity_path)
     vendor_rows = _build_vendor_1099_rows(entity_path, from_date, to_date, threshold_1099, entries=period_entries)
     adj_rows = _build_adjustment_log_rows(entity_path, entries=all_entries)
@@ -1691,56 +1843,69 @@ def generate_accountant_package(
     checks_rows = _build_checks_rows(pnl_rows, bs_rows, tb_rows, summary_rows)
     csv_checks_rows = _build_checks_rows(pnl_rows, bs_rows, tb_rows, csv_summary_rows, formulas=False)
     source_index_rows = _build_source_index_rows(entity_path)
+    audit_log_rows = _build_audit_log_rows(entity_path)
 
-    sheet_data: list[tuple[str, list[list[str]]]] = [
-        ("Cover", cover_rows),
-        ("P&L", pnl_rows),
-        ("Balance Sheet", bs_rows),
-        ("Trial Balance", tb_rows),
-        ("General Ledger", gl_rows),
-        ("Reconciliations", recon_rows),
-        ("Vendor 1099", vendor_rows),
-        ("Adjustment Log", adj_rows),
-        ("Open Questions", open_question_rows),
-        ("Summary", csv_summary_rows),
-        ("Checks", csv_checks_rows),
-        ("Source Index", source_index_rows),
-    ]
-    xlsx_sheet_data: list[XlsxSheet] = [
-        XlsxSheet("Cover", cover_rows, tab_color="#5B9BD5"),
-        XlsxSheet("P&L", pnl_rows, tab_color="#A9D18E", numeric_columns=frozenset({2})),
-        XlsxSheet("Balance Sheet", bs_rows, tab_color="#A9D18E", numeric_columns=frozenset({2})),
-        XlsxSheet("Trial Balance", tb_rows, tab_color="#A9D18E", numeric_columns=frozenset({1, 2})),
-        XlsxSheet(
+    csv_rows_by_key: dict[str, tuple[str, list[list[str]]]] = {
+        "cover": ("Cover", cover_rows),
+        "pnl": ("P&L", pnl_rows),
+        "balance-sheet": ("Balance Sheet", bs_rows),
+        "trial-balance": ("Trial Balance", tb_rows),
+        "general-ledger": ("General Ledger", gl_rows),
+        "reconciliations": ("Reconciliations", recon_rows),
+        "vendor-1099": ("Vendor 1099", vendor_rows),
+        "adjustment-log": ("Adjustment Log", adj_rows),
+        "open-questions": ("Open Questions", open_question_rows),
+        "summary": ("Summary", csv_summary_rows),
+        "checks": ("Checks", csv_checks_rows),
+        "source-index": ("Source Index", source_index_rows),
+        "audit-log": ("Audit Log", audit_log_rows),
+    }
+    xlsx_specs_by_key: dict[str, XlsxSheet] = {
+        "cover": XlsxSheet("Cover", cover_rows, tab_color="#5B9BD5"),
+        "pnl": XlsxSheet("P&L", pnl_rows, tab_color="#A9D18E", numeric_columns=frozenset({2})),
+        "balance-sheet": XlsxSheet("Balance Sheet", bs_rows, tab_color="#A9D18E", numeric_columns=frozenset({2})),
+        "trial-balance": XlsxSheet("Trial Balance", tb_rows, tab_color="#A9D18E", numeric_columns=frozenset({1, 2})),
+        "general-ledger": XlsxSheet(
             "General Ledger",
             gl_rows,
             tab_color="#9DC3E6",
             numeric_columns=frozenset({8}),
             total_label_column=5,
         ),
-        XlsxSheet("Reconciliations", recon_rows, table=True, numeric_columns=frozenset({2, 3, 4})),
-        XlsxSheet("Vendor 1099", vendor_rows, table=True, tab_color="#F4B183", numeric_columns=frozenset({1, 3, 4})),
-        XlsxSheet("Adjustment Log", adj_rows, table=True, numeric_columns=frozenset({3, 8})),
-        XlsxSheet("Open Questions", open_question_rows, table=True, numeric_columns=frozenset({5})),
-    ]
-    xlsx_only_sheet_data: list[XlsxSheet] = [
-        XlsxSheet(
+        "reconciliations": XlsxSheet("Reconciliations", recon_rows, table=True, numeric_columns=frozenset({2, 3, 4})),
+        "vendor-1099": XlsxSheet("Vendor 1099", vendor_rows, table=True, tab_color="#F4B183", numeric_columns=frozenset({1, 3, 4})),
+        "adjustment-log": XlsxSheet("Adjustment Log", adj_rows, table=True, numeric_columns=frozenset({3, 8})),
+        "open-questions": XlsxSheet("Open Questions", open_question_rows, table=True, numeric_columns=frozenset({5})),
+        "summary": XlsxSheet(
             "Summary",
-            summary_rows,
+            summary_rows if "general-ledger" in selected_set else csv_summary_rows,
             table=True,
             tab_color="#70AD47",
-            formula_columns=frozenset({1}),
+            formula_columns=frozenset({1}) if "general-ledger" in selected_set else frozenset(),
             numeric_columns=frozenset({1}),
         ),
-        XlsxSheet(
+        "checks": XlsxSheet(
             "Checks",
-            checks_rows,
+            checks_rows if {"pnl", "balance-sheet", "trial-balance", "summary"}.issubset(selected_set) else csv_checks_rows,
             table=True,
             tab_color="#FFC000",
-            formula_columns=frozenset({1, 2}),
+            formula_columns=frozenset({1, 2}) if {"pnl", "balance-sheet", "trial-balance", "summary"}.issubset(selected_set) else frozenset(),
             numeric_columns=frozenset({1}),
         ),
-        XlsxSheet("Source Index", source_index_rows, table=True, numeric_columns=frozenset({2, 3, 4})),
+        "source-index": XlsxSheet("Source Index", source_index_rows, table=True, numeric_columns=frozenset({2, 3, 4})),
+        "audit-log": XlsxSheet("Audit Log", audit_log_rows, table=True),
+    }
+
+    sheet_data: list[tuple[str, list[list[str]]]] = [
+        csv_rows_by_key[key] for key in selected_sheet_keys
+    ]
+    xlsx_sheet_data: list[XlsxSheet] = [
+        xlsx_specs_by_key[key] for key in selected_sheet_keys
+        if key not in {"summary", "checks", "source-index"}
+    ]
+    xlsx_only_sheet_data: list[XlsxSheet] = [
+        xlsx_specs_by_key[key] for key in selected_sheet_keys
+        if key in {"summary", "checks", "source-index"}
     ]
 
     # --- Write CSVs (always) ---
@@ -1811,6 +1976,28 @@ def add_parser(subparsers: Any) -> None:
         default=None,
         help="Output directory (default: <entity>/reports/accountant-export/<period>/)",
     )
+    cp_p.add_argument(
+        "--sheets",
+        default=None,
+        help="Comma-separated sheet list to export, e.g. pnl,trial-balance,audit-log",
+    )
+    cp_p.add_argument(
+        "--exclude-sheets",
+        default=None,
+        help="Comma-separated sheet list to omit from the default export, e.g. general-ledger",
+    )
+    cp_p.add_argument(
+        "--gl-from",
+        dest="gl_from_date",
+        default=None,
+        help="General Ledger sheet period start (YYYY-MM-DD); defaults to --from",
+    )
+    cp_p.add_argument(
+        "--gl-to",
+        dest="gl_to_date",
+        default=None,
+        help="General Ledger sheet period end (YYYY-MM-DD); defaults to --to",
+    )
 
 
 def run(args: Any) -> int:
@@ -1830,12 +2017,18 @@ def run(args: Any) -> int:
         from_date = date.fromisoformat(args.from_date)
         to_date = date.fromisoformat(args.to_date)
         output_dir = Path(args.output_dir) if args.output_dir else None
+        gl_from_date = date.fromisoformat(args.gl_from_date) if args.gl_from_date else None
+        gl_to_date = date.fromisoformat(args.gl_to_date) if args.gl_to_date else None
         result = generate_accountant_package(
             entity,
             from_date,
             to_date,
             output_dir=output_dir,
             override=args.override,
+            sheets=args.sheets,
+            exclude_sheets=args.exclude_sheets,
+            gl_from_date=gl_from_date,
+            gl_to_date=gl_to_date,
         )
         if not result.success:
             print(f"Error: {result.error}", file=sys.stderr)

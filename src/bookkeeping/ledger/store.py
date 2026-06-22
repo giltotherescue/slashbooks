@@ -50,10 +50,14 @@ CREATE TABLE IF NOT EXISTS entries (
     tags_json TEXT NOT NULL DEFAULT '[]',
     links_json TEXT NOT NULL DEFAULT '[]',
     metadata_json TEXT NOT NULL DEFAULT '[]',
-    source_id TEXT
+    source_id TEXT,
+    session TEXT,
+    late_arrival INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS entries_source_id_unique
+DROP INDEX IF EXISTS entries_source_id_unique;
+
+CREATE INDEX IF NOT EXISTS entries_source_id_idx
     ON entries(source_id)
     WHERE source_id IS NOT NULL AND source_id != '';
 
@@ -174,6 +178,14 @@ class LedgerStore:
     def initialize(self) -> None:
         with self.connection() as conn:
             conn.executescript(_DDL)
+            for sql in (
+                "ALTER TABLE entries ADD COLUMN session TEXT",
+                "ALTER TABLE entries ADD COLUMN late_arrival INTEGER NOT NULL DEFAULT 0",
+            ):
+                try:
+                    conn.execute(sql)
+                except sqlite3.OperationalError:
+                    pass
             conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
                 ("schema_version", str(SCHEMA_VERSION)),
@@ -243,10 +255,12 @@ class LedgerStore:
 
     def insert_entries(self, entries: Sequence[Entry], conn: sqlite3.Connection) -> None:
         for entry in entries:
+            metadata = dict(entry.meta)
             cur = conn.execute(
                 """INSERT INTO entries
-                   (date, flag, payee, narration, tags_json, links_json, metadata_json, source_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (date, flag, payee, narration, tags_json, links_json, metadata_json, source_id,
+                    session, late_arrival)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     entry.date.isoformat(),
                     entry.flag,
@@ -256,6 +270,8 @@ class LedgerStore:
                     _json(list(entry.links)),
                     _json(list(entry.meta)),
                     entry.source_id,
+                    metadata.get("import-session"),
+                    1 if metadata.get("late-arrival") == "true" else 0,
                 ),
             )
             entry_id = int(cur.lastrowid)
@@ -272,6 +288,29 @@ class LedgerStore:
                         _json(list(posting.meta)),
                     ),
                 )
+
+    def insert_source_transactions(
+        self,
+        txns: Sequence[dict[str, Any]],
+        conn: sqlite3.Connection,
+        *,
+        status: str = "posted",
+        imported_at: str | None = None,
+    ) -> None:
+        event_ts = imported_at or _utc_now()
+        for txn in txns:
+            source_id = str(txn.get("id") or "")
+            if not source_id:
+                continue
+            conn.execute(
+                """INSERT INTO source_transactions (id, payload_json, status, imported_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                     payload_json = excluded.payload_json,
+                     status = excluded.status,
+                     imported_at = excluded.imported_at""",
+                (source_id, _json(txn), status, event_ts),
+            )
 
     def source_exists(self, source_id: str) -> bool:
         with self.connection() as conn:
@@ -321,11 +360,13 @@ class LedgerStore:
             prev = row["record_hash"]
         return errors
 
-    def load_opens(self) -> list[Open]:
-        with self.connection() as conn:
-            rows = conn.execute(
-                "SELECT name, currency, open_date FROM accounts ORDER BY open_date, name"
-            ).fetchall()
+    def load_opens(self, conn: sqlite3.Connection | None = None) -> list[Open]:
+        if conn is None:
+            with self.connection() as tx:
+                return self.load_opens(tx)
+        rows = conn.execute(
+            "SELECT name, currency, open_date FROM accounts ORDER BY open_date, name"
+        ).fetchall()
         return [
             Open(
                 date=date.fromisoformat(row["open_date"]),
@@ -335,11 +376,13 @@ class LedgerStore:
             for row in rows
         ]
 
-    def load_balances(self) -> list[Balance]:
-        with self.connection() as conn:
-            rows = conn.execute(
-                "SELECT date, account, amount, currency FROM balance_assertions ORDER BY date, id"
-            ).fetchall()
+    def load_balances(self, conn: sqlite3.Connection | None = None) -> list[Balance]:
+        if conn is None:
+            with self.connection() as tx:
+                return self.load_balances(tx)
+        rows = conn.execute(
+            "SELECT date, account, amount, currency FROM balance_assertions ORDER BY date, id"
+        ).fetchall()
         return [
             Balance(
                 date=date.fromisoformat(row["date"]),
@@ -350,7 +393,12 @@ class LedgerStore:
             for row in rows
         ]
 
-    def load_entries(self, from_date: date | None = None, to_date: date | None = None) -> list[Entry]:
+    def load_entries(
+        self,
+        from_date: date | None = None,
+        to_date: date | None = None,
+        conn: sqlite3.Connection | None = None,
+    ) -> list[Entry]:
         clauses: list[str] = []
         params: list[str] = []
         if from_date is not None:
@@ -360,45 +408,66 @@ class LedgerStore:
             clauses.append("date <= ?")
             params.append(to_date.isoformat())
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        with self.connection() as conn:
-            entry_rows = conn.execute(
-                f"""SELECT id, date, flag, payee, narration, tags_json, links_json, metadata_json
-                    FROM entries
-                    {where}
-                    ORDER BY date, id""",
-                params,
+        if conn is None:
+            with self.connection() as tx:
+                return self.load_entries(from_date=from_date, to_date=to_date, conn=tx)
+        entry_rows = conn.execute(
+            f"""SELECT id, date, flag, payee, narration, tags_json, links_json, metadata_json
+                FROM entries
+                {where}
+                ORDER BY date, id""",
+            params,
+        ).fetchall()
+        entries: list[Entry] = []
+        for row in entry_rows:
+            posting_rows = conn.execute(
+                """SELECT account, amount, currency, metadata_json
+                   FROM postings
+                   WHERE entry_id = ?
+                   ORDER BY id""",
+                (row["id"],),
             ).fetchall()
-            entries: list[Entry] = []
-            for row in entry_rows:
-                posting_rows = conn.execute(
-                    """SELECT account, amount, currency, metadata_json
-                       FROM postings
-                       WHERE entry_id = ?
-                       ORDER BY id""",
-                    (row["id"],),
-                ).fetchall()
-                postings = tuple(
-                    Posting(
-                        account=p["account"],
-                        amount=Decimal(p["amount"]),
-                        currency=p["currency"],
-                        meta=_loads_pairs(p["metadata_json"]),
-                    )
-                    for p in posting_rows
+            postings = tuple(
+                Posting(
+                    account=p["account"],
+                    amount=Decimal(p["amount"]),
+                    currency=p["currency"],
+                    meta=_loads_pairs(p["metadata_json"]),
                 )
-                entries.append(
-                    Entry(
-                        date=date.fromisoformat(row["date"]),
-                        narration=row["narration"],
-                        payee=row["payee"],
-                        flag=row["flag"],
-                        tags=_loads_strings(row["tags_json"]),
-                        links=_loads_strings(row["links_json"]),
-                        meta=_loads_pairs(row["metadata_json"]),
-                        postings=postings,
-                    )
+                for p in posting_rows
+            )
+            entries.append(
+                Entry(
+                    date=date.fromisoformat(row["date"]),
+                    narration=row["narration"],
+                    payee=row["payee"],
+                    flag=row["flag"],
+                    tags=_loads_strings(row["tags_json"]),
+                    links=_loads_strings(row["links_json"]),
+                    meta=_loads_pairs(row["metadata_json"]),
+                    postings=postings,
                 )
-            return entries
+            )
+        return entries
+
+    def load_audit_events(self) -> list[dict[str, Any]]:
+        with self.connection() as conn:
+            rows = conn.execute(
+                """SELECT id, type, ts, payload_json, prev_hash, record_hash
+                   FROM audit_events
+                   ORDER BY id"""
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "type": row["type"],
+                "ts": row["ts"],
+                "payload": json.loads(row["payload_json"] or "{}"),
+                "prev_hash": row["prev_hash"],
+                "record_hash": row["record_hash"],
+            }
+            for row in rows
+        ]
 
 
 def replace_store_atomically(src: Path, dest: Path) -> None:

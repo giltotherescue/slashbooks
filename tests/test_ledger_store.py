@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import tempfile
 import unittest
 from datetime import date
@@ -56,15 +55,15 @@ class LedgerStoreTests(unittest.TestCase):
                 row = conn.execute("SELECT amount FROM postings WHERE amount = ?", ("123.45",)).fetchone()
             self.assertIsNotNone(row)
 
-    def test_duplicate_source_id_is_rejected(self) -> None:
+    def test_duplicate_source_id_history_is_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = LedgerStore(Path(tmp) / "ledger.sqlite")
             store.initialize()
-            with self.assertRaises(sqlite3.IntegrityError):
-                with store.transaction() as conn:
-                    store.insert_entries([_entry("dup"), _entry("dup")], conn)
+            with store.transaction() as conn:
+                store.insert_entries([_entry("dup"), _entry("dup")], conn)
 
-            self.assertEqual(store.counts().entries, 0)
+            self.assertEqual(store.counts().entries, 2)
+            self.assertTrue(store.source_exists("dup"))
 
     def test_audit_chain_detects_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
