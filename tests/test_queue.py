@@ -860,9 +860,11 @@ class TestConfirmWritesLedger(unittest.TestCase):
         propose(self.entity, "txn-write-001", "Expenses:Software", "CI tooling subscription")
         confirm(self.entity, "txn-write-001", session_id="confirm-session", ts=TS)
 
-        # Ledger must now contain the entry
+        # Store projection must now contain the entry.
+        from bookkeeping.ledger.projections import render_store_ledger
+        from bookkeeping.ledger.store import default_store_path
         from bookkeeping.ledger.validator import validate, parse_ledger
-        text = self.entity.books_path.read_text(encoding="utf-8")
+        text = render_store_ledger(default_store_path(self.entity.path))
         errors = validate(text)
         self.assertEqual(errors, [], f"Ledger validation errors: {errors}")
 
@@ -907,8 +909,10 @@ class TestConfirmWritesLedger(unittest.TestCase):
             session_id="correct-session", ts=TS
         )
 
+        from bookkeeping.ledger.projections import render_store_ledger
+        from bookkeeping.ledger.store import default_store_path
         from bookkeeping.ledger.validator import validate, parse_ledger
-        text = self.entity.books_path.read_text(encoding="utf-8")
+        text = render_store_ledger(default_store_path(self.entity.path))
         errors = validate(text)
         self.assertEqual(errors, [], f"Ledger validation errors: {errors}")
         parsed = parse_ledger(text)

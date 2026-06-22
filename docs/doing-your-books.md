@@ -44,9 +44,8 @@ The setup creates a local company folder with:
 ```text
 entity.json
 trust-policy.json
-books.beancount
+ledger.sqlite
 chart-of-accounts.beancount
-audit-log.jsonl
 staging/
 review-queue/
 learned-context/
@@ -60,9 +59,12 @@ That folder is also where Slashbooks keeps what it learns:
 - `business-profile.md` is the human-readable background and accountant context.
 - `entity.json` stores structured settings and mappings.
 - `trust-policy.json` controls when repeat transactions can be trusted.
+- `ledger.sqlite` stores the books and audit history.
 - `learned-context/` records usual categories learned from review decisions.
 - `review-queue/` holds transactions waiting for owner judgment.
-- `audit-log.jsonl` records important changes and review actions.
+
+When you need a plain ledger file for inspection or another tool, generate a
+Beancount snapshot from the ledger store.
 
 If you're starting fresh, setup can stop there. If you're migrating from
 QuickBooks, export the needed QuickBooks reports and run `/books-backtest` before

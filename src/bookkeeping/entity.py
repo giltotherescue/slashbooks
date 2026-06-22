@@ -164,11 +164,6 @@ _COA_TEMPLATES: dict[str, str] = {
 }
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-_BOOKS_HEADER = """; books.beancount — canonical ledger
-; This file is written by the Slashbooks engine.  Do not edit by hand.
-; To add opening balances or corrections, run: books entity init --help
-"""
-
 
 def _normalize_optional_date(value: str) -> str | None:
     normalized = str(value or "").strip()
@@ -230,17 +225,22 @@ def init_entity(
         d = target / dir_name
         _track(d, _mkdir_if_absent(d))
 
-    # --- books.beancount -----------------------------------------------------
-    books_path = target / "books.beancount"
-    if is_reinit:
-        # Never touch books.beancount on re-init
-        existed.append("books.beancount")
+    # --- ledger.sqlite ------------------------------------------------------
+    store_path = target / "ledger.sqlite"
+    if is_reinit and store_path.exists():
+        existed.append("ledger.sqlite")
     else:
-        if not books_path.exists():
-            books_path.write_text(_BOOKS_HEADER, encoding="utf-8")
-            created.append("books.beancount")
+        if not store_path.exists():
+            from .ledger.store import LedgerStore
+
+            store = LedgerStore(store_path)
+            store.initialize()
+            store.set_meta("canonical", "true")
+            if name:
+                store.set_meta("title", name)
+            created.append("ledger.sqlite")
         else:
-            existed.append("books.beancount")
+            existed.append("ledger.sqlite")
 
     # --- chart-of-accounts.beancount -----------------------------------------
     coa_template_name = _COA_TEMPLATES.get(business_type, _COA_TEMPLATES["consulting"])

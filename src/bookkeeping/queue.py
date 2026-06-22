@@ -533,18 +533,16 @@ def _write_confirmed_entry(
 ) -> None:
     """Build an Entry for a confirmed queue item and write it via the importer's atomic path.
 
-    This reuses the importer's ``_atomic_ledger_write`` and the audit-log path
-    directly rather than duplicating ledger-write logic.
+    This reuses the importer's ``_atomic_ledger_write`` directly rather than
+    duplicating ledger-write logic.
     """
     from decimal import Decimal as D
     from datetime import date as _date
     from .ledger.model import Entry, Open, Posting
-    from .ledger.auditlog import AuditLog
     from .ledger.staging import StagingStore
     from .ledger.importer import _atomic_ledger_write, _get_existing_opens, _ledger_account_for_txn
 
-    audit_log = AuditLog(entity.path / "audit-log.jsonl")
-    staging = StagingStore(entity.staging_dir, audit_log)
+    staging = StagingStore(entity.staging_dir)
 
     source_id = str(txn.get("id") or "")
     raw_date = str(txn.get("date") or "")[:10]
@@ -593,21 +591,12 @@ def _write_confirmed_entry(
 
     _atomic_ledger_write(
         entity=entity,
-        audit_log=audit_log,
         new_opens=new_opens,
         new_entries=[entry],
         session_id=session_id,
         ts=ts,
         intent_description=f"queue confirm source_id={source_id!r} category={category!r}",
         source_transactions=[dict(txn)],
-    )
-
-    audit_log.append(
-        "entry-written",
-        ts=ts,
-        source_id=source_id,
-        session_id=session_id,
-        label="queue-confirmed",
     )
 
     staging.bulk_mark_seen([source_id])
@@ -826,10 +815,8 @@ def reconcile_pending_amount_changes(entity: Entity) -> list[dict]:
     Returns a list of reopened item dicts (already persisted).
     """
     from .ledger.staging import StagingStore
-    from .ledger.auditlog import AuditLog
 
-    audit_log = AuditLog(entity.path / "audit-log.jsonl")
-    staging = StagingStore(entity.staging_dir, audit_log)
+    staging = StagingStore(entity.staging_dir)
 
     reopened: list[dict] = []
     items = list_queue_items(entity, status="open")

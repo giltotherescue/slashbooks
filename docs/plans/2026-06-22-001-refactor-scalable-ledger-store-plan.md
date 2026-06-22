@@ -22,12 +22,12 @@ This design is sound for simple cash-basis books with modest volume. It starts t
 
 ## Requirements
 
-**Canonical storage and compatibility**
+**Canonical storage**
 
 - R1. The system must support a normalized SQLite ledger store as the canonical mutation surface for entries, postings, source transactions, import sessions, review decisions, audit events, account openings, and balance assertions.
-- R2. Existing entity directories that only contain `books.beancount` must continue to work through a compatibility import or lazy migration path.
-- R3. Generated Beancount output must remain deterministic and semantically equivalent to the current writer for supported entries.
-- R4. Existing CLI commands must keep their current user-facing behavior unless a new migration/export flag is explicitly introduced.
+- R2. New entity directories must initialize the store directly rather than treating `books.beancount` as the ledger source of truth.
+- R3. Generated Beancount output must remain deterministic and semantically equivalent to the store projection for supported entries.
+- R4. CLI commands may change where no external user contract exists; prefer the clean store-first design over compatibility shims.
 
 **Accounting correctness**
 
@@ -38,8 +38,8 @@ This design is sound for simple cash-basis books with modest volume. It starts t
 **Audit and safety**
 
 - R8. Ledger mutations must be atomic at the storage layer and leave a tamper-evident audit trail.
-- R9. The audit model must still detect incomplete writes and out-of-band changes to exported ledger snapshots.
-- R10. Migration must be reversible during rollout by preserving the original `books.beancount` file and writing generated snapshots separately until compatibility is proven.
+- R9. The audit model must verify the store event chain and detect store tampering or impossible partial-write states.
+- R10. Exported Beancount snapshots are artifacts, not mutation surfaces, and should be generated only when requested.
 
 **Scale and export control**
 
@@ -52,11 +52,11 @@ This design is sound for simple cash-basis books with modest volume. It starts t
 ## Key Technical Decisions
 
 - KTD1. SQLite becomes the canonical write store, not only a cache: SQLite gives ACID transactions, indexes, foreign keys, and portable local ownership without adding a server dependency.
-- KTD2. Beancount becomes a deterministic projection: `books.beancount` remains shareable and accountant-readable, but generated snapshots should not be the primary mutation layer after migration.
-- KTD3. Use additive migration before replacement: build the store beside current files, prove equivalence, then switch writers. This protects existing company books and keeps rollback simple.
-- KTD4. Preserve the hash-chain audit model inside the new store: move audit events into SQLite with `prev_hash`, `record_hash`, event type, timestamps, and payload, then optionally mirror JSONL for compatibility.
+- KTD2. Beancount becomes a deterministic projection: snapshots remain shareable and accountant-readable, but they are generated artifacts, not the primary ledger.
+- KTD3. Because no production entity directories exist yet, prefer direct store initialization and store-only write paths over compatibility layers.
+- KTD4. Preserve the hash-chain audit model inside the new store with `prev_hash`, `record_hash`, event type, timestamps, and payload.
 - KTD5. Keep the core dependency-free: use Python's standard `sqlite3`, `decimal`, and filesystem APIs. The optional `xlsx` extra remains the only optional export dependency.
-- KTD6. Treat existing parser/writer behavior as the compatibility oracle: migration tests should compare parsed entries, postings, report totals, and generated exports rather than asserting only row counts.
+- KTD6. Treat the store projection as the oracle: tests should compare parsed entries, postings, report totals, and generated exports rather than asserting only row counts.
 
 ---
 
@@ -138,11 +138,11 @@ This refactor changes the core persistence boundary for the product. Import, rev
 
 ### U2. Build Beancount-to-Store Migration
 
-- **Goal:** Import existing `books.beancount` content into the canonical store without changing the source ledger file.
-- **Requirements:** R2, R3, R5, R6, R10.
+- **Goal:** Provide a development/import utility for loading Beancount fixtures or QuickBooks-generated ledgers into the canonical store.
+- **Requirements:** R3, R5, R6.
 - **Dependencies:** U1.
 - **Files:** `src/bookkeeping/ledger/migrate.py`, `src/bookkeeping/cli.py`, `tests/test_ledger_migrate.py`.
-- **Approach:** Parse the existing ledger with `parse_ledger`, load opens, balances, entries, postings, tags, links, and metadata into the store, and record a migration event. Do not delete or rewrite `books.beancount`. Add a CLI surface that can run in dry-run mode and report counts plus validation errors.
+- **Approach:** Parse a ledger with `parse_ledger`, load opens, balances, entries, postings, tags, links, and metadata into the store, and record a migration event. Add a CLI surface that can run in dry-run mode and report counts plus validation errors.
 - **Patterns to follow:** `src/bookkeeping/ledger/importer.py` for entity paths and integrity language, `src/bookkeeping/quickbooks.py` for deterministic generated ledger comparisons.
 - **Execution note:** Add characterization fixtures from existing tests before implementing migration.
 - **Test scenarios:**
@@ -159,12 +159,11 @@ This refactor changes the core persistence boundary for the product. Import, rev
 - **Requirements:** R3, R7, R9, R10.
 - **Dependencies:** U1, U2.
 - **Files:** `src/bookkeeping/ledger/projections.py`, `src/bookkeeping/ledger/writer.py`, `tests/test_ledger_projections.py`.
-- **Approach:** Query store rows into existing `Open`, `Entry`, `Posting`, and `Balance` models, then reuse `render_ledger`. Write generated snapshots to an explicit projection path during rollout, and seal snapshot hashes through audit events.
-- **Patterns to follow:** `src/bookkeeping/ledger/writer.py` for deterministic output and injection-safe escaping, `tests/fixtures/ledger/golden.beancount` for golden compatibility.
+- **Approach:** Query store rows into existing `Open`, `Entry`, `Posting`, and `Balance` models, then reuse `render_ledger`. Write generated snapshots only through explicit snapshot/export commands.
+- **Patterns to follow:** `src/bookkeeping/ledger/writer.py` for deterministic output and injection-safe escaping, `tests/fixtures/ledger/golden.beancount` for projection fixtures.
 - **Test scenarios:**
   - Store-to-Beancount generation for a migrated fixture matches the current normalized rendering.
   - Generated snapshots validate with `validate`.
-  - Snapshot sealing records a hash that matches the generated file bytes.
   - Projection generation does not mutate canonical store rows.
   - Entries with payee, narration, tags, links, and metadata render with current escaping behavior.
 - **Verification:** Golden tests prove deterministic output and validator acceptance.
@@ -184,7 +183,7 @@ This refactor changes the core persistence boundary for the product. Import, rev
   - Queue confirmation writes exactly one balanced entry and marks the source ID seen.
   - A simulated failure after the intent event but before commit leaves no partial postings and reports an incomplete write state.
   - Store-backed import can generate a Beancount snapshot equivalent to the old file-backed import for the same input.
-- **Verification:** Existing importer and queue test expectations continue to pass, with added store-backed equivalence checks.
+- **Verification:** Importer and queue tests validate store rows, store audit events, and deterministic projections.
 
 ### U5. Query Reports Directly from Store
 
@@ -192,7 +191,7 @@ This refactor changes the core persistence boundary for the product. Import, rev
 - **Requirements:** R7, R11.
 - **Dependencies:** U1, U2, U4.
 - **Files:** `src/bookkeeping/reports/cache.py`, `src/bookkeeping/reports/statements.py`, `src/bookkeeping/reconcile.py`, `tests/test_cache.py`, `tests/test_statements.py`, `tests/test_reconcile.py`.
-- **Approach:** Add a report data-access layer that can read from the canonical store and present the same iterator/balance APIs currently provided by `reports.cache`. Keep cache compatibility during rollout for file-only entities.
+- **Approach:** Add a report data-access layer that can read from the canonical store and present the same iterator/balance APIs currently provided by `reports.cache`.
 - **Patterns to follow:** `iter_postings`, `get_account_balance`, and statement computation functions.
 - **Test scenarios:**
   - P&L, balance sheet, trial balance, and general ledger match current fixture outputs when backed by store queries.
@@ -217,7 +216,7 @@ This refactor changes the core persistence boundary for the product. Import, rev
   - Invalid sheet names fail with a plain-English error before writing partial output.
   - GL-specific date bounds limit GL rows without changing P&L or balance sheet periods.
   - CSV output still succeeds when `xlsxwriter` is unavailable.
-- **Verification:** Workbook tests assert sheet selection, period behavior, and backward-compatible defaults.
+- **Verification:** Workbook tests assert sheet selection, period behavior, and default package output.
 
 ### U7. Preserve and Surface Audit Guarantees
 
@@ -225,15 +224,13 @@ This refactor changes the core persistence boundary for the product. Import, rev
 - **Requirements:** R8, R9, R10.
 - **Dependencies:** U1, U3, U4, U6.
 - **Files:** `src/bookkeeping/ledger/auditlog.py`, `src/bookkeeping/ledger/store.py`, `src/bookkeeping/reports/workbook.py`, `docs/for-accountants.md`, `tests/test_auditlog.py`, `tests/test_workbook.py`.
-- **Approach:** Add store-backed audit events with hash chaining, retain JSONL compatibility while migrating, and add an optional Audit Log sheet or CSV to accountant export. Include event type, timestamp, source ID, session ID, record hash, previous hash, and seal hashes.
-- **Patterns to follow:** Current `AuditLog.append`, `verify_chain`, `check_integrity`, and workbook sheet builders.
+- **Approach:** Add store-backed audit events with hash chaining and add an optional Audit Log sheet or CSV to accountant export. Include event type, timestamp, source ID, session ID, record hash, previous hash, and seal hashes.
+- **Patterns to follow:** Store audit-event hashing, `check_integrity`, and workbook sheet builders.
 - **Test scenarios:**
   - Store audit chain verifies cleanly after a multi-entry import.
   - Editing an audit event payload breaks verification.
-  - Snapshot hash mismatch is detected against the latest sealed projection.
   - Accountant export includes the Audit Log sheet only when requested or configured.
-  - JSONL mirror records match store audit event hashes during compatibility mode.
-- **Verification:** Audit tests prove tamper detection across store events and exported snapshots.
+- **Verification:** Audit tests prove tamper detection across store events.
 
 ### U8. Add Scale and Equivalence Test Harness
 
@@ -245,7 +242,7 @@ This refactor changes the core persistence boundary for the product. Import, rev
 - **Patterns to follow:** Existing fixture/golden-output tests and benchmark-style helper code kept inside tests.
 - **Test scenarios:**
   - A generated 10k-entry ledger migrates to store and produces matching financial statement totals.
-  - Store-backed import of a small batch does not rewrite `books.beancount`.
+  - Store-backed import of a small batch does not create or rewrite `books.beancount`.
   - Store-backed reports over a date range match file-backed reports for the same fixture.
   - Exporting selected sheets for a large fixture avoids generating omitted large sheets.
   - Audit verification passes after bulk import and fails after deliberate tampering.
@@ -255,7 +252,7 @@ This refactor changes the core persistence boundary for the product. Import, rev
 
 ## Acceptance Examples
 
-- AE1. Given an existing entity with only `books.beancount`, when migration runs, then the original file remains unchanged and the store contains equivalent entries and postings.
+- AE1. Given a Beancount source ledger, when migration runs, then the store contains equivalent entries and postings.
 - AE2. Given a migrated store, when a Beancount snapshot is generated, then the snapshot validates and matches current writer semantics for supported directives.
 - AE3. Given a 10k-entry store, when a new 20-transaction import batch runs, then only store rows and audit events are appended and the Beancount snapshot is generated only when requested.
 - AE4. Given an accountant export request for only P&L and Trial Balance, when export runs, then no General Ledger sheet or CSV is written.
@@ -266,8 +263,8 @@ This refactor changes the core persistence boundary for the product. Import, rev
 ## Risks & Dependencies
 
 - **Migration drift:** The store model may miss Beancount metadata currently preserved by parser/writer round trips. Mitigate with field-by-field migration tests and golden fixtures.
-- **Dual-source confusion:** During rollout, both `books.beancount` and the store may exist. Mitigate with explicit source-of-truth metadata and generated snapshot paths.
-- **Audit compatibility:** Moving from JSONL to store-backed audit events can weaken trust if hashes are not defined over canonical payloads. Mitigate by specifying canonical JSON serialization for audit payload hashes.
+- **Dual-source confusion:** Exported snapshots can be mistaken for the ledger. Mitigate by documenting the store as source of truth and generating snapshots only on request.
+- **Audit integrity:** Store-backed audit events can weaken trust if hashes are not defined over canonical payloads. Mitigate by specifying canonical JSON serialization for audit payload hashes.
 - **Excel limits:** Selective sheets reduce workbook size but do not solve extremely large GL review. Keep CSV canonical and defer Parquet or chunked exports.
 - **Timing-test flakiness:** Performance tests can be unstable in CI. Prefer assertions that prove no full-file rewrite and keep benchmark thresholds broad.
 
@@ -282,8 +279,8 @@ Update accountant-facing docs to explain that Slashbooks uses a local SQLite led
 ## Sources / Research
 
 - `AGENTS.md` establishes the product model, package/company directory split, deterministic Python math, and tests required for ledger writes, audit integrity, imports, reconciliation, and exports.
-- `src/bookkeeping/ledger/importer.py` contains the current full-file atomic write path and integrity checks.
+- `src/bookkeeping/ledger/importer.py` contains the store-backed atomic write path and integrity checks.
 - `src/bookkeeping/reports/cache.py` already demonstrates Decimal-safe SQLite tables and regenerable report queries.
 - `src/bookkeeping/reports/workbook.py` defines the accountant export package and current all-sheets default.
-- `src/bookkeeping/ledger/auditlog.py` defines the current append-only hash-chain audit model.
-- `tests/test_importer.py`, `tests/test_cache.py`, `tests/test_workbook.py`, and `tests/test_auditlog.py` provide the compatibility and regression surface for the refactor.
+- `src/bookkeeping/ledger/store.py` defines the current append-only store audit model.
+- `tests/test_importer.py`, `tests/test_cache.py`, `tests/test_workbook.py`, and `tests/test_ledger_store.py` provide the regression surface for the refactor.

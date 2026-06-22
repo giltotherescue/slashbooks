@@ -23,7 +23,7 @@ This is NEVER used to dedup posted-vs-posted.
 
 Public API
 ----------
-StagingStore(staging_dir, audit_log)
+StagingStore(staging_dir, audit_log=None)
     .check_orphaned_tmps() -> list[str]   paths of orphaned .tmp files
     .add_pending(txn) -> None
     .get_pending() -> list[dict]
@@ -89,7 +89,7 @@ class StagingStore:
     _PENDING_FILE = "pending.json"
     _SEEN_IDS_FILE = "seen-ids.json"
 
-    def __init__(self, staging_dir: str | Path, audit_log: Any) -> None:
+    def __init__(self, staging_dir: str | Path, audit_log: Any | None = None) -> None:
         """Initialise the store.
 
         Parameters
@@ -97,8 +97,9 @@ class StagingStore:
         staging_dir
             Path to the entity's staging/ directory.
         audit_log
-            An ``AuditLog`` instance (from auditlog.py) used for
-            pending-dropped and purge records.
+            Optional audit sink used by legacy/unit-test callers for
+            pending-dropped and purge records. Canonical ledger audit events
+            live in the ledger store.
         """
         self._dir = Path(staging_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
@@ -227,13 +228,14 @@ class StagingStore:
             if staged.get("id") == source_id:
                 self._pending.pop(idx)
                 self._save_pending()
-                self._audit_log.append(
-                    "pending-dropped",
-                    ts=ts,
-                    source_id=source_id,
-                    reason=reason,
-                    session_id=session_id,
-                )
+                if self._audit_log is not None:
+                    self._audit_log.append(
+                        "pending-dropped",
+                        ts=ts,
+                        source_id=source_id,
+                        reason=reason,
+                        session_id=session_id,
+                    )
                 return True
         return False
 
@@ -285,13 +287,14 @@ class StagingStore:
 
         for staged in to_purge:
             sid = staged.get("id", "unknown")
-            self._audit_log.append(
-                "pending-dropped",
-                ts=ts,
-                source_id=sid,
-                reason=f"purge_stale(days={days})",
-                session_id=session_id,
-            )
+            if self._audit_log is not None:
+                self._audit_log.append(
+                    "pending-dropped",
+                    ts=ts,
+                    source_id=sid,
+                    reason=f"purge_stale(days={days})",
+                    session_id=session_id,
+                )
 
         return len(to_purge)
 

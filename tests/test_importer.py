@@ -20,7 +20,6 @@ Covers all U4 test scenarios from the plan:
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -34,7 +33,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from bookkeeping.entity import Entity  # noqa: E402
-from bookkeeping.ledger.auditlog import AuditLog, verify_chain  # noqa: E402
+from bookkeeping.ledger.auditlog import AuditLog  # noqa: E402
 from bookkeeping.ledger.importer import (  # noqa: E402
     ImportResult,
     IntegrityResult,
@@ -46,7 +45,9 @@ from bookkeeping.ledger.importer import (  # noqa: E402
     reverse_and_correct,
 )
 from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
+from bookkeeping.ledger.projections import render_store_ledger  # noqa: E402
 from bookkeeping.ledger.staging import StagingStore  # noqa: E402
+from bookkeeping.ledger.store import LedgerStore, default_store_path  # noqa: E402
 from bookkeeping.ledger.validator import validate  # noqa: E402
 
 
@@ -131,6 +132,9 @@ def _simple_categorizer(account: str):
 
 
 def _read_ledger(entity: Entity) -> str:
+    store_path = default_store_path(entity.path)
+    if store_path.exists():
+        return render_store_ledger(store_path)
     if not entity.books_path.exists():
         return ""
     return entity.books_path.read_text(encoding="utf-8")
@@ -180,27 +184,6 @@ class BankAccountMappingTests(unittest.TestCase):
         txn = {"accountName": "Mercury Credit", "accountType": "credit_card"}
 
         self.assertEqual(_ledger_account_for_txn(txn), "Liabilities:CreditCard:Mercury-Credit")
-
-
-def _git(entity: Entity, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args],
-        cwd=str(entity.path),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-
-
-def _init_git_entity(entity: Entity) -> None:
-    _git(entity, "init")
-    _git(entity, "config", "user.email", "owner@example.com")
-    _git(entity, "config", "user.name", "Owner")
-
-
-def _commit_books(entity: Entity, message: str) -> None:
-    _git(entity, "add", "books.beancount")
-    _git(entity, "commit", "-m", message)
 
 
 # ---------------------------------------------------------------------------
@@ -547,21 +530,25 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
         self.assertTrue((self._entity.path / ".books.lock").exists())
 
     def test_incomplete_write_recovery_not_halt(self) -> None:
-        """Simulated crash: intent written, seal never written.
+        """Simulated store corruption: intent written, seal never written.
         Next check_integrity returns 'incomplete-write', NOT 'halt'.
         """
-        # Write an intent record directly, without writing the ledger or seal.
-        audit_log = AuditLog(self._entity.path / "audit-log.jsonl")
-        audit_log.append("intent", ts=TS, session_id=SESSION, description="simulated crash")
-        # DO NOT write ledger-sealed.
+        store = LedgerStore(default_store_path(self._entity.path))
+        store.initialize()
+        with store.transaction() as conn:
+            store.append_audit_event(
+                "intent",
+                {"session_id": SESSION, "description": "simulated crash"},
+                conn,
+                ts=TS,
+            )
 
         result = check_integrity(self._entity)
         self.assertEqual(result.status, "incomplete-write")
         self.assertNotEqual(result.status, "halt")
 
-    def test_hash_mismatch_no_git_returns_halt(self) -> None:
-        """Hash mismatch with no corresponding git commit → halt with diff."""
-        # First, do a normal import to establish a seal.
+    def test_store_audit_tamper_returns_halt(self) -> None:
+        """Store audit tampering returns halt."""
         txns = [_make_posted_txn("txn-mismatch")]
         import_transactions(
             self._entity, txns, SESSION,
@@ -569,19 +556,15 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
             ts=TS,
             session_date=date(2026, 1, 15),
         )
-
-        # Tamper with the ledger file (without updating the seal).
-        ledger_text = self._entity.books_path.read_text(encoding="utf-8")
-        self._entity.books_path.write_text(ledger_text + "\n; tampered\n", encoding="utf-8")
-
-        # The entity dir is NOT a git repo (it's a tmpdir).
+        store = LedgerStore(default_store_path(self._entity.path))
+        with store.connection() as conn:
+            conn.execute("UPDATE audit_events SET payload_json = ? WHERE id = 1", ('{"tampered":true}',))
+            conn.commit()
         result = check_integrity(self._entity)
-        self.assertIn(result.status, ("halt", "ratifiable"))
-        # In the non-git path, status should be halt.
-        # (If git happened to be present in tmpdir, ratifiable is acceptable.)
+        self.assertEqual(result.status, "halt")
 
-    def test_hash_mismatch_halt_has_diff(self) -> None:
-        """When status is halt, result.diff is non-empty."""
+    def test_store_audit_halt_has_message(self) -> None:
+        """When status is halt, result.message explains the store issue."""
         txns = [_make_posted_txn("txn-diff")]
         import_transactions(
             self._entity, txns, SESSION,
@@ -589,13 +572,13 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
             ts=TS,
             session_date=date(2026, 1, 15),
         )
-        self._entity.books_path.write_text(
-            self._entity.books_path.read_text(encoding="utf-8") + "\n; tampered\n",
-            encoding="utf-8",
-        )
+        store = LedgerStore(default_store_path(self._entity.path))
+        with store.connection() as conn:
+            conn.execute("UPDATE audit_events SET record_hash = ? WHERE id = 1", ("bad",))
+            conn.commit()
         result = check_integrity(self._entity)
-        if result.status in ("halt", "ratifiable"):
-            self.assertTrue(result.diff or result.message)
+        self.assertEqual(result.status, "halt")
+        self.assertTrue(result.message)
 
     def test_acknowledge_mismatch_records_diff_hash(self) -> None:
         """acknowledge_mismatch writes an 'acknowledged' record with diff_sha256."""
@@ -610,17 +593,15 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
         diff_text = "; hand-edited line"
         acknowledge_mismatch(self._entity, diff_text, SESSION, ts=TS)
 
-        audit_log = AuditLog(self._entity.path / "audit-log.jsonl")
-        records = audit_log.all_records()
+        records = LedgerStore(default_store_path(self._entity.path)).load_audit_events()
         ack_records = [r for r in records if r["type"] == "acknowledged"]
         self.assertEqual(len(ack_records), 1)
 
         expected_sha256 = hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
-        self.assertEqual(ack_records[0]["diff_sha256"], expected_sha256)
+        self.assertEqual(ack_records[0]["payload"]["diff_sha256"], expected_sha256)
 
-    def test_uncommitted_git_edit_halts_even_with_prior_local_commit(self) -> None:
-        """A dirty books.beancount is not ratifiable just because local commits exist."""
-        _init_git_entity(self._entity)
+    def test_store_integrity_ignores_exported_file_edits(self) -> None:
+        """Exported Beancount snapshots are not the source of truth."""
         import_transactions(
             self._entity,
             [_make_posted_txn("txn-git-dirty")],
@@ -629,18 +610,12 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
             ts=TS,
             session_date=date(2026, 1, 15),
         )
-        _commit_books(self._entity, "baseline books")
-
-        ledger_text = self._entity.books_path.read_text(encoding="utf-8")
-        self._entity.books_path.write_text(ledger_text + "\n; uncommitted edit\n", encoding="utf-8")
-
+        self._entity.books_path.write_text("; exported file edit\n", encoding="utf-8")
         result = check_integrity(self._entity)
+        self.assertEqual(result.status, "ok")
 
-        self.assertEqual(result.status, "halt")
-
-    def test_committed_local_edit_ratifies_and_reseals(self) -> None:
-        """Ratifying a clean local git edit establishes a new sealed baseline."""
-        _init_git_entity(self._entity)
+    def test_ratification_records_store_event(self) -> None:
+        """Ratifying an external review records a store audit event."""
         import_transactions(
             self._entity,
             [_make_posted_txn("txn-git-ratify")],
@@ -649,23 +624,11 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
             ts=TS,
             session_date=date(2026, 1, 15),
         )
-        _commit_books(self._entity, "baseline books")
-
-        ledger_text = self._entity.books_path.read_text(encoding="utf-8")
-        self._entity.books_path.write_text(ledger_text + "\n; committed owner edit\n", encoding="utf-8")
-        _commit_books(self._entity, "owner ledger edit")
-
-        result = check_integrity(self._entity)
-
-        self.assertEqual(result.status, "ratifiable")
-        self.assertIsNotNone(result.commit_hash)
-        self.assertIsNotNone(result.diff_sha256)
-
         ratify_git_commit(
             self._entity,
-            commit_hash=result.commit_hash or "",
-            author=result.commit_author or "",
-            diff_sha256=result.diff_sha256 or "",
+            commit_hash="abc123",
+            author="owner@example.com",
+            diff_sha256="deadbeef",
             session_id=SESSION,
             ts=TS,
         )
@@ -698,11 +661,11 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
             ts=TS,
             session_date=date(2026, 1, 15),
         )
-        errors = verify_chain(self._entity.path / "audit-log.jsonl")
+        errors = LedgerStore(default_store_path(self._entity.path)).verify_audit_chain()
         self.assertEqual(errors, [], f"Audit chain errors: {errors}")
 
     def test_audit_log_contains_intent_and_seal(self) -> None:
-        """After import, audit log contains intent followed by ledger-sealed."""
+        """After import, store audit contains intent followed by store seal."""
         txns = [_make_posted_txn("txn-il")]
         import_transactions(
             self._entity, txns, SESSION,
@@ -710,16 +673,15 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
             ts=TS,
             session_date=date(2026, 1, 15),
         )
-        audit_log = AuditLog(self._entity.path / "audit-log.jsonl")
-        records = audit_log.all_records()
+        records = LedgerStore(default_store_path(self._entity.path)).load_audit_events()
 
         types = [r["type"] for r in records]
         self.assertIn("intent", types)
-        self.assertIn("ledger-sealed", types)
+        self.assertIn("ledger-store-sealed", types)
 
-        # intent must come before ledger-sealed in the file.
+        # intent must come before the seal in the store audit history.
         intent_idx = types.index("intent")
-        seal_idx = types.index("ledger-sealed")
+        seal_idx = types.index("ledger-store-sealed")
         self.assertLess(intent_idx, seal_idx)
 
     def test_integrity_ok_fresh_entity_no_ledger(self) -> None:
@@ -823,8 +785,8 @@ class TestReverseAndCorrect(unittest.TestCase):
             session_date=date(2026, 1, 15),
         )
 
-        audit_log = AuditLog(self._entity.path / "audit-log.jsonl")
-        records_before = audit_log.all_records()
+        store = LedgerStore(default_store_path(self._entity.path))
+        records_before = store.load_audit_events()
         intent_count_before = sum(1 for r in records_before if r["type"] == "intent")
 
         corrected = Entry(
@@ -839,9 +801,9 @@ class TestReverseAndCorrect(unittest.TestCase):
         )
         reverse_and_correct(self._entity, "orig-atomic", corrected, "fix-session", ts=TS)
 
-        records_after = audit_log.all_records()
+        records_after = store.load_audit_events()
         intent_count_after = sum(1 for r in records_after if r["type"] == "intent")
-        seal_count_after = sum(1 for r in records_after if r["type"] == "ledger-sealed")
+        seal_count_after = sum(1 for r in records_after if r["type"] == "ledger-store-sealed")
 
         # Exactly one additional intent (and seal) for the correction.
         self.assertEqual(intent_count_after - intent_count_before, 1)
@@ -913,11 +875,11 @@ class TestAuditChainIntegrity(unittest.TestCase):
                 ts=TS,
                 session_date=date(2026, 1, 15),
             )
-        errors = verify_chain(self._entity.path / "audit-log.jsonl")
+        errors = LedgerStore(default_store_path(self._entity.path)).verify_audit_chain()
         self.assertEqual(errors, [], f"Audit chain errors: {errors}")
 
-    def test_tampered_audit_log_detected(self) -> None:
-        """Tampering with a middle record in the audit log is detected by verify_chain."""
+    def test_tampered_store_audit_detected(self) -> None:
+        """Tampering with a middle store audit record is detected."""
         import_transactions(
             self._entity,
             [_make_posted_txn("txn-tamper")],
@@ -935,18 +897,15 @@ class TestAuditChainIntegrity(unittest.TestCase):
             session_date=date(2026, 1, 15),
         )
 
-        log_path = self._entity.path / "audit-log.jsonl"
-        lines = log_path.read_text(encoding="utf-8").splitlines(keepends=True)
-        self.assertGreater(len(lines), 2)
+        store = LedgerStore(default_store_path(self._entity.path))
+        with store.connection() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
+            self.assertGreater(count, 2)
+            mid = count // 2
+            conn.execute("UPDATE audit_events SET payload_json = ? WHERE id = ?", ('{"tampered":true}', mid))
+            conn.commit()
 
-        # Tamper with a middle line.
-        mid = len(lines) // 2
-        parsed = json.loads(lines[mid].rstrip("\n"))
-        parsed["_tampered"] = True
-        lines[mid] = json.dumps(parsed, separators=(",", ":"), sort_keys=True) + "\n"
-        log_path.write_text("".join(lines), encoding="utf-8")
-
-        errors = verify_chain(log_path)
+        errors = store.verify_audit_chain()
         self.assertGreater(len(errors), 0)
 
 
@@ -967,13 +926,12 @@ class TestRatifyAndAcknowledge(unittest.TestCase):
             session_id=SESSION,
             ts=TS,
         )
-        audit_log = AuditLog(self._entity.path / "audit-log.jsonl")
-        records = audit_log.all_records()
+        records = LedgerStore(default_store_path(self._entity.path)).load_audit_events()
         ratified = [r for r in records if r["type"] == "ratified"]
         self.assertEqual(len(ratified), 1)
-        self.assertEqual(ratified[0]["commit_hash"], "abc123")
-        self.assertEqual(ratified[0]["author"], "owner@example.com")
-        self.assertEqual(ratified[0]["diff_sha256"], "deadbeef")
+        self.assertEqual(ratified[0]["payload"]["commit_hash"], "abc123")
+        self.assertEqual(ratified[0]["payload"]["author"], "owner@example.com")
+        self.assertEqual(ratified[0]["payload"]["diff_sha256"], "deadbeef")
 
 
 if __name__ == "__main__":

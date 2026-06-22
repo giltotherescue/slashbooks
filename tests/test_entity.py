@@ -37,7 +37,7 @@ def _init_simple(tmpdir: Path, **kwargs: object) -> dict[str, list[str]]:
 
 
 _EXPECTED_FILES = [
-    "books.beancount",
+    "ledger.sqlite",
     "chart-of-accounts.beancount",
     "business-profile.md",
     "entity.json",
@@ -122,12 +122,15 @@ class TestInitFullLayout(unittest.TestCase):
             self.assertEqual(data["auto_post_threshold"], 3)
             self.assertTrue(data["queue_all_until_confirmed"])
 
-    def test_books_header_comment(self) -> None:
+    def test_ledger_store_initialized(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "my-entity"
             _init_simple(target)
-            text = (target / "books.beancount").read_text(encoding="utf-8")
-            self.assertIn("; books.beancount", text)
+            from bookkeeping.ledger.store import LedgerStore
+
+            store = LedgerStore(target / "ledger.sqlite")
+            self.assertEqual(store.get_meta("schema_version"), "1")
+            self.assertEqual(store.get_meta("canonical"), "true")
 
     def test_coa_contains_open_directives(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -191,7 +194,7 @@ class TestSecondInitDoesNotOverwrite(unittest.TestCase):
 
             # Capture original content
             original_entity = (target / "entity.json").read_bytes()
-            original_books = (target / "books.beancount").read_bytes()
+            original_store = (target / "ledger.sqlite").read_bytes()
             original_coa = (target / "chart-of-accounts.beancount").read_bytes()
             original_trust = (target / "trust-policy.json").read_bytes()
             original_profile = (target / "business-profile.md").read_bytes()
@@ -200,7 +203,7 @@ class TestSecondInitDoesNotOverwrite(unittest.TestCase):
             _init_simple(target, name="Second Name")
 
             self.assertEqual((target / "entity.json").read_bytes(), original_entity)
-            self.assertEqual((target / "books.beancount").read_bytes(), original_books)
+            self.assertEqual((target / "ledger.sqlite").read_bytes(), original_store)
             self.assertEqual((target / "chart-of-accounts.beancount").read_bytes(), original_coa)
             self.assertEqual((target / "trust-policy.json").read_bytes(), original_trust)
             self.assertEqual((target / "business-profile.md").read_bytes(), original_profile)

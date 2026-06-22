@@ -9,6 +9,7 @@ from pathlib import Path
 from src.bookkeeping.entity import load_entity
 from src.bookkeeping.ledger.importer import import_transactions
 from src.bookkeeping.ledger.migrate import migrate_beancount_to_store
+from src.bookkeeping.ledger.projections import render_store_ledger
 from src.bookkeeping.ledger.store import LedgerStore, default_store_path
 from src.bookkeeping.reports.cache import open_cache
 from src.bookkeeping.reports.statements import profit_and_loss
@@ -78,7 +79,7 @@ class ScalableLedgerRegressionTests(unittest.TestCase):
             self.assertEqual(sorted(path.name for path in export.csv_files), ["P-and-L.csv", "Trial-Balance.csv"])
             self.assertTrue(store_path.exists())
 
-    def test_import_writes_store_audit_source_payloads_and_snapshot(self) -> None:
+    def test_import_writes_store_audit_source_payloads_without_auto_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             entity_path = _make_entity(Path(tmp))
             entity = load_entity(entity_path)
@@ -110,9 +111,10 @@ class ScalableLedgerRegressionTests(unittest.TestCase):
                 payload_count = conn.execute("SELECT COUNT(*) FROM source_transactions").fetchone()[0]
             self.assertEqual(payload_count, 25)
 
-            snapshot = (entity_path / "books.beancount").read_text(encoding="utf-8")
-            self.assertIn("live_0", snapshot)
-            self.assertIn("Income:Revenue:Consulting", snapshot)
+            self.assertFalse((entity_path / "books.beancount").exists())
+            projection = render_store_ledger(default_store_path(entity_path))
+            self.assertIn("live_0", projection)
+            self.assertIn("Income:Revenue:Consulting", projection)
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ Look for these files in the entity directory:
 - `business-profile.md`
 - `trust-policy.json`
 - `chart-of-accounts.beancount`
-- `books.beancount`
+- `ledger.sqlite`
 
 Also inspect source intake folders if they exist:
 

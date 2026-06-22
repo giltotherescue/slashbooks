@@ -120,11 +120,10 @@ The inventory command recognizes the files Slashbooks needs for migration checks
 - General Ledger, cash basis, for the backtest period
 - Transaction Detail by Account, cash basis, for the backtest period
 
-Slashbooks writes new imported entries into the canonical `ledger.sqlite` store
-and then regenerates `books.beancount` as a deterministic compatibility
-snapshot. The snapshot is still useful for inspection and tools that expect a
-plain ledger file, but indexed reports and reconciliation can read the store
-directly once it exists.
+Slashbooks writes new imported entries into the canonical `ledger.sqlite` store.
+Reports, reconciliation, and accountant exports read that store directly. When a
+plain ledger file is needed for inspection or another tool, generate a
+Beancount snapshot explicitly with `books ledger snapshot`.
 
 For accountant handoffs with large transaction volume, export only the sheets
 needed or narrow the General Ledger period:
