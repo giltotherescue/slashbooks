@@ -35,7 +35,7 @@
 
 ## Books Start Date
 
-<!-- Date /books should start tracking from.
+<!-- Date Slashbooks should start tracking from.
      For QuickBooks migrations, this is the opening-balance cutover date. -->
 
 ## Fiscal Year

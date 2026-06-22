@@ -55,9 +55,9 @@ Walk through the checklist in plain English. For each check, explain what it mea
 - **Entity metadata** — "Country, tax jurisdiction, and operating currency are
   present for accountant context."
 - **Indirect tax scope** — "VAT/GST/HST/sales tax is flagged for local accountant
-  review. /books does not calculate or file these taxes."
+  review. Slashbooks does not calculate or file these taxes."
 - **Currency scope** — "Transactions outside the operating currency are flagged
-  because /books preserves them but does not calculate foreign-exchange gains or
+  because Slashbooks preserves them but does not calculate foreign-exchange gains or
   multi-currency reporting."
 - **Payroll reports** — "If payroll is enabled, provider reports should be present
   for the period. Draft payroll journal entries must come from provider reports

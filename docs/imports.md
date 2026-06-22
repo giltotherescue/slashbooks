@@ -68,7 +68,7 @@ Inspect a file:
 books connector csv inspect ~/Downloads/amex-activity.csv
 ```
 
-Ask `/books` to propose an account mapping:
+Ask Slashbooks to propose an account mapping:
 
 ```sh
 books connector csv propose-mapping \

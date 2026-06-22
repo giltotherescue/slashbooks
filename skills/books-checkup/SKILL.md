@@ -1,7 +1,7 @@
 ---
 name: books-checkup
 description: >
-  Review a company's /books setup before relying on it. Use after onboarding,
+  Review a company's Slashbooks setup before relying on it. Use after onboarding,
   before the first close, or when the owner asks whether setup, source mappings,
   chart of accounts, close readiness, or accountant handoff assumptions look
   reasonable.
@@ -192,7 +192,7 @@ Avoid phrases like:
 - "non-compliant"
 - "serious issue"
 - "invalid setup"
-- "you cannot use /books"
+- "you cannot use Slashbooks"
 
 Reserve "not ready yet" for practical blockers, such as missing source data,
 unmapped bank/card accounts, unresolved review queue items, or an incomplete

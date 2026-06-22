@@ -73,8 +73,8 @@ trusting Slashbooks for closes.
 ## Connect transaction sources
 
 For live bank and card data, set up BankSync and link the business accounts. You
-do not need to configure a BankSync feed or destination; `/books` reads from the
-BankSync API. See [BankSync setup](banksync.md).
+do not need to configure a BankSync feed or destination; Slashbooks reads from
+the BankSync API. See [BankSync setup](banksync.md).
 
 If you use Stripe or Mercury, Slashbooks can also pull data directly with your
 API key, which is handy for Stripe revenue and Mercury banking. See the provider
@@ -93,7 +93,7 @@ want to make sure things are still in order.
 
 ## During the week
 
-You don't need to work in `/books` every day.
+You don't need to work with Slashbooks every day.
 
 Useful light-touch habits:
 
@@ -199,6 +199,6 @@ them [For accountants](for-accountants.md).
 - Do not keep company books inside the `/books` plugin source directory.
 - Do not commit ledgers, bank exports, QuickBooks exports, generated reports, API
   keys, or entity directories to a public repo.
-- Do not treat `/books` as tax, legal, payroll, inventory, or accrual accounting
+- Do not treat Slashbooks as tax, legal, payroll, inventory, or accrual accounting
   advice.
 - Do not bypass the review queue for material or unfamiliar transactions.
