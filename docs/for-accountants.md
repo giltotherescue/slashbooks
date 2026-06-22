@@ -34,8 +34,9 @@ The underlying software produces the accounting output:
 - Reconciles account balances
 - Generates financial reports and accountant-ready exports
 
-The canonical records live in local plain-text files the owner can share with
-you: the ledger, the chart of accounts, and a complete audit log.
+The owner can share accountant-facing exports with you as Excel or CSV files,
+including the transaction ledger, financial statements, reconciliation support,
+open questions, and audit history.
 
 ## Review and trust model
 
@@ -73,34 +74,17 @@ reconciliation/source index, plus native filtering on the ledger and review
 sheets. The CSV exports remain plain values for portability. If the Excel
 workbook is not available, the same data is provided as CSV files.
 
-For larger books, the owner can export only the sheets requested by the
-accountant or omit high-volume sheets such as the General Ledger:
+For larger books, the owner can provide only the schedules you request. For
+example, they can send just the P&L, balance sheet, and trial balance, or omit
+the General Ledger from an initial package. They can also limit the General
+Ledger to a narrower date range when you only need transaction detail for a
+specific month or quarter.
 
-```sh
-books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
-  --sheets pnl,balance-sheet,trial-balance
-
-books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
-  --exclude-sheets general-ledger
-```
-
-The General Ledger can also use a narrower period than the package period:
-
-```sh
-books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
-  --gl-from 2026-10-01 --gl-to 2026-12-31
-```
-
-Slashbooks keeps a canonical SQLite ledger store and renders
-`books.beancount` as a deterministic compatibility snapshot. Accountants do not
-need to use the store directly, but it gives the system indexed reads/writes and
-a hash-chained audit-event table. To include the audit trail in a handoff, add
-`audit-log` to the sheet list:
-
-```sh
-books export --entity ~/Documents/books/acme-co --from 2026-01-01 --to 2026-12-31 \
-  --sheets cover,pnl,balance-sheet,trial-balance,audit-log
-```
+The audit history can be included as an optional export sheet. It shows when
+entries were imported, corrected, or otherwise written, along with identifiers
+that let the owner and reviewer trace a reported transaction back to the
+underlying activity. The audit history is tamper-evident: each event is linked
+to the prior event, so manual edits or corruption can be detected.
 
 ## Limits
 
