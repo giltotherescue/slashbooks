@@ -20,6 +20,7 @@ from .writer import (
     render_session,
 )
 from .validator import parse_ledger, validate, validate_file
+from .store import LedgerStore, default_store_path
 
 __all__ = [
     "Balance",
@@ -38,4 +39,6 @@ __all__ = [
     "parse_ledger",
     "validate",
     "validate_file",
+    "LedgerStore",
+    "default_store_path",
 ]

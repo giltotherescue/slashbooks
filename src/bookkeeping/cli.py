@@ -38,6 +38,7 @@ from bookkeeping import queue as queue_module
 from bookkeeping import quickbooks as quickbooks_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping.connectors import csvsource as csvsource_module
+from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
 from bookkeeping.reports import workbook as workbook_module
 
@@ -54,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
             return entity_module.run(args)
         if args.command == "ingest":
             return ingest_module.run(args)
+        if args.command == "ledger":
+            return ledger_migrate_module.run(args)
         if args.command == "qb":
             return quickbooks_module.run(args)
         if args.command in {"report", "ask"}:
@@ -216,6 +219,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     entity_module.add_parser(subcommands)
     ingest_module.add_parser(subcommands)
+    ledger_migrate_module.add_parser(subcommands)
     quickbooks_module.add_parser(subcommands)
     statements_module.add_parser(subcommands)
     reconcile_module.add_parser(subcommands)
