@@ -97,9 +97,9 @@ class StagingStore:
         staging_dir
             Path to the entity's staging/ directory.
         audit_log
-            Optional audit sink used by legacy/unit-test callers for
-            pending-dropped and purge records. Canonical ledger audit events
-            live in the ledger store.
+            Optional audit sink used by unit-test callers for pending-dropped
+            and purge records. Canonical ledger audit events live in the
+            ledger store.
         """
         self._dir = Path(staging_dir)
         self._dir.mkdir(parents=True, exist_ok=True)

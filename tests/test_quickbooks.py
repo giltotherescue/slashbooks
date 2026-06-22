@@ -936,7 +936,8 @@ class TestImportOpening(unittest.TestCase):
             result = self.import_opening(entity, qb_dir, date(2026, 1, 1))
             self.assertTrue(result.success, f"Import failed: {result.errors}")
 
-            ledger_text = Path(result.ledger_path).read_text(encoding="utf-8")
+            from src.bookkeeping.ledger.projections import render_store_ledger
+            ledger_text = render_store_ledger(result.ledger_path)
             errors = validate(ledger_text)
             self.assertEqual(errors, [], f"Ledger validation errors: {errors}")
 
@@ -956,7 +957,8 @@ class TestImportOpening(unittest.TestCase):
             result = self.import_opening(entity, qb_dir, cutover)
             self.assertTrue(result.success)
 
-            ledger_text = Path(result.ledger_path).read_text(encoding="utf-8")
+            from src.bookkeeping.ledger.projections import render_store_ledger
+            ledger_text = render_store_ledger(result.ledger_path)
             parsed = parse_ledger(ledger_text)
             for entry in parsed["entries"]:
                 self.assertEqual(entry.date, cutover)
@@ -977,7 +979,8 @@ class TestImportOpening(unittest.TestCase):
             result = self.import_opening(entity, qb_dir, date(2026, 1, 1))
             self.assertTrue(result.success)
 
-            ledger_text = Path(result.ledger_path).read_text(encoding="utf-8")
+            from src.bookkeeping.ledger.projections import render_store_ledger
+            ledger_text = render_store_ledger(result.ledger_path)
             parsed = parse_ledger(ledger_text)
             for entry in parsed["entries"]:
                 total = sum(p.amount for p in entry.postings)
@@ -1025,7 +1028,8 @@ class TestImportOpening(unittest.TestCase):
             result = self.import_opening(entity, qb_dir, cutover)
             self.assertTrue(result.success, f"Import failed: {result.errors}")
 
-            ledger_text = Path(result.ledger_path).read_text(encoding="utf-8")
+            from src.bookkeeping.ledger.projections import render_store_ledger
+            ledger_text = render_store_ledger(result.ledger_path)
             parsed = parse_ledger(ledger_text)
 
             # Compute balances from entries dated <= cutover (same day = posted)
@@ -1242,7 +1246,8 @@ class TestBalanceSheetOpeningFallback(unittest.TestCase):
             )
             self.assertTrue(result.success, f"BS-fallback import failed: {result.errors}")
             self.assertEqual(result.entries_written, 1)
-            text = Path(result.ledger_path).read_text()
+            from src.bookkeeping.ledger.projections import render_store_ledger
+            text = render_store_ledger(result.ledger_path)
             self.assertEqual(validate(text), [])
             self.assertIn("derived from QuickBooks cash-basis balance sheet", text)
 

@@ -14,9 +14,14 @@ Move Slashbooks toward a scalable canonical SQLite ledger store while preserving
 
 ## Problem Frame
 
-The current write surface is `books.beancount`. That is inspectable, portable, and easy to hand to accountants, but each posted change tends to parse, merge, render, validate, and replace the entire ledger file. Reports already use a SQLite cache, but that cache is derived state rebuilt from the file rather than the operational source of truth.
+Slashbooks needs a store-first ledger architecture before public use. Beancount
+is still valuable as a deterministic export, but normal imports, review
+confirmations, corrections, reports, and audit events should work from the
+canonical local store.
 
-This design is sound for simple cash-basis books with modest volume. It starts to break down when transaction counts, review confirmations, corrections, and exports grow because full-file rewrites and full-cache regeneration scale linearly with total ledger size rather than with the change being applied.
+This design keeps simple cash-basis books inspectable while avoiding full-file
+rewrites and full-cache regeneration as transaction counts, review confirmations,
+corrections, and exports grow.
 
 ---
 

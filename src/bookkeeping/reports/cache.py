@@ -1,7 +1,8 @@
-"""Regenerable SQLite cache for the books ledger.
+"""Regenerable SQLite cache for Beancount snapshot inputs.
 
-The cache is *derived state* — it can be regenerated from ``books.beancount``
-at any time.  Every reader may regenerate when stale (ledger SHA-256 mismatch).
+The canonical report path reads ``ledger.sqlite`` directly through
+``open_cache`` when the store is present.  This module still supports deriving a
+temporary/report cache from a Beancount snapshot for tests and import utilities.
 
 Schema
 ------
@@ -32,7 +33,8 @@ regenerate(entity_path, ledger_text=None) -> CacheResult
     os.replace into cache.sqlite.
 
 open_cache(entity_path) -> sqlite3.Connection (read-only)
-    Opens the existing cache.sqlite; regenerates if stale or absent.
+    Opens the canonical ledger store when present, otherwise opens or
+    regenerates cache.sqlite from a Beancount snapshot.
 
 get_account_balance(conn, account, as_of_date) -> Decimal
     Sum of all postings to *account* with entry date <= *as_of_date*.
@@ -42,7 +44,7 @@ iter_postings(conn, account=None, from_date=None, to_date=None)
 
 is_stale(entity_path) -> bool
     True when cache.sqlite is absent or its ledger_sha256 doesn't match the
-    current ledger file.
+    current Beancount snapshot.
 """
 
 from __future__ import annotations

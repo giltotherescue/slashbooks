@@ -401,8 +401,15 @@ def _get_pending_txn(entity: Entity, source_id: str) -> Optional[dict]:
 def _get_opened_accounts(entity: Entity) -> set[str]:
     """Return the set of accounts opened in the entity's books/CoA."""
     from .ledger.validator import parse_ledger
+    from .ledger.store import LedgerStore, default_store_path
 
     accounts: set[str] = set()
+    store_path = default_store_path(entity.path)
+    if store_path.exists():
+        try:
+            accounts.update(item.account for item in LedgerStore(store_path).load_opens())
+        except Exception:
+            pass
 
     # Parse chart-of-accounts.beancount
     coa = entity.coa_path
@@ -415,7 +422,7 @@ def _get_opened_accounts(entity: Entity) -> set[str]:
         except (ValueError, OSError):
             pass
 
-    # Parse books.beancount
+    # Parse an explicit Beancount snapshot if one exists.
     books = entity.books_path
     if books.exists():
         text = books.read_text(encoding="utf-8")

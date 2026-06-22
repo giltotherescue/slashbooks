@@ -237,8 +237,8 @@ def _atomic_ledger_write_unlocked(
 def _ensure_ledger_store(entity: Entity) -> LedgerStore:
     """Return an initialized canonical store for *entity*.
 
-    If only ``books.beancount`` exists, migrate it once. If neither surface
-    exists yet, create an empty store.
+    If a Beancount source file exists before the store has been initialized,
+    import it once. If neither surface exists yet, create an empty store.
     """
     store_path = default_store_path(entity.path)
     if store_path.exists():

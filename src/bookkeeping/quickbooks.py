@@ -1289,8 +1289,8 @@ def import_opening(
       - Offset to Equity:Opening-Balances
     Emits open directives for every mapped account.
     Validates with the ledger validator.
-    Writes chart-of-accounts.beancount additions and books.beancount via
-    atomic write (temp+os.replace).
+    Writes chart-of-accounts.beancount additions and appends opening balances to
+    the canonical ledger store in one transaction.
 
     When source == "balance-sheet", opening rows derive from the prior-period
     cash-basis balance sheet instead (see _balance_sheet_opening_rows) — the
@@ -1298,12 +1298,15 @@ def import_opening(
 
     Returns ImportResult.
     """
-    from .ledger.model import Entry, Open, Posting, Ledger
+    from .ledger.model import Entry, Open, Posting
+    from .ledger.projections import render_store_ledger
+    from .ledger.store import LedgerStore, default_store_path
     from .ledger.writer import render_ledger
     from .ledger.validator import validate
 
     folder = Path(folder)
     report = inventory(folder)
+    store_path = default_store_path(entity.path)
 
     if source == "balance-sheet":
         bs_slot = next((s for s in report.slots if s.report_key == "balance_sheet"), None)
@@ -1311,7 +1314,7 @@ def import_opening(
             return ImportResult(
                 entries_written=0,
                 accounts_opened=0,
-                ledger_path=str(entity.books_path),
+                ledger_path=str(store_path),
                 coa_path=str(entity.coa_path),
                 errors=["Prior-period balance sheet not found; cannot derive opening balances."],
                 success=False,
@@ -1321,7 +1324,7 @@ def import_opening(
             return ImportResult(
                 entries_written=0,
                 accounts_opened=0,
-                ledger_path=str(entity.books_path),
+                ledger_path=str(store_path),
                 coa_path=str(entity.coa_path),
                 errors=[
                     f"Prior-period balance sheet is {bs.basis or 'unknown'} basis; "
@@ -1343,7 +1346,7 @@ def import_opening(
                 return ImportResult(
                     entries_written=0,
                     accounts_opened=0,
-                    ledger_path=str(entity.books_path),
+                    ledger_path=str(store_path),
                     coa_path=str(entity.coa_path),
                     errors=[
                         (tb_slot.block_reason or "Trial Balance blocked")
@@ -1355,7 +1358,7 @@ def import_opening(
             return ImportResult(
                 entries_written=0,
                 accounts_opened=0,
-                ledger_path=str(entity.books_path),
+                ledger_path=str(store_path),
                 coa_path=str(entity.coa_path),
                 errors=["Trial Balance not found in folder. Run 'books qb inventory' first."],
                 success=False,
@@ -1368,7 +1371,7 @@ def import_opening(
             return ImportResult(
                 entries_written=0,
                 accounts_opened=0,
-                ledger_path=str(entity.books_path),
+                ledger_path=str(store_path),
                 coa_path=str(entity.coa_path),
                 errors=[
                     f"Trial Balance is {tb.basis or 'unknown'} basis. "
@@ -1381,7 +1384,7 @@ def import_opening(
         return ImportResult(
             entries_written=0,
             accounts_opened=0,
-            ledger_path=str(entity.books_path),
+            ledger_path=str(store_path),
             coa_path=str(entity.coa_path),
             errors=[f"Unknown opening source: {source!r} (expected trial-balance or balance-sheet)"],
             success=False,
@@ -1445,7 +1448,7 @@ def import_opening(
         return ImportResult(
             entries_written=0,
             accounts_opened=len(opens),
-            ledger_path=str(entity.books_path),
+            ledger_path=str(store_path),
             coa_path=str(entity.coa_path),
             errors=errors or ["No non-zero accounts found in trial balance."],
             success=len(errors) == 0,
@@ -1489,24 +1492,60 @@ def import_opening(
         return ImportResult(
             entries_written=0,
             accounts_opened=len(opens),
-            ledger_path=str(entity.books_path),
+            ledger_path=str(store_path),
             coa_path=str(entity.coa_path),
             errors=error_strs,
             success=False,
         )
 
-    # Atomic write to books.beancount
-    books_path = entity.books_path
-    tmp_books = books_path.parent / (books_path.name + ".tmp")
-
-    # Read existing content
-    existing_books = ""
-    if books_path.exists():
-        existing_books = books_path.read_text(encoding="utf-8")
-
-    new_books = existing_books.rstrip("\n") + "\n\n" + ledger_text if existing_books.strip() else ledger_text
-    tmp_books.write_text(new_books, encoding="utf-8")
-    os.replace(tmp_books, books_path)
+    store = LedgerStore(store_path)
+    store.initialize()
+    try:
+        with store.transaction() as conn:
+            store.append_audit_event(
+                "intent",
+                {
+                    "session_id": "quickbooks-opening",
+                    "description": f"import QuickBooks opening balances source={source}",
+                    "entries": 1,
+                },
+                conn,
+            )
+            store.insert_opens(opens, conn)
+            store.insert_entries([opening_entry], conn)
+            store.set_meta("canonical", "true", conn)
+            store.set_meta("title", entity.entity_config.get("name", "Books"), conn)
+            projection = render_store_ledger(store_path, conn=conn)
+            projection_errors = validate(projection)
+            if projection_errors:
+                error_strs = [str(e) for e in projection_errors]
+                raise ValueError("; ".join(error_strs))
+            store.append_audit_event(
+                "entry-written",
+                {
+                    "session_id": "quickbooks-opening",
+                    "source_id": "quickbooks-opening",
+                },
+                conn,
+            )
+            store.append_audit_event(
+                "ledger-store-sealed",
+                {
+                    "session_id": "quickbooks-opening",
+                    "entries": 1,
+                    "source_ids": ["quickbooks-opening"],
+                },
+                conn,
+            )
+    except Exception as exc:
+        return ImportResult(
+            entries_written=0,
+            accounts_opened=len(opens),
+            ledger_path=str(store_path),
+            coa_path=str(entity.coa_path),
+            errors=[str(exc)],
+            success=False,
+        )
 
     # Write CoA additions (open directives for new accounts)
     coa_path = entity.coa_path
@@ -1527,7 +1566,7 @@ def import_opening(
     return ImportResult(
         entries_written=1,
         accounts_opened=len(opens),
-        ledger_path=str(books_path),
+        ledger_path=str(store_path),
         coa_path=str(coa_path),
         errors=errors,
         success=True,

@@ -6,7 +6,7 @@ Thanks for helping improve Slashbooks.
 
 Slashbooks has three layers: agent **skills** (the `/books-*` workflows) drive
 the **`books` CLI**, which does all deterministic accounting and writes the
-**local ledger files** (`books.beancount`, the audit log, and the review queue).
+**local company books** (`ledger.sqlite`, the review queue, and generated reports).
 The agent is the interface; the CLI is the engine. See
 [docs/philosophy.md](docs/philosophy.md) for the reasoning behind that split.
 

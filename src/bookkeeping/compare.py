@@ -437,7 +437,7 @@ def _txns_match(
 def _load_staging_pending(entity: Entity) -> list[dict]:
     """Load pending staging entries.
 
-    Checks both ``pending.json`` (legacy test fixtures) and the real-world
+    Checks both ``pending.json`` (older fixture shape) and the normal
     ``pending-categorization.json`` produced by the importer.
     """
     for filename in ("pending-categorization.json", "pending.json"):

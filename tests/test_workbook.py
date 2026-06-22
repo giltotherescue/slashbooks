@@ -369,7 +369,7 @@ class TestAllCSVsProduced(unittest.TestCase):
         source_rows = _read_csv(_find_csv(result.output_dir, "Source-Index"))
 
         summary = {row[0]: row[1] for row in summary_rows[1:] if len(row) > 1}
-        self.assertEqual(summary["Produced by"], "/books")
+        self.assertEqual(summary["Produced by"], "Slashbooks")
         self.assertEqual(summary["Project link"], "https://github.com/giltotherescue/slashbooks")
         self.assertEqual(summary["Legal structure"], "single-member LLC")
         self.assertEqual(summary["Net income"], "10450.00")
@@ -1222,7 +1222,7 @@ class TestXlsxCreatedWhenPresent(unittest.TestCase):
             rel_text = " ".join(zf.read(name).decode("utf-8") for name in rel_paths)
 
         self.assertIn("Produced by", shared_text)
-        self.assertIn("/books", shared_text)
+        self.assertIn("Slashbooks", shared_text)
         self.assertIn("Project link", shared_text)
         self.assertIn("https://github.com/giltotherescue/slashbooks", shared_text)
         self.assertIn("Legal structure", shared_text)
@@ -1526,7 +1526,7 @@ class TestSanityCheckOutputStructure(unittest.TestCase):
         self.assertIn(yoy.status, ("pass", "warn"),
                       f"yoy_pnl_variance should be pass or warn without prior data: {yoy}")
         if yoy.status == "warn":
-            self.assertIn("/books ledger activity", yoy.detail)
+            self.assertIn("Slashbooks ledger activity", yoy.detail)
             self.assertIn("QuickBooks reference exports", yoy.detail)
 
     def test_has_failures_property(self):

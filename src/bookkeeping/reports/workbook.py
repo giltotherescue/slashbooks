@@ -64,7 +64,6 @@ from .statements import (
     trial_balance,
 )
 from ..reconcile import list_discrepancies
-from ..ledger.auditlog import AuditLog
 from ..ledger.store import LedgerStore, default_store_path
 from ..ledger.validator import parse_ledger
 from ..connectors.payroll import provider_spec
@@ -427,7 +426,7 @@ def _run_indirect_tax_scope_check(entity_path: Path) -> SanityCheck:
             status="warn",
             detail=(
                 f"This entity is marked as {label}-registered/applicable. "
-                "/books does not calculate, file, or advise on VAT, GST, sales tax, "
+                "Slashbooks does not calculate, file, or advise on VAT, GST, sales tax, "
                 "reverse charge, recoverability, or invoice requirements. Have a local "
                 "accountant review the treatment."
             ),
@@ -450,19 +449,23 @@ def _run_currency_scope_check(entity_path: Path) -> SanityCheck:
             detail="No operating currency is set in entity.json.",
         )
 
-    books_path = entity_path / "books.beancount"
     try:
-        parsed = parse_ledger(books_path.read_text(encoding="utf-8"))
+        entries = LedgerStore(default_store_path(entity_path)).load_entries()
     except Exception as exc:
-        return SanityCheck(
-            check="currency_scope",
-            status="warn",
-            detail=f"Could not inspect ledger currencies: {exc}",
-        )
+        books_path = entity_path / "books.beancount"
+        try:
+            parsed = parse_ledger(books_path.read_text(encoding="utf-8"))
+            entries = list(parsed.get("entries", []))
+        except Exception:
+            return SanityCheck(
+                check="currency_scope",
+                status="warn",
+                detail=f"Could not inspect ledger currencies: {exc}",
+            )
 
     currencies = sorted({
         posting.currency
-        for entry in parsed.get("entries", [])
+        for entry in entries
         for posting in entry.postings
         if posting.currency
     })
@@ -473,7 +476,7 @@ def _run_currency_scope_check(entity_path: Path) -> SanityCheck:
             status="warn",
             detail=(
                 f"The ledger contains currencies outside the operating currency "
-                f"{operating_currency}: {', '.join(extra)}. /books preserves these "
+                f"{operating_currency}: {', '.join(extra)}. Slashbooks preserves these "
                 "amounts but does not calculate foreign-exchange gains/losses or "
                 "multi-currency reporting."
             ),
@@ -515,7 +518,7 @@ def _run_payroll_reports_check(entity_path: Path, from_date: date, to_date: date
                 f"Payroll is enabled with {spec.display_name}, but no payroll report files "
                 f"were found in ingestion/payroll for {from_date} to {to_date}. "
                 f"{spec.report_hint} Payroll journal entries should be draft/accountant-confirmed; "
-                "/books does not calculate wages, withholdings, benefits, taxes, or filings."
+                "Slashbooks does not calculate wages, withholdings, benefits, taxes, or filings."
             ),
         )
 
@@ -525,7 +528,7 @@ def _run_payroll_reports_check(entity_path: Path, from_date: date, to_date: date
         detail=(
             f"Found {len(candidates)} payroll report file(s) in ingestion/payroll for "
             f"{spec.display_name}. Review them before confirming any draft payroll journal entries; "
-            "/books does not calculate payroll or compliance obligations."
+            "Slashbooks does not calculate payroll or compliance obligations."
         ),
     )
 
@@ -537,10 +540,10 @@ def _run_yoy_pnl_check(
 ) -> SanityCheck:
     """Check year-over-year P&L variance when prior-period data exists."""
     no_prior_detail = (
-        "No prior-year P&L transaction history is available in /books for "
+        "No prior-year P&L transaction history is available in Slashbooks for "
         "year-over-year comparison. QuickBooks reference exports or opening "
         "balance snapshots may still exist, but this check only compares "
-        "/books ledger activity."
+        "Slashbooks ledger activity."
     )
     period_days = (to_date - from_date).days + 1
     prior_to = date(from_date.year - 1, from_date.month, from_date.day) - __import__("datetime").timedelta(days=1)
@@ -810,6 +813,14 @@ def _parse_entries_for_period(entity_path: Path, from_date: date, to_date: date)
 
 
 def _parse_all_entries(entity_path: Path) -> list[Any]:
+    store_path = default_store_path(entity_path)
+    if store_path.exists():
+        try:
+            entries = LedgerStore(store_path).load_entries()
+            if entries:
+                return entries
+        except Exception:
+            pass
     books_path = entity_path / "books.beancount"
     if not books_path.exists():
         return []
@@ -1050,7 +1061,6 @@ def _build_adjustment_log_rows(entity_path: Path, entries: Optional[list[Any]] =
     Uses reverses:/correction-of: metadata from parse_ledger to find pairs.
     Each pair is emitted exactly once (keyed on original entry source-id).
     """
-    books_path = entity_path / "books.beancount"
     rows: list[list[str]] = [
         [
             "Original ID",
@@ -1066,10 +1076,6 @@ def _build_adjustment_log_rows(entity_path: Path, entries: Optional[list[Any]] =
             "Note",
         ],
     ]
-
-    if not books_path.exists():
-        rows.append(["(ledger not found)", "", "", "", "", "", "", "", "", "REVIEW", ""])
-        return rows
 
     if entries is None:
         try:
@@ -1306,7 +1312,7 @@ def _build_summary_rows(
     rows: list[list[str]] = [
         ["Metric", "Value"],
         ["Business", entity_name],
-        ["Produced by", "/books"],
+        ["Produced by", "Slashbooks"],
         ["Project link", "https://github.com/giltotherescue/slashbooks"],
         ["Accounting basis", "Cash basis"],
         ["Bookkeeping scope", "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
@@ -1524,17 +1530,6 @@ def _build_audit_log_rows(entity_path: Path) -> list[list[str]]:
         except Exception:
             pass
 
-    for idx, record in enumerate(AuditLog(entity_path / "audit-log.jsonl").all_records(), start=1):
-        rows.append([
-            str(idx),
-            str(record.get("ts", "")),
-            str(record.get("type", "")),
-            str(record.get("source_id", "")),
-            str(record.get("session_id", "")),
-            str(record.get("prev", "")),
-            "",
-            json.dumps({k: v for k, v in record.items() if k not in {"type", "ts", "prev"}}, sort_keys=True),
-        ])
     return rows
 
 

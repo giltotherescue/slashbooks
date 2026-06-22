@@ -34,7 +34,7 @@ businesses. That keeps the system understandable and auditable:
 
 - Bank and card activity drive the books.
 - Owner review handles judgment calls.
-- Slashbooks generates reports from local ledger files.
+- Slashbooks generates reports from a local ledger store.
 - Accountants can still review the output before tax filing.
 
 It's not trying to be payroll, inventory, revenue recognition, enterprise

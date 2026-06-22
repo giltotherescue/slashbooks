@@ -159,9 +159,8 @@ Each company directory contains its own books and generated state:
 acme-co/
 ├── entity.json
 ├── trust-policy.json
-├── books.beancount
+├── ledger.sqlite
 ├── chart-of-accounts.beancount
-├── audit-log.jsonl
 ├── staging/
 ├── review-queue/
 ├── learned-context/
@@ -180,10 +179,10 @@ Context and preferences live there too:
   type, dates, mappings, and jurisdiction context.
 - `trust-policy.json` controls how conservative Slashbooks is before auto-posting
   repeat transactions.
+- `ledger.sqlite` stores the books and tamper-evident audit history.
 - `learned-context/` records what Slashbooks learns from owner review decisions,
   such as usual categories for counterparties.
 - `review-queue/` holds transactions waiting for owner judgment.
-- `audit-log.jsonl` records important changes and review actions.
 
 Credentials should live in `.env`, your OS credential store, or another local
 ignored secrets file. The `books` command reads `./.env` from the current company
