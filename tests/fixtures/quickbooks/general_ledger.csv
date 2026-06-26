@@ -1,0 +1,33 @@
+"Acme Consulting LLC",,,,,,,,
+General Ledger,,,,,,,,
+"January-December, 2025",,,,,,,,
+
+,Transaction date,Transaction type,Num,Name,Description,Split,Amount,Balance
+Checking (4512) - 1,,,,,,,,
+,,,,,,,,"8,000.00"
+,01/15/2025,Deposit,,,Client payment January,Consulting Revenue,"5,000.00","13,000.00"
+,02/10/2025,Deposit,,,Client payment February,Consulting Revenue,"5,000.00","18,000.00"
+,03/05/2025,Expense,,Office Supply Co,Office supplies purchase,Office expenses:Dues and Subscriptions,-250.00,"17,750.00"
+,03/15/2025,Deposit,,,Client payment March,Consulting Revenue,"5,000.00","22,750.00"
+,04/10/2025,Expense,,Phone Co,Monthly phone bill,Utilities:Phone service,-80.00,"22,670.00"
+,12/31/2025,Transfer,,,Year end transfer,Savings (9873) - 1,"-10,170.00","12,500.00"
+Total for Checking (4512) - 1,,,,,,,"$4,500.00",
+Savings (9873) - 1,,,,,,,,
+,,,,,,,,0.00
+,12/31/2025,Transfer,,,Year end transfer,Checking (4512) - 1,"10,170.00","10,170.00"
+,12/31/2025,Expense,,Bank,Year end fee,Bank charges and fees,-5170.00,"5,000.00"
+Total for Savings (9873) - 1,,,,,,,,$5,000.00,
+Consulting Revenue,,,,,,,,
+,,,,,,,,0.00
+,01/15/2025,Deposit,,,Client payment January,Checking (4512) - 1,"-5,000.00","-5,000.00"
+,02/10/2025,Deposit,,,Client payment February,Checking (4512) - 1,"-5,000.00","-10,000.00"
+,03/15/2025,Deposit,,,Client payment March,Checking (4512) - 1,"-5,000.00","-15,000.00"
+Total for Consulting Revenue,,,,,,,"$-15,000.00",
+Advertising & Marketing,,,,,,,,
+,,,,,,,,0.00
+,06/01/2025,Expense,,Ad Agency,Social media ads,Checking (4512) - 1,"1,000.00","1,000.00"
+Total for Advertising & Marketing,,,,,,,"$1,000.00",
+
+
+
+"Cash Basis Thursday, June 12, 2025 10:45 AM GMT-05:00",,,,,,,,

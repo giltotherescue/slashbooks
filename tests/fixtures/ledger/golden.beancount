@@ -1,0 +1,27 @@
+option "title" "Example Company 2026"
+option "operating_currency" "USD"
+option "inferred_tolerance_default" "USD:0.005"
+
+2026-01-01 open Assets:Mercury USD
+2026-01-01 open Equity:OpeningBalances USD
+2026-01-01 open Expenses:Software USD
+2026-01-01 open Income:Consulting USD
+
+2026-01-01 * "Opening balance"
+  source-id: "open_001"
+  Assets:Mercury  5000.00 USD
+  Equity:OpeningBalances  -5000.00 USD
+
+2026-01-15 * "Acme Corp" "Client payment"
+  source-id: "txn_001"
+  import-session: "test-session-001"
+  Assets:Mercury  2500.00 USD
+  Income:Consulting  -2500.00 USD
+
+2026-01-20 * "GitHub subscription"
+  source-id: "txn_002"
+  import-session: "test-session-001"
+  Expenses:Software  4.00 USD
+  Assets:Mercury  -4.00 USD
+
+2026-02-01 balance Assets:Mercury 7496.00 USD

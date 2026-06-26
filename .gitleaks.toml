@@ -1,0 +1,32 @@
+title = "books secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "historical unit-test sentinel, not a real credential"
+regexes = ['''SECRET_KEY_12345''']
+
+[[rules]]
+id = "banksync-api-key"
+description = "BankSync API key"
+regex = '''bsk_[A-Za-z0-9]{32,}'''
+keywords = ["bsk_"]
+
+[[rules]]
+id = "mercury-api-key"
+description = "Mercury API key"
+regex = '''(?:secret-token:)?mercury_(?:production|sandbox)_[A-Za-z0-9_]{20,}'''
+keywords = ["mercury_production", "mercury_sandbox", "secret-token:mercury_"]
+
+[[rules]]
+id = "stripe-secret-key"
+description = "Stripe secret or restricted API key"
+regex = '''[sr]k_(?:live|test)_[0-9A-Za-z]{16,}'''
+keywords = ["sk_live", "sk_test", "rk_live", "rk_test"]
+
+[[rules]]
+id = "stripe-publishable-key"
+description = "Stripe publishable API key"
+regex = '''pk_(?:live|test)_[0-9A-Za-z]{16,}'''
+keywords = ["pk_live", "pk_test"]

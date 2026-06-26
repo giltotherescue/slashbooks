@@ -1,0 +1,9 @@
+Account name,Account type,Detail type,Lock
+Checking,Bank,Checking,No
+Business Card,Credit Card,Credit Card,No
+Consulting Revenue,Income,Service/Fee Income,No
+Software,Expenses,Software,No
+Office Supplies,Expenses,Office Supplies & Software,No
+Opening Balance Equity,Equity,Opening Balance Equity,No
+Retained Earnings,Equity,Retained Earnings,No
+Phone service,Expenses,Phone/Internet,No

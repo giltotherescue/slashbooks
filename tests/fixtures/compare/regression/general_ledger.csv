@@ -1,0 +1,39 @@
+"Acme Consulting LLC",,,,,,,,
+General Ledger,,,,,,,,
+"January-March, 2026",,,,,,,,
+
+,Transaction date,Transaction type,Num,Name,Description,Split,Amount,Balance
+Checking,,,,,,,,
+,,,,,,,,"500.00"
+,01/15/2026,Deposit,,,Client payment January,Consulting Revenue,"5000.00","5500.00"
+,01/20/2026,Expense,,Acme Software,Software subscription; SaaS; ACH payment,Software,"-200.00","5300.00"
+,02/15/2026,Deposit,,,Client payment February,Consulting Revenue,"3000.00","8300.00"
+,02/20/2026,Expense,,Office Depot,Paper and pens; OFFICE DEPOT; ACH PMT,Office Supplies,"-100.00","8200.00"
+,03/15/2026,Deposit,,,Client payment March,Consulting Revenue,"2000.00","10200.00"
+,03/20/2026,Expense,,Acme Software,Software renewal; SaaS; ACH payment,Software,"-150.00","10050.00"
+Total for Checking,,,,,,,,,"$9550.00"
+Business Card,,,,,,,,
+,,,,,,,,0.00
+,01/05/2026,Expense,,T-Mobile,T-MOBILE; T-MOBILE; PCS SVC; JOHN DOE,Phone service,"120.00","120.00"
+,02/05/2026,Expense,,T-Mobile,T-MOBILE; T-MOBILE; PCS SVC; JOHN DOE,Phone service,"120.00","240.00"
+,01/02/2026,Credit Card Payment,,AMEX EPAYMENT,AMEX EPAYMENT; ACH PMT; JOHN DOE,Checking,"-500.00","-260.00"
+Total for Business Card,,,,,,,,,"$-260.00"
+Consulting Revenue,,,,,,,,
+,,,,,,,,0.00
+,01/15/2026,Deposit,,,Client payment January,Checking,"-5000.00","-5000.00"
+,02/15/2026,Deposit,,,Client payment February,Checking,"-3000.00","-8000.00"
+,03/15/2026,Deposit,,,Client payment March,Checking,"-2000.00","-10000.00"
+Total for Consulting Revenue,,,,,,,,,"$-10000.00"
+Software,,,,,,,,
+,,,,,,,,0.00
+,01/20/2026,Expense,,Acme Software,Software subscription; SaaS; ACH payment,Checking,"200.00","200.00"
+,03/20/2026,Expense,,Acme Software,Software renewal; SaaS; ACH payment,Checking,"150.00","350.00"
+Total for Software,,,,,,,,,"$350.00"
+Office Supplies,,,,,,,,
+,,,,,,,,0.00
+,02/20/2026,Expense,,Office Depot,Paper and pens; OFFICE DEPOT; ACH PMT,Checking,"100.00","100.00"
+Total for Office Supplies,,,,,,,,,"$100.00"
+
+
+
+"Cash Basis",

@@ -1,0 +1,11 @@
+{
+  "bank_account_mappings": {},
+  "business_type": "consulting",
+  "csv_account_mappings": {},
+  "cutover_date": null,
+  "declared_sources": [],
+  "fiscal_year_start": "01-01",
+  "legal_structure": "",
+  "name": "",
+  "provider_sources": []
+}

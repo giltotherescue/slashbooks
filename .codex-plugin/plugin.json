@@ -1,0 +1,39 @@
+{
+  "name": "slashbooks",
+  "version": "0.1.0",
+  "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
+  "author": {
+    "name": "Gil Hildebrand"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/giltotherescue/slashbooks",
+  "repository": "https://github.com/giltotherescue/slashbooks",
+  "keywords": [
+    "books",
+    "accounting",
+    "cash-basis",
+    "banksync",
+    "stripe",
+    "mercury",
+    "quickbooks",
+    "accountant",
+    "finance"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Slashbooks",
+    "shortDescription": "Bookkeeping for cash-basis businesses.",
+    "longDescription": "Your AI agent keeps local books current, helps review transactions, answers questions from deterministic reports, and prepares accountant-ready exports.",
+    "developerName": "Gil Hildebrand",
+    "category": "Productivity",
+    "capabilities": [
+      "Books",
+      "Ledger validation",
+      "Review queues",
+      "Provider API downloads",
+      "QuickBooks backtesting",
+      "Accountant exports"
+    ],
+    "defaultPrompt": "Use /books to help me close this entity's books."
+  }
+}

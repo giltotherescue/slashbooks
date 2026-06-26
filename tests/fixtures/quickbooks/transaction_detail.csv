@@ -1,0 +1,15 @@
+"Acme Consulting LLC",,,,,,,,
+Transaction Detail by Account,,,,,,,,
+"January-December, 2025",,,,,,,,
+
+,Transaction date,Transaction type,Num,Name,Description,Split,Amount,Balance
+Checking (4512) - 1,,,,,,,,
+,,,,,,,,"8,000.00"
+,01/15/2025,Deposit,,,Client payment January,Consulting Revenue,"5,000.00","13,000.00"
+,02/10/2025,Deposit,,,Client payment February,Consulting Revenue,"5,000.00","18,000.00"
+,12/31/2025,Transfer,,,Year end transfer,Savings (9873) - 1,"-10,000.00","8,000.00"
+Total for Checking (4512) - 1,,,,,,,,$0.00,
+
+
+
+"Cash Basis Thursday, June 12, 2025 10:50 AM GMT-05:00",,,,,,,,

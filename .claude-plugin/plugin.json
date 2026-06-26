@@ -1,0 +1,10 @@
+{
+  "name": "slashbooks",
+  "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Gil Hildebrand"
+  },
+  "homepage": "https://github.com/giltotherescue/slashbooks",
+  "repository": "https://github.com/giltotherescue/slashbooks"
+}

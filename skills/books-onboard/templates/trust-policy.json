@@ -1,0 +1,4 @@
+{
+  "auto_post_threshold": 3,
+  "queue_all_until_confirmed": true
+}
