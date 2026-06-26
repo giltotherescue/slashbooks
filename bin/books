@@ -1,0 +1,40 @@
+#!/bin/sh
+# bin/books — self-contained wrapper for the books CLI.
+# Resolves its own real path so it works from any working directory and
+# when invoked via symlink.  No session-lifecycle hook dependency.
+
+# ── Resolve real path of this script ──────────────────────────────────────────
+# POSIX sh doesn't have readlink -f on all platforms; we walk the chain by hand.
+_resolve_real() {
+  _target="$1"
+  while [ -L "$_target" ]; do
+    _link="$(readlink "$_target")"
+    case "$_link" in
+      /*) _target="$_link" ;;
+      *)  _target="$(dirname "$_target")/$_link" ;;
+    esac
+  done
+  printf '%s' "$_target"
+}
+
+SCRIPT_REAL="$(_resolve_real "$0")"
+PLUGIN_ROOT="$(cd "$(dirname "$SCRIPT_REAL")/.." && pwd)"
+
+# ── Build PYTHONPATH ───────────────────────────────────────────────────────────
+# Prepend plugin src/; also include plugin-data site-packages when present
+# (XlsxWriter and other optional extras installed into the plugin cache).
+_PYTHONPATH="$PLUGIN_ROOT/src"
+if [ -n "$CLAUDE_PLUGIN_DATA" ] && [ -d "$CLAUDE_PLUGIN_DATA/site-packages" ]; then
+  _PYTHONPATH="$CLAUDE_PLUGIN_DATA/site-packages:$_PYTHONPATH"
+fi
+if [ -n "$PYTHONPATH" ]; then
+  export PYTHONPATH="$_PYTHONPATH:$PYTHONPATH"
+else
+  export PYTHONPATH="$_PYTHONPATH"
+fi
+
+# ── Export template directory ──────────────────────────────────────────────────
+export BOOKKEEPING_TEMPLATES_DIR="$PLUGIN_ROOT/skills/books-onboard/templates"
+
+# ── Hand off to the CLI ────────────────────────────────────────────────────────
+exec python3 -m bookkeeping.cli "$@"

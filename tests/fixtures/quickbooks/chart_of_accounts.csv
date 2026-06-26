@@ -1,0 +1,23 @@
+Account name,Account type,Detail type,Lock
+Cash,Bank,Cash on hand,No
+Checking (4512) - 1,Bank,Checking,No
+Savings (9873) - 1,Bank,Savings,No
+Accounts Receivable (A/R),Accounts receivable (A/R),Accounts Receivable (A/R),No
+Prepaid Expenses,Other Current Assets,Prepaid Expenses,No
+Accounts Payable (A/P),Accounts payable (A/P),Accounts Payable (A/P),No
+Visa Card (3301) - 2,Credit Card,Credit Card,No
+Owner's Draw,Equity,Owner's Equity,No
+Opening Balance Equity,Equity,Opening Balance Equity,No
+Retained Earnings,Equity,Retained Earnings,No
+Consulting Revenue,Income,Service/Fee Income,No
+Other Income,Other Income,Other Miscellaneous Income,No
+Advertising & Marketing,Expenses,Advertising/Promotional,No
+Bank charges and fees,Expenses,Bank Charges,No
+Office expenses,Expenses,Office/General Administrative Expenses,No
+Office expenses:Dues and Subscriptions,Expenses,Office/General Administrative Expenses,No
+Utilities,Expenses,Utilities,No
+Utilities:Phone service,Expenses,Utilities,No
+Vehicle expenses,Expenses,Auto,No
+Vehicle expenses:Vehicle registration,Expenses,Auto,No
+Professional Fees,Expenses,Legal & Professional Fees,No
+Interest paid,Other Expense,Other Miscellaneous Expense,No

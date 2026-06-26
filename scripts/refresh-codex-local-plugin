@@ -1,0 +1,94 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+MANIFEST="$ROOT/.codex-plugin/plugin.json"
+MARKETPLACE="$ROOT/.agents/plugins/marketplace.json"
+CODEX_HOME=${CODEX_HOME:-"$HOME/.codex"}
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "codex CLI not found on PATH" >&2
+  exit 1
+fi
+
+if ! command -v rsync >/dev/null 2>&1; then
+  echo "rsync not found on PATH" >&2
+  exit 1
+fi
+
+codex_marketplace() {
+  codex -c 'service_tier="flex"' plugin marketplace "$@"
+}
+
+open_plugin_page() {
+  if command -v open >/dev/null 2>&1; then
+    open "$PLUGIN_URL"
+  else
+    echo "Open this URL in Codex to install or update the plugin:"
+    echo "$PLUGIN_URL"
+  fi
+}
+
+read_json_key() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    print(json.load(fh)[sys.argv[2]])
+PY
+}
+
+PLUGIN_NAME=$(read_json_key "$MANIFEST" name)
+PLUGIN_VERSION=$(read_json_key "$MANIFEST" version)
+MARKETPLACE_NAME=$(read_json_key "$MARKETPLACE" name)
+CACHE_ROOT="$CODEX_HOME/plugins/cache/$MARKETPLACE_NAME"
+
+codex_marketplace add "$ROOT" >/dev/null
+
+PLUGIN_URL=$(python3 - "$MARKETPLACE" "$PLUGIN_NAME" <<'PY'
+import os
+import sys
+from urllib.parse import quote
+
+marketplace = os.path.abspath(sys.argv[1])
+plugin = sys.argv[2]
+print(f"codex://plugins/{plugin}?marketplacePath={quote(marketplace, safe='')}")
+PY
+)
+
+if [ ! -d "$CACHE_ROOT" ]; then
+  echo "No installed Codex cache found for marketplace: $MARKETPLACE_NAME"
+  echo "Opening the local plugin page so the Codex app can install it."
+  open_plugin_page
+  exit 0
+fi
+
+UPDATED=0
+find "$CACHE_ROOT" -mindepth 2 -maxdepth 2 -type d -name "$PLUGIN_VERSION" | while IFS= read -r target; do
+  if [ -f "$target/.codex-plugin/plugin.json" ]; then
+    rsync -a --delete \
+      --exclude '.git/' \
+      --exclude '.worktrees/' \
+      --exclude '.pytest_cache/' \
+      --exclude '__pycache__/' \
+      "$ROOT/" "$target/"
+    echo "Updated Codex plugin cache: $target"
+    UPDATED=1
+  fi
+  echo "$UPDATED" > "$CACHE_ROOT/.refresh-updated"
+done
+
+if [ ! -f "$CACHE_ROOT/.refresh-updated" ] || [ "$(cat "$CACHE_ROOT/.refresh-updated")" != "1" ]; then
+  rm -f "$CACHE_ROOT/.refresh-updated"
+  echo "No installed Codex cache found for $PLUGIN_NAME $PLUGIN_VERSION."
+  echo "Opening the local plugin page so the Codex app can install or update it."
+  open_plugin_page
+  exit 0
+fi
+
+rm -f "$CACHE_ROOT/.refresh-updated"
+open_plugin_page
+
+echo "Refreshed Codex local plugin cache for $PLUGIN_NAME $PLUGIN_VERSION."
+echo "Start a new Codex thread to pick up refreshed skills and plugin files."

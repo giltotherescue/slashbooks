@@ -1,0 +1,17 @@
+[project]
+name = "agent-books"
+version = "0.1.0"
+license = "Apache-2.0"
+description = "Slashbooks — agent-native cash-basis bookkeeping tools."
+authors = [{ name = "Gil Hildebrand" }]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+books = "bookkeeping.cli:main"
+
+[project.optional-dependencies]
+xlsx = ["xlsxwriter==3.2.9"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

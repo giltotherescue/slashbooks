@@ -1,0 +1,36 @@
+"Acme Consulting LLC",
+Balance Sheet,
+"As of Dec 31, 2025",
+
+,Total
+Assets,
+Current Assets,
+Bank Accounts,
+Cash,0.00
+Checking (4512) - 1,"20,000.00"
+Savings (9873) - 1,"5,000.00"
+Total for Bank Accounts,"$25,000.00"
+Other Current Assets,
+Prepaid Expenses,"1,200.00"
+Total for Other Current Assets,"$1,200.00"
+Total for Current Assets,"$26,200.00"
+Total for Assets,"$26,200.00"
+Liabilities and Equity,
+Liabilities,
+Current Liabilities,
+Credit Cards,
+Visa Card (3301) - 2,"2,000.00"
+Total for Credit Cards,"$2,000.00"
+Total for Current Liabilities,"$2,000.00"
+Total for Liabilities,"$2,000.00"
+Equity,
+Opening Balance Equity,$0.00
+Owner's Draw,"-10,000.00"
+Retained Earnings,"2,000.00"
+Net Income,"32,200.00"
+Total for Equity,"$24,200.00"
+Total for Liabilities and Equity,"$26,200.00"
+
+
+
+"Cash Basis Thursday, June 12, 2025 10:35 AM GMT-05:00",
