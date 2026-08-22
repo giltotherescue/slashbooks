@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Slashbooks — local-first AI bookkeeping</title>
+  <meta name="description" content="Open-source, local-first AI bookkeeping for cash-basis owner-operated businesses. Replace QuickBooks and your outsourced bookkeeper with an agent you control.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="site-logo" href="./">Slashbooks</a>
+      <ul class="site-nav-links">
+        <li><a href="./" aria-current="page">Home</a></li>
+        <li><a href="vs-quickbooks/">vs QuickBooks</a></li>
+        <li><a href="vs-bench/">vs outsourced bookkeeping</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <img src="images/slashbooks-hero.png" alt="Slashbooks: replace QuickBooks and your outsourced bookkeeper with an AI agent you control. It imports activity and closes the month, builds dashboards and answers questions, and exports the files your accountant needs." width="1200" height="630">
+      <p class="hero-tagline">Bookkeeping for people who keep putting it off. Your AI agent keeps the books current and tax-ready, so you always know where you stand.</p>
+    </section>
+
+    <div class="narrow">
+      <h1>Replace QuickBooks and your outsourced bookkeeper</h1>
+      <p class="lead">Slashbooks is an open-source, local-first AI bookkeeping agent for cash-basis, owner-operated businesses. It runs as a <code>/books</code> plugin in Claude Cowork, Claude Code, and Codex.</p>
+
+      <p>It does the tedious work: set up the books, pull in bank and card activity, categorize the repeat transactions, close the month, answer your questions, and export the files your accountant needs. You only step in to help clarify the occasional transaction.</p>
+
+      <p>No bloated accounting app. No spreadsheet wrangling. Nothing new to learn.</p>
+
+      <blockquote>
+        <p>I was tired of paying for QuickBooks and an outsourced bookkeeper for books that were always behind, so I built a bookkeeper my AI agent runs and that I control.</p>
+      </blockquote>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#install">Install</a>
+        <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks">View on GitHub</a>
+      </div>
+
+      <h2>What you can do</h2>
+      <ul>
+        <li>Start books for a company in an empty directory.</li>
+        <li>Keep the ledger in a local SQLite store you own, with Beancount-style exports when you need plain text.</li>
+        <li>Connect Stripe, Mercury, and bank feeds, or have your agent build a connector for anything else.</li>
+        <li>Schedule the monthly close to run on its own, with current books waiting.</li>
+        <li>Review unfamiliar transactions before they become trusted rules.</li>
+        <li>Ask for an analysis of anything, anytime, with every figure at hand.</li>
+        <li>Get any report, chart, or export on demand, without clicking around an app.</li>
+        <li>Backtest against QuickBooks exports before trusting a migration.</li>
+        <li>Export the workbook and CSV files your accountant needs at tax time.</li>
+      </ul>
+
+      <h2>Who it's for</h2>
+      <p>Slashbooks works best for founders, owners, and operators of simple cash-basis businesses who want current books without living inside accounting software.</p>
+      <ul>
+        <li>Bank and card activity drive the books.</li>
+        <li>You make judgment calls; the agent handles the repetitive work.</li>
+        <li>Your accountant still reviews the output before tax filing.</li>
+        <li>Books live in local files you own — not a vendor cloud.</li>
+      </ul>
+
+      <h2>Who it's not for (yet)</h2>
+      <div class="callout callout-warning">
+        <p>Slashbooks is beta software. It is not tax, legal, accounting, payroll, inventory, or investment advice. It doesn't replace professional review, and it isn't designed for businesses that need payroll, inventory, multi-user accounting controls, or full accrual accounting.</p>
+      </div>
+
+      <h2>Local-first by design</h2>
+      <p>Your books stay yours. Each company directory holds its own <code>ledger.sqlite</code>, review queue, audit log, and generated reports. The plugin does not host your books.</p>
+      <p>The agent is the interface — it asks questions, explains differences, and helps you work through the close. The numbers come from deterministic software, not the AI. The software imports transactions, writes ledger entries, validates balances, and generates reports. The AI never invents totals or does the math itself.</p>
+
+      <h2>Try the demo company</h2>
+      <p>Want to explore before connecting real data? Open your books parent folder in Claude Cowork, Claude Code, or Codex and say:</p>
+      <blockquote>
+        <p>Let's setup the books for the demo company.</p>
+      </blockquote>
+      <p>The agent shows onboarding questions with Northstar Metrics LLC's fictional answers and creates sample business activity plus a few transactions to review, so you can try the normal workflow without connecting real accounts.</p>
+
+      <h2 id="install">Install</h2>
+      <p>Pick the app you prefer. Install the plugin once, then use it from a separate books parent such as <code>~/Documents/books/</code>, with one subfolder per company.</p>
+
+      <div class="install-block">
+        <h3>Claude Cowork</h3>
+        <p>Best for most people. Cowork gives you a guided workspace for setup, review, and monthly bookkeeping without living in a terminal.</p>
+        <ol>
+          <li>Open Claude and go to <strong>Cowork</strong>.</li>
+          <li>Open <strong>Customize</strong> → <strong>Plugins</strong>.</li>
+          <li>Under <strong>Personal plugins</strong>, click <strong>+</strong> → <strong>Add marketplace</strong>.</li>
+          <li>Paste <code>https://github.com/giltotherescue/slashbooks</code> and click <strong>Sync</strong>.</li>
+          <li>Install or enable <code>/books</code> from the synced marketplace.</li>
+        </ol>
+      </div>
+
+      <div class="install-block">
+        <h3>Claude Code</h3>
+        <pre><code>/plugin marketplace add https://github.com/giltotherescue/slashbooks
+/plugin install slashbooks@slashbooks</code></pre>
+      </div>
+
+      <div class="install-block">
+        <h3>Codex</h3>
+        <pre><code>codex plugin marketplace add https://github.com/giltotherescue/slashbooks</code></pre>
+        <p>Then restart Codex if needed, open the plugin directory, choose the Slashbooks marketplace, and install the plugin.</p>
+      </div>
+
+      <h2>Comparisons</h2>
+      <p>Thinking about switching? These pages explain how Slashbooks differs from the usual alternatives — without hype.</p>
+      <div class="cta-row">
+        <a class="btn btn-secondary" href="vs-quickbooks/">Slashbooks vs QuickBooks</a>
+        <a class="btn btn-secondary" href="vs-bench/">Slashbooks vs outsourced bookkeeping</a>
+      </div>
+
+      <h2>Documentation</h2>
+      <ul>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/doing-your-books.md">How to do your books with Slashbooks</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/philosophy.md">Accounting philosophy</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/for-accountants.md">For accountants</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/connectors.md">Connectors</a></li>
+      </ul>
+
+      <h2>License</h2>
+      <p>Apache-2.0. See the <a href="https://github.com/giltotherescue/slashbooks/blob/main/LICENSE">LICENSE</a> on GitHub.</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>Slashbooks is beta software. Not tax, legal, or accounting advice. <a href="https://github.com/giltotherescue/slashbooks">GitHub</a></p>
+  </footer>
+</body>
+</html>
