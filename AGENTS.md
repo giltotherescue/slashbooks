@@ -34,6 +34,20 @@ The Python package is in `src/bookkeeping/`:
 - Top level: `entity.py`, `queue.py`, `reconcile.py`, `quickbooks.py`,
   `compare.py`.
 
+## Static Marketing Site
+
+- The public Slashbooks homepage lives in `site/`. Edit `site/index.html` for
+  content and structure, and `site/css/style.css` for presentation.
+- It is a static site with no build step. Keep it dependency-free and use the
+  existing semantic HTML and responsive CSS patterns.
+- Test homepage changes in a browser before handoff, including the primary
+  GitHub call to action and narrow viewport layout.
+- Cloudflare Pages currently serves a direct upload of `site/`; a repository
+  merge does not deploy the homepage automatically. Do not claim a website
+  change is live unless the Pages deployment has also been updated.
+- Do not restore the removed GitHub Pages workflow. When deployment automation
+  is set up, it should use Cloudflare Pages and publish `site/`.
+
 A connector (in `connectors/`) is our code that reads a data source into the
 normalized ledger format; a provider (Stripe, Mercury, BankSync) is the external
 service a connector talks to.
