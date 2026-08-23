@@ -4,6 +4,15 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-08-23
+
+### Fixed
+
+- Accept current QuickBooks Trial Balance exports with the
+  `Account Name,Debit,Credit` header, while retaining compatibility with the
+  older `Full name,Debit,Credit` form. Cash-basis evidence using either header
+  now passes QuickBooks readiness validation.
+
 ## [0.3.0] - 2026-08-23
 
 ### Added
