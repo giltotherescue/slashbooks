@@ -184,6 +184,10 @@ class TestRowTypeClassifier(unittest.TestCase):
         r = self.classify(["Full name", "Debit", "Credit"])
         self.assertEqual(r, self.RT.COLUMN_HEADER)
 
+    def test_column_header_trial_balance_account_name(self):
+        r = self.classify(["Account Name", "Debit", "Credit"])
+        self.assertEqual(r, self.RT.COLUMN_HEADER)
+
     def test_column_header_bs_pl(self):
         r = self.classify(["", "Total"])
         self.assertEqual(r, self.RT.COLUMN_HEADER)
@@ -401,6 +405,27 @@ class TestParseTrialBalance(unittest.TestCase):
         path = _FIXTURES / "trial_balance_cash_basis.csv"
         tb = self.parse(path)
         self.assertGreater(len(tb.entries), 0)
+
+    def test_account_name_header_and_quoted_thousands_amounts_parsed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "trial_balance.csv"
+            path.write_text(
+                '"Acme Consulting LLC",\n'
+                'Trial Balance,\n'
+                '"As of Dec 31, 2025",\n\n'
+                'Account Name,Debit,Credit\n'
+                'Checking,"4,298.12",\n'
+                'Opening Equity,,"4,298.12"\n'
+                'TOTAL,"4,298.12","4,298.12"\n\n'
+                '"Cash Basis Friday, June 12, 2026 12:09 PM GMT-05:00",\n',
+                encoding="utf-8",
+            )
+
+            tb = self.parse(path)
+
+        by_name = {entry.full_name: entry for entry in tb.entries}
+        self.assertEqual(by_name["Checking"].debit, Decimal("4298.12"))
+        self.assertEqual(by_name["Opening Equity"].credit, Decimal("4298.12"))
 
     def test_xlsx_entries_parsed(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -947,6 +972,26 @@ class TestInventory(unittest.TestCase):
     def test_explicit_full_collection_validates_exact_contract(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             self._copy_full_set(tmpdir, prior_tb=True)
+
+            report = self.inventory(
+                tmpdir,
+                from_date=date(2025, 1, 1),
+                to_date=date(2025, 12, 31),
+                company="Acme Consulting LLC",
+            )
+
+            self.assertTrue(report.is_ready(), report.to_dict())
+
+    def test_account_name_trial_balance_passes_complete_readiness_check(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+            trial_balance = Path(tmpdir) / "trial_balance_cash_basis.csv"
+            trial_balance.write_text(
+                trial_balance.read_text(encoding="utf-8").replace(
+                    "Full name,Debit,Credit", "Account Name,Debit,Credit"
+                ),
+                encoding="utf-8",
+            )
 
             report = self.inventory(
                 tmpdir,

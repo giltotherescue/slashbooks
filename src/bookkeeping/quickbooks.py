@@ -68,6 +68,16 @@ def _is_subtotal_label(label: str) -> bool:
     return label.startswith("Total for ") or label in _SUBTOTAL_LABELS
 
 
+def _is_trial_balance_column_header(col0: str, col1: str) -> bool:
+    """Return whether the first two cells are a QBO Trial Balance header.
+
+    QuickBooks currently exports this header as ``Account Name,Debit,Credit``;
+    older exports used ``Full name,Debit,Credit``. Both identify the same
+    report layout.
+    """
+    return col0 in ("Full name", "Account Name") and col1 == "Debit"
+
+
 def classify_row(row: list[str], report_type: Optional[str] = None) -> str:
     """Classify a parsed CSV row into one of the RowType constants.
 
@@ -104,10 +114,10 @@ def classify_row(row: list[str], report_type: Optional[str] = None) -> str:
         return RowType.BASIS_FOOTER
 
     # 3/4. Column header — recognized patterns
-    # Trial Balance: "Full name,Debit,Credit"
+    # Trial Balance: "Full name,Debit,Credit" or "Account Name,Debit,Credit"
     # BS/PL: ",Total"  (col0 empty, col1 = "Total")
     # GL/TD: ",Transaction date,Transaction type,..."
-    if col0 == "Full name" and col1 in ("Debit", "Credit", "Debit"):
+    if _is_trial_balance_column_header(col0, col1):
         return RowType.COLUMN_HEADER
     if col0 == "" and col1 == "Total" and all(c == "" for c in stripped[2:]):
         return RowType.COLUMN_HEADER
@@ -566,7 +576,7 @@ def parse_trial_balance(path: Path) -> TrialBalance:
         col2 = row[2].strip()
 
         # Detect the column header row to start data ingestion
-        if col0 == "Full name" and col1 in ("Debit",):
+        if _is_trial_balance_column_header(col0, col1):
             in_data = True
             continue
         if not in_data:
