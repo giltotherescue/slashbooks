@@ -32,6 +32,37 @@ body {
   background: var(--bg);
 }
 
+/* Skip link */
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  z-index: 20;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 0;
+  color: #fff;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Navigation */
 .site-header {
   border-bottom: 1px solid var(--border);
@@ -210,6 +241,162 @@ h1 {
   border-left: 3px solid var(--accent);
 }
 
+/* Fit / not-fit cards */
+.fit {
+  margin: 3.25rem 0;
+}
+
+.fit h2 {
+  margin-top: 0;
+  font-size: 1.4rem;
+  color: var(--text);
+}
+
+.fit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.fit-grid article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+  background: #fff;
+}
+
+.fit-grid h3 {
+  margin: 0 0 0.65rem;
+}
+
+.fit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fit-list li {
+  position: relative;
+  padding-left: 1.45rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.fit-list li:last-child {
+  margin-bottom: 0;
+}
+
+.fit-list li::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 700;
+}
+
+.fit-list-yes li::before {
+  content: "\2713"; /* check mark */
+  color: var(--accent-light);
+}
+
+.fit-list-no li::before {
+  content: "\2715"; /* cross mark */
+  color: #a05a2c;
+}
+
+/* Comparison teaser */
+.compare-teaser {
+  margin: 3.25rem 0;
+}
+
+.compare-teaser h2 {
+  font-size: 1.4rem;
+  color: var(--text);
+}
+
+/* FAQ */
+.faq {
+  margin: 3.25rem 0;
+}
+
+.faq h2 {
+  font-size: 1.4rem;
+  color: var(--text);
+}
+
+.faq details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 1.1rem;
+  margin-bottom: 0.6rem;
+}
+
+.faq summary {
+  cursor: pointer;
+  padding: 0.8rem 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.faq summary::marker {
+  color: var(--accent-light);
+}
+
+.faq summary:hover {
+  color: var(--accent);
+}
+
+.faq details[open] summary {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.75rem;
+}
+
+.faq details p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 0.9rem;
+}
+
+/* Two-column capability list */
+.capabilities {
+  columns: 2;
+  column-gap: 2rem;
+}
+
+.capabilities li {
+  break-inside: avoid;
+}
+
+/* Final CTA band */
+.final-cta {
+  margin: 3.25rem 0 2rem;
+  padding: 1.75rem 1.5rem;
+  background: var(--quote-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.final-cta h2 {
+  margin-top: 0;
+  font-size: 1.4rem;
+  color: var(--text);
+}
+
+.final-cta p {
+  color: var(--text-muted);
+  max-width: 30rem;
+  margin: 0 auto 1rem;
+}
+
+.final-cta .cta-row {
+  justify-content: center;
+  margin: 1.25rem 0 0;
+}
+
 h2 {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 1.15rem;
@@ -344,6 +531,11 @@ pre {
 code {
   font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
   font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+pre code {
+  overflow-wrap: normal;
 }
 
 /* Buttons / CTAs */
@@ -415,8 +607,13 @@ code {
     font-size: 2.15rem;
   }
 
-  .workflow-grid {
+  .workflow-grid,
+  .fit-grid {
     grid-template-columns: 1fr;
+  }
+
+  .capabilities {
+    columns: 1;
   }
 
   .comparison {
