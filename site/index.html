@@ -3,8 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Slashbooks — local-first AI bookkeeping</title>
-  <meta name="description" content="Open-source, local-first AI bookkeeping for cash-basis owner-operated businesses. Replace QuickBooks and your outsourced bookkeeper with an agent you control.">
+  <title>Slashbooks | Local-first bookkeeping with an AI agent</title>
+  <meta name="description" content="Open-source, local-first bookkeeping for simple cash-basis businesses. Keep books current with an AI agent, deterministic accounting software, and human review.">
+  <link rel="canonical" href="https://slashbooks.org/">
+  <meta property="og:title" content="Slashbooks | Local-first bookkeeping with an AI agent">
+  <meta property="og:description" content="Keep simple business books current with an AI agent, deterministic accounting software, and human review.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://slashbooks.org/">
+  <meta property="og:image" content="https://slashbooks.org/images/slashbooks-hero.png">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -21,27 +28,67 @@
   </header>
 
   <main>
-    <section class="hero">
-      <img src="images/slashbooks-hero.png" alt="Slashbooks: replace QuickBooks and your outsourced bookkeeper with an AI agent you control. It imports activity and closes the month, builds dashboards and answers questions, and exports the files your accountant needs." width="1200" height="630">
-      <p class="hero-tagline">Bookkeeping for people who keep putting it off. Your AI agent keeps the books current and tax-ready, so you always know where you stand.</p>
-    </section>
-
     <div class="narrow">
-      <h1>Replace QuickBooks and your outsourced bookkeeper</h1>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="eyebrow">Open source. Local first. Built for simple business books.</div>
+        <h1 id="hero-title">Keep your books current without living in QuickBooks.</h1>
+        <p class="hero-tagline">Slashbooks gives your AI agent a reliable bookkeeping workflow. It imports activity, prepares the close, explains the numbers, and creates the files your accountant needs.</p>
+        <div class="cta-row hero-actions">
+          <a class="btn btn-primary" href="#install">Try Slashbooks</a>
+          <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks">Read the source on GitHub</a>
+        </div>
+        <p class="trust-line">For cash-basis, owner-operated businesses. You keep control of the books and make the judgment calls.</p>
+        <img class="hero-art" src="images/slashbooks-hero.png" alt="Slashbooks workflow: an agent imports activity, closes the month, answers questions, and exports files for an accountant." width="1200" height="630">
+      </section>
+
       <p class="lead">Slashbooks is an open-source, local-first AI bookkeeping agent for cash-basis, owner-operated businesses. It runs as a <code>/books</code> plugin in Claude Cowork, Claude Code, and Codex.</p>
 
       <p>It does the tedious work: set up the books, pull in bank and card activity, categorize the repeat transactions, close the month, answer your questions, and export the files your accountant needs. You only step in to help clarify the occasional transaction.</p>
 
-      <p>No bloated accounting app. No spreadsheet wrangling. Nothing new to learn.</p>
+      <p>No second accounting interface to learn. No spreadsheet hand work for the routine parts of bookkeeping.</p>
 
       <blockquote>
         <p>I was tired of paying for QuickBooks and an outsourced bookkeeper for books that were always behind, so I built a bookkeeper my AI agent runs and that I control.</p>
       </blockquote>
 
-      <div class="cta-row">
-        <a class="btn btn-primary" href="#install">Install</a>
-        <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks">View on GitHub</a>
-      </div>
+      <section class="workflow" aria-labelledby="workflow-title">
+        <h2 id="workflow-title">A clearer way to keep the books</h2>
+        <div class="workflow-grid">
+          <article>
+            <span>01</span>
+            <h3>Bring in activity</h3>
+            <p>Connect bank and card feeds, Stripe, Mercury, or import CSV files.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Review the exceptions</h3>
+            <p>Trusted patterns move through. Unfamiliar transactions wait for your decision.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Close and hand off</h3>
+            <p>Get current reports and Excel or CSV exports for your accountant.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="difference" aria-labelledby="difference-title">
+        <h2 id="difference-title">Why it feels different</h2>
+        <div class="difference-grid">
+          <article>
+            <h3>Your books stay with you</h3>
+            <p>Each company lives in a folder you choose, with the ledger, review queue, audit log, and reports together.</p>
+          </article>
+          <article>
+            <h3>The AI is the interface, not the accountant</h3>
+            <p>Deterministic software imports, validates, and reports the numbers. The agent guides the workflow and explains the result.</p>
+          </article>
+          <article>
+            <h3>Built to work with professional review</h3>
+            <p>Slashbooks prepares structured books and exports. Your accountant or tax professional still provides professional judgment.</p>
+          </article>
+        </div>
+      </section>
 
       <h2>What you can do</h2>
       <ul>

@@ -99,31 +99,115 @@ main {
 
 /* Hero */
 .hero {
-  margin-bottom: 2.5rem;
+  margin-bottom: 3rem;
+  padding: 1.25rem 0 0;
 }
 
-.hero img {
+.hero-art {
   width: 100%;
   height: auto;
   display: block;
-  border-radius: 4px;
+  margin-top: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(31, 43, 36, 0.10);
 }
 
 .hero-tagline {
-  margin-top: 1.25rem;
-  font-size: 1.35rem;
-  line-height: 1.45;
+  max-width: 37rem;
+  margin: 0 0 1.25rem;
+  font-size: 1.2rem;
+  line-height: 1.5;
   letter-spacing: -0.01em;
+  color: var(--text-muted);
+}
+
+.eyebrow,
+.trust-line,
+.workflow span {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.eyebrow {
+  margin: 0 0 0.85rem;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.trust-line {
+  margin: -0.55rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.83rem;
 }
 
 /* Typography */
 h1 {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 2rem;
+  font-size: clamp(2.2rem, 6vw, 3.35rem);
   font-weight: 650;
   letter-spacing: -0.03em;
   line-height: 1.2;
   margin: 0 0 1rem;
+}
+
+.workflow,
+.difference {
+  margin: 3.25rem 0;
+}
+
+.workflow h2,
+.difference h2 {
+  margin-top: 0;
+  font-size: 1.4rem;
+  color: var(--text);
+}
+
+.workflow-grid,
+.difference-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workflow-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.difference-grid {
+  grid-template-columns: 1fr;
+}
+
+.workflow article,
+.difference article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  background: #fff;
+}
+
+.workflow span {
+  color: var(--accent-light);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.workflow h3,
+.difference h3 {
+  margin: 0.5rem 0 0.35rem;
+}
+
+.workflow p,
+.difference p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.difference article {
+  border-left: 3px solid var(--accent);
 }
 
 h2 {
@@ -328,7 +412,11 @@ code {
   }
 
   h1 {
-    font-size: 1.65rem;
+    font-size: 2.15rem;
+  }
+
+  .workflow-grid {
+    grid-template-columns: 1fr;
   }
 
   .comparison {
