@@ -22,6 +22,7 @@ from bookkeeping.entity import (  # noqa: E402
     add_parser,
     init_entity,
     load_entity,
+    map_bank_account,
     run,
 )
 
@@ -93,6 +94,19 @@ class TestInitFullLayout(unittest.TestCase):
             self.assertEqual(data["bank_account_mappings"], {})
             self.assertEqual(data["csv_account_mappings"], {})
             self.assertIsNone(data["cutover_date"])
+
+    def test_bank_account_mapping_uses_stable_feed_id_and_existing_account(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "my-entity"
+            _init_simple(target)
+
+            result = map_bank_account(target, "provider-account-42", "Assets:Bank:Checking")
+
+            self.assertEqual(result["status"], "created")
+            self.assertEqual(
+                load_entity(target).entity_config["bank_account_mappings"]["provider-account-42"],
+                "Assets:Bank:Checking",
+            )
 
     def test_init_persists_legal_structure_and_cutover_date(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

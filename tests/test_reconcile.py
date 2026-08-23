@@ -201,6 +201,31 @@ class TestReconcileClean(unittest.TestCase):
         self.assertEqual(records[0]["status"], "clean")
 
 
+class TestSourceIntegrity(unittest.TestCase):
+    def test_inconsistent_source_activity_is_not_reported_as_books_discrepancy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp), AE6_LEDGER)
+            from src.bookkeeping.reconcile import reconcile
+
+            result = reconcile(
+                entity,
+                "Assets:Bank:Mercury",
+                Decimal("42318.55"),
+                date(2026, 3, 31),
+                source_opening_balance=Decimal("40000.00"),
+                source_transaction_total=Decimal("2193.55"),
+                source_snapshot_at="2026-03-31T23:59:00Z",
+                source_through="2026-03-15",
+            )
+
+            self.assertEqual(result.status, "source-inconsistent")
+            self.assertEqual(result.source_integrity_residual, Decimal("-125.00"))
+            self.assertIn("not yet a books discrepancy", result.to_text())
+            record = json.loads((entity / "reports" / "reconciliation.json").read_text(encoding="utf-8"))[0]
+            self.assertEqual(record["status"], "source-inconsistent")
+            self.assertEqual(record["source_through"], "2026-03-15")
+
+
 class TestReconcileResolve(unittest.TestCase):
     """Resolve flow: mark a discrepancy as resolved."""
 

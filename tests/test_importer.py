@@ -34,6 +34,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from bookkeeping.entity import Entity  # noqa: E402
+from bookkeeping.cli import main  # noqa: E402
 from bookkeeping.ledger.auditlog import AuditLog  # noqa: E402
 from bookkeeping.ledger.importer import (  # noqa: E402
     ImportResult,
@@ -935,6 +936,83 @@ class TestReverseAndCorrect(unittest.TestCase):
         )
         with self.assertRaises((ValueError, FileNotFoundError)):
             reverse_and_correct(self._entity, "ghost-id", corrected, "bad-session", ts=TS)
+
+
+class TestLegacyDuplicateCandidates(unittest.TestCase):
+    def test_replacement_source_id_is_held_for_review_not_posted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            original = _make_posted_txn("provider-original", description="Recovered merchant", amount="18.50")
+            import_transactions(
+                entity, [original], SESSION, categorizer=_simple_categorizer("Expenses:Services"),
+                ts=TS, session_date=date(2026, 1, 15),
+            )
+
+            result = import_transactions(
+                entity,
+                [_make_posted_txn("provider-recovered", description="Recovered merchant", amount="18.50")],
+                SESSION + "-retry",
+                categorizer=_simple_categorizer("Expenses:Services"),
+                ts=TS,
+                session_date=date(2026, 1, 15),
+                legacy_duplicate_guard=True,
+            )
+
+            self.assertEqual(result.new_entries, 0)
+            self.assertEqual(result.duplicate_candidates, 1)
+            candidate_path = entity.staging_dir / "duplicate-candidates.json"
+            candidates = json.loads(candidate_path.read_text(encoding="utf-8"))
+            self.assertEqual(candidates[0]["existing_source_id"], "provider-original")
+            self.assertEqual(candidates[0]["status"], "duplicate-candidate")
+            aliases = json.loads((entity.staging_dir / "source-id-aliases.json").read_text(encoding="utf-8"))
+            self.assertEqual(aliases[0]["canonical_source_id"], "provider-original")
+
+
+class TestPublicCorrectionCommands(unittest.TestCase):
+    def test_reclassify_bank_reverses_and_replaces_through_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            import_transactions(
+                entity, [_make_posted_txn("move-me", amount="25.00")], SESSION,
+                categorizer=_simple_categorizer("Expenses:Services"), ts=TS,
+                session_date=date(2026, 1, 15),
+            )
+            rc = main([
+                "ledger", "reclassify-bank", "--entity", str(entity.path),
+                "--source-id", "move-me", "--new-source-id", "move-me-reclassified",
+                "--from-account", "Assets:Bank:Checking", "--to-account", "Assets:Bank:Savings",
+            ])
+
+            self.assertEqual(rc, 0)
+            entries = LedgerStore(default_store_path(entity.path)).load_entries()
+            self.assertTrue(any(dict(entry.meta).get("reverses") == "move-me" for entry in entries))
+            corrected = next(entry for entry in entries if entry.source_id == "move-me-reclassified")
+            self.assertIn("Assets:Bank:Savings", [posting.account for posting in corrected.postings])
+
+    def test_split_equity_creates_a_balanced_replacement_through_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            import_transactions(
+                entity, [_make_posted_txn("owner-draw", amount="-100.00")], SESSION,
+                categorizer=_simple_categorizer("Equity:Owner-Draws"), ts=TS,
+                session_date=date(2026, 1, 15),
+            )
+            rc = main([
+                "ledger", "split-equity", "--entity", str(entity.path),
+                "--source-id", "owner-draw", "--new-source-id", "owner-draw-split",
+                "--equity-posting", "Equity:Partner-A=60.00",
+                "--equity-posting", "Equity:Partner-B=40.00",
+            ])
+
+            self.assertEqual(rc, 0)
+            corrected = next(
+                entry for entry in LedgerStore(default_store_path(entity.path)).load_entries()
+                if entry.source_id == "owner-draw-split"
+            )
+            self.assertEqual(
+                {posting.account for posting in corrected.postings if posting.account.startswith("Equity:")},
+                {"Equity:Partner-A", "Equity:Partner-B"},
+            )
 
 
 class TestAuditChainIntegrity(unittest.TestCase):

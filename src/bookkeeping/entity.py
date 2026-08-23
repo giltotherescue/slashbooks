@@ -407,6 +407,31 @@ def add_account(
     }
 
 
+def map_bank_account(entity_path: Path, feed_account_id: str, account: str) -> dict[str, str]:
+    """Persist a BankSync provider-ID to an existing ledger account mapping."""
+    entity = load_entity(entity_path)
+    stable_id = str(feed_account_id).strip()
+    if not stable_id:
+        raise ValueError("Feed account ID is required.")
+
+    from .ledger.store import LedgerStore, default_store_path
+
+    store = LedgerStore(default_store_path(entity.path))
+    if account not in store.load_account_names():
+        raise ValueError(
+            f"Account '{account}' is not in the account catalog. Add or select an existing account first."
+        )
+    mappings = dict(entity.entity_config.get("bank_account_mappings") or {})
+    previous = mappings.get(stable_id)
+    mappings[stable_id] = account
+    entity.entity_config["bank_account_mappings"] = mappings
+    destination = entity.path / "entity.json"
+    tmp = destination.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, destination)
+    return {"feed_account_id": stable_id, "account": account, "status": "updated" if previous else "created"}
+
+
 # ---------------------------------------------------------------------------
 # Entity data object
 # ---------------------------------------------------------------------------
@@ -540,6 +565,14 @@ def add_parser(subparsers: Any) -> None:
     )
     add_account_parser.add_argument("--currency", default="USD", help="Currency, default USD")
 
+    map_parser = entity_sub.add_parser(
+        "bank-account-map",
+        help="Map a stable connected-bank account ID to an existing ledger account",
+    )
+    map_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    map_parser.add_argument("--feed-account-id", required=True, help="Stable provider account ID")
+    map_parser.add_argument("--account", required=True, help="Existing ledger account to use")
+
 
 def run(args: Any) -> int:
     """Execute the entity subcommand described by *args*."""
@@ -587,6 +620,17 @@ def run(args: Any) -> int:
 
         verb = "Added" if report["status"] == "created" else "Already present"
         print(f"{verb}: {report['account']} (open {report['open_date']})")
+        return 0
+
+    if args.entity_command == "bank-account-map":
+        target = _resolve_target(args.path)
+        try:
+            report = map_bank_account(target, args.feed_account_id, args.account)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        verb = "Updated" if report["status"] == "updated" else "Mapped"
+        print(f"{verb}: {report['feed_account_id']} → {report['account']}")
         return 0
 
     print(f"Unknown entity command: {args.entity_command}", file=sys.stderr)

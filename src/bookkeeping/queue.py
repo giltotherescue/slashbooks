@@ -318,17 +318,46 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     Malformed files are quarantined, not silently dropped.
     """
     q_dir = _queue_dir(entity)
-    if not q_dir.exists():
-        return []
     items = []
-    for p in sorted(q_dir.glob("*.json")):
+    if q_dir.exists():
+        for p in sorted(q_dir.glob("*.json")):
+            try:
+                item = _load_item_from_path(entity, p)
+                if status is None or item.get("status") == status:
+                    items.append(item)
+            except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
+                # Quarantine already happened inside _load_item_from_path
+                pass
+
+    # Pending categorization is actionable review work even before an agent has
+    # produced a proposal.  Surface it alongside queue files so `queue list
+    # --status open` cannot incorrectly report an empty close.
+    if status in (None, "open", "staged"):
+        queued_ids = {str(item.get("source_id") or "") for item in items}
+        for txn in _load_pending_categorization(entity):
+            source_id = str(txn.get("id") or "")
+            if not source_id or source_id in queued_ids:
+                continue
+            items.append({
+                "source_id": source_id,
+                "date": str(txn.get("date") or "")[:10],
+                "amount": str(txn.get("amount") or ""),
+                "description": str(txn.get("description") or ""),
+                "status": "staged",
+                "proposed_category": None,
+                "confirmed_category": None,
+            })
+    if status in (None, "open", "duplicate-candidate"):
+        candidate_path = entity.staging_dir / "duplicate-candidates.json"
         try:
-            item = _load_item_from_path(entity, p)
-            if status is None or item.get("status") == status:
-                items.append(item)
-        except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
-            # Quarantine already happened inside _load_item_from_path
-            pass
+            candidates = json.loads(candidate_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            candidates = []
+        if isinstance(candidates, list):
+            items.extend(
+                item for item in candidates
+                if isinstance(item, dict) and item.get("status") == "duplicate-candidate"
+            )
     return items
 
 
@@ -512,6 +541,19 @@ def propose(
 
     _save_item(entity, item)
     return item
+
+
+def propose_group(
+    entity: Entity,
+    source_ids: list[str],
+    category: str,
+    reasoning: str,
+    context: str = "",
+) -> list[dict]:
+    """Create same-category proposals for a reviewed group of staged items."""
+    if not source_ids:
+        raise ValueError("At least one source ID is required for a group proposal.")
+    return [propose(entity, source_id, category, reasoning, context) for source_id in source_ids]
 
 
 # ---------------------------------------------------------------------------
@@ -767,6 +809,22 @@ def correct(
     _save_item(entity, item)
 
     return item
+
+
+def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[str] = None) -> list[dict]:
+    """Confirm all open proposals with one explicitly selected category.
+
+    The caller must propose the group first, so the operation is auditable and
+    cannot sweep unrelated staged activity into a bulk approval.
+    """
+    item_ids = [
+        str(item["source_id"])
+        for item in list_queue_items(entity)
+        if item.get("status") in ("open", "reopened") and item.get("proposed_category") == category
+    ]
+    if not item_ids:
+        raise ValueError(f"No open proposals found for category '{category}'.")
+    return [confirm(entity, item_id, session_id, ts=ts) for item_id in item_ids]
 
 
 # ---------------------------------------------------------------------------
@@ -1141,11 +1199,23 @@ def add_parser(subparsers: Any) -> None:
     prop_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
     prop_p.add_argument("--context", default="", help="Additional context")
 
+    group_p = queue_sub.add_parser("propose-group", help="Propose one category for several staged items")
+    group_p.add_argument("--entity", required=True, help="Path to entity directory")
+    group_p.add_argument("--source-id", action="append", required=True, dest="source_ids", help="Transaction source ID; repeat for each item")
+    group_p.add_argument("--category", required=True, help="Ledger account")
+    group_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
+    group_p.add_argument("--context", default="", help="Additional context")
+
     # confirm
     conf_p = queue_sub.add_parser("confirm", help="Confirm a proposed categorization")
     conf_p.add_argument("--entity", required=True, help="Path to entity directory")
     conf_p.add_argument("--item", required=True, dest="item_id", help="Queue item ID (source ID)")
     conf_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+
+    confirm_group_p = queue_sub.add_parser("confirm-group", help="Confirm every open proposal for one category")
+    confirm_group_p.add_argument("--entity", required=True, help="Path to entity directory")
+    confirm_group_p.add_argument("--category", required=True, help="Proposed ledger account to confirm")
+    confirm_group_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
 
     # correct
     corr_p = queue_sub.add_parser("correct", help="Correct a proposed categorization")
@@ -1212,10 +1282,28 @@ def run(args: Any) -> int:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
 
+        elif qcmd == "propose-group":
+            try:
+                items = propose_group(entity, args.source_ids, args.category, args.reasoning, args.context)
+                print(f"Proposed {len(items)} item(s) → {args.category}")
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
         elif qcmd == "confirm":
             try:
                 item = confirm(entity, args.item_id, args.session_id)
                 print(f"Confirmed: {item['source_id']} → {item['confirmed_category']}")
+                return 0
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "confirm-group":
+            try:
+                items = confirm_group(entity, args.category, args.session_id)
+                print(f"Confirmed {len(items)} item(s) → {args.category}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)

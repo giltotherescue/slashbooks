@@ -66,6 +66,8 @@ from .normalize import normalize_description
 
 _LATE_ARRIVAL_DAYS = 30
 _PENDING_CATEGORIZATION_FILE = "pending-categorization.json"
+_DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
+_SOURCE_ID_ALIASES_FILE = "source-id-aliases.json"
 _LOCK_FILE = ".books.lock"
 
 # ---------------------------------------------------------------------------
@@ -83,6 +85,7 @@ class ImportResult:
     superseded: int = 0
     skipped_duplicate: int = 0
     pending_categorization: int = 0
+    duplicate_candidates: int = 0
     late_arrivals: int = 0
     orphaned_tmps: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -302,6 +305,7 @@ def import_transactions(
     categorizer: Callable[[dict], tuple[str, str]] | None = None,
     ts: str | None = None,
     session_date: date | None = None,
+    legacy_duplicate_guard: bool = False,
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -398,6 +402,23 @@ def import_transactions(
         if source_id:
             source_ids_in_batch.add(source_id)
 
+        # A provider can replace historical IDs after a recovery.  This guard
+        # deliberately does not auto-skip a plausible match: two legitimate
+        # same-day purchases can look identical.  Hold it for review instead.
+        bank_account = _ledger_account_for_txn(
+            txn, entity.entity_config.get("bank_account_mappings")
+        )
+        if legacy_duplicate_guard:
+            candidate_state = _record_legacy_duplicate_candidate(
+                entity, store, txn, bank_account
+            )
+            if candidate_state:
+                if candidate_state == "new":
+                    result.duplicate_candidates += 1
+                else:
+                    result.skipped_duplicate += 1
+                continue
+
         # Supersede any matching staged pending.
         superseded = staging.supersede_pending(txn)
         if superseded:
@@ -455,9 +476,6 @@ def import_transactions(
             raw_amount_dec = Decimal(str(raw_amount)).quantize(Decimal("0.01"))
 
         # Bank account posting: entity bank_account_mappings take precedence.
-        bank_account = _ledger_account_for_txn(
-            txn, entity.entity_config.get("bank_account_mappings")
-        )
         needed_opens.add(bank_account)
         needed_opens.add(account)
 
@@ -515,6 +533,80 @@ def import_transactions(
 # ---------------------------------------------------------------------------
 # Helpers used by import_transactions
 # ---------------------------------------------------------------------------
+
+
+def _load_json_list(path: Path) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_json_list(path: Path, items: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(items, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _record_legacy_duplicate_candidate(
+    entity: Entity,
+    store: LedgerStore,
+    txn: dict[str, Any],
+    bank_account: str,
+) -> str | None:
+    """Persist a guarded legacy-ID match and return ``new``/``existing``.
+
+    The match includes the canonical cash account, date, signed amount and a
+    normalized merchant/reference.  It is intentionally a review candidate,
+    not a substitute for the provider's source ID.
+    """
+    source_id = str(txn.get("id") or "")
+    if not source_id:
+        return None
+    candidate_path = entity.staging_dir / _DUPLICATE_CANDIDATES_FILE
+    existing_candidates = _load_json_list(candidate_path)
+    if any(str(item.get("source_id") or "") == source_id for item in existing_candidates):
+        return "existing"
+    try:
+        txn_date = _parse_date(str(txn.get("date") or ""))
+        amount = Decimal(str(txn.get("amount"))).quantize(Decimal("0.01"))
+    except Exception:
+        return None
+    needle = normalize_description(
+        str(txn.get("reference") or txn.get("description") or "")
+    )
+    if not needle:
+        return None
+    for entry in store.load_entries():
+        if entry.date != txn_date or not entry.source_id:
+            continue
+        if normalize_description(entry.narration) != needle:
+            continue
+        if any(posting.account == bank_account and posting.amount == amount for posting in entry.postings):
+            record = {
+                "source_id": source_id,
+                "existing_source_id": entry.source_id,
+                "account": bank_account,
+                "date": txn_date.isoformat(),
+                "amount": str(amount),
+                "description": str(txn.get("description") or ""),
+                "status": "duplicate-candidate",
+                "created_at": _now_iso(),
+            }
+            existing_candidates.append(record)
+            _save_json_list(candidate_path, existing_candidates)
+            aliases_path = entity.staging_dir / _SOURCE_ID_ALIASES_FILE
+            aliases = _load_json_list(aliases_path)
+            aliases.append({
+                "source_id": source_id,
+                "canonical_source_id": entry.source_id,
+                "status": "candidate",
+            })
+            _save_json_list(aliases_path, aliases)
+            return "new"
+    return None
 
 
 def _ledger_account_for_txn(txn: dict, mappings: dict[str, str] | None = None) -> str:
@@ -716,21 +808,7 @@ def reverse_and_correct(
 
     store = _ensure_ledger_store(entity)
 
-    # Find the live entry for this source id: skip reversal entries (they
-    # carry a `reverses` key) and prefer the most recent correction so a
-    # second correction targets the corrected entry, never re-reverses a
-    # reversal.
-    original: Entry | None = None
-    for e in store.load_entries():
-        if e.source_id != original_source_id:
-            continue
-        meta_keys = {k for k, _ in e.meta}
-        if "reverses" in meta_keys:
-            continue
-        original = e  # keep scanning — last non-reversal match wins
-
-    if original is None:
-        raise ValueError(f"No entry with source-id={original_source_id!r} found in ledger")
+    original = _find_live_entry(store, original_source_id)
 
     # Build reversing entry (negate all posting amounts). The reversal's
     # metadata drops the original `source-id` so source-id lookups never
@@ -795,3 +873,48 @@ def reverse_and_correct(
     )
 
     return reversing_entry, corrected_with_meta
+
+
+def _find_live_entry(store: LedgerStore, source_id: str) -> Entry:
+    """Find the current non-reversal entry for a source ID."""
+    original: Entry | None = None
+    for entry in store.load_entries():
+        if entry.source_id != source_id or "reverses" in {key for key, _ in entry.meta}:
+            continue
+        original = entry
+    if original is None:
+        raise ValueError(f"No entry with source-id={source_id!r} found in ledger")
+    return original
+
+
+def reverse_entry(
+    entity: Entity,
+    original_source_id: str,
+    session_id: str,
+    ts: str | None = None,
+) -> Entry:
+    """Write one traceable reversing entry without modifying the original."""
+    store = _ensure_ledger_store(entity)
+    original = _find_live_entry(store, original_source_id)
+    reversing_entry = Entry(
+        date=original.date,
+        narration=f"Reversal of: {original.narration}",
+        flag="*",
+        meta=tuple((k, v) for k, v in original.meta if k not in ("source-id", "import-session")) + (
+            ("reverses", original_source_id),
+            ("import-session", session_id),
+        ),
+        postings=tuple(
+            Posting(account=p.account, amount=-p.amount, currency=p.currency)
+            for p in original.postings
+        ),
+    )
+    _atomic_ledger_write(
+        entity=entity,
+        new_opens=[],
+        new_entries=[reversing_entry],
+        session_id=session_id,
+        ts=ts,
+        intent_description=f"reverse original_source_id={original_source_id!r}",
+    )
+    return reversing_entry

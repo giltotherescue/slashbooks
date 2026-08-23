@@ -89,6 +89,50 @@ class IngestCommandTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(len(_pending(entity_dir)), 2)
 
+    def test_banksync_download_is_unwrapped_and_requires_stable_account_mapping(self) -> None:
+        """The documented BankSync download can be ingested without JSON surgery."""
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = _make_entity(Path(tmp))
+            (entity_dir / "entity.json").write_text(
+                json.dumps({
+                    "name": "Test Co",
+                    "business_type": "consulting",
+                    "bank_account_mappings": {"acct_chk": "Assets:Bank:Checking"},
+                }) + "\n",
+                encoding="utf-8",
+            )
+            infile = Path(tmp) / "banksync.json"
+            infile.write_text(json.dumps({
+                "source": "banksync",
+                "banks": [{"accounts": [{
+                    "account": {"id": "acct_chk", "accountName": "Checking", "accountType": "checking"},
+                    "transactions": _txns(),
+                }]}],
+            }), encoding="utf-8")
+
+            rc = main(["ingest", str(infile), "--entity", str(entity_dir), "--source", "banksync"])
+
+            self.assertEqual(rc, 0)
+            self.assertEqual(len(_pending(entity_dir)), 2)
+
+    def test_banksync_download_without_mapping_stops_before_staging_work(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = _make_entity(Path(tmp))
+            infile = Path(tmp) / "banksync.json"
+            infile.write_text(json.dumps({
+                "source": "banksync",
+                "banks": [{"accounts": [{
+                    "account": {"id": "acct_chk", "accountName": "Checking", "accountType": "checking"},
+                    "transactions": _txns(),
+                }]}],
+            }), encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "bank-account-map"):
+                ingest_module.run(type("Args", (), {
+                    "entity": entity_dir, "input": infile, "source": "ingest", "session_id": "test",
+                })())
+            self.assertEqual(_pending(entity_dir), [])
+
     def test_reingest_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             entity_dir = _make_entity(Path(tmp))
