@@ -937,6 +937,29 @@ class TestReverseAndCorrect(unittest.TestCase):
         with self.assertRaises((ValueError, FileNotFoundError)):
             reverse_and_correct(self._entity, "ghost-id", corrected, "bad-session", ts=TS)
 
+    def test_reverse_and_correct_refuses_to_reverse_the_same_entry_twice(self) -> None:
+        original = _make_posted_txn("orig-once", amount="10.00")
+        import_transactions(
+            self._entity,
+            [original],
+            SESSION,
+            categorizer=_simple_categorizer("Expenses:Services"),
+            ts=TS,
+        )
+        corrected = Entry(
+            date=date(2026, 1, 15),
+            narration="Corrected once",
+            meta=(("source-id", "corrected-once"),),
+            postings=(
+                Posting("Assets:Bank:Checking", Decimal("10.00")),
+                Posting("Expenses:Services", Decimal("-10.00")),
+            ),
+        )
+        reverse_and_correct(self._entity, "orig-once", corrected, "first-fix", ts=TS)
+
+        with self.assertRaisesRegex(ValueError, "already been reversed"):
+            reverse_and_correct(self._entity, "orig-once", corrected, "second-fix", ts=TS)
+
 
 class TestLegacyDuplicateCandidates(unittest.TestCase):
     def test_replacement_source_id_is_held_for_review_not_posted(self) -> None:
@@ -966,6 +989,52 @@ class TestLegacyDuplicateCandidates(unittest.TestCase):
             self.assertEqual(candidates[0]["status"], "duplicate-candidate")
             aliases = json.loads((entity.staging_dir / "source-id-aliases.json").read_text(encoding="utf-8"))
             self.assertEqual(aliases[0]["canonical_source_id"], "provider-original")
+            self.assertEqual(candidates[0]["transaction"]["id"], "provider-recovered")
+
+    def test_confirmed_duplicate_is_resolved_and_remains_skipped(self) -> None:
+        from bookkeeping.queue import resolve_duplicate_candidate
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            original = _make_posted_txn("provider-original", description="Recovered merchant", amount="18.50")
+            recovered = _make_posted_txn("provider-recovered", description="Recovered merchant", amount="18.50")
+            import_transactions(entity, [original], SESSION, categorizer=_simple_categorizer("Expenses:Services"), ts=TS)
+            import_transactions(
+                entity, [recovered], SESSION + "-review",
+                categorizer=_simple_categorizer("Expenses:Services"), ts=TS,
+                legacy_duplicate_guard=True,
+            )
+
+            resolved = resolve_duplicate_candidate(entity, "provider-recovered", "duplicate")
+            retry = import_transactions(
+                entity, [recovered], SESSION + "-retry",
+                categorizer=_simple_categorizer("Expenses:Services"), ts=TS,
+                legacy_duplicate_guard=True,
+            )
+
+            self.assertEqual(resolved["status"], "confirmed-duplicate")
+            self.assertEqual(retry.skipped_duplicate, 1)
+            self.assertEqual(len(LedgerStore(default_store_path(entity.path)).load_entries()), 1)
+
+    def test_distinct_candidate_is_released_to_normal_review(self) -> None:
+        from bookkeeping.queue import resolve_duplicate_candidate
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            original = _make_posted_txn("provider-original", description="Recovered merchant", amount="18.50")
+            recovered = _make_posted_txn("provider-recovered", description="Recovered merchant", amount="18.50")
+            import_transactions(entity, [original], SESSION, categorizer=_simple_categorizer("Expenses:Services"), ts=TS)
+            import_transactions(
+                entity, [recovered], SESSION + "-review",
+                categorizer=_simple_categorizer("Expenses:Services"), ts=TS,
+                legacy_duplicate_guard=True,
+            )
+
+            resolved = resolve_duplicate_candidate(entity, "provider-recovered", "distinct")
+
+            self.assertEqual(resolved["status"], "confirmed-distinct")
+            pending = json.loads((entity.staging_dir / "pending-categorization.json").read_text(encoding="utf-8"))
+            self.assertEqual([item["id"] for item in pending], ["provider-recovered"])
 
 
 class TestPublicCorrectionCommands(unittest.TestCase):

@@ -282,6 +282,7 @@ def reconcile(
             existing_idx = i
             break
 
+    now = datetime.now(timezone.utc).isoformat()
     record: dict[str, Any] = {
         "record_id": rec_id,
         "account": account,
@@ -294,15 +295,27 @@ def reconcile(
         "source_integrity_residual": str(source_residual) if source_residual is not None else None,
         "source_snapshot_at": source_snapshot_at,
         "source_through": source_through,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now,
+        "updated_at": now,
         "resolved_at": None,
         "resolution_note": None,
     }
 
     if existing_idx is not None:
-        # Preserve resolution status if already resolved
         existing = records[existing_idx]
-        if existing.get("status") == "resolved":
+        record["created_at"] = existing.get("created_at") or now
+        # A resolution applies only to the exact balances that were reviewed.
+        # Changed source or ledger data must reopen the record automatically.
+        resolution_fields = (
+            "ledger_balance",
+            "source_balance",
+            "discrepancy",
+            "source_integrity_residual",
+            "source_snapshot_at",
+            "source_through",
+        )
+        same_evidence = all(existing.get(field) == record.get(field) for field in resolution_fields)
+        if existing.get("status") == "resolved" and same_evidence and not source_inconsistent:
             record["status"] = "resolved"
             record["resolved_at"] = existing.get("resolved_at")
             record["resolution_note"] = existing.get("resolution_note")
@@ -344,6 +357,11 @@ def resolve(
     records = _load_records(entity_path)
     for r in records:
         if r.get("record_id") == rec_id:
+            if r.get("status") == "source-inconsistent":
+                raise ValueError(
+                    "Source-inconsistent reconciliation records cannot be resolved manually; "
+                    "refresh the source period and reconcile again."
+                )
             r["status"] = "resolved"
             r["resolved_at"] = datetime.now(timezone.utc).isoformat()
             r["resolution_note"] = note
@@ -421,7 +439,7 @@ def run(args: Any) -> int:
         try:
             resolve(entity, args.account, args.as_of, args.note)
             print(f"Marked resolved: {args.account} as of {args.as_of}")
-        except KeyError as e:
+        except (KeyError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
         return 0

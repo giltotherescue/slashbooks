@@ -158,6 +158,17 @@ If the source-integrity residual is non-zero, say the feed is internally
 inconsistent and do not describe it as a books discrepancy or say the period is
 reconciled.
 
+For each duplicate candidate, show the existing and new source IDs, date, amount,
+and description. After the owner decides, record the decision explicitly:
+
+```
+scripts/books queue resolve-duplicate --entity <entity-path> --source-id <id> --decision duplicate
+scripts/books queue resolve-duplicate --entity <entity-path> --source-id <id> --decision distinct
+```
+
+A distinct item returns to the normal categorization workflow. Never edit the
+candidate or alias files by hand.
+
 Present any discrepancies in plain English: "Your checking balance in the
 books is $42,193.55, but the source shows $42,318.55 — a $125.00 difference. I've
 flagged this for follow-up." Do not show raw ledger syntax or SQL output.

@@ -1,6 +1,6 @@
 {
   "name": "slashbooks",
-  "version": "0.2.1",
+  "version": "0.2.0",
   "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
   "author": {
     "name": "Gil Hildebrand"

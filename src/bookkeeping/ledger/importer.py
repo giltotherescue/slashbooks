@@ -409,15 +409,20 @@ def import_transactions(
             txn, entity.entity_config.get("bank_account_mappings")
         )
         if legacy_duplicate_guard:
-            candidate_state = _record_legacy_duplicate_candidate(
-                entity, store, txn, bank_account
-            )
-            if candidate_state:
-                if candidate_state == "new":
-                    result.duplicate_candidates += 1
-                else:
-                    result.skipped_duplicate += 1
+            alias_status = _legacy_alias_status(entity, source_id)
+            if alias_status == "confirmed-duplicate":
+                result.skipped_duplicate += 1
                 continue
+            if alias_status != "confirmed-distinct":
+                candidate_state = _record_legacy_duplicate_candidate(
+                    entity, store, txn, bank_account
+                )
+                if candidate_state:
+                    if candidate_state == "new":
+                        result.duplicate_candidates += 1
+                    else:
+                        result.skipped_duplicate += 1
+                    continue
 
         # Supersede any matching staged pending.
         superseded = staging.supersede_pending(txn)
@@ -592,6 +597,7 @@ def _record_legacy_duplicate_candidate(
                 "date": txn_date.isoformat(),
                 "amount": str(amount),
                 "description": str(txn.get("description") or ""),
+                "transaction": dict(txn),
                 "status": "duplicate-candidate",
                 "created_at": _now_iso(),
             }
@@ -607,6 +613,15 @@ def _record_legacy_duplicate_candidate(
             _save_json_list(aliases_path, aliases)
             return "new"
     return None
+
+
+def _legacy_alias_status(entity: Entity, source_id: str) -> str:
+    """Return the latest reviewed legacy-ID decision for *source_id*."""
+    aliases = _load_json_list(entity.staging_dir / _SOURCE_ID_ALIASES_FILE)
+    for alias in reversed(aliases):
+        if str(alias.get("source_id") or "") == source_id:
+            return str(alias.get("status") or "")
+    return ""
 
 
 def _ledger_account_for_txn(txn: dict, mappings: dict[str, str] | None = None) -> str:
@@ -877,8 +892,11 @@ def reverse_and_correct(
 
 def _find_live_entry(store: LedgerStore, source_id: str) -> Entry:
     """Find the current non-reversal entry for a source ID."""
+    entries = store.load_entries()
+    if any(dict(entry.meta).get("reverses") == source_id for entry in entries):
+        raise ValueError(f"Entry with source-id={source_id!r} has already been reversed")
     original: Entry | None = None
-    for entry in store.load_entries():
+    for entry in entries:
         if entry.source_id != source_id or "reverses" in {key for key, _ in entry.meta}:
             continue
         original = entry

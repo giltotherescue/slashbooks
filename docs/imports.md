@@ -169,8 +169,13 @@ For opening balances:
 books qb import-opening \
   ~/Documents/books/acme-co/ingestion/quickbooks \
   --entity ~/Documents/books/acme-co \
-  --cutover 2026-01-01
+  --cutover 2026-01-01 \
+  --source balance-sheet
 ```
+
+The Chart of Accounts export is required so Slashbooks never guesses whether a
+row is a balance-sheet or prior-period activity account. Opening entries contain
+only Assets and Liabilities plus one `Equity:Opening-Balances` offset.
 
 For confidence testing against historical QuickBooks data:
 

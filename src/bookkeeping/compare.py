@@ -1350,14 +1350,41 @@ def confidence_package(
     # Missing source data items
     missing_source = [_diff_to_dict(d) for d in diffs if d.category == "missing-source-data"]
 
-    # Blocking items
-    blocking = [s for s in readiness.slots if s.status == "blocked"]
+    # Certification is fail-closed. Missing/blocked reference files, comparison
+    # errors, and unresolved material differences all mean the package is not a
+    # confidence certificate yet.
+    blocking_items = [
+        {
+            "label": slot.label,
+            "reason": slot.block_reason or "Required reference file is missing.",
+        }
+        for slot in readiness.slots
+        if slot.status in {"blocked", "missing"}
+    ]
+    blocking_items.extend(
+        {"label": "Comparison error", "reason": error}
+        for error in comparison.errors
+    )
+    unresolved_material_diffs = [
+        diff for diff in comparison.material_diffs if diff.status == "open"
+    ]
+    if unresolved_material_diffs:
+        blocking_items.append({
+            "label": "Unresolved material differences",
+            "reason": (
+                f"{len(unresolved_material_diffs)} material difference(s) remain open; "
+                "classify and resolve or explicitly accept each one before certification."
+            ),
+        })
     invalid_openings = invalid_opening_entries(entity)
     fatal_migration_issues = [
         {
-            "code": "opening-entry-pnl-posting",
+            "code": "invalid-opening-account",
             "source_id": source_id,
-            "message": "A QuickBooks opening entry posts to Income or Expenses and corrupts current-period P&L reporting.",
+            "message": (
+                "A QuickBooks opening entry contains an account outside Assets, Liabilities, "
+                "or Equity:Opening-Balances and can corrupt cutover reporting."
+            ),
         }
         for source_id in invalid_openings
     ]
@@ -1378,9 +1405,9 @@ def confidence_package(
         "differences_by_category": by_category,
         "missing_source_data": missing_source,
         "spot_audit_sample": spot_sample,
-        "blocking_items": [{"label": s.label, "reason": s.block_reason} for s in blocking],
+        "blocking_items": blocking_items,
         "fatal_migration_issues": fatal_migration_issues,
-        "migration_confident": not fatal_migration_issues,
+        "migration_confident": not blocking_items and not fatal_migration_issues,
         "errors": comparison.errors,
     }
 

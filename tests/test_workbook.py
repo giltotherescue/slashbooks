@@ -951,6 +951,64 @@ class TestSanityChecks(unittest.TestCase):
         self.assertEqual(queue_check.status, "fail",
                          f"Expected queue_empty to fail with open item: {queue_check.detail}")
 
+    def test_queue_empty_fails_for_staged_item_without_proposal(self):
+        from src.bookkeeping.reports.workbook import run_sanity_checks
+
+        entity_dir = _make_entity(self.tmp_path)
+        (entity_dir / "staging" / "pending-categorization.json").write_text(
+            json.dumps([{
+                "id": "txn_staged",
+                "date": "2026-04-01",
+                "amount": "-20.00",
+                "description": "Needs review",
+            }]),
+            encoding="utf-8",
+        )
+
+        result = run_sanity_checks(entity_dir, FROM_DATE, TO_DATE)
+        queue_check = next(c for c in result.checks if c.check == "queue_empty")
+        self.assertEqual(queue_check.status, "fail")
+
+    def test_reconciliation_check_fails_when_no_evidence_exists(self):
+        from src.bookkeeping.reports.workbook import run_sanity_checks
+
+        entity_dir = _make_entity(self.tmp_path)
+        result = run_sanity_checks(entity_dir, FROM_DATE, TO_DATE)
+
+        check = next(c for c in result.checks if c.check == "reconciliation_clean")
+        self.assertEqual(check.status, "fail")
+        self.assertIn("No reconciliation records", check.detail)
+
+    def test_clean_balance_match_without_source_integrity_still_fails_close(self):
+        from src.bookkeeping.reconcile import reconcile
+        from src.bookkeeping.reports.workbook import run_sanity_checks
+
+        entity_dir = _make_entity(self.tmp_path)
+        reconcile(entity_dir, "Assets:Bank:Checking", Decimal("10950.00"), TO_DATE)
+
+        result = run_sanity_checks(entity_dir, FROM_DATE, TO_DATE)
+        check = next(c for c in result.checks if c.check == "reconciliation_clean")
+        self.assertEqual(check.status, "fail")
+        self.assertIn("source-period integrity", check.detail)
+
+    def test_clean_reconciliation_with_source_integrity_passes_close(self):
+        from src.bookkeeping.reconcile import reconcile
+        from src.bookkeeping.reports.workbook import run_sanity_checks
+
+        entity_dir = _make_entity(self.tmp_path)
+        reconcile(
+            entity_dir,
+            "Assets:Bank:Checking",
+            Decimal("10950.00"),
+            TO_DATE,
+            source_opening_balance=Decimal("500.00"),
+            source_transaction_total=Decimal("10450.00"),
+        )
+
+        result = run_sanity_checks(entity_dir, FROM_DATE, TO_DATE)
+        check = next(c for c in result.checks if c.check == "reconciliation_clean")
+        self.assertEqual(check.status, "pass", check.detail)
+
     def test_sanity_result_json_serializable(self):
         from src.bookkeeping.reports.workbook import run_sanity_checks
 

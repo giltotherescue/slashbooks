@@ -1250,23 +1250,38 @@ class OpeningRepairResult:
         return not self.errors
 
 
-def _is_pnl_account(account: str) -> bool:
-    return account.startswith(("Income:", "Expenses:"))
+def _is_allowed_opening_account(account: str) -> bool:
+    """Return whether *account* may appear in a cutover opening entry."""
+    return account.startswith(("Assets:", "Liabilities:")) or account == "Equity:Opening-Balances"
 
 
 def invalid_opening_entries(entity, *, cutover: date | None = None) -> list[str]:
-    """Return QuickBooks opening source IDs that incorrectly touch P&L roots."""
+    """Return active QuickBooks openings with non-balance-sheet postings."""
     from .ledger.store import LedgerStore, default_store_path
 
     store = LedgerStore(default_store_path(entity.path))
     if not store.path.exists():
         return []
     entries = store.load_entries()
-    reversed_source_ids = {
-        dict(entry.meta).get("reverses")
-        for entry in entries
-        if dict(entry.meta).get("reverses")
+    entries_by_source_id = {
+        entry.source_id: entry for entry in entries if entry.source_id
     }
+    reversed_source_ids: set[str] = set()
+    for reversal in entries:
+        source_id = dict(reversal.meta).get("reverses")
+        original = entries_by_source_id.get(source_id)
+        if original is None or reversal.date != original.date:
+            continue
+        expected = sorted(
+            (posting.account, -posting.amount, posting.currency)
+            for posting in original.postings
+        )
+        actual = sorted(
+            (posting.account, posting.amount, posting.currency)
+            for posting in reversal.postings
+        )
+        if actual == expected:
+            reversed_source_ids.add(source_id)
     invalid: list[str] = []
     for entry in entries:
         metadata = dict(entry.meta)
@@ -1277,7 +1292,7 @@ def invalid_opening_entries(entity, *, cutover: date | None = None) -> list[str]
         if (
             entry.source_id
             and entry.source_id not in reversed_source_ids
-            and any(_is_pnl_account(posting.account) for posting in entry.postings)
+            and any(not _is_allowed_opening_account(posting.account) for posting in entry.postings)
         ):
             invalid.append(entry.source_id)
     return invalid
@@ -1324,6 +1339,9 @@ def import_opening(
     folder: str | Path,
     cutover: date,
     source: str = "trial-balance",
+    *,
+    _store=None,
+    _conn=None,
 ) -> ImportResult:
     """Post opening balances from a cash-basis trial balance.
 
@@ -1435,24 +1453,40 @@ def import_opening(
             success=False,
         )
 
-    # Load chart of accounts for type lookup
+    # Account types are authoritative for deciding which rows can carry across
+    # the cutover. Guessing a missing type can silently drop a balance-sheet
+    # account or admit a prior-period P&L/equity balance.
     coa_slot = next((s for s in report.slots if s.report_key == "chart_of_accounts"), None)
-    qb_type_map: dict[str, str] = {}
-    if coa_slot and coa_slot.status == "present":
-        try:
-            coa_accounts = parse_chart_of_accounts(Path(coa_slot.file))
-            qb_type_map = {a.name: a.account_type for a in coa_accounts}
-        except Exception:
-            pass
+    if coa_slot is None or coa_slot.status != "present" or not coa_slot.file:
+        return ImportResult(
+            entries_written=0,
+            accounts_opened=0,
+            ledger_path=str(store_path),
+            coa_path=str(entity.coa_path),
+            errors=["Chart of Accounts not found; account types are required for a safe opening import."],
+            success=False,
+        )
+    try:
+        coa_accounts = parse_chart_of_accounts(Path(coa_slot.file))
+        qb_type_map = {a.name: a.account_type for a in coa_accounts}
+    except Exception as exc:
+        return ImportResult(
+            entries_written=0,
+            accounts_opened=0,
+            ledger_path=str(store_path),
+            coa_path=str(entity.coa_path),
+            errors=[f"Could not read Chart of Accounts safely: {exc}"],
+            success=False,
+        )
 
     # Reset collision registry for deterministic mapping
     _reset_collision_registry()
 
     opens: list[Open] = []
     postings: list[Posting] = []
-    errors: list[str] = []
-    coa_additions: list[str] = []
-    excluded_pnl_accounts: list[str] = []
+    fatal_errors: list[str] = []
+    warnings: list[str] = []
+    excluded_prior_period_accounts: list[str] = []
 
     # Equity:Opening-Balances account
     opening_equity_account = "Equity:Opening-Balances"
@@ -1462,18 +1496,23 @@ def import_opening(
         if entry.debit == Decimal("0.00") and entry.credit == Decimal("0.00"):
             continue
 
-        qb_type = qb_type_map.get(entry.full_name, "Expenses")
+        qb_type = qb_type_map.get(entry.full_name)
+        if qb_type is None:
+            fatal_errors.append(
+                f"Account '{entry.full_name}' is missing from the Chart of Accounts; cannot determine its opening treatment."
+            )
+            continue
         try:
             bc_account = map_qb_account(entry.full_name, qb_type)
         except Exception as exc:
-            errors.append(f"Cannot map account '{entry.full_name}': {exc}")
+            fatal_errors.append(f"Cannot map account '{entry.full_name}': {exc}")
             continue
 
         try:
             from .ledger.model import _validate_account_name
             _validate_account_name(bc_account)
         except ValueError as exc:
-            errors.append(f"Invalid beancount account for '{entry.full_name}': {exc}")
+            fatal_errors.append(f"Invalid account for '{entry.full_name}': {exc}")
             continue
 
         # Net amount: debit positive, credit negative
@@ -1481,10 +1520,12 @@ def import_opening(
         if net == Decimal("0.00"):
             continue
 
-        # Income and expense balances are cumulative prior-period activity.
-        # Posting them on the cutover date corrupts every current-period P&L.
-        if _is_pnl_account(bc_account):
-            excluded_pnl_accounts.append(entry.full_name)
+        # Only assets and liabilities carry as individual opening balances.
+        # Prior-period P&L and equity rows are consolidated into the one opening
+        # equity offset so the new period starts clean and retained earnings are
+        # not counted twice.
+        if not bc_account.startswith(("Assets:", "Liabilities:")):
+            excluded_prior_period_accounts.append(entry.full_name)
             continue
 
         opens.append(Open(date=cutover, account=bc_account))
@@ -1496,9 +1537,20 @@ def import_opening(
             meta=(("qb-name", entry.full_name),),
         ))
 
-    if excluded_pnl_accounts:
-        errors.append(
-            f"Excluded {len(excluded_pnl_accounts)} prior-period Income/Expenses balance(s) from the opening entry."
+    if fatal_errors:
+        return ImportResult(
+            entries_written=0,
+            accounts_opened=0,
+            ledger_path=str(store_path),
+            coa_path=str(entity.coa_path),
+            errors=fatal_errors,
+            success=False,
+        )
+
+    if excluded_prior_period_accounts:
+        warnings.append(
+            f"Excluded {len(excluded_prior_period_accounts)} prior-period Income, Expenses, or Equity balance(s); "
+            "opening equity is represented only by Equity:Opening-Balances."
         )
 
     if not postings:
@@ -1507,8 +1559,8 @@ def import_opening(
             accounts_opened=len(opens),
             ledger_path=str(store_path),
             coa_path=str(entity.coa_path),
-            errors=errors or ["No non-zero accounts found in trial balance."],
-            success=len(errors) == 0,
+            errors=["No non-zero asset or liability accounts found for the opening import."],
+            success=False,
         )
 
     # Balance postings with offset to Equity:Opening-Balances
@@ -1535,13 +1587,16 @@ def import_opening(
         postings=tuple(postings),
     )
 
-    if any(_is_pnl_account(posting.account) for posting in opening_entry.postings):
+    if any(not _is_allowed_opening_account(posting.account) for posting in opening_entry.postings):
         return ImportResult(
             entries_written=0,
             accounts_opened=len(opens),
             ledger_path=str(store_path),
             coa_path=str(entity.coa_path),
-            errors=["Opening-balance invariant failed: QuickBooks openings may not post to Income or Expenses accounts."],
+            errors=[
+                "Opening-balance invariant failed: QuickBooks openings may contain only Assets, Liabilities, "
+                "and Equity:Opening-Balances postings."
+            ],
             success=False,
         )
 
@@ -1566,9 +1621,16 @@ def import_opening(
             success=False,
         )
 
-    store = LedgerStore(store_path)
-    store.initialize()
-    if store.source_exists(opening_source_id):
+    store = _store or LedgerStore(store_path)
+    if _conn is None:
+        store.initialize()
+        source_exists = store.source_exists(opening_source_id)
+    else:
+        source_exists = _conn.execute(
+            "SELECT 1 FROM entries WHERE source_id = ? LIMIT 1",
+            (opening_source_id,),
+        ).fetchone() is not None
+    if source_exists:
         return ImportResult(
             entries_written=0,
             accounts_opened=0,
@@ -1577,39 +1639,46 @@ def import_opening(
             errors=[],
             success=True,
         )
+
+    def _write_opening(conn) -> None:
+        store.append_audit_event(
+            "intent",
+            {
+                "session_id": "quickbooks-opening",
+                "description": f"import QuickBooks opening balances source={source}",
+                "entries": 1,
+            },
+            conn,
+        )
+        store.insert_opens(opens, conn)
+        store.insert_entries([opening_entry], conn)
+        store.set_meta("canonical", "true", conn)
+        store.set_meta("title", entity.entity_config.get("name", "Books"), conn)
+        store.append_audit_event(
+            "entry-written",
+            {
+                "session_id": "quickbooks-opening",
+                "source_id": opening_source_id,
+            },
+            conn,
+        )
+        store.append_audit_event(
+            "ledger-store-sealed",
+            {
+                "session_id": "quickbooks-opening",
+                "entries": 1,
+                "source_ids": [opening_source_id],
+                "store_sha256": store.content_digest(conn),
+            },
+            conn,
+        )
+
     try:
-        with store.transaction() as conn:
-            store.append_audit_event(
-                "intent",
-                {
-                    "session_id": "quickbooks-opening",
-                    "description": f"import QuickBooks opening balances source={source}",
-                    "entries": 1,
-                },
-                conn,
-            )
-            store.insert_opens(opens, conn)
-            store.insert_entries([opening_entry], conn)
-            store.set_meta("canonical", "true", conn)
-            store.set_meta("title", entity.entity_config.get("name", "Books"), conn)
-            store.append_audit_event(
-                "entry-written",
-                {
-                    "session_id": "quickbooks-opening",
-                    "source_id": opening_source_id,
-                },
-                conn,
-            )
-            store.append_audit_event(
-                "ledger-store-sealed",
-                {
-                    "session_id": "quickbooks-opening",
-                    "entries": 1,
-                    "source_ids": [opening_source_id],
-                    "store_sha256": store.content_digest(conn),
-                },
-                conn,
-            )
+        if _conn is None:
+            with store.transaction() as conn:
+                _write_opening(conn)
+        else:
+            _write_opening(_conn)
     except Exception as exc:
         return ImportResult(
             entries_written=0,
@@ -1627,7 +1696,7 @@ def import_opening(
         accounts_opened=len(opens),
         ledger_path=str(store_path),
         coa_path=str(coa_path),
-        errors=errors,
+        errors=warnings,
         success=True,
     )
 
@@ -1635,9 +1704,8 @@ def import_opening(
 def repair_opening(entity, folder: str | Path, cutover: date, *, apply: bool = False) -> OpeningRepairResult:
     """Replace an invalid legacy opening with balance-sheet-only opening balances.
 
-    Inspection is the default. Applying the repair first writes the validated
-    replacement from the cash-basis balance sheet, then posts traceable reversals
-    for the invalid opening entries.
+    Inspection is the default. Applying the repair writes the validated
+    replacement and every traceable reversal in one ledger transaction.
     """
     invalid_source_ids = invalid_opening_entries(entity, cutover=cutover)
     if not invalid_source_ids:
@@ -1645,24 +1713,87 @@ def repair_opening(entity, folder: str | Path, cutover: date, *, apply: bool = F
     if not apply:
         return OpeningRepairResult(invalid_source_ids=invalid_source_ids)
 
-    replacement = import_opening(entity, folder, cutover, source="balance-sheet")
-    if not replacement.success:
-        return OpeningRepairResult(
-            invalid_source_ids=invalid_source_ids,
-            replacement=replacement,
-            errors=replacement.errors,
-        )
+    from .ledger.model import Entry, Posting
+    from .ledger.store import LedgerStore, default_store_path
 
-    from .ledger.importer import reverse_entry
-
+    store = LedgerStore(default_store_path(entity.path))
+    store.initialize()
+    replacement: ImportResult | None = None
     try:
-        for source_id in invalid_source_ids:
-            reverse_entry(entity, source_id, "quickbooks-opening-repair")
+        with store.transaction() as conn:
+            replacement = import_opening(
+                entity,
+                folder,
+                cutover,
+                source="balance-sheet",
+                _store=store,
+                _conn=conn,
+            )
+            if not replacement.success:
+                raise ValueError("; ".join(replacement.errors))
+
+            live_entries = {
+                entry.source_id: entry
+                for entry in store.load_entries(conn=conn)
+                if entry.source_id
+            }
+            reversals: list[Entry] = []
+            for source_id in invalid_source_ids:
+                original = live_entries.get(source_id)
+                if original is None:
+                    raise ValueError(f"Invalid opening entry {source_id!r} disappeared before repair.")
+                reversals.append(Entry(
+                    date=original.date,
+                    narration=f"Reversal of: {original.narration}",
+                    flag="*",
+                    meta=tuple(
+                        (key, value)
+                        for key, value in original.meta
+                        if key not in ("source-id", "import-session")
+                    ) + (
+                        ("reverses", source_id),
+                        ("import-session", "quickbooks-opening-repair"),
+                    ),
+                    postings=tuple(
+                        Posting(posting.account, -posting.amount, posting.currency)
+                        for posting in original.postings
+                    ),
+                ))
+
+            store.append_audit_event(
+                "intent",
+                {
+                    "session_id": "quickbooks-opening-repair",
+                    "description": "reverse invalid QuickBooks openings",
+                    "entries": len(reversals),
+                },
+                conn,
+            )
+            store.insert_entries(reversals, conn)
+            for source_id in invalid_source_ids:
+                store.append_audit_event(
+                    "entry-reversed",
+                    {
+                        "session_id": "quickbooks-opening-repair",
+                        "source_id": source_id,
+                    },
+                    conn,
+                )
+            store.append_audit_event(
+                "ledger-store-sealed",
+                {
+                    "session_id": "quickbooks-opening-repair",
+                    "entries": len(reversals) + (replacement.entries_written if replacement else 0),
+                    "source_ids": invalid_source_ids,
+                    "store_sha256": store.content_digest(conn),
+                },
+                conn,
+            )
     except Exception as exc:
         return OpeningRepairResult(
             invalid_source_ids=invalid_source_ids,
             replacement=replacement,
-            errors=[f"Replacement was written but reversing the legacy opening failed: {exc}"],
+            errors=[f"Opening repair was rolled back without changing the ledger: {exc}"],
         )
     return OpeningRepairResult(
         invalid_source_ids=invalid_source_ids,

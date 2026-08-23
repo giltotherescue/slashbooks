@@ -319,10 +319,11 @@ a cash-basis re-export or use the cash-basis Balance Sheet fallback if inventory
 says that path is available. Wait for blocking items to be resolved before
 proceeding.
 
-Once the readiness report is green, post opening balances. Slashbooks excludes
-prior-period income and expense balances from the opening entry, because they must
-not affect the new period's P&L. Prefer the prior-period cash-basis balance sheet
-when it is available:
+Once the readiness report is green, post opening balances. Slashbooks carries
+only Assets and Liabilities and uses one opening-equity offset. It excludes
+prior-period income, expenses, and individual equity rows so the new period's
+P&L starts clean and retained earnings are not counted twice. Prefer the
+prior-period cash-basis balance sheet when it is available:
 
 ```
 scripts/books qb import-opening <entity-path>/ingestion/quickbooks --entity <path> --cutover <YYYY-MM-DD> --source balance-sheet
@@ -331,8 +332,9 @@ scripts/books qb import-opening <entity-path>/ingestion/quickbooks --entity <pat
 Confirm with the owner that the opening balance summary matches what they expect from
 their QuickBooks records.
 
-If a previous QuickBooks opening entry already affected Income or Expenses, inspect
-it first. Only run the repair after the owner confirms the preview:
+If a previous QuickBooks opening entry contains Income, Expenses, or individual
+Equity accounts, inspect it first. Only run the repair after the owner confirms
+the preview:
 
 ```
 scripts/books qb repair-opening <entity-path>/ingestion/quickbooks --entity <path> --cutover <YYYY-MM-DD>
@@ -346,7 +348,8 @@ scripts/books qb repair-opening <entity-path>/ingestion/quickbooks --entity <pat
 For each BankSync-connected account, list accounts and map each account ID to the
 right ledger account in `entity.json` `bank_account_mappings`. Use bank/checking
 accounts under `Assets:Bank:*` and credit cards under `Liabilities:CreditCard:*`.
-Do this explicitly before closing books; fallback names are only a safety net. If
+Do this explicitly before ingesting connected activity; Slashbooks stops instead
+of guessing from a changed display name. If
 the owner is unsure whether a bank is supported, have them check BankSync's
 supported banks page or try connecting the account in BankSync first; Slashbooks can
 verify connected banks and accounts after BankSync has access, but it does not

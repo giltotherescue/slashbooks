@@ -98,6 +98,8 @@ _QUEUE_DIR = "review-queue"
 _QUARANTINE_DIR = "review-queue/quarantine"
 _LEARNED_CONTEXT_FILE = "learned-context/counterparties.json"
 _PENDING_CATEGORIZATION_FILE = "staging/pending-categorization.json"
+_DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
+_SOURCE_ID_ALIASES_FILE = "source-id-aliases.json"
 _REASONING_MAX_LEN = 2000
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -359,6 +361,90 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
                 if isinstance(item, dict) and item.get("status") == "duplicate-candidate"
             )
     return items
+
+
+def resolve_duplicate_candidate(
+    entity: Entity,
+    source_id: str,
+    decision: str,
+    session_id: str = "duplicate-review",
+) -> dict:
+    """Resolve a guarded legacy-ID match as duplicate or distinct activity."""
+    if decision not in {"duplicate", "distinct"}:
+        raise ValueError("Duplicate decision must be 'duplicate' or 'distinct'.")
+
+    candidate_path = entity.staging_dir / _DUPLICATE_CANDIDATES_FILE
+    try:
+        candidates = json.loads(candidate_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Could not read duplicate candidates: {exc}") from exc
+    if not isinstance(candidates, list):
+        raise ValueError("Duplicate candidates file is not a JSON list.")
+
+    candidate = next(
+        (
+            item for item in candidates
+            if isinstance(item, dict)
+            and str(item.get("source_id") or "") == source_id
+            and item.get("status") == "duplicate-candidate"
+        ),
+        None,
+    )
+    if candidate is None:
+        raise ValueError(f"No open duplicate candidate found for source ID '{source_id}'.")
+
+    if decision == "distinct":
+        txn = candidate.get("transaction")
+        if not isinstance(txn, dict):
+            raise ValueError(
+                "This candidate predates the safe review workflow and lacks its source transaction. "
+                "Re-download and ingest the source after updating Slashbooks."
+            )
+        from .ledger.importer import import_transactions
+
+        result = import_transactions(
+            entity,
+            [txn],
+            session_id,
+            categorizer=make_categorizer(entity),
+            legacy_duplicate_guard=False,
+        )
+        if result.errors:
+            raise ValueError("Could not release distinct activity: " + "; ".join(result.errors))
+
+    resolved_at = _now_iso()
+    candidate["status"] = f"confirmed-{decision}"
+    candidate["resolved_at"] = resolved_at
+    candidate["resolution_session"] = session_id
+
+    aliases_path = entity.staging_dir / _SOURCE_ID_ALIASES_FILE
+    try:
+        aliases = json.loads(aliases_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        aliases = []
+    if not isinstance(aliases, list):
+        aliases = []
+    updated_alias = False
+    for alias in reversed(aliases):
+        if isinstance(alias, dict) and str(alias.get("source_id") or "") == source_id:
+            alias["status"] = f"confirmed-{decision}"
+            alias["resolved_at"] = resolved_at
+            updated_alias = True
+            break
+    if not updated_alias:
+        aliases.append({"source_id": source_id, "status": f"confirmed-{decision}", "resolved_at": resolved_at})
+    tmp = aliases_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(aliases, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(aliases_path))
+
+    # Write the import decision first because it controls future deduplication.
+    # If the display record write is interrupted, the still-open candidate can
+    # be retried safely; the reverse order could leave a hidden, unresolvable
+    # candidate alias.
+    tmp = candidate_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(candidates, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(candidate_path))
+    return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -1225,6 +1311,12 @@ def add_parser(subparsers: Any) -> None:
     corr_p.add_argument("--note", default="", help="Optional note")
     corr_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
 
+    duplicate_p = queue_sub.add_parser("resolve-duplicate", help="Resolve a possible legacy-ID duplicate")
+    duplicate_p.add_argument("--entity", required=True, help="Path to entity directory")
+    duplicate_p.add_argument("--source-id", required=True, dest="source_id", help="Candidate source ID")
+    duplicate_p.add_argument("--decision", required=True, choices=["duplicate", "distinct"])
+    duplicate_p.add_argument("--session", default="duplicate-review", dest="session_id", help="Session ID")
+
     # list
     list_p = queue_sub.add_parser("list", help="List queue items")
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -1315,6 +1407,22 @@ def run(args: Any) -> int:
                 print(f"Corrected: {item['source_id']} → {item['confirmed_category']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "resolve-duplicate":
+            try:
+                candidate = resolve_duplicate_candidate(
+                    entity,
+                    args.source_id,
+                    args.decision,
+                    args.session_id,
+                )
+                print(f"Resolved duplicate candidate {candidate['source_id']} as {args.decision}.")
+                if args.decision == "distinct":
+                    print("Distinct activity was released to the normal categorization workflow.")
+                return 0
+            except ValueError as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
 
