@@ -153,25 +153,55 @@ main {
   color: var(--text-muted);
 }
 
-.eyebrow,
 .trust-line,
 .workflow span {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-.eyebrow {
-  margin: 0 0 0.85rem;
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
 .trust-line {
-  margin: -0.55rem 0 0;
+  margin: 0;
   color: var(--text-muted);
   font-size: 0.83rem;
+}
+
+/* Compatibility and status chips */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: -0.5rem 0 0.9rem;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.chip-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.2rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.chip[hidden] {
+  display: none;
+}
+
+a.chip-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a.chip-link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* Typography */

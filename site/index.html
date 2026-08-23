@@ -31,12 +31,18 @@
   <main id="main">
     <div class="narrow">
       <section class="hero" aria-labelledby="hero-title">
-        <div class="eyebrow">Open source. Local first. Built for simple business books.</div>
         <h1 id="hero-title">Keep your books current without living in QuickBooks.</h1>
         <p class="hero-tagline">Slashbooks gives your AI agent a reliable bookkeeping workflow. It imports activity, prepares the close, explains the numbers, and creates the files your accountant needs.</p>
         <div class="cta-row hero-actions">
           <a class="btn btn-primary" href="#install">Install Slashbooks</a>
           <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks">Read the source on GitHub</a>
+        </div>
+        <div class="chip-row">
+          <span class="chip-label">Works with</span>
+          <span class="chip">Claude Cowork</span>
+          <span class="chip">Claude Code</span>
+          <span class="chip">Codex</span>
+          <a class="chip chip-link" href="https://github.com/giltotherescue/slashbooks" data-stars hidden><span aria-hidden="true">&#9733;</span> <span data-star-count>0</span> stars on GitHub</a>
         </div>
         <p class="trust-line">Free and open source (Apache-2.0). Try it on a demo company before you connect real accounts.</p>
         <img class="hero-art" src="images/slashbooks-hero-chat.png" alt="A chat with the Slashbooks agent: the owner says to close the books for May, the agent reports the month is closed and reconciled with 3 transactions to review, shows revenue and cash figures, and exports the workbook and general-ledger files for the accountant." width="1258" height="870">
@@ -271,6 +277,22 @@
 
   <footer class="site-footer">
     <p>Slashbooks is beta software. Not tax, legal, or accounting advice. <a href="https://github.com/giltotherescue/slashbooks">GitHub</a></p>
+    <p>Slashbooks is an independent open-source project, not affiliated with or endorsed by Anthropic or OpenAI. Claude is a trademark of Anthropic, PBC.</p>
   </footer>
+
+  <script>
+    (function () {
+      var chip = document.querySelector("[data-stars]");
+      if (!chip || !window.fetch) return;
+      fetch("https://api.github.com/repos/giltotherescue/slashbooks")
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(function (repo) {
+          if (!repo || typeof repo.stargazers_count !== "number") return;
+          chip.querySelector("[data-star-count]").textContent = repo.stargazers_count.toLocaleString("en-US");
+          chip.hidden = false;
+        })
+        .catch(function () {});
+    })();
+  </script>
 </body>
 </html>
