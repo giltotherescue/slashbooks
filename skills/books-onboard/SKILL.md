@@ -319,14 +319,25 @@ a cash-basis re-export or use the cash-basis Balance Sheet fallback if inventory
 says that path is available. Wait for blocking items to be resolved before
 proceeding.
 
-Once the readiness report is green, post opening balances:
+Once the readiness report is green, post opening balances. Slashbooks excludes
+prior-period income and expense balances from the opening entry, because they must
+not affect the new period's P&L. Prefer the prior-period cash-basis balance sheet
+when it is available:
 
 ```
-scripts/books qb import-opening <entity-path>/ingestion/quickbooks --entity <path> --cutover <YYYY-MM-DD>
+scripts/books qb import-opening <entity-path>/ingestion/quickbooks --entity <path> --cutover <YYYY-MM-DD> --source balance-sheet
 ```
 
 Confirm with the owner that the opening balance summary matches what they expect from
 their QuickBooks records.
+
+If a previous QuickBooks opening entry already affected Income or Expenses, inspect
+it first. Only run the repair after the owner confirms the preview:
+
+```
+scripts/books qb repair-opening <entity-path>/ingestion/quickbooks --entity <path> --cutover <YYYY-MM-DD>
+scripts/books qb repair-opening <entity-path>/ingestion/quickbooks --entity <path> --cutover <YYYY-MM-DD> --apply
+```
 
 ---
 

@@ -1237,6 +1237,52 @@ class ImportResult:
     success: bool = True
 
 
+@dataclass
+class OpeningRepairResult:
+    """Result of inspecting or repairing a legacy QuickBooks opening entry."""
+    invalid_source_ids: list[str]
+    reversed_entries: int = 0
+    replacement: ImportResult | None = None
+    errors: list[str] = field(default_factory=list)
+
+    @property
+    def success(self) -> bool:
+        return not self.errors
+
+
+def _is_pnl_account(account: str) -> bool:
+    return account.startswith(("Income:", "Expenses:"))
+
+
+def invalid_opening_entries(entity, *, cutover: date | None = None) -> list[str]:
+    """Return QuickBooks opening source IDs that incorrectly touch P&L roots."""
+    from .ledger.store import LedgerStore, default_store_path
+
+    store = LedgerStore(default_store_path(entity.path))
+    if not store.path.exists():
+        return []
+    entries = store.load_entries()
+    reversed_source_ids = {
+        dict(entry.meta).get("reverses")
+        for entry in entries
+        if dict(entry.meta).get("reverses")
+    }
+    invalid: list[str] = []
+    for entry in entries:
+        metadata = dict(entry.meta)
+        if metadata.get("import-source") != "quickbooks-opening":
+            continue
+        if cutover is not None and entry.date != cutover:
+            continue
+        if (
+            entry.source_id
+            and entry.source_id not in reversed_source_ids
+            and any(_is_pnl_account(posting.account) for posting in entry.postings)
+        ):
+            invalid.append(entry.source_id)
+    return invalid
+
+
 def _balance_sheet_opening_rows(bs: BalanceSheet) -> list[TBEntry]:
     """Derive trial-balance-shaped opening rows from a cash-basis balance sheet.
 
@@ -1282,7 +1328,7 @@ def import_opening(
     """Post opening balances from a cash-basis trial balance.
 
     Requires the TB in *folder* to be cash-basis; refuses otherwise.
-    For each non-zero account in the TB:
+    For each non-zero balance-sheet account in the TB:
       - Builds an opening Entry with postings dated *cutover*
       - Debits positive, credits negative (normal TB convention)
       - Offset to Equity:Opening-Balances
@@ -1406,6 +1452,7 @@ def import_opening(
     postings: list[Posting] = []
     errors: list[str] = []
     coa_additions: list[str] = []
+    excluded_pnl_accounts: list[str] = []
 
     # Equity:Opening-Balances account
     opening_equity_account = "Equity:Opening-Balances"
@@ -1429,12 +1476,18 @@ def import_opening(
             errors.append(f"Invalid beancount account for '{entry.full_name}': {exc}")
             continue
 
-        opens.append(Open(date=cutover, account=bc_account))
-
         # Net amount: debit positive, credit negative
         net = entry.debit - entry.credit
         if net == Decimal("0.00"):
             continue
+
+        # Income and expense balances are cumulative prior-period activity.
+        # Posting them on the cutover date corrupts every current-period P&L.
+        if _is_pnl_account(bc_account):
+            excluded_pnl_accounts.append(entry.full_name)
+            continue
+
+        opens.append(Open(date=cutover, account=bc_account))
 
         postings.append(Posting(
             account=bc_account,
@@ -1442,6 +1495,11 @@ def import_opening(
             currency="USD",
             meta=(("qb-name", entry.full_name),),
         ))
+
+    if excluded_pnl_accounts:
+        errors.append(
+            f"Excluded {len(excluded_pnl_accounts)} prior-period Income/Expenses balance(s) from the opening entry."
+        )
 
     if not postings:
         return ImportResult(
@@ -1476,6 +1534,16 @@ def import_opening(
         ),
         postings=tuple(postings),
     )
+
+    if any(_is_pnl_account(posting.account) for posting in opening_entry.postings):
+        return ImportResult(
+            entries_written=0,
+            accounts_opened=len(opens),
+            ledger_path=str(store_path),
+            coa_path=str(entity.coa_path),
+            errors=["Opening-balance invariant failed: QuickBooks openings may not post to Income or Expenses accounts."],
+            success=False,
+        )
 
     # Build ledger text
     ledger_text = render_ledger(
@@ -1564,6 +1632,45 @@ def import_opening(
     )
 
 
+def repair_opening(entity, folder: str | Path, cutover: date, *, apply: bool = False) -> OpeningRepairResult:
+    """Replace an invalid legacy opening with balance-sheet-only opening balances.
+
+    Inspection is the default. Applying the repair first writes the validated
+    replacement from the cash-basis balance sheet, then posts traceable reversals
+    for the invalid opening entries.
+    """
+    invalid_source_ids = invalid_opening_entries(entity, cutover=cutover)
+    if not invalid_source_ids:
+        return OpeningRepairResult(invalid_source_ids=[])
+    if not apply:
+        return OpeningRepairResult(invalid_source_ids=invalid_source_ids)
+
+    replacement = import_opening(entity, folder, cutover, source="balance-sheet")
+    if not replacement.success:
+        return OpeningRepairResult(
+            invalid_source_ids=invalid_source_ids,
+            replacement=replacement,
+            errors=replacement.errors,
+        )
+
+    from .ledger.importer import reverse_entry
+
+    try:
+        for source_id in invalid_source_ids:
+            reverse_entry(entity, source_id, "quickbooks-opening-repair")
+    except Exception as exc:
+        return OpeningRepairResult(
+            invalid_source_ids=invalid_source_ids,
+            replacement=replacement,
+            errors=[f"Replacement was written but reversing the legacy opening failed: {exc}"],
+        )
+    return OpeningRepairResult(
+        invalid_source_ids=invalid_source_ids,
+        reversed_entries=len(invalid_source_ids),
+        replacement=replacement,
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI surface
 # ---------------------------------------------------------------------------
@@ -1620,10 +1727,19 @@ def add_parser(subparsers) -> None:
         choices=["trial-balance", "balance-sheet"],
         default="trial-balance",
         help=(
-            "Where opening balances come from. 'balance-sheet' is the supported "
-            "fallback when the trial balance export is accrual-basis."
+            "Where balance-sheet-only opening balances come from. Trial-balance "
+            "imports exclude Income and Expenses; use balance-sheet when available."
         ),
     )
+
+    repair_parser = qb_sub.add_parser(
+        "repair-opening",
+        help="Inspect or repair a legacy QuickBooks opening that affects Income or Expenses",
+    )
+    repair_parser.add_argument("folder", type=Path, help="Folder containing QuickBooks CSV/XLSX exports")
+    repair_parser.add_argument("--entity", type=Path, required=True, dest="entity_path")
+    repair_parser.add_argument("--cutover", required=True, help="Opening-entry cutover date YYYY-MM-DD")
+    repair_parser.add_argument("--apply", action="store_true", help="Write a balance-sheet replacement and reverse the invalid opening")
 
 
 def run(args) -> int:
@@ -1689,6 +1805,30 @@ def run(args) -> int:
             for e in result.errors:
                 print(f"  - {e}", file=sys.stderr)
             return 1
+        return 0
+
+    elif args.qb_command == "repair-opening":
+        from .entity import load_entity
+        try:
+            entity = load_entity(args.entity_path)
+            cutover = datetime.strptime(args.cutover, "%Y-%m-%d").date()
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        result = repair_opening(entity, args.folder, cutover, apply=args.apply)
+        if result.errors:
+            print("Error: Opening repair failed.", file=sys.stderr)
+            for error in result.errors:
+                print(f"  - {error}", file=sys.stderr)
+            return 1
+        if not result.invalid_source_ids:
+            print("No invalid QuickBooks opening entry was found for this cutover.")
+            return 0
+        if not args.apply:
+            print(f"Found {len(result.invalid_source_ids)} invalid opening entry or entries that affect current-period P&L.")
+            print("Re-run with --apply to import balance-sheet-only openings and write traceable reversals.")
+            return 0
+        print(f"Repaired {result.reversed_entries} invalid QuickBooks opening entry or entries.")
         return 0
 
     print(f"Unknown qb command: {args.qb_command}", file=sys.stderr)

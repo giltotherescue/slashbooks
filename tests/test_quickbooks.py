@@ -921,6 +921,66 @@ class TestImportOpening(unittest.TestCase):
             self.assertEqual(result.entries_written, 1)
             self.assertGreater(result.accounts_opened, 0)
 
+    def test_trial_balance_opening_excludes_prior_period_pnl_and_january_pnl(self):
+        """A year-end trial balance must not create current-period P&L activity."""
+        import shutil
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+        from src.bookkeeping.reports.statements import profit_and_loss
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = Path(tmpdir) / "qb"
+            qb_dir.mkdir()
+            shutil.copy(_FIXTURES / "chart_of_accounts.csv", qb_dir / "chart_of_accounts.csv")
+            shutil.copy(_FIXTURES / "trial_balance_cash_basis.csv", qb_dir / "trial_balance_cash_basis.csv")
+            entity = self._make_entity(tmpdir)
+
+            result = self.import_opening(entity, qb_dir, date(2026, 1, 1))
+
+            self.assertTrue(result.success, result.errors)
+            opening = LedgerStore(default_store_path(entity.path)).load_entries()[0]
+            self.assertFalse(any(
+                posting.account.startswith(("Income:", "Expenses:"))
+                for posting in opening.postings
+            ))
+            january = profit_and_loss(entity.path, date(2026, 1, 1), date(2026, 1, 31))
+            self.assertEqual(january.totals["net_income"], Decimal("0.00"))
+
+    def test_repair_opening_replaces_legacy_pnl_opening_with_balance_sheet_opening(self):
+        import shutil
+        from src.bookkeeping.ledger.model import Entry, Posting
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+        from src.bookkeeping.quickbooks import invalid_opening_entries, repair_opening
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = Path(tmpdir) / "qb"
+            qb_dir.mkdir()
+            for filename in ("chart_of_accounts.csv", "trial_balance_cash_basis.csv", "balance_sheet_2025_12_31.csv"):
+                shutil.copy(_FIXTURES / filename, qb_dir / filename)
+            entity = self._make_entity(tmpdir)
+            store = LedgerStore(default_store_path(entity.path))
+            legacy = Entry(
+                date=date(2026, 1, 1),
+                narration="Legacy QuickBooks opening",
+                meta=(
+                    ("source-id", "quickbooks-opening-trial-balance-2026-01-01"),
+                    ("import-source", "quickbooks-opening"),
+                ),
+                postings=(
+                    Posting("Income:Legacy-Revenue", Decimal("-100.00")),
+                    Posting("Equity:Opening-Balances", Decimal("100.00")),
+                ),
+            )
+            with store.transaction() as conn:
+                store.insert_entries([legacy], conn)
+
+            preview = repair_opening(entity, qb_dir, date(2026, 1, 1))
+            self.assertEqual(preview.invalid_source_ids, ["quickbooks-opening-trial-balance-2026-01-01"])
+            repaired = repair_opening(entity, qb_dir, date(2026, 1, 1), apply=True)
+
+            self.assertTrue(repaired.success, repaired.errors)
+            self.assertEqual(repaired.reversed_entries, 1)
+            self.assertEqual(invalid_opening_entries(entity), [])
+
     def test_ledger_validates_after_import(self):
         """The written ledger must pass built-in validation."""
         from src.bookkeeping.ledger.validator import validate

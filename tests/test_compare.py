@@ -699,6 +699,32 @@ class TestConfidencePackage(unittest.TestCase):
         for key in required:
             self.assertIn(key, pkg, f"Missing key: {key}")
 
+    def test_confidence_package_fails_for_opening_entry_with_pnl_posting(self):
+        from src.bookkeeping.compare import confidence_package
+        from src.bookkeeping.ledger.model import Entry, Posting
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        store = LedgerStore(default_store_path(self._entity.path))
+        store.initialize()
+        invalid = Entry(
+            date=date(2026, 1, 1),
+            narration="Invalid QuickBooks opening",
+            meta=(("source-id", "quickbooks-opening-bad"), ("import-source", "quickbooks-opening")),
+            postings=(
+                Posting("Income:Consulting-Revenue", Decimal("-100.00")),
+                Posting("Equity:Opening-Balances", Decimal("100.00")),
+            ),
+        )
+        with store.transaction() as conn:
+            store.insert_entries([invalid], conn)
+
+        package = confidence_package(self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31))
+
+        self.assertFalse(package["migration_confident"])
+        self.assertEqual(package["fatal_migration_issues"][0]["source_id"], "quickbooks-opening-bad")
+        summary = (self._entity.reports_dir / "migration-confidence" / "confidence-summary.md").read_text(encoding="utf-8")
+        self.assertIn("Fatal Migration Issues", summary)
+
     def test_confidence_package_writes_files(self):
         """confidence_package writes comparison.json, differences.json, confidence-summary.md."""
         from src.bookkeeping.compare import confidence_package
