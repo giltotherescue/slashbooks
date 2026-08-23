@@ -150,18 +150,11 @@ should use cash basis where QBO offers it. If QBO cannot provide a cash-basis
 Trial Balance, inventory can still check whether the prior-period cash-basis
 Balance Sheet fallback is available.
 
-Basic QuickBooks Online export steps:
-
-1. Go to **Reports**, then **Standard reports**.
-2. Search for and open the report.
-3. Set the report date or period.
-4. If **Accounting method** is available, choose **Cash**, then select
-   **Run report**.
-5. Select **Export/Print** then **Export to Excel**.
-6. Move the downloaded file into `ingestion/quickbooks/`.
-
-For Chart of Accounts, go to **Accounting -> Chart of Accounts**, select
-**Run report**, then use the export icon to export to Excel.
+Use `/books-qbo-fetch` to collect the set through any browser integration available
+to the agent. It handles signed-in and signed-out sessions, calculates the two
+required Balance Sheet dates, stores untouched CSV/XLSX exports under
+`ingestion/quickbooks/`, and runs inventory before handing the files to onboarding
+or backtesting.
 
 For opening balances:
 

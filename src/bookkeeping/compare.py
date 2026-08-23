@@ -519,8 +519,8 @@ def _compare_pnl(
         pnl_path = pnl_files[0]
     try:
         qb_pnl = parse_profit_and_loss(pnl_path)
-    except Exception:
-        return [], []
+    except Exception as exc:
+        raise ValueError(f"Could not parse QuickBooks Profit and Loss export {pnl_path}: {exc}") from exc
 
     # Build our totals per beancount account
     our_totals: dict[str, Decimal] = {}
@@ -638,8 +638,8 @@ def _compare_bs(
         bs_path = bs_files[-1]
     try:
         qb_bs = parse_balance_sheet(bs_path)
-    except Exception:
-        return [], []
+    except Exception as exc:
+        raise ValueError(f"Could not parse QuickBooks Balance Sheet export {bs_path}: {exc}") from exc
 
     # Our balances by account
     our_balances: dict[str, Decimal] = {}
@@ -694,16 +694,25 @@ def _compare_tb(
     to_date: date,
     abs_t: Decimal,
     pct_t: Decimal,
+    readiness: Optional[ReadinessReport] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare trial balance totals (debit/credit sums)."""
     # Only compare if QB has a cash-basis TB
-    tb_files = _find_report_file(qb_folder, "trial_balance")
-    if not tb_files:
-        return [], []
+    tb_path: Optional[Path] = None
+    if readiness is not None:
+        for slot in readiness.slots:
+            if slot.report_key == "trial_balance" and slot.status == "present" and slot.file:
+                tb_path = Path(slot.file)
+                break
+    if tb_path is None:
+        tb_files = _find_report_file(qb_folder, "trial_balance")
+        if not tb_files:
+            return [], []
+        tb_path = tb_files[0]
     try:
-        qb_tb = parse_trial_balance(tb_files[0])
-    except Exception:
-        return [], []
+        qb_tb = parse_trial_balance(tb_path)
+    except Exception as exc:
+        raise ValueError(f"Could not parse QuickBooks Trial Balance export {tb_path}: {exc}") from exc
 
     if qb_tb.basis != "cash":
         # Cannot compare against accrual TB — this is a blocking condition
@@ -768,8 +777,8 @@ def _compare_gl_counts(
         gl_path = gl_files[0]
     try:
         qb_gl = parse_general_ledger(gl_path)
-    except Exception:
-        return [], []
+    except Exception as exc:
+        raise ValueError(f"Could not parse QuickBooks General Ledger export {gl_path}: {exc}") from exc
 
     # QB counts per mapped account, filtered to period
     qb_counts: dict[str, int] = {}
@@ -880,8 +889,8 @@ def _find_unmatched(
 
     try:
         qb_gl = parse_general_ledger(gl_path)
-    except Exception:
-        return [], [], 0
+    except Exception as exc:
+        raise ValueError(f"Could not parse QuickBooks General Ledger export {gl_path}: {exc}") from exc
 
     # QB transactions in period — BANK/CARD SECTIONS ONLY (Bug 3 fix).
     # Each real-world transaction appears in exactly one bank/card section in the
@@ -1048,7 +1057,7 @@ def compare_period(
     # Readiness check — inventory assigns files to slots by period semantics,
     # so every subsequent grain can use slot.file to get the period-correct CSV
     # rather than relying on alphabetical sort order (Bug 1 fix).
-    readiness = inventory(qb_folder)
+    readiness = inventory(qb_folder, from_date=from_date, to_date=to_date)
     report.readiness = readiness
 
     abs_t, pct_t = _materiality_thresholds(entity)
@@ -1064,8 +1073,11 @@ def compare_period(
         try:
             coa_accounts = parse_chart_of_accounts(Path(coa_slot.file))
             qb_type_map = {a.name: a.account_type for a in coa_accounts}
-        except Exception:
-            pass
+        except Exception as e:
+            report.errors.append(
+                f"Chart of Accounts comparison error: "
+                f"Could not parse QuickBooks Chart of Accounts export {coa_slot.file}: {e}"
+            )
     if not qb_type_map:
         # Fallback: scan folder directly
         for f in iter_export_files(qb_folder):
@@ -1106,7 +1118,7 @@ def compare_period(
 
     # (c) Trial balance
     try:
-        tm, ti = _compare_tb(entity, qb_folder, to_date, abs_t, pct_t)
+        tm, ti = _compare_tb(entity, qb_folder, to_date, abs_t, pct_t, readiness=readiness)
         report.material_diffs.extend(tm)
         report.immaterial_diffs.extend(ti)
     except Exception as e:
@@ -1304,7 +1316,7 @@ def confidence_package(
 
     Returns the full package dict.
     """
-    readiness = inventory(qb_folder)
+    readiness = inventory(qb_folder, from_date=from_date, to_date=to_date)
     comparison = compare_period(entity, qb_folder, from_date, to_date)
     diffs = load_differences(entity)
     spot_sample = _spot_audit_sample(entity, from_date, to_date)
@@ -1322,6 +1334,7 @@ def confidence_package(
             }
             for s in readiness.slots
         ],
+        "collection_errors": readiness.collection_errors,
         "ambiguous_files": readiness.ambiguous_files,
     }
 
@@ -1361,6 +1374,10 @@ def confidence_package(
         for slot in readiness.slots
         if slot.status in {"blocked", "missing"}
     ]
+    blocking_items.extend(
+        {"label": "QuickBooks collection error", "reason": error}
+        for error in readiness.collection_errors
+    )
     blocking_items.extend(
         {"label": "Comparison error", "reason": error}
         for error in comparison.errors

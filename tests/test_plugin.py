@@ -17,6 +17,7 @@ import re
 import stat
 import subprocess
 import sys
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,7 @@ SKILL_NAMES = [
     "books-dashboard",
     "books-close",
     "books-review",
+    "books-qbo-fetch",
     "books-backtest",
     "books-ask",
     "books-export",
@@ -229,6 +231,22 @@ class TestManifests(unittest.TestCase):
         self.assertEqual(plugin["source"], {"source": "local", "path": "./"})
         self.assertEqual(plugin["policy"]["installation"], "AVAILABLE")
         self.assertEqual(plugin["policy"]["authentication"], "ON_INSTALL")
+
+    def test_release_versions_match(self):
+        with (REPO_ROOT / "pyproject.toml").open("rb") as f:
+            package_version = tomllib.load(f)["project"]["version"]
+        with (PLUGIN_DIR / "plugin.json").open() as f:
+            claude_version = json.load(f)["version"]
+        with (PLUGIN_DIR / "marketplace.json").open() as f:
+            marketplace_version = json.load(f)["plugins"][0]["version"]
+        with (CODEX_PLUGIN_DIR / "plugin.json").open() as f:
+            codex_version = json.load(f)["version"]
+
+        self.assertEqual(
+            {package_version, claude_version, marketplace_version, codex_version},
+            {package_version},
+            "Package and plugin release versions must match",
+        )
 
     def test_claude_md_symlinks_to_agents_md(self):
         agents = REPO_ROOT / "AGENTS.md"

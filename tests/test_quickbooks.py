@@ -597,6 +597,52 @@ class TestParseGeneralLedger(unittest.TestCase):
         self.assertEqual(first.amount, Decimal("5000.00"))
         self.assertEqual(first.txn_date, date(2025, 1, 15))
 
+    def test_header_mapping_handles_distribution_account_column(self):
+        """A current QBO GL may insert Distribution account before the date."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "general_ledger_10_columns.csv"
+            path.write_text(
+                "Acme Consulting LLC,,,,,,,,,\n"
+                "General Ledger,,,,,,,,,\n"
+                '"January-December, 2025",,,,,,,,,\n'
+                "\n"
+                ",Distribution account,Transaction date,Transaction type,Num,Name,Description,Split,Amount,Balance\n"
+                ",Checking (4512) - 1,,,,,,,,\n"
+                ",,01/15/2025,Deposit,,Client A,January payment,Consulting Revenue,\"5,000.00\",\"13,000.00\"\n"
+                ",Total for Checking (4512) - 1,,,,,,,\"5,000.00\",\n"
+                '"Cash Basis Thursday, June 12, 2025 10:45 AM GMT-05:00",,,,,,,,,\n',
+                encoding="utf-8",
+            )
+
+            gl = self.parse(path)
+
+            self.assertEqual(len(gl.transactions), 1)
+            transaction = gl.transactions[0]
+            self.assertEqual(transaction.account, "Checking (4512) - 1")
+            self.assertEqual(transaction.txn_date, date(2025, 1, 15))
+            self.assertEqual(transaction.txn_type, "Deposit")
+            self.assertEqual(transaction.name, "Client A")
+            self.assertEqual(transaction.split, "Consulting Revenue")
+            self.assertEqual(transaction.amount, Decimal("5000.00"))
+            self.assertEqual(transaction.balance, Decimal("13000.00"))
+
+    def test_dated_row_without_account_context_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "general_ledger_missing_account.csv"
+            path.write_text(
+                "Acme Consulting LLC,,,,,,,,\n"
+                "General Ledger,,,,,,,,\n"
+                '"January-December, 2025",,,,,,,,\n'
+                "\n"
+                ",Transaction date,Transaction type,Num,Name,Description,Split,Amount,Balance\n"
+                ",01/15/2025,Deposit,,Client A,January payment,Consulting Revenue,5000.00,13000.00\n"
+                '"Cash Basis Thursday, June 12, 2025 10:45 AM GMT-05:00",,,,,,,,\n',
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "no preceding account context"):
+                self.parse(path)
+
 
 class TestQBNameMapping(unittest.TestCase):
     """Tests for map_qb_account — name sanitization and type-to-root mapping."""
@@ -730,6 +776,29 @@ class TestInventory(unittest.TestCase):
 
     def tearDown(self):
         self.reset()
+
+    @staticmethod
+    def _copy_full_set(tmpdir: str, *, prior_tb: bool = False) -> None:
+        import shutil
+
+        for name in (
+            "trial_balance_cash_basis",
+            "chart_of_accounts",
+            "balance_sheet_2025_12_31",
+            "balance_sheet_comparison",
+            "profit_and_loss",
+            "general_ledger",
+            "transaction_detail",
+        ):
+            shutil.copy(_FIXTURES / f"{name}.csv", Path(tmpdir) / f"{name}.csv")
+        if prior_tb:
+            tb_path = Path(tmpdir) / "trial_balance_cash_basis.csv"
+            tb_path.write_text(
+                tb_path.read_text(encoding="utf-8").replace(
+                    "As of Dec 31, 2025", "As of Dec 31, 2024"
+                ),
+                encoding="utf-8",
+            )
 
     def test_cash_basis_folder_green(self):
         """Happy path: cash-basis folder produces a green readiness report for TB."""
@@ -874,6 +943,132 @@ class TestInventory(unittest.TestCase):
             self.assertEqual(bs_comp_slot.status, "present")
             # Should be different files
             self.assertNotEqual(bs_slot.file, bs_comp_slot.file)
+
+    def test_explicit_full_collection_validates_exact_contract(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+
+            report = self.inventory(
+                tmpdir,
+                from_date=date(2025, 1, 1),
+                to_date=date(2025, 12, 31),
+                company="Acme Consulting LLC",
+            )
+
+            self.assertTrue(report.is_ready(), report.to_dict())
+
+    def test_cutover_mode_requires_only_opening_balance_slots(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+
+            report = self.inventory(
+                tmpdir,
+                cutover=date(2025, 1, 1),
+                company="Acme Consulting LLC",
+            )
+
+            self.assertTrue(report.is_ready(), report.to_dict())
+            self.assertEqual(
+                [slot.report_key for slot in report.slots],
+                ["chart_of_accounts", "trial_balance", "balance_sheet"],
+            )
+
+    def test_mixed_company_blocks_selected_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+            pl_path = Path(tmpdir) / "profit_and_loss.csv"
+            pl_path.write_text(
+                pl_path.read_text(encoding="utf-8").replace(
+                    "Acme Consulting LLC", "Beta Services LLC"
+                ),
+                encoding="utf-8",
+            )
+
+            report = self.inventory(
+                tmpdir,
+                from_date=date(2025, 1, 1),
+                to_date=date(2025, 12, 31),
+                company="Acme Consulting LLC",
+            )
+            slot = next(s for s in report.slots if s.report_key == "profit_and_loss")
+
+            self.assertEqual(slot.status, "blocked")
+            self.assertIn("Beta Services LLC", slot.block_reason)
+
+    def test_unselected_report_from_another_company_blocks_collection(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+            stale_path = Path(tmpdir) / "stale_profit_and_loss.csv"
+            stale_path.write_text(
+                (_FIXTURES / "profit_and_loss.csv").read_text(encoding="utf-8")
+                .replace("Acme Consulting LLC", "Beta Services LLC")
+                .replace("January-December, 2025", "January-December, 2024"),
+                encoding="utf-8",
+            )
+
+            report = self.inventory(
+                tmpdir,
+                from_date=date(2025, 1, 1),
+                to_date=date(2025, 12, 31),
+                company="Acme Consulting LLC",
+            )
+
+            self.assertFalse(report.is_ready())
+            self.assertEqual(len(report.collection_errors), 1)
+            self.assertIn("mixes QuickBooks companies", report.collection_errors[0])
+
+    def test_wrong_period_blocks_selected_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+            gl_path = Path(tmpdir) / "general_ledger.csv"
+            gl_path.write_text(
+                gl_path.read_text(encoding="utf-8").replace(
+                    "January-December, 2025", "January-November, 2025"
+                ),
+                encoding="utf-8",
+            )
+
+            report = self.inventory(
+                tmpdir,
+                from_date=date(2025, 1, 1),
+                to_date=date(2025, 12, 31),
+            )
+            slot = next(s for s in report.slots if s.report_key == "general_ledger")
+
+            self.assertEqual(slot.status, "blocked")
+            self.assertIn("expected 2025-01-01 through 2025-12-31", slot.block_reason)
+
+    def test_accrual_non_trial_balance_report_blocks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+            pl_path = Path(tmpdir) / "profit_and_loss.csv"
+            pl_path.write_text(
+                pl_path.read_text(encoding="utf-8").replace("Cash Basis", "Accrual Basis"),
+                encoding="utf-8",
+            )
+
+            report = self.inventory(tmpdir)
+            slot = next(s for s in report.slots if s.report_key == "profit_and_loss")
+
+            self.assertEqual(slot.status, "blocked")
+            self.assertIn("Accrual", slot.block_reason)
+
+    def test_recognized_but_unparseable_report_blocks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._copy_full_set(tmpdir, prior_tb=True)
+            gl_path = Path(tmpdir) / "general_ledger.csv"
+            gl_path.write_text(
+                gl_path.read_text(encoding="utf-8").replace(
+                    "Transaction date", "Posting date"
+                ),
+                encoding="utf-8",
+            )
+
+            report = self.inventory(tmpdir)
+            slot = next(s for s in report.slots if s.report_key == "general_ledger")
+
+            self.assertEqual(slot.status, "blocked")
+            self.assertIn("cannot be parsed safely", slot.block_reason)
 
 
 class TestImportOpening(unittest.TestCase):
@@ -1275,6 +1470,22 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(args.qb_command, "inventory")
         self.assertEqual(args.folder, _FIXTURES)
 
+    def test_inventory_parser_accepts_validation_contract(self):
+        import argparse
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        self.add_parser(subparsers)
+
+        args = parser.parse_args([
+            "qb", "inventory", str(_FIXTURES),
+            "--from", "2025-01-01", "--to", "2025-12-31",
+            "--company", "Acme Consulting LLC",
+        ])
+
+        self.assertEqual(args.from_date, date(2025, 1, 1))
+        self.assertEqual(args.to_date, date(2025, 12, 31))
+        self.assertEqual(args.company, "Acme Consulting LLC")
+
     def test_inventory_command_runs(self):
         import argparse
         from src.bookkeeping.quickbooks import run
@@ -1325,6 +1536,18 @@ class TestDateAwareSlotAssignment(unittest.TestCase):
         )
         self.assertEqual(
             self.parse_range("January-December, 2025"), (date(2025, 1, 1), date(2025, 12, 31))
+        )
+        self.assertEqual(
+            self.parse_range("January 15-February 20, 2025"),
+            (date(2025, 1, 15), date(2025, 2, 20)),
+        )
+        self.assertEqual(
+            self.parse_range("December 15, 2025-January 15, 2026"),
+            (date(2025, 12, 15), date(2026, 1, 15)),
+        )
+        self.assertEqual(
+            self.parse_range("01/15/2025 - 02/20/2025"),
+            (date(2025, 1, 15), date(2025, 2, 20)),
         )
         self.assertEqual(self.parse_range("nonsense"), (None, None))
         self.assertEqual(self.parse_range(None), (None, None))

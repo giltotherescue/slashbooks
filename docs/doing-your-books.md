@@ -179,11 +179,9 @@ That compares Slashbooks output against QuickBooks exports and helps surface
 category or balance differences before you rely on the new system.
 
 If you don't already have the QuickBooks exports, ask the agent to walk you
-through them. It should create and use `ingestion/quickbooks/` inside the company
-folder. For a migration/backtest, Slashbooks expects exports for Chart of Accounts,
-Trial Balance, Balance Sheet, Profit and Loss, General Ledger, and Transaction
-Detail by Account, with cash-basis reports where QuickBooks offers the basis
-selector.
+through them with `/books-qbo-fetch`. It should use `ingestion/quickbooks/` inside
+the company folder, collect the exact periods needed for opening balances and the
+comparison, and validate the set before `/books-backtest` continues.
 
 ## Tax time and accountant handoff
 

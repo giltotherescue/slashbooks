@@ -1,6 +1,6 @@
 {
   "name": "slashbooks",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
   "author": {
     "name": "Gil Hildebrand"
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Slashbooks",
     "shortDescription": "Bookkeeping for cash-basis businesses.",
-    "longDescription": "Your AI agent keeps local books current, helps review transactions, answers questions from deterministic reports, and prepares accountant-ready exports.",
+    "longDescription": "Your AI agent keeps local books current, collects and validates QuickBooks Online evidence for migrations and backtests, helps review transactions, answers questions from deterministic reports, and prepares accountant-ready exports.",
     "developerName": "Gil Hildebrand",
     "category": "Productivity",
     "capabilities": [
@@ -31,6 +31,7 @@
       "Ledger validation",
       "Review queues",
       "Provider API downloads",
+      "QuickBooks Online report collection",
       "QuickBooks backtesting",
       "Accountant exports"
     ],
