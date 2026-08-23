@@ -57,20 +57,22 @@ patterns in search queries.
 
 Locate `entity.json` in the current directory or ask the owner for the entity path.
 
-List all open items:
+List all pending work. This includes proposed items, uncategorised staged activity,
+and duplicate candidates:
 
 ```
 scripts/books queue list --entity <entity-path> --status open
 ```
 
-Tell the owner how many items are waiting (e.g., "You have 8 transactions to review.
-Let's go through them one at a time."). If the queue is empty, say so and stop.
+Tell the owner how many items are waiting. For a large queue, group routine,
+high-confidence items that share one proposed category; keep unusual, material, and
+ambiguous items one by one. If the queue is empty, say so and stop.
 
 ---
 
 ## Step 2 — Present each item
 
-For each item in the queue, show it one at a time. Retrieve the details:
+For each unusual or ambiguous item in the queue, show it one at a time. Retrieve the details:
 
 ```
 scripts/books queue show --entity <entity-path> --item <item-id>
@@ -124,6 +126,15 @@ Acknowledge the correction: "Got it — I've marked that as [plain English categ
 and I'll remember that for future transactions from [counterparty]."
 
 Move to the next item.
+
+For a routine group, create the proposals and request one clear approval for that
+category. Do not include items with a different counterparty pattern or a duplicate
+candidate in the group:
+
+```
+scripts/books queue propose-group --entity <entity-path> --source-id <id> --source-id <id> --category <account> --reasoning "<plain English explanation>"
+scripts/books queue confirm-group --entity <entity-path> --category <account>
+```
 
 ---
 

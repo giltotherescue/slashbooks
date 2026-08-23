@@ -74,6 +74,9 @@ Walk through the checklist in plain English. For each check, explain what it mea
 
 - **Review queue empty** — "All transactions have been confirmed or corrected. If
   there are items still in the queue, use `/books-review` first."
+- **Reconciliation evidence** — "Every source account has a recorded balance
+  match, the source opening balance plus activity agrees with its ending balance,
+  and no changed evidence has reopened an earlier resolution."
 - **Equity reconciliation** — "Assets minus liabilities equals owner equity — the
   books balance."
 - **Entity metadata** — "Country, tax jurisdiction, and operating currency are

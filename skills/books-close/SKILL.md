@@ -74,6 +74,21 @@ transactions:
 scripts/books connector banksync download --from <start-date> --to <end-date> --output <entity>/ingestion/banksync-<date>.json
 ```
 
+Before ingesting a connected feed, check that every provider account ID is mapped
+to the intended existing cash or card account. If a mapping is missing, stop and
+show the owner the proposed account choice. Record it only after they confirm:
+
+```
+scripts/books entity bank-account-map <entity-path> --feed-account-id <provider-account-id> --account <existing-ledger-account>
+```
+
+Then ingest the download directly. Do not reshape its JSON or rely on a display
+name to choose a cash account:
+
+```
+scripts/books ingest <entity>/ingestion/banksync-<date>.json --entity <entity-path> --source banksync
+```
+
 For each CSV source (if the owner has a new export file ready), parse it:
 
 ```
@@ -88,9 +103,10 @@ JSON to the owner.
 
 ## Step 3 — Categorize pending items
 
-The system automatically categorizes transactions from known counterparties (those
-above the trust threshold). For items that need a decision, the queue holds them for
-review.
+The system automatically posts trusted repeated patterns. The queue status also
+includes uncategorised staged activity and likely duplicate candidates, so treat all
+of them as pending close work. A duplicate candidate is not posted: compare it to the
+named earlier transaction before deciding how to proceed.
 
 For each item that needs categorization:
 
@@ -102,6 +118,15 @@ For each item that needs categorization:
 
 ```
 scripts/books queue propose --entity <entity-path> --source-id <id> --category <account> --reasoning "<plain English explanation>"
+```
+
+For repeated, high-confidence items that share one category, make one explicit group
+proposal, then have the owner approve that group. Keep unusual, material, and
+ambiguous transactions one by one:
+
+```
+scripts/books queue propose-group --entity <entity-path> --source-id <id> --source-id <id> --category <account> --reasoning "<plain English explanation>"
+scripts/books queue confirm-group --entity <entity-path> --category <account>
 ```
 
 After proposing all items, show the queue summary:
@@ -118,12 +143,31 @@ present it as part of closing the month rather than as an unrelated follow-up.
 
 ## Step 4 — Reconcile
 
-Once the review queue is drained (or the owner explicitly asks to reconcile now),
-run reconciliation:
+Once all staged items, proposals, and duplicate candidates are resolved (or the
+owner explicitly asks to reconcile now), validate the source period before calling a
+ledger difference a bookkeeping discrepancy. A current bank balance with activity
+only through an earlier date is not enough. Record the source opening balance, the
+signed activity total for exactly that window, the balance snapshot time, and the
+last effective transaction date when they are available:
 
 ```
-scripts/books reconcile --entity <entity-path> --all --as-of <end-date>
+scripts/books reconcile --entity <entity-path> --account <account> --source-balance <ending> --source-opening-balance <opening> --source-transaction-total <signed-activity-total> --source-snapshot-at <timestamp> --source-through <date> --as-of <end-date>
 ```
+
+If the source-integrity residual is non-zero, say the feed is internally
+inconsistent and do not describe it as a books discrepancy or say the period is
+reconciled.
+
+For each duplicate candidate, show the existing and new source IDs, date, amount,
+and description. After the owner decides, record the decision explicitly:
+
+```
+scripts/books queue resolve-duplicate --entity <entity-path> --source-id <id> --decision duplicate
+scripts/books queue resolve-duplicate --entity <entity-path> --source-id <id> --decision distinct
+```
+
+A distinct item returns to the normal categorization workflow. Never edit the
+candidate or alias files by hand.
 
 Present any discrepancies in plain English: "Your checking balance in the
 books is $42,193.55, but the source shows $42,318.55 — a $125.00 difference. I've

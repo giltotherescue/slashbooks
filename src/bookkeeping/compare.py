@@ -80,6 +80,7 @@ from .quickbooks import (
     parse_trial_balance,
     parse_general_ledger,
     map_qb_account,
+    invalid_opening_entries,
     _reset_collision_registry,
 )
 from .reports.statements import (
@@ -1349,8 +1350,44 @@ def confidence_package(
     # Missing source data items
     missing_source = [_diff_to_dict(d) for d in diffs if d.category == "missing-source-data"]
 
-    # Blocking items
-    blocking = [s for s in readiness.slots if s.status == "blocked"]
+    # Certification is fail-closed. Missing/blocked reference files, comparison
+    # errors, and unresolved material differences all mean the package is not a
+    # confidence certificate yet.
+    blocking_items = [
+        {
+            "label": slot.label,
+            "reason": slot.block_reason or "Required reference file is missing.",
+        }
+        for slot in readiness.slots
+        if slot.status in {"blocked", "missing"}
+    ]
+    blocking_items.extend(
+        {"label": "Comparison error", "reason": error}
+        for error in comparison.errors
+    )
+    unresolved_material_diffs = [
+        diff for diff in comparison.material_diffs if diff.status == "open"
+    ]
+    if unresolved_material_diffs:
+        blocking_items.append({
+            "label": "Unresolved material differences",
+            "reason": (
+                f"{len(unresolved_material_diffs)} material difference(s) remain open; "
+                "classify and resolve or explicitly accept each one before certification."
+            ),
+        })
+    invalid_openings = invalid_opening_entries(entity)
+    fatal_migration_issues = [
+        {
+            "code": "invalid-opening-account",
+            "source_id": source_id,
+            "message": (
+                "A QuickBooks opening entry contains an account outside Assets, Liabilities, "
+                "or Equity:Opening-Balances and can corrupt cutover reporting."
+            ),
+        }
+        for source_id in invalid_openings
+    ]
 
     package = {
         "entity": entity.name,
@@ -1368,7 +1405,9 @@ def confidence_package(
         "differences_by_category": by_category,
         "missing_source_data": missing_source,
         "spot_audit_sample": spot_sample,
-        "blocking_items": [{"label": s.label, "reason": s.block_reason} for s in blocking],
+        "blocking_items": blocking_items,
+        "fatal_migration_issues": fatal_migration_issues,
+        "migration_confident": not blocking_items and not fatal_migration_issues,
         "errors": comparison.errors,
     }
 
@@ -1427,6 +1466,13 @@ def _render_confidence_markdown(package: dict) -> str:
         lines.append("")
         for b in package["blocking_items"]:
             lines.append(f"- **{b['label']}**: {b['reason']}")
+        lines.append("")
+
+    if package.get("fatal_migration_issues"):
+        lines.append("## Fatal Migration Issues")
+        lines.append("")
+        for issue in package["fatal_migration_issues"]:
+            lines.append(f"- **{issue['source_id']}**: {issue['message']}")
         lines.append("")
 
     # Match summary
@@ -1660,14 +1706,21 @@ def backtest_run(
         conf_dir = _confidence_dir(entity)
         print_fn(f"  Confidence package written to: {conf_dir}")
         blocking = package.get("blocking_items", [])
+        fatal_issues = package.get("fatal_migration_issues", [])
         if blocking:
             print_fn("")
             print_fn("BLOCKING ITEMS — cannot certify migration:")
             for b in blocking:
                 print_fn(f"  - {b['label']}: {b['reason']}")
+        if fatal_issues:
+            print_fn("")
+            print_fn("FATAL MIGRATION ISSUES — cannot certify migration:")
+            for issue in fatal_issues:
+                print_fn(f"  - {issue['source_id']}: {issue['message']}")
     except Exception as exc:
         print_fn(f"  WARNING: Confidence package error: {exc}")
         blocking = []
+        fatal_issues = []
         package = {}
 
     # --- Summary ---
@@ -1686,11 +1739,14 @@ def backtest_run(
     # Check for accrual TB blocking
     if package:
         blocking = package.get("blocking_items", [])
-        if blocking and not partial:
+        fatal_issues = package.get("fatal_migration_issues", [])
+        if (blocking or fatal_issues) and not partial:
             print_fn("")
-            print_fn("Cannot certify migration: the following blocking items must be resolved first:")
+            print_fn("Cannot certify migration: the following issues must be resolved first:")
             for b in blocking:
                 print_fn(f"  - {b['label']}: {b['reason']}")
+            for issue in fatal_issues:
+                print_fn(f"  - {issue['source_id']}: {issue['message']}")
             return 2
 
     return 0

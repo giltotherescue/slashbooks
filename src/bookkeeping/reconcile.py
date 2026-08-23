@@ -51,6 +51,9 @@ class ReconcileResult:
     status: str           # "clean" | "discrepancy"
     causes: list[str] = field(default_factory=list)
     record_id: str = ""
+    source_integrity_residual: Decimal | None = None
+    source_snapshot_at: str | None = None
+    source_through: str | None = None
 
     @property
     def is_clean(self) -> bool:
@@ -66,6 +69,10 @@ class ReconcileResult:
             f"  Difference:      {_fmt(self.discrepancy)}",
             f"  Status:          {self.status.upper()}",
         ]
+        if self.source_integrity_residual is not None:
+            lines.append(f"  Source integrity residual: {_fmt(self.source_integrity_residual)}")
+        if self.status == "source-inconsistent":
+            lines.append("  The source activity does not reconcile to its reported balance, so this is not yet a books discrepancy.")
         if self.causes:
             lines.append("  Suspected causes:")
             for c in self.causes:
@@ -230,6 +237,10 @@ def reconcile(
     account: str,
     source_balance: Decimal,
     as_of: date,
+    source_opening_balance: Decimal | None = None,
+    source_transaction_total: Decimal | None = None,
+    source_snapshot_at: str | None = None,
+    source_through: str | None = None,
 ) -> ReconcileResult:
     """Reconcile ledger balance for *account* against *source_balance* as of *as_of*.
 
@@ -247,12 +258,17 @@ def reconcile(
         conn.close()
 
     discrepancy = source_balance - ledger_bal
+    source_residual: Decimal | None = None
+    source_inconsistent = False
+    if source_opening_balance is not None and source_transaction_total is not None:
+        source_residual = source_opening_balance + source_transaction_total - source_balance
+        source_inconsistent = abs(source_residual) >= Decimal("0.01")
     is_clean = abs(discrepancy) < Decimal("0.01")
 
-    status = "clean" if is_clean else "discrepancy"
+    status = "source-inconsistent" if source_inconsistent else ("clean" if is_clean else "discrepancy")
     causes: list[str] = []
 
-    if not is_clean:
+    if not is_clean and not source_inconsistent:
         causes = _detect_causes(entity_path, account, as_of, discrepancy)
 
     rec_id = _record_id(account, as_of.isoformat())
@@ -266,6 +282,7 @@ def reconcile(
             existing_idx = i
             break
 
+    now = datetime.now(timezone.utc).isoformat()
     record: dict[str, Any] = {
         "record_id": rec_id,
         "account": account,
@@ -273,17 +290,32 @@ def reconcile(
         "ledger_balance": str(ledger_bal),
         "source_balance": str(source_balance),
         "discrepancy": str(discrepancy),
-        "status": "open" if not is_clean else "clean",
+        "status": "source-inconsistent" if source_inconsistent else ("open" if not is_clean else "clean"),
         "causes": causes,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "source_integrity_residual": str(source_residual) if source_residual is not None else None,
+        "source_snapshot_at": source_snapshot_at,
+        "source_through": source_through,
+        "created_at": now,
+        "updated_at": now,
         "resolved_at": None,
         "resolution_note": None,
     }
 
     if existing_idx is not None:
-        # Preserve resolution status if already resolved
         existing = records[existing_idx]
-        if existing.get("status") == "resolved":
+        record["created_at"] = existing.get("created_at") or now
+        # A resolution applies only to the exact balances that were reviewed.
+        # Changed source or ledger data must reopen the record automatically.
+        resolution_fields = (
+            "ledger_balance",
+            "source_balance",
+            "discrepancy",
+            "source_integrity_residual",
+            "source_snapshot_at",
+            "source_through",
+        )
+        same_evidence = all(existing.get(field) == record.get(field) for field in resolution_fields)
+        if existing.get("status") == "resolved" and same_evidence and not source_inconsistent:
             record["status"] = "resolved"
             record["resolved_at"] = existing.get("resolved_at")
             record["resolution_note"] = existing.get("resolution_note")
@@ -302,6 +334,9 @@ def reconcile(
         status=status,
         causes=causes,
         record_id=rec_id,
+        source_integrity_residual=source_residual,
+        source_snapshot_at=source_snapshot_at,
+        source_through=source_through,
     )
 
 
@@ -322,6 +357,11 @@ def resolve(
     records = _load_records(entity_path)
     for r in records:
         if r.get("record_id") == rec_id:
+            if r.get("status") == "source-inconsistent":
+                raise ValueError(
+                    "Source-inconsistent reconciliation records cannot be resolved manually; "
+                    "refresh the source period and reconcile again."
+                )
             r["status"] = "resolved"
             r["resolved_at"] = datetime.now(timezone.utc).isoformat()
             r["resolution_note"] = note
@@ -364,6 +404,10 @@ def add_parser(subparsers: Any) -> None:
         default=None,
         help="Source/bank balance as a decimal amount (e.g. 42318.55)",
     )
+    p.add_argument("--source-opening-balance", default=None, help="Source opening balance for the activity window")
+    p.add_argument("--source-transaction-total", default=None, help="Signed total of source activity in that same window")
+    p.add_argument("--source-snapshot-at", default=None, help="Timestamp when the source ending balance was read")
+    p.add_argument("--source-through", default=None, help="Latest effective transaction date included by the source")
     p.add_argument(
         "--balances-json",
         dest="balances_json",
@@ -395,7 +439,7 @@ def run(args: Any) -> int:
         try:
             resolve(entity, args.account, args.as_of, args.note)
             print(f"Marked resolved: {args.account} as of {args.as_of}")
-        except KeyError as e:
+        except (KeyError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
         return 0
@@ -416,8 +460,19 @@ def run(args: Any) -> int:
             print("Error: provide --account + --source-balance or --balances-json", file=sys.stderr)
             return 1
 
+        if (args.source_opening_balance is None) != (args.source_transaction_total is None):
+            print("Error: source integrity needs both --source-opening-balance and --source-transaction-total", file=sys.stderr)
+            return 1
+        opening = Decimal(args.source_opening_balance) if args.source_opening_balance is not None else None
+        activity = Decimal(args.source_transaction_total) if args.source_transaction_total is not None else None
         for account, source_bal in accounts_and_balances:
-            result = reconcile(entity, account, source_bal, as_of)
+            result = reconcile(
+                entity, account, source_bal, as_of,
+                source_opening_balance=opening,
+                source_transaction_total=activity,
+                source_snapshot_at=args.source_snapshot_at,
+                source_through=args.source_through,
+            )
             print(result.to_text())
             print()
 

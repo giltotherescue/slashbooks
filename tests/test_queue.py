@@ -46,11 +46,13 @@ from bookkeeping.queue import (  # noqa: E402
     _update_learned_context,
     correct,
     confirm,
+    confirm_group,
     eligible_for_autopost,
     list_queue_items,
     load_learned_context,
     make_categorizer,
     propose,
+    propose_group,
     reopen_if_amount_changed,
     reconcile_pending_amount_changes,
     write_session_summary,
@@ -166,6 +168,34 @@ class TestSanitizeReasoning(unittest.TestCase):
     def test_normal_text_unchanged(self) -> None:
         raw = "Software subscription for CI tooling."
         self.assertEqual(_sanitize_reasoning(raw), raw)
+
+
+class TestPendingWorkVisibility(unittest.TestCase):
+
+    def test_open_list_includes_unproposed_staged_items(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            _add_pending_categorization(entity, "staged-1", "Uncategorised vendor")
+
+            items = list_queue_items(entity, status="open")
+
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["source_id"], "staged-1")
+            self.assertEqual(items[0]["status"], "staged")
+
+    def test_grouped_proposal_and_confirmation_posts_only_the_selected_group(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            _add_pending_categorization(entity, "group-1", "Repeat vendor")
+            _add_pending_categorization(entity, "group-2", "Repeat vendor")
+            _add_pending_categorization(entity, "other", "Other vendor")
+            propose_group(entity, ["group-1", "group-2"], "Expenses:Software", "Repeated subscription")
+
+            confirmed = confirm_group(entity, "Expenses:Software", SESSION, ts=TS)
+
+            self.assertEqual([item["source_id"] for item in confirmed], ["group-1", "group-2"])
+            staged = json.loads((entity.staging_dir / "pending-categorization.json").read_text(encoding="utf-8"))
+            self.assertEqual([item["id"] for item in staged], ["other"])
 
 
 # ---------------------------------------------------------------------------

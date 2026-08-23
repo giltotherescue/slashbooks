@@ -190,9 +190,14 @@ def add_parser(subparsers: Any) -> None:
     snapshot.add_argument("--entity", required=True, type=Path)
     snapshot.add_argument("--store", type=Path, default=None)
     snapshot.add_argument("--output", required=True, type=Path)
+    from . import corrections
+    corrections.add_parser(ledger_sub)
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.ledger_command in {"reverse", "correct", "reclassify-bank", "split-equity"}:
+        from . import corrections
+        return corrections.run(args)
     if args.ledger_command == "migrate":
         entity = load_entity(args.entity)
         result = migrate_beancount_to_store(

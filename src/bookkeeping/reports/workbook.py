@@ -36,12 +36,8 @@ Sheets (in order)
 8. Adjustment Log  — original/reversal/correction trace rows
 9. Open Questions  — structured rows from reports/open-questions.json when present
 
-Queue-empty sanity check coupling note
----------------------------------------
-queue.py does not exist yet (being built in a parallel unit).  The queue_empty
-check counts open items by listing review-queue/*.json files with
-status == "open" directly.  This lightweight file-system coupling is documented
-here so it can be replaced by a queue.py import when that module lands.
+Queue-empty sanity checks use the public queue reader so staged transactions,
+reopened items, and duplicate candidates cannot disappear from close checks.
 """
 
 from __future__ import annotations
@@ -64,6 +60,8 @@ from .statements import (
     trial_balance,
 )
 from ..reconcile import list_discrepancies
+from ..entity import load_entity
+from ..queue import list_queue_items
 from ..ledger.store import LedgerStore, default_store_path
 from ..ledger.validator import parse_ledger
 from ..connectors.payroll import provider_spec
@@ -264,22 +262,16 @@ class XlsxSheet:
 
 
 def _count_open_queue_items(entity_path: Path) -> int:
-    """Count open review-queue items by scanning review-queue/*.json directly.
-
-    This is a lightweight file-system coupling used because queue.py is being
-    built in a parallel unit.  Replace with a queue.py import when available.
-    """
-    queue_dir = entity_path / "review-queue"
-    if not queue_dir.is_dir():
-        return 0
-    count = 0
-    for jf in queue_dir.glob("*.json"):
-        try:
-            data = json.loads(jf.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and data.get("status") == "open":
-                count += 1
-        except (json.JSONDecodeError, OSError):
-            pass
+    """Count every unresolved review item through the canonical queue reader."""
+    entity = load_entity(entity_path)
+    actionable = {"open", "reopened", "staged", "duplicate-candidate"}
+    count = sum(
+        1 for item in list_queue_items(entity)
+        if str(item.get("status") or "") in actionable
+    )
+    quarantine = entity_path / "review-queue" / "quarantine"
+    if quarantine.is_dir():
+        count += len(list(quarantine.glob("*.error.json")))
     return count
 
 
@@ -339,31 +331,62 @@ def _run_queue_empty_check(entity_path: Path) -> SanityCheck:
 
 
 def _run_reconciliation_clean_check(entity_path: Path) -> SanityCheck:
-    """Check: no open reconciliation discrepancies."""
+    """Check that reconciliation evidence exists and has no unresolved state."""
     try:
-        open_discs = list_discrepancies(entity_path, status="open")
-        if not open_discs:
+        records = list_discrepancies(entity_path)
+        if not records:
             return SanityCheck(
                 check="reconciliation_clean",
-                status="pass",
-                detail="All reconciliation records are clean or resolved.",
-            )
-        else:
-            accts = [r.get("account", "?") for r in open_discs[:3]]
-            more = f" (and {len(open_discs) - 3} more)" if len(open_discs) > 3 else ""
-            return SanityCheck(
-                check="reconciliation_clean",
-                status="warn",
+                status="fail",
                 detail=(
-                    f"There are {len(open_discs)} open reconciliation discrepancy/discrepancies: "
-                    + ", ".join(accts) + more + ". "
-                    "Review these before delivering the final export."
+                    "No reconciliation records were found. Reconcile each source account "
+                    "before generating the final export."
                 ),
             )
+
+        unsafe = [
+            record for record in records
+            if record.get("status") in {"open", "source-inconsistent"}
+            or (
+                record.get("source_integrity_residual") not in (None, "")
+                and abs(Decimal(str(record["source_integrity_residual"]))) >= Decimal("0.01")
+            )
+        ]
+        missing_integrity = [
+            record for record in records
+            if record.get("status") == "clean"
+            and record.get("source_integrity_residual") in (None, "")
+        ]
+        if unsafe:
+            accts = [str(r.get("account", "?")) for r in unsafe[:3]]
+            more = f" (and {len(unsafe) - 3} more)" if len(unsafe) > 3 else ""
+            return SanityCheck(
+                check="reconciliation_clean",
+                status="fail",
+                detail=(
+                    f"There are {len(unsafe)} unresolved or source-inconsistent reconciliation(s): "
+                    + ", ".join(accts) + more + ". "
+                    "Resolve the source data or books difference before delivering the final export."
+                ),
+            )
+        if missing_integrity:
+            return SanityCheck(
+                check="reconciliation_clean",
+                status="fail",
+                detail=(
+                    f"{len(missing_integrity)} clean balance match(es) lack source-period integrity evidence. "
+                    "Re-run reconciliation with the source opening balance and signed activity total."
+                ),
+            )
+        return SanityCheck(
+            check="reconciliation_clean",
+            status="pass",
+            detail="All reconciliation records are clean or resolved, with source-period integrity checked.",
+        )
     except Exception as exc:
         return SanityCheck(
             check="reconciliation_clean",
-            status="warn",
+            status="fail",
             detail=f"Could not check reconciliation records: {exc}",
         )
 

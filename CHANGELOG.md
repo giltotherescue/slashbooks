@@ -4,6 +4,35 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - Unreleased
+
+### Added
+
+- Stable BankSync account-ID mappings, direct download ingestion, source-period
+  integrity checks, grouped queue review, and public correction commands.
+- Preview-first repair for unsafe legacy QuickBooks opening entries.
+- An explicit duplicate-candidate decision command and complete test-suite CI.
+
+### Changed
+
+- QuickBooks openings now carry only Assets and Liabilities, with one
+  `Equity:Opening-Balances` offset. Prior-period income, expenses, and individual
+  equity balances never enter the new period.
+- Accountant exports now fail closed when review work is staged, reconciliation
+  evidence is absent or internally inconsistent, or a resolved reconciliation's
+  underlying balances change.
+- Migration confidence now requires complete reference files, successful
+  comparisons, no invalid openings, and no unresolved material differences.
+
+### Fixed
+
+- Prevented prior-year QuickBooks P&L balances from appearing as current-period
+  activity at cutover.
+- Made opening repair atomic so a failed reversal cannot leave a replacement
+  opening partially applied.
+- Prevented connected-bank display-name changes and recovered provider IDs from
+  silently creating duplicate cash activity.
+
 ## [0.1.0] - 2026-06-18
 
 Initial public release of Slashbooks: agent-native, cash-basis bookkeeping that
