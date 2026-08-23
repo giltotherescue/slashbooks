@@ -1,6 +1,6 @@
 ---
 name: books
-description: Start here for company books. Use when the user wants to set up bookkeeping, close books, review transactions, backtest against QuickBooks, ask financial questions, create dashboards or reports, or export files for an accountant.
+description: Start here for company books. Use when the user wants to set up bookkeeping, collect QuickBooks reports, close books, review transactions, backtest against QuickBooks, ask financial questions, create dashboards or reports, or export files for an accountant.
 allowed-tools: Bash(scripts/books:*) Read Edit
 ---
 
@@ -49,6 +49,7 @@ Look for `entity.json` in the current directory.
 - If the user wants a setup review, readiness check, or sanity check before relying on the books, route to `books-checkup`.
 - If the user wants dashboards, charts, visual summaries, snapshots, or formatted reports, route to `books-dashboard`.
 - If review items are pending, route to `books-review`.
+- If the user needs to download or prepare QuickBooks Online source reports, route to `books-qbo-fetch`.
 - If the user is replacing QuickBooks or validating historical books, route to `books-backtest`.
 - If the user asks a financial question, route to `books-ask`.
 - If the user needs exports, tax files, or files for an accountant, route to `books-export`.

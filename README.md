@@ -38,6 +38,7 @@ back to QuickBooks or Google Sheets.
 - Review unfamiliar transactions before they become trusted rules.
 - Ask for an analysis of anything, anytime, with every figure at hand.
 - Get any report, chart, or export on demand, without clicking around an app.
+- Collect and validate the QuickBooks Online reports needed for a migration or backtest.
 - Backtest against QuickBooks exports (prove the numbers match) before trusting a migration.
 - Export the workbook and CSV files your accountant needs at tax time.
 
@@ -202,6 +203,7 @@ the right workflow.
 ```text
 /books
 ├── /books-onboard      set up a company, sources, and opening balances
+├── /books-qbo-fetch    collect the required QuickBooks Online reports
 ├── /books-backtest     compare against QuickBooks exports before trusting it
 ├── /books-checkup      review setup, mappings, and close readiness
 ├── /books-close        import activity, review unknowns, and finalize a period

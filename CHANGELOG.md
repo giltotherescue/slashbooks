@@ -4,6 +4,32 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-08-23
+
+### Added
+
+- `/books-qbo-fetch`, a browser-independent workflow that collects and validates
+  the exact QuickBooks Online report set needed for opening balances, historical
+  comparison, migration, backfill validation, or backtesting.
+- Signed-in, signed-out, MFA/security-challenge, changed-navigation, virtualized
+  report-list, missed-download-event, and manual-download paths for QBO report
+  collection across Codex, Claude, agent-browser, Playwright, and equivalent
+  browser integrations.
+
+### Changed
+
+- The main books router, QuickBooks onboarding, backtest workflow, README, and user
+  guide now direct owners to `/books-qbo-fetch` when QuickBooks source reports are
+  missing or incomplete.
+- QuickBooks collection now requires explicit dates and cash-basis reports, keeps
+  one coherent active evidence set, and uses deterministic inventory validation
+  before any downstream import or comparison.
+
+### Fixed
+
+- General Ledger parsing now maps fields by the exported header, including current
+  QBO layouts that insert a `Distribution account` column before transaction dates.
+
 ## [0.2.0] - 2026-08-22
 
 ### Added

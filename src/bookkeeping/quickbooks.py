@@ -18,6 +18,7 @@ CLI surface (wired in by orchestrator — never by editing cli.py):
 """
 
 import csv
+from itertools import islice
 import json
 import re
 import sys
@@ -44,6 +45,27 @@ class RowType:
     SECTION = "section"
     BLANK = "blank"
     BASIS_FOOTER = "basis-footer"
+
+
+_SUBTOTAL_LABELS = {
+    "TOTAL",
+    "Gross Profit",
+    "Net Income",
+    "Net Other Income",
+    "Net Operating Income",
+    "Total Income",
+    "Total Expenses",
+    "Total Other Income",
+    "Total Other Expenses",
+}
+
+
+def _is_basis_footer_label(label: str) -> bool:
+    return bool(re.match(r'^(Cash|Accrual) Basis\b', label, re.IGNORECASE))
+
+
+def _is_subtotal_label(label: str) -> bool:
+    return label.startswith("Total for ") or label in _SUBTOTAL_LABELS
 
 
 def classify_row(row: list[str], report_type: Optional[str] = None) -> str:
@@ -78,7 +100,7 @@ def classify_row(row: list[str], report_type: Optional[str] = None) -> str:
         return RowType.BLANK
 
     # 2. Basis footer
-    if re.match(r'^(Cash|Accrual) Basis\b', col0, re.IGNORECASE):
+    if _is_basis_footer_label(col0):
         return RowType.BASIS_FOOTER
 
     # 3/4. Column header — recognized patterns
@@ -95,10 +117,7 @@ def classify_row(row: list[str], report_type: Optional[str] = None) -> str:
         return RowType.COLUMN_HEADER
 
     # 5. Subtotal rows — "Total for X" or bare "TOTAL" or "Gross Profit" / "Net Income"
-    if col0.startswith("Total for ") or col0 == "TOTAL":
-        return RowType.SUBTOTAL
-    if col0 in ("Gross Profit", "Net Income", "Net Other Income", "Net Operating Income",
-                "Total Income", "Total Expenses", "Total Other Income", "Total Other Expenses"):
+    if _is_subtotal_label(col0):
         return RowType.SUBTOTAL
 
     # Determine if this is a 9-column (GL/TD) context by checking if cols 1-8 are
@@ -502,7 +521,7 @@ def parse_chart_of_accounts(path: Path) -> list[QBAccount]:
     max_idx = max(name_idx, type_idx, detail_idx, lock_idx or 0)
 
     accounts = []
-    for row in rows[header_index + 1:]:
+    for row in islice(rows, header_index + 1, None):
         if not row or all(c.strip() == "" for c in row):
             continue
         while len(row) <= max_idx:
@@ -691,8 +710,10 @@ def parse_profit_and_loss(path: Path) -> ProfitAndLoss:
 def parse_general_ledger(path: Path) -> GeneralLedger:
     """Parse a QuickBooks General Ledger export.
 
-    Returns a GeneralLedger with transaction rows only.
-    Opening-balance and subtotal rows are classified and skipped.
+    Returns a GeneralLedger with transaction rows only. QBO can add formatting or
+    report-specific columns before ``Transaction date``, so fields are mapped from
+    the detected header instead of fixed positions. Opening-balance and subtotal
+    rows are skipped.
     """
     rows = _read_export_rows(path)
     rtype = detect_report_type(rows)
@@ -705,67 +726,76 @@ def parse_general_ledger(path: Path) -> GeneralLedger:
     period = detect_date_range(rows) or ""
     basis = detect_basis(rows)
 
+    header_index: Optional[int] = None
+    field_indexes: dict[str, int] = {}
+    for index, row in enumerate(rows):
+        normalized = _normalized_header(row)
+        if "transaction date" not in normalized or "transaction type" not in normalized:
+            continue
+        if "amount" not in normalized or "balance" not in normalized:
+            continue
+        header_index = index
+        field_indexes = {name: normalized.index(name) for name in (
+            "transaction date", "transaction type", "num", "name",
+            "description", "split", "amount", "balance",
+        ) if name in normalized}
+        break
+
+    if header_index is None:
+        raise ValueError(f"QuickBooks detail header was not found: {path}")
+
+    def field(row: list[str], name: str) -> str:
+        index = field_indexes.get(name)
+        if index is None or index >= len(row):
+            return ""
+        return row[index].strip()
+
     transactions = []
     current_account = ""
-    in_data = False
 
-    for row in rows:
-        while len(row) < 9:
-            row.append("")
-
-        row_t = classify_row(row)
-
-        if row_t == RowType.COLUMN_HEADER and row[1].strip() == "Transaction date":
-            in_data = True
-            continue
-        if not in_data:
-            continue
-        if row_t in (RowType.BLANK, RowType.BASIS_FOOTER):
-            continue
-
-        col0 = row[0].strip()
-
-        if row_t == RowType.SECTION:
-            # Account header — update current account context
-            current_account = col0
-            continue
-        if row_t == RowType.OPENING_BALANCE:
-            # Opening balance row — skip (not a transaction)
-            continue
-        if row_t == RowType.SUBTOTAL:
-            continue
-        if row_t == RowType.TRANSACTION:
-            date_str = row[1].strip()
+    for row in islice(rows, header_index + 1, None):
+        date_str = field(row, "transaction date")
+        if date_str:
             try:
                 txn_date = _parse_us_date(date_str)
             except ValueError:
                 continue
-            txn_type = row[2].strip()
-            num = row[3].strip()
-            name = row[4].strip()
-            description = row[5].strip()
-            split = row[6].strip()
-            amt_str = row[7].strip()
-            bal_str = row[8].strip()
+            if not current_account:
+                raise ValueError(
+                    f"QuickBooks detail row has no preceding account context: {path}"
+                )
+
             try:
-                amount = parse_amount(amt_str)
+                amount = parse_amount(field(row, "amount"))
             except ValueError:
                 amount = Decimal("0.00")
             try:
-                balance = parse_amount(bal_str)
+                balance = parse_amount(field(row, "balance"))
             except ValueError:
                 balance = Decimal("0.00")
+
             transactions.append(GLTransaction(
                 account=current_account,
                 txn_date=txn_date,
-                txn_type=txn_type,
-                num=num,
-                name=name,
-                description=description,
-                split=split,
+                txn_type=field(row, "transaction type"),
+                num=field(row, "num"),
+                name=field(row, "name"),
+                description=field(row, "description"),
+                split=field(row, "split"),
                 amount=amount,
                 balance=balance,
             ))
+            continue
+
+        nonempty = [cell.strip() for cell in row if cell.strip()]
+        if len(nonempty) != 1:
+            continue
+        candidate = nonempty[0]
+        if _is_subtotal_label(candidate) or _looks_like_amount(candidate):
+            continue
+        if _is_basis_footer_label(candidate):
+            continue
+        current_account = candidate
 
     return GeneralLedger(company=company, period=period, basis=basis, transactions=transactions)
 
@@ -941,10 +971,12 @@ class FileFingerprint:
     """Metadata fingerprinted from a single QuickBooks export file."""
     path: str
     report_type: Optional[str]
+    company: Optional[str]
     date_range: Optional[str]
     basis: Optional[str]
     row_count: int
     ambiguous: bool = False
+    parse_error: Optional[str] = None
 
 
 @dataclass
@@ -962,12 +994,13 @@ class ReadinessReport:
     """Import-readiness report for a QB export folder."""
     folder: str
     slots: list[ReadinessSlot] = field(default_factory=list)
+    collection_errors: list[str] = field(default_factory=list)
     ambiguous_files: list[str] = field(default_factory=list)
     fingerprints: list[FileFingerprint] = field(default_factory=list)
 
     def is_ready(self) -> bool:
         """Return True only when all required slots are present and unblocked."""
-        return all(s.status == "present" for s in self.slots)
+        return not self.collection_errors and all(s.status == "present" for s in self.slots)
 
     def blocked_slots(self) -> list[ReadinessSlot]:
         return [s for s in self.slots if s.status == "blocked"]
@@ -977,6 +1010,7 @@ class ReadinessReport:
         return {
             "folder": self.folder,
             "ready": self.is_ready(),
+            "collection_errors": self.collection_errors,
             "slots": [
                 {
                     "key": s.report_key,
@@ -992,10 +1026,12 @@ class ReadinessReport:
                 {
                     "path": fp.path,
                     "report_type": fp.report_type,
+                    "company": fp.company,
                     "date_range": fp.date_range,
                     "basis": fp.basis,
                     "row_count": fp.row_count,
                     "ambiguous": fp.ambiguous,
+                    "parse_error": fp.parse_error,
                 }
                 for fp in self.fingerprints
             ],
@@ -1010,22 +1046,53 @@ def _fingerprint_file(path: Path) -> FileFingerprint:
         return FileFingerprint(
             path=str(path),
             report_type=None,
+            company=None,
             date_range=None,
             basis=None,
             row_count=0,
             ambiguous=True,
         )
     rtype = detect_report_type(rows)
+    company = None
+    if rtype != "chart_of_accounts" and rows and rows[0]:
+        company = rows[0][0].strip().strip('"') or None
     date_range = detect_date_range(rows)
     basis = detect_basis(rows)
+    parse_error = _report_parse_error(path, rtype)
     return FileFingerprint(
         path=str(path),
         report_type=rtype,
+        company=company,
         date_range=date_range,
         basis=basis,
         row_count=len(rows),
         ambiguous=(rtype is None),
+        parse_error=parse_error,
     )
+
+
+def _report_parse_error(path: Path, report_type: Optional[str]) -> Optional[str]:
+    """Return a blocking parser error for a recognized report export."""
+    if report_type is None:
+        return None
+    try:
+        if report_type == "chart_of_accounts":
+            if not parse_chart_of_accounts(path):
+                raise ValueError("report contains no accounts")
+        elif report_type == "trial_balance":
+            if not parse_trial_balance(path).entries:
+                raise ValueError("report contains no trial-balance entries")
+        elif report_type == "balance_sheet":
+            if not parse_balance_sheet(path).rows:
+                raise ValueError("report contains no balance-sheet rows")
+        elif report_type == "profit_and_loss":
+            if not parse_profit_and_loss(path).rows:
+                raise ValueError("report does not contain a single Total column")
+        elif report_type in ("general_ledger", "transaction_detail"):
+            parse_general_ledger(path)
+    except Exception as exc:
+        return str(exc)
+    return None
 
 
 _MONTHS = {
@@ -1052,20 +1119,63 @@ def _last_day_of_month(year: int, month: int) -> date:
 def parse_qb_date_range(text: str | None) -> tuple[Optional[date], Optional[date]]:
     """Parse QuickBooks header date strings into (start, end) dates.
 
-    Handles: "As of Dec 31, 2025" -> (None, 2025-12-31);
-    "January-May, 2026" -> (2026-01-01, 2026-05-31);
-    "January-December, 2025" -> (2025-01-01, 2025-12-31).
+    Handles as-of dates, month ranges, explicit day ranges, and numeric ranges.
     Unrecognized text -> (None, None).
     """
     if not text:
         return None, None
     cleaned = text.strip().strip('"')
-    m = re.match(r"As of\s+([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", cleaned)
+
+    def _month_date(month_name: str, day_text: str, year_text: str) -> Optional[date]:
+        month = _MONTHS.get(month_name.lower())
+        if not month:
+            return None
+        try:
+            return date(int(year_text), month, int(day_text))
+        except ValueError:
+            return None
+
+    m = re.fullmatch(r"As of\s+([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", cleaned)
     if m:
-        month = _MONTHS.get(m.group(1).lower())
-        if month:
-            return None, date(int(m.group(3)), month, int(m.group(2)))
-    m = re.match(r"([A-Za-z]+)\s*-\s*([A-Za-z]+),\s*(\d{4})", cleaned)
+        return None, _month_date(m.group(1), m.group(2), m.group(3))
+
+    m = re.fullmatch(
+        r"([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})\s*-\s*"
+        r"([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})",
+        cleaned,
+    )
+    if m:
+        return (
+            _month_date(m.group(1), m.group(2), m.group(3)),
+            _month_date(m.group(4), m.group(5), m.group(6)),
+        )
+
+    m = re.fullmatch(
+        r"([A-Za-z]+)\s+(\d{1,2})\s*-\s*"
+        r"([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})",
+        cleaned,
+    )
+    if m:
+        return (
+            _month_date(m.group(1), m.group(2), m.group(5)),
+            _month_date(m.group(3), m.group(4), m.group(5)),
+        )
+
+    m = re.fullmatch(
+        r"(\d{1,2})/(\d{1,2})/(\d{4})\s*-\s*"
+        r"(\d{1,2})/(\d{1,2})/(\d{4})",
+        cleaned,
+    )
+    if m:
+        try:
+            return (
+                date(int(m.group(3)), int(m.group(1)), int(m.group(2))),
+                date(int(m.group(6)), int(m.group(4)), int(m.group(5))),
+            )
+        except ValueError:
+            return None, None
+
+    m = re.fullmatch(r"([A-Za-z]+)\s*-\s*([A-Za-z]+),\s*(\d{4})", cleaned)
     if m:
         start_month = _MONTHS.get(m.group(1).lower())
         end_month = _MONTHS.get(m.group(2).lower())
@@ -1081,15 +1191,15 @@ def _fp_end_date(fp: FileFingerprint) -> Optional[date]:
 
 def _assign_slots(
     fingerprints: list[FileFingerprint],
+    *,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    cutover: Optional[date] = None,
 ) -> tuple[dict[str, FileFingerprint], list[str]]:
     """Assign fingerprints to report slots by period semantics.
 
-    The comparison period is the period of the most recent ranged report
-    (general ledger / P&L by latest end date); the prior-period end is the
-    day before the comparison period starts. Trial balance and balance
-    sheets are assigned by their parsed as-of dates, not filename order —
-    QuickBooks downloads commonly produce "(1)" duplicate filenames whose
-    sort order has nothing to do with their content.
+    Explicit expected dates win when supplied. Legacy callers without dates retain
+    the prior latest-period inference so existing folders remain inspectable.
     """
     by_type: dict[str, list[FileFingerprint]] = {}
     ambiguous: list[str] = []
@@ -1107,6 +1217,74 @@ def _assign_slots(
 
     def _latest_end(candidates: list[FileFingerprint]) -> FileFingerprint:
         return max(candidates, key=lambda fp: (_fp_end_date(fp) or date.min))
+
+    def _exact_range(
+        candidates: list[FileFingerprint],
+        expected_start: date,
+        expected_end: date,
+    ) -> Optional[FileFingerprint]:
+        return next(
+            (
+                fp for fp in candidates
+                if parse_qb_date_range(fp.date_range) == (expected_start, expected_end)
+            ),
+            None,
+        )
+
+    def _exact_end(
+        candidates: list[FileFingerprint], expected_end: date,
+    ) -> Optional[FileFingerprint]:
+        return next((fp for fp in candidates if _fp_end_date(fp) == expected_end), None)
+
+    explicit_start = from_date
+    explicit_end = to_date
+    prior_end = (cutover or explicit_start) - timedelta(days=1) if (cutover or explicit_start) else None
+
+    if explicit_start is not None and explicit_end is not None:
+        for key in ("general_ledger", "transaction_detail", "profit_and_loss"):
+            candidates = by_type.get(key, [])
+            if candidates:
+                slot_map[key] = (
+                    _exact_range(candidates, explicit_start, explicit_end)
+                    or _latest_end(candidates)
+                )
+
+        tb_candidates = by_type.get("trial_balance", [])
+        if tb_candidates:
+            slot_map["trial_balance"] = (
+                _exact_end(tb_candidates, prior_end) if prior_end else None
+            ) or _latest_end(tb_candidates)
+
+        bs_candidates = by_type.get("balance_sheet", [])
+        if bs_candidates:
+            prior_match = _exact_end(bs_candidates, prior_end) if prior_end else None
+            end_match = _exact_end(bs_candidates, explicit_end)
+            if prior_match:
+                slot_map["balance_sheet"] = prior_match
+            else:
+                slot_map["balance_sheet"] = min(
+                    bs_candidates, key=lambda fp: (_fp_end_date(fp) or date.max)
+                )
+            if end_match and end_match is not slot_map["balance_sheet"]:
+                slot_map["balance_sheet_comparison"] = end_match
+            else:
+                remaining = [fp for fp in bs_candidates if fp is not slot_map["balance_sheet"]]
+                if remaining:
+                    slot_map["balance_sheet_comparison"] = _latest_end(remaining)
+        return slot_map, ambiguous
+
+    if cutover is not None:
+        tb_candidates = by_type.get("trial_balance", [])
+        if tb_candidates:
+            slot_map["trial_balance"] = (
+                _exact_end(tb_candidates, prior_end) if prior_end else None
+            ) or _latest_end(tb_candidates)
+        bs_candidates = by_type.get("balance_sheet", [])
+        if bs_candidates:
+            slot_map["balance_sheet"] = (
+                _exact_end(bs_candidates, prior_end) if prior_end else None
+            ) or _latest_end(bs_candidates)
+        return slot_map, ambiguous
 
     # Ranged reports: the comparison period is the latest-ending range.
     comparison_start: Optional[date] = None
@@ -1163,24 +1341,73 @@ def _assign_slots(
     return slot_map, ambiguous
 
 
-def inventory(folder: str | Path) -> ReadinessReport:
+def _normalize_company_name(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
+def inventory(
+    folder: str | Path,
+    *,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    cutover: Optional[date] = None,
+    company: Optional[str] = None,
+) -> ReadinessReport:
     """Fingerprint all CSV/XLSX exports in *folder* and produce a readiness report.
 
-    Per-file blocking flags:
-    - Trial Balance with accrual basis -> BLOCKED (cash-basis required)
-    - Missing expected file -> MISSING (partial onboarding resumable)
-    - Unrecognized file -> listed as ambiguous
+    Pass ``from_date`` and ``to_date`` for a complete comparison collection, or
+    ``cutover`` for an opening-balance-only collection. Explicit modes validate
+    exact report dates. All modes fail closed on mixed companies, non-cash basis,
+    and reports that cannot be parsed by the downstream reader.
 
     Returns a ReadinessReport with deterministic JSON output.
     """
+    if (from_date is None) != (to_date is None):
+        raise ValueError("from_date and to_date must be supplied together")
+    if cutover is not None and from_date is not None:
+        raise ValueError("cutover cannot be combined with from_date/to_date")
+    if from_date is not None and from_date > to_date:
+        raise ValueError("from_date must be on or before to_date")
+
     folder = Path(folder)
     export_files = iter_export_files(folder)
 
     fingerprints = [_fingerprint_file(f) for f in export_files]
-    slot_map, ambiguous_files = _assign_slots(fingerprints)
+    slot_map, ambiguous_files = _assign_slots(
+        fingerprints,
+        from_date=from_date,
+        to_date=to_date,
+        cutover=cutover,
+    )
+
+    expected_reports = (
+        _EXPECTED_REPORTS[:3] if cutover is not None else _EXPECTED_REPORTS
+    )
+    known_companies = [
+        fp.company for fp in fingerprints
+        if fp.report_type != "chart_of_accounts" and fp.company
+    ]
+    expected_company = company or (known_companies[0] if known_companies else None)
+    expected_company_key = (
+        _normalize_company_name(expected_company) if expected_company else None
+    )
+    collection_errors = []
+    unexpected_companies = sorted({
+        fp.company for fp in fingerprints
+        if fp.report_type != "chart_of_accounts"
+        and fp.company
+        and expected_company_key is not None
+        and _normalize_company_name(fp.company) != expected_company_key
+    })
+    if unexpected_companies:
+        collection_errors.append(
+            "The folder mixes QuickBooks companies. Expected "
+            f"{expected_company!r}; also found {', '.join(repr(name) for name in unexpected_companies)}."
+        )
+    prior_end = (cutover or from_date) - timedelta(days=1) if (cutover or from_date) else None
 
     slots = []
-    for key in _EXPECTED_REPORTS:
+    for key in expected_reports:
         label = _REPORT_LABELS[key]
         if key not in slot_map:
             slots.append(ReadinessSlot(
@@ -1191,19 +1418,65 @@ def inventory(folder: str | Path) -> ReadinessReport:
             continue
 
         fp = slot_map[key]
+        block_reason = None
+        if fp.parse_error:
+            block_reason = f"The export cannot be parsed safely: {fp.parse_error}"
+        elif key != "chart_of_accounts" and not fp.company:
+            block_reason = "The export does not identify its QuickBooks company."
+        elif (
+            key != "chart_of_accounts"
+            and expected_company_key is not None
+            and fp.company is not None
+            and _normalize_company_name(fp.company) != expected_company_key
+        ):
+            block_reason = (
+                f"The export is for {fp.company!r}, not {expected_company!r}."
+            )
+        elif key != "chart_of_accounts" and fp.basis != "cash":
+            detected = fp.basis.title() if fp.basis else "unknown"
+            if key == "trial_balance":
+                block_reason = (
+                    f"Trial Balance is {detected} Basis. Re-export it from QuickBooks "
+                    "with 'Cash Basis' selected, or use the cash-basis Balance Sheet "
+                    "fallback if available."
+                )
+            else:
+                block_reason = (
+                    f"The report basis is {detected}. Re-export it with Cash selected."
+                )
+        elif from_date is not None and to_date is not None:
+            actual_start, actual_end = parse_qb_date_range(fp.date_range)
+            if key in ("profit_and_loss", "general_ledger", "transaction_detail"):
+                if (actual_start, actual_end) != (from_date, to_date):
+                    block_reason = (
+                        f"The report period is {fp.date_range!r}; expected "
+                        f"{from_date.isoformat()} through {to_date.isoformat()}."
+                    )
+            elif key in ("trial_balance", "balance_sheet") and actual_end != prior_end:
+                block_reason = (
+                    f"The report as-of date is {fp.date_range!r}; expected "
+                    f"{prior_end.isoformat()}."
+                )
+            elif key == "balance_sheet_comparison" and actual_end != to_date:
+                block_reason = (
+                    f"The report as-of date is {fp.date_range!r}; expected "
+                    f"{to_date.isoformat()}."
+                )
+        elif cutover is not None and key in ("trial_balance", "balance_sheet"):
+            actual_end = _fp_end_date(fp)
+            if actual_end != prior_end:
+                block_reason = (
+                    f"The report as-of date is {fp.date_range!r}; expected "
+                    f"{prior_end.isoformat()}."
+                )
 
-        # Opening balances for Slashbooks are cash-basis; an accrual TB would mix bases.
-        if key == "trial_balance" and fp.basis == "accrual":
+        if block_reason:
             slots.append(ReadinessSlot(
                 report_key=key,
                 label=label,
                 status="blocked",
                 file=fp.path,
-                block_reason=(
-                    "Trial Balance is Accrual Basis. "
-                    "Re-export it from QuickBooks with 'Cash Basis' selected, "
-                    "or use the cash-basis Balance Sheet fallback if available."
-                ),
+                block_reason=block_reason,
             ))
             continue
 
@@ -1217,6 +1490,7 @@ def inventory(folder: str | Path) -> ReadinessReport:
     return ReadinessReport(
         folder=str(folder),
         slots=slots,
+        collection_errors=collection_errors,
         ambiguous_files=ambiguous_files,
         fingerprints=fingerprints,
     )
@@ -1830,6 +2104,27 @@ def add_parser(subparsers) -> None:
         dest="as_json",
         help="Output as JSON",
     )
+    inv_parser.add_argument(
+        "--from",
+        type=date.fromisoformat,
+        dest="from_date",
+        help="Expected comparison start date (YYYY-MM-DD; requires --to)",
+    )
+    inv_parser.add_argument(
+        "--to",
+        type=date.fromisoformat,
+        dest="to_date",
+        help="Expected comparison end date (YYYY-MM-DD; requires --from)",
+    )
+    inv_parser.add_argument(
+        "--cutover",
+        type=date.fromisoformat,
+        help="Validate an opening-balance-only set for this cutover date",
+    )
+    inv_parser.add_argument(
+        "--company",
+        help="Expected QuickBooks company name",
+    )
 
     # import-opening <folder> --entity <path> --cutover YYYY-MM-DD
     imp_parser = qb_sub.add_parser(
@@ -1878,7 +2173,13 @@ def run(args) -> int:
     from datetime import datetime
 
     if args.qb_command == "inventory":
-        report = inventory(args.folder)
+        report = inventory(
+            args.folder,
+            from_date=args.from_date,
+            to_date=args.to_date,
+            cutover=args.cutover,
+            company=args.company,
+        )
         if args.as_json:
             print(json.dumps(report.to_dict(), indent=2))
         else:
@@ -1893,6 +2194,11 @@ def run(args) -> int:
                     print(f"        File: {slot.file}")
                 if slot.block_reason:
                     print(f"        Reason: {slot.block_reason}")
+            if report.collection_errors:
+                print()
+                print("  Collection errors:")
+                for error in report.collection_errors:
+                    print(f"    ! {error}")
             if report.ambiguous_files:
                 print()
                 print("  Unrecognized files (ambiguous):")

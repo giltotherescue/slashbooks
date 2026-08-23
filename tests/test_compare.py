@@ -774,6 +774,70 @@ class TestConfidencePackage(unittest.TestCase):
         self.assertFalse(package["migration_confident"])
         self.assertTrue(any(item["label"] == "Comparison error" for item in package["blocking_items"]))
 
+    def test_unparseable_required_qbo_report_blocks_confidence(self):
+        """A parser failure must not be mistaken for a comparison with no differences."""
+        from src.bookkeeping.compare import compare_period, confidence_package
+
+        with patch(
+            "src.bookkeeping.compare.parse_profit_and_loss",
+            side_effect=ValueError("invalid QuickBooks export"),
+        ):
+            report = compare_period(
+                self._entity,
+                _QB_MATCH,
+                date(2026, 1, 1),
+                date(2026, 3, 31),
+            )
+            package = confidence_package(
+                self._entity,
+                _QB_MATCH,
+                date(2026, 1, 1),
+                date(2026, 3, 31),
+            )
+
+        self.assertTrue(any(
+            error.startswith("P&L comparison error: Could not parse QuickBooks Profit and Loss export")
+            for error in report.errors
+        ))
+        self.assertFalse(package["migration_confident"])
+        self.assertTrue(any(
+            item["label"] == "Comparison error"
+            and "Could not parse QuickBooks Profit and Loss export" in item["reason"]
+            for item in package["blocking_items"]
+        ))
+
+    def test_mixed_company_collection_blocks_confidence(self):
+        import shutil
+
+        from src.bookkeeping.compare import confidence_package
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_folder = Path(tmpdir) / "qb"
+            shutil.copytree(_QB_MATCH, qb_folder)
+            source = next(qb_folder.glob("*profit*loss*.csv"))
+            stale = qb_folder / "stale-profit-and-loss.csv"
+            stale.write_text(
+                source.read_text(encoding="utf-8")
+                .replace("Acme Consulting LLC", "Beta Services LLC")
+                .replace("January-March, 2026", "January-March, 2025"),
+                encoding="utf-8",
+            )
+
+            package = confidence_package(
+                self._entity,
+                qb_folder,
+                date(2026, 1, 1),
+                date(2026, 3, 31),
+            )
+
+        self.assertFalse(package["migration_confident"])
+        self.assertFalse(package["readiness_recap"]["ready"])
+        self.assertTrue(any(
+            item["label"] == "QuickBooks collection error"
+            and "mixes QuickBooks companies" in item["reason"]
+            for item in package["blocking_items"]
+        ))
+
     def test_confidence_package_writes_files(self):
         """confidence_package writes comparison.json, differences.json, confidence-summary.md."""
         from src.bookkeeping.compare import confidence_package

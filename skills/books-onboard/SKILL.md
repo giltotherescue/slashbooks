@@ -272,45 +272,22 @@ Ask: "Are you migrating from QuickBooks, or starting fresh?"
 
 **If migrating from QuickBooks:**
 
-Do not assume the owner already has the export files. First explain what to export
-from QuickBooks as Excel/CSV files and put in `<entity-path>/ingestion/quickbooks/`.
-Do not make the owner create a separate folder; the entity init step creates the
-subfolder for them.
+Do not assume the owner already has the export files. If the required QuickBooks
+reports are missing or incomplete, offer `/books-qbo-fetch`. Ask whether the owner
+wants the agent to use the available browser with them, give manual export
+instructions, or wait for existing files. Do not open or control a browser until
+they choose browser collection. The fetch workflow validates company, dates, basis,
+and report types and uses `<entity-path>/ingestion/quickbooks/`; do not suggest a
+separate sibling folder. Resume onboarding when it returns an opening-balance set
+that contains the Chart of Accounts, prior-period cash-basis Trial Balance, and
+prior-period cash-basis Balance Sheet.
 
-Explain the basis requirement briefly: because Slashbooks is building cash-basis
-books, QuickBooks reference reports should use cash basis where QBO offers it.
-If QBO will not provide a cash-basis Trial Balance, keep going; Slashbooks can
-often use the prior-period cash-basis Balance Sheet after inventory checks the
-folder.
-
-Use these basic QuickBooks Online steps:
-
-1. Go to **Reports**, then **Standard reports**.
-2. Search for and open the report name.
-3. Set the report date or period.
-4. If the report shows **Accounting method**, choose **Cash**, then select
-   **Run report**. If that control is not present for a report, export what QBO
-   provides and let Slashbooks inventory it.
-5. Select **Export/Print** then **Export to Excel**.
-6. Save or move the downloaded file into `<entity-path>/ingestion/quickbooks/`.
-
-For the Chart of Accounts, go to **Accounting -> Chart of Accounts**, select
-**Run report**, then use the export icon to export to Excel.
-
-Export these files:
-
-- Chart of Accounts
-- Trial Balance, cash basis, as of the day before the Slashbooks start date
-- Balance Sheet, cash basis, as of the day before the Slashbooks start date
-- Balance Sheet, cash basis, as of the backtest end date
-- Profit and Loss, cash basis, for the backtest period
-- General Ledger, cash basis, for the backtest period
-- Transaction Detail by Account, cash basis, for the backtest period
-
-Run inventory on the QB exports folder:
+Run exact inventory on the canonical QB exports folder. Use the company name the
+owner confirmed in QuickBooks, which may differ from the Slashbooks legal entity
+name:
 
 ```
-scripts/books qb inventory <entity-path>/ingestion/quickbooks
+scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --cutover <YYYY-MM-DD>
 ```
 
 Present the readiness report in plain English: which files are ready, which are

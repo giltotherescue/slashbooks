@@ -72,15 +72,46 @@ has earned the right to close your books going forward."
 
 Ask the owner:
 - Entity path (locate `entity.json` in the current directory or ask)
-- Location of the QuickBooks exports folder
 - The date range to backtest (e.g., 2026-01-01 through 2026-05-31)
+
+The canonical QuickBooks evidence folder is
+`<entity-path>/ingestion/quickbooks/`. Do not ask the owner to choose another
+folder for the normal workflow. Confirm the QuickBooks company from the collected
+reports or the owner; its visible name can differ from the entity legal name.
+
+If the canonical folder is missing, incomplete, or does not pass exact inventory,
+pause this workflow and offer `/books-qbo-fetch`. Ask whether the owner wants the
+agent to use the available browser with them, give manual export instructions, or
+wait for existing files. Do not open or control a browser until they choose browser
+collection. Resume the backtest only after the source reports are collected and this
+command succeeds:
+
+```
+scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+```
+
+If the owner already has exports outside the company folder, preserve those original
+files and ask for explicit confirmation before using them: the source folder, the
+confirmed QuickBooks company, the intended date range, and that they are the
+unaltered exports to compare. Prefer copying the files unchanged into the canonical
+folder, recording the original path and owner confirmation in a provenance note,
+then run the exact inventory command above. Do not overwrite a canonical export or
+mix two collections.
+
+Use a non-canonical folder only when the owner explicitly declines the copy or it is
+not possible. State that this is an external-evidence override, retain its path and
+the owner's confirmation in the backtest handoff, and run the same exact inventory
+command against that folder before continuing. Never silently substitute an external
+folder because it happens to contain report-like files. In that exceptional case,
+replace only the canonical `--qb-folder` value in the run command with the confirmed
+external path; do not change the entity or date arguments.
 
 ---
 
 ## Step 3 — Run the backtest
 
 ```
-scripts/books backtest run --entity <entity-path> --qb-folder <qb-folder> --from <start-date> --to <end-date>
+scripts/books backtest run --entity <entity-path> --qb-folder <entity-path>/ingestion/quickbooks --from <start-date> --to <end-date>
 ```
 
 This imports transactions, builds the ledger, generates financial statements, and
