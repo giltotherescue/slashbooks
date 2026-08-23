@@ -2,6 +2,8 @@
 
 # Slashbooks
 
+**Website: [slashbooks.org](https://slashbooks.org/)**
+
 Bookkeeping for people who keep putting it off. Your AI agent keeps the
 books current and tax-ready, so you always know where you stand.
 

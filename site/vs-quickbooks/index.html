@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Slashbooks vs QuickBooks</title>
+  <meta name="description" content="A qualitative comparison of Slashbooks and QuickBooks for cash-basis owner-operated businesses.">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../images/apple-touch-icon.png">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav>
+      <a class="site-logo" href="../"><span class="logo-slash" aria-hidden="true">/</span>Slashbooks</a>
+      <ul class="site-nav-links">
+        <li><a href="../">Home</a></li>
+        <li><a href="../vs-quickbooks/" aria-current="page">vs QuickBooks</a></li>
+        <li><a href="../vs-bench/">vs outsourced bookkeeping</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks">GitHub</a></li>
+        <li><a class="nav-cta" href="../#install">Install</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <div class="narrow">
+      <h1>Slashbooks vs QuickBooks</h1>
+      <p class="lead">A qualitative comparison for cash-basis, owner-operated businesses. No pricing claims — just how the two approaches differ.</p>
+
+      <p>QuickBooks is the default accounting app for small businesses. Slashbooks is built for owners who would rather talk to an agent than click around software — and who want their books in files they own, not a vendor cloud.</p>
+
+      <h2>At a glance</h2>
+      <table class="comparison">
+        <thead>
+          <tr>
+            <th></th>
+            <th>QuickBooks</th>
+            <th>Slashbooks</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Where your books live</td>
+            <td data-label="QuickBooks">Hosted in Intuit's cloud. You access them through QuickBooks.</td>
+            <td data-label="Slashbooks">Local files in a folder you choose — <code>ledger.sqlite</code>, review queue, audit log, reports. You own and back them up yourself.</td>
+          </tr>
+          <tr>
+            <td>How you work</td>
+            <td data-label="QuickBooks">Click through menus, forms, and reports inside the app.</td>
+            <td data-label="Slashbooks">Talk to an AI agent in Claude Cowork, Claude Code, or Codex. Ask for reports, run the monthly close, or export files in plain English.</td>
+          </tr>
+          <tr>
+            <td>Who does the math</td>
+            <td data-label="QuickBooks">QuickBooks calculates totals deterministically inside the product.</td>
+            <td data-label="Slashbooks">Deterministic <code>books</code> CLI does the math. The agent is the interface — it never invents totals.</td>
+          </tr>
+          <tr>
+            <td>Scope</td>
+            <td data-label="QuickBooks">Broad platform: invoicing, payroll add-ons, inventory, accrual accounting, multi-user roles, and more.</td>
+            <td data-label="Slashbooks">Intentionally narrow: cash-basis bookkeeping for owner-operated businesses. Not payroll, inventory, multi-user controls, or full accrual (yet).</td>
+          </tr>
+          <tr>
+            <td>Data sources</td>
+            <td data-label="QuickBooks">Bank feeds, manual entry, and integrations within the QuickBooks ecosystem.</td>
+            <td data-label="Slashbooks">BankSync for live bank/card feeds, direct Stripe and Mercury connectors, CSV imports, QuickBooks exports for migration, and custom connectors your agent can build.</td>
+          </tr>
+          <tr>
+            <td>Accountant handoff</td>
+            <td data-label="QuickBooks">Accountant access through QuickBooks or exported reports.</td>
+            <td data-label="Slashbooks">Generates Excel/CSV exports locally. Your accountant reviews the files you send — Slashbooks does not sync back to QuickBooks.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Local files vs vendor cloud</h2>
+      <p>With QuickBooks, your ledger lives on Intuit's servers. You use their product to reach it, and your data stays inside their ecosystem.</p>
+      <p>With Slashbooks, each company gets its own directory on your machine: <code>entity.json</code>, <code>ledger.sqlite</code>, <code>review-queue/</code>, <code>learned-context/</code>, and <code>reports/</code>. The plugin does not host your books. You can back them up, inspect them, or stop using the tool without asking a vendor to release your data.</p>
+      <p>Slashbooks isn't a privacy guarantee — the AI agent, your bank connection, and other tools still see the data they need. But the durable accounting system is local files you own.</p>
+
+      <h2>Agent vs click-around app</h2>
+      <p>Traditional accounting apps feel bloated because they serve every kind of business at once. You pay in clutter and complexity for features that have nothing to do with how you operate.</p>
+      <p>Slashbooks gives you a focused foundation shaped to your business. When you need a particular report, chart, or export, you ask the agent and it produces it on the spot — no hunting through menus.</p>
+      <p>The agent handles setup, monthly close, review, questions, and exports through workflows like <code>/books-close</code>, <code>/books-ask</code>, and <code>/books-export</code>. You step in for judgment calls on unfamiliar transactions.</p>
+
+      <h2>Cash-basis owner-op vs full QuickBooks</h2>
+      <p>QuickBooks can do accrual accounting, payroll, inventory, invoicing, and enterprise-style controls. That's valuable if you need them.</p>
+      <p>Slashbooks is scoped to cash-basis books where bank and card activity drive the entries. That keeps the system understandable and auditable for a solo owner or small operator. It's not trying to be payroll, inventory, revenue recognition, or a full accrual system.</p>
+
+      <h2>Backtest before you migrate</h2>
+      <p>If you're considering leaving QuickBooks, Slashbooks doesn't ask you to trust it on faith. Run <code>/books-backtest</code> to compare Slashbooks output against your QuickBooks exports over a historical period.</p>
+      <p>The backtest surfaces where numbers match, where they differ, and which differences are judgment calls. It doesn't make Slashbooks magically correct — it gives you and your accountant evidence before you switch.</p>
+      <p>For a migration, Slashbooks expects QuickBooks exports for Chart of Accounts, Trial Balance, Balance Sheet, Profit and Loss, General Ledger, and Transaction Detail by Account, with cash-basis reports where QuickBooks offers the basis selector.</p>
+
+      <h2>What Slashbooks does not do yet</h2>
+      <ul>
+        <li>Sync back to QuickBooks or Google Sheets.</li>
+        <li>Payroll processing or payroll tax calculations.</li>
+        <li>Inventory tracking.</li>
+        <li>Multi-user accounting controls.</li>
+        <li>Full accrual accounting.</li>
+        <li>Indirect tax calculations (VAT/GST/HST/sales tax).</li>
+        <li>Replace your accountant or tax professional.</li>
+      </ul>
+
+      <div class="callout">
+        <p>Slashbooks is beta software. Review its output and keep an accountant in the loop.</p>
+      </div>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="../#install">Install Slashbooks</a>
+        <a class="btn btn-secondary" href="../">Back to home</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>Slashbooks is beta software. Not tax, legal, or accounting advice.</p>
+    <p>Questions? Email <a href="mailto:gilhildebrand@gmail.com">gilhildebrand@gmail.com</a>, find Gil on <a href="https://x.com/gilhildebrand">X</a>, or open an issue on <a href="https://github.com/giltotherescue/slashbooks">GitHub</a>.</p>
+    <p>Slashbooks is an independent open-source project, not affiliated with or endorsed by Anthropic or OpenAI. Claude is a trademark of Anthropic, PBC.</p>
+  </footer>
+</body>
+</html>

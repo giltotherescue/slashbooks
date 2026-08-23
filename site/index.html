@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Slashbooks | Replace QuickBooks with an AI agent you control</title>
+  <meta name="description" content="Replace QuickBooks and your outsourced bookkeeper with an AI agent you control. Free, open-source, local-first bookkeeping for simple cash-basis businesses.">
+  <link rel="canonical" href="https://slashbooks.org/">
+  <meta property="og:title" content="Slashbooks | Replace QuickBooks with an AI agent you control">
+  <meta property="og:description" content="Free, open-source, local-first bookkeeping for simple cash-basis businesses. The AI agent runs the workflow; deterministic software does the math.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://slashbooks.org/">
+  <meta property="og:image" content="https://slashbooks.org/images/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Slashbooks: replace QuickBooks and your outsourced bookkeeper. A chat where the agent closes the books for May and exports files for the accountant.">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <nav aria-label="Site">
+      <a class="site-logo" href="./"><span class="logo-slash" aria-hidden="true">/</span>Slashbooks</a>
+      <ul class="site-nav-links">
+        <li><a href="./" aria-current="page">Home</a></li>
+        <li><a href="vs-quickbooks/">vs QuickBooks</a></li>
+        <li><a href="vs-bench/">vs outsourced bookkeeping</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks">GitHub</a></li>
+        <li><a class="nav-cta" href="#install">Install</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="narrow">
+      <section class="hero" aria-labelledby="hero-title">
+        <h1 id="hero-title">Replace QuickBooks and your outsourced bookkeeper with an AI agent you control.</h1>
+        <p class="hero-tagline">Slashbooks gives your AI agent a reliable bookkeeping workflow. It imports activity, prepares the close, explains the numbers, and creates the files your accountant needs.</p>
+        <div class="cta-row hero-actions">
+          <a class="btn btn-primary" href="#install">Install Slashbooks</a>
+          <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks">Read the source on GitHub</a>
+        </div>
+        <div class="chip-row">
+          <span class="chip-label">Works with</span>
+          <span class="chip">Claude Cowork</span>
+          <span class="chip">Claude Code</span>
+          <span class="chip">Codex</span>
+          <a class="chip chip-link" href="https://github.com/giltotherescue/slashbooks" data-stars hidden><span aria-hidden="true">&#9733;</span> <span data-star-count>0</span> stars on GitHub</a>
+        </div>
+        <p class="trust-line">Free and open source (Apache-2.0). Try it on a demo company before you connect real accounts.</p>
+        <a class="hero-video" data-video href="https://www.youtube.com/watch?v=DPB7Hvaj6IU">
+          <img src="https://i.ytimg.com/vi/DPB7Hvaj6IU/maxresdefault.jpg" alt="" width="1280" height="720" loading="lazy">
+          <span class="hero-video-button" aria-hidden="true"></span>
+          <span class="visually-hidden">Play the video: I Saved $914/Month Replacing QuickBooks With Claude</span>
+        </a>
+      </section>
+
+      <p class="lead">Slashbooks is an open-source, local-first AI bookkeeping agent for cash-basis, owner-operated businesses. It runs as a <code>/books</code> plugin in Claude Cowork, Claude Code, and Codex.</p>
+
+      <p>It does the tedious work: set up the books, pull in bank and card activity, categorize the repeat transactions, close the month, answer your questions, and export the files your accountant needs. You only step in to clarify the occasional transaction.</p>
+
+      <blockquote>
+        <p>I was tired of paying for QuickBooks and an outsourced bookkeeper for books that were always behind, so I built a bookkeeper my AI agent runs and that I control.</p>
+        <p class="quote-attribution">— Gil Hildebrand, creator of Slashbooks</p>
+      </blockquote>
+
+      <section class="fit" aria-labelledby="fit-title">
+        <h2 id="fit-title">Is it for you?</h2>
+        <div class="fit-grid">
+          <article aria-labelledby="fit-yes">
+            <h3 id="fit-yes">A good fit if&hellip;</h3>
+            <ul class="fit-list fit-list-yes">
+              <li>You run an owner-operated, cash-basis business.</li>
+              <li>Bank and card activity drive your books.</li>
+              <li>You want current books without living inside accounting software.</li>
+              <li>You want the books in local files you own, not a vendor cloud.</li>
+              <li>Your accountant reviews the output before tax filing.</li>
+            </ul>
+          </article>
+          <article aria-labelledby="fit-no">
+            <h3 id="fit-no">Not a fit (yet) if&hellip;</h3>
+            <ul class="fit-list fit-list-no">
+              <li>You need payroll or inventory accounting.</li>
+              <li>You need full accrual accounting.</li>
+              <li>You need multi-user accounting controls.</li>
+              <li>You want software to replace your accountant. Slashbooks prepares the books; a professional still reviews them.</li>
+            </ul>
+          </article>
+        </div>
+        <div class="callout callout-warning">
+          <p>Slashbooks is beta software. It is not tax, legal, accounting, payroll, inventory, or investment advice, and it does not replace professional review.</p>
+        </div>
+      </section>
+
+      <section class="workflow" aria-labelledby="workflow-title">
+        <h2 id="workflow-title">How it works</h2>
+        <div class="workflow-grid">
+          <article>
+            <span aria-hidden="true">01</span>
+            <h3>Bring in activity</h3>
+            <p>Connect bank and card feeds, Stripe, Mercury, or import CSV files.</p>
+          </article>
+          <article>
+            <span aria-hidden="true">02</span>
+            <h3>Review the exceptions</h3>
+            <p>Trusted patterns move through. Unfamiliar transactions wait for your decision.</p>
+          </article>
+          <article>
+            <span aria-hidden="true">03</span>
+            <h3>Close and hand off</h3>
+            <p>Get current reports and Excel or CSV exports for your accountant.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="difference" aria-labelledby="difference-title">
+        <h2 id="difference-title">Why it feels different</h2>
+        <div class="difference-grid">
+          <article>
+            <h3>Your books stay with you</h3>
+            <p>Each company lives in a folder you choose, with the ledger, review queue, audit log, and reports together.</p>
+          </article>
+          <article>
+            <h3>The AI is the interface, not the accountant</h3>
+            <p>Deterministic software imports, validates, and reports the numbers. The agent guides the workflow and explains the result.</p>
+          </article>
+          <article>
+            <h3>Built to work with professional review</h3>
+            <p>Slashbooks prepares structured books and exports. Your accountant or tax professional still provides professional judgment.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="compare-teaser" aria-labelledby="compare-title">
+        <h2 id="compare-title">Why not just QuickBooks?</h2>
+        <p>QuickBooks serves every kind of business at once: invoicing, payroll add-ons, inventory, accrual, multi-user roles. If yours is a simple cash-basis business, you pay for that breadth in subscription fees, clutter, and clicks. Slashbooks is deliberately narrow instead.</p>
+        <table class="comparison">
+          <thead>
+            <tr>
+              <th scope="col"><span class="visually-hidden">Aspect</span></th>
+              <th scope="col">QuickBooks</th>
+              <th scope="col">Slashbooks</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Where your books live</td>
+              <td data-label="QuickBooks">Intuit's cloud, reached through their app.</td>
+              <td data-label="Slashbooks">Local files in a folder you choose and back up yourself.</td>
+            </tr>
+            <tr>
+              <td>How you work</td>
+              <td data-label="QuickBooks">Click through menus, forms, and reports.</td>
+              <td data-label="Slashbooks">Ask an AI agent in plain English; it runs the workflow.</td>
+            </tr>
+            <tr>
+              <td>Scope</td>
+              <td data-label="QuickBooks">Broad platform for every kind of business.</td>
+              <td data-label="Slashbooks">Narrow on purpose: cash-basis books for owner-operators.</td>
+            </tr>
+            <tr>
+              <td>Cost</td>
+              <td data-label="QuickBooks">Monthly subscription.</td>
+              <td data-label="Slashbooks">Free, Apache-2.0. Runs inside the Claude or Codex plan you already use.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="cta-row">
+          <a class="btn btn-secondary" href="vs-quickbooks/">Full comparison: vs QuickBooks</a>
+          <a class="btn btn-secondary" href="vs-bench/">Full comparison: vs outsourced bookkeeping</a>
+        </div>
+      </section>
+
+      <h2>What you can do</h2>
+      <ul class="capabilities">
+        <li>Start books for a company in an empty directory.</li>
+        <li>Keep the ledger in a local SQLite store you own, with Beancount-style exports when you need plain text.</li>
+        <li>Connect Stripe, Mercury, and bank feeds, or have your agent build a connector for anything else.</li>
+        <li>Schedule the monthly close to run on its own, with current books waiting.</li>
+        <li>Review unfamiliar transactions before they become trusted rules.</li>
+        <li>Ask for an analysis of anything, anytime, with every figure at hand.</li>
+        <li>Get any report, chart, or export on demand, without clicking around an app.</li>
+        <li>Backtest against QuickBooks exports before trusting a migration.</li>
+        <li>Export the workbook and CSV files your accountant needs at tax time.</li>
+      </ul>
+
+      <h2>Local-first by design</h2>
+      <p>Your books stay yours. Each company directory holds its own <code>ledger.sqlite</code>, review queue, audit log, and generated reports. The plugin does not host your books.</p>
+      <p>The agent is the interface — it asks questions, explains differences, and helps you work through the close. The numbers come from deterministic software, not the AI. The software imports transactions, writes ledger entries, validates balances, and generates reports. The AI never invents totals or does the math itself.</p>
+
+      <section class="faq" aria-labelledby="faq-title">
+        <h2 id="faq-title">Common questions</h2>
+
+        <details>
+          <summary>Can I trust an AI with my books?</summary>
+          <p>The AI never does the math. A deterministic accounting engine imports transactions, writes ledger entries, validates balances, and generates reports. The agent guides the workflow and explains the results. Unfamiliar transactions wait in a review queue for your decision, and an audit log records every change to the ledger.</p>
+        </details>
+
+        <details>
+          <summary>What does it cost?</summary>
+          <p>Slashbooks is free and open source under the Apache-2.0 license. There is no subscription and no hosted service. It runs as a plugin inside Claude Cowork, Claude Code, or Codex, so your cost is the AI tool you already use.</p>
+        </details>
+
+        <details>
+          <summary>Is my financial data private?</summary>
+          <p>The durable accounting system is local files on your machine — the plugin does not host your books. That said, Slashbooks is not an absolute privacy guarantee: the AI agent and the connectors you enable see the data they need to do the work. You choose which connections to make.</p>
+        </details>
+
+        <details>
+          <summary>Will my accountant work with this?</summary>
+          <p>Slashbooks is built around the accountant handoff, not against it. It exports the Excel workbook and CSV files accountants normally ask for, and there is a <a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/for-accountants.md">guide written for accountants</a> that explains how the books are kept.</p>
+        </details>
+
+        <details>
+          <summary>I already use QuickBooks. How do I switch?</summary>
+          <p>Import your QuickBooks exports and backtest first: run Slashbooks over past months and compare its results with your QuickBooks history before you rely on it. The <a href="vs-quickbooks/">comparison page</a> covers the differences in detail.</p>
+        </details>
+
+        <details>
+          <summary>What if I stop using it?</summary>
+          <p>You keep everything. The books are ordinary local files — a SQLite ledger, plain-text exports, Excel and CSV reports. There is no account to cancel and no vendor to ask for your data.</p>
+        </details>
+
+        <details>
+          <summary>Do I need to be technical?</summary>
+          <p>No terminal is required. Claude Cowork gives you a guided workspace for setup, review, and the monthly close. If you already use Claude Code or Codex, the install is two commands. Either way, you talk to the agent in plain English.</p>
+        </details>
+      </section>
+
+      <h2>Try the demo company</h2>
+      <p>Want to explore before connecting real data? Open your books parent folder in Claude Cowork, Claude Code, or Codex and say:</p>
+      <blockquote>
+        <p>Let's setup the books for the demo company.</p>
+      </blockquote>
+      <p>The agent shows onboarding questions with Northstar Metrics LLC's fictional answers and creates sample business activity plus a few transactions to review, so you can try the normal workflow without connecting real accounts.</p>
+
+      <h2 id="install">Install</h2>
+      <p>Pick the app you prefer. Install the plugin once, then use it from a separate books parent such as <code>~/Documents/books/</code>, with one subfolder per company.</p>
+
+      <div class="install-block">
+        <h3>Claude Cowork</h3>
+        <p>Best for most people. Cowork gives you a guided workspace for setup, review, and monthly bookkeeping without living in a terminal.</p>
+        <ol>
+          <li>Open Claude and go to <strong>Cowork</strong>.</li>
+          <li>Open <strong>Customize</strong> → <strong>Plugins</strong>.</li>
+          <li>Under <strong>Personal plugins</strong>, click <strong>+</strong> → <strong>Add marketplace</strong>.</li>
+          <li>Paste <code>https://github.com/giltotherescue/slashbooks</code> and click <strong>Sync</strong>.</li>
+          <li>Install or enable <code>/books</code> from the synced marketplace.</li>
+        </ol>
+      </div>
+
+      <div class="install-block">
+        <h3>Claude Code</h3>
+        <pre><code>/plugin marketplace add https://github.com/giltotherescue/slashbooks
+/plugin install slashbooks@slashbooks</code></pre>
+      </div>
+
+      <div class="install-block">
+        <h3>Codex</h3>
+        <pre><code>codex plugin marketplace add https://github.com/giltotherescue/slashbooks</code></pre>
+        <p>Then restart Codex if needed, open the plugin directory, choose the Slashbooks marketplace, and install the plugin.</p>
+      </div>
+
+      <section class="final-cta" aria-labelledby="final-cta-title">
+        <h2 id="final-cta-title">Own your books again</h2>
+        <p>Install the plugin, start with the demo company, and see a month close itself. The source is open if you want to read it first.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/giltotherescue/slashbooks">View Slashbooks on GitHub</a>
+          <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks/blob/main/docs/doing-your-books.md">Read: doing your books</a>
+        </div>
+      </section>
+
+      <h2>Documentation</h2>
+      <ul>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/doing-your-books.md">How to do your books with Slashbooks</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/philosophy.md">Accounting philosophy</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/for-accountants.md">For accountants</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/connectors.md">Connectors</a></li>
+      </ul>
+
+      <h2>License</h2>
+      <p>Apache-2.0. See the <a href="https://github.com/giltotherescue/slashbooks/blob/main/LICENSE">LICENSE</a> on GitHub.</p>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>Slashbooks is beta software. Not tax, legal, or accounting advice.</p>
+    <p>Questions? Email <a href="mailto:gilhildebrand@gmail.com">gilhildebrand@gmail.com</a>, find Gil on <a href="https://x.com/gilhildebrand">X</a>, or open an issue on <a href="https://github.com/giltotherescue/slashbooks">GitHub</a>.</p>
+    <p>Slashbooks is an independent open-source project, not affiliated with or endorsed by Anthropic or OpenAI. Claude is a trademark of Anthropic, PBC.</p>
+  </footer>
+
+  <script>
+    (function () {
+      var facade = document.querySelector("[data-video]");
+      if (facade) {
+        facade.addEventListener("click", function (event) {
+          event.preventDefault();
+          var frame = document.createElement("iframe");
+          frame.src = "https://www.youtube-nocookie.com/embed/DPB7Hvaj6IU?autoplay=1";
+          frame.title = "I Saved $914/Month Replacing QuickBooks With Claude";
+          frame.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; web-share");
+          frame.setAttribute("allowfullscreen", "");
+          var box = document.createElement("div");
+          box.className = "hero-video";
+          box.appendChild(frame);
+          facade.replaceWith(box);
+        });
+      }
+
+      var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!reduceMotion && "IntersectionObserver" in window) {
+        var targets = document.querySelectorAll(".workflow article, .difference article, .fit-grid article, .faq details, .comparison, .final-cta, blockquote");
+        var seen = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              seen.unobserve(entry.target);
+            }
+          });
+        }, { rootMargin: "0px 0px -10% 0px", threshold: 0.15 });
+        targets.forEach(function (target, index) {
+          target.classList.add("reveal");
+          target.style.transitionDelay = (index % 3) * 70 + "ms";
+          seen.observe(target);
+        });
+      }
+
+      var chip = document.querySelector("[data-stars]");
+      if (!chip || !window.fetch) return;
+      fetch("https://api.github.com/repos/giltotherescue/slashbooks")
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(function (repo) {
+          if (!repo || typeof repo.stargazers_count !== "number") return;
+          chip.querySelector("[data-star-count]").textContent = repo.stargazers_count.toLocaleString("en-US");
+          chip.hidden = false;
+        })
+        .catch(function () {});
+    })();
+  </script>
+</body>
+</html>
