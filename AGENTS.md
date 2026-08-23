@@ -42,9 +42,10 @@ The Python package is in `src/bookkeeping/`:
   existing semantic HTML and responsive CSS patterns.
 - Test homepage changes in a browser before handoff, including the primary
   GitHub call to action and narrow viewport layout.
-- Cloudflare Pages currently serves a direct upload of `site/`; a repository
-  merge does not deploy the homepage automatically. Do not claim a website
-  change is live unless the Pages deployment has also been updated.
+- Cloudflare Pages serves the `slashbooks` project. The workflow
+  `.github/workflows/deploy-site.yml` publishes `site/` when a change to
+  `site/` lands on `main`. Check that the workflow run succeeded before you
+  claim a website change is live.
 - Do not restore the removed GitHub Pages workflow. When deployment automation
   is set up, it should use Cloudflare Pages and publish `site/`.
 
