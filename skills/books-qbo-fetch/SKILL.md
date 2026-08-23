@@ -55,6 +55,26 @@ inspect cookies, saved passwords, local storage, authentication tokens, or brows
 profiles. Exporting reports is allowed by this workflow; changing QuickBooks data,
 settings, saved report customizations, or user access is not.
 
+### Browser consent boundary
+
+Do not open, navigate, or control a browser merely because reports are missing or
+this skill was routed from onboarding or backtesting. Inspecting existing local
+exports and explaining what is missing does not require browser consent.
+
+Before the first browser action, tell the owner that the reports can be collected
+through their browser and ask whether they want the agent to:
+
+1. use the available browser with them to collect the reports;
+2. give them manual export instructions and validate the files afterward; or
+3. stop so they can provide existing exports later.
+
+Wait for their answer. A request that explicitly says to use or control the browser
+for this collection counts as consent for that task. Otherwise, do not infer consent
+from a request to migrate, backtest, compare, or set up books. If they choose manual
+instructions, do not invoke browser tools. Browser consent does not authorize the
+agent to enter credentials, complete MFA or CAPTCHA, switch companies, change QBO
+settings, or save custom reports. The owner can revoke consent at any time.
+
 ## 1. Establish the collection plan
 
 Locate the company directory by finding `entity.json`, then confirm the purpose and
@@ -97,10 +117,12 @@ the older collection intact to a dated subfolder under
 Read [references/browser-workflow.md](references/browser-workflow.md) before using
 browser automation or guiding a manual download.
 
-Open QuickBooks Online in the browser selected by the user, or use the browser that
-is already available when they did not specify one. Follow the reference for
-authentication, company confirmation, resilient navigation, download detection,
-and manual fallback. Do not download from an unconfirmed company.
+If the owner opted into browser collection, open QuickBooks Online in the browser
+they selected, or use the browser that is already available when they did not
+specify one. If they chose manual instructions, guide them without invoking browser
+tools. Follow the reference for authentication, company confirmation, resilient
+navigation, download detection, and manual fallback. Do not download from an
+unconfirmed company.
 
 ## 3. Export and verify each report
 

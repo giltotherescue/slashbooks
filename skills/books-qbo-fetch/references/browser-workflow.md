@@ -3,6 +3,10 @@
 Use the browser capability already available to the agent. The steps below describe
 observable outcomes, not a dependency on one automation API.
 
+Do not inspect or control a browser until the owner has explicitly chosen browser
+collection. If they choose manual export instructions, skip browser capability
+checks and use the manual fallback only.
+
 ## Capability check
 
 Identify whether the browser surface can:

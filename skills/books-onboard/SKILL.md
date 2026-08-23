@@ -273,9 +273,11 @@ Ask: "Are you migrating from QuickBooks, or starting fresh?"
 **If migrating from QuickBooks:**
 
 Do not assume the owner already has the export files. If the required QuickBooks
-reports are missing or incomplete, use `/books-qbo-fetch` to collect them with the
-available browser integration and validate their company, dates, basis, and report
-types. That workflow uses `<entity-path>/ingestion/quickbooks/`; do not suggest a
+reports are missing or incomplete, offer `/books-qbo-fetch`. Ask whether the owner
+wants the agent to use the available browser with them, give manual export
+instructions, or wait for existing files. Do not open or control a browser until
+they choose browser collection. The fetch workflow validates company, dates, basis,
+and report types and uses `<entity-path>/ingestion/quickbooks/`; do not suggest a
 separate sibling folder. Resume onboarding when it returns an opening-balance set
 that contains the Chart of Accounts, prior-period cash-basis Trial Balance, and
 prior-period cash-basis Balance Sheet.

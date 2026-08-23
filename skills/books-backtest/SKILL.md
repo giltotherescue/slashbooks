@@ -80,8 +80,11 @@ folder for the normal workflow. Confirm the QuickBooks company from the collecte
 reports or the owner; its visible name can differ from the entity legal name.
 
 If the canonical folder is missing, incomplete, or does not pass exact inventory,
-pause this workflow and use `/books-qbo-fetch` to collect and validate the source
-reports. Resume the backtest only after this command succeeds:
+pause this workflow and offer `/books-qbo-fetch`. Ask whether the owner wants the
+agent to use the available browser with them, give manual export instructions, or
+wait for existing files. Do not open or control a browser until they choose browser
+collection. Resume the backtest only after the source reports are collected and this
+command succeeds:
 
 ```
 scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
