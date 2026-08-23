@@ -24,6 +24,20 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+a:focus-visible,
+.btn:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 body {
   margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -94,6 +108,26 @@ body {
 
 .site-logo:hover {
   color: var(--accent);
+}
+
+.logo-slash {
+  color: var(--accent-light);
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+  font-weight: 700;
+  margin-right: 1px;
+}
+
+.nav-cta {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff !important;
+  padding: 0.28rem 0.85rem;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.nav-cta:hover {
+  background: var(--accent-light);
 }
 
 .site-nav-links {
@@ -222,8 +256,6 @@ h1 {
 .workflow h2,
 .difference h2 {
   margin-top: 0;
-  font-size: 1.4rem;
-  color: var(--text);
 }
 
 .workflow-grid,
@@ -278,8 +310,6 @@ h1 {
 
 .fit h2 {
   margin-top: 0;
-  font-size: 1.4rem;
-  color: var(--text);
 }
 
 .fit-grid {
@@ -340,19 +370,9 @@ h1 {
   margin: 3.25rem 0;
 }
 
-.compare-teaser h2 {
-  font-size: 1.4rem;
-  color: var(--text);
-}
-
 /* FAQ */
 .faq {
   margin: 3.25rem 0;
-}
-
-.faq h2 {
-  font-size: 1.4rem;
-  color: var(--text);
 }
 
 .faq details {
@@ -412,8 +432,6 @@ h1 {
 
 .final-cta h2 {
   margin-top: 0;
-  font-size: 1.4rem;
-  color: var(--text);
 }
 
 .final-cta p {
@@ -429,11 +447,11 @@ h1 {
 
 h2 {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 1.15rem;
+  font-size: 1.4rem;
   font-weight: 600;
   letter-spacing: -0.02em;
-  margin: 2.25rem 0 0.75rem;
-  color: var(--accent);
+  margin: 2.5rem 0 0.75rem;
+  color: var(--text);
 }
 
 h3 {
@@ -473,6 +491,13 @@ blockquote {
 
 blockquote p:last-child {
   margin-bottom: 0;
+}
+
+.quote-attribution {
+  font-style: normal;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.8rem;
+  margin-top: 0.6rem;
 }
 
 /* Lists */
@@ -536,6 +561,11 @@ li::marker {
   width: 28%;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 0.85rem;
+}
+
+.comparison td:last-child,
+.comparison th:last-child {
+  background: var(--quote-bg);
 }
 
 /* Install steps */
