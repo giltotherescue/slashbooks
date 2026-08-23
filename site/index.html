@@ -51,7 +51,11 @@
           <a class="chip chip-link" href="https://github.com/giltotherescue/slashbooks" data-stars hidden><span aria-hidden="true">&#9733;</span> <span data-star-count>0</span> stars on GitHub</a>
         </div>
         <p class="trust-line">Free and open source (Apache-2.0). Try it on a demo company before you connect real accounts.</p>
-        <img class="hero-art" src="images/slashbooks-hero-chat.png" alt="A chat with the Slashbooks agent: the owner says to close the books for May, the agent reports the month is closed and reconciled with 3 transactions to review, shows revenue and cash figures, and exports the workbook and general-ledger files for the accountant." width="1258" height="870">
+        <a class="hero-video" data-video href="https://www.youtube.com/watch?v=DPB7Hvaj6IU">
+          <img src="https://i.ytimg.com/vi/DPB7Hvaj6IU/maxresdefault.jpg" alt="" width="1280" height="720" loading="lazy">
+          <span class="hero-video-button" aria-hidden="true"></span>
+          <span class="visually-hidden">Play the video: I Saved $914/Month Replacing QuickBooks With Claude</span>
+        </a>
       </section>
 
       <p class="lead">Slashbooks is an open-source, local-first AI bookkeeping agent for cash-basis, owner-operated businesses. It runs as a <code>/books</code> plugin in Claude Cowork, Claude Code, and Codex.</p>
@@ -283,12 +287,47 @@
   </main>
 
   <footer class="site-footer">
-    <p>Slashbooks is beta software. Not tax, legal, or accounting advice. <a href="https://github.com/giltotherescue/slashbooks">GitHub</a></p>
+    <p>Slashbooks is beta software. Not tax, legal, or accounting advice.</p>
+    <p>Questions? Email <a href="mailto:gilhildebrand@gmail.com">gilhildebrand@gmail.com</a>, find Gil on <a href="https://x.com/gilhildebrand">X</a>, or open an issue on <a href="https://github.com/giltotherescue/slashbooks">GitHub</a>.</p>
     <p>Slashbooks is an independent open-source project, not affiliated with or endorsed by Anthropic or OpenAI. Claude is a trademark of Anthropic, PBC.</p>
   </footer>
 
   <script>
     (function () {
+      var facade = document.querySelector("[data-video]");
+      if (facade) {
+        facade.addEventListener("click", function (event) {
+          event.preventDefault();
+          var frame = document.createElement("iframe");
+          frame.src = "https://www.youtube-nocookie.com/embed/DPB7Hvaj6IU?autoplay=1";
+          frame.title = "I Saved $914/Month Replacing QuickBooks With Claude";
+          frame.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; web-share");
+          frame.setAttribute("allowfullscreen", "");
+          var box = document.createElement("div");
+          box.className = "hero-video";
+          box.appendChild(frame);
+          facade.replaceWith(box);
+        });
+      }
+
+      var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!reduceMotion && "IntersectionObserver" in window) {
+        var targets = document.querySelectorAll(".workflow article, .difference article, .fit-grid article, .faq details, .comparison, .final-cta, blockquote");
+        var seen = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              seen.unobserve(entry.target);
+            }
+          });
+        }, { rootMargin: "0px 0px -10% 0px", threshold: 0.15 });
+        targets.forEach(function (target, index) {
+          target.classList.add("reveal");
+          target.style.transitionDelay = (index % 3) * 70 + "ms";
+          seen.observe(target);
+        });
+      }
+
       var chip = document.querySelector("[data-stars]");
       if (!chip || !window.fetch) return;
       fetch("https://api.github.com/repos/giltotherescue/slashbooks")
