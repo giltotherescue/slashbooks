@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import date
@@ -1756,6 +1757,132 @@ class TestRegressionBug3MatchingGLSections(unittest.TestCase):
         self.assertEqual(tmobile_unmatched, [],
                          f"T-Mobile CC charge should have matched (sign normalization). "
                          f"Found in unmatched-ours: {tmobile_unmatched}")
+
+
+class TestRegressionEffectiveSourceEntries(unittest.TestCase):
+    """Corrected Mercury entries count once in source-level comparison checks."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._tmp = Path(self._tmpdir)
+        self._entity = _make_entity(self._tmp, FIXTURE_LEDGER)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_latest_mercury_correction_supersedes_raw_and_reversal_rows(self):
+        """A correction is one bank transaction, not three GL occurrences."""
+        cache_path = self._entity.path / "reports" / "cache.sqlite"
+        conn = sqlite3.connect(cache_path)
+        try:
+            raw_id = conn.execute(
+                """INSERT INTO entries (date, narration, payee, source_id)
+                   VALUES (?, ?, ?, ?)""",
+                ("2026-03-25", "Original categorization", "Example Vendor", "mercury:example-001"),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
+                [
+                    (raw_id, "Assets:Bank:Checking", "-100.00"),
+                    (raw_id, "Expenses:Software", "100.00"),
+                ],
+            )
+
+            reversal_id = conn.execute(
+                """INSERT INTO entries (date, narration, payee, source_id)
+                   VALUES (?, ?, ?, NULL)""",
+                ("2026-03-25", "Reverses original categorization", "Example Vendor"),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
+                [
+                    (reversal_id, "Assets:Bank:Checking", "100.00"),
+                    (reversal_id, "Expenses:Software", "-100.00"),
+                ],
+            )
+
+            corrected_id = conn.execute(
+                """INSERT INTO entries (date, narration, payee, source_id)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    "2026-03-25",
+                    "Corrected categorization",
+                    "Example Vendor",
+                    "supercharger-split:mercury:example-001",
+                ),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
+                [
+                    (corrected_id, "Assets:Bank:Checking", "-100.00"),
+                    (corrected_id, "Expenses:Business-Reimbursements", "100.00"),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        from src.bookkeeping.compare import _effective_source_postings
+
+        postings = [
+            row for row in _effective_source_postings(
+                self._entity, date(2026, 3, 25), date(2026, 3, 25)
+            )
+            if row[-1] == "supercharger-split:mercury:example-001"
+        ]
+
+        self.assertEqual(len(postings), 2)
+        self.assertEqual({row[3] for row in postings}, {
+            "Assets:Bank:Checking", "Expenses:Business-Reimbursements",
+        })
+        self.assertTrue(all(row[-1] != "mercury:example-001" for row in postings))
+
+    def test_internal_transfer_suffix_matches_qbo_cash_bucket_label(self):
+        """Mercury's last-four account label matches QBO's cash-bucket name."""
+        from src.bookkeeping.compare import _is_internal_transfer_match
+
+        self.assertTrue(_is_internal_transfer_match(
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Assets:Bank:OpEx-4790-1",
+            "mercury:example-001",
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "OPEX",
+        ))
+        self.assertFalse(_is_internal_transfer_match(
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Mercury Checking ••4790",
+            "mercury:example-001",
+            date(2026, 1, 6),
+            Decimal("-1800.00"),
+            "OPEX",
+        ))
+
+    def test_account_alignment_matches_qbo_opposite_transfer_side(self):
+        """An aligned Mercury row can match QBO's label for the other side."""
+        from src.bookkeeping.compare import _is_internal_transfer_match
+
+        self.assertTrue(_is_internal_transfer_match(
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Assets:Bank:Income-1249-1",
+            "bank-account-alignment:mercury:example-001",
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "OPEX",
+        ))
+        self.assertFalse(_is_internal_transfer_match(
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Assets:Bank:Income-1249-1",
+            "mercury:example-001",
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "OPEX",
+        ))
 
 
 class TestRegressionBug4SpotAuditExcludesOpening(unittest.TestCase):

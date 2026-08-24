@@ -758,10 +758,16 @@ def _compare_gl_counts(
     pct_t: Decimal,
     readiness: Optional[ReadinessReport] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
-    """Compare transaction counts per account between our GL and QB GL.
+    """Compare external bank/card transaction counts per account.
+
+    This is intentionally a source-transaction check, not a count of every
+    journal posting.  A single bank transaction can have multiple accounting
+    revisions (and reversal entries), and P&L postings duplicate the same
+    transaction in a general ledger export.  P&L amounts are assessed by
+    :func:`_compare_pnl`; this check validates bank/card source coverage.
 
     Uses the readiness-report general_ledger slot for period-correct file
-    selection (Bug 1 fix).
+    selection.
     """
     # Use inventory slot to get the period-correct GL file.
     gl_path: Optional[Path] = None
@@ -780,10 +786,15 @@ def _compare_gl_counts(
     except Exception as exc:
         raise ValueError(f"Could not parse QuickBooks General Ledger export {gl_path}: {exc}") from exc
 
-    # QB counts per mapped account, filtered to period
+    # QB counts per bank/card account, filtered to period.  Each external
+    # transaction appears once in a bank/card section; P&L sections duplicate
+    # it and are deliberately excluded.
     qb_counts: dict[str, int] = {}
     for txn in qb_gl.transactions:
-        if not (from_date <= txn.txn_date <= to_date):
+        if not (
+            from_date <= txn.txn_date <= to_date
+            and _is_bank_card_account(txn.account, qb_type_map)
+        ):
             continue
         try:
             bc_account = _map_qb_name(txn.account, qb_type_map)
@@ -791,16 +802,21 @@ def _compare_gl_counts(
         except Exception:
             pass
 
-    # Our counts per account from GL
+    # Our counts use one effective entry per source transaction.  This avoids
+    # treating superseded source entries and their balancing reversals as new
+    # transactions after a bookkeeping correction.
     try:
-        our_gl = stmt_gl(entity.path, from_date, to_date)
+        our_postings = _effective_source_postings(entity, from_date, to_date)
     except Exception:
         return [], []
 
     our_counts: dict[str, int] = {}
-    for section in our_gl.sections:
-        account = section.get("label", "").replace(" › ", ":")
-        our_counts[account] = len(section.get("rows", []))
+    for _entry_date, narration, payee, account, _amount, _currency, _source_id in our_postings:
+        if _is_opening_entry(narration or "", payee):
+            continue
+        if account == _TRANSFER_CLEARING_ACCOUNT or not _is_our_bank_card_account(account):
+            continue
+        our_counts[account] = our_counts.get(account, 0) + 1
 
     material: list[DiffRecord] = []
     immaterial: list[DiffRecord] = []
@@ -847,6 +863,153 @@ def _is_opening_entry(narration: str, payee: Optional[str]) -> bool:
     """Return True when the entry is an opening-balances entry (should be excluded)."""
     text = ((payee or "") + " " + (narration or "")).lower()
     return any(m in text for m in _OPENING_NARRATION_MARKERS)
+
+
+def _logical_source_id(source_id: str) -> str:
+    """Return the durable source key represented by *source_id*.
+
+    Mercury corrections retain the original ``mercury:<uuid>`` inside their
+    generated source ID (for example ``bank-account-alignment:mercury:<uuid>``).
+    Those records supersede the original import rather than representing a new
+    financial event.  Other sources retain their complete source IDs.
+    """
+    marker = "mercury:"
+    index = source_id.find(marker)
+    return source_id[index:] if index >= 0 else source_id
+
+
+def _effective_source_postings(
+    entity: Entity,
+    from_date: date,
+    to_date: date,
+) -> list[tuple[date, str, Optional[str], str, Decimal, str, str]]:
+    """Return postings for the latest non-empty entry per logical source ID.
+
+    Empty-source reversal rows are accounting mechanics, so they cannot be
+    matched to an imported bank/card transaction.  For a corrected Mercury
+    transaction, the newest non-empty entry with the same embedded Mercury ID
+    is the effective classification.  This preserves the ledger's audit trail
+    while keeping source-level comparisons from double-counting it.
+    """
+    from .reports.cache import open_cache
+
+    conn = open_cache(entity.path)
+    try:
+        rows = conn.execute(
+            """
+            WITH source_entries AS (
+                SELECT
+                    e.id,
+                    e.date,
+                    e.narration,
+                    e.payee,
+                    e.source_id,
+                    CASE
+                        WHEN instr(e.source_id, 'mercury:') > 0
+                            THEN substr(e.source_id, instr(e.source_id, 'mercury:'))
+                        ELSE e.source_id
+                    END AS logical_source_id
+                FROM entries e
+                WHERE e.date >= ?
+                  AND e.date <= ?
+                  AND e.source_id IS NOT NULL
+                  AND e.source_id != ''
+            ), effective_entries AS (
+                SELECT logical_source_id, MAX(id) AS entry_id
+                FROM source_entries
+                GROUP BY logical_source_id
+            )
+            SELECT
+                e.date,
+                e.narration,
+                e.payee,
+                p.account,
+                p.amount,
+                p.currency,
+                e.source_id
+            FROM effective_entries ee
+            JOIN entries e ON e.id = ee.entry_id
+            JOIN postings p ON p.entry_id = e.id
+            ORDER BY e.date, e.id, p.id
+            """,
+            (from_date.isoformat(), to_date.isoformat()),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [
+        (
+            row[0] if isinstance(row[0], date) else date.fromisoformat(str(row[0])[:10]),
+            row[1] or "",
+            row[2],
+            row[3],
+            Decimal(row[4]),
+            row[5],
+            row[6],
+        )
+        for row in rows
+    ]
+
+
+def _is_our_bank_card_account(account: str) -> bool:
+    """Return True for a source-side bank or card account."""
+    is_bank = account.startswith("Assets:Bank:")
+    is_cc_liability = account.startswith("Liabilities:CreditCard:")
+    is_card_csv = (
+        account.startswith("Assets:")
+        and not account.startswith("Assets:Bank:")
+        and not account.startswith("Assets:Transfers")
+        and ("Card" in account or "Amex" in account or "CSV" in account)
+    )
+    return is_bank or is_cc_liability or is_card_csv
+
+
+def _internal_transfer_label(description: str) -> str:
+    """Normalize known internal-account labels used by Mercury and QBO.
+
+    Mercury transfer descriptions identify the destination with an account
+    suffix (for example ``Checking ••4790``), while QuickBooks uses the human
+    label (``OPEX``).  This is deliberately limited to the four named cash
+    buckets used in this bookkeeping model; it is not a general fuzzy match.
+    """
+    text = (description or "").lower()
+    if "4790" in text or "opex" in text:
+        return "opex"
+    if "7981" in text or "profit" in text:
+        return "profit"
+    if "7680" in text or "reserve" in text or "savings" in text:
+        return "reserve"
+    if "1249" in text or "income" in text:
+        return "income"
+    return ""
+
+
+def _is_internal_transfer_match(
+    our_date: date,
+    our_amount: Decimal,
+    our_account: str,
+    our_source_id: str,
+    qb_date: date,
+    qb_amount: Decimal,
+    qb_description: str,
+) -> bool:
+    """Match a same-day internal transfer represented with different labels.
+
+    The bank account is usually the stable signal on the Mercury side. The
+    transfer memo names the other account, while QBO's export names the
+    account whose GL section contains the transaction. When a source row was
+    explicitly corrected as a bank-account alignment, its exact same-day,
+    same-amount QBO cash-bucket row is also safe to match even when QBO and
+    Mercury name opposite sides of the transfer.
+    """
+    our_label = _internal_transfer_label(our_account)
+    qb_label = _internal_transfer_label(qb_description)
+    if not qb_label or our_date != qb_date or our_amount != qb_amount:
+        return False
+    return (
+        our_label == qb_label
+        or our_source_id.startswith("bank-account-alignment:mercury:")
+    )
 
 
 def _find_unmatched(
@@ -901,14 +1064,9 @@ def _find_unmatched(
         and _is_bank_card_account(t.account, qb_type_map)
     ]
 
-    # Our transactions from the cache GL — bank/card postings only (Bug 3 fix).
+    # Our transactions from the cache GL — bank/card postings only.
     try:
-        from .reports.cache import open_cache, iter_postings
-        conn = open_cache(entity.path)
-        try:
-            our_txns_raw = list(iter_postings(conn, from_date=from_date, to_date=to_date))
-        finally:
-            conn.close()
+        our_txns_raw = _effective_source_postings(entity, from_date, to_date)
     except Exception:
         return [], [], 0
 
@@ -923,7 +1081,7 @@ def _find_unmatched(
     # negate our Liabilities:CreditCard:* amounts so both sides use QB convention
     # (positive = charge, negative = payment) during matching.
     our_list: list[tuple[date, Decimal, str, str, str]] = []
-    for entry_date, narration, payee, account, amount, currency in our_txns_raw:
+    for entry_date, narration, payee, account, amount, currency, source_id in our_txns_raw:
         # Skip opening entries
         if _is_opening_entry(narration or "", payee):
             continue
@@ -934,15 +1092,7 @@ def _find_unmatched(
         # and CSV-sourced card accounts (Assets:*-Card-CSV, Assets:*-Card-*).
         # The last category covers accounts like Assets:Amex-Card-CSV where credit
         # card transactions imported from CSV files are stored.
-        is_bank = account.startswith("Assets:Bank:")
-        is_cc_liability = account.startswith("Liabilities:CreditCard:")
-        is_card_csv = (
-            account.startswith("Assets:")
-            and not account.startswith("Assets:Bank:")
-            and not account.startswith("Assets:Transfers")
-            and ("Card" in account or "Amex" in account or "CSV" in account)
-        )
-        if not (is_bank or is_cc_liability or is_card_csv):
+        if not _is_our_bank_card_account(account):
             continue
         d = entry_date if isinstance(entry_date, date) else date.fromisoformat(str(entry_date)[:10])
         # Build description: payee first (short merchant name), then narration.
@@ -957,9 +1107,12 @@ def _find_unmatched(
         # Our beancount CC postings: charges=negative, payments=positive.
         # Our CSV card imports (Assets:*-Card-CSV): charges=negative (asset decreases).
         # Negate both to align with QB convention.
-        is_cc_like = is_cc_liability or is_card_csv
+        is_cc_like = (
+            account.startswith("Liabilities:CreditCard:")
+            or not account.startswith("Assets:Bank:")
+        )
         match_amount = -amount if is_cc_like else amount
-        our_list.append((d, match_amount, nd, account, ""))
+        our_list.append((d, match_amount, nd, account, source_id))
 
     # Build QB list: first-segment normalized description from name+desc (Bug 3 fix).
     qb_list: list[tuple[date, Decimal, str, str]] = []
@@ -982,7 +1135,10 @@ def _find_unmatched(
         for j, (qd, qa, qnd, qacc) in enumerate(qb_list):
             if qb_matched[j]:
                 continue
-            if _txns_match(od, oa, ond, qd, qa, qnd):
+            if (
+                _is_internal_transfer_match(od, oa, oacc, _osid, qd, qa, qnd)
+                or _txns_match(od, oa, ond, qd, qa, qnd)
+            ):
                 our_matched[i] = True
                 qb_matched[j] = True
                 matched_count += 1
@@ -997,6 +1153,7 @@ def _find_unmatched(
                 amount=oa,
                 description=ond,
                 account=oacc,
+                source_id=_osid,
             ))
 
     unmatched_qb: list[UnmatchedTransaction] = []
