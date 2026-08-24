@@ -432,6 +432,62 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str) -> d
     return {"feed_account_id": stable_id, "account": account, "status": "updated" if previous else "created"}
 
 
+def record_source_coverage(
+    entity_path: Path,
+    source_name: str,
+    coverage_from: str,
+    coverage_to: str,
+) -> dict[str, str]:
+    """Record an owner-confirmed covered date range for one declared source."""
+    entity = load_entity(entity_path)
+    name = source_name.strip()
+    if not name:
+        raise ValueError("Source name is required.")
+    try:
+        start = date.fromisoformat(coverage_from)
+        end = date.fromisoformat(coverage_to)
+    except ValueError as exc:
+        raise ValueError("Source coverage dates must use YYYY-MM-DD format.") from exc
+    if start > end:
+        raise ValueError("Source coverage start date must not be after its end date.")
+
+    sources = list(entity.entity_config.get("declared_sources") or [])
+    replacement = {
+        "name": name,
+        "coverage_from": start.isoformat(),
+        "coverage_to": end.isoformat(),
+    }
+    status = "created"
+    for index, source in enumerate(sources):
+        existing_name = source if isinstance(source, str) else source.get("name", "")
+        if str(existing_name) != name:
+            continue
+        if isinstance(source, dict):
+            replacement = dict(source)
+            replacement.update({
+                "name": name,
+                "coverage_from": start.isoformat(),
+                "coverage_to": end.isoformat(),
+            })
+        sources[index] = replacement
+        status = "updated"
+        break
+    else:
+        sources.append(replacement)
+
+    entity.entity_config["declared_sources"] = sources
+    destination = entity.path / "entity.json"
+    tmp = destination.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, destination)
+    return {
+        "source": name,
+        "coverage_from": start.isoformat(),
+        "coverage_to": end.isoformat(),
+        "status": status,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Entity data object
 # ---------------------------------------------------------------------------
@@ -573,6 +629,18 @@ def add_parser(subparsers: Any) -> None:
     map_parser.add_argument("--feed-account-id", required=True, help="Stable provider account ID")
     map_parser.add_argument("--account", required=True, help="Existing ledger account to use")
 
+    coverage_parser = entity_sub.add_parser(
+        "source-coverage",
+        help="Record the confirmed covered date range for a bank, card, or fallback source",
+    )
+    coverage_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    coverage_parser.add_argument("--source", required=True, dest="source_name",
+                                 help="Declared source name, such as a card or CSV fallback")
+    coverage_parser.add_argument("--from", required=True, dest="coverage_from",
+                                 help="First covered date in YYYY-MM-DD format")
+    coverage_parser.add_argument("--to", required=True, dest="coverage_to",
+                                 help="Last covered date in YYYY-MM-DD format")
+
 
 def run(args: Any) -> int:
     """Execute the entity subcommand described by *args*."""
@@ -631,6 +699,22 @@ def run(args: Any) -> int:
             return 1
         verb = "Updated" if report["status"] == "updated" else "Mapped"
         print(f"{verb}: {report['feed_account_id']} → {report['account']}")
+        return 0
+
+    if args.entity_command == "source-coverage":
+        target = _resolve_target(args.path)
+        try:
+            report = record_source_coverage(
+                target, args.source_name, args.coverage_from, args.coverage_to
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        verb = "Updated" if report["status"] == "updated" else "Recorded"
+        print(
+            f"{verb} coverage for {report['source']}: "
+            f"{report['coverage_from']} through {report['coverage_to']}"
+        )
         return 0
 
     print(f"Unknown entity command: {args.entity_command}", file=sys.stderr)

@@ -23,6 +23,7 @@ from bookkeeping.entity import (  # noqa: E402
     init_entity,
     load_entity,
     map_bank_account,
+    record_source_coverage,
     run,
 )
 
@@ -107,6 +108,29 @@ class TestInitFullLayout(unittest.TestCase):
                 load_entity(target).entity_config["bank_account_mappings"]["provider-account-42"],
                 "Assets:Bank:Checking",
             )
+
+    def test_source_coverage_preserves_existing_source_declaration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "my-entity"
+            _init_simple(target)
+            config_path = target / "entity.json"
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            data["declared_sources"] = ["Cancelled corporate card CSV"]
+            config_path.write_text(json.dumps(data), encoding="utf-8")
+
+            result = record_source_coverage(
+                target,
+                "Cancelled corporate card CSV",
+                "2026-01-01",
+                "2026-06-30",
+            )
+
+            self.assertEqual(result["status"], "updated")
+            self.assertEqual(load_entity(target).entity_config["declared_sources"], [{
+                "name": "Cancelled corporate card CSV",
+                "coverage_from": "2026-01-01",
+                "coverage_to": "2026-06-30",
+            }])
 
     def test_init_persists_legal_structure_and_cutover_date(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

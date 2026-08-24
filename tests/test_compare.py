@@ -1358,6 +1358,86 @@ class TestSourceCoverage(unittest.TestCase):
             self.assertIn("requested_from", item)
             self.assertIn("requested_to", item)
 
+    def test_declared_partial_coverage_names_the_missing_period(self):
+        from src.bookkeeping.compare import _source_coverage
+
+        self._entity.entity_config["declared_sources"] = [{
+            "name": "Cancelled card CSV",
+            "coverage_from": "2026-01-01",
+            "coverage_to": "2026-02-15",
+        }]
+        coverage = _source_coverage(
+            self._entity, date(2026, 1, 1), date(2026, 3, 31)
+        )
+
+        self.assertEqual(coverage[0]["status"], "partial")
+        self.assertEqual(coverage[0]["exceptions"], [{
+            "kind": "missing-end-coverage",
+            "from": "2026-02-16",
+            "to": "2026-03-31",
+        }])
+
+    def test_known_coverage_gap_blocks_migration_confidence(self):
+        from src.bookkeeping.compare import confidence_package
+
+        self._entity.entity_config["declared_sources"] = [{
+            "name": "Cancelled card CSV",
+            "coverage_from": "2026-01-01",
+            "coverage_to": "2026-02-15",
+        }]
+        package = confidence_package(
+            self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31)
+        )
+
+        self.assertIn({
+            "source": "Cancelled card CSV",
+            "kind": "missing-end-coverage",
+            "from": "2026-02-16",
+            "to": "2026-03-31",
+        }, package["coverage_exceptions"])
+        self.assertTrue(any(
+            item["label"] == "Source coverage: Cancelled card CSV"
+            for item in package["blocking_items"]
+        ))
+
+
+class TestQboAccountCrosswalk(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._tmp = Path(self._tmpdir)
+        self._entity = _make_entity(self._tmp, FIXTURE_LEDGER)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_explicit_crosswalk_overrides_name_mapping(self):
+        from src.bookkeeping.compare import _map_qb_name
+
+        mapped = _map_qb_name(
+            "Marketing:Advertising",
+            {"Marketing:Advertising": "Expense"},
+            {"Marketing:Advertising": "Expenses:Growth"},
+        )
+
+        self.assertEqual(mapped, "Expenses:Growth")
+
+    def test_crosswalk_setting_persists_in_entity_config(self):
+        from src.bookkeeping.compare import set_qbo_account_crosswalk
+
+        result = set_qbo_account_crosswalk(
+            self._entity.path,
+            "Marketing:Advertising",
+            "Expenses:Growth",
+        )
+        saved = json.loads((self._entity.path / "entity.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "created")
+        self.assertEqual(
+            saved["compare"]["qbo_account_crosswalk"]["Marketing:Advertising"],
+            "Expenses:Growth",
+        )
+
 
 # ---------------------------------------------------------------------------
 # Utility helpers for test setup

@@ -46,7 +46,15 @@ Materiality (OQ3 defaults, pending owner sign-off)
 A difference is material when:
     abs(delta) >= 25.00  OR  abs(delta) >= 0.01 * max(abs(ours), abs(reference))
 Both thresholds are configurable via entity.json under a "compare" section:
-    { "compare": { "material_abs": 25.00, "material_pct": 0.01 } }
+    {
+      "compare": {
+        "material_abs": 25.00,
+        "material_pct": 0.01,
+        "qbo_account_crosswalk": {
+          "QuickBooks account name": "Local:Slashbooks:Account"
+        }
+      }
+    }
 
 Categorization heuristics
 --------------------------
@@ -378,8 +386,26 @@ def _merge_differences(
 # QB account name → beancount account mapper (stateless helper)
 # ---------------------------------------------------------------------------
 
-def _map_qb_name(name: str, qb_type_map: dict[str, str]) -> str:
-    """Map a QB name to beancount account using type map."""
+def _qbo_account_crosswalk(entity: Entity) -> dict[str, str]:
+    """Return explicit QBO-to-local account mappings from entity configuration."""
+    raw = (entity.entity_config.get("compare") or {}).get("qbo_account_crosswalk") or {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(qb_name).strip(): str(local_account).strip()
+        for qb_name, local_account in raw.items()
+        if str(qb_name).strip() and str(local_account).strip()
+    }
+
+
+def _map_qb_name(
+    name: str,
+    qb_type_map: dict[str, str],
+    crosswalk: Optional[dict[str, str]] = None,
+) -> str:
+    """Map a QBO account name, preferring an explicit owner-approved crosswalk."""
+    if crosswalk and name in crosswalk:
+        return crosswalk[name]
     qtype = qb_type_map.get(name, "Expenses")
     return map_qb_account(name, qtype)
 
@@ -535,6 +561,7 @@ def _compare_pnl(
 
     # Reset collision registry for consistent mapping
     _reset_collision_registry()
+    crosswalk = _qbo_account_crosswalk(entity)
 
     # Build QB totals per leaf row (skip subtotals). Leaf rows under a
     # non-top-level section carry the section as their parent path — QB's
@@ -558,7 +585,7 @@ def _compare_pnl(
         if row.row_type == "leaf":
             try:
                 qb_name = f"{parent}:{row.name}" if parent else row.name
-                bc_account = _map_qb_name(qb_name, qb_type_map)
+                bc_account = _map_qb_name(qb_name, qb_type_map, crosswalk)
                 qb_totals[bc_account] = qb_totals.get(bc_account, Decimal("0.00")) + row.amount
             except Exception:
                 pass
@@ -652,13 +679,14 @@ def _compare_bs(
                 our_balances[account] = Decimal(str(amount))
 
     _reset_collision_registry()
+    crosswalk = _qbo_account_crosswalk(entity)
 
     # QB leaf balances
     qb_balances: dict[str, Decimal] = {}
     for row in qb_bs.rows:
         if row.row_type == "leaf":
             try:
-                bc_account = _map_qb_name(row.name, qb_type_map)
+                bc_account = _map_qb_name(row.name, qb_type_map, crosswalk)
                 qb_balances[bc_account] = row.amount
             except Exception:
                 pass
@@ -790,6 +818,7 @@ def _compare_gl_counts(
     # transaction appears once in a bank/card section; P&L sections duplicate
     # it and are deliberately excluded.
     qb_counts: dict[str, int] = {}
+    crosswalk = _qbo_account_crosswalk(entity)
     for txn in qb_gl.transactions:
         if not (
             from_date <= txn.txn_date <= to_date
@@ -797,7 +826,7 @@ def _compare_gl_counts(
         ):
             continue
         try:
-            bc_account = _map_qb_name(txn.account, qb_type_map)
+            bc_account = _map_qb_name(txn.account, qb_type_map, crosswalk)
             qb_counts[bc_account] = qb_counts.get(bc_account, 0) + 1
         except Exception:
             pass
@@ -993,6 +1022,7 @@ def _is_internal_transfer_match(
     qb_amount: Decimal,
     qb_account: str,
     qb_type_map: dict[str, str],
+    crosswalk: Optional[dict[str, str]] = None,
 ) -> bool:
     """Match an aligned Mercury transfer to its mapped QBO bank account.
 
@@ -1007,7 +1037,7 @@ def _is_internal_transfer_match(
     ):
         return False
     try:
-        return our_account == _map_qb_name(qb_account, qb_type_map)
+        return our_account == _map_qb_name(qb_account, qb_type_map, crosswalk)
     except Exception:
         return False
 
@@ -1126,6 +1156,8 @@ def _find_unmatched(
         nd = _norm_first_segment(raw_desc)
         qb_list.append((txn.txn_date, txn.amount, nd, txn.account))
 
+    crosswalk = _qbo_account_crosswalk(entity)
+
     # Matching: greedy O(n*m) — fine for typical statement sizes
     our_matched = [False] * len(our_list)
     qb_matched = [False] * len(qb_list)
@@ -1137,7 +1169,7 @@ def _find_unmatched(
                 continue
             if (
                 _is_internal_transfer_match(
-                    od, oa, oacc, _osid, qd, qa, qacc, qb_type_map
+                    od, oa, oacc, _osid, qd, qa, qacc, qb_type_map, crosswalk
                 )
                 or _txns_match(od, oa, ond, qd, qa, qnd)
             ):
@@ -1425,7 +1457,14 @@ def _spot_audit_sample(
 # ---------------------------------------------------------------------------
 
 def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dict]:
-    """Build a coverage matrix: declared sources × date coverage."""
+    """Build a declared-source coverage matrix and named date-gap exceptions.
+
+    Transaction activity cannot prove a feed covered an entire requested period:
+    a quiet account may have no activity at either end. Coverage is therefore
+    only called complete or partial when the owner has recorded source bounds.
+    Plain string declarations remain supported and report as unknown rather than
+    becoming a false certification blocker.
+    """
     sources = entity.entity_config.get("declared_sources", [])
     if not sources:
         # Infer from the ledger accounts
@@ -1447,12 +1486,55 @@ def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dic
     coverage = []
     for src in sources:
         src_name = src if isinstance(src, str) else src.get("name", str(src))
-        coverage.append({
+        item: dict[str, Any] = {
             "source": src_name,
             "requested_from": str(from_date),
             "requested_to": str(to_date),
-            "status": "declared",
-        })
+            "status": "unknown",
+            "exceptions": [],
+        }
+        if not isinstance(src, dict):
+            coverage.append(item)
+            continue
+
+        raw_from = str(src.get("coverage_from") or "")
+        raw_to = str(src.get("coverage_to") or "")
+        item["coverage_from"] = raw_from or None
+        item["coverage_to"] = raw_to or None
+        if not raw_from or not raw_to:
+            item["reason"] = "No declared source coverage dates."
+            coverage.append(item)
+            continue
+        try:
+            available_from = date.fromisoformat(raw_from)
+            available_to = date.fromisoformat(raw_to)
+        except ValueError:
+            item["status"] = "invalid"
+            item["reason"] = "Declared source coverage must use YYYY-MM-DD dates."
+            coverage.append(item)
+            continue
+        if available_from > available_to:
+            item["status"] = "invalid"
+            item["reason"] = "Declared source coverage starts after it ends."
+            coverage.append(item)
+            continue
+
+        exceptions: list[dict[str, str]] = []
+        if available_from > from_date:
+            exceptions.append({
+                "kind": "missing-start-coverage",
+                "from": str(from_date),
+                "to": str(min(available_from - timedelta(days=1), to_date)),
+            })
+        if available_to < to_date:
+            exceptions.append({
+                "kind": "missing-end-coverage",
+                "from": str(max(available_to + timedelta(days=1), from_date)),
+                "to": str(to_date),
+            })
+        item["exceptions"] = exceptions
+        item["status"] = "complete" if not exceptions else "partial"
+        coverage.append(item)
     return coverage
 
 
@@ -1480,6 +1562,11 @@ def confidence_package(
     diffs = load_differences(entity)
     spot_sample = _spot_audit_sample(entity, from_date, to_date)
     source_cov = _source_coverage(entity, from_date, to_date)
+    coverage_exceptions = [
+        {"source": item["source"], **exception}
+        for item in source_cov
+        for exception in item.get("exceptions", [])
+    ]
 
     # Readiness recap
     readiness_recap = {
@@ -1537,6 +1624,20 @@ def confidence_package(
         {"label": "QuickBooks collection error", "reason": error}
         for error in readiness.collection_errors
     )
+    for item in source_cov:
+        if item["status"] == "invalid":
+            blocking_items.append({
+                "label": f"Source coverage: {item['source']}",
+                "reason": item["reason"],
+            })
+    for exception in coverage_exceptions:
+        blocking_items.append({
+            "label": f"Source coverage: {exception['source']}",
+            "reason": (
+                f"{exception['kind'].replace('-', ' ')} from "
+                f"{exception['from']} through {exception['to']}."
+            ),
+        })
     blocking_items.extend(
         {"label": "Comparison error", "reason": error}
         for error in comparison.errors
@@ -1571,6 +1672,7 @@ def confidence_package(
         "generated_at": _now_iso(),
         "readiness_recap": readiness_recap,
         "source_coverage": source_cov,
+        "coverage_exceptions": coverage_exceptions,
         "grain_summary": grain_summary,
         "match_summary": {
             "matched_transactions": comparison.matched_count,
@@ -1639,6 +1741,18 @@ def _render_confidence_markdown(package: dict) -> str:
     # Blocking items
     if package.get("blocking_items"):
         lines.append("## Blocking Issues (must resolve before certifying)")
+        lines.append("")
+
+    coverage_exceptions = package.get("coverage_exceptions", [])
+    if coverage_exceptions:
+        lines.append("## Source Coverage Exceptions")
+        lines.append("")
+        for exception in coverage_exceptions:
+            label = exception["kind"].replace("-", " ")
+            lines.append(
+                f"- **{exception['source']}**: {label} from "
+                f"{exception['from']} through {exception['to']}."
+            )
         lines.append("")
         for b in package["blocking_items"]:
             lines.append(f"- **{b['label']}**: {b['reason']}")
@@ -1960,6 +2074,36 @@ def accept_diff(entity: Entity, key: str, note: str = "") -> bool:
     return False
 
 
+def set_qbo_account_crosswalk(
+    entity_path: Path,
+    qb_account: str,
+    local_account: str,
+) -> dict[str, str]:
+    """Persist an owner-approved QBO account-name crosswalk for comparison."""
+    entity = load_entity(entity_path)
+    source = qb_account.strip()
+    destination = local_account.strip()
+    if not source or not destination:
+        raise ValueError("Both the QuickBooks account and local account are required.")
+
+    compare_cfg = dict(entity.entity_config.get("compare") or {})
+    crosswalk = dict(compare_cfg.get("qbo_account_crosswalk") or {})
+    previous = crosswalk.get(source)
+    crosswalk[source] = destination
+    compare_cfg["qbo_account_crosswalk"] = crosswalk
+    entity.entity_config["compare"] = compare_cfg
+
+    config_path = entity.path / "entity.json"
+    tmp = config_path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(config_path))
+    return {
+        "qb_account": source,
+        "local_account": destination,
+        "status": "updated" if previous else "created",
+    }
+
+
 # ---------------------------------------------------------------------------
 # CLI surface
 # ---------------------------------------------------------------------------
@@ -2027,6 +2171,16 @@ def add_parser(subparsers: Any) -> None:
     accept_p.add_argument("--entity", required=True, type=Path, dest="entity_path")
     accept_p.add_argument("--key", required=True, dest="diff_key")
     accept_p.add_argument("--note", default="", dest="note")
+
+    crosswalk_p = cmp_sub.add_parser(
+        "account-crosswalk",
+        help="Map a QuickBooks account name to a local Slashbooks account for comparisons",
+    )
+    crosswalk_p.add_argument("--entity", required=True, type=Path, dest="entity_path")
+    crosswalk_p.add_argument("--qb-account", required=True,
+                             help="Exact QuickBooks account name, including parent hierarchy when shown")
+    crosswalk_p.add_argument("--local-account", required=True,
+                             help="Local Slashbooks account to compare it against")
 
 
 def run(args: Any) -> int:
@@ -2128,6 +2282,18 @@ def run(args: Any) -> int:
             else:
                 print(f"No difference found with key {args.diff_key!r}", file=sys.stderr)
                 return 1
+            return 0
+
+        if cc == "account-crosswalk":
+            try:
+                result = set_qbo_account_crosswalk(
+                    Path(args.entity_path), args.qb_account, args.local_account
+                )
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            verb = "Updated" if result["status"] == "updated" else "Mapped"
+            print(f"{verb}: {result['qb_account']} → {result['local_account']}")
             return 0
 
         print(f"Unknown compare command: {cc}", file=sys.stderr)
