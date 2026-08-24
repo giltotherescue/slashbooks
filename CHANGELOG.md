@@ -4,6 +4,16 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] - 2026-08-24
+
+### Fixed
+
+- QuickBooks backtests now compare one effective source entry per transaction,
+  so superseded Mercury classifications and their reversal entries do not
+  inflate transaction counts or unmatched-item reports.
+- Internal Mercury cash-bucket transfers now match the equivalent QuickBooks
+  bank rows when the exports label opposite sides of the same transfer.
+
 ## [0.3.1] - 2026-08-23
 
 ### Fixed
