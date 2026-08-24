@@ -23,6 +23,13 @@ developer command instructions to the owner unless they explicitly ask for them.
 For owner-facing next steps, suggest slash commands or plain English requests,
 not shell commands.
 
+## Working pace
+
+Gather the queue and its read-only group summary before asking for a decision.
+Batch routine items that share the same proposed treatment into one approval
+request. Do not confirm, correct, or post an uncertain transaction without the
+owner's approval; that approval boundary is the reason to pause.
+
 ## Audience and language
 
 Use the audience established during onboarding. If it is unclear and the answer
@@ -64,9 +71,16 @@ and duplicate candidates:
 scripts/books queue list --entity <entity-path> --status open
 ```
 
-Tell the owner how many items are waiting. For a large queue, group routine,
-high-confidence items that share one proposed category; keep unusual, material, and
-ambiguous items one by one. If the queue is empty, say so and stop.
+For a large queue, first get the read-only treatment summary:
+
+```
+scripts/books queue summary --entity <entity-path> --status open
+```
+
+Tell the owner how many items are waiting. Use the summary's count, total, date
+range, and sample merchants to introduce routine groups. Keep unusual, material,
+and ambiguous items one by one. A `Needs review` group is not a proposed category;
+do not treat it as approval. If the queue is empty, say so and stop.
 
 ---
 

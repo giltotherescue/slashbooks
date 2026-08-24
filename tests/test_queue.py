@@ -55,6 +55,7 @@ from bookkeeping.queue import (  # noqa: E402
     propose_group,
     reopen_if_amount_changed,
     reconcile_pending_amount_changes,
+    summarize_queue_items,
     write_session_summary,
     quarterly_review,
 )
@@ -196,6 +197,30 @@ class TestPendingWorkVisibility(unittest.TestCase):
             self.assertEqual([item["source_id"] for item in confirmed], ["group-1", "group-2"])
             staged = json.loads((entity.staging_dir / "pending-categorization.json").read_text(encoding="utf-8"))
             self.assertEqual([item["id"] for item in staged], ["other"])
+
+    def test_summary_groups_by_treatment_and_keeps_staged_items_unclassified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            _add_pending_categorization(entity, "software-1", "Acme", "-10.00", "2026-01-05")
+            _add_pending_categorization(entity, "software-2", "Acme", "-15.00", "2026-01-20")
+            _add_pending_categorization(entity, "unknown-1", "Unknown", "-20.00", "2026-01-25")
+            propose_group(
+                entity,
+                ["software-1", "software-2"],
+                "Expenses:Software",
+                "Routine subscription",
+            )
+
+            groups = summarize_queue_items(entity)
+
+            self.assertEqual([group["treatment"] for group in groups], [
+                "Needs review", "Expenses:Software",
+            ])
+            software = groups[1]
+            self.assertEqual(software["count"], 2)
+            self.assertEqual(software["total"], "-25.00")
+            self.assertEqual(software["date_from"], "2026-01-05")
+            self.assertEqual(software["date_to"], "2026-01-20")
 
 
 # ---------------------------------------------------------------------------

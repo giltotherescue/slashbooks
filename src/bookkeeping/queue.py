@@ -363,6 +363,54 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     return items
 
 
+def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> list[dict]:
+    """Group review work by proposed treatment without changing any item.
+
+    The queue does not infer a category simply to make a prettier group. Staged
+    and guarded items remain in ``Needs review`` until an agent proposes a
+    treatment; confirmed proposals stay in distinct groups.
+    """
+    groups: dict[str, dict[str, Any]] = {}
+    for item in list_queue_items(entity, status=status):
+        treatment = str(item.get("proposed_category") or "Needs review")
+        group = groups.setdefault(
+            treatment,
+            {
+                "treatment": treatment,
+                "count": 0,
+                "total": Decimal("0.00"),
+                "dates": [],
+                "sample_counterparties": [],
+                "statuses": set(),
+            },
+        )
+        group["count"] += 1
+        try:
+            group["total"] += Decimal(str(item.get("amount") or "0")).quantize(Decimal("0.01"))
+        except Exception:
+            pass
+        raw_date = str(item.get("date") or "")[:10]
+        if raw_date:
+            group["dates"].append(raw_date)
+        sample = str(item.get("counterparty") or item.get("description") or "").strip()
+        if sample and sample not in group["sample_counterparties"] and len(group["sample_counterparties"]) < 3:
+            group["sample_counterparties"].append(sample)
+        status_name = str(item.get("status") or "")
+        if status_name:
+            group["statuses"].add(status_name)
+
+    result: list[dict] = []
+    for group in groups.values():
+        dates = sorted(group.pop("dates"))
+        statuses = sorted(group.pop("statuses"))
+        group["total"] = f"{group['total']:.2f}"
+        group["date_from"] = dates[0] if dates else None
+        group["date_to"] = dates[-1] if dates else None
+        group["statuses"] = statuses
+        result.append(group)
+    return sorted(result, key=lambda group: (group["treatment"] != "Needs review", group["treatment"]))
+
+
 def resolve_duplicate_candidate(
     entity: Entity,
     source_id: str,
@@ -1322,6 +1370,13 @@ def add_parser(subparsers: Any) -> None:
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
     list_p.add_argument("--status", default=None, help="Filter by status (open/confirmed/corrected/reopened)")
 
+    summary_p = queue_sub.add_parser(
+        "summary",
+        help="Summarize review work by proposed treatment without posting changes",
+    )
+    summary_p.add_argument("--entity", required=True, help="Path to entity directory")
+    summary_p.add_argument("--status", default="open", help="Filter by status (default: open)")
+
     # show
     show_p = queue_sub.add_parser("show", help="Show a single queue item")
     show_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -1434,6 +1489,23 @@ def run(args: Any) -> int:
             for item in items:
                 cat = item.get("proposed_category") or item.get("confirmed_category") or "?"
                 print(f"  [{item.get('status', '?')}] {item['source_id']}  {item.get('date', '?')}  {cat}")
+            return 0
+
+        elif qcmd == "summary":
+            groups = summarize_queue_items(entity, status=args.status)
+            if not groups:
+                print("No review items found.")
+                return 0
+            print("Review groups:")
+            for group in groups:
+                date_range = group["date_from"] or "unknown date"
+                if group["date_to"] and group["date_to"] != group["date_from"]:
+                    date_range += f" through {group['date_to']}"
+                samples = ", ".join(group["sample_counterparties"]) or "no sample counterparty"
+                print(
+                    f"  {group['treatment']}: {group['count']} item(s), "
+                    f"{group['total']}, {date_range}; samples: {samples}"
+                )
             return 0
 
         elif qcmd == "show":
