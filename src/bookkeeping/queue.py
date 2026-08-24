@@ -518,21 +518,25 @@ def _load_pending_categorization(entity: Entity) -> list[dict]:
         return []
 
 
-def _remove_from_pending_categorization(entity: Entity, source_id: str) -> None:
+def _remove_from_pending_categorization(entity: Entity, source_id: str, *, strict: bool = False) -> None:
     """Remove source_id from the pending-categorization list (atomic write)."""
     path = entity.staging_dir / "pending-categorization.json"
     if not path.exists():
         return
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, list):
-            return
-        updated = [item for item in data if str(item.get("id", "")) != source_id]
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(str(tmp), str(path))
-    except (json.JSONDecodeError, OSError):
-        pass
+    except (json.JSONDecodeError, OSError) as exc:
+        if strict:
+            raise ValueError(f"Could not update pending categorization: {exc}") from exc
+        return
+    if not isinstance(data, list):
+        if strict:
+            raise ValueError("Pending categorization must contain a JSON list.")
+        return
+    updated = [item for item in data if str(item.get("id", "")) != source_id]
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(path))
 
 
 def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[str]) -> None:
@@ -543,14 +547,21 @@ def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[st
     wanted = {str(source_id) for source_id in source_ids}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, list):
-            return
-        updated = [item for item in data if str(item.get("id", "")) not in wanted]
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(str(tmp), str(path))
-    except (json.JSONDecodeError, OSError):
-        pass
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Could not update pending categorization: {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError("Pending categorization must contain a JSON list.")
+    updated = [item for item in data if str(item.get("id", "")) not in wanted]
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(path))
+
+
+def _ledger_has_all_sources(entity: Entity, source_ids: list[str]) -> bool:
+    from .ledger.store import LedgerStore, default_store_path
+
+    store = LedgerStore(default_store_path(entity.path))
+    return bool(source_ids) and all(store.source_exists(source_id) for source_id in source_ids)
 
 
 def _source_id_in_pending(entity: Entity, source_id: str) -> bool:
@@ -634,16 +645,19 @@ def _split_template_path(entity: Entity) -> Path:
 
 def _load_split_templates(entity: Entity) -> dict[str, list[dict[str, str]]]:
     path = _split_template_path(entity)
+    if not path.exists():
+        return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Could not read existing split templates: {exc}") from exc
     if not isinstance(data, dict):
-        return {}
+        raise ValueError("Existing split templates must contain a JSON object.")
     templates: dict[str, list[dict[str, str]]] = {}
     for name, postings in data.items():
-        if isinstance(name, str) and isinstance(postings, list):
-            templates[name] = [dict(posting) for posting in postings if isinstance(posting, dict)]
+        if not isinstance(name, str) or not isinstance(postings, list) or not all(isinstance(posting, dict) for posting in postings):
+            raise ValueError("Existing split templates contain an invalid template.")
+        templates[name] = [dict(posting) for posting in postings]
     return templates
 
 
@@ -927,7 +941,17 @@ def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[st
         raise ValueError(f"Queue item '{item_id}' is not a split proposal.")
     if item.get("status") not in {"open", "reopened"}:
         raise ValueError("Only open split proposals can be confirmed.")
-    txn = _get_pending_txn(entity, str(item["source_id"]))
+    source_id = str(item["source_id"])
+    if _ledger_has_all_sources(entity, [source_id]):
+        from .ledger.staging import StagingStore
+        StagingStore(entity.staging_dir).mark_seen(source_id)
+        _remove_from_pending_categorization(entity, source_id, strict=True)
+        item["status"] = "confirmed"
+        item["confirmed_category"] = "Split transaction"
+        item["updated_at"] = ts or _now_iso()
+        _save_item(entity, item)
+        return item
+    txn = _get_pending_txn(entity, source_id)
     if txn is None:
         raise ValueError("The staged transaction is no longer available for this split.")
     # Re-run the full validation at the approval boundary, including any chart changes.
@@ -938,7 +962,7 @@ def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[st
     if total != expected:
         raise ValueError("The saved split no longer balances to the staged source amount.")
     _write_split_entry(entity, txn, item, session_id, ts)
-    _remove_from_pending_categorization(entity, str(item["source_id"]))
+    _remove_from_pending_categorization(entity, str(item["source_id"]), strict=True)
     item["status"] = "confirmed"
     item["confirmed_category"] = "Split transaction"
     item["updated_at"] = ts or _now_iso()
@@ -1089,36 +1113,48 @@ def propose_transfer(entity: Entity, source_ids: list[str], reasoning: str) -> d
 
 
 def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None) -> dict:
-    """Post one audited two-account transfer and retain both source payloads."""
+    """Post one audited transfer pair while preserving both source dates."""
     item = _load_item(entity, item_id)
     if item.get("proposal_type") != "transfer-pair":
         raise ValueError(f"Queue item '{item_id}' is not a transfer pair.")
     if item.get("status") not in {"open", "reopened"}:
         raise ValueError("Only open transfer proposals can be confirmed.")
     source_ids = [str(source_id) for source_id in item.get("source_ids") or []]
+    if _ledger_has_all_sources(entity, source_ids):
+        from .ledger.staging import StagingStore
+        StagingStore(entity.staging_dir).bulk_mark_seen(source_ids)
+        _remove_many_from_pending_categorization(entity, source_ids)
+        item["status"] = "confirmed"
+        item["confirmed_category"] = "Internal transfer"
+        item["updated_at"] = ts or _now_iso()
+        _save_item(entity, item)
+        return item
     first, second, first_amount, first_account, second_account = _transfer_details(entity, source_ids)
     from .ledger.importer import _atomic_ledger_write, _get_existing_opens
     from .ledger.model import Entry, Open, Posting
-    entry = Entry(
-        date=max(_txn_date(first), _txn_date(second)),
-        narration="Internal transfer: " + " / ".join(str(txn.get("description") or source_id) for txn, source_id in ((first, source_ids[0]), (second, source_ids[1]))),
-        flag="*",
-        meta=(
-            ("source-id", source_ids[0]),
-            ("paired-source-id", source_ids[1]),
-            ("import-session", session_id),
-            ("review-workflow", "transfer-pair"),
-        ),
-        tags=(f"import-{session_id}", "internal-transfer"),
-        postings=(
-            Posting(account=first_account, amount=first_amount, currency="USD"),
-            Posting(account=second_account, amount=-first_amount, currency="USD"),
-        ),
-    )
+    pair_id = _transfer_item_id(source_ids)
+    common_meta = (("transfer-pair-id", pair_id), ("import-session", session_id), ("review-workflow", "transfer-pair"))
+    if _txn_date(first) == _txn_date(second):
+        entries = [Entry(
+            date=_txn_date(first),
+            narration="Internal transfer: " + " / ".join(str(txn.get("description") or source_id) for txn, source_id in ((first, source_ids[0]), (second, source_ids[1]))),
+            flag="*",
+            meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta),
+            tags=(f"import-{session_id}", "internal-transfer"),
+            postings=(Posting(account=first_account, amount=first_amount, currency="USD"), Posting(account=second_account, amount=-first_amount, currency="USD")),
+        )]
+        needed_accounts = {first_account, second_account}
+    else:
+        clearing = "Assets:Transfers-Clearing"
+        entries = [
+            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency="USD"), Posting(account=clearing, amount=-first_amount, currency="USD"))),
+            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency="USD"), Posting(account=clearing, amount=first_amount, currency="USD"))),
+        ]
+        needed_accounts = {first_account, second_account, clearing}
     existing_opens = _get_existing_opens(entity)
-    opens = [Open(date=date(2000, 1, 1), account=account) for account in (first_account, second_account) if account not in existing_opens]
+    opens = [Open(date=date(2000, 1, 1), account=account) for account in sorted(needed_accounts) if account not in existing_opens]
     _atomic_ledger_write(
-        entity, opens, [entry], session_id, ts,
+        entity, opens, entries, session_id, ts,
         f"queue confirm transfer source_ids={source_ids!r}", [dict(first), dict(second)],
     )
     from .ledger.staging import StagingStore
@@ -1168,8 +1204,25 @@ def propose_related_entity(entity: Entity, source_id: str, related_entity_name: 
     item["proposal_type"] = "related-entity"
     item["related_entity"] = policy["name"]
     item["related_entity_treatment"] = treatment
+    item["related_entity_policy_fingerprint"] = _related_entity_policy_fingerprint(policy)
     _save_item(entity, item)
     return item
+
+
+def _related_entity_policy_fingerprint(policy: dict) -> str:
+    fields = {key: policy.get(key) for key in (
+        "name", "receivable_account", "payable_account", "inbound_policy",
+        "outbound_policy", "inbound_income_account", "owner_authorized", "approved_at",
+    )}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _validate_related_entity_proposal(entity: Entity, item: dict) -> None:
+    from .entity import get_related_entity, load_entity
+
+    policy = get_related_entity(load_entity(entity.path), str(item.get("related_entity") or ""))
+    if item.get("related_entity_policy_fingerprint") != _related_entity_policy_fingerprint(policy):
+        raise ValueError("The related-entity policy changed after this proposal. Create a fresh proposal.")
 
 
 # ---------------------------------------------------------------------------
@@ -1333,6 +1386,8 @@ def confirm(
     category = str(item.get("proposed_category") or "")
     if not category:
         raise ValueError(f"Queue item '{item_id}' has no proposed_category.")
+    if item.get("proposal_type") == "related-entity":
+        _validate_related_entity_proposal(entity, item)
 
     # Look up the txn from pending-categorization
     source_id = str(item["source_id"])
@@ -1397,6 +1452,9 @@ def correct(
 
     item = _load_item(entity, item_id)
 
+    if item.get("proposal_type") in {"split", "transfer-pair", "related-entity"}:
+        raise ValueError("Specialized proposals cannot use generic correction. Withdraw and repropose the item.")
+
     if item.get("status") not in ("open", "reopened"):
         raise ValueError(
             f"Queue item '{item_id}' has status '{item.get('status')}'; "
@@ -1432,6 +1490,19 @@ def correct(
         item["context"] = note
     _save_item(entity, item)
 
+    return item
+
+
+def withdraw(entity: Entity, item_id: str, note: str = "", ts: Optional[str] = None) -> dict:
+    """Withdraw an open proposal without posting or removing staged source rows."""
+    item = _load_item(entity, item_id)
+    if item.get("status") not in {"open", "reopened"}:
+        raise ValueError("Only open or reopened proposals can be withdrawn.")
+    item["status"] = "withdrawn"
+    item["updated_at"] = ts or _now_iso()
+    if note:
+        item["context"] = _sanitize_reasoning(note)
+    _save_item(entity, item)
     return item
 
 
@@ -1882,6 +1953,10 @@ def add_parser(subparsers: Any) -> None:
     corr_p.add_argument("--category", required=True, help="Corrected ledger account")
     corr_p.add_argument("--note", default="", help="Optional note")
     corr_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    withdraw_p = queue_sub.add_parser("withdraw", help="Withdraw an open proposal without posting it")
+    withdraw_p.add_argument("--entity", required=True, help="Path to entity directory")
+    withdraw_p.add_argument("--item", required=True, dest="item_id", help="Queue item ID")
+    withdraw_p.add_argument("--note", default="", help="Optional withdrawal note")
 
     duplicate_p = queue_sub.add_parser("resolve-duplicate", help="Resolve a possible legacy-ID duplicate")
     duplicate_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -1992,7 +2067,11 @@ def run(args: Any) -> int:
                 return 1
 
         elif qcmd == "split-template-list":
-            templates = list_split_templates(entity)
+            try:
+                templates = list_split_templates(entity)
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
             if not templates:
                 print("No split templates saved.")
                 return 0
@@ -2084,6 +2163,15 @@ def run(args: Any) -> int:
             try:
                 item = correct(entity, args.item_id, args.category, args.note, args.session_id)
                 print(f"Corrected: {item['source_id']} → {item['confirmed_category']}")
+                return 0
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "withdraw":
+            try:
+                item = withdraw(entity, args.item_id, args.note)
+                print(f"Withdrawn: {item['source_id']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)

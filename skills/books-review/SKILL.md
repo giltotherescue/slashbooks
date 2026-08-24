@@ -87,8 +87,9 @@ do not treat it as approval. If the queue is empty, say so and stop.
 Use a transfer pair when the same movement appears in two bank or card feeds.
 First inspect the read-only candidates and named unmatched-side exceptions. A
 candidate is a proposal, not approval. Ask the owner to approve the selected
-pair before confirming it; this creates one two-account transfer with both
-source records, rather than two duplicate expenses.
+pair before confirming it. Same-day pairs create one two-account entry. Pairs
+with different settlement dates use two source-dated legs through transfer
+clearing, so period cash remains correct and the clearing balance nets to zero.
 
 ```
 scripts/books queue transfer-candidates --entity <entity-path>
@@ -101,20 +102,34 @@ Use a split proposal when the owner has given an allocation for one source
 transaction, such as wages and payroll liabilities. Give the owner the full
 allocation and the liability effect before asking for approval. The posting
 amounts are exact; templates are reusable exact allocations, never guessed
-percentages.
+percentages. Save a template only after the owner approves its exact allocation,
+and list saved templates before recreating an allocation from memory.
 
 ```
 scripts/books queue propose-split --entity <entity-path> --source-id <id> --posting "Expenses:Wages=700.00" --posting "Liabilities:Payroll-Taxes=300.00" --reasoning "<why>"
 scripts/books queue confirm-split --entity <entity-path> --item <id>
+scripts/books queue split-template-save --entity <entity-path> --name "Approved payroll allocation" --posting "Expenses:Wages=700.00" --posting "Liabilities:Payroll-Taxes=300.00"
+scripts/books queue split-template-list --entity <entity-path>
 ```
 
-For a related legal entity, first record an owner-authorized policy with the
-due-from, due-to, and migration fallback accounts. Then propose each source row
-under that policy; do not learn it as a routine vendor category or auto-post it.
+For a related legal entity, first record a pending policy with the due-from,
+due-to, and migration fallback accounts. Show the full policy to the owner. Run
+the separate approval action only after explicit approval, and record the
+approval context. Then propose each source row under that policy; do not learn
+it as a routine vendor category or auto-post it.
 
 ```
 scripts/books entity related-entity set <entity-path> --name "Legacy Company" --receivable-account <due-from-account> --payable-account <due-to-account> --inbound-policy income --inbound-income-account <income-account> --outbound-policy create-receivable
+scripts/books entity related-entity approve <entity-path> --name "Legacy Company" --approval-note "<who approved the policy and in what context>"
 scripts/books queue propose-related --entity <entity-path> --source-id <id> --related-entity "Legacy Company" --reasoning "<owner-approved context>"
+```
+
+If a split, transfer-pair, or related-entity proposal is wrong, withdraw it and
+create a fresh specialized proposal. Do not use generic correction for these
+items.
+
+```
+scripts/books queue withdraw --entity <entity-path> --item <item-id> --note "<why it is being replaced>"
 ```
 
 ---

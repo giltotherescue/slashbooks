@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -452,30 +452,24 @@ def record_source_coverage(
         raise ValueError("Source coverage start date must not be after its end date.")
 
     sources = list(entity.entity_config.get("declared_sources") or [])
+    coverage = dict(entity.entity_config.get("source_coverage") or {})
     replacement = {
-        "name": name,
         "coverage_from": start.isoformat(),
         "coverage_to": end.isoformat(),
     }
-    status = "created"
-    for index, source in enumerate(sources):
+    status = "updated" if name in coverage else "created"
+    for source in sources:
         existing_name = source if isinstance(source, str) else source.get("name", "")
         if str(existing_name) != name:
             continue
-        if isinstance(source, dict):
-            replacement = dict(source)
-            replacement.update({
-                "name": name,
-                "coverage_from": start.isoformat(),
-                "coverage_to": end.isoformat(),
-            })
-        sources[index] = replacement
         status = "updated"
         break
     else:
-        sources.append(replacement)
+        sources.append(name)
 
     entity.entity_config["declared_sources"] = sources
+    coverage[name] = replacement
+    entity.entity_config["source_coverage"] = coverage
     destination = entity.path / "entity.json"
     tmp = destination.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -508,11 +502,11 @@ def record_related_entity(
     outbound_policy: str,
     inbound_income_account: str = "",
 ) -> dict[str, str]:
-    """Record an owner-authorized related-entity migration policy.
+    """Record a pending related-entity migration policy.
 
-    The configuration itself never posts transactions. It declares the chart
-    accounts and direction-specific fallback the owner has approved so a later
-    queue proposal can make the judgment explicit and reversible.
+    The configuration itself never posts transactions. It declares proposed
+    chart accounts and direction-specific fallbacks. A separate approval action
+    must activate them before a queue proposal can use the policy.
     """
     entity = load_entity(entity_path)
     related_name = name.strip()
@@ -541,7 +535,7 @@ def record_related_entity(
         "inbound_policy": inbound_policy,
         "outbound_policy": outbound_policy,
         "inbound_income_account": inbound_income_account if inbound_policy == "income" else "",
-        "owner_authorized": True,
+        "owner_authorized": False,
     }
     records = list(entity.entity_config.get("related_entities") or [])
     status = "created"
@@ -554,7 +548,29 @@ def record_related_entity(
         records.append(record)
     entity.entity_config["related_entities"] = records
     _write_entity_config(entity)
-    return {"name": related_name, "status": status, "inbound_policy": inbound_policy, "outbound_policy": outbound_policy}
+    return {"name": related_name, "status": status, "authorization": "pending", "inbound_policy": inbound_policy, "outbound_policy": outbound_policy}
+
+
+def approve_related_entity(entity_path: Path, name: str, approval_note: str) -> dict[str, str]:
+    """Activate a pending related-entity policy with explicit approval provenance."""
+    entity = load_entity(entity_path)
+    related_name = name.strip()
+    note = approval_note.strip()
+    if not related_name or not note:
+        raise ValueError("Related entity name and owner approval note are required.")
+    records = list(entity.entity_config.get("related_entities") or [])
+    for index, record in enumerate(records):
+        if not isinstance(record, dict) or str(record.get("name") or "").casefold() != related_name.casefold():
+            continue
+        approved = dict(record)
+        approved["owner_authorized"] = True
+        approved["approval_note"] = note
+        approved["approved_at"] = datetime.now(timezone.utc).isoformat()
+        records[index] = approved
+        entity.entity_config["related_entities"] = records
+        _write_entity_config(entity)
+        return {"name": str(approved["name"]), "status": "approved"}
+    raise ValueError(f"No pending related entity named '{related_name}' is configured.")
 
 
 def list_related_entities(entity_path: Path) -> list[dict[str, Any]]:
@@ -739,6 +755,10 @@ def add_parser(subparsers: Any) -> None:
     related_set.add_argument("--inbound-policy", required=True, choices=sorted(_INBOUND_RELATED_POLICIES))
     related_set.add_argument("--inbound-income-account", default="", help="Required when inbound policy is income")
     related_set.add_argument("--outbound-policy", required=True, choices=sorted(_OUTBOUND_RELATED_POLICIES))
+    related_approve = related_sub.add_parser("approve", help="Approve a pending related-entity policy")
+    related_approve.add_argument("path", type=Path, help="Path to the entity directory")
+    related_approve.add_argument("--name", required=True, help="Configured related entity name")
+    related_approve.add_argument("--approval-note", required=True, help="Owner approval provenance")
     related_list = related_sub.add_parser("list", help="List configured related-entity policies")
     related_list.add_argument("path", type=Path, help="Path to the entity directory")
 
@@ -835,10 +855,15 @@ def run(args: Any) -> int:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
             verb = "Updated" if report["status"] == "updated" else "Recorded"
-            print(
-                f"{verb} owner-authorized related entity {report['name']}: "
-                f"inbound={report['inbound_policy']}, outbound={report['outbound_policy']}"
-            )
+            print(f"{verb} pending related entity {report['name']}: inbound={report['inbound_policy']}, outbound={report['outbound_policy']}")
+            return 0
+        if args.related_entity_command == "approve":
+            try:
+                report = approve_related_entity(target, args.name, args.approval_note)
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            print(f"Approved related entity: {report['name']}")
             return 0
         if args.related_entity_command == "list":
             try:
@@ -852,7 +877,8 @@ def run(args: Any) -> int:
             for record in records:
                 print(
                     f"{record.get('name')}: inbound={record.get('inbound_policy')}, "
-                    f"outbound={record.get('outbound_policy')}"
+                    f"outbound={record.get('outbound_policy')}, "
+                    f"authorization={'approved' if record.get('owner_authorized') is True else 'pending'}"
                 )
             return 0
 

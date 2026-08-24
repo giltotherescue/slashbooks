@@ -30,13 +30,14 @@ import unittest
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from bookkeeping.entity import Entity, add_account, record_related_entity  # noqa: E402
+from bookkeeping.entity import Entity, add_account, approve_related_entity, record_related_entity  # noqa: E402
 from bookkeeping.ledger.importer import import_transactions  # noqa: E402
 from bookkeeping.ledger.model import Open  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
@@ -60,6 +61,7 @@ from bookkeeping.queue import (  # noqa: E402
     reconcile_pending_amount_changes,
     save_split_template,
     summarize_queue_items,
+    withdraw,
     find_transfer_candidates,
     confirm_split,
     confirm_transfer,
@@ -1091,11 +1093,28 @@ class TestMigrationReviewWorkflows(unittest.TestCase):
         store = LedgerStore(default_store_path(self.entity.path))
         with store.connection() as conn:
             rows = conn.execute("SELECT id FROM source_transactions ORDER BY id").fetchall()
-            metadata = conn.execute("SELECT metadata_json FROM entries").fetchone()[0]
+            entry_rows = conn.execute("SELECT date, metadata_json FROM entries ORDER BY date").fetchall()
         self.assertEqual([row[0] for row in rows], ["bank-payment", "card-payment"])
-        self.assertIn("paired-source-id", metadata)
+        self.assertEqual([row[0] for row in entry_rows], ["2026-02-01", "2026-02-03"])
+        self.assertTrue(all("paired-source-id" in row[1] for row in entry_rows))
+        self.assertTrue(store.source_exists("card-payment"))
         seen = json.loads((self.entity.staging_dir / "seen-ids.json").read_text(encoding="utf-8"))
         self.assertEqual(set(seen), {"bank-payment", "card-payment"})
+
+    def test_split_confirmation_retry_heals_after_ledger_commit(self) -> None:
+        _add_pending_categorization(self.entity, "split-retry", "Payroll", amount="-100.00")
+        propose_split(self.entity, "split-retry", "Allocation", ["Expenses:Software=100.00"])
+        with patch("bookkeeping.queue._remove_from_pending_categorization", side_effect=ValueError("disk failure")):
+            with self.assertRaisesRegex(ValueError, "disk failure"):
+                confirm_split(self.entity, "split-retry", "split-session", ts=TS)
+
+        healed = confirm_split(self.entity, "split-retry", "split-session", ts=TS)
+        self.assertEqual(healed["status"], "confirmed")
+        from bookkeeping.ledger.store import default_store_path
+        store = LedgerStore(default_store_path(self.entity.path))
+        with store.connection() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM entries WHERE source_id = 'split-retry'").fetchone()[0]
+        self.assertEqual(count, 1)
 
     def test_related_entity_policy_requires_explicit_proposal_and_is_not_learned(self) -> None:
         add_account(self.entity.path, "Assets:Intercompany:LegacyCo")
@@ -1110,11 +1129,42 @@ class TestMigrationReviewWorkflows(unittest.TestCase):
             "Income:Consulting",
         )
         _add_pending_categorization(self.entity, "legacy-receipt", "Legacy Co settlement", amount="200.00")
+        with self.assertRaisesRegex(ValueError, "not been owner-authorized"):
+            propose_related_entity(self.entity, "legacy-receipt", "Legacy Co", "Not approved.")
+        approve_related_entity(self.entity.path, "Legacy Co", "Gil approved the migration policy.")
         item = propose_related_entity(self.entity, "legacy-receipt", "Legacy Co", "Owner-approved migration fallback.")
         self.assertEqual(item["proposed_category"], "Income:Consulting")
         self.assertEqual(item["related_entity_treatment"], "owner-authorized inbound income fallback")
         confirm(self.entity, "legacy-receipt", "related-session", ts=TS)
         self.assertNotIn("LEGACY CO SETTLEMENT", load_learned_context(self.entity))
+
+    def test_related_entity_policy_change_requires_fresh_proposal(self) -> None:
+        add_account(self.entity.path, "Assets:Intercompany:LegacyCo")
+        add_account(self.entity.path, "Liabilities:Intercompany:LegacyCo")
+        record_related_entity(self.entity.path, "Legacy Co", "Assets:Intercompany:LegacyCo", "Liabilities:Intercompany:LegacyCo", "income", "create-receivable", "Income:Consulting")
+        approve_related_entity(self.entity.path, "Legacy Co", "Initial owner approval.")
+        _add_pending_categorization(self.entity, "legacy-change", "Legacy Co settlement", amount="200.00")
+        propose_related_entity(self.entity, "legacy-change", "Legacy Co", "Approved policy.")
+        record_related_entity(self.entity.path, "Legacy Co", "Assets:Intercompany:LegacyCo", "Liabilities:Intercompany:LegacyCo", "settle-receivable", "create-receivable")
+        approve_related_entity(self.entity.path, "Legacy Co", "Owner approved the revised policy.")
+        with self.assertRaisesRegex(ValueError, "policy changed"):
+            confirm(self.entity, "legacy-change", "related-session", ts=TS)
+
+    def test_special_proposal_must_be_withdrawn_before_reproposal(self) -> None:
+        _add_pending_categorization(self.entity, "split-withdraw", "Payroll", amount="-100.00")
+        propose_split(self.entity, "split-withdraw", "Allocation", ["Expenses:Software=100.00"])
+        with self.assertRaisesRegex(ValueError, "Specialized proposals"):
+            correct(self.entity, "split-withdraw", "Expenses:Office", session_id="s")
+        item = withdraw(self.entity, "split-withdraw", "Replace allocation.", ts=TS)
+        self.assertEqual(item["status"], "withdrawn")
+        self.assertIsNotNone(next(txn for txn in json.loads((self.entity.staging_dir / "pending-categorization.json").read_text()) if txn["id"] == "split-withdraw"))
+
+    def test_corrupt_split_templates_are_not_overwritten(self) -> None:
+        path = self.entity.staging_dir / "split-templates.json"
+        path.write_text("{broken", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "existing split templates"):
+            save_split_template(self.entity, "new", ["Expenses:Software=100.00"])
+        self.assertEqual(path.read_text(encoding="utf-8"), "{broken")
 
 
 # ---------------------------------------------------------------------------

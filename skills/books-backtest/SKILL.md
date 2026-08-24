@@ -142,12 +142,13 @@ For each material difference, explain it in plain English:
 - The most likely reason (timing, missing data, different judgment call, or a possible
   error in one of the books)
 
-If QuickBooks and Slashbooks use different account hierarchies for the same
-economic category, create an explicit crosswalk before treating it as a real
-difference. Use the full QuickBooks account name shown in the report:
+If QuickBooks and Slashbooks appear to use different account hierarchies for the
+same economic category, present the proposed mapping and its evidence to the
+owner. Create the crosswalk only after explicit approval. Use the full
+QuickBooks account name shown in the report and retain the approval context:
 
 ```
-scripts/books compare account-crosswalk --entity <entity-path> --qb-account "<QuickBooks account>" --local-account "<Slashbooks account>"
+scripts/books compare account-crosswalk --entity <entity-path> --qb-account "<QuickBooks account>" --local-account "<Slashbooks account>" --approval-note "<who approved the presentation-only mapping and why>"
 ```
 
 Use a crosswalk only for presentation differences. Do not use it to hide a

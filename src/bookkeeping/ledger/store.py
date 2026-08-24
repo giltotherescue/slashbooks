@@ -327,8 +327,11 @@ class LedgerStore:
     def source_exists(self, source_id: str) -> bool:
         with self.connection() as conn:
             row = conn.execute(
-                "SELECT 1 FROM entries WHERE source_id = ? LIMIT 1",
-                (source_id,),
+                """SELECT 1 FROM entries WHERE source_id = ?
+                   UNION ALL
+                   SELECT 1 FROM source_transactions WHERE id = ?
+                   LIMIT 1""",
+                (source_id, source_id),
             ).fetchone()
             return row is not None
 
@@ -339,7 +342,14 @@ class LedgerStore:
                 """SELECT source_id, metadata_json
                    FROM entries
                    WHERE source_id IS NOT NULL AND source_id != ''
-                   ORDER BY id"""
+                   UNION ALL
+                   SELECT id AS source_id, '[]' AS metadata_json
+                   FROM source_transactions
+                   WHERE id NOT IN (
+                     SELECT source_id FROM entries
+                     WHERE source_id IS NOT NULL AND source_id != ''
+                   )
+                   ORDER BY source_id"""
             ).fetchall()
         return [
             SourceRef(str(row["source_id"]), _loads_pairs(row["metadata_json"]))

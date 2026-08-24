@@ -497,6 +497,23 @@ class TestZeroMaterialDiffs(unittest.TestCase):
         report = compare_period(self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31))
         self.assertIsNotNone(report.readiness)
 
+    def test_effective_source_postings_are_resolved_once_per_comparison(self):
+        from src.bookkeeping import compare as compare_module
+
+        with patch.object(
+            compare_module,
+            "_effective_source_postings",
+            wraps=compare_module._effective_source_postings,
+        ) as helper:
+            compare_module.compare_period(
+                self._entity,
+                _QB_MATCH,
+                date(2026, 1, 1),
+                date(2026, 3, 31),
+            )
+
+        self.assertEqual(helper.call_count, 1)
+
     def test_matched_transactions_positive(self):
         """There should be some matched transactions when books align."""
         from src.bookkeeping.compare import compare_period
@@ -1349,6 +1366,9 @@ class TestSourceCoverage(unittest.TestCase):
         self.assertIsInstance(cov, list)
         sources = [c["source"] for c in cov]
         self.assertIn("Mercury Checking", sources)
+        mercury = next(item for item in cov if item["source"] == "Mercury Checking")
+        self.assertEqual(mercury["status"], "declared")
+        self.assertEqual(mercury["coverage_status"], "unknown")
 
     def test_coverage_has_date_range(self):
         from src.bookkeeping.compare import _source_coverage
@@ -1428,15 +1448,31 @@ class TestQboAccountCrosswalk(unittest.TestCase):
         result = set_qbo_account_crosswalk(
             self._entity.path,
             "Marketing:Advertising",
-            "Expenses:Growth",
+            "Expenses:Software",
+            "Owner approved the presentation-only mapping.",
         )
         saved = json.loads((self._entity.path / "entity.json").read_text(encoding="utf-8"))
 
         self.assertEqual(result["status"], "created")
         self.assertEqual(
-            saved["compare"]["qbo_account_crosswalk"]["Marketing:Advertising"],
-            "Expenses:Growth",
+            saved["compare"]["qbo_account_crosswalk"]["Marketing:Advertising"]["local_account"],
+            "Expenses:Software",
         )
+        self.assertEqual(
+            saved["compare"]["qbo_account_crosswalk"]["Marketing:Advertising"]["approval_note"],
+            "Owner approved the presentation-only mapping.",
+        )
+
+    def test_crosswalk_rejects_unknown_local_account(self):
+        from src.bookkeeping.compare import set_qbo_account_crosswalk
+
+        with self.assertRaisesRegex(ValueError, "not in the account catalog"):
+            set_qbo_account_crosswalk(
+                self._entity.path,
+                "Marketing:Advertising",
+                "Expenses:Typo",
+                "Owner approved the proposed mapping.",
+            )
 
 
 # ---------------------------------------------------------------------------

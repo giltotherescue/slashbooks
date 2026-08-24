@@ -22,9 +22,10 @@ follow [Semantic Versioning](https://semver.org/).
   templates. No interim single-category entry is posted.
 - Native transfer pairing now proposes equal-and-opposite staged bank/card rows
   by amount, account, counterparty evidence, and date tolerance. Confirmation
-  posts one audited two-account transfer with both source records; unmatched
-  transfer-like rows remain named timing-or-missing-source exceptions.
-- Owner-authorized related-entity policies now record due-from, due-to, and
+  posts an audited pair with both source records and source-dated clearing legs
+  when settlement dates differ. Unmatched transfer-like rows remain named
+  timing-or-missing-source exceptions.
+- Explicitly approved related-entity policies now record due-from, due-to, and
   direction-specific migration fallbacks. Each related transaction still needs
   its own queue proposal and is never learned as a routine vendor category.
 
@@ -40,6 +41,16 @@ follow [Semantic Versioning](https://semver.org/).
   transaction counts or unmatched-item reports.
 - Internal Mercury cash-bucket transfers now match the equivalent QuickBooks
   bank row only when the date, amount, and mapped cash account agree.
+- Transfer and split confirmations recover safely when the ledger commit
+  succeeds before review-queue cleanup, without posting duplicate activity.
+- Both sides of a transfer remain durable source IDs, even if staging recovery
+  rebuilds its seen-ID state.
+- Related-entity policies and QuickBooks account crosswalks require explicit
+  approval provenance. Stale related-entity proposals stop when the approved
+  policy changes.
+- Existing source declarations keep their original configuration shape, and
+  crosswalks cannot point to accounts outside the local chart.
+- Corrupt split-template files now fail closed instead of being overwritten.
 
 ## [0.3.1] - 2026-08-23
 

@@ -73,7 +73,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
@@ -391,11 +391,12 @@ def _qbo_account_crosswalk(entity: Entity) -> dict[str, str]:
     raw = (entity.entity_config.get("compare") or {}).get("qbo_account_crosswalk") or {}
     if not isinstance(raw, dict):
         return {}
-    return {
-        str(qb_name).strip(): str(local_account).strip()
-        for qb_name, local_account in raw.items()
-        if str(qb_name).strip() and str(local_account).strip()
-    }
+    result: dict[str, str] = {}
+    for qb_name, value in raw.items():
+        local_account = value.get("local_account") if isinstance(value, dict) else value
+        if str(qb_name).strip() and str(local_account or "").strip():
+            result[str(qb_name).strip()] = str(local_account).strip()
+    return result
 
 
 def _map_qb_name(
@@ -785,6 +786,7 @@ def _compare_gl_counts(
     abs_t: Decimal,
     pct_t: Decimal,
     readiness: Optional[ReadinessReport] = None,
+    effective_postings: Optional[list[tuple]] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare external bank/card transaction counts per account.
 
@@ -834,10 +836,13 @@ def _compare_gl_counts(
     # Our counts use one effective entry per source transaction.  This avoids
     # treating superseded source entries and their balancing reversals as new
     # transactions after a bookkeeping correction.
-    try:
-        our_postings = _effective_source_postings(entity, from_date, to_date)
-    except Exception:
-        return [], []
+    if effective_postings is None:
+        try:
+            our_postings = _effective_source_postings(entity, from_date, to_date)
+        except Exception:
+            return [], []
+    else:
+        our_postings = effective_postings
 
     our_counts: dict[str, int] = {}
     for _entry_date, narration, payee, account, _amount, _currency, _source_id in our_postings:
@@ -1049,6 +1054,7 @@ def _find_unmatched(
     to_date: date,
     qb_type_map: dict[str, str],
     readiness: Optional[ReadinessReport] = None,
+    effective_postings: Optional[list[tuple]] = None,
 ) -> tuple[list[UnmatchedTransaction], list[UnmatchedTransaction], int]:
     """Find unmatched transactions in both directions.
 
@@ -1095,10 +1101,13 @@ def _find_unmatched(
     ]
 
     # Our transactions from the cache GL — bank/card postings only.
-    try:
-        our_txns_raw = _effective_source_postings(entity, from_date, to_date)
-    except Exception:
-        return [], [], 0
+    if effective_postings is None:
+        try:
+            our_txns_raw = _effective_source_postings(entity, from_date, to_date)
+        except Exception:
+            return [], [], 0
+    else:
+        our_txns_raw = effective_postings
 
     # Build our list from bank/card postings only, excluding:
     # - Opening-balance entries (not real transactions)
@@ -1315,11 +1324,17 @@ def compare_period(
     except Exception as e:
         report.errors.append(f"Trial balance comparison error: {e}")
 
+    try:
+        effective_postings = _effective_source_postings(entity, from_date, to_date)
+    except Exception as exc:
+        effective_postings = []
+        report.errors.append(f"Effective ledger comparison error: {exc}")
+
     # (d) GL transaction counts
     try:
         gm, gi = _compare_gl_counts(
             entity, qb_folder, from_date, to_date, qb_type_map, abs_t, pct_t,
-            readiness=readiness,
+            readiness=readiness, effective_postings=effective_postings,
         )
         report.material_diffs.extend(gm)
         report.immaterial_diffs.extend(gi)
@@ -1330,7 +1345,7 @@ def compare_period(
     try:
         uo, uq, matched = _find_unmatched(
             entity, qb_folder, from_date, to_date, qb_type_map,
-            readiness=readiness,
+            readiness=readiness, effective_postings=effective_postings,
         )
         report.unmatched_ours = uo
         report.unmatched_qb = uq
@@ -1466,6 +1481,9 @@ def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dic
     becoming a false certification blocker.
     """
     sources = entity.entity_config.get("declared_sources", [])
+    source_coverage = entity.entity_config.get("source_coverage") or {}
+    if not isinstance(source_coverage, dict):
+        source_coverage = {}
     if not sources:
         # Infer from the ledger accounts
         try:
@@ -1490,10 +1508,14 @@ def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dic
             "source": src_name,
             "requested_from": str(from_date),
             "requested_to": str(to_date),
-            "status": "unknown",
+            "status": "declared" if isinstance(src, str) else "unknown",
+            "coverage_status": "unknown",
             "exceptions": [],
         }
-        if not isinstance(src, dict):
+        bounds = source_coverage.get(str(src_name))
+        if isinstance(bounds, dict):
+            src = {"name": src_name, **bounds}
+        elif not isinstance(src, dict):
             coverage.append(item)
             continue
 
@@ -1510,11 +1532,13 @@ def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dic
             available_to = date.fromisoformat(raw_to)
         except ValueError:
             item["status"] = "invalid"
+            item["coverage_status"] = "invalid"
             item["reason"] = "Declared source coverage must use YYYY-MM-DD dates."
             coverage.append(item)
             continue
         if available_from > available_to:
             item["status"] = "invalid"
+            item["coverage_status"] = "invalid"
             item["reason"] = "Declared source coverage starts after it ends."
             coverage.append(item)
             continue
@@ -1534,6 +1558,7 @@ def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dic
             })
         item["exceptions"] = exceptions
         item["status"] = "complete" if not exceptions else "partial"
+        item["coverage_status"] = item["status"]
         coverage.append(item)
     return coverage
 
@@ -2078,18 +2103,32 @@ def set_qbo_account_crosswalk(
     entity_path: Path,
     qb_account: str,
     local_account: str,
+    approval_note: str,
 ) -> dict[str, str]:
     """Persist an owner-approved QBO account-name crosswalk for comparison."""
     entity = load_entity(entity_path)
     source = qb_account.strip()
     destination = local_account.strip()
-    if not source or not destination:
-        raise ValueError("Both the QuickBooks account and local account are required.")
+    approval = approval_note.strip()
+    if not source or not destination or not approval:
+        raise ValueError("The QuickBooks account, local account, and owner approval note are required.")
+    from .ledger.store import LedgerStore, default_store_path
+    try:
+        accounts = LedgerStore(default_store_path(entity.path)).load_account_names()
+    except Exception:
+        from .ledger.validator import parse_ledger
+        accounts = {opened.account for opened in parse_ledger(entity.books_path.read_text(encoding="utf-8"))["opens"]}
+    if destination not in accounts:
+        raise ValueError(f"Account '{destination}' is not in the account catalog.")
 
     compare_cfg = dict(entity.entity_config.get("compare") or {})
     crosswalk = dict(compare_cfg.get("qbo_account_crosswalk") or {})
     previous = crosswalk.get(source)
-    crosswalk[source] = destination
+    crosswalk[source] = {
+        "local_account": destination,
+        "approval_note": approval,
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
     compare_cfg["qbo_account_crosswalk"] = crosswalk
     entity.entity_config["compare"] = compare_cfg
 
@@ -2181,6 +2220,8 @@ def add_parser(subparsers: Any) -> None:
                              help="Exact QuickBooks account name, including parent hierarchy when shown")
     crosswalk_p.add_argument("--local-account", required=True,
                              help="Local Slashbooks account to compare it against")
+    crosswalk_p.add_argument("--approval-note", required=True,
+                             help="Owner approval provenance for this presentation-only mapping")
 
 
 def run(args: Any) -> int:
@@ -2287,7 +2328,7 @@ def run(args: Any) -> int:
         if cc == "account-crosswalk":
             try:
                 result = set_qbo_account_crosswalk(
-                    Path(args.entity_path), args.qb_account, args.local_account
+                    Path(args.entity_path), args.qb_account, args.local_account, args.approval_note
                 )
             except (FileNotFoundError, ValueError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)

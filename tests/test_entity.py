@@ -126,11 +126,12 @@ class TestInitFullLayout(unittest.TestCase):
             )
 
             self.assertEqual(result["status"], "updated")
-            self.assertEqual(load_entity(target).entity_config["declared_sources"], [{
-                "name": "Cancelled corporate card CSV",
+            saved = load_entity(target).entity_config
+            self.assertEqual(saved["declared_sources"], ["Cancelled corporate card CSV"])
+            self.assertEqual(saved["source_coverage"]["Cancelled corporate card CSV"], {
                 "coverage_from": "2026-01-01",
                 "coverage_to": "2026-06-30",
-            }])
+            })
 
     def test_init_persists_legal_structure_and_cutover_date(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
