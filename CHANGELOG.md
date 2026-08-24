@@ -17,6 +17,16 @@ follow [Semantic Versioning](https://semver.org/).
   requested period.
 - The review queue now has a read-only grouped summary with proposed treatment,
   count, total, date range, and sample counterparties.
+- Reviewers can now propose and approve a direct balanced split from one staged
+  transaction, including a visible liability effect and exact reusable split
+  templates. No interim single-category entry is posted.
+- Native transfer pairing now proposes equal-and-opposite staged bank/card rows
+  by amount, account, counterparty evidence, and date tolerance. Confirmation
+  posts one audited two-account transfer with both source records; unmatched
+  transfer-like rows remain named timing-or-missing-source exceptions.
+- Owner-authorized related-entity policies now record due-from, due-to, and
+  direction-specific migration fallbacks. Each related transaction still needs
+  its own queue proposal and is never learned as a routine vendor category.
 
 ### Changed
 

@@ -36,7 +36,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from bookkeeping.entity import Entity  # noqa: E402
+from bookkeeping.entity import Entity, add_account, record_related_entity  # noqa: E402
 from bookkeeping.ledger.importer import import_transactions  # noqa: E402
 from bookkeeping.ledger.model import Open  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
@@ -53,9 +53,17 @@ from bookkeeping.queue import (  # noqa: E402
     make_categorizer,
     propose,
     propose_group,
+    propose_related_entity,
+    propose_split,
+    propose_transfer,
     reopen_if_amount_changed,
     reconcile_pending_amount_changes,
+    save_split_template,
     summarize_queue_items,
+    find_transfer_candidates,
+    confirm_split,
+    confirm_transfer,
+    find_transfer_exceptions,
     write_session_summary,
     quarterly_review,
 )
@@ -1013,6 +1021,100 @@ class TestConfirmWritesLedger(unittest.TestCase):
         self.assertEqual(entry["confirmed_count"], 0)
         self.assertTrue(entry["reset"])
         self.assertEqual(entry["canonical_category"], "Expenses:Fees")
+
+
+# ---------------------------------------------------------------------------
+# Tests: direct reviewed splits, transfer pairs, and related entities
+# ---------------------------------------------------------------------------
+
+class TestMigrationReviewWorkflows(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.entity = _make_entity(Path(self.tmp.name))
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_split_posts_one_balanced_entry_and_preserves_source_id(self) -> None:
+        _add_pending_categorization(self.entity, "payroll-1", "Payroll debit", amount="-100.00")
+        item = propose_split(
+            self.entity,
+            "payroll-1",
+            "Net pay plus payroll liability.",
+            ["Expenses:Software=70.00", "Liabilities:CreditCard=30.00"],
+        )
+        self.assertEqual(item["liability_effect"], [{"account": "Liabilities:CreditCard", "amount": "30.00"}])
+        confirmed = confirm_split(self.entity, "payroll-1", "split-session", ts=TS)
+        self.assertEqual(confirmed["status"], "confirmed")
+
+        from bookkeeping.ledger.projections import render_store_ledger
+        from bookkeeping.ledger.store import default_store_path
+        from bookkeeping.ledger.validator import parse_ledger, validate
+        text = render_store_ledger(default_store_path(self.entity.path))
+        self.assertEqual(validate(text), [])
+        entry = next(entry for entry in parse_ledger(text)["entries"] if entry.source_id == "payroll-1")
+        self.assertEqual(len(entry.postings), 3)
+        self.assertIn("Expenses:Software", [posting.account for posting in entry.postings])
+
+    def test_exact_split_template_can_be_reused(self) -> None:
+        save_split_template(
+            self.entity,
+            "payroll-100",
+            ["Expenses:Software=70.00", "Liabilities:CreditCard=30.00"],
+        )
+        _add_pending_categorization(self.entity, "payroll-template", "Payroll debit", amount="-100.00")
+        item = propose_split(self.entity, "payroll-template", "Matches the approved payroll allocation.", template="payroll-100")
+        self.assertEqual(item["split_template"], "payroll-100")
+        self.assertEqual(len(item["split_postings"]), 2)
+
+    def test_transfer_pair_posts_once_and_marks_both_source_ids_seen(self) -> None:
+        _add_pending_categorization(self.entity, "bank-payment", "Amex card payment", amount="-125.00", txn_date="2026-02-01")
+        _add_pending_categorization(self.entity, "card-payment", "Payment received", amount="125.00", txn_date="2026-02-03")
+        pending_path = self.entity.staging_dir / "pending-categorization.json"
+        pending = json.loads(pending_path.read_text(encoding="utf-8"))
+        pending[1]["accountName"] = "Amex"
+        pending[1]["accountType"] = "credit_card"
+        pending_path.write_text(json.dumps(pending), encoding="utf-8")
+
+        candidates = find_transfer_candidates(self.entity, date_tolerance_days=3)
+        self.assertEqual(len(candidates), 1)
+        _add_pending_categorization(self.entity, "unmatched-wire", "Wire transfer to vendor", amount="-500.00", txn_date="2026-02-04")
+        exceptions = find_transfer_exceptions(self.entity, date_tolerance_days=3)
+        self.assertEqual([exception["source_id"] for exception in exceptions], ["unmatched-wire"])
+        item = propose_transfer(self.entity, ["bank-payment", "card-payment"], "Same payment in the bank and card feeds.")
+        self.assertEqual(item["proposal_type"], "transfer-pair")
+        confirmed = confirm_transfer(self.entity, item["source_id"], "transfer-session", ts=TS)
+        self.assertEqual(confirmed["status"], "confirmed")
+
+        from bookkeeping.ledger.store import LedgerStore, default_store_path
+        store = LedgerStore(default_store_path(self.entity.path))
+        with store.connection() as conn:
+            rows = conn.execute("SELECT id FROM source_transactions ORDER BY id").fetchall()
+            metadata = conn.execute("SELECT metadata_json FROM entries").fetchone()[0]
+        self.assertEqual([row[0] for row in rows], ["bank-payment", "card-payment"])
+        self.assertIn("paired-source-id", metadata)
+        seen = json.loads((self.entity.staging_dir / "seen-ids.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(seen), {"bank-payment", "card-payment"})
+
+    def test_related_entity_policy_requires_explicit_proposal_and_is_not_learned(self) -> None:
+        add_account(self.entity.path, "Assets:Intercompany:LegacyCo")
+        add_account(self.entity.path, "Liabilities:Intercompany:LegacyCo")
+        record_related_entity(
+            self.entity.path,
+            "Legacy Co",
+            "Assets:Intercompany:LegacyCo",
+            "Liabilities:Intercompany:LegacyCo",
+            "income",
+            "create-receivable",
+            "Income:Consulting",
+        )
+        _add_pending_categorization(self.entity, "legacy-receipt", "Legacy Co settlement", amount="200.00")
+        item = propose_related_entity(self.entity, "legacy-receipt", "Legacy Co", "Owner-approved migration fallback.")
+        self.assertEqual(item["proposed_category"], "Income:Consulting")
+        self.assertEqual(item["related_entity_treatment"], "owner-authorized inbound income fallback")
+        confirm(self.entity, "legacy-receipt", "related-session", ts=TS)
+        self.assertNotIn("LEGACY CO SETTLEMENT", load_learned_context(self.entity))
 
 
 # ---------------------------------------------------------------------------
