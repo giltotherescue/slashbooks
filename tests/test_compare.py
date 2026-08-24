@@ -1776,10 +1776,13 @@ class TestRegressionEffectiveSourceEntries(unittest.TestCase):
         cache_path = self._entity.path / "reports" / "cache.sqlite"
         conn = sqlite3.connect(cache_path)
         try:
+            conn.execute(
+                "ALTER TABLE entries ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '[]'"
+            )
             raw_id = conn.execute(
                 """INSERT INTO entries (date, narration, payee, source_id)
                    VALUES (?, ?, ?, ?)""",
-                ("2026-03-25", "Original categorization", "Example Vendor", "mercury:example-001"),
+                ("2026-03-25", "Original categorization", "Example Vendor", "source-original"),
             ).lastrowid
             conn.executemany(
                 "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
@@ -1809,9 +1812,13 @@ class TestRegressionEffectiveSourceEntries(unittest.TestCase):
                     "2026-03-25",
                     "Corrected categorization",
                     "Example Vendor",
-                    "supercharger-split:mercury:example-001",
+                    "source-replacement",
                 ),
             ).lastrowid
+            conn.execute(
+                "UPDATE entries SET metadata_json = ? WHERE id = ?",
+                ('[["correction-of", "source-original"]]', corrected_id),
+            )
             conn.executemany(
                 "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
                 [
@@ -1825,63 +1832,54 @@ class TestRegressionEffectiveSourceEntries(unittest.TestCase):
 
         from src.bookkeeping.compare import _effective_source_postings
 
-        postings = [
-            row for row in _effective_source_postings(
-                self._entity, date(2026, 3, 25), date(2026, 3, 25)
-            )
-            if row[-1] == "supercharger-split:mercury:example-001"
-        ]
+        postings = _effective_source_postings(
+            self._entity, date(2026, 3, 25), date(2026, 3, 25)
+        )
 
         self.assertEqual(len(postings), 2)
         self.assertEqual({row[3] for row in postings}, {
             "Assets:Bank:Checking", "Expenses:Business-Reimbursements",
         })
-        self.assertTrue(all(row[-1] != "mercury:example-001" for row in postings))
+        self.assertTrue(all(row[-1] == "source-replacement" for row in postings))
 
-    def test_internal_transfer_suffix_matches_qbo_cash_bucket_label(self):
-        """Mercury's last-four account label matches QBO's cash-bucket name."""
+    def test_aligned_transfer_matches_mapped_qbo_account(self):
+        """An aligned Mercury row matches its QBO account after mapping."""
         from src.bookkeeping.compare import _is_internal_transfer_match
 
         self.assertTrue(_is_internal_transfer_match(
             date(2026, 1, 5),
             Decimal("-1800.00"),
-            "Assets:Bank:OpEx-4790-1",
-            "mercury:example-001",
-            date(2026, 1, 5),
-            Decimal("-1800.00"),
-            "OPEX",
-        ))
-        self.assertFalse(_is_internal_transfer_match(
-            date(2026, 1, 5),
-            Decimal("-1800.00"),
-            "Mercury Checking ••4790",
-            "mercury:example-001",
-            date(2026, 1, 6),
-            Decimal("-1800.00"),
-            "OPEX",
-        ))
-
-    def test_account_alignment_matches_qbo_opposite_transfer_side(self):
-        """An aligned Mercury row can match QBO's label for the other side."""
-        from src.bookkeeping.compare import _is_internal_transfer_match
-
-        self.assertTrue(_is_internal_transfer_match(
-            date(2026, 1, 5),
-            Decimal("-1800.00"),
-            "Assets:Bank:Income-1249-1",
+            "Assets:Bank:Checking",
             "bank-account-alignment:mercury:example-001",
             date(2026, 1, 5),
             Decimal("-1800.00"),
-            "OPEX",
+            "Checking",
+            {"Checking": "Bank"},
         ))
         self.assertFalse(_is_internal_transfer_match(
             date(2026, 1, 5),
             Decimal("-1800.00"),
-            "Assets:Bank:Income-1249-1",
-            "mercury:example-001",
+            "Assets:Bank:Checking",
+            "bank-account-alignment:mercury:example-001",
+            date(2026, 1, 6),
+            Decimal("-1800.00"),
+            "Checking",
+            {"Checking": "Bank"},
+        ))
+
+    def test_alignment_does_not_match_a_different_mapped_qbo_account(self):
+        """Exact amount alone cannot match a different QBO bank account."""
+        from src.bookkeeping.compare import _is_internal_transfer_match
+
+        self.assertFalse(_is_internal_transfer_match(
             date(2026, 1, 5),
             Decimal("-1800.00"),
-            "OPEX",
+            "Assets:Bank:Checking",
+            "bank-account-alignment:mercury:example-001",
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Savings",
+            {"Savings": "Bank"},
         ))
 
 

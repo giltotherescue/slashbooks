@@ -865,17 +865,21 @@ def _is_opening_entry(narration: str, payee: Optional[str]) -> bool:
     return any(m in text for m in _OPENING_NARRATION_MARKERS)
 
 
-def _logical_source_id(source_id: str) -> str:
-    """Return the durable source key represented by *source_id*.
-
-    Mercury corrections retain the original ``mercury:<uuid>`` inside their
-    generated source ID (for example ``bank-account-alignment:mercury:<uuid>``).
-    Those records supersede the original import rather than representing a new
-    financial event.  Other sources retain their complete source IDs.
-    """
-    marker = "mercury:"
-    index = source_id.find(marker)
-    return source_id[index:] if index >= 0 else source_id
+def _correction_of(metadata_json: str | None) -> str:
+    """Return the original source ID named by correction metadata, if present."""
+    if not metadata_json:
+        return ""
+    try:
+        metadata = json.loads(metadata_json)
+    except (TypeError, json.JSONDecodeError):
+        return ""
+    if isinstance(metadata, dict):
+        return str(metadata.get("correction-of") or "")
+    if isinstance(metadata, list):
+        for item in metadata:
+            if isinstance(item, list) and len(item) == 2 and item[0] == "correction-of":
+                return str(item[1] or "")
+    return ""
 
 
 def _effective_source_postings(
@@ -886,53 +890,69 @@ def _effective_source_postings(
     """Return postings for the latest non-empty entry per logical source ID.
 
     Empty-source reversal rows are accounting mechanics, so they cannot be
-    matched to an imported bank/card transaction.  For a corrected Mercury
-    transaction, the newest non-empty entry with the same embedded Mercury ID
-    is the effective classification.  This preserves the ledger's audit trail
-    while keeping source-level comparisons from double-counting it.
+    matched to an imported bank/card transaction. A corrected entry identifies
+    the transaction it replaces through ``correction-of`` metadata; the newest
+    entry in that correction chain is the effective classification. This
+    preserves the ledger's audit trail while keeping source-level comparisons
+    from double-counting it.
     """
     from .reports.cache import open_cache
 
     conn = open_cache(entity.path)
     try:
+        entry_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(entries)").fetchall()
+        }
+        metadata_column = "e.metadata_json" if "metadata_json" in entry_columns else "NULL"
         rows = conn.execute(
+            f"""
+            SELECT e.id, e.date, e.narration, e.payee, e.source_id,
+                   {metadata_column} AS metadata_json
+            FROM entries e
+            WHERE e.source_id IS NOT NULL AND e.source_id != ''
+            ORDER BY e.id
             """
-            WITH source_entries AS (
-                SELECT
-                    e.id,
-                    e.date,
-                    e.narration,
-                    e.payee,
-                    e.source_id,
-                    CASE
-                        WHEN instr(e.source_id, 'mercury:') > 0
-                            THEN substr(e.source_id, instr(e.source_id, 'mercury:'))
-                        ELSE e.source_id
-                    END AS logical_source_id
-                FROM entries e
-                WHERE e.date >= ?
-                  AND e.date <= ?
-                  AND e.source_id IS NOT NULL
-                  AND e.source_id != ''
-            ), effective_entries AS (
-                SELECT logical_source_id, MAX(id) AS entry_id
-                FROM source_entries
-                GROUP BY logical_source_id
-            )
-            SELECT
-                e.date,
-                e.narration,
-                e.payee,
-                p.account,
-                p.amount,
-                p.currency,
-                e.source_id
-            FROM effective_entries ee
-            JOIN entries e ON e.id = ee.entry_id
+        ).fetchall()
+
+        correction_sources = {
+            row[4]: _correction_of(row[5])
+            for row in rows
+            if _correction_of(row[5])
+        }
+
+        def root_source_id(source_id: str) -> str:
+            current = source_id
+            visited: set[str] = set()
+            while current in correction_sources and current not in visited:
+                visited.add(current)
+                current = correction_sources[current]
+            return current
+
+        effective_entries: dict[str, Any] = {}
+        for row in rows:
+            root = root_source_id(row[4])
+            if root not in effective_entries or row[0] > effective_entries[root][0]:
+                effective_entries[root] = row
+
+        entry_ids = [
+            row[0]
+            for row in effective_entries.values()
+            if from_date <= date.fromisoformat(str(row[1])[:10]) <= to_date
+        ]
+        if not entry_ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in entry_ids)
+        postings = conn.execute(
+            f"""
+            SELECT e.date, e.narration, e.payee, p.account, p.amount,
+                   p.currency, e.source_id
+            FROM entries e
             JOIN postings p ON p.entry_id = e.id
+            WHERE e.id IN ({placeholders})
             ORDER BY e.date, e.id, p.id
             """,
-            (from_date.isoformat(), to_date.isoformat()),
+            entry_ids,
         ).fetchall()
     finally:
         conn.close()
@@ -947,7 +967,7 @@ def _effective_source_postings(
             row[5],
             row[6],
         )
-        for row in rows
+        for row in postings
     ]
 
 
@@ -964,26 +984,6 @@ def _is_our_bank_card_account(account: str) -> bool:
     return is_bank or is_cc_liability or is_card_csv
 
 
-def _internal_transfer_label(description: str) -> str:
-    """Normalize known internal-account labels used by Mercury and QBO.
-
-    Mercury transfer descriptions identify the destination with an account
-    suffix (for example ``Checking ••4790``), while QuickBooks uses the human
-    label (``OPEX``).  This is deliberately limited to the four named cash
-    buckets used in this bookkeeping model; it is not a general fuzzy match.
-    """
-    text = (description or "").lower()
-    if "4790" in text or "opex" in text:
-        return "opex"
-    if "7981" in text or "profit" in text:
-        return "profit"
-    if "7680" in text or "reserve" in text or "savings" in text:
-        return "reserve"
-    if "1249" in text or "income" in text:
-        return "income"
-    return ""
-
-
 def _is_internal_transfer_match(
     our_date: date,
     our_amount: Decimal,
@@ -991,25 +991,25 @@ def _is_internal_transfer_match(
     our_source_id: str,
     qb_date: date,
     qb_amount: Decimal,
-    qb_description: str,
+    qb_account: str,
+    qb_type_map: dict[str, str],
 ) -> bool:
-    """Match a same-day internal transfer represented with different labels.
+    """Match an aligned Mercury transfer to its mapped QBO bank account.
 
-    The bank account is usually the stable signal on the Mercury side. The
-    transfer memo names the other account, while QBO's export names the
-    account whose GL section contains the transaction. When a source row was
-    explicitly corrected as a bank-account alignment, its exact same-day,
-    same-amount QBO cash-bucket row is also safe to match even when QBO and
-    Mercury name opposite sides of the transfer.
+    The source ID proves this is a bank-account alignment. Exact date and
+    amount prevent broad fuzzy matching, while the shared account mapper
+    verifies that both rows represent the same bank or card account.
     """
-    our_label = _internal_transfer_label(our_account)
-    qb_label = _internal_transfer_label(qb_description)
-    if not qb_label or our_date != qb_date or our_amount != qb_amount:
+    if (
+        not our_source_id.startswith("bank-account-alignment:mercury:")
+        or our_date != qb_date
+        or our_amount != qb_amount
+    ):
         return False
-    return (
-        our_label == qb_label
-        or our_source_id.startswith("bank-account-alignment:mercury:")
-    )
+    try:
+        return our_account == _map_qb_name(qb_account, qb_type_map)
+    except Exception:
+        return False
 
 
 def _find_unmatched(
@@ -1136,7 +1136,9 @@ def _find_unmatched(
             if qb_matched[j]:
                 continue
             if (
-                _is_internal_transfer_match(od, oa, oacc, _osid, qd, qa, qnd)
+                _is_internal_transfer_match(
+                    od, oa, oacc, _osid, qd, qa, qacc, qb_type_map
+                )
                 or _txns_match(od, oa, ond, qd, qa, qnd)
             ):
                 our_matched[i] = True
