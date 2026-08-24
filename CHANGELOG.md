@@ -6,6 +6,11 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [0.3.2] - 2026-08-24
 
+### Added
+
+- `/books-feedback` drafts a privacy-conscious, implementation-ready handoff
+  for Slashbooks developers from bookkeeping feedback.
+
 ### Fixed
 
 - QuickBooks backtests now compare one effective source entry per transaction,

@@ -212,6 +212,7 @@ the right workflow.
 ├── /books-dashboard    create dashboards, snapshots, and formatted reports
 ├── /books-review       resume or work through queued transactions
 ├── /books-ask          answer questions from the ledger
+├── /books-feedback     draft an implementation-ready Slashbooks feedback handoff
 └── /books-export       export the workbook and CSV files accountants need
 ```
 
