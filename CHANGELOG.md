@@ -10,6 +10,18 @@ follow [Semantic Versioning](https://semver.org/).
 
 - `/books-feedback` drafts a privacy-conscious, implementation-ready handoff
   for Slashbooks developers from bookkeeping feedback.
+- QuickBooks account crosswalks let an owner identify presentation-only chart
+  hierarchy differences without hiding economic differences.
+- Declared source coverage dates now produce named missing-start or missing-end
+  exceptions and block migration certification when a known gap overlaps the
+  requested period.
+- The review queue now has a read-only grouped summary with proposed treatment,
+  count, total, date range, and sample counterparties.
+
+### Changed
+
+- Books workflows continue through clear, safe, deterministic steps and pause
+  only at a material decision or approval boundary.
 
 ### Fixed
 

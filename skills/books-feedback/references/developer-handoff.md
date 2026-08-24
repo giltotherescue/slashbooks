@@ -39,6 +39,10 @@ already contains a verified technical pointer.
 - <A testable behavior or invariant.>
 - <A relevant regression or data-safety check.>
 
+## Migration context
+
+- <Optional: systems and account types involved, requested period, current safe workaround, and whether an owner approval is required.>
+
 ## Constraints and open questions
 
 - <Only unresolved facts, privacy constraints, or deliberate non-goals.>
@@ -73,5 +77,13 @@ Use the lowest priority that honestly describes the impact:
 - State which result is expected. “Make it better” is not an acceptance check.
 - Keep a user preference separate from an accounting fact. A developer may need
   to make both configurable rather than hard-code one company’s convention.
+- For migration issues, state whether the problem is source coverage, transaction
+  matching, account presentation, or accounting treatment. Include the known
+  date range and safe workaround; never infer missing source activity from a
+  quiet account.
+- For agent-workflow feedback, state the clear next steps that should run without
+  a pause and the decision boundary that still requires owner input. An acceptance
+  check should describe reaching that boundary in one workflow, not asking after
+  every routine action.
 - Do not call an unverified hypothesis a root cause. Put it in `Suggested
   investigation` and label it as a hypothesis.
