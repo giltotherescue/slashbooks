@@ -9,10 +9,10 @@ follow [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - QuickBooks backtests now compare one effective source entry per transaction,
-  so superseded Mercury classifications and their reversal entries do not
-  inflate transaction counts or unmatched-item reports.
+  so superseded classifications and their reversal entries do not inflate
+  transaction counts or unmatched-item reports.
 - Internal Mercury cash-bucket transfers now match the equivalent QuickBooks
-  bank rows when the exports label opposite sides of the same transfer.
+  bank row only when the date, amount, and mapped cash account agree.
 
 ## [0.3.1] - 2026-08-23
 
