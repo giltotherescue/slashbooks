@@ -13,3 +13,4 @@ cache*.sqlite
 .*.swp
 
 .worktrees/
+.wrangler/

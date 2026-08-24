@@ -137,6 +137,40 @@ claude plugin validate --strict .
 For Codex plugin validation, use the validator from the local `plugin-creator`
 skill.
 
+## Pull Requests
+
+Write pull requests for a reviewer who has not followed the work. Use a short,
+outcome-based conventional title such as `fix(compare): match corrected
+transactions in backtests`. Keep it under 72 characters.
+
+Start every non-trivial PR body with `## Summary`. State what now works, or what
+is now safer, before describing implementation details. Do not list changed
+files or repeat the diff.
+
+Use this format when it helps the reviewer:
+
+```md
+## Summary
+
+One or two plain-language sentences about the user or operator outcome.
+
+## Key decisions
+
+- Only include choices or safeguards that are not obvious from the diff.
+
+## Validation
+
+- Name the command or real workflow run and its result.
+
+## Remaining work
+
+- Include this only when a known limit, follow-up, or manual decision remains.
+```
+
+Keep each section short. Omit empty sections. Put evidence in `Validation`, and
+state the actual result rather than only saying that tests passed. Preserve any
+existing `Related:` or `Fixes` reference when rewriting a PR.
+
 ## Connectors
 
 A source connector gets outside financial data into Slashbooks.

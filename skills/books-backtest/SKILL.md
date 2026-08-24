@@ -25,6 +25,14 @@ developer command instructions to the owner unless they explicitly ask for them.
 For owner-facing next steps, suggest slash commands or plain English requests,
 not shell commands.
 
+## Working pace
+
+Once the entity, date range, and QuickBooks evidence are confirmed, run the
+backtest, confidence package, and read-only diagnostics as one continuous
+workflow. Do not stop after each report to ask whether to continue. Pause only
+for a material accounting judgment, missing or conflicting evidence, an
+external-data choice, or explicit approval to accept a difference.
+
 ## Audience and language
 
 Use the audience established during onboarding. If it is unclear and the answer
@@ -134,6 +142,26 @@ For each material difference, explain it in plain English:
 - The most likely reason (timing, missing data, different judgment call, or a possible
   error in one of the books)
 
+If QuickBooks and Slashbooks appear to use different account hierarchies for the
+same economic category, present the proposed mapping and its evidence to the
+owner. Create the crosswalk only after explicit approval. Use the full
+QuickBooks account name shown in the report and retain the approval context:
+
+```
+scripts/books compare account-crosswalk --entity <entity-path> --qb-account "<QuickBooks account>" --local-account "<Slashbooks account>" --approval-note "<who approved the presentation-only mapping and why>"
+```
+
+Use a crosswalk only for presentation differences. Do not use it to hide a
+different amount, missing transaction, or different accounting treatment.
+
+For each bank, card, or CSV fallback source, record the confirmed date range
+that was actually collected. This lets the confidence report name a missing
+start or end range instead of treating it as a generic difference:
+
+```
+scripts/books entity source-coverage <entity-path> --source "<source name>" --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+```
+
 ---
 
 ## Step 5 — Categorize differences
@@ -142,12 +170,12 @@ For each material difference the owner wants to resolve:
 
 To categorize a difference:
 ```
-scripts/books compare categorize-diff --entity <entity-path> --diff-id <id> --category <our-bug|missing-data|timing|judgment|reference-error>
+scripts/books compare categorize-diff --entity <entity-path> --key <difference-key> --category <our-bug|missing-source-data|timing-pending|judgment-mapping|likely-reference-error|uncategorized>
 ```
 
 To accept a difference as resolved:
 ```
-scripts/books compare accept-diff --entity <entity-path> --diff-id <id>
+scripts/books compare accept-diff --entity <entity-path> --key <difference-key>
 ```
 
 Walk the owner through each one. For judgment differences (where both books made a

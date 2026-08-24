@@ -111,3 +111,35 @@ Before a public release, also perform a fresh-clone install check for both Claud
 Code and Codex, and scan the repo for real company data, credentials, bank
 exports, QuickBooks exports, ledgers, generated reports, and other private
 artifacts.
+
+## Public Release Process
+
+Carry an authorized release through publication. Do not stop after opening the
+pull request or creating a local tag.
+
+1. Align the version in `pyproject.toml`, `.claude-plugin/plugin.json`,
+   `.codex-plugin/plugin.json`, and `.claude-plugin/marketplace.json`.
+2. Add a dated release section to `CHANGELOG.md`. Write clear, user-facing
+   release notes that cover the complete release, including safety fixes found
+   during final review.
+3. Run the full unit suite, strict Claude plugin validation, Codex plugin
+   validation, relevant skill validators, and `git diff --check`.
+4. Build the wheel with Python 3.11 and `--no-build-isolation`. A Python 3.14
+   build-isolation download failure is an environment failure, not proof that
+   the package is broken.
+5. Scan tracked files and the pending diff for credentials, real company data,
+   bank or card exports, QuickBooks exports, ledgers, entity directories, and
+   generated reports. Confirm that any committed financial fixtures are
+   synthetic.
+6. Commit and push the release branch. Update the existing pull request with a
+   short, outcome-based title and body that state the actual validation results.
+7. Wait for required checks and review feedback. Merge only when the pull
+   request is mergeable and all required checks are green.
+8. Verify the merged commit on the default branch. Create an annotated release
+   tag only after the changelog is dated and merged.
+9. Publish a GitHub release from that tag with detailed notes based on the
+   changelog. Slashbooks uses GitHub releases and repository marketplace
+   metadata; it is not an npm package.
+10. Verify the public release is neither a draft nor a prerelease, points to the
+    intended merged commit, and exposes the expected release notes. Keep the
+    local default branch aligned with the released commit.

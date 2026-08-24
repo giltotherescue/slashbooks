@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -432,6 +432,163 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str) -> d
     return {"feed_account_id": stable_id, "account": account, "status": "updated" if previous else "created"}
 
 
+def record_source_coverage(
+    entity_path: Path,
+    source_name: str,
+    coverage_from: str,
+    coverage_to: str,
+) -> dict[str, str]:
+    """Record an owner-confirmed covered date range for one declared source."""
+    entity = load_entity(entity_path)
+    name = source_name.strip()
+    if not name:
+        raise ValueError("Source name is required.")
+    try:
+        start = date.fromisoformat(coverage_from)
+        end = date.fromisoformat(coverage_to)
+    except ValueError as exc:
+        raise ValueError("Source coverage dates must use YYYY-MM-DD format.") from exc
+    if start > end:
+        raise ValueError("Source coverage start date must not be after its end date.")
+
+    sources = list(entity.entity_config.get("declared_sources") or [])
+    coverage = dict(entity.entity_config.get("source_coverage") or {})
+    replacement = {
+        "coverage_from": start.isoformat(),
+        "coverage_to": end.isoformat(),
+    }
+    status = "updated" if name in coverage else "created"
+    for source in sources:
+        existing_name = source if isinstance(source, str) else source.get("name", "")
+        if str(existing_name) != name:
+            continue
+        status = "updated"
+        break
+    else:
+        sources.append(name)
+
+    entity.entity_config["declared_sources"] = sources
+    coverage[name] = replacement
+    entity.entity_config["source_coverage"] = coverage
+    destination = entity.path / "entity.json"
+    tmp = destination.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, destination)
+    return {
+        "source": name,
+        "coverage_from": start.isoformat(),
+        "coverage_to": end.isoformat(),
+        "status": status,
+    }
+
+
+_INBOUND_RELATED_POLICIES = {"income", "settle-receivable"}
+_OUTBOUND_RELATED_POLICIES = {"create-receivable", "settle-payable"}
+
+
+def _write_entity_config(entity: "Entity") -> None:
+    destination = entity.path / "entity.json"
+    tmp = destination.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, destination)
+
+
+def record_related_entity(
+    entity_path: Path,
+    name: str,
+    receivable_account: str,
+    payable_account: str,
+    inbound_policy: str,
+    outbound_policy: str,
+    inbound_income_account: str = "",
+) -> dict[str, str]:
+    """Record a pending related-entity migration policy.
+
+    The configuration itself never posts transactions. It declares proposed
+    chart accounts and direction-specific fallbacks. A separate approval action
+    must activate them before a queue proposal can use the policy.
+    """
+    entity = load_entity(entity_path)
+    related_name = name.strip()
+    if not related_name:
+        raise ValueError("Related entity name is required.")
+    if inbound_policy not in _INBOUND_RELATED_POLICIES:
+        raise ValueError("Inbound policy must be income or settle-receivable.")
+    if outbound_policy not in _OUTBOUND_RELATED_POLICIES:
+        raise ValueError("Outbound policy must be create-receivable or settle-payable.")
+
+    from .ledger.store import LedgerStore, default_store_path
+    accounts = LedgerStore(default_store_path(entity.path)).load_account_names()
+    required = {receivable_account, payable_account}
+    if inbound_policy == "income":
+        if not inbound_income_account:
+            raise ValueError("An inbound income account is required when inbound policy is income.")
+        required.add(inbound_income_account)
+    missing = sorted(account for account in required if account not in accounts)
+    if missing:
+        raise ValueError("Related-entity accounts must exist first: " + ", ".join(missing))
+
+    record = {
+        "name": related_name,
+        "receivable_account": receivable_account,
+        "payable_account": payable_account,
+        "inbound_policy": inbound_policy,
+        "outbound_policy": outbound_policy,
+        "inbound_income_account": inbound_income_account if inbound_policy == "income" else "",
+        "owner_authorized": False,
+    }
+    records = list(entity.entity_config.get("related_entities") or [])
+    status = "created"
+    for index, existing in enumerate(records):
+        if isinstance(existing, dict) and str(existing.get("name") or "").casefold() == related_name.casefold():
+            records[index] = record
+            status = "updated"
+            break
+    else:
+        records.append(record)
+    entity.entity_config["related_entities"] = records
+    _write_entity_config(entity)
+    return {"name": related_name, "status": status, "authorization": "pending", "inbound_policy": inbound_policy, "outbound_policy": outbound_policy}
+
+
+def approve_related_entity(entity_path: Path, name: str, approval_note: str) -> dict[str, str]:
+    """Activate a pending related-entity policy with explicit approval provenance."""
+    entity = load_entity(entity_path)
+    related_name = name.strip()
+    note = approval_note.strip()
+    if not related_name or not note:
+        raise ValueError("Related entity name and owner approval note are required.")
+    records = list(entity.entity_config.get("related_entities") or [])
+    for index, record in enumerate(records):
+        if not isinstance(record, dict) or str(record.get("name") or "").casefold() != related_name.casefold():
+            continue
+        approved = dict(record)
+        approved["owner_authorized"] = True
+        approved["approval_note"] = note
+        approved["approved_at"] = datetime.now(timezone.utc).isoformat()
+        records[index] = approved
+        entity.entity_config["related_entities"] = records
+        _write_entity_config(entity)
+        return {"name": str(approved["name"]), "status": "approved"}
+    raise ValueError(f"No pending related entity named '{related_name}' is configured.")
+
+
+def list_related_entities(entity_path: Path) -> list[dict[str, Any]]:
+    """Return configured related-entity policies without changing the books."""
+    entity = load_entity(entity_path)
+    return [dict(record) for record in entity.entity_config.get("related_entities") or [] if isinstance(record, dict)]
+
+
+def get_related_entity(entity: "Entity", name: str) -> dict[str, Any]:
+    """Find one configured policy by name, preserving an explicit owner boundary."""
+    for record in entity.entity_config.get("related_entities") or []:
+        if isinstance(record, dict) and str(record.get("name") or "").casefold() == name.strip().casefold():
+            if record.get("owner_authorized") is not True:
+                raise ValueError(f"Related entity '{name}' has not been owner-authorized.")
+            return dict(record)
+    raise ValueError(f"No owner-authorized related entity named '{name}' is configured.")
+
+
 # ---------------------------------------------------------------------------
 # Entity data object
 # ---------------------------------------------------------------------------
@@ -573,6 +730,38 @@ def add_parser(subparsers: Any) -> None:
     map_parser.add_argument("--feed-account-id", required=True, help="Stable provider account ID")
     map_parser.add_argument("--account", required=True, help="Existing ledger account to use")
 
+    coverage_parser = entity_sub.add_parser(
+        "source-coverage",
+        help="Record the confirmed covered date range for a bank, card, or fallback source",
+    )
+    coverage_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    coverage_parser.add_argument("--source", required=True, dest="source_name",
+                                 help="Declared source name, such as a card or CSV fallback")
+    coverage_parser.add_argument("--from", required=True, dest="coverage_from",
+                                 help="First covered date in YYYY-MM-DD format")
+    coverage_parser.add_argument("--to", required=True, dest="coverage_to",
+                                 help="Last covered date in YYYY-MM-DD format")
+
+    related_parser = entity_sub.add_parser(
+        "related-entity",
+        help="Record or inspect owner-authorized related-entity settlement policies",
+    )
+    related_sub = related_parser.add_subparsers(dest="related_entity_command", required=True)
+    related_set = related_sub.add_parser("set", help="Set a related-entity migration policy")
+    related_set.add_argument("path", type=Path, help="Path to the entity directory")
+    related_set.add_argument("--name", required=True, help="Related legal entity or operating name")
+    related_set.add_argument("--receivable-account", required=True, help="Existing due-from account")
+    related_set.add_argument("--payable-account", required=True, help="Existing due-to account")
+    related_set.add_argument("--inbound-policy", required=True, choices=sorted(_INBOUND_RELATED_POLICIES))
+    related_set.add_argument("--inbound-income-account", default="", help="Required when inbound policy is income")
+    related_set.add_argument("--outbound-policy", required=True, choices=sorted(_OUTBOUND_RELATED_POLICIES))
+    related_approve = related_sub.add_parser("approve", help="Approve a pending related-entity policy")
+    related_approve.add_argument("path", type=Path, help="Path to the entity directory")
+    related_approve.add_argument("--name", required=True, help="Configured related entity name")
+    related_approve.add_argument("--approval-note", required=True, help="Owner approval provenance")
+    related_list = related_sub.add_parser("list", help="List configured related-entity policies")
+    related_list.add_argument("path", type=Path, help="Path to the entity directory")
+
 
 def run(args: Any) -> int:
     """Execute the entity subcommand described by *args*."""
@@ -632,6 +821,66 @@ def run(args: Any) -> int:
         verb = "Updated" if report["status"] == "updated" else "Mapped"
         print(f"{verb}: {report['feed_account_id']} → {report['account']}")
         return 0
+
+    if args.entity_command == "source-coverage":
+        target = _resolve_target(args.path)
+        try:
+            report = record_source_coverage(
+                target, args.source_name, args.coverage_from, args.coverage_to
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        verb = "Updated" if report["status"] == "updated" else "Recorded"
+        print(
+            f"{verb} coverage for {report['source']}: "
+            f"{report['coverage_from']} through {report['coverage_to']}"
+        )
+        return 0
+
+    if args.entity_command == "related-entity":
+        target = _resolve_target(args.path)
+        if args.related_entity_command == "set":
+            try:
+                report = record_related_entity(
+                    target,
+                    args.name,
+                    args.receivable_account,
+                    args.payable_account,
+                    args.inbound_policy,
+                    args.outbound_policy,
+                    args.inbound_income_account,
+                )
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            verb = "Updated" if report["status"] == "updated" else "Recorded"
+            print(f"{verb} pending related entity {report['name']}: inbound={report['inbound_policy']}, outbound={report['outbound_policy']}")
+            return 0
+        if args.related_entity_command == "approve":
+            try:
+                report = approve_related_entity(target, args.name, args.approval_note)
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            print(f"Approved related entity: {report['name']}")
+            return 0
+        if args.related_entity_command == "list":
+            try:
+                records = list_related_entities(target)
+            except FileNotFoundError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            if not records:
+                print("No related-entity policies configured.")
+                return 0
+            for record in records:
+                print(
+                    f"{record.get('name')}: inbound={record.get('inbound_policy')}, "
+                    f"outbound={record.get('outbound_policy')}, "
+                    f"authorization={'approved' if record.get('owner_authorized') is True else 'pending'}"
+                )
+            return 0
 
     print(f"Unknown entity command: {args.entity_command}", file=sys.stderr)
     return 2

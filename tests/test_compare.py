@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from datetime import date
@@ -495,6 +496,23 @@ class TestZeroMaterialDiffs(unittest.TestCase):
         from src.bookkeeping.compare import compare_period
         report = compare_period(self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31))
         self.assertIsNotNone(report.readiness)
+
+    def test_effective_source_postings_are_resolved_once_per_comparison(self):
+        from src.bookkeeping import compare as compare_module
+
+        with patch.object(
+            compare_module,
+            "_effective_source_postings",
+            wraps=compare_module._effective_source_postings,
+        ) as helper:
+            compare_module.compare_period(
+                self._entity,
+                _QB_MATCH,
+                date(2026, 1, 1),
+                date(2026, 3, 31),
+            )
+
+        self.assertEqual(helper.call_count, 1)
 
     def test_matched_transactions_positive(self):
         """There should be some matched transactions when books align."""
@@ -1348,6 +1366,9 @@ class TestSourceCoverage(unittest.TestCase):
         self.assertIsInstance(cov, list)
         sources = [c["source"] for c in cov]
         self.assertIn("Mercury Checking", sources)
+        mercury = next(item for item in cov if item["source"] == "Mercury Checking")
+        self.assertEqual(mercury["status"], "declared")
+        self.assertEqual(mercury["coverage_status"], "unknown")
 
     def test_coverage_has_date_range(self):
         from src.bookkeeping.compare import _source_coverage
@@ -1356,6 +1377,102 @@ class TestSourceCoverage(unittest.TestCase):
         for item in cov:
             self.assertIn("requested_from", item)
             self.assertIn("requested_to", item)
+
+    def test_declared_partial_coverage_names_the_missing_period(self):
+        from src.bookkeeping.compare import _source_coverage
+
+        self._entity.entity_config["declared_sources"] = [{
+            "name": "Cancelled card CSV",
+            "coverage_from": "2026-01-01",
+            "coverage_to": "2026-02-15",
+        }]
+        coverage = _source_coverage(
+            self._entity, date(2026, 1, 1), date(2026, 3, 31)
+        )
+
+        self.assertEqual(coverage[0]["status"], "partial")
+        self.assertEqual(coverage[0]["exceptions"], [{
+            "kind": "missing-end-coverage",
+            "from": "2026-02-16",
+            "to": "2026-03-31",
+        }])
+
+    def test_known_coverage_gap_blocks_migration_confidence(self):
+        from src.bookkeeping.compare import confidence_package
+
+        self._entity.entity_config["declared_sources"] = [{
+            "name": "Cancelled card CSV",
+            "coverage_from": "2026-01-01",
+            "coverage_to": "2026-02-15",
+        }]
+        package = confidence_package(
+            self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31)
+        )
+
+        self.assertIn({
+            "source": "Cancelled card CSV",
+            "kind": "missing-end-coverage",
+            "from": "2026-02-16",
+            "to": "2026-03-31",
+        }, package["coverage_exceptions"])
+        self.assertTrue(any(
+            item["label"] == "Source coverage: Cancelled card CSV"
+            for item in package["blocking_items"]
+        ))
+
+
+class TestQboAccountCrosswalk(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._tmp = Path(self._tmpdir)
+        self._entity = _make_entity(self._tmp, FIXTURE_LEDGER)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_explicit_crosswalk_overrides_name_mapping(self):
+        from src.bookkeeping.compare import _map_qb_name
+
+        mapped = _map_qb_name(
+            "Marketing:Advertising",
+            {"Marketing:Advertising": "Expense"},
+            {"Marketing:Advertising": "Expenses:Growth"},
+        )
+
+        self.assertEqual(mapped, "Expenses:Growth")
+
+    def test_crosswalk_setting_persists_in_entity_config(self):
+        from src.bookkeeping.compare import set_qbo_account_crosswalk
+
+        result = set_qbo_account_crosswalk(
+            self._entity.path,
+            "Marketing:Advertising",
+            "Expenses:Software",
+            "Owner approved the presentation-only mapping.",
+        )
+        saved = json.loads((self._entity.path / "entity.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "created")
+        self.assertEqual(
+            saved["compare"]["qbo_account_crosswalk"]["Marketing:Advertising"]["local_account"],
+            "Expenses:Software",
+        )
+        self.assertEqual(
+            saved["compare"]["qbo_account_crosswalk"]["Marketing:Advertising"]["approval_note"],
+            "Owner approved the presentation-only mapping.",
+        )
+
+    def test_crosswalk_rejects_unknown_local_account(self):
+        from src.bookkeeping.compare import set_qbo_account_crosswalk
+
+        with self.assertRaisesRegex(ValueError, "not in the account catalog"):
+            set_qbo_account_crosswalk(
+                self._entity.path,
+                "Marketing:Advertising",
+                "Expenses:Typo",
+                "Owner approved the proposed mapping.",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1756,6 +1873,130 @@ class TestRegressionBug3MatchingGLSections(unittest.TestCase):
         self.assertEqual(tmobile_unmatched, [],
                          f"T-Mobile CC charge should have matched (sign normalization). "
                          f"Found in unmatched-ours: {tmobile_unmatched}")
+
+
+class TestRegressionEffectiveSourceEntries(unittest.TestCase):
+    """Corrected Mercury entries count once in source-level comparison checks."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._tmp = Path(self._tmpdir)
+        self._entity = _make_entity(self._tmp, FIXTURE_LEDGER)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_latest_mercury_correction_supersedes_raw_and_reversal_rows(self):
+        """A correction is one bank transaction, not three GL occurrences."""
+        cache_path = self._entity.path / "reports" / "cache.sqlite"
+        conn = sqlite3.connect(cache_path)
+        try:
+            conn.execute(
+                "ALTER TABLE entries ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '[]'"
+            )
+            raw_id = conn.execute(
+                """INSERT INTO entries (date, narration, payee, source_id)
+                   VALUES (?, ?, ?, ?)""",
+                ("2026-03-25", "Original categorization", "Example Vendor", "source-original"),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
+                [
+                    (raw_id, "Assets:Bank:Checking", "-100.00"),
+                    (raw_id, "Expenses:Software", "100.00"),
+                ],
+            )
+
+            reversal_id = conn.execute(
+                """INSERT INTO entries (date, narration, payee, source_id)
+                   VALUES (?, ?, ?, NULL)""",
+                ("2026-03-25", "Reverses original categorization", "Example Vendor"),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
+                [
+                    (reversal_id, "Assets:Bank:Checking", "100.00"),
+                    (reversal_id, "Expenses:Software", "-100.00"),
+                ],
+            )
+
+            corrected_id = conn.execute(
+                """INSERT INTO entries (date, narration, payee, source_id)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    "2026-03-25",
+                    "Corrected categorization",
+                    "Example Vendor",
+                    "source-replacement",
+                ),
+            ).lastrowid
+            conn.execute(
+                "UPDATE entries SET metadata_json = ? WHERE id = ?",
+                ('[["correction-of", "source-original"]]', corrected_id),
+            )
+            conn.executemany(
+                "INSERT INTO postings (entry_id, account, amount, currency) VALUES (?, ?, ?, 'USD')",
+                [
+                    (corrected_id, "Assets:Bank:Checking", "-100.00"),
+                    (corrected_id, "Expenses:Business-Reimbursements", "100.00"),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        from src.bookkeeping.compare import _effective_source_postings
+
+        postings = _effective_source_postings(
+            self._entity, date(2026, 3, 25), date(2026, 3, 25)
+        )
+
+        self.assertEqual(len(postings), 2)
+        self.assertEqual({row[3] for row in postings}, {
+            "Assets:Bank:Checking", "Expenses:Business-Reimbursements",
+        })
+        self.assertTrue(all(row[-1] == "source-replacement" for row in postings))
+
+    def test_aligned_transfer_matches_mapped_qbo_account(self):
+        """An aligned Mercury row matches its QBO account after mapping."""
+        from src.bookkeeping.compare import _is_internal_transfer_match
+
+        self.assertTrue(_is_internal_transfer_match(
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Assets:Bank:Checking",
+            "bank-account-alignment:mercury:example-001",
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Checking",
+            {"Checking": "Bank"},
+        ))
+        self.assertFalse(_is_internal_transfer_match(
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Assets:Bank:Checking",
+            "bank-account-alignment:mercury:example-001",
+            date(2026, 1, 6),
+            Decimal("-1800.00"),
+            "Checking",
+            {"Checking": "Bank"},
+        ))
+
+    def test_alignment_does_not_match_a_different_mapped_qbo_account(self):
+        """Exact amount alone cannot match a different QBO bank account."""
+        from src.bookkeeping.compare import _is_internal_transfer_match
+
+        self.assertFalse(_is_internal_transfer_match(
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Assets:Bank:Checking",
+            "bank-account-alignment:mercury:example-001",
+            date(2026, 1, 5),
+            Decimal("-1800.00"),
+            "Savings",
+            {"Savings": "Bank"},
+        ))
 
 
 class TestRegressionBug4SpotAuditExcludesOpening(unittest.TestCase):

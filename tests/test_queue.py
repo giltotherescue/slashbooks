@@ -30,13 +30,14 @@ import unittest
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from bookkeeping.entity import Entity  # noqa: E402
+from bookkeeping.entity import Entity, add_account, approve_related_entity, record_related_entity  # noqa: E402
 from bookkeeping.ledger.importer import import_transactions  # noqa: E402
 from bookkeeping.ledger.model import Open  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
@@ -53,8 +54,18 @@ from bookkeeping.queue import (  # noqa: E402
     make_categorizer,
     propose,
     propose_group,
+    propose_related_entity,
+    propose_split,
+    propose_transfer,
     reopen_if_amount_changed,
     reconcile_pending_amount_changes,
+    save_split_template,
+    summarize_queue_items,
+    withdraw,
+    find_transfer_candidates,
+    confirm_split,
+    confirm_transfer,
+    find_transfer_exceptions,
     write_session_summary,
     quarterly_review,
 )
@@ -196,6 +207,30 @@ class TestPendingWorkVisibility(unittest.TestCase):
             self.assertEqual([item["source_id"] for item in confirmed], ["group-1", "group-2"])
             staged = json.loads((entity.staging_dir / "pending-categorization.json").read_text(encoding="utf-8"))
             self.assertEqual([item["id"] for item in staged], ["other"])
+
+    def test_summary_groups_by_treatment_and_keeps_staged_items_unclassified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            _add_pending_categorization(entity, "software-1", "Acme", "-10.00", "2026-01-05")
+            _add_pending_categorization(entity, "software-2", "Acme", "-15.00", "2026-01-20")
+            _add_pending_categorization(entity, "unknown-1", "Unknown", "-20.00", "2026-01-25")
+            propose_group(
+                entity,
+                ["software-1", "software-2"],
+                "Expenses:Software",
+                "Routine subscription",
+            )
+
+            groups = summarize_queue_items(entity)
+
+            self.assertEqual([group["treatment"] for group in groups], [
+                "Needs review", "Expenses:Software",
+            ])
+            software = groups[1]
+            self.assertEqual(software["count"], 2)
+            self.assertEqual(software["total"], "-25.00")
+            self.assertEqual(software["date_from"], "2026-01-05")
+            self.assertEqual(software["date_to"], "2026-01-20")
 
 
 # ---------------------------------------------------------------------------
@@ -988,6 +1023,148 @@ class TestConfirmWritesLedger(unittest.TestCase):
         self.assertEqual(entry["confirmed_count"], 0)
         self.assertTrue(entry["reset"])
         self.assertEqual(entry["canonical_category"], "Expenses:Fees")
+
+
+# ---------------------------------------------------------------------------
+# Tests: direct reviewed splits, transfer pairs, and related entities
+# ---------------------------------------------------------------------------
+
+class TestMigrationReviewWorkflows(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.entity = _make_entity(Path(self.tmp.name))
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_split_posts_one_balanced_entry_and_preserves_source_id(self) -> None:
+        _add_pending_categorization(self.entity, "payroll-1", "Payroll debit", amount="-100.00")
+        item = propose_split(
+            self.entity,
+            "payroll-1",
+            "Net pay plus payroll liability.",
+            ["Expenses:Software=70.00", "Liabilities:CreditCard=30.00"],
+        )
+        self.assertEqual(item["liability_effect"], [{"account": "Liabilities:CreditCard", "amount": "30.00"}])
+        confirmed = confirm_split(self.entity, "payroll-1", "split-session", ts=TS)
+        self.assertEqual(confirmed["status"], "confirmed")
+
+        from bookkeeping.ledger.projections import render_store_ledger
+        from bookkeeping.ledger.store import default_store_path
+        from bookkeeping.ledger.validator import parse_ledger, validate
+        text = render_store_ledger(default_store_path(self.entity.path))
+        self.assertEqual(validate(text), [])
+        entry = next(entry for entry in parse_ledger(text)["entries"] if entry.source_id == "payroll-1")
+        self.assertEqual(len(entry.postings), 3)
+        self.assertIn("Expenses:Software", [posting.account for posting in entry.postings])
+
+    def test_exact_split_template_can_be_reused(self) -> None:
+        save_split_template(
+            self.entity,
+            "payroll-100",
+            ["Expenses:Software=70.00", "Liabilities:CreditCard=30.00"],
+        )
+        _add_pending_categorization(self.entity, "payroll-template", "Payroll debit", amount="-100.00")
+        item = propose_split(self.entity, "payroll-template", "Matches the approved payroll allocation.", template="payroll-100")
+        self.assertEqual(item["split_template"], "payroll-100")
+        self.assertEqual(len(item["split_postings"]), 2)
+
+    def test_transfer_pair_posts_once_and_marks_both_source_ids_seen(self) -> None:
+        _add_pending_categorization(self.entity, "bank-payment", "Amex card payment", amount="-125.00", txn_date="2026-02-01")
+        _add_pending_categorization(self.entity, "card-payment", "Payment received", amount="125.00", txn_date="2026-02-03")
+        pending_path = self.entity.staging_dir / "pending-categorization.json"
+        pending = json.loads(pending_path.read_text(encoding="utf-8"))
+        pending[1]["accountName"] = "Amex"
+        pending[1]["accountType"] = "credit_card"
+        pending_path.write_text(json.dumps(pending), encoding="utf-8")
+
+        candidates = find_transfer_candidates(self.entity, date_tolerance_days=3)
+        self.assertEqual(len(candidates), 1)
+        _add_pending_categorization(self.entity, "unmatched-wire", "Wire transfer to vendor", amount="-500.00", txn_date="2026-02-04")
+        exceptions = find_transfer_exceptions(self.entity, date_tolerance_days=3)
+        self.assertEqual([exception["source_id"] for exception in exceptions], ["unmatched-wire"])
+        item = propose_transfer(self.entity, ["bank-payment", "card-payment"], "Same payment in the bank and card feeds.")
+        self.assertEqual(item["proposal_type"], "transfer-pair")
+        confirmed = confirm_transfer(self.entity, item["source_id"], "transfer-session", ts=TS)
+        self.assertEqual(confirmed["status"], "confirmed")
+
+        from bookkeeping.ledger.store import LedgerStore, default_store_path
+        store = LedgerStore(default_store_path(self.entity.path))
+        with store.connection() as conn:
+            rows = conn.execute("SELECT id FROM source_transactions ORDER BY id").fetchall()
+            entry_rows = conn.execute("SELECT date, metadata_json FROM entries ORDER BY date").fetchall()
+        self.assertEqual([row[0] for row in rows], ["bank-payment", "card-payment"])
+        self.assertEqual([row[0] for row in entry_rows], ["2026-02-01", "2026-02-03"])
+        self.assertTrue(all("paired-source-id" in row[1] for row in entry_rows))
+        self.assertTrue(store.source_exists("card-payment"))
+        seen = json.loads((self.entity.staging_dir / "seen-ids.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(seen), {"bank-payment", "card-payment"})
+
+    def test_split_confirmation_retry_heals_after_ledger_commit(self) -> None:
+        _add_pending_categorization(self.entity, "split-retry", "Payroll", amount="-100.00")
+        propose_split(self.entity, "split-retry", "Allocation", ["Expenses:Software=100.00"])
+        with patch("bookkeeping.queue._remove_from_pending_categorization", side_effect=ValueError("disk failure")):
+            with self.assertRaisesRegex(ValueError, "disk failure"):
+                confirm_split(self.entity, "split-retry", "split-session", ts=TS)
+
+        healed = confirm_split(self.entity, "split-retry", "split-session", ts=TS)
+        self.assertEqual(healed["status"], "confirmed")
+        from bookkeeping.ledger.store import default_store_path
+        store = LedgerStore(default_store_path(self.entity.path))
+        with store.connection() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM entries WHERE source_id = 'split-retry'").fetchone()[0]
+        self.assertEqual(count, 1)
+
+    def test_related_entity_policy_requires_explicit_proposal_and_is_not_learned(self) -> None:
+        add_account(self.entity.path, "Assets:Intercompany:LegacyCo")
+        add_account(self.entity.path, "Liabilities:Intercompany:LegacyCo")
+        record_related_entity(
+            self.entity.path,
+            "Legacy Co",
+            "Assets:Intercompany:LegacyCo",
+            "Liabilities:Intercompany:LegacyCo",
+            "income",
+            "create-receivable",
+            "Income:Consulting",
+        )
+        _add_pending_categorization(self.entity, "legacy-receipt", "Legacy Co settlement", amount="200.00")
+        with self.assertRaisesRegex(ValueError, "not been owner-authorized"):
+            propose_related_entity(self.entity, "legacy-receipt", "Legacy Co", "Not approved.")
+        approve_related_entity(self.entity.path, "Legacy Co", "Gil approved the migration policy.")
+        item = propose_related_entity(self.entity, "legacy-receipt", "Legacy Co", "Owner-approved migration fallback.")
+        self.assertEqual(item["proposed_category"], "Income:Consulting")
+        self.assertEqual(item["related_entity_treatment"], "owner-authorized inbound income fallback")
+        confirm(self.entity, "legacy-receipt", "related-session", ts=TS)
+        self.assertNotIn("LEGACY CO SETTLEMENT", load_learned_context(self.entity))
+
+    def test_related_entity_policy_change_requires_fresh_proposal(self) -> None:
+        add_account(self.entity.path, "Assets:Intercompany:LegacyCo")
+        add_account(self.entity.path, "Liabilities:Intercompany:LegacyCo")
+        record_related_entity(self.entity.path, "Legacy Co", "Assets:Intercompany:LegacyCo", "Liabilities:Intercompany:LegacyCo", "income", "create-receivable", "Income:Consulting")
+        approve_related_entity(self.entity.path, "Legacy Co", "Initial owner approval.")
+        _add_pending_categorization(self.entity, "legacy-change", "Legacy Co settlement", amount="200.00")
+        propose_related_entity(self.entity, "legacy-change", "Legacy Co", "Approved policy.")
+        record_related_entity(self.entity.path, "Legacy Co", "Assets:Intercompany:LegacyCo", "Liabilities:Intercompany:LegacyCo", "settle-receivable", "create-receivable")
+        approve_related_entity(self.entity.path, "Legacy Co", "Owner approved the revised policy.")
+        with self.assertRaisesRegex(ValueError, "policy changed"):
+            confirm(self.entity, "legacy-change", "related-session", ts=TS)
+
+    def test_special_proposal_must_be_withdrawn_before_reproposal(self) -> None:
+        _add_pending_categorization(self.entity, "split-withdraw", "Payroll", amount="-100.00")
+        propose_split(self.entity, "split-withdraw", "Allocation", ["Expenses:Software=100.00"])
+        with self.assertRaisesRegex(ValueError, "Specialized proposals"):
+            correct(self.entity, "split-withdraw", "Expenses:Office", session_id="s")
+        item = withdraw(self.entity, "split-withdraw", "Replace allocation.", ts=TS)
+        self.assertEqual(item["status"], "withdrawn")
+        self.assertIsNotNone(next(txn for txn in json.loads((self.entity.staging_dir / "pending-categorization.json").read_text()) if txn["id"] == "split-withdraw"))
+
+    def test_corrupt_split_templates_are_not_overwritten(self) -> None:
+        path = self.entity.staging_dir / "split-templates.json"
+        path.write_text("{broken", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "existing split templates"):
+            save_split_template(self.entity, "new", ["Expenses:Software=100.00"])
+        self.assertEqual(path.read_text(encoding="utf-8"), "{broken")
 
 
 # ---------------------------------------------------------------------------

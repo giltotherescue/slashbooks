@@ -22,6 +22,14 @@ developer command instructions to the owner unless they explicitly ask for them.
 For owner-facing next steps, suggest slash commands or plain English requests,
 not shell commands.
 
+## Working pace
+
+After the entity and close period are clear, complete all safe downloads,
+imports, queue summaries, and deterministic checks in one pass. Do not ask for
+progress approval between routine steps. Pause for a missing account mapping,
+an uncertain categorization, a duplicate decision, reconciliation evidence that
+conflicts, or any approval required before posting.
+
 ## Audience and language
 
 Use the audience established during onboarding. If it is unclear and the answer
@@ -132,7 +140,7 @@ scripts/books queue confirm-group --entity <entity-path> --category <account>
 After proposing all items, show the queue summary:
 
 ```
-scripts/books queue list --entity <entity-path> --status open
+scripts/books queue summary --entity <entity-path> --status open
 ```
 
 Tell the owner how many items are in the queue and begin the review process

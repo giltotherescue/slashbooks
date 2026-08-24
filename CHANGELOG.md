@@ -4,6 +4,54 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] - 2026-08-24
+
+### Added
+
+- `/books-feedback` drafts a privacy-conscious, implementation-ready handoff
+  for Slashbooks developers from bookkeeping feedback.
+- QuickBooks account crosswalks let an owner identify presentation-only chart
+  hierarchy differences without hiding economic differences.
+- Declared source coverage dates now produce named missing-start or missing-end
+  exceptions and block migration certification when a known gap overlaps the
+  requested period.
+- The review queue now has a read-only grouped summary with proposed treatment,
+  count, total, date range, and sample counterparties.
+- Reviewers can now propose and approve a direct balanced split from one staged
+  transaction, including a visible liability effect and exact reusable split
+  templates. No interim single-category entry is posted.
+- Native transfer pairing now proposes equal-and-opposite staged bank/card rows
+  by amount, account, counterparty evidence, and date tolerance. Confirmation
+  posts an audited pair with both source records and source-dated clearing legs
+  when settlement dates differ. Unmatched transfer-like rows remain named
+  timing-or-missing-source exceptions.
+- Explicitly approved related-entity policies now record due-from, due-to, and
+  direction-specific migration fallbacks. Each related transaction still needs
+  its own queue proposal and is never learned as a routine vendor category.
+
+### Changed
+
+- Books workflows continue through clear, safe, deterministic steps and pause
+  only at a material decision or approval boundary.
+
+### Fixed
+
+- QuickBooks backtests now compare one effective source entry per transaction,
+  so superseded classifications and their reversal entries do not inflate
+  transaction counts or unmatched-item reports.
+- Internal Mercury cash-bucket transfers now match the equivalent QuickBooks
+  bank row only when the date, amount, and mapped cash account agree.
+- Transfer and split confirmations recover safely when the ledger commit
+  succeeds before review-queue cleanup, without posting duplicate activity.
+- Both sides of a transfer remain durable source IDs, even if staging recovery
+  rebuilds its seen-ID state.
+- Related-entity policies and QuickBooks account crosswalks require explicit
+  approval provenance. Stale related-entity proposals stop when the approved
+  policy changes.
+- Existing source declarations keep their original configuration shape, and
+  crosswalks cannot point to accounts outside the local chart.
+- Corrupt split-template files now fail closed instead of being overwritten.
+
 ## [0.3.1] - 2026-08-23
 
 ### Fixed

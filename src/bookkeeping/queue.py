@@ -77,6 +77,7 @@ Learned-context schema (learned-context/counterparties.json)
 }
 """
 
+import hashlib
 import json
 import os
 import re
@@ -335,7 +336,12 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     # produced a proposal.  Surface it alongside queue files so `queue list
     # --status open` cannot incorrectly report an empty close.
     if status in (None, "open", "staged"):
-        queued_ids = {str(item.get("source_id") or "") for item in items}
+        queued_ids = {
+            str(source_id)
+            for item in items
+            for source_id in (item.get("source_ids") or [item.get("source_id")])
+            if source_id
+        }
         for txn in _load_pending_categorization(entity):
             source_id = str(txn.get("id") or "")
             if not source_id or source_id in queued_ids:
@@ -361,6 +367,54 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
                 if isinstance(item, dict) and item.get("status") == "duplicate-candidate"
             )
     return items
+
+
+def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> list[dict]:
+    """Group review work by proposed treatment without changing any item.
+
+    The queue does not infer a category simply to make a prettier group. Staged
+    and guarded items remain in ``Needs review`` until an agent proposes a
+    treatment; confirmed proposals stay in distinct groups.
+    """
+    groups: dict[str, dict[str, Any]] = {}
+    for item in list_queue_items(entity, status=status):
+        treatment = str(item.get("proposed_category") or "Needs review")
+        group = groups.setdefault(
+            treatment,
+            {
+                "treatment": treatment,
+                "count": 0,
+                "total": Decimal("0.00"),
+                "dates": [],
+                "sample_counterparties": [],
+                "statuses": set(),
+            },
+        )
+        group["count"] += 1
+        try:
+            group["total"] += Decimal(str(item.get("amount") or "0")).quantize(Decimal("0.01"))
+        except Exception:
+            pass
+        raw_date = str(item.get("date") or "")[:10]
+        if raw_date:
+            group["dates"].append(raw_date)
+        sample = str(item.get("counterparty") or item.get("description") or "").strip()
+        if sample and sample not in group["sample_counterparties"] and len(group["sample_counterparties"]) < 3:
+            group["sample_counterparties"].append(sample)
+        status_name = str(item.get("status") or "")
+        if status_name:
+            group["statuses"].add(status_name)
+
+    result: list[dict] = []
+    for group in groups.values():
+        dates = sorted(group.pop("dates"))
+        statuses = sorted(group.pop("statuses"))
+        group["total"] = f"{group['total']:.2f}"
+        group["date_from"] = dates[0] if dates else None
+        group["date_to"] = dates[-1] if dates else None
+        group["statuses"] = statuses
+        result.append(group)
+    return sorted(result, key=lambda group: (group["treatment"] != "Needs review", group["treatment"]))
 
 
 def resolve_duplicate_candidate(
@@ -464,21 +518,50 @@ def _load_pending_categorization(entity: Entity) -> list[dict]:
         return []
 
 
-def _remove_from_pending_categorization(entity: Entity, source_id: str) -> None:
+def _remove_from_pending_categorization(entity: Entity, source_id: str, *, strict: bool = False) -> None:
     """Remove source_id from the pending-categorization list (atomic write)."""
     path = entity.staging_dir / "pending-categorization.json"
     if not path.exists():
         return
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(data, list):
-            return
-        updated = [item for item in data if str(item.get("id", "")) != source_id]
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(str(tmp), str(path))
-    except (json.JSONDecodeError, OSError):
-        pass
+    except (json.JSONDecodeError, OSError) as exc:
+        if strict:
+            raise ValueError(f"Could not update pending categorization: {exc}") from exc
+        return
+    if not isinstance(data, list):
+        if strict:
+            raise ValueError("Pending categorization must contain a JSON list.")
+        return
+    updated = [item for item in data if str(item.get("id", "")) != source_id]
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(path))
+
+
+def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[str]) -> None:
+    """Atomically remove several staged transactions after one confirmed entry."""
+    path = entity.staging_dir / "pending-categorization.json"
+    if not path.exists():
+        return
+    wanted = {str(source_id) for source_id in source_ids}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Could not update pending categorization: {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError("Pending categorization must contain a JSON list.")
+    updated = [item for item in data if str(item.get("id", "")) not in wanted]
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(path))
+
+
+def _ledger_has_all_sources(entity: Entity, source_ids: list[str]) -> bool:
+    from .ledger.store import LedgerStore, default_store_path
+
+    store = LedgerStore(default_store_path(entity.path))
+    return bool(source_ids) and all(store.source_exists(source_id) for source_id in source_ids)
 
 
 def _source_id_in_pending(entity: Entity, source_id: str) -> bool:
@@ -506,6 +589,76 @@ def _get_pending_txn(entity: Entity, source_id: str) -> Optional[dict]:
         if str(item.get("id", "")) == source_id:
             return item
     return None
+
+
+def _txn_amount(txn: dict) -> Decimal:
+    """Return a normalized signed amount from a source transaction."""
+    raw_amount = txn.get("amount")
+    if raw_amount is None:
+        credit = Decimal(str(txn.get("creditAmount") or "0"))
+        debit = Decimal(str(txn.get("debitAmount") or "0"))
+        return (credit - debit).quantize(Decimal("0.01"))
+    return Decimal(str(raw_amount)).quantize(Decimal("0.01"))
+
+
+def _txn_date(txn: dict) -> date:
+    """Return the transaction date, falling back to today for malformed input."""
+    try:
+        return date.fromisoformat(str(txn.get("date") or "")[:10])
+    except ValueError:
+        return datetime.now(tz=timezone.utc).date()
+
+
+def _validate_known_accounts(entity: Entity, accounts: list[str]) -> None:
+    """Require every selected account to exist in the entity catalog."""
+    opened = _get_opened_accounts(entity)
+    unknown = sorted({account for account in accounts if opened and account not in opened})
+    if unknown:
+        raise ValueError(
+            "These accounts are not in the account catalog: " + ", ".join(unknown) + "."
+        )
+
+
+def _parse_posting_specs(posting_specs: list[str]) -> list[dict[str, str]]:
+    """Parse safe ``Account=SIGNED_AMOUNT`` CLI values for a proposed split."""
+    postings: list[dict[str, str]] = []
+    for spec in posting_specs:
+        if "=" not in spec:
+            raise ValueError("Each split posting must use Account=SIGNED_AMOUNT.")
+        account, raw_amount = spec.split("=", 1)
+        account = account.strip()
+        try:
+            amount = Decimal(raw_amount.strip()).quantize(Decimal("0.01"))
+        except Exception as exc:
+            raise ValueError(f"Invalid split amount in '{spec}'.") from exc
+        if not account or amount == 0:
+            raise ValueError("Split accounts and amounts must be non-empty and non-zero.")
+        postings.append({"account": account, "amount": f"{amount:.2f}"})
+    if not postings:
+        raise ValueError("At least one split posting is required.")
+    return postings
+
+
+def _split_template_path(entity: Entity) -> Path:
+    return entity.staging_dir / "split-templates.json"
+
+
+def _load_split_templates(entity: Entity) -> dict[str, list[dict[str, str]]]:
+    path = _split_template_path(entity)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Could not read existing split templates: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError("Existing split templates must contain a JSON object.")
+    templates: dict[str, list[dict[str, str]]] = {}
+    for name, postings in data.items():
+        if not isinstance(name, str) or not isinstance(postings, list) or not all(isinstance(posting, dict) for posting in postings):
+            raise ValueError("Existing split templates contain an invalid template.")
+        templates[name] = [dict(posting) for posting in postings]
+    return templates
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +793,436 @@ def propose_group(
     if not source_ids:
         raise ValueError("At least one source ID is required for a group proposal.")
     return [propose(entity, source_id, category, reasoning, context) for source_id in source_ids]
+
+
+# ---------------------------------------------------------------------------
+# Review-time split transactions
+# ---------------------------------------------------------------------------
+
+def save_split_template(entity: Entity, name: str, posting_specs: list[str]) -> dict:
+    """Save an exact, reusable split allocation after validating its accounts."""
+    template_name = name.strip()
+    if not template_name:
+        raise ValueError("A split template name is required.")
+    postings = _parse_posting_specs(posting_specs)
+    _validate_known_accounts(entity, [posting["account"] for posting in postings])
+    templates = _load_split_templates(entity)
+    status = "updated" if template_name in templates else "created"
+    templates[template_name] = postings
+    path = _split_template_path(entity)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(templates, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(path))
+    return {"name": template_name, "status": status, "postings": postings}
+
+
+def list_split_templates(entity: Entity) -> dict[str, list[dict[str, str]]]:
+    """Return exact reusable split allocations without changing any records."""
+    return _load_split_templates(entity)
+
+
+def _split_liability_effect(postings: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        {"account": posting["account"], "amount": posting["amount"]}
+        for posting in postings
+        if posting["account"].startswith("Liabilities:")
+    ]
+
+
+def propose_split(
+    entity: Entity,
+    source_id: str,
+    reasoning: str,
+    posting_specs: list[str] | None = None,
+    template: str = "",
+) -> dict:
+    """Prepare one balanced multi-line allocation from a staged transaction.
+
+    The supplied postings are the non-cash legs.  Their signed sum must be the
+    inverse of the source transaction's cash leg.  This is intentionally exact
+    rather than percentage-based: payroll and tax allocations remain visible to
+    the owner before approval.
+    """
+    if not _source_id_in_pending(entity, source_id):
+        raise ValueError("Only staged transactions may receive a split proposal.")
+    txn = _get_pending_txn(entity, source_id)
+    if txn is None:
+        raise ValueError(f"Could not load staged transaction '{source_id}'.")
+    if template:
+        templates = _load_split_templates(entity)
+        try:
+            postings = [dict(posting) for posting in templates[template]]
+        except KeyError as exc:
+            raise ValueError(f"Split template '{template}' was not found.") from exc
+    else:
+        postings = _parse_posting_specs(posting_specs or [])
+    _validate_known_accounts(entity, [posting["account"] for posting in postings])
+    allocation_total = sum((Decimal(posting["amount"]) for posting in postings), Decimal("0.00"))
+    amount = _txn_amount(txn)
+    if allocation_total != -amount:
+        raise ValueError(
+            "Split allocations must total the inverse of the source amount "
+            f"({-amount:.2f}); received {allocation_total:.2f}."
+        )
+
+    now = _now_iso()
+    existing_path = _item_path(entity, source_id)
+    existing_item: dict = {}
+    if existing_path.exists():
+        existing_item = _load_item(entity, source_id)
+        if existing_item.get("status") not in {"open", "reopened"}:
+            raise ValueError("A confirmed transaction cannot receive a new split proposal.")
+    item = {
+        "source_id": source_id,
+        "date": _txn_date(txn).isoformat(),
+        "amount": f"{amount:.2f}",
+        "description": str(txn.get("description") or ""),
+        "counterparty": _counterparty_key(str(txn.get("description") or ""), str(txn.get("counterparty") or "")),
+        "proposed_category": "Split transaction",
+        "proposal_type": "split",
+        "split_postings": postings,
+        "split_template": template or None,
+        "liability_effect": _split_liability_effect(postings),
+        "reasoning": _sanitize_reasoning(reasoning),
+        "context": "",
+        "status": "open",
+        "confirmed_category": None,
+        "original_amount": existing_item.get("original_amount", f"{amount:.2f}"),
+        "delta": None,
+        "corrected_at": None,
+        "created_at": existing_item.get("created_at", now),
+        "updated_at": now,
+        "session_summary_id": None,
+    }
+    _save_item(entity, item)
+    return item
+
+
+def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str, ts: Optional[str]) -> None:
+    """Post the already-balanced reviewed split and retain its original source ID."""
+    from .ledger.importer import _atomic_ledger_write, _get_existing_opens, _ledger_account_for_txn
+    from .ledger.model import Entry, Open, Posting
+
+    source_id = str(txn.get("id") or item["source_id"])
+    amount = _txn_amount(txn)
+    bank_account = _ledger_account_for_txn(txn, entity.entity_config.get("bank_account_mappings"))
+    allocations = [
+        Posting(account=str(posting["account"]), amount=Decimal(str(posting["amount"])), currency="USD")
+        for posting in item.get("split_postings", [])
+    ]
+    entry = Entry(
+        date=_txn_date(txn),
+        narration=str(txn.get("description") or "Reviewed split"),
+        flag="*",
+        meta=(
+            ("source-id", source_id),
+            ("import-session", session_id),
+            ("review-workflow", "split"),
+        ),
+        tags=(f"import-{session_id}", "reviewed-split"),
+        postings=(Posting(account=bank_account, amount=amount, currency="USD"), *allocations),
+    )
+    existing_opens = _get_existing_opens(entity)
+    needed = {bank_account, *(posting.account for posting in allocations)}
+    opens = [Open(date=date(2000, 1, 1), account=account) for account in sorted(needed) if account not in existing_opens]
+    _atomic_ledger_write(
+        entity, opens, [entry], session_id, ts,
+        f"queue confirm split source_id={source_id!r}", [dict(txn)],
+    )
+    from .ledger.staging import StagingStore
+    StagingStore(entity.staging_dir).mark_seen(source_id)
+
+
+def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None) -> dict:
+    """Approve and post a prepared split without an interim single-category entry."""
+    item = _load_item(entity, item_id)
+    if item.get("proposal_type") != "split":
+        raise ValueError(f"Queue item '{item_id}' is not a split proposal.")
+    if item.get("status") not in {"open", "reopened"}:
+        raise ValueError("Only open split proposals can be confirmed.")
+    source_id = str(item["source_id"])
+    if _ledger_has_all_sources(entity, [source_id]):
+        from .ledger.staging import StagingStore
+        StagingStore(entity.staging_dir).mark_seen(source_id)
+        _remove_from_pending_categorization(entity, source_id, strict=True)
+        item["status"] = "confirmed"
+        item["confirmed_category"] = "Split transaction"
+        item["updated_at"] = ts or _now_iso()
+        _save_item(entity, item)
+        return item
+    txn = _get_pending_txn(entity, source_id)
+    if txn is None:
+        raise ValueError("The staged transaction is no longer available for this split.")
+    # Re-run the full validation at the approval boundary, including any chart changes.
+    expected = -_txn_amount(txn)
+    allocations = item.get("split_postings") or []
+    _validate_known_accounts(entity, [str(posting.get("account") or "") for posting in allocations])
+    total = sum((Decimal(str(posting.get("amount") or "0")) for posting in allocations), Decimal("0.00"))
+    if total != expected:
+        raise ValueError("The saved split no longer balances to the staged source amount.")
+    _write_split_entry(entity, txn, item, session_id, ts)
+    _remove_from_pending_categorization(entity, str(item["source_id"]), strict=True)
+    item["status"] = "confirmed"
+    item["confirmed_category"] = "Split transaction"
+    item["updated_at"] = ts or _now_iso()
+    _save_item(entity, item)
+    return item
+
+
+# ---------------------------------------------------------------------------
+# Native transfer pairing
+# ---------------------------------------------------------------------------
+
+def _transfer_item_id(source_ids: list[str]) -> str:
+    digest = hashlib.sha256("\x1f".join(sorted(source_ids)).encode("utf-8")).hexdigest()[:20]
+    return f"transfer-pair-{digest}"
+
+
+def _transfer_details(entity: Entity, source_ids: list[str]) -> tuple[dict, dict, Decimal, str, str]:
+    if len(source_ids) != 2 or source_ids[0] == source_ids[1]:
+        raise ValueError("A transfer pair must contain two distinct source IDs.")
+    first = _get_pending_txn(entity, source_ids[0])
+    second = _get_pending_txn(entity, source_ids[1])
+    if first is None or second is None:
+        raise ValueError("Both transfer sides must still be staged transactions.")
+    first_amount, second_amount = _txn_amount(first), _txn_amount(second)
+    if first_amount + second_amount != Decimal("0.00"):
+        raise ValueError("Transfer sides must have equal and opposite amounts.")
+    from .ledger.importer import _ledger_account_for_txn
+    mappings = entity.entity_config.get("bank_account_mappings")
+    first_account = _ledger_account_for_txn(first, mappings)
+    second_account = _ledger_account_for_txn(second, mappings)
+    if first_account == second_account:
+        raise ValueError("Transfer sides must come from different ledger accounts.")
+    return first, second, first_amount, first_account, second_account
+
+
+def find_transfer_candidates(entity: Entity, date_tolerance_days: int = 3) -> list[dict]:
+    """Return non-mutating, amount-exact transfer-pair candidates from staged feeds."""
+    if date_tolerance_days < 0:
+        raise ValueError("Date tolerance must be zero or greater.")
+    pending = _load_pending_categorization(entity)
+    candidates: list[dict] = []
+    for index, first in enumerate(pending):
+        for second in pending[index + 1:]:
+            try:
+                amount = _txn_amount(first)
+                if amount + _txn_amount(second) != Decimal("0.00"):
+                    continue
+                days_apart = abs((_txn_date(first) - _txn_date(second)).days)
+                if days_apart > date_tolerance_days:
+                    continue
+                from .ledger.importer import _ledger_account_for_txn
+                mappings = entity.entity_config.get("bank_account_mappings")
+                first_account = _ledger_account_for_txn(first, mappings)
+                second_account = _ledger_account_for_txn(second, mappings)
+                if first_account == second_account:
+                    continue
+            except (ValueError, ArithmeticError):
+                continue
+            first_cp = _counterparty_key(str(first.get("description") or ""), str(first.get("counterparty") or ""))
+            second_cp = _counterparty_key(str(second.get("description") or ""), str(second.get("counterparty") or ""))
+            counterparty_match = bool(first_cp and first_cp == second_cp)
+            account_types_differ = first_account.split(":", 1)[0] != second_account.split(":", 1)[0]
+            score = 60 + (25 if counterparty_match else 0) + (15 if account_types_differ else 0) - min(days_apart * 5, 15)
+            candidates.append({
+                "source_ids": [str(first.get("id") or ""), str(second.get("id") or "")],
+                "amount": f"{abs(amount):.2f}",
+                "date_days_apart": days_apart,
+                "accounts": [first_account, second_account],
+                "counterparties": [first_cp, second_cp],
+                "counterparty_match": counterparty_match,
+                "score": score,
+                "reason": "equal and opposite amount; different accounts; "
+                          + ("counterparty matches" if counterparty_match else "counterparty differs"),
+            })
+    return sorted(candidates, key=lambda candidate: (-candidate["score"], candidate["date_days_apart"], candidate["source_ids"]))
+
+
+def find_transfer_exceptions(entity: Entity, date_tolerance_days: int = 3) -> list[dict]:
+    """Name transfer-like staged rows whose equal-and-opposite side is absent.
+
+    This deliberately reports only candidate transfer rows without a pair. A
+    confirmed or merely suggested pair is not a coverage exception, avoiding a
+    misleading blanket count of every bank/card feed difference.
+    """
+    paired_ids = {
+        source_id
+        for candidate in find_transfer_candidates(entity, date_tolerance_days)
+        for source_id in candidate["source_ids"]
+    }
+    transfer_words = re.compile(r"\b(transfer|payment|card|ach|wire)\b", re.IGNORECASE)
+    exceptions: list[dict] = []
+    from .ledger.importer import _ledger_account_for_txn
+    mappings = entity.entity_config.get("bank_account_mappings")
+    for txn in _load_pending_categorization(entity):
+        source_id = str(txn.get("id") or "")
+        description = str(txn.get("description") or "")
+        if not source_id or source_id in paired_ids or not transfer_words.search(description):
+            continue
+        exceptions.append({
+            "source_id": source_id,
+            "date": _txn_date(txn).isoformat(),
+            "amount": f"{_txn_amount(txn):.2f}",
+            "account": _ledger_account_for_txn(txn, mappings),
+            "description": description,
+            "exception": "timing-or-missing-source",
+            "expected_counterpart_window_days": date_tolerance_days,
+        })
+    return sorted(exceptions, key=lambda exception: (exception["date"], exception["source_id"]))
+
+
+def propose_transfer(entity: Entity, source_ids: list[str], reasoning: str) -> dict:
+    """Create an owner-reviewable transfer proposal for two staged feed rows."""
+    first, second, amount, first_account, second_account = _transfer_details(entity, source_ids)
+    item_id = _transfer_item_id(source_ids)
+    existing_path = _item_path(entity, item_id)
+    if existing_path.exists() and _load_item(entity, item_id).get("status") not in {"open", "reopened"}:
+        raise ValueError("This transfer pair was already confirmed.")
+    # A normal category proposal would otherwise be hidden by the pair and lead
+    # to an ambiguous approval record.
+    for source_id in source_ids:
+        path = _item_path(entity, source_id)
+        if path.exists() and _load_item(entity, source_id).get("status") in {"open", "reopened"}:
+            raise ValueError(f"Source '{source_id}' already has a category proposal; resolve it first.")
+    now = _now_iso()
+    item = {
+        "source_id": item_id,
+        "source_ids": list(source_ids),
+        "date": max(_txn_date(first), _txn_date(second)).isoformat(),
+        "amount": f"{abs(amount):.2f}",
+        "description": f"Transfer pair: {first.get('description') or source_ids[0]} / {second.get('description') or source_ids[1]}",
+        "counterparty": "Internal transfer",
+        "proposed_category": "Internal transfer",
+        "proposal_type": "transfer-pair",
+        "transfer_accounts": [first_account, second_account],
+        "reasoning": _sanitize_reasoning(reasoning),
+        "context": "",
+        "status": "open",
+        "confirmed_category": None,
+        "original_amount": f"{abs(amount):.2f}",
+        "delta": None,
+        "corrected_at": None,
+        "created_at": now,
+        "updated_at": now,
+        "session_summary_id": None,
+    }
+    _save_item(entity, item)
+    return item
+
+
+def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None) -> dict:
+    """Post one audited transfer pair while preserving both source dates."""
+    item = _load_item(entity, item_id)
+    if item.get("proposal_type") != "transfer-pair":
+        raise ValueError(f"Queue item '{item_id}' is not a transfer pair.")
+    if item.get("status") not in {"open", "reopened"}:
+        raise ValueError("Only open transfer proposals can be confirmed.")
+    source_ids = [str(source_id) for source_id in item.get("source_ids") or []]
+    if _ledger_has_all_sources(entity, source_ids):
+        from .ledger.staging import StagingStore
+        StagingStore(entity.staging_dir).bulk_mark_seen(source_ids)
+        _remove_many_from_pending_categorization(entity, source_ids)
+        item["status"] = "confirmed"
+        item["confirmed_category"] = "Internal transfer"
+        item["updated_at"] = ts or _now_iso()
+        _save_item(entity, item)
+        return item
+    first, second, first_amount, first_account, second_account = _transfer_details(entity, source_ids)
+    from .ledger.importer import _atomic_ledger_write, _get_existing_opens
+    from .ledger.model import Entry, Open, Posting
+    pair_id = _transfer_item_id(source_ids)
+    common_meta = (("transfer-pair-id", pair_id), ("import-session", session_id), ("review-workflow", "transfer-pair"))
+    if _txn_date(first) == _txn_date(second):
+        entries = [Entry(
+            date=_txn_date(first),
+            narration="Internal transfer: " + " / ".join(str(txn.get("description") or source_id) for txn, source_id in ((first, source_ids[0]), (second, source_ids[1]))),
+            flag="*",
+            meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta),
+            tags=(f"import-{session_id}", "internal-transfer"),
+            postings=(Posting(account=first_account, amount=first_amount, currency="USD"), Posting(account=second_account, amount=-first_amount, currency="USD")),
+        )]
+        needed_accounts = {first_account, second_account}
+    else:
+        clearing = "Assets:Transfers-Clearing"
+        entries = [
+            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency="USD"), Posting(account=clearing, amount=-first_amount, currency="USD"))),
+            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency="USD"), Posting(account=clearing, amount=first_amount, currency="USD"))),
+        ]
+        needed_accounts = {first_account, second_account, clearing}
+    existing_opens = _get_existing_opens(entity)
+    opens = [Open(date=date(2000, 1, 1), account=account) for account in sorted(needed_accounts) if account not in existing_opens]
+    _atomic_ledger_write(
+        entity, opens, entries, session_id, ts,
+        f"queue confirm transfer source_ids={source_ids!r}", [dict(first), dict(second)],
+    )
+    from .ledger.staging import StagingStore
+    StagingStore(entity.staging_dir).bulk_mark_seen(source_ids)
+    _remove_many_from_pending_categorization(entity, source_ids)
+    item["status"] = "confirmed"
+    item["confirmed_category"] = "Internal transfer"
+    item["updated_at"] = ts or _now_iso()
+    _save_item(entity, item)
+    return item
+
+
+# ---------------------------------------------------------------------------
+# Related-entity policies
+# ---------------------------------------------------------------------------
+
+def propose_related_entity(entity: Entity, source_id: str, related_entity_name: str, reasoning: str) -> dict:
+    """Apply an owner-authorized related-entity policy to one staged item.
+
+    This writes only a review proposal. It never treats a related receipt as
+    income merely because a counterparty name looks related.
+    """
+    from .entity import get_related_entity, load_entity
+
+    txn = _get_pending_txn(entity, source_id)
+    if txn is None:
+        raise ValueError("Only staged transactions may receive a related-entity proposal.")
+    # Reload the small configuration surface so a policy set immediately before
+    # this proposal is honored even when a long-running caller holds Entity.
+    policy = get_related_entity(load_entity(entity.path), related_entity_name)
+    amount = _txn_amount(txn)
+    if amount > 0:
+        if policy["inbound_policy"] == "income":
+            account = str(policy.get("inbound_income_account") or "")
+            treatment = "owner-authorized inbound income fallback"
+        else:
+            account = str(policy["receivable_account"])
+            treatment = "settle intercompany receivable"
+    else:
+        if policy["outbound_policy"] == "create-receivable":
+            account = str(policy["receivable_account"])
+            treatment = "create intercompany receivable"
+        else:
+            account = str(policy["payable_account"])
+            treatment = "settle intercompany payable"
+    item = propose(entity, source_id, account, reasoning, context=f"Related entity: {policy['name']}; {treatment}.")
+    item["proposal_type"] = "related-entity"
+    item["related_entity"] = policy["name"]
+    item["related_entity_treatment"] = treatment
+    item["related_entity_policy_fingerprint"] = _related_entity_policy_fingerprint(policy)
+    _save_item(entity, item)
+    return item
+
+
+def _related_entity_policy_fingerprint(policy: dict) -> str:
+    fields = {key: policy.get(key) for key in (
+        "name", "receivable_account", "payable_account", "inbound_policy",
+        "outbound_policy", "inbound_income_account", "owner_authorized", "approved_at",
+    )}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def _validate_related_entity_proposal(entity: Entity, item: dict) -> None:
+    from .entity import get_related_entity, load_entity
+
+    policy = get_related_entity(load_entity(entity.path), str(item.get("related_entity") or ""))
+    if item.get("related_entity_policy_fingerprint") != _related_entity_policy_fingerprint(policy):
+        raise ValueError("The related-entity policy changed after this proposal. Create a fresh proposal.")
 
 
 # ---------------------------------------------------------------------------
@@ -789,6 +1372,11 @@ def confirm(
     """
     item = _load_item(entity, item_id)
 
+    if item.get("proposal_type") == "split":
+        return confirm_split(entity, item_id, session_id, ts=ts)
+    if item.get("proposal_type") == "transfer-pair":
+        return confirm_transfer(entity, item_id, session_id, ts=ts)
+
     if item.get("status") not in ("open", "reopened"):
         raise ValueError(
             f"Queue item '{item_id}' has status '{item.get('status')}'; "
@@ -798,6 +1386,8 @@ def confirm(
     category = str(item.get("proposed_category") or "")
     if not category:
         raise ValueError(f"Queue item '{item_id}' has no proposed_category.")
+    if item.get("proposal_type") == "related-entity":
+        _validate_related_entity_proposal(entity, item)
 
     # Look up the txn from pending-categorization
     source_id = str(item["source_id"])
@@ -816,11 +1406,14 @@ def confirm(
     # Remove from pending-categorization
     _remove_from_pending_categorization(entity, source_id)
 
-    # Update learned context
-    cp_key = str(item.get("counterparty") or _counterparty_key(
-        item.get("description", ""), ""
-    ))
-    _update_learned_context(entity, cp_key, category, corrected=False)
+    # Related-entity policies remain explicit for every item.  Learning this
+    # counterparty as a normal category could silently bypass the policy and
+    # turn later migration activity into income or an intercompany balance.
+    if item.get("proposal_type") != "related-entity":
+        cp_key = str(item.get("counterparty") or _counterparty_key(
+            item.get("description", ""), ""
+        ))
+        _update_learned_context(entity, cp_key, category, corrected=False)
 
     # Update item status
     now = ts or _now_iso()
@@ -859,6 +1452,9 @@ def correct(
 
     item = _load_item(entity, item_id)
 
+    if item.get("proposal_type") in {"split", "transfer-pair", "related-entity"}:
+        raise ValueError("Specialized proposals cannot use generic correction. Withdraw and repropose the item.")
+
     if item.get("status") not in ("open", "reopened"):
         raise ValueError(
             f"Queue item '{item_id}' has status '{item.get('status')}'; "
@@ -894,6 +1490,19 @@ def correct(
         item["context"] = note
     _save_item(entity, item)
 
+    return item
+
+
+def withdraw(entity: Entity, item_id: str, note: str = "", ts: Optional[str] = None) -> dict:
+    """Withdraw an open proposal without posting or removing staged source rows."""
+    item = _load_item(entity, item_id)
+    if item.get("status") not in {"open", "reopened"}:
+        raise ValueError("Only open or reopened proposals can be withdrawn.")
+    item["status"] = "withdrawn"
+    item["updated_at"] = ts or _now_iso()
+    if note:
+        item["context"] = _sanitize_reasoning(note)
+    _save_item(entity, item)
     return item
 
 
@@ -1292,6 +1901,31 @@ def add_parser(subparsers: Any) -> None:
     group_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
     group_p.add_argument("--context", default="", help="Additional context")
 
+    split_p = queue_sub.add_parser("propose-split", help="Propose a balanced multi-line split from one staged transaction")
+    split_p.add_argument("--entity", required=True, help="Path to entity directory")
+    split_p.add_argument("--source-id", required=True, dest="source_id", help="Staged transaction source ID")
+    split_p.add_argument("--posting", action="append", default=[], help="Non-cash posting as Account=SIGNED_AMOUNT; repeat")
+    split_p.add_argument("--template", default="", help="Saved exact split template to use instead of --posting")
+    split_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
+
+    split_template_p = queue_sub.add_parser("split-template-save", help="Save an exact reusable split allocation")
+    split_template_p.add_argument("--entity", required=True, help="Path to entity directory")
+    split_template_p.add_argument("--name", required=True, help="Template name")
+    split_template_p.add_argument("--posting", action="append", required=True, help="Posting as Account=SIGNED_AMOUNT; repeat")
+    split_template_list_p = queue_sub.add_parser("split-template-list", help="List saved split allocations")
+    split_template_list_p.add_argument("--entity", required=True, help="Path to entity directory")
+
+    transfer_candidates_p = queue_sub.add_parser("transfer-candidates", help="Find staged equal-and-opposite transfer candidates")
+    transfer_candidates_p.add_argument("--entity", required=True, help="Path to entity directory")
+    transfer_candidates_p.add_argument("--date-tolerance-days", type=int, default=3, help="Maximum date gap; default 3")
+    transfer_exceptions_p = queue_sub.add_parser("transfer-exceptions", help="List unmatched transfer-like rows as timing or missing-source exceptions")
+    transfer_exceptions_p.add_argument("--entity", required=True, help="Path to entity directory")
+    transfer_exceptions_p.add_argument("--date-tolerance-days", type=int, default=3, help="Maximum date gap; default 3")
+    transfer_p = queue_sub.add_parser("propose-transfer", help="Propose one audited pair of staged transfer rows")
+    transfer_p.add_argument("--entity", required=True, help="Path to entity directory")
+    transfer_p.add_argument("--source-id", action="append", required=True, dest="source_ids", help="One of exactly two staged source IDs")
+    transfer_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
+
     # confirm
     conf_p = queue_sub.add_parser("confirm", help="Confirm a proposed categorization")
     conf_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -1303,6 +1937,15 @@ def add_parser(subparsers: Any) -> None:
     confirm_group_p.add_argument("--category", required=True, help="Proposed ledger account to confirm")
     confirm_group_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
 
+    confirm_split_p = queue_sub.add_parser("confirm-split", help="Confirm and post a proposed split")
+    confirm_split_p.add_argument("--entity", required=True, help="Path to entity directory")
+    confirm_split_p.add_argument("--item", required=True, dest="item_id", help="Split queue item ID")
+    confirm_split_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    confirm_transfer_p = queue_sub.add_parser("confirm-transfer", help="Confirm and post a proposed transfer pair")
+    confirm_transfer_p.add_argument("--entity", required=True, help="Path to entity directory")
+    confirm_transfer_p.add_argument("--item", required=True, dest="item_id", help="Transfer-pair queue item ID")
+    confirm_transfer_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+
     # correct
     corr_p = queue_sub.add_parser("correct", help="Correct a proposed categorization")
     corr_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -1310,6 +1953,10 @@ def add_parser(subparsers: Any) -> None:
     corr_p.add_argument("--category", required=True, help="Corrected ledger account")
     corr_p.add_argument("--note", default="", help="Optional note")
     corr_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    withdraw_p = queue_sub.add_parser("withdraw", help="Withdraw an open proposal without posting it")
+    withdraw_p.add_argument("--entity", required=True, help="Path to entity directory")
+    withdraw_p.add_argument("--item", required=True, dest="item_id", help="Queue item ID")
+    withdraw_p.add_argument("--note", default="", help="Optional withdrawal note")
 
     duplicate_p = queue_sub.add_parser("resolve-duplicate", help="Resolve a possible legacy-ID duplicate")
     duplicate_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -1317,10 +1964,23 @@ def add_parser(subparsers: Any) -> None:
     duplicate_p.add_argument("--decision", required=True, choices=["duplicate", "distinct"])
     duplicate_p.add_argument("--session", default="duplicate-review", dest="session_id", help="Session ID")
 
+    related_p = queue_sub.add_parser("propose-related", help="Propose one owner-authorized related-entity treatment")
+    related_p.add_argument("--entity", required=True, help="Path to entity directory")
+    related_p.add_argument("--source-id", required=True, dest="source_id", help="Staged transaction source ID")
+    related_p.add_argument("--related-entity", required=True, dest="related_entity", help="Configured related entity name")
+    related_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
+
     # list
     list_p = queue_sub.add_parser("list", help="List queue items")
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
     list_p.add_argument("--status", default=None, help="Filter by status (open/confirmed/corrected/reopened)")
+
+    summary_p = queue_sub.add_parser(
+        "summary",
+        help="Summarize review work by proposed treatment without posting changes",
+    )
+    summary_p.add_argument("--entity", required=True, help="Path to entity directory")
+    summary_p.add_argument("--status", default="open", help="Filter by status (default: open)")
 
     # show
     show_p = queue_sub.add_parser("show", help="Show a single queue item")
@@ -1383,6 +2043,86 @@ def run(args: Any) -> int:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
 
+        elif qcmd == "propose-split":
+            try:
+                if args.template and args.posting:
+                    raise ValueError("Use either --template or --posting, not both.")
+                item = propose_split(entity, args.source_id, args.reasoning, args.posting, args.template)
+                print(f"Proposed split: {item['source_id']}")
+                for effect in item["liability_effect"]:
+                    print(f"  Liability effect: {effect['account']} {effect['amount']}")
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "split-template-save":
+            try:
+                report = save_split_template(entity, args.name, args.posting)
+                verb = "Updated" if report["status"] == "updated" else "Saved"
+                print(f"{verb} split template {report['name']} with {len(report['postings'])} posting(s).")
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "split-template-list":
+            try:
+                templates = list_split_templates(entity)
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            if not templates:
+                print("No split templates saved.")
+                return 0
+            for name, postings in sorted(templates.items()):
+                print(f"{name}: " + ", ".join(f"{p['account']}={p['amount']}" for p in postings))
+            return 0
+
+        elif qcmd == "transfer-candidates":
+            try:
+                candidates = find_transfer_candidates(entity, args.date_tolerance_days)
+                if not candidates:
+                    print("No staged transfer candidates found.")
+                    return 0
+                for candidate in candidates:
+                    print(
+                        f"{candidate['source_ids'][0]} + {candidate['source_ids'][1]}: "
+                        f"{candidate['amount']} across {candidate['accounts'][0]} / {candidate['accounts'][1]}; "
+                        f"{candidate['date_days_apart']} day(s), score {candidate['score']}"
+                    )
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "transfer-exceptions":
+            try:
+                exceptions = find_transfer_exceptions(entity, args.date_tolerance_days)
+                if not exceptions:
+                    print("No unmatched transfer-like rows found.")
+                    return 0
+                for exception in exceptions:
+                    print(
+                        f"{exception['source_id']}: {exception['date']} {exception['amount']} "
+                        f"{exception['account']} — {exception['exception']} "
+                        f"(counterpart window ±{exception['expected_counterpart_window_days']} days)"
+                    )
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "propose-transfer":
+            try:
+                item = propose_transfer(entity, args.source_ids, args.reasoning)
+                print(f"Proposed transfer pair: {item['source_id']}")
+                print("  Sources: " + ", ".join(item["source_ids"]))
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
         elif qcmd == "confirm":
             try:
                 item = confirm(entity, args.item_id, args.session_id)
@@ -1401,10 +2141,37 @@ def run(args: Any) -> int:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
 
+        elif qcmd == "confirm-split":
+            try:
+                item = confirm_split(entity, args.item_id, args.session_id)
+                print(f"Confirmed split: {item['source_id']}")
+                return 0
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "confirm-transfer":
+            try:
+                item = confirm_transfer(entity, args.item_id, args.session_id)
+                print("Confirmed transfer pair: " + ", ".join(item["source_ids"]))
+                return 0
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
         elif qcmd == "correct":
             try:
                 item = correct(entity, args.item_id, args.category, args.note, args.session_id)
                 print(f"Corrected: {item['source_id']} → {item['confirmed_category']}")
+                return 0
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "withdraw":
+            try:
+                item = withdraw(entity, args.item_id, args.note)
+                print(f"Withdrawn: {item['source_id']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)
@@ -1426,6 +2193,16 @@ def run(args: Any) -> int:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
 
+        elif qcmd == "propose-related":
+            try:
+                item = propose_related_entity(entity, args.source_id, args.related_entity, args.reasoning)
+                print(f"Proposed related-entity treatment: {item['source_id']} → {item['proposed_category']}")
+                print(f"  {item['related_entity']}: {item['related_entity_treatment']}")
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
         elif qcmd == "list":
             items = list_queue_items(entity, status=args.status)
             if not items:
@@ -1434,6 +2211,23 @@ def run(args: Any) -> int:
             for item in items:
                 cat = item.get("proposed_category") or item.get("confirmed_category") or "?"
                 print(f"  [{item.get('status', '?')}] {item['source_id']}  {item.get('date', '?')}  {cat}")
+            return 0
+
+        elif qcmd == "summary":
+            groups = summarize_queue_items(entity, status=args.status)
+            if not groups:
+                print("No review items found.")
+                return 0
+            print("Review groups:")
+            for group in groups:
+                date_range = group["date_from"] or "unknown date"
+                if group["date_to"] and group["date_to"] != group["date_from"]:
+                    date_range += f" through {group['date_to']}"
+                samples = ", ".join(group["sample_counterparties"]) or "no sample counterparty"
+                print(
+                    f"  {group['treatment']}: {group['count']} item(s), "
+                    f"{group['total']}, {date_range}; samples: {samples}"
+                )
             return 0
 
         elif qcmd == "show":

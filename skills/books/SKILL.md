@@ -18,6 +18,15 @@ For owner-facing next steps, suggest slash commands such as `/books-review`,
 English requests. Prefer friendly folder names over absolute paths unless the
 owner needs the exact location.
 
+## Working pace
+
+Continue through clear, safe, deterministic steps without asking for progress
+approval after each small action. Batch routine reads, imports, checks, and
+report generation when the next path is already known. Pause only when the
+owner's answer changes accounting treatment, source scope, permissions, an
+external action, or an irreversible write. Summarize what was completed and
+group the genuinely open decisions at the next review boundary.
+
 ## Audience and language
 
 At the start of onboarding or setup, ask one lightweight audience question unless
@@ -53,6 +62,8 @@ Look for `entity.json` in the current directory.
 - If the user is replacing QuickBooks or validating historical books, route to `books-backtest`.
 - If the user asks a financial question, route to `books-ask`.
 - If the user needs exports, tax files, or files for an accountant, route to `books-export`.
+- If the user wants to report feedback about Slashbooks or prepare a handoff for
+  its developers, route to `books-feedback`.
 
 ## Safety Rules
 
