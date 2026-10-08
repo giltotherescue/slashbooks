@@ -2,7 +2,7 @@
 
 The local ZIP is a private recovery artifact, never the network encoding. Only
 validated canonical manifest/entity bytes enter the public binary frame; the
-Worker supplies all actor, company, job and command authority.
+server supplies all actor, company, job and command authority.
 """
 from __future__ import annotations
 
