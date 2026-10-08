@@ -1,5 +1,10 @@
 # Browser-independent QuickBooks workflow
 
+For remote books, follow [the company workspace rules](../../books/references/company-workspace.md):
+the browser still downloads to local intake. Preserve untouched bytes and confirm
+the binding for subsequent inventory/import. Do not treat browser download
+completion as upload, remote ingestion or shared readiness.
+
 Use the browser capability already available to the agent. The steps below describe
 observable outcomes, not a dependency on one automation API.
 

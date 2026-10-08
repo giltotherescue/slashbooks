@@ -46,6 +46,7 @@ Categorizer callable contract:
 import hashlib
 import json
 import os
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -406,7 +407,8 @@ def import_transactions(
         # deliberately does not auto-skip a plausible match: two legitimate
         # same-day purchases can look identical.  Hold it for review instead.
         bank_account = _ledger_account_for_txn(
-            txn, entity.entity_config.get("bank_account_mappings")
+            txn, entity.entity_config.get("bank_account_mappings"),
+            entity.entity_config.get("csv_account_mappings"),
         )
         if legacy_duplicate_guard:
             alias_status = _legacy_alias_status(entity, source_id)
@@ -624,7 +626,11 @@ def _legacy_alias_status(entity: Entity, source_id: str) -> str:
     return ""
 
 
-def _ledger_account_for_txn(txn: dict, mappings: dict[str, str] | None = None) -> str:
+def _ledger_account_for_txn(
+    txn: dict,
+    mappings: dict[str, str] | None = None,
+    csv_mappings: dict[str, dict] | None = None,
+) -> str:
     """Derive a beancount-safe account name for the bank side of the posting.
 
     Entity-config ``bank_account_mappings`` (entity.json) take precedence,
@@ -634,14 +640,46 @@ def _ledger_account_for_txn(txn: dict, mappings: dict[str, str] | None = None) -
     ``Assets:Bank:<name>`` for asset-like accounts,
     ``Liabilities:CreditCard:<name>`` for credit cards, or
     ``Assets:Uncategorized`` when nothing usable is present.
+
+    Rows with a CSV mapping key must match their confirmed company mapping.
+    Legacy CSV rows use an exact confirmed match when available, otherwise keep
+    the existing bank mapping/fallback contract. Conflicting bank mappings or
+    changed keyed CSV mappings require review, never display-name fallback.
     """
+    account_id = str(txn.get("accountId") or "")
+    csv_account = None
+    mapping_key = txn.get("csvMappingKey")
+    legacy_csv = str(txn.get("id") or "").startswith("csv:") and txn.get("bankId") == "amex-csv"
+    if mapping_key is not None or legacy_csv:
+        # Source fields identify a mapping; only confirmed company config grants
+        # authority to choose a ledger account. Never trust a raw accountId alone.
+        if mapping_key is not None:
+            mapping = (csv_mappings or {}).get(mapping_key) if isinstance(mapping_key, str) else None
+            candidates = [mapping] if isinstance(mapping, dict) else []
+        else:
+            candidates = list((csv_mappings or {}).values())
+        for candidate in candidates:
+            if (isinstance(candidate, dict) and candidate.get("confirmed") is True
+                    and not candidate.get("proposed") and account_id
+                    and candidate.get("ledger_account") == account_id):
+                csv_account = candidate["ledger_account"]
+                break
+        if csv_account is None and mapping_key is not None:
+            raise ValueError("CSV account mapping is missing, unconfirmed, or changed; confirm the mapping and parse the CSV again.")
+
+    mapped_account = None
     if mappings:
-        account_id = str(txn.get("accountId") or "")
         if account_id and account_id in mappings:
-            return mappings[account_id]
+            mapped_account = mappings[account_id]
         account_name_key = str(txn.get("accountName") or "")
-        if account_name_key and account_name_key in mappings:
-            return mappings[account_name_key]
+        if mapped_account is None and account_name_key and account_name_key in mappings:
+            mapped_account = mappings[account_name_key]
+    if csv_account is not None:
+        if mapped_account is not None and mapped_account != csv_account:
+            raise ValueError("Confirmed CSV and bank account mappings conflict; resolve the mappings before posting.")
+        return csv_account
+    if mapped_account is not None:
+        return mapped_account
     account_name = txn.get("accountName") or ""
     if account_name:
         # Sanitize: remove non-alphanumeric characters, capitalize segments.
@@ -682,20 +720,24 @@ def _get_existing_opens(entity: Entity) -> set[str]:
 
 
 def check_integrity(entity: Entity) -> IntegrityResult:
-    """Close-start integrity check for the canonical store.
-
-    Store writes are committed in one SQLite transaction. A valid chain whose
-    last event is not an ``intent`` is considered usable.
-
-    Returns an IntegrityResult with one of these statuses:
-      ``ok``               Store audit chain verifies.
-      ``incomplete-write`` Last event is a stray intent.
-      ``halt``             Store audit chain is broken or unreadable.
-    """
+    """Check canonical store integrity, accepting a not-yet-created store."""
     store_path = default_store_path(entity.path)
     if not store_path.exists():
         return IntegrityResult(status="ok", message="No ledger store yet.")
-    store = LedgerStore(store_path)
+    return check_store_integrity(LedgerStore(store_path))
+
+
+def check_store_integrity(store: LedgerStore) -> IntegrityResult:
+    """Verify audit history and the latest seal using the supplied store.
+
+    The caller controls connection policy, including read-only access. This
+    function does not initialize the store. Empty audit history remains accepted;
+    callers requiring history for populated stores must enforce that separately.
+
+    Returns ``ok`` for a matching seal without pending writes,
+    ``incomplete-write`` for a missing seal or subsequent write events, and
+    ``halt`` for a broken chain, unreadable history, or invalid seal digest.
+    """
     try:
         chain_errors = store.verify_audit_chain()
         if chain_errors:
@@ -731,11 +773,22 @@ def check_integrity(entity: Entity) -> IntegrityResult:
             status="incomplete-write",
             message="Store audit history has ledger write events after the last seal.",
         )
-    expected_digest = str((last_seal.get("payload") or {}).get("store_sha256") or "")
-    if not expected_digest:
+    payload = last_seal.get("payload")
+    if not isinstance(payload, dict):
+        return IntegrityResult(
+            status="halt",
+            message="Latest store seal has an invalid payload.",
+        )
+    if "store_sha256" not in payload:
         return IntegrityResult(
             status="halt",
             message="Latest store seal does not include a ledger content digest.",
+        )
+    expected_digest = payload["store_sha256"]
+    if not isinstance(expected_digest, str) or re.fullmatch(r"[0-9a-f]{64}", expected_digest) is None:
+        return IntegrityResult(
+            status="halt",
+            message="Latest store seal has an invalid ledger content digest.",
         )
     current_digest = store.content_digest()
     if current_digest != expected_digest:

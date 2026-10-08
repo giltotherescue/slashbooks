@@ -9,6 +9,13 @@ description: >
 
 # Collect QuickBooks Online Reports
 
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](../books/references/company-workspace.md).
+QBO browser exports stay local inputs even for remote books. Run inventory from
+the bound directory; metadata file put is not an export uploader.
+
 Collect source reports from QuickBooks Online and place them in the company's
 `ingestion/quickbooks/` folder. This is an acquisition workflow: it does not import
 opening balances, change the ledger, categorize transactions, or decide whether a
@@ -77,8 +84,10 @@ settings, or save custom reports. The owner can revoke consent at any time.
 
 ## 1. Establish the collection plan
 
-Locate the company directory by finding `entity.json`, then confirm the purpose and
-dates. Do not use QuickBooks defaults such as This month or This year.
+Locate the company directory by checking `.slashbooks-remote.json` first, otherwise
+local `entity.json`, then confirm the purpose and dates. Fetch remote profile/config
+when needed; do not infer missing setup from absent local files. Do not use
+QuickBooks defaults such as This month or This year.
 
 - For a full comparison, migration, backfill validation, or backtest, require an
   inclusive start and end date.
@@ -103,6 +112,11 @@ For opening balances only:
 ```sh
 scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --cutover <YYYY-MM-DD>
 ```
+
+In remote mode run either inventory command from the bound directory. The
+ordinary CLI transfers the selected local input folder; verify this capability
+before claiming shared readiness. If unavailable, retain downloads and report the
+transfer gap, without bypassing the binding or modifying shared ledger state.
 
 Reuse a file only when inventory and the visible report evidence prove it has the
 right company, report type, period, and basis. The folder's top level must contain

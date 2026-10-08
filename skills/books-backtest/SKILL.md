@@ -6,10 +6,17 @@ description: >
   Trigger phrases: "run the backtest", "compare against QuickBooks", "migration
   confidence", "trust ramp", "backtest the books", "validate against QuickBooks",
   "compare my books", "run comparison", "categorize differences".
-allowed-tools: Bash(scripts/books:*)
+allowed-tools: Bash(scripts/books:*) Read
 ---
 
 # Backtest and Migration Confidence
+
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](../books/references/company-workspace.md).
+Remote backtests use ordinary commands against the binding, preserve local source
+exports, and deliver confidence artifacts back to readable local paths.
 
 You are running a backtest to compare the books system's output against the
 owner's QuickBooks records. The purpose is to build trust through evidence: the system
@@ -79,13 +86,19 @@ has earned the right to close your books going forward."
 ## Step 2 — Confirm inputs
 
 Ask the owner:
-- Entity path (locate `entity.json` in the current directory or ask)
+- Entity path (check `.slashbooks-remote.json` before local `entity.json`, or ask)
 - The date range to backtest (e.g., 2026-01-01 through 2026-05-31)
 
 The canonical QuickBooks evidence folder is
 `<entity-path>/ingestion/quickbooks/`. Do not ask the owner to choose another
 folder for the normal workflow. Confirm the QuickBooks company from the collected
 reports or the owner; its visible name can differ from the entity legal name.
+
+For remote books this is the local evidence intake folder, not a replica of the
+server workspace. Use current shared config and confirm which source files the
+command will transfer. Run remote `qb inventory` from the bound directory;
+other commands below already identify the entity. Do not file-put raw exports or
+rewrite nested source paths to guessed server locations.
 
 If the canonical folder is missing, incomplete, or does not pass exact inventory,
 pause this workflow and offer `/books-qbo-fetch`. Ask whether the owner wants the

@@ -56,6 +56,51 @@ class LedgerStoreTests(unittest.TestCase):
                 row = conn.execute("SELECT amount FROM postings WHERE amount = ?", ("123.45",)).fetchone()
             self.assertIsNotNone(row)
 
+    def test_default_and_immediate_transactions_commit_with_expected_reservation(self) -> None:
+        for immediate in (False, True):
+            with self.subTest(immediate=immediate), tempfile.TemporaryDirectory() as tmp:
+                store = LedgerStore(Path(tmp) / "ledger.sqlite")
+                store.initialize()
+                store.set_meta("synthetic", "before")
+                other = sqlite3.connect(store.path, timeout=0)
+                try:
+                    with store.transaction(**({"immediate": True} if immediate else {})) as conn:
+                        if immediate:
+                            with self.assertRaisesRegex(sqlite3.OperationalError, "locked"):
+                                other.execute("BEGIN IMMEDIATE")
+                        else:
+                            other.execute("BEGIN IMMEDIATE")
+                            other.rollback()
+                        store.set_meta("synthetic", "after", conn)
+                        self.assertEqual(other.execute("SELECT value FROM meta WHERE key='synthetic'").fetchone()[0], "before")
+                    self.assertEqual(store.get_meta("synthetic"), "after")
+                    other.execute("BEGIN IMMEDIATE")
+                    other.rollback()
+                finally:
+                    other.close()
+
+    def test_both_transaction_modes_roll_back_and_release_writer_reservation(self) -> None:
+        for immediate in (False, True):
+            with self.subTest(immediate=immediate), tempfile.TemporaryDirectory() as tmp:
+                store = LedgerStore(Path(tmp) / "ledger.sqlite")
+                store.initialize()
+                with store.connection() as conn:
+                    before = list(conn.iterdump())
+                with self.assertRaisesRegex(RuntimeError, "Synthetic rollback"):
+                    with store.transaction(immediate=immediate) as conn:
+                        store.set_meta("synthetic", "must roll back", conn)
+                        store.insert_opens([Open(date(2026, 1, 1), "Expenses:Rollback", ("USD",))], conn)
+                        store.append_audit_event("intent", {"session_id": "synthetic"}, conn)
+                        raise RuntimeError("Synthetic rollback")
+                with store.connection() as conn:
+                    self.assertEqual(list(conn.iterdump()), before)
+                other = sqlite3.connect(store.path, timeout=0)
+                try:
+                    other.execute("BEGIN IMMEDIATE")
+                    other.rollback()
+                finally:
+                    other.close()
+
     def test_duplicate_source_id_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = LedgerStore(Path(tmp) / "ledger.sqlite")

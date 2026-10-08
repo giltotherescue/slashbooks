@@ -4,6 +4,39 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-08
+
+### Added
+
+- One plugin now works with local books or with Slashbooks Cloud. Onboarding
+  explains both choices and asks where the books should live. Local books stay
+  free, open source and unchanged.
+- `books hosted login` connects a company folder to Slashbooks Cloud with
+  browser approval. The agent never receives a password or key, and the
+  endpoint defaults to `https://slashbooks.co`.
+- Ordinary `books` commands and skills run against cloud books when the folder
+  is linked. A cloud error never falls back to local books.
+- Shared business profile, configuration and notes with revision-checked
+  updates, saved receipts and safe retries for uncertain cloud writes.
+- `books hosted migration export` creates a verified private snapshot of local
+  books, and `books hosted migration import` adopts it into an empty cloud
+  company without changing the local books.
+- `docs/cloud.md` describes local and cloud books, and
+  `docs/hosted-migration.md` describes the move to the cloud.
+- The wheel now includes the onboarding templates, so an installed package can
+  create a company without the plugin checkout.
+
+### Fixed
+
+- CSV imports keep their confirmed ledger account mapping, and a changed or
+  conflicting mapping stops the import instead of posting to the wrong account.
+  Bank CSV files are typed as checking accounts, not credit cards.
+- BankSync downloads stop with an error on a repeated cursor, conflicting
+  page flags or a page or row limit, instead of returning a partial download.
+- Adding an account now requires a valid audit chain and records an audit
+  event. A currency conflict stops the change.
+- Ledger writes that must not interleave now take an immediate SQLite write lock.
+
 ## [0.3.2] - 2026-08-24
 
 ### Added

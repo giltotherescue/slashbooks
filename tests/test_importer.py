@@ -42,6 +42,7 @@ from bookkeeping.ledger.importer import (  # noqa: E402
     _ledger_account_for_txn,
     acknowledge_mismatch,
     check_integrity,
+    check_store_integrity,
     import_transactions,
     ratify_git_commit,
     reverse_and_correct,
@@ -151,6 +152,53 @@ def _validate_ledger(entity: Entity) -> list:
 
 
 class BankAccountMappingTests(unittest.TestCase):
+    def test_confirmed_csv_account_ignores_display_name_and_source_category(self) -> None:
+        for account in ("Assets:Bank:Checking", "Liabilities:CreditCard"):
+            with self.subTest(account=account):
+                txn = {"id": "csv:synthetic", "bankId": "amex-csv",
+                       "accountId": account, "accountName": "Different Display",
+                       "ledger_account": "Expenses:Injected", "csvMappingKey": "activity"}
+                mappings = {"activity": {"confirmed": True, "ledger_account": account}}
+                self.assertEqual(_ledger_account_for_txn(txn, {}, mappings), account)
+                del txn["csvMappingKey"]
+                self.assertEqual(_ledger_account_for_txn(txn, {}, mappings), account)
+
+    def test_csv_cannot_supply_its_own_account_authority(self) -> None:
+        txn = {"id": "csv:synthetic", "bankId": "amex-csv", "csvMappingKey": "activity",
+               "accountId": "Assets:Bank:Injected", "accountName": "Checking"}
+        for mapping in ({}, {"confirmed": False, "ledger_account": txn["accountId"]},
+                        {"confirmed": True, "proposed": True, "ledger_account": txn["accountId"]},
+                        {"confirmed": True, "ledger_account": "Assets:Bank:Checking"}):
+            with self.subTest(mapping=mapping), self.assertRaisesRegex(ValueError, "CSV account mapping"):
+                _ledger_account_for_txn(txn, {}, {"activity": mapping})
+        del txn["csvMappingKey"]
+        self.assertEqual(_ledger_account_for_txn(txn, {}, {}), "Assets:Bank:Checking")
+
+    def test_legacy_direct_csv_without_persisted_mapping_keeps_fallback(self) -> None:
+        txn = {"id": "csv:direct", "bankId": "amex-csv", "accountId": "Liabilities:CreditCard:Chosen",
+               "accountName": "Legacy display", "type": "credit_card"}
+        self.assertEqual(_ledger_account_for_txn(txn), "Assets:Bank:Legacy-display")
+        self.assertEqual(_ledger_account_for_txn(txn, {txn["accountId"]: "Liabilities:CreditCard:Mapped"}),
+                         "Liabilities:CreditCard:Mapped")
+        txn["accountType"] = "credit_card"
+        self.assertEqual(_ledger_account_for_txn(txn), "Liabilities:CreditCard:Legacy-display")
+
+    def test_csv_bank_mapping_conflicts_are_not_silently_overridden(self) -> None:
+        txn = {"id": "csv:synthetic", "bankId": "amex-csv",
+               "accountId": "Assets:Bank:Checking", "accountName": "Display"}
+        csv_mappings = {"activity": {"confirmed": True, "ledger_account": txn["accountId"]}}
+        self.assertEqual(_ledger_account_for_txn(txn, {txn["accountId"]: txn["accountId"]}, csv_mappings),
+                         txn["accountId"])
+        for key in (txn["accountId"], "Display"):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "conflict"):
+                _ledger_account_for_txn(txn, {key: "Assets:Bank:Other"}, csv_mappings)
+
+    def test_unmapped_non_csv_account_id_is_not_a_ledger_account(self) -> None:
+        txn = {"id": "provider-1", "accountId": "Expenses:Injected"}
+        self.assertEqual(_ledger_account_for_txn(txn), "Assets:Uncategorized")
+        txn.update(accountName="Ordinary checking", accountType="checking")
+        self.assertEqual(_ledger_account_for_txn(txn), "Assets:Bank:Ordinary-checking")
+
     def test_explicit_mapping_uses_account_id_before_name(self) -> None:
         txn = {
             "accountId": "acct_card",
@@ -200,6 +248,24 @@ class TestImportTransactionsBasic(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
+
+    def test_confirmed_csv_mapping_used_for_direct_post_and_dedup(self) -> None:
+        for index, account in enumerate(("Assets:Bank:Checking", "Liabilities:CreditCard")):
+            with self.subTest(account=account):
+                txn = _make_posted_txn(f"csv:direct-{index}", amount="-45.00",
+                                       account_id=account, account_name="Misleading Display")
+                txn.update(bankId="amex-csv", csvMappingKey="activity")
+                self._entity.entity_config["csv_account_mappings"] = {
+                    "activity": {"confirmed": True, "ledger_account": account}}
+                result = import_transactions(self._entity, [txn], SESSION + str(index),
+                                             categorizer=_simple_categorizer("Expenses:Software"), ts=TS)
+                self.assertEqual(result.new_entries, 1)
+                entries = LedgerStore(default_store_path(self._entity.path)).load_entries()
+                entry = next(entry for entry in entries if entry.source_id == txn["id"])
+                self.assertEqual(entry.postings[0].account, account)
+                replay = import_transactions(self._entity, [txn], SESSION + "replay",
+                                             categorizer=_simple_categorizer("Expenses:Software"), ts=TS)
+                self.assertEqual(replay.skipped_duplicate, 1)
 
     def test_import_single_posted_transaction(self) -> None:
         txns = [_make_posted_txn("txn-1")]
@@ -517,6 +583,128 @@ class TestOrphanedTmpDetection(unittest.TestCase):
         )
         self.assertEqual(len(result.orphaned_tmps), 1)
         self.assertIn("pending.json.tmp", result.orphaned_tmps[0])
+
+
+class TestReadOnlyStoreIntegrity(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._entity = _make_entity(Path(self._tmp.name).resolve())
+        self._store = LedgerStore(default_store_path(self._entity.path))
+
+    def _import(self) -> None:
+        import_transactions(
+            self._entity, [_make_posted_txn("txn-read-only", amount="10.00")],
+            SESSION, categorizer=_simple_categorizer("Expenses:Services"),
+            ts=TS, session_date=date(2026, 1, 15),
+        )
+
+    def _assert_equivalent(self, status: str, message: str) -> None:
+        from bookkeeping import hosted_migration as capture
+
+        expected = check_integrity(self._entity)
+        before = self._store.path.read_bytes()
+        before_mtime = self._store.path.stat().st_mtime_ns
+        before_files = set(self._entity.path.rglob("*"))
+        store = capture._ReadOnlyStore(self._store.path)
+        with (
+            patch.object(LedgerStore, "initialize", side_effect=AssertionError("must not initialize")),
+            patch.object(LedgerStore, "connect", side_effect=AssertionError("must use read-only connection")),
+        ):
+            result = check_store_integrity(store)
+        self.assertEqual(result, expected)
+        self.assertEqual(result.status, status)
+        self.assertIn(message, result.message)
+        self.assertEqual(self._store.path.read_bytes(), before)
+        self.assertEqual(self._store.path.stat().st_mtime_ns, before_mtime)
+        self.assertEqual(set(self._entity.path.rglob("*")), before_files)
+
+    def test_valid_seal(self) -> None:
+        self._import()
+        self._assert_equivalent("ok", "integrity confirmed")
+
+    def test_stale_seal_after_balanced_content_change(self) -> None:
+        self._import()
+        with self._store.transaction() as conn:
+            conn.execute("UPDATE postings SET amount = ? WHERE amount = ?", ("999.99", "10.00"))
+            conn.execute("UPDATE postings SET amount = ? WHERE amount = ?", ("-999.99", "-10.00"))
+        self._assert_equivalent("halt", "does not match the latest sealed digest")
+
+    def test_missing_seal(self) -> None:
+        self._import()
+        with self._store.transaction() as conn:
+            conn.execute("DELETE FROM audit_events WHERE type = ?", ("ledger-store-sealed",))
+        self._assert_equivalent("incomplete-write", "no sealed write")
+
+    def test_pending_intent_after_seal(self) -> None:
+        self._import()
+        with self._store.transaction() as conn:
+            self._store.append_audit_event("intent", {"session_id": SESSION}, conn, ts=TS)
+        self._assert_equivalent("incomplete-write", "write events after the last seal")
+
+    def test_pending_entry_after_seal(self) -> None:
+        self._import()
+        with self._store.transaction() as conn:
+            self._store.append_audit_event("entry-written", {"session_id": SESSION}, conn, ts=TS)
+        self._assert_equivalent("incomplete-write", "write events after the last seal")
+
+    def test_latest_seal_requires_digest(self) -> None:
+        self._import()
+        with self._store.transaction() as conn:
+            self._store.append_audit_event("ledger-store-sealed", {}, conn, ts=TS)
+        self._assert_equivalent("halt", "does not include a ledger content digest")
+
+    def test_malformed_seal_payload_halts_without_disclosing_payload(self) -> None:
+        self._import()
+        payloads = ([1], [], ["PRIVATE SENTINEL"], "PRIVATE SENTINEL", "", True,
+                    False, None, 0, 1, 1.5, float("nan"), float("inf"), float("-inf"))
+        expected = IntegrityResult(status="halt", message="Latest store seal has an invalid payload.")
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                with self._store.transaction() as conn:
+                    self._store.append_audit_event("ledger-store-sealed", payload, conn, ts=TS)
+                self.assertEqual(self._store.verify_audit_chain(), [])
+                with patch.object(LedgerStore, "content_digest", side_effect=AssertionError("must reject before hashing")):
+                    self.assertEqual(check_store_integrity(self._store), expected)
+                    self._assert_equivalent(expected.status, expected.message)
+
+    def test_malformed_seal_digest_halts_without_coercion_or_disclosure(self) -> None:
+        self._import()
+        digests = (None, True, False, 0, int("1" * 64), 1.5, float("nan"), float("inf"),
+                   float("-inf"), [], ["PRIVATE SENTINEL"], {"private": "PRIVATE SENTINEL"},
+                   "", "PRIVATE SENTINEL", "a" * 63, "a" * 65, "A" * 64, "g" * 64,
+                   "a" * 64 + "\n", " " + "a" * 64)
+        expected = IntegrityResult(status="halt", message="Latest store seal has an invalid ledger content digest.")
+        for digest in digests:
+            with self.subTest(digest=digest):
+                with self._store.transaction() as conn:
+                    self._store.append_audit_event("ledger-store-sealed", {"store_sha256": digest}, conn, ts=TS)
+                self.assertEqual(self._store.verify_audit_chain(), [])
+                with patch.object(LedgerStore, "content_digest", side_effect=AssertionError("must reject before hashing")):
+                    self.assertEqual(check_store_integrity(self._store), expected)
+                    self._assert_equivalent(expected.status, expected.message)
+
+    def test_broken_audit_chain(self) -> None:
+        self._import()
+        with self._store.transaction() as conn:
+            conn.execute("UPDATE audit_events SET record_hash = ? WHERE id = 1", ("bad",))
+        self._assert_equivalent("halt", "audit chain is broken")
+
+    def test_non_write_event_after_seal(self) -> None:
+        self._import()
+        acknowledge_mismatch(self._entity, "synthetic review", SESSION, ts=TS)
+        self._assert_equivalent("ok", "integrity confirmed")
+
+    def test_empty_initialized_store(self) -> None:
+        self._store.initialize()
+        self._assert_equivalent("ok", "integrity confirmed")
+
+    def test_no_file_does_not_delegate_or_create_store(self) -> None:
+        with patch("bookkeeping.ledger.importer.check_store_integrity") as verify:
+            result = check_integrity(self._entity)
+        verify.assert_not_called()
+        self.assertEqual(result, IntegrityResult(status="ok", message="No ledger store yet."))
+        self.assertFalse(self._store.path.exists())
 
 
 class TestAtomicWriteAndIntegrity(unittest.TestCase):

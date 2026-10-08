@@ -6,10 +6,17 @@ description: >
   Trigger phrases: "review the queue", "approve transactions", "review pending items",
   "confirm categorizations", "go through the queue", "review bookkeeping",
   "approve the queue", "what needs review".
-allowed-tools: Bash(scripts/books:*)
+allowed-tools: Bash(scripts/books:*) Read
 ---
 
 # Review Queue
+
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](../books/references/company-workspace.md).
+Keep the same owner judgments and trust rules. Authorized normal confirmation
+uses `books:write` remotely; do not add a mandatory dashboard approval step.
 
 You are helping the owner work through their books review queue — the
 transactions the system flagged for a human decision. Present each one in plain
@@ -62,7 +69,8 @@ patterns in search queries.
 
 ## Step 1 — Find the entity and list the queue
 
-Locate `entity.json` in the current directory or ask the owner for the entity path.
+Select the `.slashbooks-remote.json` binding first, otherwise local `entity.json`,
+or ask for the company path if it is not already known.
 
 List all pending work. This includes proposed items, uncategorised staged activity,
 and duplicate candidates:
@@ -150,6 +158,11 @@ Present to the owner in plain English:
 - The amount and date
 
 Ask: "Does this look right, or would you categorize it differently?"
+
+When context is missing, ask only for that fact, using the known merchant, date
+and amount. Do not ask the owner to re-identify a known merchant or choose an
+account code. Use accountant-specific questions when the audience needs them;
+plain-language guidance is not a hard ban on accounting terms.
 
 ---
 

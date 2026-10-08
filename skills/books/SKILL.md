@@ -6,6 +6,13 @@ allowed-tools: Bash(scripts/books:*) Read Edit
 
 # Books
 
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](references/company-workspace.md).
+A `.slashbooks-remote.json` binding takes precedence over local company files;
+use ordinary commands and never fall back to a stale local ledger.
+
 You are helping the owner manage company books in the current directory. Start by
 deciding which workflow they need, then follow the relevant skill instructions.
 The owner should not need to know file formats, ledger syntax, or database details.
@@ -26,6 +33,9 @@ report generation when the next path is already known. Pause only when the
 owner's answer changes accounting treatment, source scope, permissions, an
 external action, or an irreversible write. Summarize what was completed and
 group the genuinely open decisions at the next review boundary.
+Save confirmed facts, decisions and unresolved items as part of that work using
+the shared workspace's automatic-save rules. Do not require the user to ask for
+a save or rely on chat memory as the only record.
 
 ## Audience and language
 
@@ -49,12 +59,14 @@ drift more technical if they ask.
 
 ## First Check
 
-Look for `entity.json` in the current directory.
+Check `.slashbooks-remote.json` first, then `entity.json` for local books. A remote
+binding selects an existing remote company without requiring local entity files.
+Read its shared context before deciding whether onboarding is needed.
 
-- If it is missing and the user wants to try sample/demo books, route to
+- If neither identifies initialized books and the user wants sample/demo books, route to
   `books-onboard` and use its Northstar demo path.
-- If it is missing and the user wants to start here, route to `books-onboard`.
-- If it exists and the user wants to close a period, route to `books-close`.
+- If setup is needed and the user wants to start here, route to `books-onboard`.
+- If the selected company exists and the user wants to close a period, route to `books-close`.
 - If the user wants a setup review, readiness check, or sanity check before relying on the books, route to `books-checkup`.
 - If the user wants dashboards, charts, visual summaries, snapshots, or formatted reports, route to `books-dashboard`.
 - If review items are pending, route to `books-review`.

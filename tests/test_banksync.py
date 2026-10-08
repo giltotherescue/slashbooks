@@ -24,6 +24,7 @@ from bookkeeping.connectors.banksync import (  # noqa: E402
     collect_bank_data,
 )
 from bookkeeping import cli as cli_module  # noqa: E402
+from bookkeeping.connectors import banksync as banksync_module  # noqa: E402
 from bookkeeping.cli import load_dotenv, write_download  # noqa: E402
 
 
@@ -387,6 +388,161 @@ class BankSyncTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class PaginationTests(unittest.TestCase):
+    def paged_client(self, pages):
+        calls = []
+
+        def transport(method, url, headers, timeout):
+            calls.append(dict(parse.parse_qsl(parse.urlparse(url).query)))
+            self.assertLessEqual(len(calls), len(pages), "Unexpected extra page request")
+            return 200, json.dumps(pages[len(calls) - 1])
+
+        return BankSyncClient(api_key="synthetic-key", transport=transport), calls
+
+    def test_hosted_meta_cursor_fetches_two_rows_and_preserves_filters(self):
+        client, calls = self.paged_client([
+            {"data": [_make_txn(1)], "meta": {"hasMore": True, "cursor": "page/2?opaque=+&", "count": 1}},
+            {"data": [_make_txn(2)], "meta": {"hasMore": False, "cursor": None, "count": 1}},
+        ])
+        rows = client.list_transactions("bank", "account", from_date="2026-01-01", to_date="2026-01-31")
+        self.assertEqual([row["id"] for row in rows], [_make_txn(1)["id"], _make_txn(2)["id"]])
+        self.assertEqual(calls, [
+            {"from": "2026-01-01", "to": "2026-01-31"},
+            {"from": "2026-01-01", "to": "2026-01-31", "cursor": "page/2?opaque=+&"},
+        ])
+
+    def test_explicit_terminal_meta_can_echo_last_cursor(self):
+        client, calls = self.paged_client([
+            {"data": [_make_txn(1)], "meta": {"hasMore": True, "cursor": "second"}},
+            {"data": [_make_txn(2)], "meta": {"hasMore": False, "cursor": "second"}},
+        ])
+        self.assertEqual(len(client.list_transactions("bank", "account")), 2)
+        self.assertEqual(len(calls), 2)
+
+    def test_preserves_legacy_cursor_envelopes_and_bare_arrays(self):
+        envelopes = [
+            {"nextCursor": "second"}, {"next_cursor": "second"}, {"cursor": "second"},
+            {"pagination": {"nextCursor": "second"}}, {"meta": {"nextCursor": "second"}},
+            {"pagination": {"next_cursor": "second"}}, {"meta": {"next_cursor": "second"}},
+            {"meta": {"cursor": "second"}},
+        ]
+        for pagination in envelopes:
+            with self.subTest(pagination=pagination):
+                client, calls = self.paged_client([
+                    {"data": [_make_txn(1)], **pagination}, [_make_txn(2)],
+                ])
+                self.assertEqual(len(client.list_transactions("bank", "account")), 2)
+                self.assertEqual(calls[1]["cursor"], "second")
+
+    def test_has_more_without_cursor_fails_closed_after_valid_page(self):
+        for cursor in (None, ""):
+            client, calls = self.paged_client([
+                {"data": [_make_txn(1)], "meta": {"hasMore": True, "cursor": "second"}},
+                {"data": [_make_txn(2)], "meta": {"hasMore": True, "cursor": cursor}},
+            ])
+            with self.subTest(cursor=cursor), self.assertRaisesRegex(BankSyncError, "without.*cursor"):
+                client.list_transactions("bank", "account")
+            self.assertEqual(len(calls), 2)
+        client, calls = self.paged_client([{"data": [], "meta": {"hasMore": True}}])
+        with self.assertRaises(BankSyncError):
+            client.list_transactions("bank", "account")
+        self.assertEqual(len(calls), 1)
+
+    def test_repeated_and_cyclic_cursors_raise_without_partial_success(self):
+        for cursors in (("a", "a"), ("a", "b", "a")):
+            for hosted in (True, False):
+                with self.subTest(cursors=cursors, hosted=hosted):
+                    pages = [{"data": [_make_txn(index)], **(
+                        {"meta": {"hasMore": True, "cursor": cursor}} if hosted else {"nextCursor": cursor}
+                    )} for index, cursor in enumerate(cursors)]
+                    client, calls = self.paged_client(pages)
+                    with self.assertRaisesRegex(BankSyncError, "repeated"):
+                        client.list_transactions("bank", "account")
+                    self.assertEqual(len(calls), len(cursors))
+
+    def test_malformed_pagination_rejected_without_echoing_cursor(self):
+        invalid = [
+            {"meta": None}, {"meta": []}, {"pagination": "invalid"},
+            {"hasMore": "true", "nextCursor": "secret-cursor"},
+            {"meta": {"hasMore": 1, "cursor": "secret-cursor"}},
+            {"meta": {"hasMore": None}}, {"meta": {"hasMore": False, "cursor": 2}},
+            {"pagination": {"hasMore": True}, "meta": {"hasMore": False}},
+            {"meta": {"hasMore": True, "has_more": False, "cursor": "secret-cursor"}},
+            {"nextCursor": "a", "meta": {"hasMore": True, "cursor": "secret-cursor"}},
+        ]
+        for value in (False, 12, {}, [], " ", "secret-cursor\n", "x" * (banksync_module.MAX_CURSOR_LENGTH + 1)):
+            invalid.append({"meta": {"hasMore": True, "cursor": value}})
+            invalid.append({"nextCursor": value})
+        for pagination in invalid:
+            with self.subTest(pagination=pagination):
+                client, calls = self.paged_client([{"data": [_make_txn(1)], **pagination}])
+                with self.assertRaises(BankSyncError) as caught:
+                    client.list_transactions("bank", "account")
+                self.assertNotIn("secret-cursor", str(caught.exception))
+                self.assertIsNone(caught.exception.body)
+                self.assertIsNone(caught.exception.status)
+                self.assertEqual(len(calls), 1)
+
+    def test_legacy_cursor_priority_is_preserved_without_continuation_flags(self):
+        client, calls = self.paged_client([
+            {"data": [], "pagination": {"cursor": "ignored"}, "meta": {"nextCursor": "second"}},
+            {"data": [_make_txn(1)]},
+        ])
+        self.assertEqual(len(client.list_transactions("bank", "account")), 1)
+        self.assertEqual(calls[1]["cursor"], "second")
+
+    def test_collect_fails_without_retry_or_partial_data_on_malformed_pagination(self):
+        client, calls = self.paged_client([
+            {"data": [_make_txn(1)], "meta": {"hasMore": True, "cursor": "second"}},
+            {"data": [_make_txn(2)], "meta": {"hasMore": True}},
+        ])
+        delays = []
+        with patch.object(BankSyncClient, "list_banks", return_value=[{"id": "bank", "name": "Synthetic"}]), \
+             patch.object(BankSyncClient, "list_accounts", return_value=[{"id": "account"}]):
+            with self.assertRaises(BankSyncError):
+                collect_bank_data(client, bank_name="Synthetic", from_date="2026-01-01",
+                                  to_date="2026-01-31", sleeper=delays.append)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(delays, [])
+
+    def test_invalid_page_data_cannot_be_silent_empty_success(self):
+        for bad_page in ({}, {"data": None}, {"data": {}}, {"data": [1]}, {"data": [None]}, 5, None):
+            with self.subTest(page=bad_page):
+                client, calls = self.paged_client([
+                    {"data": [_make_txn(1)], "nextCursor": "second"}, bad_page,
+                ])
+                with self.assertRaisesRegex(BankSyncError, "invalid transaction page"):
+                    client.list_transactions("bank", "account")
+                self.assertEqual(len(calls), 2)
+
+    def test_page_limit_fails_before_extra_request_and_allows_exact_terminal_limit(self):
+        with patch.object(banksync_module, "MAX_TRANSACTION_PAGES", 2):
+            client, calls = self.paged_client([
+                {"data": [], "meta": {"hasMore": True, "cursor": "a"}},
+                {"data": [], "meta": {"hasMore": True, "cursor": "b"}},
+            ])
+            with self.assertRaisesRegex(BankSyncError, "page limit"):
+                client.list_transactions("bank", "account")
+            self.assertEqual(len(calls), 2)
+            client, calls = self.paged_client([
+                {"data": [], "meta": {"hasMore": True, "cursor": "a"}},
+                {"data": [_make_txn(1)], "meta": {"hasMore": False}},
+            ])
+            self.assertEqual(len(client.list_transactions("bank", "account")), 1)
+
+    def test_row_limit_is_cumulative_and_inclusive(self):
+        with patch.object(banksync_module, "MAX_TRANSACTIONS", 2):
+            for size in (2, 3):
+                client, calls = self.paged_client([
+                    {"data": [_make_txn(1)], "nextCursor": "second"},
+                    {"data": [_make_txn(i) for i in range(2, size + 1)]},
+                ])
+                if size == 2:
+                    self.assertEqual(len(client.list_transactions("bank", "account")), size)
+                else:
+                    with self.assertRaisesRegex(BankSyncError, "row limit"):
+                        client.list_transactions("bank", "account")
+                self.assertEqual(len(calls), 2)
+
     def test_three_pages_returns_all_250_transactions_in_order(self) -> None:
         """Happy path: 3-page transport yields all 250 txns exactly once, in order."""
         transport = MultiPageTransport()

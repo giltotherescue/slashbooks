@@ -5,6 +5,13 @@ description: Turn feedback about Slashbooks into a concise, implementation-ready
 
 # Slashbooks Feedback Handoff
 
+## Company workspace
+
+When feedback concerns local versus remote behavior, use
+[the shared workspace rules](../books/references/company-workspace.md) to distinguish
+binding, source download, server execution and artifact delivery. Do not configure
+or mutate books just to draft feedback; use observed, redacted evidence.
+
 Create a copy-ready feedback message for the Slashbooks development team. The
 reader may be an AI coding agent, so make the message concrete enough to
 investigate and verify without recreating the bookkeeping session.

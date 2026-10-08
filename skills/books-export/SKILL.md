@@ -8,10 +8,17 @@ description: >
   package", "tax package", "create the workbook", "accountant handoff",
   "export for accountant", "prepare financials for accountant", "close
   year-end", "generate financials".
-allowed-tools: Bash(scripts/books:*)
+allowed-tools: Bash(scripts/books:*) Read
 ---
 
 # Export Books
+
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](../books/references/company-workspace.md).
+Use ordinary sanity-check/export for remote books; verify downloaded deliverables.
+A local dependency check or server file path is not proof of remote XLSX delivery.
 
 You are preparing the owner's financial records for export. Most owners will use
 this to send files to an accountant or tax professional. The process runs a
@@ -59,7 +66,7 @@ patterns in search queries.
 ## Step 1 — Confirm scope
 
 Ask the owner:
-- Which entity? (Locate `entity.json` in the current directory or ask for the path.)
+- Which entity? (Check `.slashbooks-remote.json` before local `entity.json`, or ask.)
 - What period? (e.g., "full year 2026" = 2026-01-01 to 2026-12-31; or a custom range)
 
 ---
@@ -104,8 +111,8 @@ explicit owner confirmation that they understand the implication.
 Once all sanity checks pass (or the owner explicitly confirms they want to proceed
 with an override and understands what is being bypassed):
 
-If the owner expects the Excel workbook, first check whether the optional workbook
-dependency is available:
+For local books, if the owner expects the Excel workbook, first check whether the
+optional workbook dependency is available:
 
 ```
 python -c "import xlsxwriter"
@@ -124,6 +131,11 @@ For a development checkout of this repo, use:
 ```
 python -m pip install -e ".[xlsx]"
 ```
+
+For remote books, skip local dependency checks/installation. The engine runtime
+needs XLSX support; use its actual export result. If only CSV is delivered, report
+that and the observed cause. A missing dependency is an engine issue; a missing
+download is a delivery issue. A local install cannot fix either remote problem.
 
 ```
 scripts/books export --entity <entity-path> --from <start-date> --to <end-date>
@@ -165,18 +177,21 @@ scripts/books export --entity <entity-path> --from <start-date> --to <end-date> 
 
 ## Step 4 — Explain the outputs
 
-When generation completes, tell the owner where the files are and what each one
-contains in plain English:
+When generation completes, verify the files at usable local output paths, then
+tell the owner where they are and what each contains. For remote results, retrieve
+missing artifacts through the supported download/file-get path, not a temporary
+server path or metadata-only listing. Do not claim delivery before bytes arrive:
 
 - **The workbook** (`.xlsx` file) — "This is the main file to send your accountant.
   It has separate tabs for income and expenses (P&L), the balance sheet, the full
   trial balance, every transaction (general ledger), reconciliation results, a list
   of vendors who may need a 1099, any corrections we made to the books, and
   structured open questions for owner/accountant follow-up. If requested, it also
-  includes an audit-log tab showing the hash-chained write history." If the workbook was not created, say: "The CSV export was created,
-  but the optional Excel workbook dependency is not installed. Run
+  includes an audit-log tab showing the hash-chained write history." Only if the
+  result reports a missing workbook dependency, say: "The CSV export was created,
+  but Excel support is not installed in the engine." For local books, use
   `python -m pip install "agent-books[xlsx]"` and generate the export again if
-  you want the `.xlsx` file."
+  you want the `.xlsx` file. For remote books, report the engine dependency gap.
 - **CSV exports** — "Each tab is also saved as a separate spreadsheet file in case
   your accountant prefers CSV format or wants to import into their own software."
 - **Location** — State the full path to the output folder so the owner knows where

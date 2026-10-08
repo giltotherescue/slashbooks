@@ -1,6 +1,6 @@
 [project]
 name = "agent-books"
-version = "0.3.2"
+version = "0.4.0"
 license = "Apache-2.0"
 description = "Slashbooks — agent-native cash-basis bookkeeping tools."
 authors = [{ name = "Gil Hildebrand" }]
@@ -15,3 +15,11 @@ xlsx = ["xlsxwriter==3.2.9"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+bookkeeping = [
+    "templates/entity.json",
+    "templates/business-profile.md",
+    "templates/trust-policy.json",
+    "templates/gitignore-template",
+]

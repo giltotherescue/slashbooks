@@ -119,7 +119,7 @@ class TestNormalizedContract(TempDir):
             "amount", "creditAmount", "debitAmount", "currency",
             "category", "type", "reference", "pending",
             "pendingTransactionId", "accountId", "accountName",
-            "accountNumberLast4", "bankId", "bank",
+            "accountNumberLast4", "bankId", "bank", "accountType",
         }
         self.assertEqual(set(txn.keys()), expected_keys)
 
@@ -145,6 +145,7 @@ class TestNormalizedContract(TempDir):
         self.assertEqual(txn["currency"], "USD")
         self.assertEqual(txn["category"], "Software")
         self.assertEqual(txn["type"], "credit_card")
+        self.assertEqual(txn["accountType"], "credit_card")
         self.assertEqual(txn["reference"], "320260690001122334")  # apostrophe stripped
         self.assertIs(txn["pending"], False)
         self.assertIsNone(txn["pendingTransactionId"])
@@ -660,6 +661,34 @@ class TestAccountMappingRoundTrip(TempDir):
 # ---------------------------------------------------------------------------
 
 class TestImportCsvRefusal(TempDir):
+
+    def test_confirmed_account_and_kind_survive_mapping_change(self) -> None:
+        from bookkeeping.ledger.importer import _ledger_account_for_txn
+
+        csv_path = self.tmp / "activity.csv"
+        _write_csv(csv_path, _make_csv(_CHARGE_ROW))
+        config = {"csv_account_mappings": {"activity": {
+            "account_name": "Unrelated display name",
+            "ledger_account": "Assets:Bank:Checking",
+            "confirmed": True,
+        }}}
+        first = import_csv(config, csv_path)["transactions"][0]
+        self.assertEqual(first["accountType"], "checking")
+        self.assertEqual(first["type"], "checking")
+        self.assertEqual(first["csvMappingKey"], "activity")
+        self.assertEqual(_ledger_account_for_txn(first, {}, config["csv_account_mappings"]),
+                         "Assets:Bank:Checking")
+
+        config["csv_account_mappings"]["activity"]["ledger_account"] = "Liabilities:CreditCard"
+        with self.assertRaisesRegex(ValueError, "changed"):
+            _ledger_account_for_txn(first, {}, config["csv_account_mappings"])
+        second = import_csv(config, csv_path)["transactions"][0]
+        self.assertEqual(second["accountType"], "credit_card")
+        self.assertEqual(second["type"], "credit_card")
+        self.assertEqual(_ledger_account_for_txn(second, {}, config["csv_account_mappings"]),
+                         "Liabilities:CreditCard")
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertEqual(second, import_csv(config, csv_path)["transactions"][0])
 
     def test_refuses_without_confirmed_mapping(self) -> None:
         """import_csv returns proposed=True when mapping is absent."""
