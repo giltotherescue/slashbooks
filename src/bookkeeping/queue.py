@@ -906,7 +906,10 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str, t
 
     source_id = str(txn.get("id") or item["source_id"])
     amount = _txn_amount(txn)
-    bank_account = _ledger_account_for_txn(txn, entity.entity_config.get("bank_account_mappings"))
+    bank_account = _ledger_account_for_txn(
+        txn, entity.entity_config.get("bank_account_mappings"),
+        entity.entity_config.get("csv_account_mappings"),
+    )
     allocations = [
         Posting(account=str(posting["account"]), amount=Decimal(str(posting["amount"])), currency="USD")
         for posting in item.get("split_postings", [])
@@ -991,8 +994,9 @@ def _transfer_details(entity: Entity, source_ids: list[str]) -> tuple[dict, dict
         raise ValueError("Transfer sides must have equal and opposite amounts.")
     from .ledger.importer import _ledger_account_for_txn
     mappings = entity.entity_config.get("bank_account_mappings")
-    first_account = _ledger_account_for_txn(first, mappings)
-    second_account = _ledger_account_for_txn(second, mappings)
+    csv_mappings = entity.entity_config.get("csv_account_mappings")
+    first_account = _ledger_account_for_txn(first, mappings, csv_mappings)
+    second_account = _ledger_account_for_txn(second, mappings, csv_mappings)
     if first_account == second_account:
         raise ValueError("Transfer sides must come from different ledger accounts.")
     return first, second, first_amount, first_account, second_account
@@ -1015,8 +1019,9 @@ def find_transfer_candidates(entity: Entity, date_tolerance_days: int = 3) -> li
                     continue
                 from .ledger.importer import _ledger_account_for_txn
                 mappings = entity.entity_config.get("bank_account_mappings")
-                first_account = _ledger_account_for_txn(first, mappings)
-                second_account = _ledger_account_for_txn(second, mappings)
+                csv_mappings = entity.entity_config.get("csv_account_mappings")
+                first_account = _ledger_account_for_txn(first, mappings, csv_mappings)
+                second_account = _ledger_account_for_txn(second, mappings, csv_mappings)
                 if first_account == second_account:
                     continue
             except (ValueError, ArithmeticError):
@@ -1056,6 +1061,7 @@ def find_transfer_exceptions(entity: Entity, date_tolerance_days: int = 3) -> li
     exceptions: list[dict] = []
     from .ledger.importer import _ledger_account_for_txn
     mappings = entity.entity_config.get("bank_account_mappings")
+    csv_mappings = entity.entity_config.get("csv_account_mappings")
     for txn in _load_pending_categorization(entity):
         source_id = str(txn.get("id") or "")
         description = str(txn.get("description") or "")
@@ -1065,7 +1071,7 @@ def find_transfer_exceptions(entity: Entity, date_tolerance_days: int = 3) -> li
             "source_id": source_id,
             "date": _txn_date(txn).isoformat(),
             "amount": f"{_txn_amount(txn):.2f}",
-            "account": _ledger_account_for_txn(txn, mappings),
+            "account": _ledger_account_for_txn(txn, mappings, csv_mappings),
             "description": description,
             "exception": "timing-or-missing-source",
             "expected_counterpart_window_days": date_tolerance_days,
@@ -1268,7 +1274,8 @@ def _write_confirmed_entry(
         amount = D(str(raw_amount)).quantize(D("0.01"))
 
     bank_account = _ledger_account_for_txn(
-        txn, entity.entity_config.get("bank_account_mappings")
+        txn, entity.entity_config.get("bank_account_mappings"),
+        entity.entity_config.get("csv_account_mappings"),
     )
     meta: list[tuple[str, str]] = [
         ("source-id", source_id),

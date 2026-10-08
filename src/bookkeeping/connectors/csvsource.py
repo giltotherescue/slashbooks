@@ -225,6 +225,7 @@ def parse_amex_csv(
     """
     path = Path(path)
     fp_account = ledger_account or account_id
+    account_type = "checking" if fp_account.startswith("Assets:") else "credit_card"
 
     transactions: list[JsonObject] = []
     excluded = 0
@@ -286,7 +287,8 @@ def parse_amex_csv(
                 "debitAmount": debit_amount,
                 "currency": currency,
                 "category": category,
-                "type": "credit_card",
+                "type": account_type,
+                "accountType": account_type,
                 "reference": stripped_ref or None,
                 "pending": False,
                 "pendingTransactionId": None,
@@ -477,6 +479,8 @@ def import_csv(
         boundary_date=mapping.get("boundary_date"),
         side=mapping.get("side", "before"),
     )
+    for txn in transactions:
+        txn["csvMappingKey"] = _mapping_key(csv_path)
 
     return {
         "transactions": transactions,

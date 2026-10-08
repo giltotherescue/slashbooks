@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 
@@ -147,10 +148,57 @@ class TestInitFullLayout(unittest.TestCase):
             self.assertEqual(data["cutover_date"], "2026-01-01")
 
     def test_init_rejects_invalid_cutover_date(self) -> None:
+        for cutover in ("January 1", "2026-02-30"):
+            with self.subTest(cutover=cutover), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "my-entity"
+                with self.assertRaises(ValueError):
+                    init_entity(target, cutover_date=cutover)
+                self.assertFalse(target.exists())
+
+    def test_new_starter_accounts_use_explicit_past_and_future_cutover(self) -> None:
+        from bookkeeping.ledger.store import LedgerStore
+
+        for cutover in ("2024-07-01", "2030-04-15"):
+            with self.subTest(cutover=cutover), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "company"
+                init_entity(target, business_type="saas", cutover_date=cutover)
+                opens = LedgerStore(target / "ledger.sqlite").load_opens()
+                self.assertTrue(opens)
+                self.assertEqual({item.date for item in opens}, {date.fromisoformat(cutover)})
+                self.assertEqual(load_entity(target).entity_config["cutover_date"], cutover)
+
+    def test_omitted_cutover_and_add_account_keep_existing_default_date(self) -> None:
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.store import LedgerStore
+
         with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "my-entity"
-            with self.assertRaises(ValueError):
-                init_entity(target, cutover_date="January 1")
+            target = Path(tmp) / "company"
+            init_entity(target)
+            store = LedgerStore(target / "ledger.sqlite")
+            self.assertEqual({item.date for item in store.load_opens()}, {date(2026, 1, 1)})
+            explicit = Path(tmp) / "explicit-cutover"
+            init_entity(explicit, cutover_date="2024-07-01")
+            add_account(explicit, "Expenses:New-Account")
+            opens = {item.account: item.date for item in LedgerStore(explicit / "ledger.sqlite").load_opens()}
+            self.assertEqual(opens["Expenses:New-Account"], date(2026, 1, 1))
+
+    def test_reinit_does_not_rewrite_existing_accounts_for_changed_cutover(self) -> None:
+        from bookkeeping.ledger.importer import import_transactions
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "company"
+            init_entity(target, cutover_date="2026-01-01")
+            result = import_transactions(load_entity(target), [{"id": "synthetic-existing", "date": "2026-01-02",
+                "description": "Synthetic income", "amount": "100.00", "accountName": "Checking", "pending": False}],
+                "original-session", categorizer=lambda _: ("Income:Consulting", "high"),
+                session_date=date(2026, 1, 2), ts="2026-01-02T00:00:00Z")
+            self.assertFalse(result.errors)
+            self.assertEqual(result.new_entries, 1)
+            before = {name: (target / name).read_bytes() for name in _EXPECTED_FILES}
+            for cutover in ("2024-07-01", "2030-04-15"):
+                with self.subTest(cutover=cutover):
+                    init_entity(target, cutover_date=cutover)
+                    self.assertEqual({name: (target / name).read_bytes() for name in _EXPECTED_FILES}, before)
 
     def test_trust_policy_default_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -713,6 +761,270 @@ class TestGitignoreHygiene(unittest.TestCase):
             with unittest.mock.patch.object(entity_mod, "_git_root", return_value=git_root):
                 init_entity(entity_dir)
             self.assertEqual((entity_dir / ".gitignore").read_bytes(), original)
+
+
+class TestAccountAddSealing(unittest.TestCase):
+    def setUp(self) -> None:
+        from bookkeeping.ledger.store import LedgerStore
+
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve() / "company"
+        _init_simple(self.root, name="Synthetic Account Tests")
+        self.store = LedgerStore(self.root / "ledger.sqlite")
+
+    def test_integrity_check_runs_under_writer_reservation_before_changes(self) -> None:
+        import sqlite3
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.importer import check_integrity
+
+        before = self.store.content_digest(), self.store.load_audit_events()
+
+        def reserved_check(entity):
+            other = sqlite3.connect(self.store.path, timeout=0)
+            try:
+                with self.assertRaisesRegex(sqlite3.OperationalError, "locked"):
+                    other.execute("BEGIN IMMEDIATE")
+            finally:
+                other.close()
+            self.assertEqual((self.store.content_digest(), self.store.load_audit_events()), before)
+            return check_integrity(entity)
+
+        with unittest.mock.patch("bookkeeping.ledger.importer.check_integrity", side_effect=reserved_check) as check:
+            add_account(self.root, "Expenses:Reserved-Write")
+        check.assert_called_once()
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_effective_catalog_changes_are_sealed_and_true_retries_are_noops(self) -> None:
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.importer import check_integrity
+
+        account = "Expenses:New-Test"
+        for opened, currency, status in [("2026-03-01", "USD", "created"),
+                                         ("2026-01-01", "USD", "existed"),
+                                         ("2026-01-01", "EUR", "existed")]:
+            before = self.store.load_audit_events()
+            result = add_account(self.root, account, opened, currency)
+            self.assertEqual(result["status"], status)
+            events = self.store.load_audit_events()
+            self.assertEqual(events[:len(before)], before)
+            self.assertEqual([item["type"] for item in events[len(before):]], ["intent", "ledger-store-sealed"])
+            self.assertIn(f"open {opened}, currency {currency}", events[-2]["payload"]["description"])
+            self.assertEqual(events[-1]["payload"]["entries"], 0)
+            self.assertEqual(events[-1]["payload"]["source_ids"], [])
+            self.assertEqual(events[-1]["payload"]["store_sha256"], self.store.content_digest())
+            self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+            self.assertEqual(self.store.counts().entries, 0)
+            image = self.store.path.read_bytes()
+            for retry_date in (opened, "2026-12-31"):
+                self.assertEqual(add_account(self.root, account, retry_date, currency)["status"], "existed")
+                self.assertEqual(self.store.load_audit_events(), events)
+                self.assertEqual(self.store.path.read_bytes(), image)
+
+    def test_blank_currency_retains_usd_default_and_retry_does_not_seal(self) -> None:
+        from bookkeeping.entity import add_account
+
+        add_account(self.root, "Expenses:Default-Currency", currency="")
+        events = self.store.load_audit_events()
+        add_account(self.root, "Expenses:Default-Currency", currency="USD")
+        self.assertEqual(self.store.load_audit_events(), events)
+        opened = next(item for item in self.store.load_opens() if item.account == "Expenses:Default-Currency")
+        self.assertEqual(opened.currencies, ("USD",))
+
+    def test_damaged_baseline_is_not_resealed_even_for_a_retry(self) -> None:
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.importer import check_integrity
+
+        for damage in ("digest", "chain", "incomplete"):
+            with self.subTest(damage=damage):
+                root = self.root.parent / damage
+                _init_simple(root)
+                from bookkeeping.ledger.store import LedgerStore
+                store = LedgerStore(root / "ledger.sqlite")
+                add_account(root, "Expenses:Original")
+                with store.transaction() as conn:
+                    if damage == "digest":
+                        conn.execute("UPDATE accounts SET open_date='2025-01-01' WHERE name='Expenses:Original'")
+                    elif damage == "chain":
+                        conn.execute("UPDATE audit_events SET record_hash=? WHERE id=(SELECT max(id) FROM audit_events)", ("0" * 64,))
+                    else:
+                        store.append_audit_event("intent", {"description": "Synthetic incomplete write"}, conn)
+                self.assertNotEqual(check_integrity(load_entity(root)).status, "ok")
+                image = store.path.read_bytes()
+                for account in ("Expenses:Original", "Expenses:New"):
+                    with self.assertRaisesRegex(ValueError, "ledger integrity is invalid"):
+                        add_account(root, account)
+                    self.assertEqual(store.path.read_bytes(), image)
+
+    def test_populated_unaudited_baseline_is_not_given_a_first_seal(self) -> None:
+        from decimal import Decimal
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.importer import check_integrity
+        from bookkeeping.ledger.model import Entry, Posting
+
+        with self.store.transaction() as conn:
+            self.store.insert_entries([Entry(date=date(2026, 1, 2), narration="Synthetic unaudited entry",
+                postings=(Posting("Expenses:Software", Decimal("1.00")),
+                          Posting("Assets:Bank:Checking", Decimal("-1.00"))))], conn)
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+        image = self.store.path.read_bytes()
+        for account in ("Expenses:New", "Expenses:Software"):
+            with self.assertRaisesRegex(ValueError, "populated ledger without audit history"):
+                add_account(self.root, account)
+            self.assertEqual(self.store.path.read_bytes(), image)
+            self.assertEqual(self.store.load_audit_events(), [])
+
+    def test_account_add_preserves_distinct_metadata_and_missing_catalog_marker(self) -> None:
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.importer import check_integrity
+        from bookkeeping.ledger.store import LedgerStore
+
+        with self.store.transaction() as conn:
+            conn.execute("DELETE FROM meta WHERE key='account_catalog'")
+            self.store.set_meta("title", "Distinct stored title", conn)
+            self.store.set_meta("canonical", "false", conn)
+            self.store.set_meta("synthetic_custom_meta", "preserve exactly", conn)
+        with self.store.connection() as conn:
+            before = dict(conn.execute("SELECT key,value FROM meta"))
+        with unittest.mock.patch.object(LedgerStore, "initialize", side_effect=AssertionError("No schema initialization")):
+            add_account(self.root, "Expenses:No-Catalog-Repair")
+            add_account(self.root, "Expenses:No-Catalog-Repair", open_date="2025-01-01")
+        with self.store.connection() as conn:
+            self.assertEqual(dict(conn.execute("SELECT key,value FROM meta")), before)
+        self.assertIsNone(self.store.get_meta("account_catalog"))
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_missing_store_is_rejected_without_creation(self) -> None:
+        from bookkeeping.entity import add_account
+
+        self.store.path.unlink()
+        before = {path.relative_to(self.root): path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        with self.assertRaisesRegex(ValueError, "initialized SQLite ledger"):
+            add_account(self.root, "Expenses:No-Creation")
+        self.assertFalse(self.store.path.exists())
+        self.assertEqual({path.relative_to(self.root): path.read_bytes() for path in self.root.rglob("*")
+                          if path.is_file() and path.name != ".books.lock"}, before)
+
+    def test_unsupported_schema_is_rejected_before_integrity_or_mutation(self) -> None:
+        from bookkeeping.entity import add_account
+
+        for version in ("0", "999", None):
+            with self.subTest(version=version):
+                with self.store.transaction() as conn:
+                    if version is None:
+                        conn.execute("DELETE FROM meta WHERE key='schema_version'")
+                    else:
+                        self.store.set_meta("schema_version", version, conn)
+                image = self.store.path.read_bytes()
+                with unittest.mock.patch("bookkeeping.ledger.importer.check_integrity",
+                                         side_effect=AssertionError("Schema must be checked first")):
+                    with self.assertRaisesRegex(ValueError, "Unsupported ledger schema"):
+                        add_account(self.root, "Expenses:No-Upgrade")
+                self.assertEqual(self.store.path.read_bytes(), image)
+
+    def test_uninitialized_sqlite_is_rejected_without_schema_creation(self) -> None:
+        from bookkeeping.entity import add_account
+
+        self.store.path.write_bytes(b"")
+        with self.assertRaisesRegex(ValueError, "initialized supported-schema SQLite ledger"):
+            add_account(self.root, "Expenses:No-Schema-Creation")
+        self.assertEqual(self.store.path.read_bytes(), b"")
+
+    def test_account_add_does_not_force_migrate_a_legacy_ledger(self) -> None:
+        from bookkeeping.entity import add_account
+
+        self.store.path.unlink()
+        legacy = self.root / "books.beancount"
+        legacy.write_text('2026-01-01 open Assets:Bank:Checking USD\n', encoding="utf-8")
+        original = legacy.read_bytes()
+        with self.assertRaisesRegex(ValueError, "Migrate the legacy ledger explicitly"):
+            add_account(self.root, "Expenses:No-Implicit-Migration")
+        self.assertFalse(self.store.path.exists())
+        self.assertEqual(legacy.read_bytes(), original)
+
+    def test_conflicting_currency_of_used_accounts_is_rejected_without_changes(self) -> None:
+        from decimal import Decimal
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.importer import _atomic_ledger_write, check_integrity
+        from bookkeeping.ledger.model import Balance, Entry, Posting
+
+        account = "Expenses:Used-Test"
+        add_account(self.root, account)
+        _atomic_ledger_write(load_entity(self.root), [], [Entry(date=date(2026, 1, 2), narration="Synthetic usage",
+            postings=(Posting(account, Decimal("1.00")), Posting("Assets:Bank:Checking", Decimal("-1.00"))))],
+            "synthetic-usage", None, "Synthetic account currency test")
+        add_account(self.root, "Assets:Assertion-Only")
+        with self.store.transaction() as conn:
+            self.store.insert_balances([Balance(date(2026, 1, 2), "Assets:Assertion-Only", Decimal("0.00"))], conn)
+            self.store.append_audit_event("ledger-store-sealed", {"store_sha256": self.store.content_digest(conn)}, conn)
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+        image = self.store.path.read_bytes()
+        for used in (account, "Assets:Assertion-Only"):
+            with self.assertRaisesRegex(ValueError, "currency conflicts"):
+                add_account(self.root, used, currency="EUR")
+            self.assertEqual(self.store.path.read_bytes(), image)
+        entries = self.store.load_entries()
+        add_account(self.root, account, open_date="2025-01-01")
+        self.assertEqual(self.store.load_entries(), entries)
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_seal_failure_rolls_back_account_and_intent(self) -> None:
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.store import LedgerStore
+
+        with self.store.transaction() as conn:
+            self.store.set_meta("title", "Rollback must retain this title", conn)
+            self.store.set_meta("canonical", "false", conn)
+        add_account(self.root, "Expenses:Original")
+        with self.store.connection() as conn:
+            before = list(conn.iterdump())
+        append = LedgerStore.append_audit_event
+
+        def fail_seal(store, record_type, *args, **kwargs):
+            if record_type == "ledger-store-sealed":
+                raise RuntimeError("Synthetic seal failure")
+            return append(store, record_type, *args, **kwargs)
+
+        with unittest.mock.patch.object(LedgerStore, "append_audit_event", fail_seal):
+            with self.assertRaisesRegex(RuntimeError, "Synthetic seal failure"):
+                add_account(self.root, "Expenses:Rollback")
+        with self.store.connection() as conn:
+            self.assertEqual(list(conn.iterdump()), before)
+        self.assertNotIn("Expenses:Rollback", self.store.load_account_names())
+
+    def test_demo_account_adds_related_entity_then_import_and_export_keep_integrity(self) -> None:
+        from bookkeeping.demo import init_demo
+        from bookkeeping.entity import add_account, record_related_entity
+        from bookkeeping.ledger.importer import check_integrity, import_transactions
+        from bookkeeping.ledger.store import LedgerStore
+        from bookkeeping.migration_bundle import build_bundle, load_bundle, validate_files
+
+        root = self.root.parent / "demo"
+        init_demo(root, as_of=date(2026, 6, 26))
+        store = LedgerStore(root / "ledger.sqlite")
+        entries, history = store.load_entries(), store.load_audit_events()
+        for account in ("Assets:Receivable:RelatedQA", "Liabilities:Payable:RelatedQA"):
+            add_account(root, account, open_date="2025-01-01")
+            self.assertEqual(check_integrity(load_entity(root)).status, "ok")
+        record_related_entity(root, "Synthetic Related QA", "Assets:Receivable:RelatedQA", "Liabilities:Payable:RelatedQA",
+                              "settle-receivable", "create-receivable")
+        self.assertEqual(store.load_entries(), entries)
+        self.assertEqual(store.load_audit_events()[:len(history)], history)
+        self.assertEqual(len(store.load_audit_events()), len(history) + 4)
+        self.assertEqual(check_integrity(load_entity(root)).status, "ok")
+        result = import_transactions(load_entity(root), [{"id": "synthetic-after-account-add", "date": "2026-06-26",
+            "description": "Synthetic new income", "amount": "10.00", "accountName": "Checking", "pending": False}],
+            "after-account-add", categorizer=lambda _: ("Income:Subscriptions", "high"),
+            session_date=date(2026, 6, 26), ts="2026-06-26T13:00:00Z")
+        self.assertFalse(result.errors)
+        self.assertEqual(result.new_entries, 1)
+        self.assertEqual(check_integrity(load_entity(root)).status, "ok")
+        destination = root.parent / "demo.zip"
+        exported = build_bundle(root, destination)
+        self.assertEqual(exported["status"], "exported", exported)
+        loaded = load_bundle(destination)
+        self.assertEqual(validate_files(loaded["manifest"], loaded["files"])["status"], "validated")
+        self.assertEqual(check_integrity(load_entity(root)).status, "ok")
 
 
 if __name__ == "__main__":

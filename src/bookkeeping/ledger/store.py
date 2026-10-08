@@ -197,10 +197,10 @@ class LedgerStore:
             conn.commit()
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
         conn = self.connect()
         try:
-            conn.execute("BEGIN")
+            conn.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
             yield conn
             conn.commit()
         except Exception:

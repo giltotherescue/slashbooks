@@ -7,10 +7,17 @@ description: >
   revenue", "how much did I pay", "what are my expenses", "show me my income",
   "how much did I make", "what did I spend on", "financial question", "query my
   books", "look up a transaction".
-allowed-tools: Bash(scripts/books:*)
+allowed-tools: Bash(scripts/books:*) Read
 ---
 
 # Ask a Financial Question
+
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](../books/references/company-workspace.md).
+Use ordinary commands for either mode; a remote failure is not permission to read
+a local ledger or compute an answer from stale files.
 
 You are answering a financial question about the owner's books. All numbers come from
 the actual ledger — you never compute financial totals yourself. Route the question
@@ -55,7 +62,8 @@ patterns in search queries.
 
 ## Step 1 — Find the entity
 
-Locate `entity.json` in the current directory or ask the owner for the entity path.
+Select the bound directory (`.slashbooks-remote.json`) or local entity directory
+(`entity.json`), or ask for the company path if it is not already known.
 
 ---
 

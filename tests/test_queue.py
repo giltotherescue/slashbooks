@@ -940,6 +940,39 @@ class TestConfirmWritesLedger(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
+    def test_csv_mapping_change_blocks_stale_confirmation(self) -> None:
+        txn = {"id": "csv:stale", "date": "2026-01-15", "amount": "-45.00",
+               "description": "Synthetic software", "accountId": "Assets:Bank:Checking",
+               "accountName": "Unrelated display", "bankId": "amex-csv", "csvMappingKey": "activity"}
+        mappings = {"activity": {"confirmed": True, "ledger_account": txn["accountId"]}}
+        self.entity.entity_config["csv_account_mappings"] = mappings
+        import_transactions(self.entity, [txn], SESSION, ts=TS)
+        propose(self.entity, txn["id"], "Expenses:Software", "Confirmed software")
+        mappings["activity"]["ledger_account"] = "Liabilities:CreditCard"
+        with self.assertRaisesRegex(ValueError, "changed"):
+            confirm(self.entity, txn["id"], SESSION, ts=TS)
+        self.assertEqual(LedgerStore(self.entity.path / "ledger.sqlite").load_entries(), [])
+        self.assertEqual(list_queue_items(self.entity)[0]["status"], "open")
+
+    def test_csv_ingest_proposal_confirm_preserves_selected_account(self) -> None:
+        from bookkeeping.connectors.csvsource import import_csv, write_confirmed_mapping
+        from bookkeeping.entity import load_entity
+
+        fixture = ROOT / "tests/fixtures/amex/activity.csv"
+        for index, account in enumerate(("Assets:Bank:Checking", "Liabilities:CreditCard")):
+            with self.subTest(account=account):
+                write_confirmed_mapping(self.entity.path, fixture, account_name="Unrelated Display",
+                                        ledger_account=account)
+                entity = load_entity(self.entity.path)
+                txn = import_csv(entity.entity_config, fixture)["transactions"][0]
+                result = import_transactions(entity, [txn], SESSION + str(index), ts=TS)
+                self.assertEqual(result.pending_categorization, 1)
+                propose(entity, txn["id"], "Expenses:Software", "Synthetic confirmed software")
+                confirm(entity, txn["id"], SESSION + str(index), ts=TS)
+                entry = next(entry for entry in LedgerStore(entity.path / "ledger.sqlite").load_entries()
+                             if entry.source_id == txn["id"])
+                self.assertEqual(entry.postings[0].account, account)
+
     def test_confirm_writes_balanced_entry(self) -> None:
         _add_pending_categorization(self.entity, "txn-write-001", "Software subscription", amount="54.99")
         propose(self.entity, "txn-write-001", "Expenses:Software", "CI tooling subscription")

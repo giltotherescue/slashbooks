@@ -30,14 +30,17 @@ _ENV_TEMPLATES_DIR = "BOOKKEEPING_TEMPLATES_DIR"
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _PACKAGE_DIR.parents[1]  # src/bookkeeping -> src -> repo root
 _BUILTIN_TEMPLATES = _REPO_ROOT / "skills" / "books-onboard" / "templates"
+_PACKAGED_TEMPLATES = _PACKAGE_DIR / "templates"
 
 
 def _templates_dir() -> Path:
-    """Return the templates directory, honouring the env-var override."""
+    """Prefer the env override and repo/plugin templates over wheel resources."""
     override = os.environ.get(_ENV_TEMPLATES_DIR)
     if override:
         return Path(override)
-    return _BUILTIN_TEMPLATES
+    if _BUILTIN_TEMPLATES.is_dir():
+        return _BUILTIN_TEMPLATES
+    return _PACKAGED_TEMPLATES
 
 
 # ---------------------------------------------------------------------------
@@ -218,14 +221,14 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DEFAULT_ACCOUNT_OPEN_DATE = date(2026, 1, 1)
 
 
-def _starter_account_opens(business_type: str) -> list[Any]:
+def _starter_account_opens(business_type: str, open_date: date = _DEFAULT_ACCOUNT_OPEN_DATE) -> list[Any]:
     """Return starter SQLite account definitions for a business type."""
     from .ledger.model import Open
 
     accounts = _STARTER_ACCOUNTS.get(business_type, _STARTER_ACCOUNTS["consulting"])
     return [
         Open(
-            date=_DEFAULT_ACCOUNT_OPEN_DATE,
+            date=open_date,
             account=account,
             currencies=("USD",) if not account.startswith(("Equity:", "Income:")) else (),
         )
@@ -275,6 +278,7 @@ def init_entity(
     """
     _refuse_if_inside_package_repo(target)
     normalized_cutover_date = _normalize_optional_date(cutover_date)
+    starter_open_date = date.fromisoformat(normalized_cutover_date) if normalized_cutover_date else _DEFAULT_ACCOUNT_OPEN_DATE
 
     templates = _templates_dir()
     target.mkdir(parents=True, exist_ok=True)
@@ -312,7 +316,7 @@ def init_entity(
                 store.set_meta("business_type", business_type, conn)
                 if name:
                     store.set_meta("title", name, conn)
-                store.insert_opens(_starter_account_opens(business_type), conn)
+                store.insert_opens(_starter_account_opens(business_type, starter_open_date), conn)
             created.append("ledger.sqlite")
         else:
             existed.append("ledger.sqlite")
@@ -385,7 +389,9 @@ def add_account(
     normalized_open_date = _normalize_optional_date(open_date) or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat()
 
     from .ledger.model import Open
-    from .ledger.store import LedgerStore, default_store_path
+    import sqlite3
+    from .ledger.store import LedgerStore, SCHEMA_VERSION, default_store_path
+    from .ledger.importer import _entity_write_lock, check_integrity
 
     opened = Open(
         date=date.fromisoformat(normalized_open_date),
@@ -393,11 +399,50 @@ def add_account(
         currencies=(currency,) if currency else (),
     )
     store = LedgerStore(default_store_path(entity.path))
-    store.initialize()
-
-    existed_before = account in store.load_account_names()
-    with store.transaction() as conn:
-        store.insert_opens([opened], conn)
+    with _entity_write_lock(entity.path):
+        if not store.path.exists():
+            if entity.books_path.exists():
+                raise ValueError("Migrate the legacy ledger explicitly before changing the account catalog.")
+            raise ValueError("Account catalog requires an initialized SQLite ledger; run books entity init first.")
+        effective_currency = currency or "USD"
+        with store.transaction(immediate=True) as conn:
+            try:
+                schema = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            except sqlite3.DatabaseError:
+                raise ValueError("Account catalog requires an initialized supported-schema SQLite ledger.") from None
+            if schema is None or schema[0] != str(SCHEMA_VERSION):
+                raise ValueError("Unsupported ledger schema; upgrade or migrate explicitly before changing the account catalog.")
+            integrity = check_integrity(entity)
+            if integrity.status != "ok":
+                raise ValueError("Account catalog cannot change while ledger integrity is invalid.")
+            if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
+                "SELECT 1 FROM audit_events LIMIT 1"
+            ).fetchone():
+                raise ValueError("Account catalog cannot change on a populated ledger without audit history.")
+            existing = conn.execute("SELECT currency,open_date FROM accounts WHERE name=?", (account,)).fetchone()
+            if existing and existing["currency"] != effective_currency:
+                conflict = conn.execute(
+                    "SELECT 1 FROM postings WHERE account=? AND currency<>? "
+                    "UNION ALL SELECT 1 FROM balance_assertions WHERE account=? AND currency<>? LIMIT 1",
+                    (account, effective_currency, account, effective_currency),
+                ).fetchone()
+                if conflict:
+                    raise ValueError("Account currency conflicts with existing postings or balance assertions.")
+            existed_before = existing is not None
+            effective_date = min(normalized_open_date, existing["open_date"]) if existing else normalized_open_date
+            if not existing or (existing["currency"], existing["open_date"]) != (effective_currency, effective_date):
+                # Catalog, intent and seal share one transaction without
+                # initializing the store or rewriting its metadata.
+                store.append_audit_event("intent", {
+                    "session_id": "entity-account-add", "entries": 0,
+                    "description": (f"{'Update' if existing else 'Add'} account {account}: "
+                                    f"open {effective_date}, currency {effective_currency}"),
+                }, conn)
+                store.insert_opens([opened], conn)
+                store.append_audit_event("ledger-store-sealed", {
+                    "session_id": "entity-account-add", "entries": 0, "source_ids": [],
+                    "store_sha256": store.content_digest(conn),
+                }, conn)
 
     return {
         "account": account,

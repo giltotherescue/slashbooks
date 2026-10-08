@@ -17,10 +17,40 @@ if str(SRC) not in sys.path:
 from bookkeeping.cli import main  # noqa: E402
 from bookkeeping.demo import DEMO_COMPANY_NAME, demo_store_counts, init_demo  # noqa: E402
 from bookkeeping.entity import load_entity  # noqa: E402
+from bookkeeping.ledger.projections import render_store_ledger  # noqa: E402
+from bookkeeping.ledger.store import LedgerStore  # noqa: E402
+from bookkeeping.ledger.validator import validate  # noqa: E402
+from bookkeeping.migration_bundle import build_bundle, load_bundle, validate_files  # noqa: E402
 from bookkeeping.reports.workbook import run_sanity_checks  # noqa: E402
 
 
 class DemoInitTests(unittest.TestCase):
+    def test_fresh_demo_ledger_validates_and_full_migration_exports(self) -> None:
+        for as_of in (date(2026, 6, 26), date(2028, 6, 26)):
+            with self.subTest(as_of=as_of), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp).resolve() / "fresh-demo"
+                result = init_demo(target, as_of=as_of)
+                store_path = target / "ledger.sqlite"
+                self.assertGreater(result.posted_entries, 250)
+                self.assertEqual(result.queued_for_review, 3)
+                self.assertEqual(validate(render_store_ledger(store_path)), [])
+                self.assertEqual(LedgerStore(store_path).verify_audit_chain(), [])
+                before = {path.relative_to(target).as_posix(): path.read_bytes()
+                          for path in target.rglob("*") if path.is_file()}
+                destination = target.parent / "demo.zip"
+                exported = build_bundle(target, destination)
+                self.assertEqual(exported["status"], "exported", exported)
+                loaded = load_bundle(destination)
+                self.assertEqual(validate_files(loaded["manifest"], loaded["files"])["status"], "validated")
+                self.assertEqual(loaded["manifest"]["source_entity"]["cutover_date"], result.period_start.isoformat())
+                self.assertEqual(loaded["manifest"]["ledger"]["tables"]["entries"]["rows"], result.posted_entries)
+                self.assertEqual(set(loaded["files"]), set(before) - {".books.lock"})
+                for name, data in loaded["files"].items():
+                    if name != "ledger.sqlite":
+                        self.assertEqual(data, before[name])
+                self.assertEqual({path.relative_to(target).as_posix(): path.read_bytes()
+                                  for path in target.rglob("*") if path.is_file()}, before)
+
     def test_init_demo_creates_sqlite_backed_company(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "northstar-demo"

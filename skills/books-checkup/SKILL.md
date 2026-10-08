@@ -10,6 +10,13 @@ allowed-tools: Bash(scripts/books:*) Read
 
 # Books Checkup
 
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](../books/references/company-workspace.md).
+Use file list/get for current remote metadata, ordinary commands for ledger checks,
+and never infer missing remote setup from absent local files.
+
 You are giving the owner a calm setup review. The goal is to help them feel clear
 about whether Slashbooks is ready to use, not to overwhelm them with generic
 accounting worries.
@@ -69,14 +76,17 @@ If the owner has a specific concern, start there.
 
 ## Step 2 — Read the setup context
 
-Look for these files in the entity directory:
+For local books, read these files in the entity directory. For a remote binding,
+list shared files and get current metadata into private scratch files; inspect the
+ledger through the report/check commands below, not a local SQLite copy:
 
 - `entity.json`
 - `business-profile.md`
 - `trust-policy.json`
 - `ledger.sqlite`
 
-Also inspect source intake folders if they exist:
+Also inspect source intake folders if they exist. In remote mode distinguish
+local downloaded inputs from shared files; neither list proves the other is complete:
 
 - `ingestion/quickbooks/`
 - `ingestion/stripe/`
@@ -109,6 +119,9 @@ If the company is migrating from QuickBooks and the export folder exists, run:
 ```sh
 scripts/books qb inventory <entity-path>/ingestion/quickbooks
 ```
+
+For remote inventory run from the intended bound directory and select the actual
+input folder under the workspace rules. Do not use metadata file put for exports.
 
 Use command output as evidence, but summarize it in owner-friendly terms.
 

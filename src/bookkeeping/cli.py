@@ -34,10 +34,12 @@ from bookkeeping.connectors.stripe import (
 from bookkeeping import compare as compare_module
 from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
+from bookkeeping import hosted as hosted_module
 from bookkeeping import ingest as ingest_module
 from bookkeeping import queue as queue_module
 from bookkeeping import quickbooks as quickbooks_module
 from bookkeeping import reconcile as reconcile_module
+from bookkeeping import remote as remote_module
 from bookkeeping.connectors import csvsource as csvsource_module
 from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
@@ -47,9 +49,15 @@ from bookkeeping.reports import workbook as workbook_module
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path.cwd() / ".env")
     parser = build_parser()
-    args = parser.parse_args(argv)
+    command_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(command_argv)
 
     try:
+        if args.command == "hosted":
+            return hosted_module.run(args)
+        remote_result = remote_module.maybe_run(command_argv, args)
+        if remote_result is not None:
+            return remote_result
         if args.command == "connector":
             return run_connector(args)
         if args.command == "demo":
@@ -221,6 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
     csvsource_module.add_parser(connector_subcommands)
 
     demo_module.add_parser(subcommands)
+    hosted_module.add_parser(subcommands)
     entity_module.add_parser(subcommands)
     ingest_module.add_parser(subcommands)
     ledger_migrate_module.add_parser(subcommands)

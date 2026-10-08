@@ -2,19 +2,26 @@
 name: books-dashboard
 description: >
   Create owner-friendly dashboards, visual summaries, snapshots, and formatted
-  reports from local books after setup or close. Trigger phrases: "dashboard",
+  reports from local or remote books after setup or close. Trigger phrases: "dashboard",
   "charts", "visual report", "monthly snapshot", "shareable report",
   "show me how the business is doing", "make a report for my accountant".
-allowed-tools: Bash(scripts/books:*) Read
+allowed-tools: Bash(scripts/books:*) Read Edit
 ---
 
 # Books Dashboard
 
+## Company workspace
+
+Before company discovery or file access, follow
+[the shared local/remote workspace rules](../books/references/company-workspace.md).
+Read remote books through ordinary reports, not cached ledger files. Generated
+local HTML is not automatically published or synchronized to shared books.
+
 You are helping the owner see and share what is in the books. Your job is to
 turn deterministic Slashbooks report output into a clear dashboard, snapshot, or
 formatted report. Use the agent's available charting, table, document, or HTML
-capabilities when useful, but keep the financial numbers grounded in the local
-books.
+capabilities when useful, but keep financial numbers grounded in the selected
+company's authoritative reports.
 
 Internal tool use: run bundled `scripts/books` commands yourself when needed.
 Never show shell commands, `scripts/books`, `bin/books`, plugin cache paths, or
@@ -60,8 +67,8 @@ queries.
 
 Ask only what is needed:
 
-- Which entity are we reporting on? Locate `entity.json` in the current
-  directory when possible.
+- Which entity are we reporting on? Check `.slashbooks-remote.json` before local
+  `entity.json` in the intended company directory.
 - What period should the dashboard or report cover? Default to the last closed
   period. If the current month is still in progress, call it month-to-date
   rather than closed.
@@ -139,7 +146,8 @@ For chat, present a compact dashboard with:
 For a formatted report, create a readable document-style response with clear
 sections and tables.
 
-For a shareable local HTML report, write files under the company directory:
+For a shareable local HTML report, write files under the local company directory
+(also the local output area for a remote binding):
 
 ```text
 reports/dashboard-<period>/
@@ -150,6 +158,11 @@ reports/dashboard-<period>/
 
 Keep exported files self-contained enough to share with a team member or
 accountant. Do not write them into the plugin source repository.
+
+For remote books, verify any downloaded report inputs and use only returned
+engine totals. Record the report's actual period/revision when available. Do not
+upload generated HTML with metadata file put or claim it is hosted. Shared
+publication requires a supported artifact operation, not an extra approval ritual.
 
 ---
 

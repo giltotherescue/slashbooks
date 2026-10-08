@@ -14,6 +14,10 @@ JsonObject = dict[str, Any]
 Transport = Callable[[str, str, Mapping[str, str], float], tuple[int, str]]
 
 MONEY_QUANT = Decimal("0.01")
+# Ordinary historical downloads can exceed the hosted pilot's small intake cap.
+MAX_TRANSACTION_PAGES = 1000
+MAX_TRANSACTIONS = 100_000
+MAX_CURSOR_LENGTH = 4096
 
 
 class BankSyncError(RuntimeError):
@@ -49,15 +53,9 @@ class BankSyncClient:
     ) -> list[JsonObject]:
         """Fetch all transactions for the given account, following pagination cursors to exhaustion.
 
-        The BankSync API cursor field name is not confirmed against the live API; we therefore
-        check the response envelope for the following shapes (first non-empty/non-null wins):
-          - top-level "nextCursor"
-          - top-level "next_cursor"
-          - top-level "cursor"
-          - nested "pagination" -> "nextCursor"
-          - nested "meta" -> "nextCursor"
-        An unchanged cursor (same value as the one just sent) is treated as exhausted to guard
-        against an infinite loop from a misbehaving server.
+        Accept BankSync's meta.hasMore/meta.cursor envelope and legacy cursor
+        envelopes. Invalid or unbounded pagination raises rather than returning
+        a partial download. Date filters are preserved on every request.
         """
         path = (
             f"/v1/banks/{parse.quote(bank_id, safe='')}"
@@ -65,8 +63,9 @@ class BankSyncClient:
         )
         all_transactions: list[JsonObject] = []
         current_cursor: str | None = None
+        seen_cursors: set[str] = set()
 
-        while True:
+        for _ in range(MAX_TRANSACTION_PAGES):
             query: dict[str, Any] = {
                 "from": from_date,
                 "to": to_date,
@@ -75,19 +74,22 @@ class BankSyncClient:
                 query["cursor"] = current_cursor
 
             envelope = self._get_envelope(path, query=query)
-            page_data = envelope.get("data", [])
-            if isinstance(page_data, list):
-                all_transactions.extend(page_data)
+            page_data = envelope.get("data")
+            if not isinstance(page_data, list) or any(not isinstance(row, dict) for row in page_data):
+                raise BankSyncError("BankSync returned an invalid transaction page")
+            if len(all_transactions) + len(page_data) > MAX_TRANSACTIONS:
+                raise BankSyncError("BankSync transaction download exceeded its row limit")
 
             next_cursor = _extract_next_cursor(envelope)
-
-            # Treat an unchanged cursor as exhausted to avoid an infinite loop.
-            if next_cursor is None or next_cursor == current_cursor:
-                break
-
+            all_transactions.extend(page_data)
+            if next_cursor is None:
+                return all_transactions
+            if next_cursor in seen_cursors:
+                raise BankSyncError("BankSync returned a repeated pagination cursor")
+            seen_cursors.add(next_cursor)
             current_cursor = next_cursor
 
-        return all_transactions
+        raise BankSyncError("BankSync transaction download exceeded its page limit")
 
     def get_balance(self, bank_id: str, account_id: str) -> JsonObject:
         path = (
@@ -427,27 +429,44 @@ def _money_decimal(value: Any) -> Decimal:
 
 
 def _extract_next_cursor(envelope: JsonObject) -> str | None:
-    """Extract the next-page cursor from a response envelope.
-
-    Checks the following shapes in priority order (first non-empty string wins):
-      1. envelope["nextCursor"]
-      2. envelope["next_cursor"]
-      3. envelope["cursor"]
-      4. envelope["pagination"]["nextCursor"]
-      5. envelope["meta"]["nextCursor"]
-    Returns None when no valid cursor is found.
-    """
-    for key in ("nextCursor", "next_cursor", "cursor"):
-        value = envelope.get(key)
-        if value and isinstance(value, str):
-            return value
+    """Validate pagination, retaining legacy cursor precedence when no flag exists."""
+    containers = [envelope]
     for nested_key in ("pagination", "meta"):
-        nested = envelope.get(nested_key)
-        if isinstance(nested, dict):
-            value = nested.get("nextCursor")
-            if value and isinstance(value, str):
-                return value
-    return None
+        if nested_key in envelope:
+            nested = envelope[nested_key]
+            if not isinstance(nested, dict):
+                raise BankSyncError("BankSync returned invalid pagination metadata")
+            containers.append(nested)
+    legacy_cursors: list[str] = []
+    extra_cursors: list[str] = []
+    flags: list[bool] = []
+    for container in containers:
+        for key in ("hasMore", "has_more"):
+            if key in container:
+                flag = container[key]
+                if type(flag) is not bool:
+                    raise BankSyncError("BankSync returned an invalid pagination continuation flag")
+                flags.append(flag)
+        for key in ("nextCursor", "next_cursor", "cursor"):
+            value = container.get(key)
+            if value is None or value == "":
+                continue
+            if (not isinstance(value, str) or not value.strip()
+                    or len(value) > MAX_CURSOR_LENGTH or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+                raise BankSyncError("BankSync returned an invalid pagination cursor")
+            # Keep the original top-level / nested nextCursor precedence.
+            target = legacy_cursors if container is envelope or key == "nextCursor" else extra_cursors
+            target.append(value)
+    cursors = legacy_cursors + extra_cursors
+    if flags and any(flag != flags[0] for flag in flags):
+        raise BankSyncError("BankSync returned conflicting pagination continuation flags")
+    if flags and not flags[0]:
+        return None
+    if flags and not cursors:
+        raise BankSyncError("BankSync indicated more pages without a pagination cursor")
+    if flags and len(set(cursors)) > 1:
+        raise BankSyncError("BankSync returned conflicting pagination cursors")
+    return cursors[0] if cursors else None
 
 
 def _loads_json(text: str, *, status: int) -> Any:
