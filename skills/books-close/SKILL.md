@@ -210,7 +210,7 @@ existing authorized hosted workflow: Financials > Publish statement > Publish
 and lock. Its API is `POST /api/v1/companies/{id}/publications` with `from`, `to`,
 `summary`, and `expected_books_revision` from the reviewed current company state,
 plus an `Idempotency-Key`. This is the `period.publish` server operation, not a
-generic command envelope. The current `books hosted command` does **not** support
+generic command envelope. The current `books cloud command` does **not** support
 `period.publish`; do not invent a CLI subcommand or send it through `/commands`.
 If no authorized publication workflow is available, report that limitation and
 leave the period open. Do not request broader credentials or bypass permissions.

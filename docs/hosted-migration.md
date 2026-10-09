@@ -42,7 +42,7 @@ VERIFY="$WORK/verify"
 mkdir -m 700 "$VERIFY"
 CONFIG="$VERIFY/.slashbooks-remote.json"
 
-books hosted migration export --entity-dir "$SOURCE" --output "$WORK/company.zip"
+books cloud migration export --entity-dir "$SOURCE" --output "$WORK/company.zip"
 ```
 
 Export is offline: it captures a coherent SQLite snapshot, inventories supported
@@ -63,10 +63,10 @@ company key securely as `BOOKS_API_TOKEN` through the environment or a secret
 manager, not chat, command arguments, source files, or documentation.
 
 ```sh
-books hosted configure --endpoint "$HOSTED_ORIGIN" --company="$COMPANY_ID" --entity "$VERIFY" --tokenref env:BOOKS_API_TOKEN
-books hosted --config "$CONFIG" status
-books hosted --config "$CONFIG" context
-books hosted file list --entity "$VERIFY"
+books cloud configure --endpoint "$HOSTED_ORIGIN" --company="$COMPANY_ID" --entity "$VERIFY" --tokenref env:BOOKS_API_TOKEN
+books cloud --config "$CONFIG" status
+books cloud --config "$CONFIG" context
+books cloud file list --entity "$VERIFY"
 ```
 
 Use a trusted HTTPS origin. `--allow-localhost` is only for explicitly authorized
@@ -81,7 +81,7 @@ remote verification, not permission to switch the working agent or resume writes
 ## 4. Import Once With a Business Explanation
 
 ```sh
-books hosted --config "$CONFIG" --timeout 180 migration import --bundle "$WORK/company.zip" --explanation "Move the approved existing company history into its authorized empty hosted workspace for shared bookkeeping."
+books cloud --config "$CONFIG" --timeout 180 migration import --bundle "$WORK/company.zip" --explanation "Move the approved existing company history into its authorized empty hosted workspace for shared bookkeeping."
 ```
 
 Use a specific, truthful explanation of the approved move, without credentials.
@@ -103,11 +103,11 @@ Use the returned command ID and the source manifest's report period. Set
 `COMMAND_ID`, `FROM`, and `TO` from that private evidence, not guesses.
 
 ```sh
-books hosted --config "$CONFIG" command-result "$COMMAND_ID"
-books hosted --config "$CONFIG" entries --all
-books hosted --config "$CONFIG" proposals --all
-books hosted --config "$CONFIG" history --all
-books hosted --config "$CONFIG" evidence --all
+books cloud --config "$CONFIG" command-result "$COMMAND_ID"
+books cloud --config "$CONFIG" entries --all
+books cloud --config "$CONFIG" proposals --all
+books cloud --config "$CONFIG" history --all
+books cloud --config "$CONFIG" evidence --all
 books report pnl --entity "$VERIFY" --from "$FROM" --to "$TO" --format json
 books report balance-sheet --entity "$VERIFY" --as-of "$TO" --format json
 books report trial-balance --entity "$VERIFY" --as-of "$TO" --format json
@@ -120,7 +120,7 @@ books report general-ledger --entity "$VERIFY" --from "$FROM" --to "$TO" --forma
 - Compare all four reports for the same period using canonical JSON fingerprints,
   not screenshots or rounded totals. Ordinary `books report` must use the
   verification binding, not silently read the original local ledger.
-- Check shared `entity.json`, business profile, and context through hosted file
+- Check shared `entity.json`, business profile, and context through cloud file
   access. Download each registered document through the authenticated evidence
   download route, `GET /api/v1/companies/:company/evidence/:id/download`, and compare
   size and SHA-256 to its manifest entry. Evidence listings must retain
@@ -146,7 +146,7 @@ identity. Do not edit the receipt or frozen bundle, change the explanation,
 generate a fresh key, or select another company to bypass a conflict.
 
 ```sh
-books hosted --config "$CONFIG" --timeout 180 retry --receipt "$RECEIPT"
+books cloud --config "$CONFIG" --timeout 180 retry --receipt "$RECEIPT"
 ```
 
 Set `RECEIPT` to the exact retained path. A pending receipt resubmits the same

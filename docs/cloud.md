@@ -29,15 +29,17 @@ cloud company. A folder without that file uses local books, exactly as before.
 
 ## Connect a folder to cloud books
 
-An accountant opens the company on slashbooks.co, then **Agent setup**, and gives
-the connection message to the agent. The agent then runs:
+An accountant or firm staff member asks the agent to connect, and the agent runs:
 
 ```sh
-books hosted login --company <company-id> --entity <folder>
+books cloud login
 ```
 
 The command prints a sign-in link and a code. The user opens the link, checks
-the company name and code, and chooses **Allow access**. The agent never sees a
+the code, chooses the company, and chooses **Allow access**. The CLI then links
+the folder `~/Documents/Slashbooks/online-<id hash>` and prints its path. To use
+a known company or folder, pass `--company <company-id>` (from **Agent setup** on
+slashbooks.co) or `--entity <folder>`. The agent never sees a
 password or key. The credential is stored in an owner-only file in
 `~/.config/slashbooks/agents/`, outside the company folder. `--endpoint`
 defaults to `https://slashbooks.co`; pass it only for another server.
@@ -50,9 +52,9 @@ folder linked to one company is never relinked to a different company.
 Cloud books keep the business profile, configuration and notes on the server:
 
 ```sh
-books hosted file list --entity <folder>
-books hosted file get business-profile.md --output <folder>/scratch/business-profile.md --entity <folder>
-books hosted file put business-profile.md --file <folder>/scratch/business-profile.md --entity <folder>
+books cloud file list --entity <folder>
+books cloud file get business-profile.md --output <folder>/scratch/business-profile.md --entity <folder>
+books cloud file put business-profile.md --file <folder>/scratch/business-profile.md --entity <folder>
 ```
 
 `file put` uses the company revision recorded by `file get`. If another change
@@ -75,7 +77,7 @@ If the result of a write is uncertain, retry it with the same receipt, which
 reuses the original request and idempotency key:
 
 ```sh
-books hosted retry --receipt <folder>/.slashbooks-remote-receipts/<receipt>.json
+books cloud retry --receipt <folder>/.slashbooks-remote-receipts/<receipt>.json
 ```
 
 Do not rerun the command with a new key. After a version conflict, read the

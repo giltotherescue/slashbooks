@@ -52,14 +52,15 @@ CLOUD_ENDPOINT = "https://slashbooks.co"
 
 
 def add_parser(subparsers: Any) -> None:
-    parser = subparsers.add_parser("hosted", help="Use the company-scoped hosted API")
+    # "hosted" stays an alias so existing connections, prompts and scripts keep working.
+    parser = subparsers.add_parser("cloud", aliases=["hosted"], help="Connect to and use Slashbooks Cloud books")
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/slashbooks/hosted.json")
     parser.add_argument("--timeout", type=float, default=30.0, help="Request timeout in seconds; no automatic retries")
     commands = parser.add_subparsers(dest="hosted_command", required=True)
     login = commands.add_parser("login", help="Connect online books with browser approval; no API key needed")
     login.add_argument("--endpoint", default=CLOUD_ENDPOINT, help=f"Slashbooks Cloud server (default {CLOUD_ENDPOINT})")
-    login.add_argument("--company", required=True)
-    login.add_argument("--entity", type=Path, required=True)
+    login.add_argument("--company", help="Company ID; omit it to choose the company in the browser")
+    login.add_argument("--entity", type=Path, help="Folder for the connection; default ~/Documents/Slashbooks/online-<id hash>")
     login.add_argument("--allow-localhost", action="store_true")
     login.add_argument("--reauthorize", action="store_true", help="Explicitly reconnect the same company after access expires or is revoked")
     configure = commands.add_parser("configure", help="Save endpoint/company, without contacting the server")

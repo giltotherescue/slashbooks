@@ -50,7 +50,7 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
 
 def command_spec(argv: list[str]) -> dict[str, Any]:
     args, levels, path = parse_command(argv)
-    if path[0] in {"hosted", "remote", "files"}:
+    if path[0] in {"cloud", "hosted", "remote", "files"}:
         raise ContractError("Transport management is not an engine command.")
     entity = [name for name in ("entity", "entity_path") if hasattr(args, name)]
     if path[0] in {"entity", "demo"}:

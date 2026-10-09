@@ -715,6 +715,12 @@ class CloudEndpointDefaultTest(unittest.TestCase):
                                     "--company", "company", "--entity", "/tmp/books"])
         self.assertEqual(custom.endpoint, "https://books.example.com")
 
+    def test_cloud_is_the_command_and_hosted_stays_an_alias(self) -> None:
+        parser = cli.build_parser()
+        for name in ("cloud", "hosted"):
+            args = parser.parse_args([name, "login"])
+            self.assertEqual((args.command, args.hosted_command, args.company), (name, "login", None))
+
 
 if __name__ == "__main__":
     unittest.main()

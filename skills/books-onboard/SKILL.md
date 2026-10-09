@@ -98,12 +98,12 @@ whether they work with an accountant who uses Slashbooks Cloud. If not,
 recommend local books; they can move later.
 
 If the user chooses the cloud:
-- An accountant or firm staff member opens the company on slashbooks.co, then
-  **Agent setup**, and pastes the connection message here.
-- A business owner asks their accountant for that connection message, or for an
+- An accountant or firm staff member can connect now: follow the books-cloud
+  skill to start browser sign-in. They choose the company in the browser. A
+  connection message from **Agent setup** on slashbooks.co also works.
+- A business owner asks their accountant to connect the books, or for an
   invitation if they do not have an account yet.
-- With the connection details, follow the books-hosted skill to sign in, then
-  continue onboarding against the cloud books.
+- After sign-in, continue onboarding against the cloud books.
 - Never create local replacement books while the user waits for cloud access.
 
 ---
@@ -136,7 +136,7 @@ review: defer detailed exceptions to bookkeeping.
 
 Before asking business questions, read the existing profile, company context,
 and available transaction sources. For online books, read
-`scripts/books hosted --config <entity-path>/.slashbooks-remote.json integrations`
+`scripts/books cloud --config <entity-path>/.slashbooks-remote.json integrations`
 using the bound company's actual config path (see the workspace rules).
 This is the same company connection summary used by the website. It is
 read-only; do not start a connection, sync, import, or change permissions merely
@@ -222,7 +222,7 @@ small related batch at a time, omitting facts already established:
 12. **Commingling rules** — Are there any personal expenses that sometimes appear on
    business accounts, or vice versa? How should those be handled?
 13. **Entity directory** — For cloud books, use the existing connection or the
-    books-hosted default folder silently; do not ask for another path. For local
+    books-cloud default folder silently; do not ask for another path. For local
     books, which company directory should this workflow use?
     For remote books this is a binding and intake/output directory, not the
     authoritative ledger. Configure the confirmed remote company using the shared

@@ -54,9 +54,11 @@ def _post(endpoint: str, suffix: str, body: dict, timeout: float = 30) -> dict:
         raise hosted.HostedError("AUTH_RESPONSE_INVALID", "Agent sign-in returned an invalid response. Start again.") from exc
 
 
-def _tokens(value: dict, company: str) -> dict:
-    if value.get("error") or value.get("token_type") != "Bearer" or value.get("company_id") != company:
+def _tokens(value: dict, company: str | None) -> dict:
+    granted = value.get("company_id")
+    if value.get("error") or value.get("token_type") != "Bearer" or not isinstance(granted, str) or (company is not None and granted != company):
         raise hosted.HostedError("AUTH_REQUIRED", "Company access was declined, expired or revoked. Start browser sign-in again.")
+    hosted._segment(granted)
     expires = value.get("expires_in")
     if type(expires) is not int or not 60 <= expires <= 3600:
         raise hosted.HostedError("AUTH_RESPONSE_INVALID", "Invalid agent credential expiry.")
@@ -64,7 +66,28 @@ def _tokens(value: dict, company: str) -> dict:
     refresh = hosted._token(value.get("refresh_token"))
     if len(token) > 512 or len(refresh) > 512 or len(refresh) < 32:
         raise hosted.HostedError("AUTH_RESPONSE_INVALID", "Invalid agent credentials.")
-    return {"token": token, "refresh_token": refresh, "expires_at": time.time() + expires}
+    return {"token": token, "refresh_token": refresh, "expires_at": time.time() + expires, "company": granted}
+
+
+def default_folder(company: str) -> Path:
+    """The standard folder for a company's cloud connection when none is chosen."""
+    return Path.home() / "Documents/Slashbooks" / f"online-{hashlib.sha256(company.encode()).hexdigest()[:12]}"
+
+
+def _check_folder(directory: Path, endpoint: str, company: str | None, reauthorize: bool) -> Path:
+    from . import remote
+
+    config_path = directory / remote.CONFIG_NAME
+    remote._no_symlinks(config_path)
+    if remote._binding(directory) is not None:
+        existing_path = remote._binding(directory)
+        existing = hosted._read_json(existing_path, private=True)
+        if not reauthorize or existing_path != config_path or existing.get("endpoint") != endpoint or existing.get("company") != company:
+            raise hosted.HostedError("ALREADY_CONFIGURED", "This folder already has a company connection. Use a separate folder, or explicitly reauthorize the same company.",
+                                     entity=str(directory))
+    if any((directory / name).exists() for name in ("ledger.sqlite", "entity.json")):
+        raise hosted.HostedError("LOCAL_BOOKS_PRESENT", "Use a separate folder for online books. Existing local books were not changed.")
+    return config_path
 
 
 @contextmanager
@@ -110,18 +133,16 @@ def login(args) -> int:
     from . import remote
 
     endpoint = hosted._endpoint(args.endpoint, args.allow_localhost)
-    hosted._segment(args.company)
-    directory = remote._absolute(args.entity)
-    config_path = directory / remote.CONFIG_NAME
-    remote._no_symlinks(config_path)
-    if remote._binding(directory) is not None:
-        existing_path = remote._binding(directory)
-        existing = hosted._read_json(existing_path, private=True)
-        if not args.reauthorize or existing_path != config_path or existing.get("endpoint") != endpoint or existing.get("company") != args.company:
-            raise hosted.HostedError("ALREADY_CONFIGURED", "This folder already has a company connection. Use a separate folder, or explicitly reauthorize the same company.")
-    if any((directory / name).exists() for name in ("ledger.sqlite", "entity.json")):
-        raise hosted.HostedError("LOCAL_BOOKS_PRESENT", "Use a separate folder for online books. Existing local books were not changed.")
-    started = _post(endpoint, "/oauth/device/authorize", {"client_id": CLIENT, "company_id": args.company})
+    # Without a company, the user chooses it in the browser. Without a folder,
+    # the standard folder for the chosen company is used after approval.
+    if args.company is not None:
+        hosted._segment(args.company)
+    if args.reauthorize and (args.company is None or args.entity is None):
+        raise hosted.HostedError("INVALID_INPUT", "Reauthorize needs the company and the folder of the existing connection.")
+    directory = remote._absolute(args.entity) if args.entity is not None else None
+    if directory is not None:
+        _check_folder(directory, endpoint, args.company, args.reauthorize)
+    started = _post(endpoint, "/oauth/device/authorize", {"client_id": CLIENT, **({"company_id": args.company} if args.company else {})})
     if started.get("error"):
         raise hosted.HostedError("AUTH_UNAVAILABLE", "Browser sign-in is unavailable for this company. Check the company connection details.")
     device = hosted._token(started.get("device_code"))
@@ -140,7 +161,8 @@ def login(args) -> int:
     if type(interval) is not int or not 5 <= interval <= 60 or type(duration) is not int or not 1 <= duration <= 600:
         raise hosted.HostedError("AUTH_RESPONSE_INVALID", "Invalid sign-in lifetime.")
     print(json.dumps({"event": "agent_sign_in", "verification_url": link, "confirmation_code": code,
-                      "message": "Open this link yourself, confirm the code and company, and allow access. No key is needed."}), flush=True)
+                      "message": ("Open this link yourself, confirm the code and company, and allow access. No key is needed." if args.company else
+                                  "Open this link yourself, confirm the code, choose the company, and allow access. No key is needed.")}), flush=True)
     deadline = time.monotonic() + duration
     while time.monotonic() < deadline:
         time.sleep(interval)
@@ -151,13 +173,18 @@ def login(args) -> int:
             interval = min(interval + 5, 60)
             continue
         credentials = _tokens(result, args.company)
-        stored = {"endpoint": endpoint, "company": args.company, **credentials}
+        company = credentials.pop("company")
+        if directory is None:
+            directory = default_folder(company)
+            _check_folder(directory, endpoint, company, False)
+        config_path = directory / remote.CONFIG_NAME
+        stored = {"endpoint": endpoint, "company": company, **credentials}
         # A separate owner-only credential file keeps secrets outside company documents.
-        identity = hashlib.sha256((endpoint + "\n" + args.company).encode()).hexdigest()[:24]
+        identity = hashlib.sha256((endpoint + "\n" + company).encode()).hexdigest()[:24]
         credential_path = Path.home() / ".config/slashbooks/agents" / identity / (uuid.uuid4().hex + ".json")
         with _lock(credential_path):
             hosted._write_private(credential_path, stored, exclusive=True)
-        config = {"endpoint": endpoint, "company": args.company, "allow_localhost": args.allow_localhost,
+        config = {"endpoint": endpoint, "company": company, "allow_localhost": args.allow_localhost,
                   "credential_file": str(credential_path)}
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         with remote._revision_lock(config_path):
@@ -167,13 +194,14 @@ def login(args) -> int:
                 raise hosted.HostedError("ALREADY_CONFIGURED", "Another session connected this folder. Use a separate folder.")
             if config_path.exists():
                 current = hosted._read_json(config_path, private=True)
-                if current.get("endpoint") != endpoint or current.get("company") != args.company:
+                if current.get("endpoint") != endpoint or current.get("company") != company:
                     raise hosted.HostedError("ALREADY_CONFIGURED", "The folder connection changed. No binding was replaced.")
             # Prove authenticated identity before publishing the company binding.
             status = hosted.HostedClient(config).request("")
-            if status.get("id") != args.company:
+            if status.get("id") != company:
                 raise hosted.HostedError("AUTH_RESPONSE_INVALID", "Could not confirm the selected company.")
             hosted._write_private(config_path, config)
-        print(json.dumps({"connected": True, "company_name": status.get("name"), "message": "Online books connected. Existing local books were not changed."}), flush=True)
+        print(json.dumps({"connected": True, "company_name": status.get("name"), "entity": str(directory),
+                          "message": "Online books connected. Existing local books were not changed."}), flush=True)
         return 0
     raise hosted.HostedError("AUTH_EXPIRED", "Agent sign-in expired. Ask the agent to start again.")
