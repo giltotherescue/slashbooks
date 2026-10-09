@@ -13,7 +13,8 @@ follow [Semantic Versioning](https://semver.org/).
   free, open source and unchanged.
 - `books hosted login` connects a company folder to Slashbooks Cloud with
   browser approval. The agent never receives a password or key, and the
-  endpoint defaults to `https://slashbooks.co`.
+  endpoint defaults to `https://slashbooks.co`. Without a company ID, the user
+  chooses the company in the browser, and the CLI uses a standard folder for it.
 - Ordinary `books` commands and skills run against cloud books when the folder
   is linked. A cloud error never falls back to local books.
 - Shared business profile, configuration and notes with revision-checked

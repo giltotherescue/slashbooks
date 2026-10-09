@@ -29,15 +29,17 @@ cloud company. A folder without that file uses local books, exactly as before.
 
 ## Connect a folder to cloud books
 
-An accountant opens the company on slashbooks.co, then **Agent setup**, and gives
-the connection message to the agent. The agent then runs:
+An accountant or firm staff member asks the agent to connect, and the agent runs:
 
 ```sh
-books hosted login --company <company-id> --entity <folder>
+books hosted login
 ```
 
 The command prints a sign-in link and a code. The user opens the link, checks
-the company name and code, and chooses **Allow access**. The agent never sees a
+the code, chooses the company, and chooses **Allow access**. The CLI then links
+the folder `~/Documents/Slashbooks/online-<id hash>` and prints its path. To use
+a known company or folder, pass `--company <company-id>` (from **Agent setup** on
+slashbooks.co) or `--entity <folder>`. The agent never sees a
 password or key. The credential is stored in an owner-only file in
 `~/.config/slashbooks/agents/`, outside the company folder. `--endpoint`
 defaults to `https://slashbooks.co`; pass it only for another server.

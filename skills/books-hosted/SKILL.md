@@ -30,10 +30,11 @@ preview internals, command wrappers, or absolute paths unless requested. Familia
 accounting terms are fine when they clarify the work; software internals are not.
 Do technical checks quietly. Never turn a normal first-time setup into an error.
 
-If no working folder was specified, choose an absolute folder under
-`~/Documents/Slashbooks/online-<first-12-hex-of-SHA256-company-id>/` yourself.
-The hash is only a local collision-resistant folder label, never a displayed
-company identity or an access decision. Keep it outside plugin/source code.
+If no working folder was specified, omit `--entity`. The CLI then uses
+`~/Documents/Slashbooks/online-<first-12-hex-of-SHA256-company-id>/` and reports
+the folder as `entity` in its result; use that folder afterwards. The hash is only
+a local collision-resistant folder label, never a displayed company identity or
+an access decision. Keep any folder outside plugin/source code.
 Check for an existing connection or local books before using it. Reuse only a
 connection for the exact same endpoint and company. Never overwrite a different
 connection or local books; ask a simple question only if a conflict, filesystem
@@ -60,8 +61,10 @@ For a real failure, say what could not be completed and what to do next. Never
 hide an incomplete connection or falsely say an operation succeeded. Keep
 detailed diagnostics in tool output, not a routine accountant-facing summary.
 
-Ask for the trusted HTTPS endpoint, company ID and intended directory only when
-unknown and necessary; prefer the default working folder above. For a new connection, use browser sign-in below. No existing API key is
+Do not ask for a company ID. With connection details, pass their company and
+endpoint. Without them, omit `--company`: the user chooses the company in the
+browser while approving. Only accountants and firm staff can connect an agent;
+a business owner without that access needs their accountant. For a new connection, use browser sign-in below. No existing API key is
 required. Show the user the returned verification link and confirmation code
 while the login command is waiting; the user must open it and approve themselves.
 Never approve on their behalf, request tokens in chat, print configuration or
@@ -71,6 +74,7 @@ environment secrets, or use browser cookies as agent credentials.
 Pass the endpoint from the connection details when it is a different server.
 
 ```sh
+scripts/books hosted login
 scripts/books hosted login --endpoint <trusted-https-origin> --company=<company-id> --entity <entity-path>
 scripts/books hosted file list --entity <entity-path>
 ```

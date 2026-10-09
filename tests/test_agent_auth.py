@@ -79,6 +79,50 @@ class AgentAuthTests(unittest.TestCase):
         post.assert_not_called()
         self.assertEqual(ledger.read_bytes(), b"synthetic local ledger")
 
+    def test_login_without_company_lets_the_browser_choose_and_uses_the_standard_folder(self):
+        self.args.company, self.args.entity = None, None
+        tokens = {**self.tokens, "company_id": "chosen-company"}
+        output = StringIO()
+        with patch.object(agent_auth, "_post", side_effect=[self.start, tokens]) as post, patch.object(agent_auth.time, "sleep"), \
+                patch.object(Path, "home", return_value=self.home), \
+                patch.object(hosted.HostedClient, "request", return_value={"id": "chosen-company", "name": "Chosen Co"}), redirect_stdout(output):
+            self.assertEqual(agent_auth.login(self.args), 0)
+        self.assertNotIn("company_id", post.call_args_list[0].args[2])
+        with patch.object(Path, "home", return_value=self.home):
+            folder = agent_auth.default_folder("chosen-company")
+        self.assertTrue(folder.is_relative_to(self.home / "Documents/Slashbooks"))
+        config = json.loads((folder / remote.CONFIG_NAME).read_text())
+        self.assertEqual(config["company"], "chosen-company")
+        result = json.loads(output.getvalue().splitlines()[-1])
+        self.assertEqual(result["entity"], str(folder))
+        self.assertIn("choose the company", output.getvalue())
+
+    def test_login_without_company_refuses_an_existing_standard_folder_before_saving_credentials(self):
+        self.args.company, self.args.entity = None, None
+        tokens = {**self.tokens, "company_id": "chosen-company"}
+        with patch.object(Path, "home", return_value=self.home):
+            folder = agent_auth.default_folder("chosen-company")
+        folder.mkdir(parents=True)
+        (folder / "entity.json").write_text("{}")
+        with patch.object(agent_auth, "_post", side_effect=[self.start, tokens]), patch.object(agent_auth.time, "sleep"), \
+                patch.object(Path, "home", return_value=self.home), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):
+            agent_auth.login(self.args)
+        self.assertFalse((self.home / ".config/slashbooks/agents").exists())
+        self.assertFalse((folder / remote.CONFIG_NAME).exists())
+
+    def test_named_company_must_match_the_granted_company(self):
+        tokens = {**self.tokens, "company_id": "another-company"}
+        with patch.object(agent_auth, "_post", side_effect=[self.start, tokens]), patch.object(agent_auth.time, "sleep"), \
+                patch.object(Path, "home", return_value=self.home), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):
+            agent_auth.login(self.args)
+        self.assertFalse(self.directory.exists())
+
+    def test_reauthorize_needs_company_and_folder(self):
+        self.args.reauthorize, self.args.company = True, None
+        with patch.object(agent_auth, "_post") as post, self.assertRaises(hosted.HostedError):
+            agent_auth.login(self.args)
+        post.assert_not_called()
+
     def test_refresh_is_saved_once_and_cannot_be_forwarded_to_another_company(self):
         path = self.home / "credentials.json"
         config = {"endpoint": self.args.endpoint + "/api/v1", "company": "company", "credential_file": str(path)}

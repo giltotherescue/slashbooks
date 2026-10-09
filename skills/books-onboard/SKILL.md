@@ -98,12 +98,12 @@ whether they work with an accountant who uses Slashbooks Cloud. If not,
 recommend local books; they can move later.
 
 If the user chooses the cloud:
-- An accountant or firm staff member opens the company on slashbooks.co, then
-  **Agent setup**, and pastes the connection message here.
-- A business owner asks their accountant for that connection message, or for an
+- An accountant or firm staff member can connect now: follow the books-hosted
+  skill to start browser sign-in. They choose the company in the browser. A
+  connection message from **Agent setup** on slashbooks.co also works.
+- A business owner asks their accountant to connect the books, or for an
   invitation if they do not have an account yet.
-- With the connection details, follow the books-hosted skill to sign in, then
-  continue onboarding against the cloud books.
+- After sign-in, continue onboarding against the cloud books.
 - Never create local replacement books while the user waits for cloud access.
 
 ---
