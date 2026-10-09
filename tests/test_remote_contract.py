@@ -46,7 +46,7 @@ class RemoteContractTests(unittest.TestCase):
                     argv.extend([action.option_strings[0], value(action)])
             if selector:
                 for name, child in selector.choices.items():
-                    if not path and name in {"hosted", "remote", "files"}:
+                    if not path and name in {"cloud", "hosted", "remote", "files"}:
                         continue
                     walk(child, argv + [name], path + (name,))
                 return

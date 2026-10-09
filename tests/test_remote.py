@@ -213,7 +213,7 @@ class RemoteTests(unittest.TestCase):
             selectors = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
             if selectors:
                 for name, child in selectors[0].choices.items():
-                    if route or name != "hosted":
+                    if route or name not in {"cloud", "hosted"}:
                         walk(child, route + [name], actions)
                 return
             argv = list(route)

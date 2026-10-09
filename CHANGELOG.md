@@ -11,7 +11,7 @@ follow [Semantic Versioning](https://semver.org/).
 - One plugin now works with local books or with Slashbooks Cloud. Onboarding
   explains both choices and asks where the books should live. Local books stay
   free, open source and unchanged.
-- `books hosted login` connects a company folder to Slashbooks Cloud with
+- `books cloud login` connects a company folder to Slashbooks Cloud with
   browser approval. The agent never receives a password or key, and the
   endpoint defaults to `https://slashbooks.co`. Without a company ID, the user
   chooses the company in the browser, and the CLI uses a standard folder for it.
@@ -19,8 +19,8 @@ follow [Semantic Versioning](https://semver.org/).
   is linked. A cloud error never falls back to local books.
 - Shared business profile, configuration and notes with revision-checked
   updates, saved receipts and safe retries for uncertain cloud writes.
-- `books hosted migration export` creates a verified private snapshot of local
-  books, and `books hosted migration import` adopts it into an empty cloud
+- `books cloud migration export` creates a verified private snapshot of local
+  books, and `books cloud migration import` adopts it into an empty cloud
   company without changing the local books.
 - `docs/cloud.md` describes local and cloud books, and
   `docs/hosted-migration.md` describes the move to the cloud.

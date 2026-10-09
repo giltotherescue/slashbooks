@@ -1,12 +1,12 @@
 ---
-name: books-hosted
+name: books-cloud
 description: >
-  Connect a local company directory to shared remote Slashbooks books, access
-  versioned company context, or troubleshoot remote access and handoff. After
-  setup, use the existing books skills and ordinary CLI commands for bookkeeping.
+  Connect to Slashbooks Cloud books shared with an accountant or firm: browser
+  sign-in, company choice, shared company context, and troubleshooting of cloud
+  access. After setup, use the existing books skills and ordinary CLI commands.
 ---
 
-# Shared Company Books
+# Slashbooks Cloud Books
 
 ## Company workspace
 
@@ -74,9 +74,9 @@ environment secrets, or use browser cookies as agent credentials.
 Pass the endpoint from the connection details when it is a different server.
 
 ```sh
-scripts/books hosted login
-scripts/books hosted login --endpoint <trusted-https-origin> --company=<company-id> --entity <entity-path>
-scripts/books hosted file list --entity <entity-path>
+scripts/books cloud login
+scripts/books cloud login --endpoint <trusted-https-origin> --company=<company-id> --entity <entity-path>
+scripts/books cloud file list --entity <entity-path>
 ```
 
 Confirm company identity through authenticated reads before writing. The binding
@@ -86,9 +86,9 @@ installed CLI lacks this contract, report the version/integration gap, not a
 requirement to use a reduced hosted workflow or create local replacement books.
 
 An existing binding should be checked first. Reauthorize the same company with
-`hosted login --reauthorize` only after the user explicitly agrees to reconnect.
+`cloud login --reauthorize` only after the user explicitly agrees to reconnect.
 Never replace a different company's binding. Manual `BOOKS_API_TOKEN` and
-`hosted configure` remain for explicitly requested custom integrations, not the
+`cloud configure` remain for explicitly requested custom integrations, not the
 normal onboarding flow.
 
 ## Continue normal bookkeeping
@@ -103,7 +103,7 @@ Route to `/books-onboard`, `/books-checkup`, `/books-close`, `/books-review`,
 `/books-export` as appropriate. Ordinary commands use the bound remote workspace.
 Get current profile/config before relying on company context; history alone does
 not replace approved facts and learned rules.
-Before onboarding questions, read `hosted integrations` with the bound config
+Before onboarding questions, read `cloud integrations` with the bound config
 and inspect existing sources/transactions. The website's bank connection is
 authoritative for connection setup: Mercury via BankSync is not the same as a
 direct Mercury API integration. No direct Mercury key does not mean the bank is

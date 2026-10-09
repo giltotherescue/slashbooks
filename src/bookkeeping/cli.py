@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(command_argv)
 
     try:
-        if args.command == "hosted":
+        if args.command in {"cloud", "hosted"}:
             return hosted_module.run(args)
         remote_result = remote_module.maybe_run(command_argv, args)
         if remote_result is not None:

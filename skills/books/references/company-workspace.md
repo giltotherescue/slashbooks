@@ -18,7 +18,7 @@ commands and judgment rules, not a smaller hosted workflow.
    replacement. Missing local `entity.json` alone is not permission to initialize
    a bound company's books.
 
-For new remote setup, follow the books-hosted skill's browser sign-in and safe
+For new remote setup, follow the books-cloud skill's browser sign-in and safe
 default working folder. Do not ask owners/accountants for keys or filesystem
 paths. Keep transport and file checks out of normal conversation. A profile
 confirmed absent from the allowed-file listing means business onboarding is
@@ -27,8 +27,8 @@ needed, not that sign-in failed or the ledger is empty.
 For an explicitly requested custom integration, with `BOOKS_API_TOKEN` already supplied securely:
 
 ```sh
-scripts/books hosted configure --endpoint <trusted-https-origin> --company=<company-id> --entity <entity-path>
-scripts/books hosted file list --entity <entity-path>
+scripts/books cloud configure --endpoint <trusted-https-origin> --company=<company-id> --entity <entity-path>
+scripts/books cloud file list --entity <entity-path>
 ```
 
 This binds the directory; it does not provision the server, migrate existing
@@ -85,9 +85,9 @@ copies of profile, config, learned context or ledger files may be stale. Retriev
 current context with the file API instead of reading those copies as authority:
 
 ```sh
-scripts/books hosted file list --entity <entity-path>
-scripts/books hosted file get business-profile.md --output <private-scratch>/business-profile.md --entity <entity-path>
-scripts/books hosted file get entity.json --output <private-scratch>/entity.json --entity <entity-path>
+scripts/books cloud file list --entity <entity-path>
+scripts/books cloud file get business-profile.md --output <private-scratch>/business-profile.md --entity <entity-path>
+scripts/books cloud file get entity.json --output <private-scratch>/entity.json --entity <entity-path>
 ```
 
 Choose a private scratch location such as `<entity-path>/scratch/remote-context/`,
@@ -100,7 +100,7 @@ and CLI-managed tracking in `.slashbooks-remote-downloads/`. Then use the same
 scratch path, company and credential so put can reuse that baseline:
 
 ```sh
-scripts/books hosted file put business-profile.md --file <private-scratch>/business-profile.md --entity <entity-path>
+scripts/books cloud file put business-profile.md --file <private-scratch>/business-profile.md --entity <entity-path>
 ```
 
 **Compare-and-swap is required:** put carries the company revision from get, not
@@ -163,7 +163,7 @@ must deliver generated artifacts to usable local destinations; verify the files
 exist and match the requested company/period before offering links. A server
 temporary path, artifact listing or successful command alone is not delivery.
 
-Fetch an existing allowed artifact with `hosted file get <relative-path> --output
+Fetch an existing allowed artifact with `cloud file get <relative-path> --output
 <local-path> --entity <entity-path>` when supported; never use file put to fake a
 generated financial artifact. If download is unavailable, report that gap.
 Agent-authored HTML/dashboard files can remain local, based on returned reports;
