@@ -95,11 +95,16 @@ account, date, signed amount, debit, credit, and currency; `proposed_entries` an
 preview. Only `--apply` writes accounting entries.
 
 Cutover must equal snapshot `from`. A cash-basis Trial Balance ending the prior
-day is preferred; a cash-basis Balance Sheet is the supported fallback. Only
+day is preferred; a cash-basis Balance Sheet is the supported fallback. When both opening reports are valid, their independently constructed
+asset/liability opening lines must agree; otherwise `opening_ready` is false and
+application is blocked until a fresh snapshot reconciles them. Only
 asset and liability balances carry individually. Prior-period income, expenses
 and equity are consolidated into `Equity:Opening-Balances`. USD and a valid
 Chart of Accounts are mandatory. Applying an already-imported opening is
-idempotent and does not replace previously posted opening balances.
+idempotent and does not replace previously posted opening balances. An active
+QuickBooks opening at another date, a changed opening, or existing ordinary
+accounting entries on or before cutover blocks new application; use the explicit
+correction/adoption workflow rather than stacking opening balances.
 
 ## Classification proposals
 

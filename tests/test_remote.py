@@ -250,7 +250,7 @@ class RemoteTests(unittest.TestCase):
                 if action.dest == "output":
                     value = self.directory / ("_".join(route) + ".json")
                 if value is None:
-                    value = action.choices[0] if action.choices else "1" if action.type is int else "2026-01-01" if "date" in action.dest else "synthetic"
+                    value = action.choices[0] if action.choices else "1" if action.type is int else "2026-01-01" if "date" in action.dest or action.dest == "cutover" else "synthetic"
                 if action.option_strings:
                     argv.extend([action.option_strings[0], str(value)])
                 else:

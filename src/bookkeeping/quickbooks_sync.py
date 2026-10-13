@@ -211,6 +211,7 @@ def parse_reference(path: Path, expected: str):
             raise ValueError("A single Total monetary column is required")
         model = qb.ProfitAndLoss(company, period, basis) if expected == "profit_and_loss" else qb.BalanceSheet(company, as_of, basis)
         row_class = qb.PLRow if expected == "profit_and_loss" else qb.BSRow
+        seen_accounts = set()
         for row in _walk(report.get("Rows", {})):
             header = _cells(row.get("Header", {}))
             if header and header[0].get("value"):
@@ -219,7 +220,12 @@ def parse_reference(path: Path, expected: str):
             if cells:
                 if len(cells) != 2:
                     raise ValueError("Report row does not match Total columns")
-                name = payload.get("account_names", {}).get(str(cells[0].get("id", "")), cells[0].get("value", ""))
+                account_id = str(cells[0].get("id", ""))
+                if account_id:
+                    if account_id in seen_accounts:
+                        raise ValueError("Duplicate account in financial report")
+                    seen_accounts.add(account_id)
+                name = payload.get("account_names", {}).get(account_id, cells[0].get("value", ""))
                 model.rows.append(row_class(name, _money(cells[1].get("value")), "leaf"))
             summary = _cells(row.get("Summary", {}))
             if summary:
@@ -232,6 +238,7 @@ def parse_reference(path: Path, expected: str):
                 or [str(c.get("ColTitle", "")).lower() for c in columns[1:]] != ["debit", "credit"]):
             raise ValueError("Trial Balance requires Debit and Credit money columns")
         model = qb.TrialBalance(company, as_of, basis)
+        seen_accounts = set()
         for row in _walk(report.get("Rows", {})):
             cells = _cells(row)
             if not cells:
@@ -241,6 +248,9 @@ def parse_reference(path: Path, expected: str):
             account_id = str(cells[0].get("id", ""))
             if account_id not in names:
                 raise ValueError("Trial Balance account ID is missing from Chart of Accounts")
+            if account_id in seen_accounts:
+                raise ValueError("Duplicate account in Trial Balance")
+            seen_accounts.add(account_id)
             name = names[account_id]
             debit, credit = _money(cells[1].get("value")), _money(cells[2].get("value"))
             if debit < 0 or credit < 0 or (debit and credit):
@@ -305,6 +315,24 @@ def fingerprint(path: Path):
     basis = payload.get("basis")
     period = payload.get("period")
     return qb.FileFingerprint(str(path), kind, payload.get("company"), period, basis, count, parse_error=error)
+
+
+def _opening_consistency(entity, reference: Path, cutover: date) -> str | None:
+    """Compare exact validated opening lines when both source reports exist."""
+    slots = {slot.report_key: slot for slot in qb.inventory(reference, cutover=cutover).slots}
+    if not all(slots.get(key) and slots[key].status == "present"
+               for key in ("trial_balance", "balance_sheet")):
+        return None
+    trial = qb.import_opening(entity, reference, cutover, source="trial-balance", _preview=True)
+    balance = qb.import_opening(entity, reference, cutover, source="balance-sheet", _preview=True)
+    if not trial.success or not balance.success:
+        return "Opening reports cannot produce independently validated opening lines"
+    def canonical(result):
+        return sorted((p["account"], Decimal(p["amount"]), p["currency"])
+                      for p in result.proposed_postings if Decimal(p["amount"]) != 0)
+    if canonical(trial) != canonical(balance):
+        return "Opening Trial Balance and Balance Sheet disagree on asset/liability balances; refresh the source snapshot before applying"
+    return None
 
 
 def sync_import(entity, input_path: Path) -> dict:
@@ -455,6 +483,12 @@ def sync_import(entity, input_path: Path) -> dict:
                          "OpeningTrialBalance", "OpeningBalanceSheet"):
             coverage.setdefault(required, {"status": "missing", "reason": "Report was not included in snapshot"})
         relative_reference = str(Path("sources") / "quickbooks" / snapshot_id / "reference")
+        opening_supported = snapshot["accounting_basis"] == "Cash" and currency == "USD" and not multi
+        consistency_error = _opening_consistency(entity, reference, start) if opening_supported else None
+        if consistency_error:
+            warnings.append(consistency_error)
+        opening_ready = opening_supported and not consistency_error and any(
+            coverage[key]["status"] == "ready" for key in ("OpeningTrialBalance", "OpeningBalanceSheet"))
         result = {"success": True, "snapshot_id": snapshot_id, "reference_path": relative_reference,
                   "reference_complete": all(coverage[k]["status"] == "ready" for k in (
                       "ProfitAndLoss", "BalanceSheet", "TrialBalance", "GeneralLedger",
@@ -463,7 +497,7 @@ def sync_import(entity, input_path: Path) -> dict:
                                       and currency == "USD" and not multi,
                   "comparison_supported": snapshot["accounting_basis"] == "Cash" and currency == "USD" and not multi,
                   "counts": counts, "coverage": coverage, "warnings": sorted(set(warnings)),
-                  "opening_supported": snapshot["accounting_basis"] == "Cash" and currency == "USD" and not multi,
+                  "opening_supported": opening_supported, "opening_ready": opening_ready,
                   "accounts": accounts, "rule_suggestions": suggest_rules(snapshot, accounts)}
         (stage / "manifest.json").write_bytes(_json_bytes(result))
         if root.exists():
@@ -486,6 +520,8 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
     result = sync_import(entity, input_path)
     if not result["opening_supported"]:
         raise ValueError("Only cash-basis single-currency USD opening balances are supported")
+    if not result["opening_ready"]:
+        raise ValueError("Opening source reports are missing, invalid, or inconsistent; refresh and review source warnings")
     snapshot = _load(input_path)
     if date.fromisoformat(snapshot["from"]) != cutover:
         raise ValueError("Opening cutover must match snapshot start date")
@@ -515,18 +551,21 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
                 (p.account, -p.amount, p.currency) for p in original.postings) == sorted(
                 (p.account, p.amount, p.currency) for p in entry.postings):
             reversed_ids.add(original_id)
-    active = [entry for entry in entries if entry.date == cutover
-              and dict(entry.meta).get("import-source") == "quickbooks-opening"
+    active = [entry for entry in entries if dict(entry.meta).get("import-source") == "quickbooks-opening"
               and entry.source_id not in reversed_ids]
     if active:
         expected = sorted((p["account"], Decimal(p["amount"]), p["currency"])
                           for p in opening.proposed_postings)
         actual = sorted((p.account, p.amount, p.currency) for entry in active for p in entry.postings)
-        if actual != expected:
+        if actual != expected or any(entry.date != cutover for entry in active):
             opening.success = False
             opening.errors.append("Existing QuickBooks opening differs from this snapshot; use the explicit correction workflow before applying new opening balances")
             return dict(result, applied=False, opening=asdict(opening))
         return dict(result, applied=apply, already_applied=True, opening=asdict(opening))
+    if any(entry.date <= cutover and entry.source_id not in reversed_ids for entry in entries):
+        opening.success = False
+        opening.errors.append("Existing accounting entries on or before cutover would overlap opening balances; use the explicit correction/adoption workflow")
+        return dict(result, applied=False, opening=asdict(opening))
     if apply:
         opening = qb.import_opening(entity, reference, cutover, source=source)
     return dict(result, applied=apply and opening.success, opening=asdict(opening))
@@ -619,11 +658,17 @@ def sync_rules(entity, input_path: Path, *, apply: bool = False) -> dict:
               "warnings": ["Rules are proposals for owner review; no transaction classifications or automatic posting are changed."]}
     if apply and not unsupported:
         target = entity.path / "learned-context" / "quickbooks-rule-proposals" / (digest + ".json")
+        if not target.parent.resolve().is_relative_to(entity.path.resolve()):
+            raise ValueError("QuickBooks rule proposal directory escapes entity")
         target.parent.mkdir(parents=True, exist_ok=True)
+        expected_bytes = _json_bytes(result)
+        if target.is_symlink() or (target.exists() and (
+                not target.is_file() or target.read_bytes() != expected_bytes)):
+            raise ValueError("QuickBooks rule proposal evidence is corrupted")
         if not target.exists():
             with target.open("xb") as stream:
-                stream.write(_json_bytes(result))
-        result.update(applied=True, proposals_path=str(target))
+                stream.write(expected_bytes)
+        result.update(applied=True, proposals_path=str(target.relative_to(entity.path)))
     return result
 
 

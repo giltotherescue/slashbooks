@@ -80,10 +80,68 @@ class QuickBooksSyncTests(unittest.TestCase):
         self.assertEqual(second["opening"]["entries_written"], 0)
         self.snapshot["reports"]["OpeningTrialBalance"]["Rows"]["Row"][0]["ColData"][1]["value"] = "200.00"
         self.snapshot["reports"]["OpeningTrialBalance"]["Rows"]["Row"][1]["ColData"][2]["value"] = "200.00"
+        for row in self.snapshot["reports"]["OpeningBalanceSheet"]["Rows"]["Row"]:
+            row["Rows"]["Row"][0]["ColData"][1]["value"] = "200.00"
         changed = sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), apply=True)
         self.assertFalse(changed["applied"])
         self.assertFalse(changed["opening"]["success"])
         self.assertEqual(changed["opening"]["entries_written"], 0)
+
+    def test_different_cutover_cannot_add_second_opening(self):
+        first = sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), apply=True)
+        self.assertTrue(first["applied"])
+        before = (self.entity_path / "ledger.sqlite").read_bytes()
+        self.snapshot["from"], self.snapshot["to"] = "2026-02-01", "2026-02-28"
+        for name, report in self.snapshot["reports"].items():
+            report["Header"]["EndPeriod"] = "2026-01-31" if name.startswith("Opening") else "2026-02-28"
+            report["Header"]["StartPeriod"] = "2026-01-01" if name.startswith("Opening") else "2026-02-01"
+        self.snapshot["reports"]["GeneralLedger"]["Rows"]["Row"][0]["Rows"]["Row"][0]["ColData"][0]["value"] = "2026-02-15"
+        self.snapshot["entities"]["Purchase"][0]["TxnDate"] = "2026-02-15"
+        second = sync.sync_opening(self.entity, self.write(), date(2026, 2, 1), apply=True)
+        self.assertFalse(second["applied"])
+        self.assertFalse(second["opening"]["success"])
+        self.assertEqual(before, (self.entity_path / "ledger.sqlite").read_bytes())
+
+    def test_existing_ordinary_ledger_entries_block_overlapping_opening(self):
+        from bookkeeping.ledger.model import Entry, Posting
+        from bookkeeping.ledger.store import LedgerStore
+        store = LedgerStore(self.entity_path / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.insert_entries([Entry(date=date(2025, 12, 31), narration="Synthetic existing books",
+                meta=(("source-id", "synthetic-existing"),), postings=(
+                    Posting("Assets:Bank:Checking", Decimal("100.00"), "USD"),
+                    Posting("Equity:Opening-Balances", Decimal("-100.00"), "USD")))], conn)
+        result = sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), apply=True)
+        self.assertFalse(result["applied"])
+        self.assertIn("overlap", result["opening"]["errors"][-1])
+        self.assertEqual(len(store.load_entries()), 1)
+
+    def test_duplicate_balanced_trial_balance_rows_are_blocked(self):
+        report = self.snapshot["reports"]["OpeningTrialBalance"]
+        report["Rows"]["Row"].extend(copy.deepcopy(report["Rows"]["Row"]))
+        result = sync.sync_import(self.entity, self.write())
+        self.assertEqual(result["coverage"]["OpeningTrialBalance"]["status"], "blocked")
+        self.assertIn("Duplicate", result["coverage"]["OpeningTrialBalance"]["reason"])
+        preview = sync.sync_opening(self.entity, self.write(), date(2026, 1, 1))
+        self.assertEqual(preview["opening"]["proposed_postings"][0]["amount"], "100.00")
+
+    def test_duplicate_financial_report_account_ids_block_normalization(self):
+        report = self.snapshot["reports"]["ProfitAndLoss"]
+        report["Rows"]["Row"].extend(copy.deepcopy(report["Rows"]["Row"]))
+        result = sync.sync_import(self.entity, self.write())
+        self.assertEqual(result["coverage"]["ProfitAndLoss"]["status"], "blocked")
+
+    def test_opening_trial_balance_and_balance_sheet_mismatch_blocks_application(self):
+        report = self.snapshot["reports"]["OpeningBalanceSheet"]
+        report["Rows"]["Row"][0]["Rows"]["Row"][0]["ColData"][1]["value"] = "200.00"
+        result = sync.sync_import(self.entity, self.write())
+        self.assertTrue(result["reference_complete"])
+        self.assertFalse(result["opening_ready"])
+        self.assertTrue(any("disagree" in warning for warning in result["warnings"]))
+        before = (self.entity_path / "ledger.sqlite").read_bytes()
+        with self.assertRaisesRegex(ValueError, "inconsistent"):
+            sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), apply=True)
+        self.assertEqual(before, (self.entity_path / "ledger.sqlite").read_bytes())
 
     def test_missing_and_mismatched_report_is_explicitly_blocked(self):
         del self.snapshot["reports"]["TrialBalance"]
@@ -193,6 +251,15 @@ class QuickBooksSyncTests(unittest.TestCase):
         result = sync.sync_rules(self.entity, rules, apply=True)
         self.assertFalse(result["success"])
         self.assertFalse(result["applied"])
+
+    def test_corrupted_rule_proposal_evidence_cannot_report_applied(self):
+        rules = self.root / "rules.csv"
+        rules.write_text("Name,Field,Operator,Value,Account,Priority,Money direction\nSoftware,description,contains,Example,Expenses:Software,1,out\n")
+        result = sync.sync_rules(self.entity, rules, apply=True)
+        target = self.entity_path / result["proposals_path"]
+        target.write_text('{"corrupted":true}')
+        with self.assertRaisesRegex(ValueError, "corrupted"):
+            sync.sync_rules(self.entity, rules, apply=True)
 
     def test_remote_contract_classifies_input_and_mutation(self):
         imported = command_spec(["qb", "sync-import", "@input/snapshot.json", "--entity", "@entity"])
