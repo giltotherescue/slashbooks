@@ -4,6 +4,19 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-10-12
+
+### Fixed
+
+- Cloud onboarding now states the shared-company checkpoint rule directly:
+  save confirmed facts, decisions, open questions and next steps, then read
+  them back before asking another batch. Personal or project AI memory does
+  not save answers to the company's books. A failed or uncertain save must be
+  resolved before continuing.
+- Verified shared saves and read-back with Claude Sonnet onboarding. Claude
+  Haiku still failed this workflow in testing; these instructions do not
+  establish reliable onboarding with that model.
+
 ## [0.4.0] - 2026-10-08
 
 ### Added

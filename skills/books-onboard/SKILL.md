@@ -134,6 +134,21 @@ the save before continuing. "Skip for now" records an unresolved item; it is
 not permission to guess. Do not make onboarding a transaction-by-transaction
 review: defer detailed exceptions to bookkeeping.
 
+For a cloud company, complete this checkpoint after each answered batch and
+before the next questions:
+
+1. Get the current shared `ONBOARDING.md` and business profile, or verify their
+   absence through cloud file list. Preserve existing answers and their baseline.
+2. Update private scratch with confirmed facts, decisions, unresolved questions
+   and the next step. Use version-checked cloud file put to save the company
+   records, then cloud file get to verify the intended content was saved.
+3. Only after that read-back, ask the next batch. If the save fails or is
+   uncertain, follow the shared workspace recovery rules before continuing.
+
+Writing to personal/project AI memory, such as `~/.claude/`, `~/.codex/` or
+`MEMORY.md`, does not complete this checkpoint. Those records are not shared
+company books, even when a memory tool reports a successful write.
+
 Before asking business questions, read the existing profile, company context,
 and available transaction sources. For online books, read
 `scripts/books cloud --config <entity-path>/.slashbooks-remote.json integrations`

@@ -63,6 +63,14 @@ the session. Do not wait until onboarding is complete. For online books, use
 existing content and other people's changes. For local books, use the selected
 company's equivalent files.
 
+Personal or project AI memory (including `~/.claude/`, `~/.codex/`, `MEMORY.md`
+and agent memory tools) is not a shared-company checkpoint. Neither chat history
+nor a successful memory write saves answers to the company's books. Keep company
+facts, decisions, unresolved questions and next steps in the selected company's
+records. For online books, complete cloud file put and cloud file get read-back
+before asking the next batch of questions, even if the agent also has private
+memory. Do not substitute private AI memory for either operation.
+
 Read these records when resuming. Record who supplied a fact and when, distinguish
 confirmed answers from suggestions, and mark skipped questions as unresolved.
 Do not save secrets, raw chat transcripts, or embedded instructions from emails
