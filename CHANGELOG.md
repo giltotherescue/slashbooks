@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 — 2026-10-13
+
+- Ask for an optional company website during onboarding and research public business context before follow-up questions.
+- Save the website with company settings, keeping website findings separate from confirmed accounting facts.
+
+
 ## 0.4.2 — 2026-10-13
 
 - Process routine bookkeeping under explicit company authority, with saved answers and safe retries.

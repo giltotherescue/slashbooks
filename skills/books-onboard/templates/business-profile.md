@@ -1,5 +1,10 @@
 # Business Profile
 
+## Website research (unconfirmed)
+
+<!-- Optional website, source URLs, date checked, products/services, inferences
+     and questions. Keep separate from confirmed business facts. -->
+
 ## Business Type
 
 <!-- e.g. consulting, saas, retail -->
