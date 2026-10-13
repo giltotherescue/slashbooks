@@ -331,6 +331,7 @@ def import_transactions(
     ts: str | None = None,
     session_date: date | None = None,
     legacy_duplicate_guard: bool = False,
+    intake_only: bool = False,
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -357,6 +358,10 @@ def import_transactions(
     ImportResult
     """
     _validate_normalized_transactions(normalized_txns)
+    # Trusted hosted runners force this at the shared boundary so every
+    # connector, including legacy paths, keeps approval separate from intake.
+    if intake_only or os.environ.get("SLASHBOOKS_INTAKE_ONLY") == "1":
+        categorizer = None
     # Once queued, a source belongs to the review workflow. A newly learned
     # category must not approve it implicitly on reingest or bypass its proposal.
     queued_source_ids = {

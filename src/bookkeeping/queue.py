@@ -1372,8 +1372,13 @@ def confirm(
     item_id: str,
     session_id: str,
     ts: Optional[str] = None,
+    *,
+    learn: bool = True,
 ) -> dict:
-    """Confirm a queued item: write ledger entry + update learned context.
+    """Confirm a queued item; learn from human reviews by default.
+
+    Trusted routine operators pass learn=False: one-time answers and explicit
+    policy execution do not implicitly approve future transactions.
 
     Returns the updated item dict.
     """
@@ -1416,7 +1421,7 @@ def confirm(
     # Related-entity policies remain explicit for every item.  Learning this
     # counterparty as a normal category could silently bypass the policy and
     # turn later migration activity into income or an intercompany balance.
-    if item.get("proposal_type") != "related-entity":
+    if learn and item.get("proposal_type") != "related-entity":
         cp_key = str(item.get("counterparty") or _counterparty_key(
             item.get("description", ""), ""
         ))

@@ -32,6 +32,7 @@ from bookkeeping.connectors.stripe import (
     summarize_account as summarize_stripe_account,
 )
 from bookkeeping import compare as compare_module
+from bookkeeping import cashflow as cashflow_module
 from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
 from bookkeeping import hosted as hosted_module
@@ -66,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
             return entity_module.run(args)
         if args.command == "ingest":
             return ingest_module.run(args)
+        if args.command == "forecast":
+            return cashflow_module.run(args)
         if args.command == "ledger":
             return ledger_migrate_module.run(args)
         if args.command == "qb":
@@ -235,6 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     ledger_migrate_module.add_parser(subcommands)
     quickbooks_module.add_parser(subcommands)
     statements_module.add_parser(subcommands)
+    cashflow_module.add_parser(subcommands)
     reconcile_module.add_parser(subcommands)
     compare_module.add_parser(subcommands)
     queue_module.add_parser(subcommands)

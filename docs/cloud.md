@@ -72,6 +72,31 @@ import commands.
 
 ## Errors and retries
 
+Cloud book requests use a 180-second network timeout by default, including
+ordinary linked commands such as `books ingest`. Set `SLASHBOOKS_REMOTE_TIMEOUT_SECONDS` to a
+finite positive number to change that wait for cloud requests. Explicit
+`books cloud --timeout <seconds> ...` takes precedence over the environment.
+Provider connector timeouts and local commands are unchanged.
+This controls blocking network operations, not a total wall-clock command deadline.
+
+```sh
+SLASHBOOKS_REMOTE_TIMEOUT_SECONDS=300 books ingest <source.json> --entity <folder>
+books cloud --timeout 300 retry --receipt <folder>/.slashbooks-remote-receipts/<receipt>.json
+```
+
+A longer client wait does not extend the server's work limits. The hosted
+service currently allows 120 seconds for an engine command, a 150-second
+internal compute request, a 60-second compute upload and a 10-second admission
+wait when compute is busy. Transfer size limits also still apply. If a large
+import exceeds a server limit, preserve and recover its receipt before deciding
+whether to split the remaining input into smaller batches. Do not assume the
+first batch failed or resubmit it with a new key.
+
+There is no automatic chunking or batch-size flag: prepare separate normalized
+JSON input files, keep each transaction's original stable `id`, and run
+`books ingest` for each file after verifying the preceding result. Keep related
+source records together where their import workflow requires it.
+
 The CLI saves a receipt for each cloud write in `<folder>/.slashbooks-remote-receipts/`.
 If the result of a write is uncertain, retry it with the same receipt, which
 reuses the original request and idempotency key:

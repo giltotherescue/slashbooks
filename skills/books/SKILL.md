@@ -81,6 +81,7 @@ Read its shared context before deciding whether onboarding is needed.
 - If the user needs to download or prepare QuickBooks Online source reports, route to `books-qbo-fetch`.
 - If the user is replacing QuickBooks or validating historical books, route to `books-backtest`.
 - If the user asks a financial question, route to `books-ask`.
+- If the user asks about future cash timing or a cash forecast, route to `books-forecast`.
 - If the user needs exports, tax files, or files for an accountant, route to `books-export`.
 - If the user wants to report feedback about Slashbooks or prepare a handoff for
   its developers, route to `books-feedback`.
