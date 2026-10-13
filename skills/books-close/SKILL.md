@@ -113,11 +113,21 @@ For each CSV source (if the owner has a new export file ready), parse it:
 scripts/books connector csv parse --entity <entity-path> <file>
 ```
 
-For Stripe, Mercury or a custom source, preserve its existing provider-specific
+For Mercury or a custom source, preserve its existing provider-specific
 download workflow and normalized output, then ingest against the same entity.
 A local key is not required when the company's server provider is configured.
 Custom helpers remain local. Missing provider setup is a concrete configuration
 gap; do not change execution mode to recover from a failed provider request.
+
+For managed Stripe accounting, follow [the Stripe accounting workflow](../../docs/stripe-accounting.md).
+Use its captured evidence and saved human-approved exact revenue mapping, not
+generic net-deposit categorization. Eligible rules need no repeated row approval;
+missing price/product/scoped metadata or unsupported allocations remain held.
+Payouts clear processor-to-transit and bank-to-transit, never another income
+entry. An existing bank payout booked as income requires normal audited
+correction before processor detail can post. Preserve original source identities;
+do not fabricate replacements or repeat a reversal. A raw local Stripe download
+alone does not provide all accounting evidence.
 
 Report how many transactions were pulled per source in plain English (e.g., "Pulled
 47 transactions from checking, 12 from the business card."). Do not show raw

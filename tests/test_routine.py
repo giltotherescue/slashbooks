@@ -128,6 +128,16 @@ class RoutineTest(unittest.TestCase):
         self.policy['rules'] = []
         self.assertEqual('needs_category', routine_plan(self.entity, self.policy)['unresolved'][0]['reason'])
 
+    def test_managed_stripe_bank_credit_is_suspicion_hold_not_income_or_payout_identity(self):
+        self.stage(dict(txn('stripe'), description='sTrIpE payout', amount='12.00'), txn('safe'))
+        self.policy['rules'].append(dict(self.policy['rules'][0], id='stripe-rule', counterparty_key='STRIPE PAYOUT', category='Income:Services'))
+        before = self.files()
+        plan = routine_plan(self.entity, self.policy, stripe_accounting_managed=True)
+        self.assertEqual(['safe'], [row['source_id'] for row in plan['actions']])
+        self.assertEqual('suspected_processor_payout', plan['unresolved'][0]['reason'])
+        self.assertEqual(before, self.files())
+        self.assertEqual(2, len(routine_plan(self.entity, self.policy)['actions']))
+
     def test_frozen_decision_applies_only_exact_group_and_captured_values(self):
         rows = [txn('one'), txn('two')]
         self.stage(*rows)

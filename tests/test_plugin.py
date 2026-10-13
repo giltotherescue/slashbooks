@@ -40,6 +40,7 @@ SKILL_NAMES = [
     "books-backtest",
     "books-ask",
     "books-export",
+    "books-forecast",
 ]
 
 # Phrases that must appear in every skill body (security / data-handling rules)

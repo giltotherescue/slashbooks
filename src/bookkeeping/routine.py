@@ -249,7 +249,7 @@ def _authority(policy, decisions, pending, opens, posted):
 
 
 def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_through=None,
-                 limit=50, after_source_id=''):
+                 limit=50, after_source_id='', stripe_accounting_managed=False):
     """Plan a lexical batch without writes. The host supplies trusted authority.
 
     Only explicit rules or exact captured decisions permit actions. The host
@@ -293,6 +293,9 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 raise ValueError('unsupported_currency_or_zero_amount')
             mapped = _mapping(entity, txn, opens)
             detail['ledger_account'] = mapped
+            if (stripe_accounting_managed and mapped.startswith('Assets:Bank:') and _money(source['amount']) > 0
+                    and re.search(r'\bstripe\b', detail['description'] + ' ' + source['counterparty_key'], re.IGNORECASE)):
+                raise ValueError('suspected_processor_payout')
             if opens[mapped].date > date.fromisoformat(source['date']) or (opens[mapped].currencies and 'USD' not in opens[mapped].currencies):
                 raise ValueError('source_catalog_conflict')
             if sid in owned:
@@ -330,7 +333,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
             reason = str(exc) if str(exc) in {'pending', 'closed_period', 'unsupported_currency_or_zero_amount',
                 'mapping_required', 'mapping_conflict', 'source_account_type_unknown', 'source_account_role_conflict',
                 'source_catalog_conflict', 'category_catalog_conflict', 'existing_review', 'policy_disabled',
-                'stale_decision', 'mapping_changed', 'ambiguous_authority', 'human_hold'} else 'invalid_source'
+                'stale_decision', 'mapping_changed', 'ambiguous_authority', 'human_hold', 'suspected_processor_payout'} else 'invalid_source'
         detail['reason'] = reason
         result['unresolved'].append(detail)
     return result

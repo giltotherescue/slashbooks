@@ -27,10 +27,12 @@ A bank feed sees a Stripe payout as one net deposit: gross sales minus fees minu
 refunds, collapsed into a single number. A direct connector pulls from the source
 itself, so it can reconstruct the detail the feed throws away.
 
-The Stripe connector is the clearest example. Pulling from Stripe directly
-captures gross revenue and Stripe fees separately, instead of only the net amount
-that lands in your bank. That matters, because fees are a deductible expense and
-gross revenue is what your real margins are built on.
+Stripe balance transactions retain gross, fees and net amounts. The raw local
+download preserves this evidence; it does not itself post separate revenue and
+fee journals. The [Stripe accounting workflow](stripe-accounting.md) uses complete
+linked evidence and explicitly approved revenue rules to post those components
+through processor clearing. Bank payout arrivals clear transit rather than
+counting as additional revenue.
 
 So feeds give you breadth, and direct connectors give you fidelity for the
 platforms that matter most.

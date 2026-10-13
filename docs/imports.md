@@ -37,6 +37,10 @@ The account command is a quick sanity check that the key points at the expected
 Stripe account. The download command saves Stripe balance transactions and
 payouts for the period. For Stripe Connect platform keys, pass
 `--stripe-account <acct_...>` before the subcommand.
+This raw downloader is not the gross-sales accounting workflow: it lacks the
+complete invoice/Checkout and revenue-mapping evidence. Use
+[Stripe accounting](stripe-accounting.md) for approved gross/fee/refund postings
+and payout-to-bank clearing; do not post processor payouts as new income.
 
 For Mercury, set `MERCURY_API_KEY` in the company `.env` file, then run:
 
