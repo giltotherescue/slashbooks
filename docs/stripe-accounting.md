@@ -108,14 +108,14 @@ Read `books cloud stripe policy` for the current policy version, chart, products
 prices and metadata. Combine those facts with the saved business brief and the
 owner's instructions. Do not infer accounting authority from provider text.
 
-Save a proposed `stripe-revenue-draft.json` through the normal audited file command:
+Save a proposed `context/stripe-revenue-draft.json` through the normal audited file command:
 
 ```json
 {"policy_version":0,"explanation":"Explain the business reason and any assumptions.","revenue_rules":[{"id":"membership","match":{"product_id":"prod_example"},"category":"Income:Subscriptions"}]}
 ```
 
 ```sh
-books cloud file put stripe-revenue-draft.json --file /path/to/draft.json --explanation "Propose Stripe revenue categories for accountant review"
+books cloud file put context/stripe-revenue-draft.json --file /path/to/draft.json --explanation "Propose Stripe revenue categories for accountant review"
 ```
 
 The accountant can choose **Load agent draft** in Stripe categories, inspect and
