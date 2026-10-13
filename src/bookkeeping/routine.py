@@ -135,15 +135,39 @@ def _category(category, opens):
 
 
 def routine_context(entity):
-    """Bounded trusted option data from the staged worklist and catalog."""
+    """Bounded option data from current mappings, staged and posted evidence.
+
+    Historical options keep approved policies editable after a source posts.
+    Inferred display types never replace raw source-type checks in the planner.
+    """
     pending, opens, posted, _, _ = _state(entity)
     accounts, counterparties = {}, {}
-    for txn in pending.values():
+    mappings = entity.entity_config.get('bank_account_mappings') or {}
+    for sid, account in mappings.items():
+        if not isinstance(sid, str) or not sid or not isinstance(account, str) or account not in opens:
+            continue
+        if account == 'Liabilities:CreditCard' or account.startswith('Liabilities:CreditCard:'):
+            kind = 'credit_card'
+        elif account.startswith('Assets:Bank:'):
+            kind = 'checking'
+        else:
+            continue
+        accounts[sid] = dict(id=sid, name=sid, ledger_account=account, account_type=kind)
+    store = LedgerStore(default_store_path(entity.path))
+    with store.connection() as conn:
+        payloads = conn.execute("SELECT payload_json FROM source_transactions WHERE status='posted' ORDER BY id").fetchall()
+    historical = []
+    for row in payloads:
+        payload = json.loads(row['payload_json'])
+        if not isinstance(payload, dict):
+            raise ValueError('Invalid stored source evidence.')
+        historical.append(payload)
+    # Current staged descriptors take precedence over historical display labels.
+    for txn in [*historical, *pending.values()]:
         sid = txn.get('accountId')
-        if isinstance(sid, str) and sid:
-            accounts[sid] = dict(id=sid, name=str(txn.get('accountName') or sid),
-                                 ledger_account=(entity.entity_config.get('bank_account_mappings') or {}).get(sid),
-                                 account_type=str(txn.get('accountType') or ''))
+        if isinstance(sid, str) and sid in accounts:
+            accounts[sid].update(name=str(txn.get('accountName') or sid),
+                                 account_type=str(txn.get('accountType') or accounts[sid]['account_type']))
         key = _counterparty_key(str(txn.get('description') or ''), str(txn.get('counterparty') or ''))
         if key:
             counterparties[key] = dict(key=key, label=key)

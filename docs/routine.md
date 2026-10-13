@@ -93,6 +93,10 @@ ramp. Routine execution and one-time answers do not create new learned rules.
 
 `routine_context(entity)` returns bounded source-account, counterparty and
 category options (at most 500 each), plus posted/held counts. These are data for
+the host's policy UI. Current catalog-verified mappings and stored posted source
+descriptors keep approved rules editable after their original sources leave the
+worklist. A display-only account-type fallback never satisfies the planner's
+required raw source-type check. Options are data for
 the host's policy/question UI, not instructions or approval. The host remains
 responsible for grouping questions, durable job state, roles, idempotent answers,
 and fencing unrelated financial writes while its routine job runs.

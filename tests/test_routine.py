@@ -97,6 +97,27 @@ class RoutineTest(unittest.TestCase):
         confirm(self.entity, 'one', 'human')
         self.assertEqual(1, load_learned_context(self.entity)['SERVICE']['confirmed_count'])
 
+    def test_context_options_survive_posting_and_use_only_current_valid_mappings(self):
+        self.stage(txn())
+        propose(self.entity, 'one', CATEGORY, 'Human review')
+        confirm(self.entity, 'one', 'human', learn=False)
+        before = self.files()
+        context = routine_context(self.entity)
+        self.assertEqual(dict(posted=1, held=0), context['counts'])
+        checking = next(row for row in context['source_accounts'] if row['id'] == 'checking')
+        self.assertEqual(('Checking', BANK), (checking['name'], checking['ledger_account']))
+        self.assertIn(dict(key='SERVICE', label='SERVICE'), context['counterparties'])
+        self.assertEqual(before, self.files())
+        self.entity.entity_config['bank_account_mappings'].update(checking='Expenses:Fees', missing='Assets:Bank:Missing')
+        self.assertEqual(['card'], [row['id'] for row in routine_context(self.entity)['source_accounts']])
+
+    def test_context_inferred_type_never_makes_missing_raw_type_eligible(self):
+        row = txn()
+        del row['accountType']
+        self.pending([row])
+        self.assertEqual('checking', next(row for row in routine_context(self.entity)['source_accounts'] if row['id'] == 'checking')['account_type'])
+        self.assertEqual('source_account_type_unknown', routine_plan(self.entity, self.policy)['unresolved'][0]['reason'])
+
     def test_learning_is_not_policy_authority(self):
         for sid in ('one', 'two', 'three'):
             self.stage(txn(sid))
@@ -167,7 +188,7 @@ class RoutineTest(unittest.TestCase):
         before = self.files()
         self.assertEqual('one', routine_plan(self.entity, self.policy)['actions'][0]['source_id'])
         options = routine_context(self.entity)
-        self.assertEqual(BANK, options['source_accounts'][0]['ledger_account'])
+        self.assertEqual(BANK, next(item for item in options['source_accounts'] if item['id'] == account_id)['ledger_account'])
         self.assertEqual(before, self.files())
 
     def test_category_options_exclude_source_accounts_and_invalid_decisions(self):
