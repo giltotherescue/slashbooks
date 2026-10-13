@@ -1,0 +1,490 @@
+{
+  "schema_version": 1,
+  "provider": "quickbooks",
+  "realm_id": "1234567890",
+  "fetched_at": "2026-02-01T12:00:00Z",
+  "from": "2026-01-01",
+  "to": "2026-01-31",
+  "accounting_basis": "Cash",
+  "company_info": {
+    "CompanyName": "Synthetic Example Books",
+    "CurrencyRef": {
+      "value": "USD"
+    }
+  },
+  "preferences": {
+    "CurrencyPrefs": {
+      "MultiCurrencyEnabled": false,
+      "HomeCurrency": {
+        "value": "USD"
+      }
+    }
+  },
+  "accounts": [
+    {
+      "Id": "1",
+      "Name": "Checking",
+      "AccountType": "Bank"
+    },
+    {
+      "Id": "2",
+      "Name": "Opening Equity",
+      "AccountType": "Equity"
+    },
+    {
+      "Id": "3",
+      "Name": "Software",
+      "AccountType": "Expense"
+    }
+  ],
+  "customers": [],
+  "vendors": [],
+  "entities": {
+    "Purchase": [
+      {
+        "Id": "1",
+        "TxnDate": "2026-01-15",
+        "TotalAmt": "20.00",
+        "EntityRef": {
+          "value": "1",
+          "name": "Example Software"
+        },
+        "Line": [
+          {
+            "Amount": "20.00",
+            "DetailType": "AccountBasedExpenseLineDetail",
+            "AccountBasedExpenseLineDetail": {
+              "AccountRef": {
+                "value": "3"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "reports": {
+    "TrialBalance": {
+      "Header": {
+        "ReportName": "TrialBalance",
+        "ReportBasis": "Cash",
+        "StartPeriod": "2026-01-01",
+        "EndPeriod": "2026-01-31",
+        "Currency": "USD"
+      },
+      "Columns": {
+        "Column": [
+          {
+            "ColType": "Account"
+          },
+          {
+            "ColType": "Money",
+            "ColTitle": "Debit"
+          },
+          {
+            "ColType": "Money",
+            "ColTitle": "Credit"
+          }
+        ]
+      },
+      "Rows": {
+        "Row": [
+          {
+            "ColData": [
+              {
+                "value": "Checking",
+                "id": "1"
+              },
+              {
+                "value": "100.00"
+              },
+              {
+                "value": ""
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "value": "Opening Equity",
+                "id": "2"
+              },
+              {
+                "value": ""
+              },
+              {
+                "value": "100.00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "OpeningTrialBalance": {
+      "Header": {
+        "ReportName": "TrialBalance",
+        "ReportBasis": "Cash",
+        "StartPeriod": "2025-01-01",
+        "EndPeriod": "2025-12-31",
+        "Currency": "USD"
+      },
+      "Columns": {
+        "Column": [
+          {
+            "ColType": "Account"
+          },
+          {
+            "ColType": "Money",
+            "ColTitle": "Debit"
+          },
+          {
+            "ColType": "Money",
+            "ColTitle": "Credit"
+          }
+        ]
+      },
+      "Rows": {
+        "Row": [
+          {
+            "ColData": [
+              {
+                "value": "Checking",
+                "id": "1"
+              },
+              {
+                "value": "100.00"
+              },
+              {
+                "value": ""
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "value": "Opening Equity",
+                "id": "2"
+              },
+              {
+                "value": ""
+              },
+              {
+                "value": "100.00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "BalanceSheet": {
+      "Header": {
+        "ReportName": "BalanceSheet",
+        "ReportBasis": "Cash",
+        "StartPeriod": "2026-01-01",
+        "EndPeriod": "2026-01-31",
+        "Currency": "USD"
+      },
+      "Columns": {
+        "Column": [
+          {
+            "ColType": "Account"
+          },
+          {
+            "ColType": "Money",
+            "ColTitle": "Total"
+          }
+        ]
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "value": "ASSETS"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "Checking",
+                      "id": "1"
+                    },
+                    {
+                      "value": "100.00"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "value": "Equity"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "Opening Equity",
+                      "id": "2"
+                    },
+                    {
+                      "value": "100.00"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "OpeningBalanceSheet": {
+      "Header": {
+        "ReportName": "BalanceSheet",
+        "ReportBasis": "Cash",
+        "StartPeriod": "2025-01-01",
+        "EndPeriod": "2025-12-31",
+        "Currency": "USD"
+      },
+      "Columns": {
+        "Column": [
+          {
+            "ColType": "Account"
+          },
+          {
+            "ColType": "Money",
+            "ColTitle": "Total"
+          }
+        ]
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "value": "ASSETS"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "Checking",
+                      "id": "1"
+                    },
+                    {
+                      "value": "100.00"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "value": "Equity"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "Opening Equity",
+                      "id": "2"
+                    },
+                    {
+                      "value": "100.00"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "ProfitAndLoss": {
+      "Header": {
+        "ReportName": "ProfitAndLoss",
+        "ReportBasis": "Cash",
+        "StartPeriod": "2026-01-01",
+        "EndPeriod": "2026-01-31",
+        "Currency": "USD"
+      },
+      "Columns": {
+        "Column": [
+          {
+            "ColType": "Account"
+          },
+          {
+            "ColType": "Money",
+            "ColTitle": "Total"
+          }
+        ]
+      },
+      "Rows": {
+        "Row": [
+          {
+            "ColData": [
+              {
+                "value": "Software",
+                "id": "3"
+              },
+              {
+                "value": "20.00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "GeneralLedger": {
+      "Header": {
+        "ReportName": "GeneralLedger",
+        "ReportBasis": "Cash",
+        "StartPeriod": "2026-01-01",
+        "EndPeriod": "2026-01-31",
+        "Currency": "USD"
+      },
+      "Columns": {
+        "Column": [
+          {
+            "ColType": "tx_date",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColType": "tx_type",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_type"
+              }
+            ]
+          },
+          {
+            "ColType": "doc_num",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "doc_num"
+              }
+            ]
+          },
+          {
+            "ColType": "name",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "name"
+              }
+            ]
+          },
+          {
+            "ColType": "memo",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "memo"
+              }
+            ]
+          },
+          {
+            "ColType": "split_acc",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "split_acc"
+              }
+            ]
+          },
+          {
+            "ColType": "amount",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "amount"
+              }
+            ]
+          },
+          {
+            "ColType": "running_bal",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "running_bal"
+              }
+            ]
+          }
+        ]
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "value": "Checking",
+                  "id": "1"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-15"
+                    },
+                    {
+                      "value": "Expense"
+                    },
+                    {
+                      "value": "1"
+                    },
+                    {
+                      "value": "Example Software"
+                    },
+                    {
+                      "value": "Software subscription"
+                    },
+                    {
+                      "value": "Software"
+                    },
+                    {
+                      "value": "-20.00"
+                    },
+                    {
+                      "value": "80.00"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}
