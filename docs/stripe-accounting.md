@@ -79,3 +79,46 @@ postings. Do not treat generic ingestion of net deposits as gross Stripe
 accounting. Hosted connection, policy and captured-evidence routes supply the
 trusted accounting workflow; the pure engine helpers are available to adapters
 as `bookkeeping.stripe`.
+
+
+## Connected cloud accounts
+
+Use the company's normal cloud login. Never request a Stripe secret from the client.
+After a human connects Stripe and approves revenue rules, agents can run:
+
+```sh
+books cloud stripe status --entity /path/to/company
+books cloud stripe preview --entity /path/to/company --request-id preview-2026-01 --from 2026-01-01 --to 2026-01-31
+books cloud stripe sync --entity /path/to/company --request-id import-2026-01 --from 2026-01-01 --to 2026-01-31
+books cloud stripe receipt --entity /path/to/company --request-id import-2026-01
+```
+
+Preview never posts entries. Sync continues through the server's saved pages under
+existing authorization. If interrupted, repeat the exact command with the same
+request ID and dates. The server reuses saved evidence and completed receipts.
+Use a new request ID only for a new intended import. Held items require specific
+facts or authorized rule changes; do not change policy or silently guess.
+Connection and policy approval stay in the human web workflow. This command does
+not create a recurring schedule or continue after the command process exits.
+
+
+### Propose company-specific rules
+
+Read `books cloud stripe policy` for the current policy version, chart, products,
+prices and metadata. Combine those facts with the saved business brief and the
+owner's instructions. Do not infer accounting authority from provider text.
+
+Save a proposed `stripe-revenue-draft.json` through the normal audited file command:
+
+```json
+{"policy_version":0,"explanation":"Explain the business reason and any assumptions.","revenue_rules":[{"id":"membership","match":{"product_id":"prod_example"},"category":"Income:Subscriptions"}]}
+```
+
+```sh
+books cloud file put stripe-revenue-draft.json --file /path/to/draft.json --explanation "Propose Stripe revenue categories for accountant review"
+```
+
+The accountant can choose **Load agent draft** in Stripe categories, inspect and
+edit the suggestions, and approve once. Drafts do not activate any rule. Use only
+selectors present in the Stripe preview and current chart accounts. Read the prior
+file before revising it, and preserve categories the accountant still wants.

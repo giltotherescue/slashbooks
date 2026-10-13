@@ -277,3 +277,11 @@ completion alone does not establish reconciliation.
 
 If the close is complete, offer a simple next step: "If you want a visual summary
 or shareable report for this period, run `/books-dashboard`."
+
+
+For an OAuth-connected cloud Stripe account, use `scripts/books cloud stripe status`
+and `scripts/books cloud stripe sync --request-id <stable-period-id> --from YYYY-MM-DD --to YYYY-MM-DD`
+from the bound company directory. Continue eligible pages automatically under saved
+rules. After interruption, repeat the same request ID and dates. Inspect held items
+and ask only for missing material facts; do not expand company authority. See
+[Stripe accounting](../../docs/stripe-accounting.md).

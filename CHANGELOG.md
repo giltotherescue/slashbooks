@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2 — 2026-10-13
+
+- Process routine bookkeeping under explicit company authority, with saved answers and safe retries.
+- Add evidence-backed Stripe sales, fees, refunds and payout accounting with exact product, price and metadata rules.
+- Let cloud agents preview and sync OAuth-connected Stripe accounts using stable request IDs and automatic page continuation.
+- Support agent-authored revenue-rule drafts for human approval without expanding agent authority.
+- Add cash forecasts with explicit assumptions and recorded-cash starting balances.
+- Allow longer configurable waits for cloud commands.
+
+
 All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).

@@ -61,6 +61,8 @@ def add_parser(subparsers: Any) -> None:
     commands = parser.add_subparsers(dest="hosted_command", required=True)
     from . import hosted_questions
     hosted_questions.add_parser(commands)
+    from . import hosted_stripe
+    hosted_stripe.add_parser(commands)
     login = commands.add_parser("login", help="Connect online books with browser approval; no API key needed")
     login.add_argument("--endpoint", default=CLOUD_ENDPOINT, help=f"Slashbooks Cloud server (default {CLOUD_ENDPOINT})")
     login.add_argument("--company", help="Company ID; omit it to choose the company in the browser")
@@ -488,6 +490,9 @@ def run(args: argparse.Namespace) -> int:
     try:
         from bookkeeping import remote
 
+        if args.hosted_command == "stripe":
+            from . import hosted_stripe
+            return hosted_stripe.run(args)
         if args.hosted_command == "question":
             from . import hosted_questions
             return hosted_questions.run(args)
