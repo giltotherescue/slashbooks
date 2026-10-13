@@ -13,6 +13,14 @@ Before company discovery or file access, follow
 A `.slashbooks-remote.json` binding takes precedence over local company files;
 use ordinary commands and never fall back to a stale local ledger.
 
+**Cloud checkpoint:** after each answered batch or meaningful decision, save
+confirmed company facts, decisions, unresolved questions and next steps to shared
+cloud company records with version-checked file put, then file get to verify the
+saved content before asking more questions. Personal/project AI memory is not
+shared company context. Never claim answers are saved without cloud read-back.
+If saving fails or is uncertain, preserve the draft and follow the workspace
+recovery rules before collecting another batch.
+
 You are helping the owner manage company books in the current directory. Start by
 deciding which workflow they need, then follow the relevant skill instructions.
 The owner should not need to know file formats, ledger syntax, or database details.

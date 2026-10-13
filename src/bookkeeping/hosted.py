@@ -57,6 +57,8 @@ def add_parser(subparsers: Any) -> None:
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/slashbooks/hosted.json")
     parser.add_argument("--timeout", type=float, default=30.0, help="Request timeout in seconds; no automatic retries")
     commands = parser.add_subparsers(dest="hosted_command", required=True)
+    from . import hosted_questions
+    hosted_questions.add_parser(commands)
     login = commands.add_parser("login", help="Connect online books with browser approval; no API key needed")
     login.add_argument("--endpoint", default=CLOUD_ENDPOINT, help=f"Slashbooks Cloud server (default {CLOUD_ENDPOINT})")
     login.add_argument("--company", help="Company ID; omit it to choose the company in the browser")
@@ -479,10 +481,16 @@ def run(args: argparse.Namespace) -> int:
     try:
         from bookkeeping import remote
 
+        if args.hosted_command == "question":
+            from . import hosted_questions
+            return hosted_questions.run(args)
         if args.hosted_command == "file":
             return remote.run_file(args)
         if args.hosted_command == "retry":
             receipt = _read_json(args.receipt.expanduser(), private=True)
+            if receipt.get("kind") == "native-question":
+                from . import hosted_questions
+                return hosted_questions.run(args)
             if receipt.get("kind") == "engine-adoption":
                 from . import hosted_adoption
 

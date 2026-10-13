@@ -4,6 +4,42 @@ All notable changes to Slashbooks are documented in this file. The format is
 based on [Keep a Changelog](https://keepachangelog.com/), and the project aims to
 follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-10-13
+
+### Added
+
+- Native cloud question commands let an authorized agent ask, reply to and
+  resolve company questions with server-enforced authorship and permissions.
+  Private local receipts prevent automatic duplicate submission from the same
+  binding; uncertain delivery uses read-back only. These routes do not offer
+  server idempotency or an exactly-once guarantee across computers.
+
+### Fixed
+
+- Reimporting a source already in review no longer posts it implicitly when a
+  learned categorization rule changes. Existing group and transfer proposals
+  keep their approval workflow. Unreadable or malformed review state stops
+  intake before any batch changes are made.
+- Normalized intake rejects unsupported correction/reversal directives and an
+  unsupported account-field spelling before changing any batch state. Close
+  guidance requires atomic audited corrections and a safe stop when an original
+  has already been reversed, rather than a fabricated replacement source.
+- Onboarding distinguishes initializing absent company metadata from updating
+  an existing cloud entity. Confirmed field changes require version-checked
+  shared updates and read-back; repeating initialization does not update them.
+- Cloud onboarding now states the shared-company checkpoint rule directly:
+  save confirmed facts, decisions, open questions and next steps, then read
+  them back before asking another batch. Personal or project AI memory does
+  not save answers to the company's books. A failed or uncertain save must be
+  resolved before continuing.
+- Verified shared saves and read-back with Claude Sonnet onboarding. Claude
+  Haiku still failed this workflow in testing; these instructions do not
+  establish reliable onboarding with that model.
+- Bank and card intake guidance now requires checking the source account type
+  against its mapped ledger role, including existing and CSV mappings. Card
+  charges belong in card liabilities rather than bank assets; affected entries
+  must be corrected through the audited workflow.
+
 ## [0.4.0] - 2026-10-08
 
 ### Added

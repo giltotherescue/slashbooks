@@ -23,7 +23,7 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -523,6 +523,236 @@ class TestPendingCategorization(unittest.TestCase):
         )
         self.assertEqual(result.new_entries, 0)
         self.assertEqual(result.pending_categorization, 2)
+
+    def test_reingest_does_not_promote_queued_fees_after_learning(self) -> None:
+        from bookkeeping.queue import confirm_group, make_categorizer, propose_group
+
+        txns = [
+            _make_posted_txn(f"payroll-fee-{month}", "Payroll Processor collection",
+                             amount=f"-{month + 20}.00", txn_date=f"2026-{month:02d}-15")
+            for month in range(3, 10)
+        ]
+        import_transactions(self._entity, txns, SESSION, ts=TS)
+        approved_ids = [txn["id"] for txn in txns[:3]]
+        propose_group(self._entity, approved_ids, "Expenses:Fees", "Approve these three fees only.")
+        confirm_group(self._entity, "Expenses:Fees", SESSION + "-approved", ts=TS)
+        categorizer = make_categorizer(self._entity)
+        self.assertEqual(categorizer(txns[3])[0], "Expenses:Fees")
+
+        pending_path = self._entity.staging_dir / "pending-categorization.json"
+        pending_before = pending_path.read_bytes()
+        ledger_before = _read_ledger(self._entity)
+        store = LedgerStore(default_store_path(self._entity.path))
+        audit_before = store.load_audit_events()
+        result = import_transactions(self._entity, txns, SESSION + "-replay",
+                                     categorizer=categorizer, ts=TS)
+
+        self.assertEqual(result.new_entries, 0)
+        self.assertEqual(result.skipped_duplicate, 7)
+        self.assertEqual(result.pending_categorization, 0)
+        self.assertEqual(pending_path.read_bytes(), pending_before)
+        self.assertEqual(_read_ledger(self._entity), ledger_before)
+        self.assertEqual(store.load_audit_events(), audit_before)
+        self.assertEqual([row["id"] for row in json.loads(pending_before)],
+                         [txn["id"] for txn in txns[3:]])
+
+        # A later explicit review still approves the four held rows normally.
+        propose_group(self._entity, [txn["id"] for txn in txns[3:]],
+                      "Expenses:Fees", "Approve the remaining four fees.")
+        confirm_group(self._entity, "Expenses:Fees", SESSION + "-remaining", ts=TS)
+        self.assertEqual(len(store.load_entries()), 7)
+        approved_ledger = _read_ledger(self._entity)
+        approved_audit = store.load_audit_events()
+        replay = import_transactions(self._entity, txns, SESSION + "-approved-replay",
+                                     categorizer=categorizer, ts=TS)
+        self.assertEqual(replay.new_entries, 0)
+        self.assertEqual(replay.skipped_duplicate, 7)
+        self.assertEqual(_read_ledger(self._entity), approved_ledger)
+        self.assertEqual(store.load_audit_events(), approved_audit)
+
+    def test_reingest_mixed_new_and_queued_rows_keeps_review_boundary(self) -> None:
+        queued = _make_posted_txn("queued-fee", amount="-21.00")
+        new = _make_posted_txn("new-fee", amount="-21.00")
+        import_transactions(self._entity, [queued], SESSION, ts=TS)
+        pending_path = self._entity.staging_dir / "pending-categorization.json"
+        pending_before = pending_path.read_bytes()
+        categorizer = Mock(return_value=("Expenses:Fees", "high"))
+
+        result = import_transactions(self._entity, [queued, new, queued, new],
+                                     SESSION + "-mixed", categorizer=categorizer, ts=TS)
+
+        self.assertEqual(result.new_entries, 1)
+        self.assertEqual(result.skipped_duplicate, 3)
+        categorizer.assert_called_once_with(new)
+        self.assertEqual(pending_path.read_bytes(), pending_before)
+        entries = LedgerStore(default_store_path(self._entity.path)).load_entries()
+        self.assertEqual([entry.source_id for entry in entries], ["new-fee"])
+        self.assertEqual(_validate_ledger(self._entity), [])
+
+    def test_reingest_retains_group_and_transfer_proposals_until_approved(self) -> None:
+        from bookkeeping.queue import (confirm_group, confirm_transfer, propose_group,
+                                       propose_transfer)
+
+        fees = [_make_posted_txn(f"group-fee-{index}", amount="-21.00") for index in range(2)]
+        transfer = [_make_posted_txn("transfer-out", amount="-75.00"),
+                    _make_posted_txn("transfer-in", amount="75.00", account_id="acct-2",
+                                     account_name="Savings")]
+        txns = fees + transfer
+        import_transactions(self._entity, txns, SESSION, ts=TS)
+        propose_group(self._entity, [txn["id"] for txn in fees], "Expenses:Fees", "Review fees.")
+        pair = propose_transfer(self._entity, [txn["id"] for txn in transfer], "Review transfer.")
+        review_before = {path.name: path.read_bytes()
+                         for path in (self._entity.path / "review-queue").glob("*.json")}
+        pending_path = self._entity.staging_dir / "pending-categorization.json"
+        pending_before = pending_path.read_bytes()
+        store = LedgerStore(default_store_path(self._entity.path))
+        audit_before = store.load_audit_events()
+
+        result = import_transactions(self._entity, txns, SESSION + "-proposal-replay",
+                                     categorizer=_simple_categorizer("Expenses:Fees"), ts=TS)
+
+        self.assertEqual(result.new_entries, 0)
+        self.assertEqual(result.skipped_duplicate, 4)
+        self.assertEqual(store.load_entries(), [])
+        self.assertEqual(store.load_audit_events(), audit_before)
+        self.assertEqual(pending_path.read_bytes(), pending_before)
+        self.assertEqual({path.name: path.read_bytes()
+                          for path in (self._entity.path / "review-queue").glob("*.json")},
+                         review_before)
+
+        confirm_group(self._entity, "Expenses:Fees", SESSION + "-group", ts=TS)
+        confirm_transfer(self._entity, pair["source_id"], SESSION + "-transfer", ts=TS)
+        self.assertEqual(json.loads(pending_path.read_text()), [])
+        ledger_before = _read_ledger(self._entity)
+        replay = import_transactions(self._entity, txns, SESSION + "-confirmed-replay",
+                                     categorizer=_simple_categorizer("Expenses:Fees"), ts=TS)
+        self.assertEqual(replay.new_entries, 0)
+        self.assertEqual(replay.skipped_duplicate, 4)
+        self.assertEqual(_read_ledger(self._entity), ledger_before)
+
+    def test_reingest_stops_on_corrupt_review_state_before_any_write(self) -> None:
+        import_transactions(self._entity, [_make_posted_txn("approved")], SESSION,
+                            categorizer=_simple_categorizer("Expenses:Fees"), ts=TS)
+        import_transactions(self._entity, [_make_posted_txn("waiting-review")],
+                            SESSION + "-queued", ts=TS)
+        pending_path = self._entity.staging_dir / "pending-categorization.json"
+        for content in ("{", "{}", "[null]", "[{}]"):
+            with self.subTest(content=content):
+                pending_path.write_text(content)
+                before = {str(path.relative_to(self._entity.path)): path.read_bytes()
+                          for path in self._entity.path.rglob("*") if path.is_file()}
+                categorizer = Mock(return_value=("Expenses:Fees", "high"))
+
+                with self.assertRaisesRegex(ValueError, "review state"):
+                    import_transactions(self._entity, [_make_posted_txn("waiting-review")],
+                                        SESSION + "-corrupt", categorizer=categorizer, ts=TS)
+
+                self.assertEqual({str(path.relative_to(self._entity.path)): path.read_bytes()
+                                  for path in self._entity.path.rglob("*") if path.is_file()}, before)
+                categorizer.assert_not_called()
+
+    def test_reingest_stops_on_unreadable_review_state(self) -> None:
+        import_transactions(self._entity, [_make_posted_txn("waiting-review")], SESSION, ts=TS)
+        pending_path = self._entity.staging_dir / "pending-categorization.json"
+        before = {str(path.relative_to(self._entity.path)): path.read_bytes()
+                  for path in self._entity.path.rglob("*") if path.is_file()}
+        read_text = Path.read_text
+
+        def unreadable_review(path: Path, *args, **kwargs):
+            if path == pending_path:
+                raise PermissionError("Synthetic unreadable review state")
+            return read_text(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", unreadable_review):
+            with self.assertRaisesRegex(ValueError, "Cannot read pending review state"):
+                import_transactions(self._entity, [_make_posted_txn("waiting-review")],
+                                    SESSION + "-unreadable",
+                                    categorizer=_simple_categorizer("Expenses:Fees"), ts=TS)
+
+        self.assertEqual({str(path.relative_to(self._entity.path)): path.read_bytes()
+                          for path in self._entity.path.rglob("*") if path.is_file()}, before)
+
+
+class TestNormalizedInputValidation(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self._entity = _make_entity(Path(self._tmp.name))
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _files(self) -> dict[str, bytes]:
+        return {str(path.relative_to(self._entity.path)): path.read_bytes()
+                for path in self._entity.path.rglob("*") if path.is_file()}
+
+    def test_reserved_lineage_fields_reject_whole_batch_before_initialization(self) -> None:
+        for field in ("correction-of", "reverses"):
+            for location in ("top-level", "metadata"):
+                with self.subTest(field=field, location=location):
+                    bad = _make_posted_txn("forged-correction", amount="12.00")
+                    if location == "metadata":
+                        bad["metadata"] = {field: "original-source"}
+                    else:
+                        bad[field] = "original-source"
+                    txns = [_make_pending_txn("new-pending"),
+                            _make_posted_txn("new-posted"), bad]
+                    before = self._files()
+                    categorizer = Mock(return_value=("Expenses:Fees", "high"))
+
+                    with self.assertRaisesRegex(ValueError, "reserved.*ledger correct"):
+                        import_transactions(self._entity, txns, SESSION,
+                                            categorizer=categorizer, ts=TS)
+
+                    self.assertEqual(self._files(), before)
+                    categorizer.assert_not_called()
+
+    def test_actual_bad_payload_leaves_existing_ledger_queue_audit_and_seen_unchanged(self) -> None:
+        import_transactions(self._entity, [_make_posted_txn("approved")], SESSION,
+                            categorizer=_simple_categorizer("Expenses:Fees"), ts=TS)
+        import_transactions(self._entity, [_make_posted_txn("waiting-review")],
+                            SESSION + "-queued", ts=TS)
+        bad = {"id": "fabricated-correction", "date": "2026-01-15", "amount": "12.00",
+               "description": "Replacement receipt", "account_id": "acct-1",
+               "metadata": {"correction-of": "already-reversed-source"}}
+        before = self._files()
+        categorizer = Mock(return_value=("Expenses:Fees", "high"))
+
+        with self.assertRaisesRegex(ValueError, "reserved.*ledger correct"):
+            import_transactions(self._entity,
+                                [_make_posted_txn("otherwise-valid"), bad], SESSION + "-bad",
+                                categorizer=categorizer, ts=TS)
+
+        self.assertEqual(self._files(), before)
+        categorizer.assert_not_called()
+
+    def test_unsupported_account_id_spelling_is_not_silently_ignored(self) -> None:
+        bad = _make_posted_txn("wrong-account-field")
+        bad["account_id"] = bad.pop("accountId")
+        before = self._files()
+
+        with self.assertRaisesRegex(ValueError, "account_id.*accountId"):
+            import_transactions(self._entity, [_make_posted_txn("valid-first"), bad],
+                                SESSION, categorizer=_simple_categorizer("Expenses:Fees"), ts=TS)
+
+        self.assertEqual(self._files(), before)
+
+    def test_provider_extras_and_normal_missing_account_remain_supported(self) -> None:
+        extra = _make_posted_txn("provider-extras")
+        extra.update(account_id="provider-extra", metadata={"providerReference": "receipt-1"},
+                     providerStatus="settled")
+        missing = _make_posted_txn("missing-account")
+        del missing["accountId"]
+        del missing["accountName"]
+
+        result = import_transactions(self._entity, [extra, missing], SESSION,
+                                     categorizer=_simple_categorizer("Expenses:Fees"), ts=TS)
+
+        self.assertEqual(result.new_entries, 2)
+        entries = {entry.source_id: entry for entry in
+                   LedgerStore(default_store_path(self._entity.path)).load_entries()}
+        self.assertEqual(entries["provider-extras"].postings[0].account, "Assets:Bank:Checking")
+        self.assertEqual(entries["missing-account"].postings[0].account, "Assets:Uncategorized")
+        self.assertEqual(_validate_ledger(self._entity), [])
 
 
 class TestLateArrival(unittest.TestCase):

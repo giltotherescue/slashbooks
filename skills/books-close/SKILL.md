@@ -163,6 +163,23 @@ Tell the owner how many items are in the queue and begin the review process
 before the close is finalized. Use the books-review workflow for the queue, but
 present it as part of closing the month rather than as an unrelated follow-up.
 
+### Correct already-posted activity
+
+Inspect the original source and its posted entries before changing them. Use
+`scripts/books ledger correct` on the live original source ID to reverse and
+replace it atomically with explicit balanced postings and preserved correction
+lineage. Do not run `ledger reverse` first when a replacement is intended.
+Never invent a normalized transaction or use ingest/queue confirmation as a
+replacement for an audited correction; input metadata does not create ledger
+correction authority.
+
+If the original has already been reversed, stop the affected correction. Preserve
+the command receipt and an ordinary `ledger snapshot` export, explain that the
+current correction command cannot recover that already-reversed original, and
+request supported recovery assistance. Do not bypass the error with a fabricated
+source ID, manually edit the ledger, or report the item as repaired. Continue
+independent safe work without closing the unresolved affected period.
+
 ---
 
 ## Step 4 — Reconcile

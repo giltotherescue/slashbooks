@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -138,23 +139,27 @@ def _is_banksync_download(path: Path) -> bool:
 
 def run(args: argparse.Namespace) -> int:
     entity = load_entity(args.entity)
-    txns = load_transactions(args.input)
-    _require_banksync_mappings(
-        entity, txns, "banksync" if args.source == "banksync" or _is_banksync_download(args.input) else args.source
-    )
+    try:
+        txns = load_transactions(args.input)
+        _require_banksync_mappings(
+            entity, txns, "banksync" if args.source == "banksync" or _is_banksync_download(args.input) else args.source
+        )
 
-    session_id = args.session_id or (
-        f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-    )
-    categorizer = queue_module.make_categorizer(entity)
-    result = import_transactions(
-        entity,
-        txns,
-        session_id=session_id,
-        categorizer=categorizer,
-        ts=None,
-        legacy_duplicate_guard=args.source == "banksync" or _is_banksync_download(args.input),
-    )
+        session_id = args.session_id or (
+            f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        )
+        categorizer = queue_module.make_categorizer(entity)
+        result = import_transactions(
+            entity,
+            txns,
+            session_id=session_id,
+            categorizer=categorizer,
+            ts=None,
+            legacy_duplicate_guard=args.source == "banksync" or _is_banksync_download(args.input),
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     print(
         f"Ingested {len(txns)} transaction(s) from source '{args.source}' "

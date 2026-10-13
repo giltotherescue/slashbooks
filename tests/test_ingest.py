@@ -12,10 +12,13 @@ Covers:
 """
 
 import json
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -127,10 +130,13 @@ class IngestCommandTests(unittest.TestCase):
                 }]}],
             }), encoding="utf-8")
 
-            with self.assertRaisesRegex(ValueError, "bank-account-map"):
-                ingest_module.run(type("Args", (), {
+            error = io.StringIO()
+            with redirect_stderr(error):
+                rc = ingest_module.run(type("Args", (), {
                     "entity": entity_dir, "input": infile, "source": "ingest", "session_id": "test",
                 })())
+            self.assertEqual(rc, 1)
+            self.assertIn("bank-account-map", error.getvalue())
             self.assertEqual(_pending(entity_dir), [])
 
     def test_reingest_is_idempotent(self) -> None:
@@ -151,6 +157,43 @@ class IngestCommandTests(unittest.TestCase):
             bad.write_text(json.dumps({"nope": 1}), encoding="utf-8")
             with self.assertRaises(ValueError):
                 ingest_module.load_transactions(bad)
+
+    def test_validation_errors_are_actionable_without_traceback_or_partial_state(self) -> None:
+        bad_lineage = {**_txns()[1], "id": "fake-correction",
+                       "metadata": {"correction-of": "original-source"}}
+        typo = {**_txns()[1], "id": "wrong-account-field"}
+        typo["account_id"] = typo.pop("accountId")
+        cases = [("{", "Expecting"), (json.dumps({"nope": 1}), "JSON array"),
+                 (json.dumps([_txns()[0], bad_lineage]), "ledger correct"),
+                 (json.dumps([_txns()[0], typo]), "accountId")]
+        for contents, message in cases:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as tmp:
+                entity_dir = _make_entity(Path(tmp))
+                infile = Path(tmp) / "bad.json"
+                infile.write_text(contents)
+                before = {str(path.relative_to(entity_dir)): path.read_bytes()
+                          for path in entity_dir.rglob("*") if path.is_file()}
+                output, error = io.StringIO(), io.StringIO()
+
+                with redirect_stdout(output), redirect_stderr(error):
+                    rc = main(["ingest", str(infile), "--entity", str(entity_dir)])
+
+                self.assertEqual(rc, 1)
+                self.assertIn("Error:", error.getvalue())
+                self.assertIn(message, error.getvalue())
+                self.assertNotIn("Traceback", output.getvalue() + error.getvalue())
+                self.assertNotIn("Ingested", output.getvalue())
+                self.assertEqual({str(path.relative_to(entity_dir)): path.read_bytes()
+                                  for path in entity_dir.rglob("*") if path.is_file()}, before)
+
+    def test_unexpected_import_failure_is_not_hidden_as_validation_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = _make_entity(Path(tmp))
+            infile = Path(tmp) / "valid.json"
+            infile.write_text(json.dumps(_txns()))
+            with patch.object(ingest_module, "import_transactions", side_effect=RuntimeError("Unexpected defect")):
+                with self.assertRaisesRegex(RuntimeError, "Unexpected defect"):
+                    main(["ingest", str(infile), "--entity", str(entity_dir)])
 
 
 class ImporterPendingDedupTests(unittest.TestCase):
