@@ -47,6 +47,7 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -262,13 +263,16 @@ def _ensure_ledger_store(entity: Entity) -> LedgerStore:
 
 def _load_pending_categorization(entity: Entity) -> list[dict]:
     path = entity.staging_dir / _PENDING_CATEGORIZATION_FILE
-    if not path.exists():
-        return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
+    except FileNotFoundError:
         return []
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Cannot read pending review state at {path}; repair it before ingesting.") from exc
+    if not isinstance(data, list) or any(not isinstance(item, dict) or not item.get("id")
+                                         for item in data):
+        raise ValueError(f"Invalid pending review state at {path}; expected transactions with source IDs.")
+    return data
 
 
 def _save_pending_categorization(entity: Entity, items: list[dict]) -> None:
@@ -297,6 +301,26 @@ def _add_pending_categorization(entity: Entity, txn: dict) -> bool:
 # ---------------------------------------------------------------------------
 # Main import entry point
 # ---------------------------------------------------------------------------
+
+
+def _validate_normalized_transactions(txns: list[dict]) -> None:
+    """Reject unsupported ledger authority before any part of a batch changes state."""
+    reserved = {"correction-of", "reverses"}
+    for index, txn in enumerate(txns, start=1):
+        fields = reserved.intersection(txn)
+        metadata = txn.get("metadata")
+        if isinstance(metadata, Mapping):
+            fields.update(reserved.intersection(metadata))
+        if fields:
+            raise ValueError(
+                f"Transaction {index} contains reserved ledger directives: {', '.join(sorted(fields))}. "
+                "Use 'books ledger correct' for an atomic correction; if the original is already "
+                "reversed, stop and request accountant review."
+            )
+        if "account_id" in txn and "accountId" not in txn:
+            raise ValueError(
+                f"Transaction {index} uses unsupported 'account_id'; use the documented 'accountId' field."
+            )
 
 
 def import_transactions(
@@ -332,6 +356,12 @@ def import_transactions(
     -------
     ImportResult
     """
+    _validate_normalized_transactions(normalized_txns)
+    # Once queued, a source belongs to the review workflow. A newly learned
+    # category must not approve it implicitly on reingest or bypass its proposal.
+    queued_source_ids = {
+        str(txn["id"]) for txn in _load_pending_categorization(entity)
+    }
     if session_date is None:
         session_date = datetime.now(tz=timezone.utc).date()
 
@@ -392,11 +422,12 @@ def import_transactions(
 
         # Posted transaction.
 
-        # Dedup: source ID is the sole dedup key for posted entries.
+        # Source IDs deduplicate both posted entries and existing review work.
         if (
             staging.is_seen(source_id)
             or (source_id and source_id in source_ids_in_batch)
             or (source_id and store.source_exists(source_id))
+            or (source_id and source_id in queued_source_ids)
         ):
             result.skipped_duplicate += 1
             continue

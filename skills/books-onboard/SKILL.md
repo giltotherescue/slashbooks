@@ -347,7 +347,17 @@ books, inspect shared metadata to determine whether initialization is needed;
 do not initialize because local files are absent. Preserve the confirmed company
 identity and existing books. Verify remote routing and the resulting server state.
 
-Run this internal command yourself:
+An existing `entity.json` is preserved by `entity init`: new command arguments do
+not update its name, business type, legal structure or cutover date. For an
+existing cloud company, get the current shared `entity.json`, update only the
+owner-confirmed fields in private scratch, then use version-checked file put and
+file get to verify them. Preserve mappings, unknown fields and other people's
+changes. Save the business context and unresolved facts in the shared onboarding
+records too. Changing metadata does not recreate accounts or opening balances.
+Do not claim setup is complete because a repeated init command succeeded.
+
+Only when the selected company's `entity.json` is confirmed absent, run this
+internal initialization command yourself:
 
 ```
 scripts/books entity init <path> --name "<business name>" --legal-structure "<structure>" --business-type <consulting|saas|services_and_subscriptions> --cutover-date <YYYY-MM-DD>
