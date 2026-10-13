@@ -39,6 +39,8 @@ STATUS_READS = {"sources", "proposals", "runs", "questions"}
 MAX_PAGE_LIMIT = 200
 MAX_PAGES = 100
 MAX_COLLECTION_BYTES = 64 * 1024 * 1024
+DEFAULT_TIMEOUT = 180.0
+TIMEOUT_ENV = "SLASHBOOKS_REMOTE_TIMEOUT_SECONDS"
 
 
 class HostedError(Exception):
@@ -55,7 +57,7 @@ def add_parser(subparsers: Any) -> None:
     # "hosted" stays an alias so existing connections, prompts and scripts keep working.
     parser = subparsers.add_parser("cloud", aliases=["hosted"], help="Connect to and use Slashbooks Cloud books")
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/slashbooks/hosted.json")
-    parser.add_argument("--timeout", type=float, default=30.0, help="Request timeout in seconds; no automatic retries")
+    parser.add_argument("--timeout", type=float, help=f"Request timeout in seconds (default {DEFAULT_TIMEOUT:g}, or {TIMEOUT_ENV}); no automatic retries")
     commands = parser.add_subparsers(dest="hosted_command", required=True)
     from . import hosted_questions
     hosted_questions.add_parser(commands)
@@ -248,7 +250,12 @@ class _NoRedirect(request.HTTPRedirectHandler):
 
 
 class HostedClient:
-    def __init__(self, config: dict[str, Any], *, timeout: float = 30.0) -> None:
+    def __init__(self, config: dict[str, Any], *, timeout: float | None = None) -> None:
+        if timeout is None:
+            try:
+                timeout = float(os.environ.get(TIMEOUT_ENV, DEFAULT_TIMEOUT))
+            except ValueError:
+                raise HostedError("INVALID_TIMEOUT", f"{TIMEOUT_ENV} must be a finite number greater than zero.") from None
         if not math.isfinite(timeout) or timeout <= 0:
             raise HostedError("INVALID_TIMEOUT", "Timeout must be a finite number greater than zero.")
         self.endpoint = _endpoint(config.get("endpoint"), config.get("allow_localhost") is True)

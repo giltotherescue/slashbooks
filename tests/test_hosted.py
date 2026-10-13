@@ -706,6 +706,39 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(result["artifacts"][0]["data_base64"], TOKEN)
 
 
+class CloudTimeoutTests(unittest.TestCase):
+    def setUp(self):
+        self.environment = patch.dict(os.environ, {"BOOKS_API_TOKEN": "synthetic-timeout-token"}, clear=True)
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+        self.config = {"endpoint": "https://example.test", "company": "synthetic"}
+
+    def test_default_and_environment_reach_transport(self):
+        for configured, expected in ((None, 180.0), ("300", 300.0)):
+            with self.subTest(configured=configured):
+                if configured is not None:
+                    os.environ[hosted.TIMEOUT_ENV] = configured
+                client = hosted.HostedClient(self.config)
+                with patch.object(client.opener, "open") as opened:
+                    response = opened.return_value.__enter__.return_value
+                    response.status = 200
+                    response.read.return_value = b'{}'
+                    client.request("")
+                self.assertEqual(opened.call_args.kwargs["timeout"], expected)
+
+    def test_explicit_cloud_timeout_overrides_even_invalid_environment(self):
+        os.environ[hosted.TIMEOUT_ENV] = "invalid"
+        args = cli.build_parser().parse_args(["cloud", "--timeout", "240", "status"])
+        self.assertEqual(hosted.HostedClient(self.config, timeout=args.timeout).timeout, 240)
+
+    def test_invalid_environment_is_rejected_before_transport(self):
+        for value in ("", "invalid", "0", "-1", "nan", "inf", "-inf"):
+            with self.subTest(value=value), patch.dict(os.environ, {hosted.TIMEOUT_ENV: value}):
+                with self.assertRaises(hosted.HostedError) as caught:
+                    hosted.HostedClient(self.config)
+                self.assertEqual(caught.exception.payload["error"]["code"], "INVALID_TIMEOUT")
+
+
 class CloudEndpointDefaultTest(unittest.TestCase):
     def test_login_uses_the_official_cloud_unless_another_server_is_given(self) -> None:
         parser = cli.build_parser()
