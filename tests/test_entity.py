@@ -62,6 +62,22 @@ _EXPECTED_DIRS = [
 class TestInitFullLayout(unittest.TestCase):
     """Happy path: init creates the full layout."""
 
+    def test_website_saved_and_reinit_preserves_it(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / "company"
+            init_entity(root, name="Example", website_url="example.com")
+            self.assertEqual(json.loads((root / "entity.json").read_text())["website_url"], "https://example.com")
+            init_entity(root, website_url="https://other.example")
+            self.assertEqual(json.loads((root / "entity.json").read_text())["website_url"], "https://example.com")
+
+    def test_invalid_website_does_not_create_books(self) -> None:
+        for website in ["file:///tmp/a", "https://user:password@example.com", "https://", "bad site"]:
+            with self.subTest(website=website), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder) / "company"
+                with self.assertRaises(ValueError):
+                    init_entity(root, website_url=website)
+                self.assertFalse(root.exists())
+
     def test_all_files_created(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "my-entity"
