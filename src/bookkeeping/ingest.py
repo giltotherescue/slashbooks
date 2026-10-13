@@ -63,6 +63,10 @@ def add_parser(subparsers: Any) -> None:
         help="Short label for this connector/import session (e.g. mercury-custom)",
     )
     parser.add_argument(
+        "--intake-only", action="store_true",
+        help="Stage transactions for explicit review without learned auto-posting",
+    )
+    parser.add_argument(
         "--session-id",
         default=None,
         help="Override the import session id (defaults to <source>-<timestamp>)",
@@ -156,6 +160,7 @@ def run(args: argparse.Namespace) -> int:
             categorizer=categorizer,
             ts=None,
             legacy_duplicate_guard=args.source == "banksync" or _is_banksync_download(args.input),
+            intake_only=getattr(args, "intake_only", False),
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)

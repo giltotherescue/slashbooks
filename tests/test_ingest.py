@@ -70,6 +70,17 @@ def _pending(entity_dir: Path) -> list[dict]:
 
 
 class IngestCommandTests(unittest.TestCase):
+    def test_intake_only_cli_ignores_a_trusted_categorizer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = _make_entity(Path(tmp))
+            infile = Path(tmp) / 'input.json'
+            infile.write_text(json.dumps(_txns()))
+            with patch.object(ingest_module.queue_module, 'make_categorizer',
+                              return_value=lambda txn: ('Expenses:Software', 'auto')):
+                rc = main(['ingest', str(infile), '--entity', str(entity_dir), '--intake-only'])
+            self.assertEqual(0, rc)
+            self.assertEqual(2, len(_pending(entity_dir)))
+
     def test_array_input_routes_to_review_worklist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             entity_dir = _make_entity(Path(tmp))
