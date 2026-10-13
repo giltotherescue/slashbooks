@@ -16,6 +16,10 @@ follow [Semantic Versioning](https://semver.org/).
 - Verified shared saves and read-back with Claude Sonnet onboarding. Claude
   Haiku still failed this workflow in testing; these instructions do not
   establish reliable onboarding with that model.
+- Bank and card intake guidance now requires checking the source account type
+  against its mapped ledger role, including existing and CSV mappings. Card
+  charges belong in card liabilities rather than bank assets; affected entries
+  must be corrected through the audited workflow.
 
 ## [0.4.0] - 2026-10-08
 
