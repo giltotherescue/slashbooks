@@ -507,6 +507,17 @@ def _answer_application(value: Any) -> dict[str, Any] | None:
     }
 
 
+def _answer_application_command(argv: list[str]) -> bool:
+    """Allow metadata only on protected commands with a committed ledger effect."""
+    from .automation_policy import PreparationDenied
+    from .preparation_runtime import supported_preparation_command
+
+    try:
+        return supported_preparation_command(argv).effect == "ledger"
+    except PreparationDenied:
+        return False
+
+
 def _record_digest(record: dict) -> str:
     return hosted._body_digest({key: value for key, value in record.items() if key not in {
         "record_sha256", "status", "response", "response_sha256",
@@ -621,10 +632,10 @@ def maybe_run(
         except ImportError:
             raise _error("REMOTE_CONTRACT_UNAVAILABLE", "Shared remote command contract is unavailable. No local fallback was used.") from None
         spec = command_spec(argv)
-        if answer_application is not None and not spec["mutates"]:
+        if answer_application is not None and not _answer_application_command(argv):
             raise _error(
                 "ANSWER_APPLICATION_REQUIRES_MUTATION",
-                "Answer application metadata requires a state-changing accounting command.",
+                "Answer application metadata requires a supported command with a committed accounting effect.",
             )
         if spec["network"] and args.command == "connector" and os.environ.get(args.api_key_env):
             if answer_application is not None:

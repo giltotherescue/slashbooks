@@ -738,6 +738,10 @@ class RemoteTests(unittest.TestCase):
              "--answer-reply-id", "reply-1", "--answer-reply-watermark", "0"),
             ("queue", "summary", "--answer-question-id", "question-1",
              "--answer-reply-id", "reply-1", "--answer-reply-watermark", "1"),
+            ("compare", "period", "--qb-folder", str(self.directory / "qb"),
+             "--from", "2026-09-01", "--to", "2026-09-30",
+             "--answer-question-id", "question-1", "--answer-reply-id", "reply-1",
+             "--answer-reply-watermark", "1"),
         )
         for argv in cases:
             with self.subTest(argv=argv):
