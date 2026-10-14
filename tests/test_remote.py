@@ -728,6 +728,25 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(self.api.calls[-1]["body"], original["body"])
         self.assertEqual(self.api.calls[-1]["key"], original["key"])
 
+    def test_answer_application_allows_protected_reconciliation_effect(self):
+        source_id = "reconciliation:Assets:Bank:Checking:2026-09-30"
+        evidence_id = "evidence:provider-record:statement-2026-09"
+        code, _, err = self.command(
+            "reconcile", "--account", "Assets:Bank:Checking",
+            "--source-balance", "100.00", "--as-of", "2026-09-30",
+            "--source-opening-balance", "90.00", "--source-transaction-total", "10.00",
+            "--source-snapshot-at", "2026-10-01T12:00:00Z",
+            "--source-through", "2026-09-30",
+            "--source-evidence-ref", "provider-record:statement-2026-09",
+            "--answer-question-id", "question-1", "--answer-reply-id", "reply-1",
+            "--answer-reply-watermark", "1",
+            "--answer-source-id", source_id, "--answer-source-id", evidence_id,
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.api.calls[-1]["body"]["answer_application"]["source_ids"], [
+            evidence_id, source_id,
+        ])
+
     def test_invalid_answer_application_is_rejected_before_network(self):
         cases = (
             ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1"),

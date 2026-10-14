@@ -102,6 +102,7 @@ class _Boundary:
     input_transactions_json: str | None = None
     input_is_banksync: bool = False
     proposal_sources_json: str | None = None
+    reconciliation_intent: PreparationIntent | None = None
 
 
 _active: ContextVar[_Boundary | None] = ContextVar("books_preparation", default=None)
@@ -200,7 +201,7 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
         authorize_batch(context, [intent])
         bound = _Boundary(
             context, resolved, expected_ledger_digest, tuple(sorted(source_hashes.items())),
-            "", "", "reconcile",
+            "", "", "reconcile", reconciliation_intent=intent,
         )
     else:
         try:
@@ -288,6 +289,31 @@ def prepared_reconciliation_evidence(account: str, as_of: str) -> dict[str, str]
     primary = f"reconciliation:{account}:{as_of}"
     return {key.removeprefix("evidence:"): value for key, value in bound.source_hashes
             if key != primary and key.startswith("evidence:")}
+
+
+def record_preparation_reconciliation(entity_path: Path, account: str, as_of: str,
+                                      ts: str | None = None) -> None:
+    """Record the protected reconciliation intent after its report commit."""
+    bound = _active.get()
+    if bound is None:
+        return
+    primary = f"reconciliation:{account}:{as_of}"
+    intent = bound.reconciliation_intent
+    if (bound.action != "reconcile" or intent is None
+            or Path(entity_path).resolve() != bound.entity_path
+            or primary not in intent.source_ids):
+        raise PreparationDenied(0, "reconciliation_scope_changed")
+    store = LedgerStore(bound.entity_path / "ledger.sqlite")
+    with store.transaction(immediate=True) as conn:
+        if store.content_digest(conn) != bound.ledger_digest:
+            raise PreparationDenied(0, "ledger_changed")
+        receipt, = authorize_batch(bound.context, [intent])
+        store.append_audit_event(
+            "automation-preparation",
+            {"receipt": asdict(receipt), "intent": asdict(intent)},
+            conn,
+            ts=ts,
+        )
 
 
 def _source_intent(entity: Entity, action: str, ids: list[str],

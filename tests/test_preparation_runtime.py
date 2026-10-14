@@ -333,6 +333,10 @@ print('done', flush=True)
         self.assertEqual(record["source_evidence_hashes"], {
             "provider-record:statement-2026-09": source_hashes["evidence:provider-record:statement-2026-09"],
         })
+        audit = [row for row in self.store.load_audit_events()
+                 if row["type"] == "automation-preparation"]
+        self.assertEqual(audit[-1]["payload"]["receipt"]["execution_id"], "synthetic-execution")
+        self.assertEqual(audit[-1]["payload"]["intent"]["source_ids"], sorted(source_hashes))
 
         incomplete = list(argv)
         index = incomplete.index("--source-opening-balance")

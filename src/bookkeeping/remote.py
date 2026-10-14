@@ -513,7 +513,7 @@ def _answer_application_command(argv: list[str]) -> bool:
     from .preparation_runtime import supported_preparation_command
 
     try:
-        return supported_preparation_command(argv).effect == "ledger"
+        return supported_preparation_command(argv).effect in {"ledger", "reconciliation"}
     except PreparationDenied:
         return False
 

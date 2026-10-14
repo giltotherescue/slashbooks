@@ -510,6 +510,8 @@ def run(args: Any) -> int:
                 source_evidence_refs=evidence_refs,
                 source_evidence_hashes=evidence_hashes,
             )
+            from .preparation_runtime import record_preparation_reconciliation
+            record_preparation_reconciliation(entity, account, args.as_of)
             print(result.to_text())
             print()
 
