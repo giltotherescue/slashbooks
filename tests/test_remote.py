@@ -268,7 +268,7 @@ class RemoteTests(unittest.TestCase):
             code, _, err = self.invoke(
                 "queue", "confirm", "--entity", str(local_entity), "--item", "proposal-1",
                 "--answer-question-id", "question-1", "--answer-reply-id", "reply-1",
-                "--answer-reply-watermark", "1",
+                "--answer-reply-watermark", "1", "--answer-source-id", "source-1",
             )
         self.assertEqual(code, 1)
         self.assertIn("ANSWER_APPLICATION_REMOTE_ONLY", err)
