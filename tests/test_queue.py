@@ -15,7 +15,7 @@ Edge / error:
   - propose with unknown category → rejected.
   - reasoning with newlines/control chars → sanitized before persisting.
   - malformed queue reads → explicit diagnostics without company-file mutation.
-  - reopen on amount change → item reopened, delta flagged, category pre-filled.
+  - amount change → stale proposal, explicit suggestion, fresh human-reviewed reproposal.
   - session summary counts match simulated close.
   - session summary text has no beancount/SQL jargon.
   - quarterly-review on two-quarter fixture → variance flags + auto-posted sample.
@@ -615,7 +615,7 @@ class TestReopenIfAmountChanged(unittest.TestCase):
         result = reopen_if_amount_changed(item, Decimal("100.00"))
         self.assertIsNone(result)
 
-    def test_different_amount_reopens_with_delta(self) -> None:
+    def test_different_amount_requires_reproposal_with_delta(self) -> None:
         item = {
             "source_id": "txn-100",
             "original_amount": "100.00",
@@ -625,11 +625,13 @@ class TestReopenIfAmountChanged(unittest.TestCase):
         }
         result = reopen_if_amount_changed(item, Decimal("102.50"))
         self.assertIsNotNone(result)
-        self.assertEqual(result["status"], "reopened")
+        self.assertEqual(result["status"], "requires-reproposal")
         self.assertEqual(result["amount"], "102.50")
         self.assertEqual(result["delta"], "2.50")
-        # Category pre-filled
-        self.assertEqual(result["proposed_category"], "Expenses:Software")
+        self.assertIsNone(result["proposed_category"])
+        self.assertEqual(result["suggested_category"], "Expenses:Software")
+        self.assertTrue(result["requires_human_review"])
+        self.assertEqual(result["stale_reason"], "source_evidence_changed")
 
     def test_decrease_amount_flagged_with_negative_delta(self) -> None:
         item = {
@@ -642,7 +644,7 @@ class TestReopenIfAmountChanged(unittest.TestCase):
         result = reopen_if_amount_changed(item, Decimal("48.00"))
         self.assertIsNotNone(result)
         self.assertEqual(result["delta"], "-2.00")
-        self.assertEqual(result["status"], "reopened")
+        self.assertEqual(result["status"], "requires-reproposal")
 
     def test_original_amount_preserved(self) -> None:
         item = {
@@ -656,6 +658,58 @@ class TestReopenIfAmountChanged(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["original_amount"], "75.00")
         self.assertEqual(result["amount"], "80.00")
+
+
+class TestChangedSourceReviewFlow(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.entity = _make_entity(Path(self.tmp.name))
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_detection_is_actionable_and_requires_fresh_human_reviewed_proposal(self) -> None:
+        source_id = "changed-amount"
+        _add_pending_categorization(self.entity, source_id, "Changed invoice", amount="-100.00")
+        original = propose(self.entity, source_id, "Expenses:Software", "Original evidence.")
+        original_hashes = original["source_hashes"]
+
+        pending_path = self.entity.staging_dir / "pending-categorization.json"
+        pending = json.loads(pending_path.read_text())
+        pending[0]["amount"] = "-125.00"
+        pending_path.write_text(json.dumps(pending) + "\n")
+
+        stale, = reconcile_pending_amount_changes(self.entity)
+        self.assertEqual(stale["status"], "requires-reproposal")
+        self.assertEqual(stale["suggested_category"], "Expenses:Software")
+        self.assertIsNone(stale["proposed_category"])
+        self.assertEqual(stale["source_hashes"], original_hashes)
+        self.assertTrue(stale["requires_human_review"])
+        with self.assertRaisesRegex(ValueError, "only 'open' or 'reopened'"):
+            confirm(self.entity, source_id, "stale-confirm")
+        with self.assertRaisesRegex(ValueError, "only 'open' or 'reopened'"):
+            correct(self.entity, source_id, "Expenses:Office", session_id="stale-correct")
+
+        args, _, _ = parse_command([
+            "queue", "list", "--entity", str(self.entity.path), "--status", "actionable",
+        ])
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(queue_module.run(args), 0)
+        self.assertIn("[requires-reproposal]", output.getvalue())
+        self.assertIn("suggested Expenses:Software", output.getvalue())
+
+        summary = summarize_queue_items(self.entity)
+        self.assertEqual(summary[0]["treatment"], "Needs review")
+        refreshed = propose(self.entity, source_id, "Expenses:Software", "Reviewed changed amount.")
+        current = queue_module._get_pending_txn(self.entity, source_id)
+        self.assertNotEqual(refreshed["source_hashes"], original_hashes)
+        self.assertEqual(
+            refreshed["source_hashes"], {source_id: queue_module._document_hash(current)}
+        )
+        self.assertTrue(refreshed["requires_human_review"])
+        confirmed = confirm(self.entity, source_id, "human-review", ts=TS)
+        self.assertEqual(confirmed["status"], "confirmed")
 
 
 # ---------------------------------------------------------------------------
@@ -1206,6 +1260,55 @@ class TestMigrationReviewWorkflows(unittest.TestCase):
         approve_related_entity(self.entity.path, "Legacy Co", "Owner approved the revised policy.")
         with self.assertRaisesRegex(ValueError, "policy changed"):
             confirm(self.entity, "legacy-change", "related-session", ts=TS)
+
+    def test_all_specialized_confirmations_reject_changed_source_evidence(self) -> None:
+        for source_id, description, amount in (
+            ("group-a", "Grouped A", "-10.00"),
+            ("group-b", "Grouped B", "-10.00"),
+            ("split-change", "Payroll", "-100.00"),
+            ("transfer-bank", "Card payment", "-50.00"),
+            ("transfer-card", "Payment received", "50.00"),
+            ("related-change", "Legacy Co settlement", "200.00"),
+        ):
+            _add_pending_categorization(self.entity, source_id, description, amount=amount)
+        pending_path = self.entity.staging_dir / "pending-categorization.json"
+        pending = json.loads(pending_path.read_text())
+        next(row for row in pending if row["id"] == "transfer-card")["accountName"] = "Amex"
+        next(row for row in pending if row["id"] == "transfer-card")["accountType"] = "credit_card"
+        pending_path.write_text(json.dumps(pending) + "\n")
+
+        propose_group(self.entity, ["group-a", "group-b"], "Expenses:Software", "Group review.")
+        propose_split(self.entity, "split-change", "Allocation.", ["Expenses:Software=100.00"])
+        transfer = propose_transfer(
+            self.entity, ["transfer-bank", "transfer-card"], "Same internal payment."
+        )
+        add_account(self.entity.path, "Assets:Intercompany:LegacyCo")
+        add_account(self.entity.path, "Liabilities:Intercompany:LegacyCo")
+        record_related_entity(
+            self.entity.path, "Legacy Co", "Assets:Intercompany:LegacyCo",
+            "Liabilities:Intercompany:LegacyCo", "income", "create-receivable",
+            "Income:Consulting",
+        )
+        approve_related_entity(self.entity.path, "Legacy Co", "Approved synthetic policy.")
+        propose_related_entity(self.entity, "related-change", "Legacy Co", "Approved policy.")
+
+        pending = json.loads(pending_path.read_text())
+        for source_id in ("group-b", "split-change", "transfer-card", "related-change"):
+            next(row for row in pending if row["id"] == source_id)["description"] += " changed"
+        pending_path.write_text(json.dumps(pending) + "\n")
+
+        confirmations = (
+            lambda: confirm(self.entity, "group-b", "group-session", ts=TS),
+            lambda: confirm_split(self.entity, "split-change", "split-session", ts=TS),
+            lambda: confirm_transfer(self.entity, transfer["source_id"], "transfer-session", ts=TS),
+            lambda: confirm(self.entity, "related-change", "related-session", ts=TS),
+        )
+        for confirmation in confirmations:
+            with self.subTest(confirmation=confirmation), self.assertRaisesRegex(
+                ValueError, "Staged source evidence changed"
+            ):
+                confirmation()
+        self.assertEqual(LedgerStore(self.entity.path / "ledger.sqlite").counts().entries, 0)
 
     def test_special_proposal_must_be_withdrawn_before_reproposal(self) -> None:
         _add_pending_categorization(self.entity, "split-withdraw", "Payroll", amount="-100.00")

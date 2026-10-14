@@ -457,6 +457,21 @@ print('done', flush=True)
             self.execute()
         self.assertEqual(self.store.counts().entries, 0)
 
+    def test_changed_source_reproposal_cannot_use_standing_confirmation_authority(self):
+        self.prepare()
+        pending_path = self.entity.staging_dir / "pending-categorization.json"
+        pending = json.loads(pending_path.read_text())
+        pending[0]["amount"] = "-125.00"
+        pending_path.write_text(json.dumps(pending) + "\n")
+        queue.reconcile_pending_amount_changes(self.entity)
+        item = queue.propose(
+            self.entity, "source-a", "Expenses:Software", "Reviewed changed evidence."
+        )
+        self.assertTrue(item["requires_human_review"])
+        with self.assertRaisesRegex(PreparationDenied, "explicit_review_hold"):
+            self.execute()
+        self.assertEqual(self.store.counts().entries, 0)
+
     def test_late_failure_rolls_back_authority_receipt_together_with_entries(self):
         self.prepare()
         with patch.object(LedgerStore, "insert_entries", side_effect=RuntimeError("synthetic write failure")), self.assertRaises(RuntimeError):

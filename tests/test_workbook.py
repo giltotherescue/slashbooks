@@ -951,6 +951,24 @@ class TestSanityChecks(unittest.TestCase):
         self.assertEqual(queue_check.status, "fail",
                          f"Expected queue_empty to fail with open item: {queue_check.detail}")
 
+    def test_queue_empty_fails_when_changed_source_requires_reproposal(self):
+        from src.bookkeeping.reports.workbook import run_sanity_checks
+
+        entity_dir = _make_entity(self.tmp_path)
+        queue_item = {
+            "source_id": "changed-source",
+            "status": "requires-reproposal",
+            "proposed_category": None,
+            "suggested_category": "Expenses:Software",
+            "requires_human_review": True,
+        }
+        (entity_dir / "review-queue" / "changed-source.json").write_text(
+            json.dumps(queue_item), encoding="utf-8"
+        )
+        result = run_sanity_checks(entity_dir, FROM_DATE, TO_DATE)
+        queue_check = next(c for c in result.checks if c.check == "queue_empty")
+        self.assertEqual(queue_check.status, "fail")
+
     def test_queue_empty_fails_for_staged_item_without_proposal(self):
         from src.bookkeeping.reports.workbook import run_sanity_checks
 

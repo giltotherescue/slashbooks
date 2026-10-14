@@ -150,6 +150,21 @@ class ReadinessTests(unittest.TestCase):
         work = next(item for item in result["blockers"] if item["code"] == "unresolved_period_work")
         self.assertEqual(work["refs"], ["current", "dup"])
 
+    def test_changed_source_reproposal_state_remains_unresolved_without_staging_row(self):
+        queue_path = self.entity.path / "review-queue" / "changed-source.json"
+        queue_path.write_text(json.dumps({
+            "source_id": "changed-source",
+            "date": "2026-09-12",
+            "status": "requires-reproposal",
+            "proposed_category": None,
+            "suggested_category": "Expenses:Software",
+            "requires_human_review": True,
+        }) + "\n")
+        result = self.assess()
+        work = next(item for item in result["blockers"] if item["code"] == "unresolved_period_work")
+        self.assertEqual(work["refs"], ["changed-source"])
+        self.assertEqual(result["state"], "blocked")
+
     def test_current_and_future_periods_never_claim_final_readiness(self):
         for period, as_of, code in [
             ("2026-10", date(2026, 10, 13), "period_current"),

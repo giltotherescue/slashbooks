@@ -34,7 +34,7 @@ correct(entity, item_id, category, note, session_id, ts) -> dict
     Confirm with a corrected category; resets learned-context count.
 
 reopen_if_amount_changed(item, posted_amount) -> dict | None
-    Returns updated item dict (status=reopened) if amount differs, else None.
+    Returns a stale item requiring a fresh proposal if amount differs, else None.
 
 reconcile_pending_amount_changes(entity) -> list[dict]
     Scan queue for items whose source_id is superseded at a different amount.
@@ -53,10 +53,10 @@ Queue item schema
   "proposed_category":  str,
   "reasoning":          str,             # sanitized
   "context":            str,
-  "status":             "open|confirmed|corrected|reopened",
+  "status":             "open|confirmed|corrected|reopened|requires-reproposal",
   "confirmed_category": str | null,      # set at confirm/correct
-  "original_amount":    "D.DD",          # set at propose; used for reopen
-  "delta":              "D.DD" | null,   # set when reopened
+  "original_amount":    "D.DD",          # set at propose; source comparison baseline
+  "delta":              "D.DD" | null,   # set when a source amount changes
   "corrected_at":       ISO | null,
   "created_at":         ISO,
   "updated_at":         ISO,
@@ -106,6 +106,7 @@ _QUEUE_TRANSACTION_DIR = "review-queue/.transactions"
 _LEARNED_CONTEXT_FILE = "learned-context/counterparties.json"
 _PENDING_CATEGORIZATION_FILE = "staging/pending-categorization.json"
 _DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
+ACTIONABLE_QUEUE_STATUSES = frozenset({"open", "reopened", "requires-reproposal"})
 _SOURCE_ID_ALIASES_FILE = "source-id-aliases.json"
 _REASONING_MAX_LEN = 2000
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -575,7 +576,8 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
                 continue
             try:
                 item = _load_item_from_path(entity, p, quarantine_on_error=False)
-                if status is None or item.get("status") == status:
+                if (status is None or item.get("status") == status
+                        or status == "actionable" and item.get("status") in ACTIONABLE_QUEUE_STATUSES):
                     items.append(item)
             except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError) as exc:
                 # Corruption is always visible, even through an open-status
@@ -1165,6 +1167,10 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
         "created_at": existing_item.get("created_at", now),
         "updated_at": now,
         "session_summary_id": None,
+        # A changed source must retain its explicit human-review requirement
+        # across reproposal. Interactive confirmation may resolve it; standing
+        # preparation authority may not silently absorb the changed evidence.
+        "requires_human_review": bool(existing_item.get("requires_human_review", False)),
     }
 
 
@@ -1303,7 +1309,7 @@ def _propose_split_unlocked(
     existing_item: dict = {}
     if existing_path.exists():
         existing_item = _load_item(entity, source_id)
-        if existing_item.get("status") not in {"open", "reopened"}:
+        if existing_item.get("status") not in ACTIONABLE_QUEUE_STATUSES:
             raise ValueError("A confirmed transaction cannot receive a new split proposal.")
     item = {
         "source_id": source_id,
@@ -1327,6 +1333,7 @@ def _propose_split_unlocked(
         "created_at": existing_item.get("created_at", now),
         "updated_at": now,
         "session_summary_id": None,
+        "requires_human_review": bool(existing_item.get("requires_human_review", False)),
     }
     _save_item(entity, item)
     return item
@@ -1535,13 +1542,16 @@ def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning:
     first, second, amount, first_account, second_account = _transfer_details(entity, source_ids, sources)
     item_id = _transfer_item_id(source_ids)
     existing_path = _item_path(entity, item_id)
-    if existing_path.exists() and _load_item(entity, item_id).get("status") not in {"open", "reopened"}:
-        raise ValueError("This transfer pair was already confirmed.")
+    existing_item: dict[str, Any] = {}
+    if existing_path.exists():
+        existing_item = _load_item(entity, item_id)
+        if existing_item.get("status") not in ACTIONABLE_QUEUE_STATUSES:
+            raise ValueError("This transfer pair was already confirmed.")
     # A normal category proposal would otherwise be hidden by the pair and lead
     # to an ambiguous approval record.
     for source_id in source_ids:
         path = _item_path(entity, source_id)
-        if path.exists() and _load_item(entity, source_id).get("status") in {"open", "reopened"}:
+        if path.exists() and _load_item(entity, source_id).get("status") in ACTIONABLE_QUEUE_STATUSES:
             raise ValueError(f"Source '{source_id}' already has a category proposal; resolve it first.")
     now = _now_iso()
     item = {
@@ -1565,6 +1575,7 @@ def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning:
         "created_at": now,
         "updated_at": now,
         "session_summary_id": None,
+        "requires_human_review": bool(existing_item.get("requires_human_review", False)),
     }
     _save_item(entity, item)
     return item
@@ -2030,7 +2041,7 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
 
 
 def reopen_if_amount_changed(item: dict, posted_amount: Decimal) -> Optional[dict]:
-    """Return updated item with status=reopened if posted_amount differs from original.
+    """Return a stale item requiring reproposal if its source amount changed.
 
     Returns None when amounts match (within 0.01 tolerance).
     """
@@ -2047,12 +2058,16 @@ def reopen_if_amount_changed(item: dict, posted_amount: Decimal) -> Optional[dic
 
     delta = posted - original
     updated = dict(item)
-    updated["status"] = "reopened"
+    prior_category = item.get("proposed_category") or item.get("confirmed_category")
+    updated["status"] = "requires-reproposal"
     updated["original_amount"] = str(original)
     updated["amount"] = str(posted)
     updated["delta"] = str(delta)
+    updated["suggested_category"] = prior_category
+    updated["proposed_category"] = None
+    updated["requires_human_review"] = True
+    updated["stale_reason"] = "source_evidence_changed"
     updated["updated_at"] = _now_iso()
-    # proposed_category is pre-filled from the previous confirmation
     return updated
 
 
@@ -2061,15 +2076,12 @@ def reconcile_pending_amount_changes(entity: Entity) -> list[dict]:
     """Scan open queue items for source_ids superseded at a different amount.
 
     This is called by the close flow.  When the importer has superseded a
-    pending transaction at a different amount, the queue item should reopen.
+    pending transaction at a different amount, the old proposal becomes a
+    suggestion and must be recreated from the current source evidence.
 
-    Returns a list of reopened item dicts (already persisted).
+    Returns the stale item documents (already persisted).
     """
-    from .ledger.staging import StagingStore
-
-    staging = StagingStore(entity.staging_dir)
-
-    reopened: list[dict] = []
+    stale_items: list[dict] = []
     items = list_queue_items(entity, status="open")
     items += list_queue_items(entity, status="confirmed")
 
@@ -2090,9 +2102,9 @@ def reconcile_pending_amount_changes(entity: Entity) -> list[dict]:
         updated = reopen_if_amount_changed(item, posted_amount)
         if updated is not None:
             _save_item(entity, updated)
-            reopened.append(updated)
+            stale_items.append(updated)
 
-    return reopened
+    return stale_items
 
 
 # ---------------------------------------------------------------------------
@@ -2476,14 +2488,14 @@ def add_parser(subparsers: Any) -> None:
     # list
     list_p = queue_sub.add_parser("list", help="List queue items")
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
-    list_p.add_argument("--status", default=None, help="Filter by status (open/confirmed/corrected/reopened)")
+    list_p.add_argument("--status", default=None, help="Filter by status, or use actionable for all unresolved review work")
 
     summary_p = queue_sub.add_parser(
         "summary",
         help="Summarize review work by proposed treatment without posting changes",
     )
     summary_p.add_argument("--entity", required=True, help="Path to entity directory")
-    summary_p.add_argument("--status", default="open", help="Filter by status (default: open)")
+    summary_p.add_argument("--status", default="actionable", help="Filter by status (default: actionable review work)")
 
     # show
     show_p = queue_sub.add_parser("show", help="Show a single queue item")
@@ -2712,7 +2724,10 @@ def run(args: Any) -> int:
                 print("No queue items found.")
                 return 0
             for item in items:
-                cat = item.get("proposed_category") or item.get("confirmed_category") or "?"
+                if item.get("status") == "requires-reproposal":
+                    cat = "suggested " + str(item.get("suggested_category") or "?")
+                else:
+                    cat = item.get("proposed_category") or item.get("confirmed_category") or "?"
                 print(f"  [{item.get('status', '?')}] {item['source_id']}  {item.get('date', '?')}  {cat}")
             return 0
 

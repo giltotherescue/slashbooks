@@ -22,6 +22,7 @@ from .ledger.projections import render_store_ledger
 from .ledger.store import LedgerStore, default_store_path
 from .ledger.validator import validate
 from .reports.statements import balance_sheet, profit_and_loss, trial_balance
+from .queue import ACTIONABLE_QUEUE_STATUSES
 
 
 _PERIOD = re.compile(r"[0-9]{4}-(?:0[1-9]|1[0-2])\Z")
@@ -207,7 +208,7 @@ def _open_work(entity_path: Path, start: date, end: date) -> tuple[list[dict[str
         if error or not isinstance(item, Mapping):
             blockers.append({"code": "proposal_unreadable", "message": "A review proposal could not be verified.", "refs": [path.name]})
             continue
-        if item.get("status") not in {"open", "reopened"}:
+        if item.get("status") not in ACTIONABLE_QUEUE_STATUSES:
             continue
         in_period = _period_item(item, start, end)
         if in_period is None:

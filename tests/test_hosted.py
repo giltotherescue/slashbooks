@@ -270,6 +270,36 @@ class HostedTests(unittest.TestCase):
                 self.assertEqual(self.invoke("question", *arguments)[0], 1)
         self.assertEqual(self.api.calls, [])
 
+    def test_question_key_cannot_be_reused_for_different_input(self) -> None:
+        self.assertEqual(self.invoke(
+            "question", "create", "--subject", "First", "--body", "First question",
+            "--idempotency-key", "same-question-key",
+        )[0], 0)
+        code, _, err = self.invoke(
+            "question", "create", "--subject", "Second", "--body", "Different question",
+            "--idempotency-key", "same-question-key",
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(err)["error"]["code"], "IDEMPOTENCY_CONFLICT")
+        self.assertEqual(len(self.api.calls), 1)
+
+    def test_tampered_question_receipt_is_not_retried(self) -> None:
+        code, out, _ = self.invoke(
+            "question", "resolve", "question-1", "--reply-id", "reply-1",
+            "--reply-watermark", "1", "--command-id", "command-1",
+            "--idempotency-key", "tampered-question-receipt",
+        )
+        self.assertEqual(code, 0)
+        receipt = Path(json.loads(out)["local_receipt"])
+        record = json.loads(receipt.read_text())
+        record["body"]["reply_ids"] = ["reply-other"]
+        receipt.write_text(json.dumps(record))
+        calls = len(self.api.calls)
+        code, _, err = self.invoke("retry", "--receipt", str(receipt))
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(err)["error"]["code"], "INVALID_RECEIPT")
+        self.assertEqual(len(self.api.calls), calls)
+
     def test_collection_query_encoding_keeps_cursor_opaque(self) -> None:
         cursor = "https://untrusted.example/a?company=B&cursor=next#x +/=\u00e9"
         for command in hosted.COLLECTIONS:
