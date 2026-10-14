@@ -217,6 +217,7 @@ class HostedTests(unittest.TestCase):
         code, out, _ = self.invoke(
             "question", "create", "--subject", "September charge",
             "--body", "Was the Acme payment for business use?",
+            "--source-id", "receipt-2", "--source-id", "bank-transaction-1",
             "--idempotency-key", "question-create-1",
         )
         self.assertEqual(code, 0)
@@ -226,6 +227,7 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(self.api.calls[-1]["body"], {
             "subject": "September charge",
             "body": "Was the Acme payment for business use?",
+            "source_ids": ["bank-transaction-1", "receipt-2"],
         })
         create_receipt = Path(created["local_receipt"])
         self.assertEqual(json.loads(create_receipt.read_text())["kind"], "question-create")
@@ -258,6 +260,8 @@ class HostedTests(unittest.TestCase):
             ("create", "--subject", "", "--body", "Body"),
             ("create", "--subject", "x" * 201, "--body", "Body"),
             ("create", "--subject", "Subject", "--body", "x" * 10001),
+            ("create", "--subject", "Subject", "--body", "Body",
+             "--source-id", "same", "--source-id", "same"),
             ("resolve", "question-1", "--reply-id", "same", "--reply-id", "same",
              "--reply-watermark", "2", "--command-id", "command-1"),
             ("resolve", "question-1", "--reply-id", "reply-1",
@@ -275,6 +279,7 @@ class HostedTests(unittest.TestCase):
             "question", "create", "--subject", "First", "--body", "First question",
             "--idempotency-key", "same-question-key",
         )[0], 0)
+        self.assertEqual(self.api.calls[-1]["body"]["source_ids"], [])
         code, _, err = self.invoke(
             "question", "create", "--subject", "Second", "--body", "Different question",
             "--idempotency-key", "same-question-key",

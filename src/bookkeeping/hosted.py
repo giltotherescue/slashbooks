@@ -89,6 +89,7 @@ def add_parser(subparsers: Any) -> None:
     question_create = question_commands.add_parser("create", help="Send one scoped question")
     question_create.add_argument("--subject", required=True)
     question_create.add_argument("--body", required=True)
+    question_create.add_argument("--source-id", action="append", default=[], dest="source_ids")
     question_create.add_argument("--idempotency-key")
     question_resolve = question_commands.add_parser(
         "resolve", help="Resolve a question after every reply was applied by a committed command"
@@ -412,27 +413,40 @@ def _command_body(name: str, body: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def _stable_reply_id(value: Any) -> str:
+def _stable_question_id(value: Any, label: str) -> str:
     if (not isinstance(value, str) or not value or len(value) > 200
             or any(ord(character) < 33 or ord(character) == 127 for character in value)):
         raise HostedError(
-            "INVALID_QUESTION", "Reply IDs must be nonempty stable identifiers of at most 200 characters."
+            "INVALID_QUESTION", f"{label} must be a nonempty stable identifier of at most 200 characters."
         )
     return value
+
+
+def _stable_reply_id(value: Any) -> str:
+    return _stable_question_id(value, "Reply ID")
 
 
 def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
     """Validate the immutable public question request used for submit and retry."""
     if route == "/questions":
-        if set(body) != {"subject", "body"}:
-            raise HostedError("INVALID_QUESTION", "Question create requires only subject and body.")
+        if set(body) != {"subject", "body", "source_ids"}:
+            raise HostedError(
+                "INVALID_QUESTION", "Question create requires subject, body and source_ids."
+            )
         if (not isinstance(body["subject"], str) or not body["subject"].strip()
                 or len(body["subject"]) > 200):
             raise HostedError("INVALID_QUESTION", "Question subject must be 1-200 characters.")
         if (not isinstance(body["body"], str) or not body["body"].strip()
                 or len(body["body"]) > 10000):
             raise HostedError("INVALID_QUESTION", "Question body must be 1-10000 characters.")
-        return dict(body)
+        source_ids = body.get("source_ids")
+        if (not isinstance(source_ids, list) or len(source_ids) > 100
+                or len(set(_stable_question_id(value, "Source ID") for value in source_ids))
+                != len(source_ids)):
+            raise HostedError(
+                "INVALID_QUESTION", "Question create allows at most 100 unique stable source IDs."
+            )
+        return {**body, "source_ids": sorted(source_ids)}
     match = re.fullmatch(r"/questions/([^/]+)/resolve", route) if isinstance(route, str) else None
     if match is None:
         raise HostedError("INVALID_RECEIPT", "Receipt does not contain a supported question route.")
@@ -530,7 +544,9 @@ def _mutate(args: argparse.Namespace, client: HostedClient) -> dict[str, Any]:
 def _mutate_question(args: argparse.Namespace, client: HostedClient) -> dict[str, Any]:
     if args.question_command == "create":
         route = "/questions"
-        body = _question_body(route, {"subject": args.subject, "body": args.body})
+        body = _question_body(route, {
+            "subject": args.subject, "body": args.body, "source_ids": list(args.source_ids),
+        })
     else:
         route = "/questions/" + _segment(args.question_id) + "/resolve"
         body = _question_body(route, {

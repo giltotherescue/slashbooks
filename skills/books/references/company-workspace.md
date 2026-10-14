@@ -190,13 +190,24 @@ use an available authorized question channel; do not claim an unsent draft was
 delivered. No extra accountant-send gate is required merely because books are
 remote. A genuinely missing channel is a capability gap, not a new approval rule.
 
-For hosted books, `cloud question create --subject <subject> --body <question>`
-sends one scoped question through the normal company credential. Read the
-paginated `cloud questions` collection for replies. Resolve only after an
-ordinary hosted command has committed the answer, using `cloud question resolve
-<question-id> --reply-id <reply-id> --reply-watermark <watermark> --command-id
-<command-id>`. Include every reply through the current watermark; reread on an
-incomplete, changed-answer, or idempotency conflict response.
+For hosted books, `cloud question create --subject <subject> --body <question>
+--source-id <source-id>` sends one scoped question through the normal company
+credential; repeat the source flag or omit it for a general fact. Read the
+paginated `cloud questions` collection for replies. On the ordinary remote
+mutation that applies those replies, pass `--answer-question-id`, every
+`--answer-reply-id`, `--answer-reply-watermark`, and repeated
+`--answer-source-id` for the exact subset of the question's declared source
+scope which that mutation intends to apply. Grouped questions can use multiple
+committed commands with different subsets. The remote request and receipt bind
+that declared metadata outside the engine argv; it is provenance, not proof of
+the engine's actual affected sources, accounting evidence, or authority. The
+host verifies actual affected source scope independently. Resolve only after all
+scoped sources have verified committed applications, using `cloud question
+resolve <question-id> --reply-id <reply-id> --reply-watermark <watermark>
+--command-id <command-id>`. Include every reply through the current watermark.
+If resolve reports `remaining_source_ids`, keep the question open and apply the
+remaining verified scope; reread on an incomplete, changed-answer, or
+idempotency conflict response.
 
 An authenticated scheduled preparation may carry a host-supplied standing
 policy context. In that context, keep using ordinary ingest, queue, reconcile,

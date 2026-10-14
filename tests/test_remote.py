@@ -262,6 +262,18 @@ class RemoteTests(unittest.TestCase):
         local.assert_called_once()
         self.assertEqual(self.api.calls, [])
 
+    def test_answer_application_never_falls_back_to_local_execution(self):
+        local_entity = self.directory / "local"
+        with patch.object(cli.queue_module, "run", side_effect=AssertionError("local fallback")) as local:
+            code, _, err = self.invoke(
+                "queue", "confirm", "--entity", str(local_entity), "--item", "proposal-1",
+                "--answer-question-id", "question-1", "--answer-reply-id", "reply-1",
+                "--answer-reply-watermark", "1",
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("ANSWER_APPLICATION_REMOTE_ONLY", err)
+        local.assert_not_called()
+
     def test_configured_company_never_reads_stale_ledger(self):
         ledger = self.entity / "ledger.sqlite"
         ledger.write_bytes(b"not a database")
@@ -675,6 +687,64 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(self.api.calls[-1]["key"], original["key"])
         self.assertEqual(self.api.calls[-1]["body"], original["body"])
         self.assertEqual(len(self.api.results), 1)
+
+    def test_answer_application_is_outside_engine_argv_and_inside_immutable_receipt(self):
+        flags = (
+            "--answer-question-id", "question-1",
+            "--answer-reply-id", "reply-1",
+            "--answer-reply-id", "reply-2",
+            "--answer-reply-watermark", "2",
+            "--answer-source-id", "receipt-2",
+            "--answer-source-id", "bank-transaction-1",
+        )
+        code, _, err = self.command("queue", "confirm", "--item", "proposal-1", *flags)
+        self.assertEqual(code, 0, err)
+        body = self.api.calls[-1]["body"]
+        self.assertEqual(body["answer_application"], {
+            "question_id": "question-1",
+            "reply_ids": ["reply-1", "reply-2"],
+            "reply_watermark": 2,
+            "source_ids": ["bank-transaction-1", "receipt-2"],
+        })
+        self.assertTrue(all(not argument.startswith("--answer-") for argument in body["argv"]))
+        receipt = json.loads(self.receipts()[0].read_text())
+        self.assertEqual(receipt["body"], body)
+        self.assertEqual(receipt["body_sha256"], hosted._body_digest(body))
+
+    def test_answer_application_retry_reuses_exact_metadata_and_request(self):
+        self.api.drop = True
+        code, _, _ = self.command(
+            "queue", "confirm", "--item", "proposal-1",
+            "--answer-question-id", "question-1",
+            "--answer-reply-id", "reply-1",
+            "--answer-reply-watermark", "1",
+        )
+        self.assertEqual(code, 1)
+        original = self.api.calls[-1]
+        self.assertEqual(original["body"]["answer_application"]["source_ids"], [])
+        self.api.drop = False
+        code, _, err = self.invoke("hosted", "retry", "--receipt", str(self.receipts()[0]))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.api.calls[-1]["body"], original["body"])
+        self.assertEqual(self.api.calls[-1]["key"], original["key"])
+
+    def test_invalid_answer_application_is_rejected_before_network(self):
+        cases = (
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1"),
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1",
+             "--answer-reply-id", "same", "--answer-reply-id", "same",
+             "--answer-reply-watermark", "2"),
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1",
+             "--answer-reply-id", "reply-1", "--answer-reply-watermark", "0"),
+            ("queue", "summary", "--answer-question-id", "question-1",
+             "--answer-reply-id", "reply-1", "--answer-reply-watermark", "1"),
+        )
+        for argv in cases:
+            with self.subTest(argv=argv):
+                code, _, err = self.command(*argv)
+                self.assertEqual(code, 1)
+                self.assertIn("ANSWER_APPLICATION", err)
+        self.assertEqual(self.api.calls, [])
 
     def test_download_failure_recovers_without_another_request(self):
         output = self.directory / "report.json"
