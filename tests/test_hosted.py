@@ -212,6 +212,64 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(self.invoke("command-result", "command?other#fragment")[0], 0)
         self.assertEqual(self.api.calls[-1]["path"], "/api/v1/companies/company-A/commands/command%3Fother%23fragment")
 
+    def test_question_create_and_resolve_use_scoped_routes_and_durable_receipts(self) -> None:
+        self.api.response = {"question": {"id": "question-1", "status": "open"}}
+        code, out, _ = self.invoke(
+            "question", "create", "--subject", "September charge",
+            "--body", "Was the Acme payment for business use?",
+            "--idempotency-key", "question-create-1",
+        )
+        self.assertEqual(code, 0)
+        created = json.loads(out)
+        self.assertEqual(self.api.calls[-1]["method"], "POST")
+        self.assertEqual(self.api.calls[-1]["path"], "/api/v1/companies/company-A/questions")
+        self.assertEqual(self.api.calls[-1]["body"], {
+            "subject": "September charge",
+            "body": "Was the Acme payment for business use?",
+        })
+        create_receipt = Path(created["local_receipt"])
+        self.assertEqual(json.loads(create_receipt.read_text())["kind"], "question-create")
+
+        self.api.response = {"question": {"id": "question?1#reply", "status": "resolved"}}
+        code, out, _ = self.invoke(
+            "question", "resolve", "question?1#reply",
+            "--reply-id", "reply-1", "--reply-id", "reply-2",
+            "--reply-watermark", "2", "--command-id", "command-9",
+            "--idempotency-key", "question-resolve-1",
+        )
+        self.assertEqual(code, 0)
+        resolved = json.loads(out)
+        self.assertEqual(
+            self.api.calls[-1]["path"],
+            "/api/v1/companies/company-A/questions/question%3F1%23reply/resolve",
+        )
+        self.assertEqual(self.api.calls[-1]["body"], {
+            "reply_ids": ["reply-1", "reply-2"],
+            "reply_watermark": 2,
+            "command_id": "command-9",
+        })
+        resolve_receipt = Path(resolved["local_receipt"])
+        before = self.api.calls[-1]
+        self.assertEqual(self.invoke("retry", "--receipt", str(resolve_receipt))[0], 0)
+        self.assertEqual(self.api.calls[-1], before)
+
+    def test_question_inputs_fail_closed_before_network(self) -> None:
+        cases = [
+            ("create", "--subject", "", "--body", "Body"),
+            ("create", "--subject", "x" * 201, "--body", "Body"),
+            ("create", "--subject", "Subject", "--body", "x" * 10001),
+            ("resolve", "question-1", "--reply-id", "same", "--reply-id", "same",
+             "--reply-watermark", "2", "--command-id", "command-1"),
+            ("resolve", "question-1", "--reply-id", "reply-1",
+             "--reply-watermark", "0", "--command-id", "command-1"),
+            ("resolve", "../other", "--reply-id", "reply-1",
+             "--reply-watermark", "1", "--command-id", "command-1"),
+        ]
+        for arguments in cases:
+            with self.subTest(arguments=arguments):
+                self.assertEqual(self.invoke("question", *arguments)[0], 1)
+        self.assertEqual(self.api.calls, [])
+
     def test_collection_query_encoding_keeps_cursor_opaque(self) -> None:
         cursor = "https://untrusted.example/a?company=B&cursor=next#x +/=\u00e9"
         for command in hosted.COLLECTIONS:
