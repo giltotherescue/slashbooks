@@ -718,10 +718,11 @@ class RemoteTests(unittest.TestCase):
             "--answer-question-id", "question-1",
             "--answer-reply-id", "reply-1",
             "--answer-reply-watermark", "1",
+            "--answer-source-id", "source-1",
         )
         self.assertEqual(code, 1)
         original = self.api.calls[-1]
-        self.assertEqual(original["body"]["answer_application"]["source_ids"], [])
+        self.assertEqual(original["body"]["answer_application"]["source_ids"], ["source-1"])
         self.api.drop = False
         code, _, err = self.invoke("hosted", "retry", "--receipt", str(self.receipts()[0]))
         self.assertEqual(code, 0, err)
@@ -755,6 +756,8 @@ class RemoteTests(unittest.TestCase):
              "--answer-reply-watermark", "2"),
             ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1",
              "--answer-reply-id", "reply-1", "--answer-reply-watermark", "0"),
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1",
+             "--answer-reply-id", "reply-1", "--answer-reply-watermark", "1"),
             ("queue", "summary", "--answer-question-id", "question-1",
              "--answer-reply-id", "reply-1", "--answer-reply-watermark", "1"),
             ("compare", "period", "--qb-folder", str(self.directory / "qb"),

@@ -139,10 +139,11 @@ scripts/books cloud question create --subject "<short subject>" \
 ```
 
 Repeat `--source-id` for every source whose treatment the answer may change;
-omit it only for a general fact with no source scope. Read `cloud questions`
-through its final cursor before applying replies. Attach the question, complete
-reply set, current watermark, and the exact subset of that declared source scope
-which one ordinary remote accounting mutation intends to apply:
+source-less questions are only for ordinary human-managed general facts and
+cannot use the automated apply-and-resolve flow. Read `cloud questions` through
+its final cursor before applying replies. Attach the question, complete reply
+set, current watermark, and a nonempty exact subset of that declared source
+scope which one ordinary remote accounting mutation intends to apply:
 
 ```sh
 scripts/books queue confirm --entity <company-dir> --item <proposal-id> \

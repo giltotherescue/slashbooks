@@ -192,11 +192,13 @@ remote. A genuinely missing channel is a capability gap, not a new approval rule
 
 For hosted books, `cloud question create --subject <subject> --body <question>
 --source-id <source-id>` sends one scoped question through the normal company
-credential; repeat the source flag or omit it for a general fact. Read the
-paginated `cloud questions` collection for replies. On the ordinary remote
-mutation that applies those replies, pass `--answer-question-id`, every
+credential; repeat the source flag. Source-less creation remains available for
+ordinary human-managed general questions, but those questions cannot use the
+automated apply-and-resolve flow. Read the paginated `cloud questions`
+collection for replies. On the ordinary remote mutation that applies those
+replies, pass `--answer-question-id`, every
 `--answer-reply-id`, `--answer-reply-watermark`, and repeated
-`--answer-source-id` for the exact subset of the question's declared source
+`--answer-source-id` for a nonempty exact subset of the question's declared source
 scope which that mutation intends to apply. Grouped questions can use multiple
 committed commands with different subsets. The remote request and receipt bind
 that declared metadata outside the engine argv; it is provenance, not proof of

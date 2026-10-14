@@ -490,11 +490,11 @@ def _answer_application(value: Any) -> dict[str, Any] | None:
             "Answer application requires 1-100 unique stable reply IDs.",
         )
     source_ids = value.get("source_ids")
-    if (not isinstance(source_ids, list) or len(source_ids) > 100
+    if (not isinstance(source_ids, list) or not 1 <= len(source_ids) <= 100
             or len(set(_answer_id(item, "Source ID") for item in source_ids)) != len(source_ids)):
         raise _error(
             "INVALID_ANSWER_APPLICATION",
-            "Answer application allows at most 100 unique stable source IDs.",
+            "Answer application requires 1-100 unique stable source IDs.",
         )
     watermark = value.get("reply_watermark")
     if type(watermark) is not int or watermark <= 0:
