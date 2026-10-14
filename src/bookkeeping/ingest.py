@@ -71,6 +71,11 @@ def add_parser(subparsers: Any) -> None:
 def load_transactions(path: Path) -> list[dict]:
     """Read and shape-check a normalized transactions file."""
     data = json.loads(path.read_text(encoding="utf-8"))
+    return _transactions_from_data(data)
+
+
+def _transactions_from_data(data: Any) -> list[dict]:
+    """Shape an already verified JSON value into normalized transactions."""
     if isinstance(data, list):
         txns = data
     elif isinstance(data, dict) and isinstance(data.get("transactions"), list):
@@ -138,9 +143,16 @@ def _is_banksync_download(path: Path) -> bool:
 
 def run(args: argparse.Namespace) -> int:
     entity = load_entity(args.entity)
-    txns = load_transactions(args.input)
+    from .preparation_runtime import prepared_ingest_transactions
+    prepared = prepared_ingest_transactions(args.input)
+    if prepared is None:
+        txns = load_transactions(args.input)
+        is_banksync = args.source == "banksync" or _is_banksync_download(args.input)
+    else:
+        txns, verified_banksync = prepared
+        is_banksync = args.source == "banksync" or verified_banksync
     _require_banksync_mappings(
-        entity, txns, "banksync" if args.source == "banksync" or _is_banksync_download(args.input) else args.source
+        entity, txns, "banksync" if is_banksync else args.source
     )
 
     session_id = args.session_id or (
@@ -153,7 +165,7 @@ def run(args: argparse.Namespace) -> int:
         session_id=session_id,
         categorizer=categorizer,
         ts=None,
-        legacy_duplicate_guard=args.source == "banksync" or _is_banksync_download(args.input),
+        legacy_duplicate_guard=is_banksync,
     )
 
     print(

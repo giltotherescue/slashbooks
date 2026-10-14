@@ -38,12 +38,34 @@ but are not authentication tokens.
 
 ## Supported execution boundary
 
-`run_preparation_command` accepts normal `queue confirm`, `queue confirm-split`
-and `queue confirm-transfer` arguments, plus `ledger correct`,
+Call `supported_preparation_command(argv)` before routing a service command. It
+returns an immutable positive-list classification with `read`, `proposal`,
+`ledger`, or `reconciliation` effect. Only `read` commands may use ordinary
+read-only dispatch; every listed effect must use `run_preparation_command`.
+Unlisted commands fail closed. This prevents a service caller from accidentally
+using the interactive confirmation route without standing-policy enforcement.
+
+`run_preparation_command` accepts normal `ingest`, queue proposal, `queue
+confirm`, `queue confirm-split`, `queue confirm-transfer`, and evidence-complete
+single-account `reconcile` arguments, plus `ledger correct`,
 `ledger reclassify-bank` and `ledger split-equity`. It calls the same dispatchers
 as the CLI, with authority supplied by the embedding host. It does not read
 `.env` or reroute to another remote workspace. Batch confirmations,
 related-entity treatments, standalone reversals and other commands fail closed.
+
+Imports require a trusted fingerprint for every normalized source row and reuse
+that immutable input snapshot inside the ordinary ingest dispatcher. Proposals
+require the currently staged source fingerprints and their corresponding policy
+action. Automated reconciliation is limited to one account and requires the
+opening balance, signed source activity, ending balance, snapshot time and
+source-through date. It also requires one or more stable
+`--source-evidence-ref` values. Its trusted fingerprint map contains
+`reconciliation:<account>:<as-of>` for the exact numeric/timing payload and one
+`evidence:<source-evidence-ref>` entry per independently verified provider
+record or statement. The runtime never creates those attestations by hashing a
+fresh model upload or model-provided balance. The host retains the operation
+receipt and workspace revision guard for proposal and reconciliation metadata
+writes.
 
 The host supplies the expected ledger digest and fingerprints of previously
 verified source records. The write path rechecks the digest inside the ledger
@@ -69,5 +91,27 @@ An automated confirmation does not increment the learned-context human
 confirmation count. Explicit holds still require human review. The host must
 also enforce current revocation, closed periods, trusted evidence provenance and
 the final workspace revision at publication/commit. This local transaction
-boundary does not replace those checks. Broader command coverage, hosted
-service integration and qualification remain prerequisites for unattended use.
+boundary does not replace those checks. Hosted service integration and
+qualification remain prerequisites for unattended use.
+
+## Review readiness
+
+`bookkeeping.readiness.assess_review_readiness` is a deterministic, read-only
+engine interface. The host passes `DependencyVersions(books_revision,
+source_revision, reply_revision, policy_version)` from authenticated live state,
+plus an explicit evaluation date. The result names affirmative source coverage,
+period-end reconciliations, unresolved staged work/proposals/duplicates/questions,
+validated draft report references, exact engine totals and blockers. It requires
+a completed period, a canonical ledger, source coverage dates, a ledger account
+for every source, clean reconciliation with opening/activity evidence, and a
+dated source snapshot through period end. Reconciliation records without stable
+source evidence references and their verified fingerprints remain blocked.
+
+The returned `package_id` binds the period, dependency versions, evidence
+fingerprint, blockers and report references. The engine returns only `blocked`
+or `ready_for_review`; the host derives `not_evaluated` and `stale` by comparing
+the captured versions with live state. A zero exit code from `books readiness`
+means only that an assessment was produced. The local CLI uses zero-version
+dependencies for inspection and does not establish hosted authority. The host
+must reject final human publication when any dependency version or package ID is
+stale. No readiness result authorizes an agent to publish, close, or reopen.

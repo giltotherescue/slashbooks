@@ -12,11 +12,13 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from bookkeeping import queue
+from bookkeeping import queue, reconcile
 from bookkeeping.automation_policy import ExecutionContext, PreparationDenied, StandingPolicy
 from bookkeeping.ledger import importer
 from bookkeeping.ledger.store import LedgerStore
-from bookkeeping.preparation_runtime import evidence_hash, is_preparation, run_preparation_command
+from bookkeeping.preparation_runtime import (
+    evidence_hash, is_preparation, run_preparation_command, supported_preparation_command,
+)
 from test_queue import _add_pending_categorization, _make_entity
 
 
@@ -33,6 +35,26 @@ class PreparationRuntimeTests(unittest.TestCase):
     def authority(self):
         return ExecutionContext("synthetic-company", "synthetic-execution", self.policy, 1, 4, 4,
                                 datetime.now(timezone.utc) + timedelta(minutes=5))
+
+    def test_positive_command_classifier_separates_reads_and_effects(self):
+        cases = [
+            (["readiness", "--entity", str(self.entity.path), "--period", "2026-09", "--as-of", "2026-10-01"], "read", None),
+            (["queue", "propose", "--entity", str(self.entity.path), "--source-id", "x", "--category", "Expenses:Software", "--reasoning", "x"], "proposal", "categorize"),
+            (["ingest", str(self.entity.path / "input.json"), "--entity", str(self.entity.path)], "ledger", "import"),
+            (["queue", "confirm", "--entity", str(self.entity.path), "--item", "x"], "ledger", None),
+            (["reconcile", "--entity", str(self.entity.path), "--account", "Assets:Bank:Checking", "--source-balance", "0", "--as-of", "2026-09-30"], "reconciliation", "reconcile"),
+        ]
+        for argv, effect, action in cases:
+            with self.subTest(argv=argv):
+                spec = supported_preparation_command(argv)
+                self.assertEqual((spec.effect, spec.action), (effect, action))
+        for argv in (
+            ["queue", "confirm-group", "--entity", str(self.entity.path), "--category", "Expenses:Software"],
+            ["queue", "resolve-duplicate", "--entity", str(self.entity.path), "--source-id", "x", "--decision", "duplicate"],
+            ["entity", "source-coverage", str(self.entity.path), "--source", "x", "--from", "2026-09-01", "--to", "2026-09-30"],
+        ):
+            with self.subTest(rejected=argv), self.assertRaisesRegex(PreparationDenied, "command_not_supported"):
+                supported_preparation_command(argv)
 
     def prepare(self):
         _add_pending_categorization(self.entity, "source-a", "Synthetic software", amount="-100.00")
@@ -58,6 +80,111 @@ class PreparationRuntimeTests(unittest.TestCase):
         self.assertEqual(queue.load_learned_context(self.entity), {})
         self.assertEqual(self.store.verify_audit_chain(), [])
         self.assertFalse(is_preparation())
+
+    def test_preparation_can_import_verified_input_through_the_ordinary_dispatcher(self):
+        self.policy = replace(self.policy, actions=tuple(sorted((*self.policy.actions, "import"))))
+        queue._save_learned_context(self.entity, {
+            "SYNTHETIC VENDOR": {
+                "canonical_category": "Expenses:Software", "confirmed_count": 3,
+                "last_confirmed_date": "2026-09-01", "reset": False, "notes": "",
+            }
+        })
+        source = {
+            "id": "import-source", "date": "2026-09-12", "amount": "-25.00",
+            "description": "Synthetic vendor", "accountName": "Checking", "pending": False,
+        }
+        input_path = self.entity.path / "synthetic-input.json"
+        input_path.write_text(json.dumps([source]))
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(
+                ["ingest", str(input_path), "--entity", str(self.entity.path),
+                 "--source", "synthetic", "--session-id", "synthetic-import"],
+                self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(),
+                source_hashes={"import-source": evidence_hash(source)},
+            )
+        self.assertEqual(result, 0)
+        self.assertTrue(self.store.source_exists("import-source"))
+        audit = [row for row in self.store.load_audit_events() if row["type"] == "automation-preparation"]
+        self.assertEqual(audit[-1]["payload"]["intent"]["action"], "import")
+
+    def test_preparation_can_save_verified_proposals_without_posting(self):
+        _add_pending_categorization(self.entity, "proposal-source", "Synthetic proposal", txn_date="2026-09-12")
+        source = queue._get_pending_txn(self.entity, "proposal-source")
+        before = self.store.content_digest()
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(
+                ["queue", "propose", "--entity", str(self.entity.path),
+                 "--source-id", "proposal-source", "--category", "Expenses:Software",
+                 "--reasoning", "Synthetic evidence"],
+                self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=before,
+                source_hashes={"proposal-source": evidence_hash(source)},
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(queue._load_item(self.entity, "proposal-source")["status"], "open")
+        self.assertEqual(self.store.content_digest(), before)
+
+    def test_preparation_reconciliation_requires_affirmative_verified_evidence(self):
+        self.policy = replace(self.policy, actions=tuple(sorted((*self.policy.actions, "reconcile"))))
+        evidence = {
+            "account": "Assets:Bank:Checking", "as_of": "2026-09-30",
+            "source_balance": "0.00", "source_opening_balance": "0.00",
+            "source_transaction_total": "0.00", "source_snapshot_at": "2026-10-01T12:00:00Z",
+            "source_through": "2026-09-30",
+        }
+        argv = [
+            "reconcile", "--entity", str(self.entity.path), "--account", evidence["account"],
+            "--source-balance", evidence["source_balance"], "--as-of", evidence["as_of"],
+            "--source-opening-balance", evidence["source_opening_balance"],
+            "--source-transaction-total", evidence["source_transaction_total"],
+            "--source-snapshot-at", evidence["source_snapshot_at"],
+            "--source-through", evidence["source_through"],
+            "--source-evidence-ref", "provider-record:statement-2026-09",
+            "--source-evidence-hash", "provider-record:statement-2026-09=" + "b" * 64,
+        ]
+        source_id = "reconciliation:Assets:Bank:Checking:2026-09-30"
+        source_hashes = {
+            source_id: evidence_hash(evidence),
+            "evidence:provider-record:statement-2026-09": evidence_hash({"verified": "statement-2026-09"}),
+        }
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(
+                argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(),
+                source_hashes=source_hashes,
+            )
+        self.assertEqual(result, 0)
+        record = reconcile.list_discrepancies(self.entity.path)[0]
+        self.assertEqual(record["source_opening_balance"], "0.00")
+        self.assertEqual(record["source_transaction_total"], "0.00")
+        self.assertEqual(record["source_evidence_refs"], ["provider-record:statement-2026-09"])
+        self.assertEqual(record["source_evidence_hashes"], {
+            "provider-record:statement-2026-09": source_hashes["evidence:provider-record:statement-2026-09"],
+        })
+
+        incomplete = list(argv)
+        index = incomplete.index("--source-opening-balance")
+        del incomplete[index:index + 2]
+        with self.assertRaisesRegex(PreparationDenied, "affirmative_reconciliation_evidence_required"):
+            run_preparation_command(
+                incomplete, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(),
+                source_hashes=source_hashes,
+            )
+        changed = list(argv)
+        changed[changed.index("0.00")] = "1.00"
+        with self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
+            run_preparation_command(
+                changed, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(), source_hashes=source_hashes,
+            )
+        with self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
+            run_preparation_command(
+                argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(),
+                source_hashes={source_id: evidence_hash(evidence)},
+            )
 
     def test_explicit_hold_leaves_ledger_queue_and_source_untouched_then_human_can_confirm(self):
         self.prepare()

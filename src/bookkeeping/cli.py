@@ -38,6 +38,7 @@ from bookkeeping import hosted as hosted_module
 from bookkeeping import ingest as ingest_module
 from bookkeeping import queue as queue_module
 from bookkeeping import quickbooks as quickbooks_module
+from bookkeeping import readiness as readiness_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping import remote as remote_module
 from bookkeeping.connectors import csvsource as csvsource_module
@@ -74,6 +75,8 @@ def main(argv: list[str] | None = None) -> int:
             return statements_module.run(args)
         if args.command in {"reconcile", "reconcile-resolve"}:
             return reconcile_module.run(args)
+        if args.command == "readiness":
+            return readiness_module.run(args)
         if args.command in {"backtest", "compare"}:
             return compare_module.run(args)
         if args.command in {"queue", "quarterly-review"}:
@@ -122,6 +125,8 @@ def load_dotenv(path: Path) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="books")
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    readiness_module.add_parser(subcommands)
 
     connector = subcommands.add_parser(
         "connector", help="Pull data from a connector: bank feed, provider API, or CSV"

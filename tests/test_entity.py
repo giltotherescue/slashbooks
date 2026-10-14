@@ -134,6 +134,25 @@ class TestInitFullLayout(unittest.TestCase):
                 "coverage_to": "2026-06-30",
             })
 
+    def test_source_coverage_can_bind_affirmative_statement_scope_to_account(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "my-entity"
+            _init_simple(target)
+            result = record_source_coverage(
+                target, "Operating statement", "2026-09-01", "2026-09-30",
+                "Assets:Bank:Checking",
+            )
+            self.assertEqual(result["account"], "Assets:Bank:Checking")
+            saved = load_entity(target).entity_config["source_coverage"]["Operating statement"]
+            self.assertEqual(saved["account"], "Assets:Bank:Checking")
+            record_source_coverage(target, "Operating statement", "2026-01-01", "2026-10-31")
+            saved = load_entity(target).entity_config["source_coverage"]["Operating statement"]
+            self.assertEqual(saved["account"], "Assets:Bank:Checking")
+            with self.assertRaisesRegex(ValueError, "asset or liability"):
+                record_source_coverage(
+                    target, "Revenue export", "2026-09-01", "2026-09-30", "Income:Consulting",
+                )
+
     def test_init_persists_legal_structure_and_cutover_date(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "my-entity"
