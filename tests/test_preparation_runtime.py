@@ -6,6 +6,9 @@ from datetime import datetime, timedelta, timezone
 from io import StringIO
 import json
 from pathlib import Path
+import os
+import select
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -80,6 +83,9 @@ class PreparationRuntimeTests(unittest.TestCase):
         self.assertEqual(audit[0]["payload"]["receipt"]["policy_hash"], self.policy.fingerprint)
         self.assertEqual(audit[0]["payload"]["intent"]["source_ids"], ["source-a"])
         self.assertEqual(queue.load_learned_context(self.entity), {})
+        finalization = [row for row in self.store.load_audit_events()
+                        if row["type"] == "queue-finalization-intent"]
+        self.assertEqual(finalization[0]["payload"]["entity_key"], "synthetic-company")
         self.assertEqual(self.store.verify_audit_chain(), [])
         self.assertFalse(is_preparation())
 
@@ -175,7 +181,7 @@ class PreparationRuntimeTests(unittest.TestCase):
             )
         self.assertFalse((self.entity.review_queue_dir / "proposal-ledger.json").exists())
 
-    def test_group_proposal_save_failure_restores_every_prior_queue_item(self):
+    def test_group_proposal_save_failure_is_rolled_forward_on_next_mutation(self):
         for source_id in ("group-save-a", "group-save-b"):
             _add_pending_categorization(self.entity, source_id, source_id, amount="-10.00")
         sources = [queue._get_pending_txn(self.entity, source_id)
@@ -186,24 +192,109 @@ class PreparationRuntimeTests(unittest.TestCase):
             "--source-id", "group-save-a", "--source-id", "group-save-b",
             "--category", "Expenses:Software", "--reasoning", "Evidence",
         ]
-        original_save = queue._save_item
+        original_replace = queue._replace_group_destination
         saves = 0
 
-        def fail_second_save(entity, item):
+        def fail_second_save(path, payload):
             nonlocal saves
             saves += 1
             if saves == 2:
                 raise OSError("synthetic grouped write failure")
-            return original_save(entity, item)
+            return original_replace(path, payload)
 
-        with patch.object(queue, "_save_item", side_effect=fail_second_save), \
+        with patch.object(queue, "_replace_group_destination", side_effect=fail_second_save), \
                 self.assertRaisesRegex(OSError, "grouped write failure"):
             run_preparation_command(
                 argv, self.authority(), entity_path=self.entity.path,
                 expected_ledger_digest=self.store.content_digest(), source_hashes=hashes,
             )
-        self.assertFalse((self.entity.review_queue_dir / "group-save-a.json").exists())
-        self.assertFalse((self.entity.review_queue_dir / "group-save-b.json").exists())
+        with queue._queue_mutation(self.entity):
+            pass
+        for source_id in ("group-save-a", "group-save-b"):
+            self.assertEqual(queue._load_item(self.entity, source_id)["status"], "open")
+
+    def test_group_proposal_process_death_recovers_a_complete_committed_group(self):
+        for source_id in ("crash-group-a", "crash-group-b"):
+            _add_pending_categorization(self.entity, source_id, source_id, amount="-10.00")
+        sources = [queue._get_pending_txn(self.entity, source_id)
+                   for source_id in ("crash-group-a", "crash-group-b")]
+        hashes = {source["id"]: evidence_hash(source) for source in sources}
+        argv = [
+            "queue", "propose-group", "--entity", str(self.entity.path),
+            "--source-id", "crash-group-a", "--source-id", "crash-group-b",
+            "--category", "Expenses:Software", "--reasoning", "Evidence",
+        ]
+        pid = os.fork()
+        if pid == 0:
+            original_replace = queue._replace_group_destination
+            replacements = 0
+
+            def exit_after_first(path, payload):
+                nonlocal replacements
+                original_replace(path, payload)
+                replacements += 1
+                if replacements == 1:
+                    os._exit(73)
+
+            queue._replace_group_destination = exit_after_first
+            run_preparation_command(
+                argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(), source_hashes=hashes,
+            )
+            os._exit(0)
+        _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 73)
+        journal = self.entity.review_queue_dir / ".transactions"
+        before = {str(path.relative_to(self.entity.path)): path.read_bytes()
+                  for path in self.entity.path.rglob("*") if path.is_file()}
+        read_items = queue.list_queue_items(self.entity)
+        self.assertEqual(
+            [item["diagnostic"]["code"] for item in read_items if item.get("diagnostic")],
+            ["queue_recovery_required"],
+        )
+        shown = queue.read_queue_item(self.entity, "crash-group-a")
+        self.assertEqual(shown["diagnostic"]["code"], "queue_recovery_required")
+        after = {str(path.relative_to(self.entity.path)): path.read_bytes()
+                 for path in self.entity.path.rglob("*") if path.is_file()}
+        self.assertEqual(after, before)
+        self.assertTrue(any(journal.iterdir()))
+        with queue._queue_mutation(self.entity):
+            pass
+        for source_id in ("crash-group-a", "crash-group-b"):
+            self.assertEqual(queue._load_item(self.entity, source_id)["status"], "open")
+        self.assertEqual(list(journal.iterdir()), [])
+
+    def test_import_append_and_queue_removal_share_one_cross_process_lock(self):
+        _add_pending_categorization(self.entity, "remove-me", "Existing", amount="-1.00")
+        script = """
+import sys
+from pathlib import Path
+from bookkeeping.entity import load_entity
+from bookkeeping.ledger import importer
+entity = load_entity(Path(sys.argv[1]))
+print('started', flush=True)
+importer._add_pending_categorization(entity, {
+    'id': 'added-by-importer', 'date': '2026-09-01',
+    'description': 'Concurrent', 'amount': '-2.00',
+})
+print('done', flush=True)
+"""
+        with importer._entity_write_lock(self.entity.path):
+            process = subprocess.Popen(
+                [sys.executable, "-c", script, str(self.entity.path)],
+                cwd=Path(__file__).resolve().parents[1],
+                env={**os.environ, "PYTHONPATH": "src:tests"},
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            self.assertEqual(process.stdout.readline().strip(), "started")
+            ready, _, _ = select.select([process.stdout], [], [], 0.2)
+            self.assertEqual(ready, [])
+            queue._remove_from_pending_categorization(self.entity, "remove-me", strict=True)
+        stdout, stderr = process.communicate(timeout=5)
+        self.assertEqual(process.returncode, 0, stderr)
+        self.assertIn("done", stdout)
+        rows = json.loads((self.entity.staging_dir / "pending-categorization.json").read_text())
+        self.assertEqual([row["id"] for row in rows], ["added-by-importer"])
 
     def test_preparation_reconciliation_requires_affirmative_verified_evidence(self):
         self.policy = replace(self.policy, actions=tuple(sorted((*self.policy.actions, "reconcile"))))
@@ -307,6 +398,52 @@ class PreparationRuntimeTests(unittest.TestCase):
             self.execute(source_hashes=hashes)
         self.assertEqual(self.store.counts().entries, 0)
         self.assertEqual(queue._load_item(self.entity, "source-a")["status"], "open")
+
+    def test_confirmation_rejects_live_source_changed_after_proposal(self):
+        self.prepare()
+        pending_path = self.entity.staging_dir / "pending-categorization.json"
+        pending = json.loads(pending_path.read_text())
+        pending[0]["amount"] = "-999.00"
+        pending_path.write_text(json.dumps(pending))
+        current_hashes = {pending[0]["id"]: evidence_hash(pending[0])}
+        with self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
+            self.execute(source_hashes=current_hashes)
+        self.assertEqual(self.store.counts().entries, 0)
+
+    def test_recovery_receipt_rejects_a_different_tenant_identity(self):
+        self.prepare()
+        source = queue._get_pending_txn(self.entity, "source-a")
+        hashes = {"source-a": evidence_hash(source)}
+        with patch.object(queue, "_remove_from_pending_categorization", side_effect=RuntimeError("disk")):
+            with self.assertRaises(RuntimeError):
+                self.execute(source_hashes=hashes)
+        other_policy = replace(self.policy, entity_key="different-company")
+        other_context = ExecutionContext(
+            "different-company", "synthetic-execution", other_policy, 1, 4, 4,
+            datetime.now(timezone.utc) + timedelta(minutes=5),
+        )
+        with self.assertRaisesRegex(PreparationDenied, "posted_source_requires_reconciliation"):
+            self.execute(source_hashes=hashes, context=other_context)
+        self.assertEqual(self.store.counts().entries, 1)
+
+    def test_recovery_receipt_survives_a_same_tenant_workspace_move(self):
+        self.prepare()
+        source = queue._get_pending_txn(self.entity, "source-a")
+        hashes = {"source-a": evidence_hash(source)}
+        with patch.object(queue, "_remove_from_pending_categorization", side_effect=RuntimeError("disk")):
+            with self.assertRaises(RuntimeError):
+                self.execute(source_hashes=hashes)
+        moved_path = self.entity.path.parent / "moved-entity"
+        self.entity.path.rename(moved_path)
+        moved_store = LedgerStore(moved_path / "ledger.sqlite")
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(
+                ["queue", "confirm", "--entity", str(moved_path), "--item", "source-a"],
+                self.authority(), entity_path=moved_path,
+                expected_ledger_digest=moved_store.content_digest(), source_hashes=hashes,
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(moved_store.counts().entries, 1)
 
     def test_proposal_change_between_dispatch_and_write_is_rejected(self):
         self.prepare()

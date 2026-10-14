@@ -111,12 +111,12 @@ def is_preparation() -> bool:
     return _active.get() is not None
 
 
-def active_preparation_identity() -> tuple[str, dict[str, str]] | None:
+def active_preparation_identity() -> tuple[str, str, dict[str, str]] | None:
     """Return trusted recovery identity for the active in-process boundary."""
     bound = _active.get()
     if bound is None:
         return None
-    return bound.context.execution_id, dict(bound.source_hashes)
+    return bound.context.entity_key, bound.context.execution_id, dict(bound.source_hashes)
 
 
 def run_preparation_command(argv: list[str], context: ExecutionContext, *, entity_path: Path,

@@ -48,6 +48,7 @@ import json
 import os
 import re
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -70,6 +71,9 @@ _PENDING_CATEGORIZATION_FILE = "pending-categorization.json"
 _DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
 _SOURCE_ID_ALIASES_FILE = "source-id-aliases.json"
 _LOCK_FILE = ".books.lock"
+_held_entity_locks: ContextVar[tuple[Path, ...]] = ContextVar(
+    "books_held_entity_locks", default=()
+)
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -115,16 +119,23 @@ def _sha256_text(text: str) -> str:
 
 @contextmanager
 def _entity_write_lock(entity_path: Path):
-    """Serialize ledger mutations for one entity directory."""
-    lock_path = entity_path / _LOCK_FILE
+    """Serialize all entity mutations, allowing nested writers in one context."""
+    resolved = entity_path.resolve()
+    held = _held_entity_locks.get()
+    if resolved in held:
+        yield
+        return
+    lock_path = resolved / _LOCK_FILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a", encoding="utf-8") as fh:
         import fcntl
 
         fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        token = _held_entity_locks.set((*held, resolved))
         try:
             yield
         finally:
+            _held_entity_locks.reset(token)
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
@@ -294,13 +305,14 @@ def _add_pending_categorization(entity: Entity, txn: dict) -> bool:
     Returns True if newly added, or False if an item with the same id was
     already queued, so callers can treat a repeat ingest as a duplicate.
     """
-    items = _load_pending_categorization(entity)
-    txn_id = txn.get("id")
-    if txn_id and any(i.get("id") == txn_id for i in items):
-        return False  # Already queued.
-    items.append(dict(txn))
-    _save_pending_categorization(entity, items)
-    return True
+    with _entity_write_lock(entity.path):
+        items = _load_pending_categorization(entity)
+        txn_id = txn.get("id")
+        if txn_id and any(i.get("id") == txn_id for i in items):
+            return False  # Already queued.
+        items.append(dict(txn))
+        _save_pending_categorization(entity, items)
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +321,23 @@ def _add_pending_categorization(entity: Entity, txn: dict) -> bool:
 
 
 def import_transactions(
+    entity: Entity,
+    normalized_txns: list[dict],
+    session_id: str,
+    categorizer: Callable[[dict], tuple[str, str]] | None = None,
+    ts: str | None = None,
+    session_date: date | None = None,
+    legacy_duplicate_guard: bool = False,
+) -> ImportResult:
+    """Import transactions while serializing staging, queue, and ledger writes."""
+    with _entity_write_lock(entity.path):
+        return _import_transactions_unlocked(
+            entity, normalized_txns, session_id, categorizer, ts, session_date,
+            legacy_duplicate_guard,
+        )
+
+
+def _import_transactions_unlocked(
     entity: Entity,
     normalized_txns: list[dict],
     session_id: str,

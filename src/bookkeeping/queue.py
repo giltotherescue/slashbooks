@@ -82,12 +82,16 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sys
+import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
+from functools import wraps
 
 from .entity import Entity, load_entity
 from .ledger.normalize import normalize_description
@@ -98,6 +102,7 @@ from .ledger.normalize import normalize_description
 
 _QUEUE_DIR = "review-queue"
 _QUARANTINE_DIR = "review-queue/quarantine"
+_QUEUE_TRANSACTION_DIR = "review-queue/.transactions"
 _LEARNED_CONTEXT_FILE = "learned-context/counterparties.json"
 _PENDING_CATEGORIZATION_FILE = "staging/pending-categorization.json"
 _DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
@@ -136,6 +141,25 @@ def _today_iso() -> str:
     return datetime.now(tz=timezone.utc).date().isoformat()
 
 
+@contextmanager
+def _queue_mutation(entity: Entity):
+    """Serialize a complete queue mutation and finish committed group journals."""
+    from .ledger.importer import _entity_write_lock
+
+    with _entity_write_lock(entity.path):
+        _recover_group_journals_unlocked(entity)
+        yield
+
+
+def _locked_queue_mutation(function: Callable[..., Any]) -> Callable[..., Any]:
+    """Hold the entity lock across validation, ledger effects, and cleanup."""
+    @wraps(function)
+    def wrapped(entity: Entity, *args: Any, **kwargs: Any) -> Any:
+        with _queue_mutation(entity):
+            return function(entity, *args, **kwargs)
+    return wrapped
+
+
 # ---------------------------------------------------------------------------
 # Learned context: load / save / update
 # ---------------------------------------------------------------------------
@@ -159,11 +183,12 @@ def load_learned_context(entity: Entity) -> dict[str, dict]:
 
 def _save_learned_context(entity: Entity, ctx: dict[str, dict]) -> None:
     """Atomically write the learned context (sorted keys for readability)."""
-    p = _learned_context_path(entity)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(ctx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(str(tmp), str(p))
+    with _queue_mutation(entity):
+        p = _learned_context_path(entity)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(ctx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(str(tmp), str(p))
 
 
 def _counterparty_key(description: str, counterparty: str) -> str:
@@ -304,6 +329,9 @@ def _corruption_diagnostic(path: Path, exc: Exception) -> dict:
 def read_queue_item(entity: Entity, item_id: str) -> dict:
     """Read one queue item without moving, rewriting, or quarantining it."""
     path = _item_path(entity, item_id)
+    recovery_ids, recovery_files, recovery = _group_recovery_view(entity)
+    if recovery is not None and (recovery_ids is None or path.name in recovery_files):
+        return {**recovery, "source_id": item_id}
     if not path.exists():
         raise FileNotFoundError(f"Queue item '{item_id}' not found at {path}")
     try:
@@ -314,57 +342,220 @@ def read_queue_item(entity: Entity, item_id: str) -> dict:
 
 def _quarantine_item(entity: Entity, path: Path, error_msg: str) -> None:
     """Move *path* to the quarantine directory with a named error record."""
-    q_dir = _quarantine_dir(entity)
-    q_dir.mkdir(parents=True, exist_ok=True)
-    dest = q_dir / path.name
-    # Write an error sidecar
-    error_record = {
-        "original_path": str(path),
-        "error": error_msg,
-        "quarantined_at": _now_iso(),
-    }
-    try:
-        error_path = q_dir / (path.stem + ".error.json")
-        error_path.write_text(json.dumps(error_record, indent=2) + "\n", encoding="utf-8")
-    except OSError:
-        pass
-    try:
-        os.replace(str(path), str(dest))
-    except OSError:
-        # If we can't move it, at least we've written the error record
-        pass
+    with _queue_mutation(entity):
+        q_dir = _quarantine_dir(entity)
+        q_dir.mkdir(parents=True, exist_ok=True)
+        dest = q_dir / path.name
+        error_record = {
+            "original_path": str(path),
+            "error": error_msg,
+            "quarantined_at": _now_iso(),
+        }
+        try:
+            error_path = q_dir / (path.stem + ".error.json")
+            error_path.write_text(json.dumps(error_record, indent=2) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+        try:
+            os.replace(str(path), str(dest))
+        except OSError:
+            pass
 
 
 def _save_item(entity: Entity, item: dict) -> None:
     """Atomically write a queue item to review-queue/<source_id>.json."""
-    _queue_dir(entity).mkdir(parents=True, exist_ok=True)
-    source_id = str(item["source_id"])
-    path = _item_path(entity, source_id)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(item, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with _queue_mutation(entity):
+        _replace_group_destination(
+            _item_path(entity, str(item["source_id"])),
+            (json.dumps(item, indent=2, sort_keys=True) + "\n").encode(),
+        )
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_fsynced(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _replace_group_destination(path: Path, payload: bytes) -> None:
+    """Durably replace one queue destination; isolated for crash injection."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    _write_fsynced(tmp, payload)
     os.replace(str(tmp), str(path))
+    _fsync_directory(path.parent)
+
+
+def _group_transaction_root(entity: Entity) -> Path:
+    return entity.path / _QUEUE_TRANSACTION_DIR
+
+
+def _remove_group_transaction(path: Path) -> None:
+    parent = path.parent
+    shutil.rmtree(path)
+    _fsync_directory(parent)
+
+
+def _load_group_transaction(path: Path) -> dict[str, Any]:
+    try:
+        manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Queue group transaction '{path.name}' is unreadable.") from exc
+    entries = manifest.get("entries") if isinstance(manifest, dict) else None
+    if (not isinstance(manifest, dict) or manifest.get("schema_version") != 1
+            or not isinstance(entries, list) or not entries):
+        raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
+        names = (entry.get("destination"), entry.get("new_file"), entry.get("old_file"))
+        if (not all(isinstance(name, str) for name in names)
+                or any(Path(name).name != name for name in names)
+                or not str(entry["destination"]).endswith(".json")
+                or not isinstance(entry.get("source_id"), str) or not entry["source_id"]
+                or not isinstance(entry.get("old_exists"), bool)
+                or not all(isinstance(entry.get(key), str)
+                           and re.fullmatch(r"[0-9a-f]{64}", entry[key])
+                           for key in ("new_sha256", "old_sha256"))):
+            raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
+    return manifest
+
+
+def _transaction_payload(path: Path, name: str, expected_hash: str) -> bytes:
+    try:
+        payload = (path / name).read_bytes()
+    except OSError as exc:
+        raise ValueError(f"Queue group transaction '{path.name}' lost staged data.") from exc
+    if hashlib.sha256(payload).hexdigest() != expected_hash:
+        raise ValueError(f"Queue group transaction '{path.name}' has changed staged data.")
+    return payload
+
+
+def _recover_group_journals_unlocked(entity: Entity) -> None:
+    """Roll committed groups forward and uncommitted groups back before writes."""
+    root = _group_transaction_root(entity)
+    if not root.exists():
+        return
+    for transaction in sorted(path for path in root.iterdir() if path.is_dir()):
+        marker = transaction / "COMMIT"
+        try:
+            manifest = _load_group_transaction(transaction)
+        except ValueError:
+            # Destination replacements start only after a complete manifest and
+            # commit marker. A crash while staging an uncommitted journal can
+            # therefore be discarded without touching the visible queue.
+            if not marker.exists():
+                _remove_group_transaction(transaction)
+                continue
+            raise
+        committed = marker.is_file()
+        if committed and marker.read_bytes() != b"committed\n":
+            raise ValueError(
+                f"Queue group transaction '{transaction.name}' has an invalid commit marker."
+            )
+        for entry in manifest["entries"]:
+            destination = _queue_dir(entity) / entry["destination"]
+            if committed:
+                payload = _transaction_payload(
+                    transaction, entry["new_file"], entry["new_sha256"]
+                )
+                _replace_group_destination(destination, payload)
+            elif entry["old_exists"]:
+                payload = _transaction_payload(
+                    transaction, entry["old_file"], entry["old_sha256"]
+                )
+                _replace_group_destination(destination, payload)
+            elif destination.exists():
+                destination.unlink()
+                _fsync_directory(destination.parent)
+        _remove_group_transaction(transaction)
+
+
+def _group_recovery_view(
+    entity: Entity,
+) -> tuple[set[str] | None, set[str], dict[str, Any] | None]:
+    """Describe unfinished group work for pure reads without recovering it."""
+    root = _group_transaction_root(entity)
+    if not root.exists():
+        return set(), set(), None
+    transactions = sorted(path for path in root.iterdir() if path.is_dir())
+    if not transactions:
+        return set(), set(), None
+    source_ids: set[str] = set()
+    files: set[str] = set()
+    try:
+        for transaction in transactions:
+            manifest = _load_group_transaction(transaction)
+            source_ids.update(str(entry["source_id"]) for entry in manifest["entries"])
+            files.update(str(entry["destination"]) for entry in manifest["entries"])
+    except ValueError:
+        source_ids = None
+        files = set()
+    diagnostic = {
+        "source_id": "queue-group-recovery",
+        "status": "recovery-required",
+        "proposed_category": "Queue recovery required",
+        "confirmed_category": None,
+        "date": None,
+        "amount": None,
+        "diagnostic": {
+            "code": "queue_recovery_required",
+            "file": ".transactions",
+            "error": "A grouped proposal commit must be recovered by the next mutating queue command.",
+        },
+    }
+    return source_ids, files, diagnostic
 
 
 def _save_item_group(entity: Entity, items: list[dict]) -> None:
-    """Save a validated proposal group with rollback on an I/O failure."""
-    originals: dict[Path, bytes | None] = {}
-    for item in items:
-        path = _item_path(entity, str(item["source_id"]))
-        originals[path] = path.read_bytes() if path.exists() else None
-    try:
-        for item in items:
-            _save_item(entity, item)
-    except Exception:
-        # Validation and authority checks completed for the whole group before
-        # the first save. Restore its pre-write view if a later rename fails.
-        for path, original in originals.items():
-            if original is None:
-                path.unlink(missing_ok=True)
-                continue
-            tmp = path.with_suffix(".json.rollback.tmp")
-            tmp.write_bytes(original)
-            os.replace(str(tmp), str(path))
-        raise
+    """Durably commit a proposal group for recovery after process death."""
+    with _queue_mutation(entity):
+        root = _group_transaction_root(entity)
+        root.mkdir(parents=True, exist_ok=True)
+        _fsync_directory(root.parent)
+        transaction = root / uuid.uuid4().hex
+        transaction.mkdir()
+        entries: list[dict[str, Any]] = []
+        for index, item in enumerate(items):
+            destination = _item_path(entity, str(item["source_id"]))
+            new_payload = (json.dumps(item, indent=2, sort_keys=True) + "\n").encode()
+            old_payload = destination.read_bytes() if destination.exists() else b""
+            new_file = f"new-{index}.json"
+            old_file = f"old-{index}.json"
+            _write_fsynced(transaction / new_file, new_payload)
+            _write_fsynced(transaction / old_file, old_payload)
+            entries.append({
+                "source_id": str(item["source_id"]),
+                "destination": destination.name,
+                "new_file": new_file,
+                "new_sha256": hashlib.sha256(new_payload).hexdigest(),
+                "old_file": old_file,
+                "old_sha256": hashlib.sha256(old_payload).hexdigest(),
+                "old_exists": destination.exists(),
+            })
+        manifest = {"schema_version": 1, "entries": entries}
+        _write_fsynced(
+            transaction / "manifest.json",
+            (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+        )
+        _fsync_directory(transaction)
+        _fsync_directory(root)
+        _write_fsynced(transaction / "COMMIT", b"committed\n")
+        _fsync_directory(transaction)
+        for entry in entries:
+            payload = _transaction_payload(transaction, entry["new_file"], entry["new_sha256"])
+            _replace_group_destination(_queue_dir(entity) / entry["destination"], payload)
+        _remove_group_transaction(transaction)
 
 
 def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]:
@@ -375,8 +566,13 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     """
     q_dir = _queue_dir(entity)
     items = []
+    recovery_ids, recovery_files, recovery = _group_recovery_view(entity)
+    if recovery is not None and recovery_ids is None:
+        return [recovery]
     if q_dir.exists():
         for p in sorted(q_dir.glob("*.json")):
+            if p.name in recovery_files:
+                continue
             try:
                 item = _load_item_from_path(entity, p, quarantine_on_error=False)
                 if status is None or item.get("status") == status:
@@ -390,7 +586,7 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     # produced a proposal.  Surface it alongside queue files so `queue list
     # --status open` cannot incorrectly report an empty close.
     if status in (None, "open", "staged"):
-        queued_ids = {
+        queued_ids = set(recovery_ids or ()) | {
             str(source_id)
             for item in items
             for source_id in (item.get("source_ids") or [item.get("source_id")])
@@ -420,6 +616,8 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
                 item for item in candidates
                 if isinstance(item, dict) and item.get("status") == "duplicate-candidate"
             )
+    if recovery is not None:
+        items.append(recovery)
     return items
 
 
@@ -475,6 +673,7 @@ def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> lis
     return sorted(result, key=lambda group: (group["treatment"] != "Needs review", group["treatment"]))
 
 
+@_locked_queue_mutation
 def resolve_duplicate_candidate(
     entity: Entity,
     source_id: str,
@@ -578,47 +777,87 @@ def _load_pending_categorization(entity: Entity) -> list[dict]:
 
 def _remove_from_pending_categorization(entity: Entity, source_id: str, *, strict: bool = False) -> None:
     """Remove source_id from the pending-categorization list (atomic write)."""
-    path = entity.staging_dir / "pending-categorization.json"
-    if not path.exists():
-        return
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        if strict:
-            raise ValueError(f"Could not update pending categorization: {exc}") from exc
-        return
-    if not isinstance(data, list):
-        if strict:
-            raise ValueError("Pending categorization must contain a JSON list.")
-        return
-    updated = [item for item in data if str(item.get("id", "")) != source_id]
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(str(tmp), str(path))
+    with _queue_mutation(entity):
+        path = entity.staging_dir / "pending-categorization.json"
+        if not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            if strict:
+                raise ValueError(f"Could not update pending categorization: {exc}") from exc
+            return
+        if not isinstance(data, list):
+            if strict:
+                raise ValueError("Pending categorization must contain a JSON list.")
+            return
+        updated = [item for item in data if str(item.get("id", "")) != source_id]
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(str(tmp), str(path))
 
 
 def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[str]) -> None:
     """Atomically remove several staged transactions after one confirmed entry."""
-    path = entity.staging_dir / "pending-categorization.json"
-    if not path.exists():
-        return
-    wanted = {str(source_id) for source_id in source_ids}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        raise ValueError(f"Could not update pending categorization: {exc}") from exc
-    if not isinstance(data, list):
-        raise ValueError("Pending categorization must contain a JSON list.")
-    updated = [item for item in data if str(item.get("id", "")) not in wanted]
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(str(tmp), str(path))
+    with _queue_mutation(entity):
+        path = entity.staging_dir / "pending-categorization.json"
+        if not path.exists():
+            return
+        wanted = {str(source_id) for source_id in source_ids}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise ValueError(f"Could not update pending categorization: {exc}") from exc
+        if not isinstance(data, list):
+            raise ValueError("Pending categorization must contain a JSON list.")
+        updated = [item for item in data if str(item.get("id", "")) not in wanted]
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(str(tmp), str(path))
 
 
 def _document_hash(value: Any) -> str:
     return hashlib.sha256(json.dumps(
         value, sort_keys=True, separators=(",", ":"), allow_nan=False, default=str
     ).encode("utf-8")).hexdigest()
+
+
+def _bound_proposal_hashes(item: dict, source_ids: list[str]) -> dict[str, str]:
+    """Return exact proposal-time evidence, failing closed for legacy/stale items."""
+    from .automation_policy import PreparationDenied
+    from .preparation_runtime import active_preparation_identity
+
+    hashes = item.get("source_hashes")
+    valid = (
+        isinstance(hashes, dict)
+        and set(hashes) == set(source_ids)
+        and all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+                for value in hashes.values())
+    )
+    active = active_preparation_identity()
+    if not valid or active and hashes != active[2]:
+        if active:
+            raise PreparationDenied(0, "source_evidence_changed")
+        raise ValueError("The proposal lacks matching source evidence. Create a fresh proposal.")
+    return {source_id: hashes[source_id] for source_id in source_ids}
+
+
+def _live_proposal_sources(entity: Entity, item: dict, source_ids: list[str]) -> list[dict]:
+    """Recheck proposal-time evidence against the live staged rows."""
+    from .automation_policy import PreparationDenied
+    from .preparation_runtime import active_preparation_identity
+
+    expected = _bound_proposal_hashes(item, source_ids)
+    sources = [_get_pending_txn(entity, source_id) for source_id in source_ids]
+    if any(source is None for source in sources) or any(
+        _document_hash(source) != expected[source_id]
+        for source_id, source in zip(source_ids, sources)
+        if source is not None
+    ):
+        if active_preparation_identity():
+            raise PreparationDenied(0, "source_evidence_changed")
+        raise ValueError("Staged source evidence changed after proposal. Create a fresh proposal.")
+    return [dict(source) for source in sources if source is not None]
 
 
 def _finalization_identity(item: dict, source_ids: list[str], session_id: str,
@@ -634,7 +873,8 @@ def _finalization_identity(item: dict, source_ids: list[str], session_id: str,
         "proposal_type": str(item.get("proposal_type") or "category"),
         "final_status": final_status,
         "confirmed_category": confirmed_category,
-        "execution_id": active[0] if active else None,
+        "entity_key": active[0] if active else None,
+        "execution_id": active[1] if active else None,
     }
 
 
@@ -652,13 +892,17 @@ def _finalization_receipt(item: dict, sources: list[dict], session_id: str,
     )
     active = active_preparation_identity()
     if active:
-        if set(active[1]) != set(source_ids):
+        if set(active[2]) != set(source_ids):
             raise PreparationDenied(0, "source_evidence_changed")
-        source_hashes = {source_id: active[1][source_id] for source_id in source_ids}
+        source_hashes = {source_id: active[2][source_id] for source_id in source_ids}
     else:
         source_hashes = {
             source_id: evidence_hash(source) for source_id, source in zip(source_ids, sources)
         }
+    if source_hashes != _bound_proposal_hashes(item, source_ids):
+        if active:
+            raise PreparationDenied(0, "source_evidence_changed")
+        raise ValueError("Staged source evidence changed after proposal. Create a fresh proposal.")
     body = {"schema_version": 1, **identity,
             "source_hashes": {key: source_hashes[key] for key in sorted(source_hashes)},
             "completed_at": completed_at}
@@ -694,9 +938,11 @@ def _recover_finalization(entity: Entity, item: dict, source_ids: list[str],
         if any(receipt.get(key) != value for key, value in expected.items()):
             continue
         source_hashes = receipt.get("source_hashes")
+        proposal_hashes = _bound_proposal_hashes(item, source_ids)
         if (not isinstance(source_hashes, dict)
                 or set(source_hashes) != set(source_ids)
-                or active and source_hashes != active[1]):
+                or source_hashes != proposal_hashes
+                or active and source_hashes != active[2]):
             continue
         if any(
             staged is not None and _document_hash(staged) != source_hashes[source_id]
@@ -867,6 +1113,13 @@ def _proposal_sources(entity: Entity, action: str, source_ids: list[str]) -> lis
     return sources
 
 
+def _proposal_source_hashes(sources: list[dict]) -> dict[str, str]:
+    hashes = {str(source.get("id") or ""): _document_hash(source) for source in sources}
+    if "" in hashes or len(hashes) != len(sources):
+        raise ValueError("Proposal sources require distinct non-empty IDs.")
+    return {source_id: hashes[source_id] for source_id in sorted(hashes)}
+
+
 def _category_proposal_item(entity: Entity, txn: dict, category: str,
                             reasoning: str, context: str) -> dict:
     """Build a category proposal from one already verified staged snapshot."""
@@ -896,6 +1149,7 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
             existing_item = {}
     return {
         "source_id": source_id,
+        "source_hashes": _proposal_source_hashes([txn]),
         "date": raw_date,
         "amount": amount_str,
         "description": description,
@@ -914,6 +1168,7 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
     }
 
 
+@_locked_queue_mutation
 def propose(
     entity: Entity,
     source_id: str,
@@ -938,6 +1193,7 @@ def propose(
         return item
 
 
+@_locked_queue_mutation
 def propose_group(
     entity: Entity,
     source_ids: list[str],
@@ -965,6 +1221,7 @@ def propose_group(
 # Review-time split transactions
 # ---------------------------------------------------------------------------
 
+@_locked_queue_mutation
 def save_split_template(entity: Entity, name: str, posting_specs: list[str]) -> dict:
     """Save an exact, reusable split allocation after validating its accounts."""
     template_name = name.strip()
@@ -996,6 +1253,7 @@ def _split_liability_effect(postings: list[dict[str, str]]) -> list[dict[str, st
     ]
 
 
+@_locked_queue_mutation
 def propose_split(
     entity: Entity,
     source_id: str,
@@ -1049,6 +1307,7 @@ def _propose_split_unlocked(
             raise ValueError("A confirmed transaction cannot receive a new split proposal.")
     item = {
         "source_id": source_id,
+        "source_hashes": _proposal_source_hashes([txn]),
         "date": _txn_date(txn).isoformat(),
         "amount": f"{amount:.2f}",
         "description": str(txn.get("description") or ""),
@@ -1113,6 +1372,7 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
     StagingStore(entity.staging_dir).mark_seen(source_id)
 
 
+@_locked_queue_mutation
 def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None) -> dict:
     """Approve and post a prepared split without an interim single-category entry."""
     item = _load_item(entity, item_id)
@@ -1133,9 +1393,7 @@ def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[st
         item["updated_at"] = recovered["completed_at"]
         _save_item(entity, item)
         return item
-    txn = _get_pending_txn(entity, source_id)
-    if txn is None:
-        raise ValueError("The staged transaction is no longer available for this split.")
+    txn, = _live_proposal_sources(entity, item, [source_id])
     # Re-run the full validation at the approval boundary, including any chart changes.
     expected = -_txn_amount(txn)
     allocations = item.get("split_postings") or []
@@ -1264,6 +1522,7 @@ def find_transfer_exceptions(entity: Entity, date_tolerance_days: int = 3) -> li
     return sorted(exceptions, key=lambda exception: (exception["date"], exception["source_id"]))
 
 
+@_locked_queue_mutation
 def propose_transfer(entity: Entity, source_ids: list[str], reasoning: str) -> dict:
     """Create an owner-reviewable transfer proposal for two staged feed rows."""
     from .ledger.importer import _entity_write_lock
@@ -1288,6 +1547,7 @@ def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning:
     item = {
         "source_id": item_id,
         "source_ids": list(source_ids),
+        "source_hashes": _proposal_source_hashes([first, second]),
         "date": max(_txn_date(first), _txn_date(second)).isoformat(),
         "amount": f"{abs(amount):.2f}",
         "description": f"Transfer pair: {first.get('description') or source_ids[0]} / {second.get('description') or source_ids[1]}",
@@ -1310,6 +1570,7 @@ def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning:
     return item
 
 
+@_locked_queue_mutation
 def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None) -> dict:
     """Post one audited transfer pair while preserving both source dates."""
     item = _load_item(entity, item_id)
@@ -1330,7 +1591,10 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
         item["updated_at"] = recovered["completed_at"]
         _save_item(entity, item)
         return item
-    first, second, first_amount, first_account, second_account = _transfer_details(entity, source_ids)
+    sources = _live_proposal_sources(entity, item, source_ids)
+    first, second, first_amount, first_account, second_account = _transfer_details(
+        entity, source_ids, sources
+    )
     from .ledger.importer import _atomic_ledger_write, _get_existing_opens
     from .ledger.model import Entry, Open, Posting
     pair_id = _transfer_item_id(source_ids)
@@ -1377,6 +1641,7 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
 # Related-entity policies
 # ---------------------------------------------------------------------------
 
+@_locked_queue_mutation
 def propose_related_entity(entity: Entity, source_id: str, related_entity_name: str, reasoning: str) -> dict:
     """Apply an owner-authorized related-entity policy to one staged item.
 
@@ -1522,6 +1787,7 @@ def _write_confirmed_entry(
 # ---------------------------------------------------------------------------
 
 
+@_locked_queue_mutation
 def _update_learned_context(
     entity: Entity,
     counterparty_key: str,
@@ -1578,6 +1844,7 @@ def _update_learned_context(
 # ---------------------------------------------------------------------------
 
 
+@_locked_queue_mutation
 def confirm(
     entity: Entity,
     item_id: str,
@@ -1629,15 +1896,7 @@ def confirm(
         item["updated_at"] = recovered["completed_at"]
         _save_item(entity, item)
         return item
-    txn = _get_pending_txn(entity, source_id)
-    if txn is None:
-        # Item may have been flagged by importer already; build minimal txn from item
-        txn = {
-            "id": source_id,
-            "date": item.get("date", _today_iso()),
-            "amount": item.get("amount", "0"),
-            "description": item.get("description", ""),
-        }
+    txn, = _live_proposal_sources(entity, item, [source_id])
 
     completed_at = ts or _now_iso()
     receipt = _finalization_receipt(
@@ -1677,6 +1936,7 @@ def confirm(
 # ---------------------------------------------------------------------------
 
 
+@_locked_queue_mutation
 def correct(
     entity: Entity,
     item_id: str,
@@ -1709,14 +1969,7 @@ def correct(
         )
 
     source_id = str(item["source_id"])
-    txn = _get_pending_txn(entity, source_id)
-    if txn is None:
-        txn = {
-            "id": source_id,
-            "date": item.get("date", _today_iso()),
-            "amount": item.get("amount", "0"),
-            "description": item.get("description", ""),
-        }
+    txn, = _live_proposal_sources(entity, item, [source_id])
 
     _write_confirmed_entry(entity, txn, category, session_id, ts=ts)
 
@@ -1740,6 +1993,7 @@ def correct(
     return item
 
 
+@_locked_queue_mutation
 def withdraw(entity: Entity, item_id: str, note: str = "", ts: Optional[str] = None) -> dict:
     """Withdraw an open proposal without posting or removing staged source rows."""
     item = _load_item(entity, item_id)
@@ -1753,6 +2007,7 @@ def withdraw(entity: Entity, item_id: str, note: str = "", ts: Optional[str] = N
     return item
 
 
+@_locked_queue_mutation
 def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[str] = None) -> list[dict]:
     """Confirm all open proposals with one explicitly selected category.
 
@@ -1801,6 +2056,7 @@ def reopen_if_amount_changed(item: dict, posted_amount: Decimal) -> Optional[dic
     return updated
 
 
+@_locked_queue_mutation
 def reconcile_pending_amount_changes(entity: Entity) -> list[dict]:
     """Scan open queue items for source_ids superseded at a different amount.
 

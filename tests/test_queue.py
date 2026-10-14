@@ -204,7 +204,15 @@ class TestPendingWorkVisibility(unittest.TestCase):
             _add_pending_categorization(entity, "group-1", "Repeat vendor")
             _add_pending_categorization(entity, "group-2", "Repeat vendor")
             _add_pending_categorization(entity, "other", "Other vendor")
-            propose_group(entity, ["group-1", "group-2"], "Expenses:Software", "Repeated subscription")
+            proposals = propose_group(
+                entity, ["group-1", "group-2"], "Expenses:Software", "Repeated subscription"
+            )
+            for item in proposals:
+                source = queue_module._get_pending_txn(entity, item["source_id"])
+                self.assertEqual(
+                    item["source_hashes"],
+                    {item["source_id"]: queue_module._document_hash(source)},
+                )
 
             confirmed = confirm_group(entity, "Expenses:Software", SESSION, ts=TS)
 
@@ -1084,6 +1092,8 @@ class TestMigrationReviewWorkflows(unittest.TestCase):
             ["Expenses:Software=70.00", "Liabilities:CreditCard=30.00"],
         )
         self.assertEqual(item["liability_effect"], [{"account": "Liabilities:CreditCard", "amount": "30.00"}])
+        source = queue_module._get_pending_txn(self.entity, "payroll-1")
+        self.assertEqual(item["source_hashes"], {"payroll-1": queue_module._document_hash(source)})
         confirmed = confirm_split(self.entity, "payroll-1", "split-session", ts=TS)
         self.assertEqual(confirmed["status"], "confirmed")
 
@@ -1123,6 +1133,11 @@ class TestMigrationReviewWorkflows(unittest.TestCase):
         self.assertEqual([exception["source_id"] for exception in exceptions], ["unmatched-wire"])
         item = propose_transfer(self.entity, ["bank-payment", "card-payment"], "Same payment in the bank and card feeds.")
         self.assertEqual(item["proposal_type"], "transfer-pair")
+        self.assertEqual(
+            item["source_hashes"],
+            {source_id: queue_module._document_hash(queue_module._get_pending_txn(self.entity, source_id))
+             for source_id in ("bank-payment", "card-payment")},
+        )
         confirmed = confirm_transfer(self.entity, item["source_id"], "transfer-session", ts=TS)
         self.assertEqual(confirmed["status"], "confirmed")
 
@@ -1172,6 +1187,11 @@ class TestMigrationReviewWorkflows(unittest.TestCase):
         item = propose_related_entity(self.entity, "legacy-receipt", "Legacy Co", "Owner-approved migration fallback.")
         self.assertEqual(item["proposed_category"], "Income:Consulting")
         self.assertEqual(item["related_entity_treatment"], "owner-authorized inbound income fallback")
+        source = queue_module._get_pending_txn(self.entity, "legacy-receipt")
+        self.assertEqual(
+            item["source_hashes"],
+            {"legacy-receipt": queue_module._document_hash(source)},
+        )
         confirm(self.entity, "legacy-receipt", "related-session", ts=TS)
         self.assertNotIn("LEGACY CO SETTLEMENT", load_learned_context(self.entity))
 
