@@ -39,6 +39,8 @@ STATUS_READS = {"sources", "proposals", "runs", "questions"}
 MAX_PAGE_LIMIT = 200
 MAX_PAGES = 100
 MAX_COLLECTION_BYTES = 64 * 1024 * 1024
+DEFAULT_TIMEOUT = 180.0
+TIMEOUT_ENV = "SLASHBOOKS_REMOTE_TIMEOUT_SECONDS"
 
 
 class HostedError(Exception):
@@ -55,8 +57,12 @@ def add_parser(subparsers: Any) -> None:
     # "hosted" stays an alias so existing connections, prompts and scripts keep working.
     parser = subparsers.add_parser("cloud", aliases=["hosted"], help="Connect to and use Slashbooks Cloud books")
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/slashbooks/hosted.json")
-    parser.add_argument("--timeout", type=float, default=30.0, help="Request timeout in seconds; no automatic retries")
+    parser.add_argument("--timeout", type=float, help=f"Request timeout in seconds (default {DEFAULT_TIMEOUT:g}, or {TIMEOUT_ENV}); no automatic retries")
     commands = parser.add_subparsers(dest="hosted_command", required=True)
+    from . import hosted_questions
+    hosted_questions.add_parser(commands)
+    from . import hosted_stripe
+    hosted_stripe.add_parser(commands)
     login = commands.add_parser("login", help="Connect online books with browser approval; no API key needed")
     login.add_argument("--endpoint", default=CLOUD_ENDPOINT, help=f"Slashbooks Cloud server (default {CLOUD_ENDPOINT})")
     login.add_argument("--company", help="Company ID; omit it to choose the company in the browser")
@@ -84,21 +90,6 @@ def add_parser(subparsers: Any) -> None:
             sub.add_argument("--to", dest="to_date")
     result = commands.add_parser("command-result", help="Fetch a server command receipt")
     result.add_argument("command_id")
-    question = commands.add_parser("question", help="Create or resolve a company accounting question")
-    question_commands = question.add_subparsers(dest="question_command", required=True)
-    question_create = question_commands.add_parser("create", help="Send one scoped question")
-    question_create.add_argument("--subject", required=True)
-    question_create.add_argument("--body", required=True)
-    question_create.add_argument("--source-id", action="append", default=[], dest="source_ids")
-    question_create.add_argument("--idempotency-key")
-    question_resolve = question_commands.add_parser(
-        "resolve", help="Resolve a question after every reply was applied by a committed command"
-    )
-    question_resolve.add_argument("question_id")
-    question_resolve.add_argument("--reply-id", action="append", required=True, dest="reply_ids")
-    question_resolve.add_argument("--reply-watermark", type=int, required=True)
-    question_resolve.add_argument("--command-id", required=True)
-    question_resolve.add_argument("--idempotency-key")
     for name in ("command", *OPERATIONS, "import-source"):
         sub = commands.add_parser(name, help=(
             "Submit source JSON (deduplicated by source_id on server)" if name == "import-source" else
@@ -261,7 +252,12 @@ class _NoRedirect(request.HTTPRedirectHandler):
 
 
 class HostedClient:
-    def __init__(self, config: dict[str, Any], *, timeout: float = 30.0) -> None:
+    def __init__(self, config: dict[str, Any], *, timeout: float | None = None) -> None:
+        if timeout is None:
+            try:
+                timeout = float(os.environ.get(TIMEOUT_ENV, DEFAULT_TIMEOUT))
+            except ValueError:
+                raise HostedError("INVALID_TIMEOUT", f"{TIMEOUT_ENV} must be a finite number greater than zero.") from None
         if not math.isfinite(timeout) or timeout <= 0:
             raise HostedError("INVALID_TIMEOUT", "Timeout must be a finite number greater than zero.")
         self.endpoint = _endpoint(config.get("endpoint"), config.get("allow_localhost") is True)
@@ -550,7 +546,7 @@ def _mutate_question(args: argparse.Namespace, client: HostedClient) -> dict[str
     else:
         route = "/questions/" + _segment(args.question_id) + "/resolve"
         body = _question_body(route, {
-            "reply_ids": list(args.reply_ids),
+            "reply_ids": list(args.reply_ids or []),
             "reply_watermark": args.reply_watermark,
             "command_id": args.command_id,
         })
@@ -606,10 +602,30 @@ def run(args: argparse.Namespace) -> int:
     try:
         from bookkeeping import remote
 
+        if args.hosted_command == "stripe":
+            from . import hosted_stripe
+            return hosted_stripe.run(args)
+        if args.hosted_command == "question":
+            scoped = args.question_command == "create" or (
+                args.question_command == "resolve" and any(
+                    getattr(args, field, None) is not None
+                    for field in ("reply_ids", "reply_watermark", "command_id", "idempotency_key")
+                )
+            )
+            if not scoped:
+                from . import hosted_questions
+                return hosted_questions.run(args)
+            if getattr(args, "request_id", None) is not None:
+                raise HostedError("INVALID_QUESTION", "Do not mix human question receipt flags with scoped answer application flags.")
+            if getattr(args, "entity", None) is not None:
+                args.config = args.entity.expanduser() / remote.CONFIG_NAME
         if args.hosted_command == "file":
             return remote.run_file(args)
         if args.hosted_command == "retry":
             receipt = _read_json(args.receipt.expanduser(), private=True)
+            if receipt.get("kind") == "native-question":
+                from . import hosted_questions
+                return hosted_questions.run(args)
             if receipt.get("kind") == "engine-adoption":
                 from . import hosted_adoption
 

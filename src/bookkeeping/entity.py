@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
 # Template resolution
@@ -264,12 +265,31 @@ def _entity_json_for_name(
     return merged
 
 
+def normalize_website(value: str) -> str:
+    """Validate business context without fetching the site."""
+    value = value.strip()
+    if not value:
+        return ""
+    if "://" not in value:
+        value = "https://" + value
+    try:
+        parsed = urlsplit(value)
+        valid = parsed.scheme in {"http", "https"} and parsed.hostname and not parsed.username and not parsed.password
+        parsed.port
+    except ValueError:
+        valid = False
+    if not valid or len(value) > 2048 or any(c.isspace() or ord(c) < 32 for c in value):
+        raise ValueError("Use a website URL such as https://example.com without sign-in details.")
+    return value
+
+
 def init_entity(
     target: Path,
     name: str = "",
     business_type: str = "consulting",
     legal_structure: str = "",
     cutover_date: str = "",
+    website_url: str = "",
 ) -> dict[str, list[str]]:
     """Initialise (or safely re-init) an entity directory at *target*.
 
@@ -277,6 +297,7 @@ def init_entity(
     list of relative path strings.
     """
     _refuse_if_inside_package_repo(target)
+    website_url = normalize_website(website_url)
     normalized_cutover_date = _normalize_optional_date(cutover_date)
     starter_open_date = date.fromisoformat(normalized_cutover_date) if normalized_cutover_date else _DEFAULT_ACCOUNT_OPEN_DATE
 
@@ -344,6 +365,8 @@ def init_entity(
                 normalized_cutover_date,
                 template_data,
             )
+            if website_url:
+                merged["website_url"] = website_url
             entity_json_dst.write_text(
                 json.dumps(merged, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
@@ -749,6 +772,7 @@ def add_parser(subparsers: Any) -> None:
         help="Initialise (or safely re-init) an entity directory",
     )
     init_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    init_parser.add_argument("--website-url", default="", help="Optional public business website")
     init_parser.add_argument("--name", default="", help="Business name (stored in entity.json)")
     init_parser.add_argument(
         "--legal-structure",
@@ -834,6 +858,7 @@ def run(args: Any) -> int:
                 business_type=args.business_type,
                 legal_structure=args.legal_structure,
                 cutover_date=args.cutover_date,
+                website_url=getattr(args, "website_url", ""),
             )
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)

@@ -162,6 +162,32 @@ class RemoteTests(unittest.TestCase):
     def command(self, *argv):
         return self.invoke(*argv, "--entity", str(self.entity))
 
+    def test_bound_commands_use_configured_timeout_without_changing_wire_argv(self):
+        observed = []
+        original = hosted.HostedClient.request
+
+        def request(client, *args, **kwargs):
+            observed.append(client.timeout)
+            return original(client, *args, **kwargs)
+
+        with patch.dict(os.environ, {hosted.TIMEOUT_ENV: "300"}), patch.object(hosted.HostedClient, "request", request):
+            code, _, err = self.command("queue", "list")
+        self.assertEqual(code, 0, err)
+        self.assertTrue(observed)
+        self.assertEqual(set(observed), {300.0})
+        submitted = next(call for call in self.api.calls if call["method"] == "POST")
+        self.assertEqual(submitted["body"]["argv"][0:2], ["queue", "list"])
+        self.assertNotIn("--timeout", submitted["body"]["argv"])
+
+    def test_invalid_bound_timeout_submits_nothing_and_keeps_binding(self):
+        with patch.dict(os.environ, {hosted.TIMEOUT_ENV: "nan"}):
+            code, _, err = self.command("queue", "list")
+        self.assertEqual(code, 1)
+        self.assertIn("INVALID_TIMEOUT", err)
+        self.assertEqual(self.api.calls, [])
+        self.assertEqual(self.receipts(), [])
+        self.assertTrue(self.config.exists())
+
     def _ledger_wire_handler(self, body, key):
         """Exercise real core accounting in a synthetic HTTP service, without PG."""
         args, _, path = parse_command(body["argv"])
@@ -680,9 +706,11 @@ class RemoteTests(unittest.TestCase):
         self.api.drop = True
         self.assertEqual(self.command("ingest", str(source), "--source", "synthetic")[0], 1)
         original = self.api.calls[-1]
+        self.assertEqual(sum(call["method"] == "POST" for call in self.api.calls), 1)
         source.write_text("changed")
         self.api.drop = False
-        code, _, err = self.invoke("hosted", "retry", "--receipt", str(self.receipts()[0]))
+        with patch.dict(os.environ, {hosted.TIMEOUT_ENV: "240"}):
+            code, _, err = self.invoke("hosted", "retry", "--receipt", str(self.receipts()[0]))
         self.assertEqual(code, 0, err)
         self.assertEqual(self.api.calls[-1]["key"], original["key"])
         self.assertEqual(self.api.calls[-1]["body"], original["body"])

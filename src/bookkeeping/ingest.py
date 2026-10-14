@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,10 @@ def add_parser(subparsers: Any) -> None:
         "--source",
         default="ingest",
         help="Short label for this connector/import session (e.g. mercury-custom)",
+    )
+    parser.add_argument(
+        "--intake-only", action="store_true",
+        help="Stage transactions for explicit review without learned auto-posting",
     )
     parser.add_argument(
         "--session-id",
@@ -143,30 +148,35 @@ def _is_banksync_download(path: Path) -> bool:
 
 def run(args: argparse.Namespace) -> int:
     entity = load_entity(args.entity)
-    from .preparation_runtime import prepared_ingest_transactions
-    prepared = prepared_ingest_transactions(args.input)
-    if prepared is None:
-        txns = load_transactions(args.input)
-        is_banksync = args.source == "banksync" or _is_banksync_download(args.input)
-    else:
-        txns, verified_banksync = prepared
-        is_banksync = args.source == "banksync" or verified_banksync
-    _require_banksync_mappings(
-        entity, txns, "banksync" if is_banksync else args.source
-    )
+    try:
+        from .preparation_runtime import prepared_ingest_transactions
+        prepared = prepared_ingest_transactions(args.input)
+        if prepared is None:
+            txns = load_transactions(args.input)
+            is_banksync = args.source == "banksync" or _is_banksync_download(args.input)
+        else:
+            txns, verified_banksync = prepared
+            is_banksync = args.source == "banksync" or verified_banksync
+        _require_banksync_mappings(
+            entity, txns, "banksync" if is_banksync else args.source
+        )
 
-    session_id = args.session_id or (
-        f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
-    )
-    categorizer = queue_module.make_categorizer(entity)
-    result = import_transactions(
-        entity,
-        txns,
-        session_id=session_id,
-        categorizer=categorizer,
-        ts=None,
-        legacy_duplicate_guard=is_banksync,
-    )
+        session_id = args.session_id or (
+            f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        )
+        categorizer = queue_module.make_categorizer(entity)
+        result = import_transactions(
+            entity,
+            txns,
+            session_id=session_id,
+            categorizer=categorizer,
+            ts=None,
+            legacy_duplicate_guard=is_banksync,
+            intake_only=getattr(args, "intake_only", False),
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     print(
         f"Ingested {len(txns)} transaction(s) from source '{args.source}' "

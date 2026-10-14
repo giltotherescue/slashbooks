@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PLUGIN_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
+
+if [ -n "${PYTHONPATH:-}" ]; then
+  export PYTHONPATH="$PLUGIN_ROOT/src:$PYTHONPATH"
+else
+  export PYTHONPATH="$PLUGIN_ROOT/src"
+fi
+export BOOKKEEPING_TEMPLATES_DIR="$PLUGIN_ROOT/skills/books-onboard/templates"
+
+exec python3 -m bookkeeping.cli "$@"
