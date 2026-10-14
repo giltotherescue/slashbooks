@@ -561,7 +561,13 @@ def _ledger_has_all_sources(entity: Entity, source_ids: list[str]) -> bool:
     from .ledger.store import LedgerStore, default_store_path
 
     store = LedgerStore(default_store_path(entity.path))
-    return bool(source_ids) and all(store.source_exists(source_id) for source_id in source_ids)
+    posted = bool(source_ids) and all(store.source_exists(source_id) for source_id in source_ids)
+    if posted:
+        from .preparation_runtime import is_preparation
+        if is_preparation():
+            from .automation_policy import PreparationDenied
+            raise PreparationDenied(0, "posted_source_requires_reconciliation")
+    return posted
 
 
 def _source_id_in_pending(entity: Entity, source_id: str) -> bool:
@@ -1332,6 +1338,10 @@ def _update_learned_context(
     - confirm: increment confirmed_count, clear reset flag
     - correct: reset confirmed_count to 0, set reset=True
     """
+    from .preparation_runtime import is_preparation
+    if is_preparation():
+        # Standing authority is not another independent human confirmation.
+        return
     ctx = load_learned_context(entity)
     entry = ctx.get(counterparty_key, {
         "canonical_category": category,

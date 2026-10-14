@@ -190,6 +190,8 @@ def _atomic_ledger_write_unlocked(
     source_transactions = source_transactions or []
     seal_hash = ""
     with store.transaction() as conn:
+        from ..preparation_runtime import record_preparation
+        record_preparation(entity, store, conn, new_entries, source_transactions, ts)
         store.append_audit_event(
             "intent",
             {
