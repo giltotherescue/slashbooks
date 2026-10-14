@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stdout
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 import json
@@ -28,7 +28,7 @@ class PreparationRuntimeTests(unittest.TestCase):
         self.store = LedgerStore(self.entity.path / "ledger.sqlite")
         self.policy = StandingPolicy.from_document(dict(schema_version=1, policy_id="synthetic-policy", version=1,
             entity_key="synthetic-company", start_period="2026-01", end_period="2026-12",
-            actions=["categorize", "split", "match_transfer"], held_source_ids=[], held_entry_ids=[]))
+            actions=["categorize", "split", "match_transfer", "correct"], held_source_ids=[], held_entry_ids=[]))
 
     def authority(self):
         return ExecutionContext("synthetic-company", "synthetic-execution", self.policy, 1, 4, 4,
@@ -148,6 +148,152 @@ class PreparationRuntimeTests(unittest.TestCase):
                 run_preparation_command(argv, self.authority(), entity_path=self.entity.path,
                     expected_ledger_digest=self.store.content_digest(), source_hashes={"source-a": "a" * 64})
         self.assertEqual(self.store.counts().entries, 0)
+
+    def entry_hashes(self):
+        with self.store.connection() as conn:
+            ids = {row["source_id"]: f"entry:{row['id']}" for row in conn.execute("SELECT id, source_id FROM entries")}
+        return {ids[entry.source_id]: evidence_hash(asdict(entry)) for entry in self.store.load_entries() if entry.source_id}
+
+    def correction(self, original="source-a", replacement="source-a-corrected", correction_date="2026-02-15", **overrides):
+        kwargs = dict(entity_path=self.entity.path, expected_ledger_digest=self.store.content_digest(),
+                      source_hashes={}, entry_hashes=self.entry_hashes())
+        kwargs.update(overrides)
+        argv = ["ledger", "correct", "--entity", str(self.entity.path), "--source-id", original,
+                "--new-source-id", replacement, "--date", correction_date, "--description", "Synthetic correction",
+                "--posting", "Assets:Bank:Checking=-100", "--posting", "Expenses:Software=100"]
+        with redirect_stdout(StringIO()):
+            return run_preparation_command(argv, self.authority(), **kwargs)
+
+    def posted(self):
+        self.prepare()
+        self.assertEqual(self.execute(), 0)
+
+    def test_correction_retains_original_and_receipt_with_reversal_and_replacement(self):
+        self.posted()
+        original = self.store.load_entries()[0]
+        self.assertEqual(self.correction(), 0)
+        entries = self.store.load_entries()
+        self.assertIn(original, entries)
+        self.assertEqual(len(entries), 3)
+        self.assertEqual(sum(dict(entry.meta).get("reverses") == "source-a" for entry in entries), 1)
+        audit = [row for row in self.store.load_audit_events() if row["type"] == "automation-preparation"]
+        intent = audit[-1]["payload"]["intent"]
+        self.assertEqual(intent["action"], "correct")
+        self.assertEqual(intent["entry_ids"], ["entry:1"])
+        self.assertEqual(intent["source_ids"], ["source-a", "source-a-corrected"])
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        self.assertFalse(is_preparation())
+        self.assertEqual(self.correction(), 1)  # Ordinary command reports already-used replacement.
+        self.assertEqual(len(self.store.load_entries()), 3)
+
+    def test_correction_enforces_original_and_replacement_periods_and_explicit_holds(self):
+        self.posted()
+        original_period = self.store.load_entries()[0].date.isoformat()[:7]
+        before = self.store.content_digest()
+        initial = self.policy
+        cases = [
+            (replace(initial, held_entry_ids=("entry:1",)), "2026-02-15", "explicit_review_hold"),
+            (replace(initial, held_source_ids=("source-a",)), "2026-02-15", "explicit_review_hold"),
+            (replace(initial, held_source_ids=("source-a-corrected",)), "2026-02-15", "explicit_review_hold"),
+            (replace(initial, start_period=original_period, end_period=original_period), "2026-12-15", "period_outside_policy"),
+            (replace(initial, start_period="2026-12"), "2026-12-15", "period_outside_policy"),
+            (replace(initial, actions=("categorize",)), "2026-02-15", "action_not_authorized"),
+        ]
+        for policy, correction_date, reason in cases:
+            self.policy = policy
+            with self.subTest(reason=reason, policy=policy), self.assertRaisesRegex(PreparationDenied, reason):
+                self.correction(correction_date=correction_date)
+            self.assertEqual(self.store.content_digest(), before)
+        self.assertFalse(is_preparation())
+
+    def test_correction_rechecks_entry_evidence_and_ledger_at_write(self):
+        self.posted()
+        before = self.store.content_digest()
+        for kwargs, reason in [({"entry_hashes": {"entry:1": "0" * 64}}, "entry_evidence_changed"),
+                               ({"expected_ledger_digest": "0" * 64}, "ledger_changed")]:
+            with self.subTest(reason=reason), self.assertRaisesRegex(PreparationDenied, reason):
+                self.correction(**kwargs)
+            self.assertEqual(self.store.content_digest(), before)
+
+    def test_correction_ancestor_holds_and_evidence_cannot_be_bypassed_with_new_ids(self):
+        self.posted()
+        self.assertEqual(self.correction(), 0)
+        self.policy = replace(self.policy, held_entry_ids=("entry:1",))
+        with self.assertRaisesRegex(PreparationDenied, "explicit_review_hold"):
+            self.correction("source-a-corrected", "source-a-second")
+        self.policy = replace(self.policy, held_entry_ids=(), held_source_ids=("source-a",))
+        with self.assertRaisesRegex(PreparationDenied, "explicit_review_hold"):
+            self.correction("source-a-corrected", "source-a-second")
+        self.policy = replace(self.policy, held_source_ids=())
+        hashes = self.entry_hashes()
+        del hashes["entry:1"]
+        with self.assertRaisesRegex(PreparationDenied, "entry_evidence_changed"):
+            self.correction("source-a-corrected", "source-a-second", entry_hashes=hashes)
+        self.assertEqual(self.correction("source-a-corrected", "source-a-second"), 0)
+        intent = [row for row in self.store.load_audit_events() if row["type"] == "automation-preparation"][-1]["payload"]["intent"]
+        self.assertEqual(intent["entry_ids"], ["entry:1", "entry:3"])
+        self.assertEqual(intent["source_ids"], ["source-a", "source-a-corrected", "source-a-second"])
+
+    def test_correction_late_failure_rolls_back_both_entries_and_receipt(self):
+        self.posted()
+        before = self.store.content_digest()
+        audit = self.store.load_audit_events()
+        with patch.object(LedgerStore, "insert_entries", side_effect=RuntimeError("synthetic failure")), self.assertRaises(RuntimeError):
+            self.correction()
+        self.assertEqual(self.store.content_digest(), before)
+        self.assertEqual(self.store.load_audit_events(), audit)
+        self.assertEqual(self.correction(), 0)
+
+    def test_tampered_reversal_cannot_be_written_under_correction_authority(self):
+        self.posted()
+        original = importer._atomic_ledger_write
+        def tamper(*args, **kwargs):
+            kwargs["new_entries"][0] = replace(kwargs["new_entries"][0], date=kwargs["new_entries"][1].date)
+            return original(*args, **kwargs)
+        with patch.object(importer, "_atomic_ledger_write", side_effect=tamper), self.assertRaisesRegex(PreparationDenied, "correction_lineage_changed"):
+            self.correction(correction_date="2026-12-15")
+        self.assertEqual(self.store.counts().entries, 1)
+
+    def test_bank_reclassification_uses_same_correction_boundary(self):
+        self.posted()
+        original = self.store.load_entries()[0]
+        bank = next(posting.account for posting in original.postings if posting.account.startswith("Assets:"))
+        argv = ["ledger", "reclassify-bank", "--entity", str(self.entity.path), "--source-id", "source-a",
+                "--new-source-id", "source-a-reclassified", "--from-account", bank, "--to-account", "Assets:Bank:Second"]
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(), source_hashes={}, entry_hashes=self.entry_hashes())
+        self.assertEqual(result, 0)
+        replacement = next(entry for entry in self.store.load_entries() if entry.source_id == "source-a-reclassified")
+        self.assertIn("Assets:Bank:Second", [posting.account for posting in replacement.postings])
+
+    def test_standalone_reversal_remains_unsupported(self):
+        self.posted()
+        with self.assertRaisesRegex(PreparationDenied, "command_not_supported"):
+            run_preparation_command(["ledger", "reverse", "--entity", str(self.entity.path), "--source-id", "source-a"],
+                self.authority(), entity_path=self.entity.path, expected_ledger_digest=self.store.content_digest(),
+                source_hashes={}, entry_hashes=self.entry_hashes())
+        self.assertEqual(self.store.counts().entries, 1)
+
+    def test_equity_split_keeps_bank_leg_and_applies_original_entry_hold(self):
+        _add_pending_categorization(self.entity, "source-a", "Synthetic distribution", amount="-100.00")
+        queue.propose(self.entity, "source-a", "Equity:Opening-Balances", "Synthetic evidence")
+        self.assertEqual(self.execute(), 0)
+        argv = ["ledger", "split-equity", "--entity", str(self.entity.path), "--source-id", "source-a",
+                "--new-source-id", "source-a-equity", "--equity-posting", "Equity:Partner-A=60",
+                "--equity-posting", "Equity:Partner-B=40"]
+        kwargs = dict(entity_path=self.entity.path, expected_ledger_digest=self.store.content_digest(),
+                      source_hashes={}, entry_hashes=self.entry_hashes())
+        self.policy = replace(self.policy, held_entry_ids=("entry:1",))
+        with self.assertRaisesRegex(PreparationDenied, "explicit_review_hold"):
+            run_preparation_command(argv, self.authority(), **kwargs)
+        self.assertEqual(self.store.counts().entries, 1)
+        self.policy = replace(self.policy, held_entry_ids=())
+        with redirect_stdout(StringIO()):
+            self.assertEqual(run_preparation_command(argv, self.authority(), **kwargs), 0)
+        replacement = next(entry for entry in self.store.load_entries() if entry.source_id == "source-a-equity")
+        self.assertEqual([(p.account, str(p.amount)) for p in replacement.postings],
+                         [("Assets:Bank:Checking", "-100.00"), ("Equity:Partner-A", "60.00"), ("Equity:Partner-B", "40.00")])
 
 
 if __name__ == "__main__":

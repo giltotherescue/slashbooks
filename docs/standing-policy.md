@@ -39,10 +39,11 @@ but are not authentication tokens.
 ## Supported execution boundary
 
 `run_preparation_command` accepts normal `queue confirm`, `queue confirm-split`
-and `queue confirm-transfer` arguments. It calls the same queue dispatcher as
-the CLI, with authority supplied by the embedding host. It does not read `.env`
-or reroute to another remote workspace. Batch confirmations, related-entity
-treatments, corrections and all other commands currently fail closed.
+and `queue confirm-transfer` arguments, plus `ledger correct`,
+`ledger reclassify-bank` and `ledger split-equity`. It calls the same dispatchers
+as the CLI, with authority supplied by the embedding host. It does not read
+`.env` or reroute to another remote workspace. Batch confirmations,
+related-entity treatments, standalone reversals and other commands fail closed.
 
 The host supplies the expected ledger digest and fingerprints of previously
 verified source records. The write path rechecks the digest inside the ledger
@@ -52,6 +53,17 @@ Matched transfers check both source records before writing either side.
 Missing staged sources cannot be reconstructed from a queue item's fallback
 data in this mode. A previously posted source requires receipt reconciliation;
 retrying preparation cannot create another economic effect.
+
+Corrections require trusted `entry_hashes`, keyed by `entry:<SQLite id>` and
+computed with `evidence_hash(dataclasses.asdict(entry))` from canonical entries.
+The original entry and every correction ancestor must have a matching verified
+fingerprint. The boundary checks the original is live, the reversal negates it,
+and the replacement has a fresh source ID with the correct lineage. It includes
+ancestor source IDs, paired source IDs, entry IDs and periods in the policy
+decision, so a newer correction ID cannot bypass an older review hold. Receipts,
+reversal and replacement share the ledger transaction. These commands require
+the `correct` action; a source upload cannot substitute for original entry
+evidence. The host may pass an empty `source_hashes` mapping for corrections.
 
 An automated confirmation does not increment the learned-context human
 confirmation count. Explicit holds still require human review. The host must
