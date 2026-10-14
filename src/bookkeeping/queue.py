@@ -71,7 +71,8 @@ Learned-context schema (learned-context/counterparties.json)
     "confirmed_count":     int,
     "last_confirmed_date": "YYYY-MM-DD",
     "reset":               bool,
-    "notes":               str
+    "notes":               str,
+    "last_operation_hash": str | absent  # prevents duplicate learning during recovery
   },
   ...
 }
@@ -265,8 +266,8 @@ def _load_item(entity: Entity, item_id: str) -> dict:
     return _load_item_from_path(entity, path)
 
 
-def _load_item_from_path(entity: Entity, path: Path) -> dict:
-    """Load and parse a queue item from *path*; quarantine on parse failure."""
+def _load_item_from_path(entity: Entity, path: Path, *, quarantine_on_error: bool = True) -> dict:
+    """Load one item, optionally quarantining it for a mutating workflow."""
     try:
         text = path.read_text(encoding="utf-8")
         data = json.loads(text)
@@ -278,8 +279,37 @@ def _load_item_from_path(entity: Entity, path: Path) -> dict:
                 raise ValueError(f"Queue item missing required field '{field_name}'")
         return data
     except (json.JSONDecodeError, ValueError, OSError) as exc:
-        _quarantine_item(entity, path, str(exc))
+        if quarantine_on_error:
+            _quarantine_item(entity, path, str(exc))
         raise
+
+
+def _corruption_diagnostic(path: Path, exc: Exception) -> dict:
+    """Return a stable read-only queue diagnostic without repairing files."""
+    return {
+        "source_id": path.stem,
+        "status": "corrupt",
+        "proposed_category": "Corrupt queue item",
+        "confirmed_category": None,
+        "date": None,
+        "amount": None,
+        "diagnostic": {
+            "code": "queue_item_corrupt",
+            "file": path.name,
+            "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+        },
+    }
+
+
+def read_queue_item(entity: Entity, item_id: str) -> dict:
+    """Read one queue item without moving, rewriting, or quarantining it."""
+    path = _item_path(entity, item_id)
+    if not path.exists():
+        raise FileNotFoundError(f"Queue item '{item_id}' not found at {path}")
+    try:
+        return _load_item_from_path(entity, path, quarantine_on_error=False)
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        return _corruption_diagnostic(path, exc)
 
 
 def _quarantine_item(entity: Entity, path: Path, error_msg: str) -> None:
@@ -315,22 +345,46 @@ def _save_item(entity: Entity, item: dict) -> None:
     os.replace(str(tmp), str(path))
 
 
+def _save_item_group(entity: Entity, items: list[dict]) -> None:
+    """Save a validated proposal group with rollback on an I/O failure."""
+    originals: dict[Path, bytes | None] = {}
+    for item in items:
+        path = _item_path(entity, str(item["source_id"]))
+        originals[path] = path.read_bytes() if path.exists() else None
+    try:
+        for item in items:
+            _save_item(entity, item)
+    except Exception:
+        # Validation and authority checks completed for the whole group before
+        # the first save. Restore its pre-write view if a later rename fails.
+        for path, original in originals.items():
+            if original is None:
+                path.unlink(missing_ok=True)
+                continue
+            tmp = path.with_suffix(".json.rollback.tmp")
+            tmp.write_bytes(original)
+            os.replace(str(tmp), str(path))
+        raise
+
+
 def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]:
     """Return all (or filtered by status) queue items.
 
-    Malformed files are quarantined, not silently dropped.
+    Read paths are observational: malformed files remain byte-for-byte in place
+    and are surfaced as explicit corruption diagnostics.
     """
     q_dir = _queue_dir(entity)
     items = []
     if q_dir.exists():
         for p in sorted(q_dir.glob("*.json")):
             try:
-                item = _load_item_from_path(entity, p)
+                item = _load_item_from_path(entity, p, quarantine_on_error=False)
                 if status is None or item.get("status") == status:
                     items.append(item)
-            except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
-                # Quarantine already happened inside _load_item_from_path
-                pass
+            except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError) as exc:
+                # Corruption is always visible, even through an open-status
+                # filter, so a review read cannot report a falsely empty queue.
+                items.append(_corruption_diagnostic(p, exc))
 
     # Pending categorization is actionable review work even before an agent has
     # produced a proposal.  Surface it alongside queue files so `queue list
@@ -388,6 +442,7 @@ def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> lis
                 "dates": [],
                 "sample_counterparties": [],
                 "statuses": set(),
+                "diagnostics": [],
             },
         )
         group["count"] += 1
@@ -404,6 +459,9 @@ def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> lis
         status_name = str(item.get("status") or "")
         if status_name:
             group["statuses"].add(status_name)
+        diagnostic = item.get("diagnostic")
+        if isinstance(diagnostic, dict):
+            group["diagnostics"].append(dict(diagnostic))
 
     result: list[dict] = []
     for group in groups.values():
@@ -557,17 +615,103 @@ def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[st
     os.replace(str(tmp), str(path))
 
 
-def _ledger_has_all_sources(entity: Entity, source_ids: list[str]) -> bool:
+def _document_hash(value: Any) -> str:
+    return hashlib.sha256(json.dumps(
+        value, sort_keys=True, separators=(",", ":"), allow_nan=False, default=str
+    ).encode("utf-8")).hexdigest()
+
+
+def _finalization_identity(item: dict, source_ids: list[str], session_id: str,
+                           final_status: str, confirmed_category: str) -> dict[str, Any]:
+    from .preparation_runtime import active_preparation_identity
+
+    active = active_preparation_identity()
+    return {
+        "item_id": str(item.get("source_id") or ""),
+        "item_hash": _document_hash(item),
+        "source_ids": sorted(str(source_id) for source_id in source_ids),
+        "session_id": session_id,
+        "proposal_type": str(item.get("proposal_type") or "category"),
+        "final_status": final_status,
+        "confirmed_category": confirmed_category,
+        "execution_id": active[0] if active else None,
+    }
+
+
+def _finalization_receipt(item: dict, sources: list[dict], session_id: str,
+                          final_status: str, confirmed_category: str,
+                          completed_at: str) -> dict[str, Any]:
+    from .automation_policy import PreparationDenied
+    from .preparation_runtime import active_preparation_identity, evidence_hash
+
+    source_ids = [str(source.get("id") or "") for source in sources]
+    if not source_ids or any(not source_id for source_id in source_ids) or len(set(source_ids)) != len(source_ids):
+        raise ValueError("Queue finalization requires distinct non-empty source IDs.")
+    identity = _finalization_identity(
+        item, source_ids, session_id, final_status, confirmed_category
+    )
+    active = active_preparation_identity()
+    if active:
+        if set(active[1]) != set(source_ids):
+            raise PreparationDenied(0, "source_evidence_changed")
+        source_hashes = {source_id: active[1][source_id] for source_id in source_ids}
+    else:
+        source_hashes = {
+            source_id: evidence_hash(source) for source_id, source in zip(source_ids, sources)
+        }
+    body = {"schema_version": 1, **identity,
+            "source_hashes": {key: source_hashes[key] for key in sorted(source_hashes)},
+            "completed_at": completed_at}
+    return {**body, "operation_hash": _document_hash(body)}
+
+
+def _recover_finalization(entity: Entity, item: dict, source_ids: list[str],
+                          session_id: str, final_status: str,
+                          confirmed_category: str) -> dict[str, Any] | None:
+    """Return the exact durable post-commit receipt, or reject posted reuse."""
+    from .automation_policy import PreparationDenied
     from .ledger.store import LedgerStore, default_store_path
+    from .preparation_runtime import active_preparation_identity
 
     store = LedgerStore(default_store_path(entity.path))
-    posted = bool(source_ids) and all(store.source_exists(source_id) for source_id in source_ids)
-    if posted:
-        from .preparation_runtime import is_preparation
-        if is_preparation():
-            from .automation_policy import PreparationDenied
+    posted = [source_id for source_id in source_ids if store.source_exists(source_id)]
+    if not posted:
+        return None
+    active = active_preparation_identity()
+    if len(posted) != len(source_ids) or store.verify_audit_chain():
+        if active:
             raise PreparationDenied(0, "posted_source_requires_reconciliation")
-    return posted
+        raise ValueError("Posted sources do not have one intact queue finalization receipt.")
+    expected = _finalization_identity(
+        item, source_ids, session_id, final_status, confirmed_category
+    )
+    for event in reversed(store.load_audit_events()):
+        if event["type"] != "queue-finalization-intent":
+            continue
+        receipt = event["payload"]
+        if not isinstance(receipt, dict) or receipt.get("schema_version") != 1:
+            continue
+        if any(receipt.get(key) != value for key, value in expected.items()):
+            continue
+        source_hashes = receipt.get("source_hashes")
+        if (not isinstance(source_hashes, dict)
+                or set(source_hashes) != set(source_ids)
+                or active and source_hashes != active[1]):
+            continue
+        if any(
+            staged is not None and _document_hash(staged) != source_hashes[source_id]
+            for source_id in source_ids
+            for staged in [_get_pending_txn(entity, source_id)]
+        ):
+            continue
+        operation_hash = receipt.get("operation_hash")
+        body = {key: value for key, value in receipt.items() if key != "operation_hash"}
+        if operation_hash != _document_hash(body):
+            continue
+        return receipt
+    if active:
+        raise PreparationDenied(0, "posted_source_requires_reconciliation")
+    raise ValueError("Posted sources belong to a different queue operation.")
 
 
 def _source_id_in_pending(entity: Entity, source_id: str) -> bool:
@@ -704,59 +848,45 @@ def _get_opened_accounts(entity: Entity) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def propose(
-    entity: Entity,
-    source_id: str,
-    category: str,
-    reasoning: str,
-    context: str = "",
-) -> dict:
-    """Validate and create/update a queue item.
+def _proposal_sources(entity: Entity, action: str, source_ids: list[str]) -> list[dict]:
+    """Load one verified proposal snapshot while the caller holds the write lock."""
+    from .preparation_runtime import prepared_proposal_sources
 
-    Validations (all raise ValueError on failure):
-      1. source_id must exist in staging/pending-categorization.json.
-      2. category must be an account in the entity's SQLite account catalog.
-      3. reasoning is sanitized (newlines/control chars stripped, length-capped).
+    prepared = prepared_proposal_sources(entity, action, source_ids)
+    if prepared is not None:
+        return prepared
+    sources: list[dict] = []
+    for source_id in source_ids:
+        source = _get_pending_txn(entity, source_id)
+        if source is None:
+            raise ValueError(
+                f"Source ID '{source_id}' is not in the pending-categorization list. "
+                "Only transactions awaiting categorization may be proposed."
+            )
+        sources.append(source)
+    return sources
 
-    Returns the created/updated queue item dict.
-    """
-    # Validation 1: source_id must not be phantom
-    if not _source_id_in_pending(entity, source_id):
-        raise ValueError(
-            f"Source ID '{source_id}' is not in the pending-categorization list. "
-            "Only transactions awaiting categorization may be proposed."
-        )
 
-    # Validation 2: category must be a known account
+def _category_proposal_item(entity: Entity, txn: dict, category: str,
+                            reasoning: str, context: str) -> dict:
+    """Build a category proposal from one already verified staged snapshot."""
+    source_id = str(txn.get("id") or "")
     opened = _get_opened_accounts(entity)
     if opened and category not in opened:
         raise ValueError(
             f"Category '{category}' is not an account in the account catalog. "
             f"Known accounts: {sorted(opened)}"
         )
-
-    # Validation 3: sanitize reasoning
     clean_reasoning = _sanitize_reasoning(reasoning)
-
-    # Look up the pending txn for amount/date/description
-    txn = _get_pending_txn(entity, source_id)
-    if txn is None:
-        # Shouldn't happen after validation 1 passed, but be safe
-        txn = {}
-
     amount_raw = txn.get("amount", "0")
     try:
         amount_str = str(Decimal(str(amount_raw)).quantize(Decimal("0.01")))
     except Exception:
         amount_str = str(amount_raw)
-
     description = str(txn.get("description") or "")
     counterparty = _counterparty_key(description, str(txn.get("counterparty") or ""))
     raw_date = str(txn.get("date") or "")[:10] or _today_iso()
-
     now = _now_iso()
-
-    # Check for existing item
     existing_path = _item_path(entity, source_id)
     existing_item: dict = {}
     if existing_path.exists():
@@ -764,8 +894,7 @@ def propose(
             existing_item = _load_item_from_path(entity, existing_path)
         except (ValueError, OSError):
             existing_item = {}
-
-    item: dict = {
+    return {
         "source_id": source_id,
         "date": raw_date,
         "amount": amount_str,
@@ -784,8 +913,29 @@ def propose(
         "session_summary_id": None,
     }
 
-    _save_item(entity, item)
-    return item
+
+def propose(
+    entity: Entity,
+    source_id: str,
+    category: str,
+    reasoning: str,
+    context: str = "",
+) -> dict:
+    """Validate and create/update a queue item.
+
+    Validations (all raise ValueError on failure):
+      1. source_id must exist in staging/pending-categorization.json.
+      2. category must be an account in the entity's SQLite account catalog.
+      3. reasoning is sanitized (newlines/control chars stripped, length-capped).
+
+    Returns the created/updated queue item dict.
+    """
+    from .ledger.importer import _entity_write_lock
+    with _entity_write_lock(entity.path):
+        txn, = _proposal_sources(entity, "categorize", [source_id])
+        item = _category_proposal_item(entity, txn, category, reasoning, context)
+        _save_item(entity, item)
+        return item
 
 
 def propose_group(
@@ -798,7 +948,17 @@ def propose_group(
     """Create same-category proposals for a reviewed group of staged items."""
     if not source_ids:
         raise ValueError("At least one source ID is required for a group proposal.")
-    return [propose(entity, source_id, category, reasoning, context) for source_id in source_ids]
+    if len(set(source_ids)) != len(source_ids):
+        raise ValueError("Group proposal source IDs must be unique.")
+    from .ledger.importer import _entity_write_lock
+    with _entity_write_lock(entity.path):
+        sources = _proposal_sources(entity, "categorize", source_ids)
+        # Build and validate every item before the first rename. A changed or
+        # invalid member therefore cannot leave a partially authorized group.
+        items = [_category_proposal_item(entity, source, category, reasoning, context)
+                 for source in sources]
+        _save_item_group(entity, items)
+        return items
 
 
 # ---------------------------------------------------------------------------
@@ -843,6 +1003,18 @@ def propose_split(
     posting_specs: list[str] | None = None,
     template: str = "",
 ) -> dict:
+    from .ledger.importer import _entity_write_lock
+    with _entity_write_lock(entity.path):
+        return _propose_split_unlocked(entity, source_id, reasoning, posting_specs, template)
+
+
+def _propose_split_unlocked(
+    entity: Entity,
+    source_id: str,
+    reasoning: str,
+    posting_specs: list[str] | None = None,
+    template: str = "",
+) -> dict:
     """Prepare one balanced multi-line allocation from a staged transaction.
 
     The supplied postings are the non-cash legs.  Their signed sum must be the
@@ -850,11 +1022,7 @@ def propose_split(
     rather than percentage-based: payroll and tax allocations remain visible to
     the owner before approval.
     """
-    if not _source_id_in_pending(entity, source_id):
-        raise ValueError("Only staged transactions may receive a split proposal.")
-    txn = _get_pending_txn(entity, source_id)
-    if txn is None:
-        raise ValueError(f"Could not load staged transaction '{source_id}'.")
+    txn, = _proposal_sources(entity, "split", [source_id])
     if template:
         templates = _load_split_templates(entity)
         try:
@@ -905,7 +1073,8 @@ def propose_split(
     return item
 
 
-def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str, ts: Optional[str]) -> None:
+def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
+                       ts: Optional[str], finalization_receipt: dict[str, Any]) -> None:
     """Post the already-balanced reviewed split and retain its original source ID."""
     from .ledger.importer import _atomic_ledger_write, _get_existing_opens, _ledger_account_for_txn
     from .ledger.model import Entry, Open, Posting
@@ -938,6 +1107,7 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str, t
     _atomic_ledger_write(
         entity, opens, [entry], session_id, ts,
         f"queue confirm split source_id={source_id!r}", [dict(txn)],
+        finalization_receipt=finalization_receipt,
     )
     from .ledger.staging import StagingStore
     StagingStore(entity.staging_dir).mark_seen(source_id)
@@ -951,13 +1121,16 @@ def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[st
     if item.get("status") not in {"open", "reopened"}:
         raise ValueError("Only open split proposals can be confirmed.")
     source_id = str(item["source_id"])
-    if _ledger_has_all_sources(entity, [source_id]):
+    recovered = _recover_finalization(
+        entity, item, [source_id], session_id, "confirmed", "Split transaction"
+    )
+    if recovered:
         from .ledger.staging import StagingStore
         StagingStore(entity.staging_dir).mark_seen(source_id)
         _remove_from_pending_categorization(entity, source_id, strict=True)
         item["status"] = "confirmed"
         item["confirmed_category"] = "Split transaction"
-        item["updated_at"] = ts or _now_iso()
+        item["updated_at"] = recovered["completed_at"]
         _save_item(entity, item)
         return item
     txn = _get_pending_txn(entity, source_id)
@@ -970,11 +1143,15 @@ def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[st
     total = sum((Decimal(str(posting.get("amount") or "0")) for posting in allocations), Decimal("0.00"))
     if total != expected:
         raise ValueError("The saved split no longer balances to the staged source amount.")
-    _write_split_entry(entity, txn, item, session_id, ts)
+    completed_at = ts or _now_iso()
+    receipt = _finalization_receipt(
+        item, [txn], session_id, "confirmed", "Split transaction", completed_at
+    )
+    _write_split_entry(entity, txn, item, session_id, ts, receipt)
     _remove_from_pending_categorization(entity, str(item["source_id"]), strict=True)
     item["status"] = "confirmed"
     item["confirmed_category"] = "Split transaction"
-    item["updated_at"] = ts or _now_iso()
+    item["updated_at"] = completed_at
     _save_item(entity, item)
     return item
 
@@ -988,11 +1165,13 @@ def _transfer_item_id(source_ids: list[str]) -> str:
     return f"transfer-pair-{digest}"
 
 
-def _transfer_details(entity: Entity, source_ids: list[str]) -> tuple[dict, dict, Decimal, str, str]:
+def _transfer_details(entity: Entity, source_ids: list[str],
+                      sources: list[dict] | None = None) -> tuple[dict, dict, Decimal, str, str]:
     if len(source_ids) != 2 or source_ids[0] == source_ids[1]:
         raise ValueError("A transfer pair must contain two distinct source IDs.")
-    first = _get_pending_txn(entity, source_ids[0])
-    second = _get_pending_txn(entity, source_ids[1])
+    first, second = sources if sources is not None else (
+        _get_pending_txn(entity, source_ids[0]), _get_pending_txn(entity, source_ids[1])
+    )
     if first is None or second is None:
         raise ValueError("Both transfer sides must still be staged transactions.")
     first_amount, second_amount = _txn_amount(first), _txn_amount(second)
@@ -1087,7 +1266,14 @@ def find_transfer_exceptions(entity: Entity, date_tolerance_days: int = 3) -> li
 
 def propose_transfer(entity: Entity, source_ids: list[str], reasoning: str) -> dict:
     """Create an owner-reviewable transfer proposal for two staged feed rows."""
-    first, second, amount, first_account, second_account = _transfer_details(entity, source_ids)
+    from .ledger.importer import _entity_write_lock
+    with _entity_write_lock(entity.path):
+        return _propose_transfer_unlocked(entity, source_ids, reasoning)
+
+
+def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning: str) -> dict:
+    sources = _proposal_sources(entity, "match_transfer", source_ids)
+    first, second, amount, first_account, second_account = _transfer_details(entity, source_ids, sources)
     item_id = _transfer_item_id(source_ids)
     existing_path = _item_path(entity, item_id)
     if existing_path.exists() and _load_item(entity, item_id).get("status") not in {"open", "reopened"}:
@@ -1132,13 +1318,16 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
     if item.get("status") not in {"open", "reopened"}:
         raise ValueError("Only open transfer proposals can be confirmed.")
     source_ids = [str(source_id) for source_id in item.get("source_ids") or []]
-    if _ledger_has_all_sources(entity, source_ids):
+    recovered = _recover_finalization(
+        entity, item, source_ids, session_id, "confirmed", "Internal transfer"
+    )
+    if recovered:
         from .ledger.staging import StagingStore
         StagingStore(entity.staging_dir).bulk_mark_seen(source_ids)
         _remove_many_from_pending_categorization(entity, source_ids)
         item["status"] = "confirmed"
         item["confirmed_category"] = "Internal transfer"
-        item["updated_at"] = ts or _now_iso()
+        item["updated_at"] = recovered["completed_at"]
         _save_item(entity, item)
         return item
     first, second, first_amount, first_account, second_account = _transfer_details(entity, source_ids)
@@ -1165,16 +1354,21 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
         needed_accounts = {first_account, second_account, clearing}
     existing_opens = _get_existing_opens(entity)
     opens = [Open(date=date(2000, 1, 1), account=account) for account in sorted(needed_accounts) if account not in existing_opens]
+    completed_at = ts or _now_iso()
+    receipt = _finalization_receipt(
+        item, [first, second], session_id, "confirmed", "Internal transfer", completed_at
+    )
     _atomic_ledger_write(
         entity, opens, entries, session_id, ts,
         f"queue confirm transfer source_ids={source_ids!r}", [dict(first), dict(second)],
+        finalization_receipt=receipt,
     )
     from .ledger.staging import StagingStore
     StagingStore(entity.staging_dir).bulk_mark_seen(source_ids)
     _remove_many_from_pending_categorization(entity, source_ids)
     item["status"] = "confirmed"
     item["confirmed_category"] = "Internal transfer"
-    item["updated_at"] = ts or _now_iso()
+    item["updated_at"] = completed_at
     _save_item(entity, item)
     return item
 
@@ -1248,6 +1442,7 @@ def _write_confirmed_entry(
     category: str,
     session_id: str,
     ts: Optional[str] = None,
+    finalization_receipt: dict[str, Any] | None = None,
 ) -> None:
     """Build an Entry for a confirmed queue item and write it via the importer's atomic path.
 
@@ -1316,6 +1511,7 @@ def _write_confirmed_entry(
         ts=ts,
         intent_description=f"queue confirm source_id={source_id!r} category={category!r}",
         source_transactions=[dict(txn)],
+        finalization_receipt=finalization_receipt,
     )
 
     staging.bulk_mark_seen([source_id])
@@ -1332,6 +1528,7 @@ def _update_learned_context(
     category: str,
     corrected: bool,
     note: str = "",
+    operation_hash: str = "",
 ) -> None:
     """Update the learned context for *counterparty_key*.
 
@@ -1350,6 +1547,8 @@ def _update_learned_context(
         "reset": False,
         "notes": "",
     })
+    if operation_hash and entry.get("last_operation_hash") == operation_hash:
+        return
 
     if corrected:
         entry["canonical_category"] = category
@@ -1369,6 +1568,8 @@ def _update_learned_context(
             entry["notes"] = note
 
     ctx[counterparty_key] = entry
+    if operation_hash:
+        ctx[counterparty_key]["last_operation_hash"] = operation_hash
     _save_learned_context(entity, ctx)
 
 
@@ -1408,6 +1609,26 @@ def confirm(
 
     # Look up the txn from pending-categorization
     source_id = str(item["source_id"])
+    recovered = _recover_finalization(
+        entity, item, [source_id], session_id, "confirmed", category
+    )
+    if recovered:
+        from .ledger.staging import StagingStore
+        StagingStore(entity.staging_dir).mark_seen(source_id)
+        _remove_from_pending_categorization(entity, source_id, strict=True)
+        if item.get("proposal_type") != "related-entity":
+            cp_key = str(item.get("counterparty") or _counterparty_key(
+                item.get("description", ""), ""
+            ))
+            _update_learned_context(
+                entity, cp_key, category, corrected=False,
+                operation_hash=str(recovered["operation_hash"]),
+            )
+        item["status"] = "confirmed"
+        item["confirmed_category"] = category
+        item["updated_at"] = recovered["completed_at"]
+        _save_item(entity, item)
+        return item
     txn = _get_pending_txn(entity, source_id)
     if txn is None:
         # Item may have been flagged by importer already; build minimal txn from item
@@ -1418,10 +1639,16 @@ def confirm(
             "description": item.get("description", ""),
         }
 
-    _write_confirmed_entry(entity, txn, category, session_id, ts=ts)
+    completed_at = ts or _now_iso()
+    receipt = _finalization_receipt(
+        item, [txn], session_id, "confirmed", category, completed_at
+    )
+    _write_confirmed_entry(
+        entity, txn, category, session_id, ts=ts, finalization_receipt=receipt
+    )
 
     # Remove from pending-categorization
-    _remove_from_pending_categorization(entity, source_id)
+    _remove_from_pending_categorization(entity, source_id, strict=True)
 
     # Related-entity policies remain explicit for every item.  Learning this
     # counterparty as a normal category could silently bypass the policy and
@@ -1430,10 +1657,13 @@ def confirm(
         cp_key = str(item.get("counterparty") or _counterparty_key(
             item.get("description", ""), ""
         ))
-        _update_learned_context(entity, cp_key, category, corrected=False)
+        _update_learned_context(
+            entity, cp_key, category, corrected=False,
+            operation_hash=str(receipt["operation_hash"]),
+        )
 
     # Update item status
-    now = ts or _now_iso()
+    now = completed_at
     item["status"] = "confirmed"
     item["confirmed_category"] = category
     item["updated_at"] = now
@@ -2245,11 +2475,13 @@ def run(args: Any) -> int:
                     f"  {group['treatment']}: {group['count']} item(s), "
                     f"{group['total']}, {date_range}; samples: {samples}"
                 )
+                for diagnostic in group.get("diagnostics", []):
+                    print(f"    [{diagnostic['code']}] {diagnostic['file']}: {diagnostic['error']}")
             return 0
 
         elif qcmd == "show":
             try:
-                item = _load_item(entity, args.item_id)
+                item = read_queue_item(entity, args.item_id)
                 print(json.dumps(item, indent=2, sort_keys=True))
                 return 0
             except FileNotFoundError as exc:

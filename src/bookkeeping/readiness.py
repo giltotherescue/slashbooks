@@ -315,10 +315,23 @@ def assess_review_readiness(entity_path: Path | str, period: str,
 
     store_path = default_store_path(entity.path)
     ledger_balances: dict[str, Decimal] = {}
+    account_catalog: set[str] = set()
     if store_path.is_file():
-        for entry in LedgerStore(store_path).load_entries(to_date=end):
+        store = LedgerStore(store_path)
+        account_catalog = store.load_account_names()
+        for entry in store.load_entries(to_date=end):
             for posting in entry.postings:
                 ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
+
+    source_accounts = sorted({str(source["account"]) for source in sources if source["account"]})
+    for account in source_accounts:
+        if (not account.startswith(("Assets:", "Liabilities:"))
+                or account not in account_catalog):
+            blockers.append({
+                "code": "source_account_invalid",
+                "message": "A declared source account is absent from the canonical asset/liability account catalog.",
+                "refs": [account],
+            })
 
     reconciliations, rec_error = _read_json(entity.path / "reports" / "reconciliation.json")
     if rec_error or not isinstance(reconciliations, list):
@@ -329,7 +342,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         if isinstance(item, Mapping) and item.get("as_of") == end.isoformat()
     }
     normalized_recs = []
-    for account in sorted({str(source["account"]) for source in sources if source["account"]}):
+    for account in source_accounts:
         record = rec_by_account.get(account)
         if record is None:
             blockers.append({"code": "reconciliation_missing", "message": "An expected source account lacks period-end reconciliation.", "refs": [account]})
@@ -340,7 +353,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         opening = _finite_decimal(record.get("source_opening_balance"))
         activity = _finite_decimal(record.get("source_transaction_total"))
         residual = _finite_decimal(record.get("source_integrity_residual"))
-        actual_ledger = ledger_balances.get(account, Decimal("0")) if store_path.is_file() else None
+        actual_ledger = ledger_balances.get(account, Decimal("0")) if account in account_catalog else None
         safe = (
             record.get("status") == "clean"
             and all(value is not None for value in (

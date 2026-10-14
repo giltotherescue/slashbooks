@@ -94,6 +94,30 @@ class ReadinessTests(unittest.TestCase):
         result = self.assess()
         self.assertIn("reconciliation_not_clean", {item["code"] for item in result["blockers"]})
 
+    def test_zero_reconciliation_cannot_make_an_unknown_source_account_ready(self):
+        config_path = self.entity.path / "entity.json"
+        config = json.loads(config_path.read_text())
+        config["declared_sources"].append({
+            "name": "Unknown bank",
+            "account": "Assets:Bank:Ghost",
+            "coverage_from": "2026-09-01",
+            "coverage_to": "2026-09-30",
+        })
+        config_path.write_text(json.dumps(config) + "\n")
+        reconcile(
+            self.entity.path, "Assets:Bank:Ghost", Decimal("0.00"), date(2026, 9, 30),
+            source_opening_balance=Decimal("0.00"),
+            source_transaction_total=Decimal("0.00"),
+            source_snapshot_at="2026-10-01T12:00:00Z",
+            source_through="2026-09-30",
+            source_evidence_refs=["provider-record:ghost-2026-09"],
+            source_evidence_hashes={"provider-record:ghost-2026-09": "b" * 64},
+        )
+        result = self.assess()
+        invalid = [item for item in result["blockers"] if item["code"] == "source_account_invalid"]
+        self.assertEqual(invalid[0]["refs"], ["Assets:Bank:Ghost"])
+        self.assertEqual(result["state"], "blocked")
+
     def test_source_snapshot_must_be_timezone_aware_and_available_by_as_of(self):
         path = self.entity.path / "reports" / "reconciliation.json"
         for timestamp in ("2026-10-01T12:00:00", "2026-10-14T12:00:00Z"):

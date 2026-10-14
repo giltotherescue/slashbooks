@@ -32,8 +32,8 @@ class PreparationRuntimeTests(unittest.TestCase):
             entity_key="synthetic-company", start_period="2026-01", end_period="2026-12",
             actions=["categorize", "split", "match_transfer", "correct"], held_source_ids=[], held_entry_ids=[]))
 
-    def authority(self):
-        return ExecutionContext("synthetic-company", "synthetic-execution", self.policy, 1, 4, 4,
+    def authority(self, execution_id="synthetic-execution"):
+        return ExecutionContext("synthetic-company", execution_id, self.policy, 1, 4, 4,
                                 datetime.now(timezone.utc) + timedelta(minutes=5))
 
     def test_positive_command_classifier_separates_reads_and_effects(self):
@@ -60,14 +60,16 @@ class PreparationRuntimeTests(unittest.TestCase):
         _add_pending_categorization(self.entity, "source-a", "Synthetic software", amount="-100.00")
         queue.propose(self.entity, "source-a", "Expenses:Software", "Synthetic evidence")
 
-    def execute(self, item="source-a", command="confirm", **overrides):
+    def execute(self, item="source-a", command="confirm", session=None, context=None, **overrides):
         sources = json.loads((self.entity.staging_dir / "pending-categorization.json").read_text())
         kwargs = dict(entity_path=self.entity.path, expected_ledger_digest=self.store.content_digest(),
                       source_hashes={source["id"]: evidence_hash(source) for source in sources})
         kwargs.update(overrides)
+        argv = ["queue", command, "--entity", str(self.entity.path), "--item", item]
+        if session:
+            argv.extend(["--session", session])
         with redirect_stdout(StringIO()):
-            return run_preparation_command(["queue", command, "--entity", str(self.entity.path), "--item", item],
-                                           self.authority(), **kwargs)
+            return run_preparation_command(argv, context or self.authority(), **kwargs)
 
     def test_normal_confirmation_records_atomic_authority_without_learning_human_trust(self):
         self.prepare()
@@ -124,6 +126,84 @@ class PreparationRuntimeTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(queue._load_item(self.entity, "proposal-source")["status"], "open")
         self.assertEqual(self.store.content_digest(), before)
+
+    def test_proposal_rechecks_group_snapshot_and_ledger_under_write_lock(self):
+        _add_pending_categorization(self.entity, "proposal-a", "First", txn_date="2026-09-12")
+        _add_pending_categorization(self.entity, "proposal-b", "Second", txn_date="2026-09-13")
+        pending = self.entity.staging_dir / "pending-categorization.json"
+        sources = json.loads(pending.read_text())
+        original_run = queue.run
+
+        def mutate_after_preflight(args):
+            changed = json.loads(pending.read_text())
+            changed[1]["date"] = "2027-01-13"
+            pending.write_text(json.dumps(changed))
+            return original_run(args)
+
+        argv = ["queue", "propose-group", "--entity", str(self.entity.path),
+                "--source-id", "proposal-a", "--source-id", "proposal-b",
+                "--category", "Expenses:Software", "--reasoning", "Synthetic evidence"]
+        with patch.object(queue, "run", side_effect=mutate_after_preflight), \
+                self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
+            run_preparation_command(
+                argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(),
+                source_hashes={source["id"]: evidence_hash(source) for source in sources},
+            )
+        self.assertFalse((self.entity.review_queue_dir / "proposal-a.json").exists())
+        self.assertFalse((self.entity.review_queue_dir / "proposal-b.json").exists())
+
+    def test_proposal_rechecks_ledger_revision_at_persistence(self):
+        _add_pending_categorization(self.entity, "proposal-ledger", "First", txn_date="2026-09-12")
+        source = queue._get_pending_txn(self.entity, "proposal-ledger")
+        before = self.store.content_digest()
+        original_run = queue.run
+
+        def mutate_ledger_after_preflight(args):
+            self.store.set_meta("concurrent-change", "1")
+            return original_run(args)
+
+        argv = ["queue", "propose", "--entity", str(self.entity.path),
+                "--source-id", "proposal-ledger", "--category", "Expenses:Software",
+                "--reasoning", "Synthetic evidence"]
+        with patch.object(queue, "run", side_effect=mutate_ledger_after_preflight), \
+                self.assertRaisesRegex(PreparationDenied, "ledger_changed"):
+            run_preparation_command(
+                argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=before,
+                source_hashes={"proposal-ledger": evidence_hash(source)},
+            )
+        self.assertFalse((self.entity.review_queue_dir / "proposal-ledger.json").exists())
+
+    def test_group_proposal_save_failure_restores_every_prior_queue_item(self):
+        for source_id in ("group-save-a", "group-save-b"):
+            _add_pending_categorization(self.entity, source_id, source_id, amount="-10.00")
+        sources = [queue._get_pending_txn(self.entity, source_id)
+                   for source_id in ("group-save-a", "group-save-b")]
+        hashes = {source["id"]: evidence_hash(source) for source in sources}
+        argv = [
+            "queue", "propose-group", "--entity", str(self.entity.path),
+            "--source-id", "group-save-a", "--source-id", "group-save-b",
+            "--category", "Expenses:Software", "--reasoning", "Evidence",
+        ]
+        original_save = queue._save_item
+        saves = 0
+
+        def fail_second_save(entity, item):
+            nonlocal saves
+            saves += 1
+            if saves == 2:
+                raise OSError("synthetic grouped write failure")
+            return original_save(entity, item)
+
+        with patch.object(queue, "_save_item", side_effect=fail_second_save), \
+                self.assertRaisesRegex(OSError, "grouped write failure"):
+            run_preparation_command(
+                argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(), source_hashes=hashes,
+            )
+        self.assertFalse((self.entity.review_queue_dir / "group-save-a.json").exists())
+        self.assertFalse((self.entity.review_queue_dir / "group-save-b.json").exists())
 
     def test_preparation_reconciliation_requires_affirmative_verified_evidence(self):
         self.policy = replace(self.policy, actions=tuple(sorted((*self.policy.actions, "reconcile"))))
@@ -218,6 +298,16 @@ class PreparationRuntimeTests(unittest.TestCase):
             self.execute(source_hashes={"source-a": evidence_hash(source)})
         self.assertEqual(self.store.counts().entries, 0)
 
+    def test_confirmation_rejects_extra_verified_sources_outside_the_exact_operation(self):
+        self.prepare()
+        _add_pending_categorization(self.entity, "unrelated", "Other evidence", amount="-5.00")
+        sources = json.loads((self.entity.staging_dir / "pending-categorization.json").read_text())
+        hashes = {source["id"]: evidence_hash(source) for source in sources}
+        with self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
+            self.execute(source_hashes=hashes)
+        self.assertEqual(self.store.counts().entries, 0)
+        self.assertEqual(queue._load_item(self.entity, "source-a")["status"], "open")
+
     def test_proposal_change_between_dispatch_and_write_is_rejected(self):
         self.prepare()
         original = importer._atomic_ledger_write
@@ -238,6 +328,121 @@ class PreparationRuntimeTests(unittest.TestCase):
         self.assertEqual(self.store.counts().audit_events, 0)
         self.assertEqual(queue._load_item(self.entity, "source-a")["status"], "open")
         self.assertEqual(self.execute(), 0)
+
+    def test_exact_receipt_recovers_category_split_and_transfer_cleanup_without_reposting(self):
+        self.prepare()
+        source_a = queue._get_pending_txn(self.entity, "source-a")
+        hashes_a = {"source-a": evidence_hash(source_a)}
+        with patch.object(queue, "_remove_from_pending_categorization", side_effect=RuntimeError("after ledger")):
+            with self.assertRaisesRegex(RuntimeError, "after ledger"):
+                self.execute(source_hashes=hashes_a)
+        self.assertEqual(self.store.counts().entries, 1)
+        self.assertEqual(self.execute(source_hashes=hashes_a), 0)
+        self.assertEqual(self.store.counts().entries, 1)
+
+        _add_pending_categorization(self.entity, "split-recovery", "Allocation", amount="-100.00")
+        queue.propose_split(self.entity, "split-recovery", "Evidence", ["Expenses:Software=100.00"])
+        split_source = queue._get_pending_txn(self.entity, "split-recovery")
+        split_hashes = {"split-recovery": evidence_hash(split_source)}
+        with patch.object(queue, "_remove_from_pending_categorization", side_effect=RuntimeError("before pending remove")):
+            with self.assertRaisesRegex(RuntimeError, "before pending remove"):
+                self.execute(item="split-recovery", command="confirm-split", source_hashes=split_hashes)
+        self.assertEqual(self.store.counts().entries, 2)
+        self.assertEqual(self.execute(item="split-recovery", command="confirm-split", source_hashes=split_hashes), 0)
+        self.assertEqual(self.store.counts().entries, 2)
+
+        _add_pending_categorization(self.entity, "bank-recovery", "Card payment", amount="-125.00", txn_date="2026-02-01")
+        _add_pending_categorization(self.entity, "card-recovery", "Payment received", amount="125.00", txn_date="2026-02-03")
+        pending = self.entity.staging_dir / "pending-categorization.json"
+        rows = json.loads(pending.read_text())
+        next(row for row in rows if row["id"] == "card-recovery").update(accountName="Amex", accountType="credit_card")
+        pending.write_text(json.dumps(rows))
+        transfer = queue.propose_transfer(self.entity, ["bank-recovery", "card-recovery"], "Evidence")
+        transfer_sources = [queue._get_pending_txn(self.entity, value) for value in ("bank-recovery", "card-recovery")]
+        transfer_hashes = {source["id"]: evidence_hash(source) for source in transfer_sources}
+        original_save = queue._save_item
+
+        def fail_final_save(entity, item):
+            if item.get("status") == "confirmed":
+                raise RuntimeError("before item save")
+            return original_save(entity, item)
+
+        with patch.object(queue, "_save_item", side_effect=fail_final_save):
+            with self.assertRaisesRegex(RuntimeError, "before item save"):
+                self.execute(item=transfer["source_id"], command="confirm-transfer",
+                             source_hashes=transfer_hashes)
+        self.assertEqual(self.store.counts().entries, 4)
+        self.assertEqual(self.execute(item=transfer["source_id"], command="confirm-transfer",
+                                     source_hashes=transfer_hashes), 0)
+        self.assertEqual(self.store.counts().entries, 4)
+
+    def test_post_commit_recovery_rejects_changed_intent_and_execution_identity(self):
+        self.prepare()
+        source = queue._get_pending_txn(self.entity, "source-a")
+        hashes = {"source-a": evidence_hash(source)}
+        with patch.object(queue, "_remove_from_pending_categorization", side_effect=RuntimeError("disk")):
+            with self.assertRaises(RuntimeError):
+                self.execute(session="original-session", source_hashes=hashes)
+        with self.assertRaisesRegex(PreparationDenied, "posted_source_requires_reconciliation"):
+            self.execute(session="different-session", source_hashes=hashes)
+        with self.assertRaisesRegex(PreparationDenied, "posted_source_requires_reconciliation"):
+            self.execute(session="original-session", source_hashes=hashes,
+                         context=self.authority("different-execution"))
+        original_item = queue._load_item(self.entity, "source-a")
+        changed_item = dict(original_item, proposed_category="Expenses:Office")
+        queue._save_item(self.entity, changed_item)
+        with self.assertRaisesRegex(PreparationDenied, "posted_source_requires_reconciliation"):
+            self.execute(session="original-session", source_hashes=hashes)
+        queue._save_item(self.entity, original_item)
+        pending_path = self.entity.staging_dir / "pending-categorization.json"
+        pending = json.loads(pending_path.read_text())
+        pending[0]["amount"] = "-999.00"
+        pending_path.write_text(json.dumps(pending))
+        with self.assertRaisesRegex(PreparationDenied, "posted_source_requires_reconciliation"):
+            self.execute(session="original-session", source_hashes=hashes)
+        pending[0]["amount"] = "-100.00"
+        pending_path.write_text(json.dumps(pending))
+        self.assertEqual(self.execute(session="original-session", source_hashes=hashes), 0)
+        self.assertEqual(self.store.counts().entries, 1)
+
+    def test_receipts_cover_item_save_and_pending_cleanup_gaps_for_every_confirmation_shape(self):
+        original_save = queue._save_item
+
+        def fail_confirmed_save(entity, item):
+            if item.get("status") == "confirmed":
+                raise RuntimeError("item save gap")
+            return original_save(entity, item)
+
+        _add_pending_categorization(self.entity, "category-save-gap", "Category", amount="-10.00")
+        queue.propose(self.entity, "category-save-gap", "Expenses:Software", "Evidence")
+        source = queue._get_pending_txn(self.entity, "category-save-gap")
+        hashes = {"category-save-gap": evidence_hash(source)}
+        with patch.object(queue, "_save_item", side_effect=fail_confirmed_save), self.assertRaises(RuntimeError):
+            self.execute(item="category-save-gap", source_hashes=hashes)
+        self.assertEqual(self.execute(item="category-save-gap", source_hashes=hashes), 0)
+
+        _add_pending_categorization(self.entity, "split-save-gap", "Split", amount="-20.00")
+        queue.propose_split(self.entity, "split-save-gap", "Evidence", ["Expenses:Software=20.00"])
+        source = queue._get_pending_txn(self.entity, "split-save-gap")
+        hashes = {"split-save-gap": evidence_hash(source)}
+        with patch.object(queue, "_save_item", side_effect=fail_confirmed_save), self.assertRaises(RuntimeError):
+            self.execute(item="split-save-gap", command="confirm-split", source_hashes=hashes)
+        self.assertEqual(self.execute(item="split-save-gap", command="confirm-split", source_hashes=hashes), 0)
+
+        _add_pending_categorization(self.entity, "bank-pending-gap", "Card payment", amount="-30.00", txn_date="2026-03-01")
+        _add_pending_categorization(self.entity, "card-pending-gap", "Payment received", amount="30.00", txn_date="2026-03-02")
+        pending = self.entity.staging_dir / "pending-categorization.json"
+        rows = json.loads(pending.read_text())
+        next(row for row in rows if row["id"] == "card-pending-gap").update(accountName="Amex", accountType="credit_card")
+        pending.write_text(json.dumps(rows))
+        item = queue.propose_transfer(self.entity, ["bank-pending-gap", "card-pending-gap"], "Evidence")
+        sources = [queue._get_pending_txn(self.entity, value) for value in ("bank-pending-gap", "card-pending-gap")]
+        hashes = {source["id"]: evidence_hash(source) for source in sources}
+        with patch.object(queue, "_remove_many_from_pending_categorization", side_effect=RuntimeError("pending gap")), \
+                self.assertRaises(RuntimeError):
+            self.execute(item=item["source_id"], command="confirm-transfer", source_hashes=hashes)
+        self.assertEqual(self.execute(item=item["source_id"], command="confirm-transfer", source_hashes=hashes), 0)
+        self.assertEqual(self.store.counts().entries, 4)
 
     def test_split_uses_split_authority_and_cannot_replay_a_posted_source(self):
         _add_pending_categorization(self.entity, "source-a", "Synthetic allocation", amount="-100.00")

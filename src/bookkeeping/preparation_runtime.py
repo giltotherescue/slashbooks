@@ -101,6 +101,7 @@ class _Boundary:
     input_path: Path | None = None
     input_transactions_json: str | None = None
     input_is_banksync: bool = False
+    proposal_sources_json: str | None = None
 
 
 _active: ContextVar[_Boundary | None] = ContextVar("books_preparation", default=None)
@@ -108,6 +109,14 @@ _active: ContextVar[_Boundary | None] = ContextVar("books_preparation", default=
 
 def is_preparation() -> bool:
     return _active.get() is not None
+
+
+def active_preparation_identity() -> tuple[str, dict[str, str]] | None:
+    """Return trusted recovery identity for the active in-process boundary."""
+    bound = _active.get()
+    if bound is None:
+        return None
+    return bound.context.execution_id, dict(bound.source_hashes)
 
 
 def run_preparation_command(argv: list[str], context: ExecutionContext, *, entity_path: Path,
@@ -162,16 +171,30 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
         if proposal not in {"category", "split", "transfer-pair"}:
             raise PreparationDenied(0, "specialized_policy_required")
         action = {"split": "split", "transfer-pair": "match_transfer"}.get(proposal, "categorize")
-        ids = item.get("source_ids") if action == "match_transfer" else [item["source_id"]]
-        if any(store.source_exists(source_id) for source_id in ids):
+        raw_ids = item.get("source_ids") if action == "match_transfer" else [item.get("source_id")]
+        if (not isinstance(raw_ids, list) or not raw_ids
+                or any(not isinstance(source_id, str) or not source_id for source_id in raw_ids)
+                or len(set(raw_ids)) != len(raw_ids)
+                or set(raw_ids) != set(source_hashes)):
+            raise PreparationDenied(0, "source_evidence_changed")
+        ids = raw_ids
+        if item.get("status") not in {"open", "reopened"} and any(
+            store.source_exists(source_id) for source_id in ids
+        ):
             raise PreparationDenied(0, "posted_source_requires_reconciliation")
         bound = _Boundary(context, resolved, expected_ledger_digest, tuple(sorted(source_hashes.items())),
                           args.item_id, evidence_hash(item), action)
     elif path in _PROPOSAL_ACTIONS:
         ids = list(args.source_ids) if hasattr(args, "source_ids") else [args.source_id]
-        intent = _source_intent(entity, _PROPOSAL_ACTIONS[path], ids, source_hashes)
+        intent, sources = _source_intent(entity, _PROPOSAL_ACTIONS[path], ids, source_hashes)
         authorize_batch(context, [intent])
-        return queue.run(args)
+        bound = _Boundary(
+            context, resolved, expected_ledger_digest, tuple(sorted(source_hashes.items())),
+            "", "", _PROPOSAL_ACTIONS[path],
+            proposal_sources_json=json.dumps(
+                sources, sort_keys=True, separators=(",", ":"), allow_nan=False
+            ),
+        )
     elif path == ("reconcile",):
         intent = _reconciliation_intent(args, source_hashes)
         authorize_batch(context, [intent])
@@ -268,7 +291,7 @@ def prepared_reconciliation_evidence(account: str, as_of: str) -> dict[str, str]
 
 
 def _source_intent(entity: Entity, action: str, ids: list[str],
-                   source_hashes: Mapping[str, str]) -> PreparationIntent:
+                   source_hashes: Mapping[str, str]) -> tuple[PreparationIntent, list[dict[str, Any]]]:
     from . import queue
 
     if not ids or len(set(ids)) != len(ids) or set(ids) != set(source_hashes):
@@ -283,8 +306,45 @@ def _source_intent(entity: Entity, action: str, ids: list[str],
         periods = tuple(sorted({date.fromisoformat(str(source["date"])[:10]).isoformat()[:7] for source in sources}))
     except (KeyError, TypeError, ValueError) as exc:
         raise PreparationDenied(0, "source_period_invalid") from exc
-    return PreparationIntent(action, periods, tuple(sorted(ids)), (),
-                             tuple(sorted(evidence_hash(source) for source in sources)))
+    return (PreparationIntent(action, periods, tuple(sorted(ids)), (),
+                              tuple(sorted(evidence_hash(source) for source in sources))), sources)
+
+
+def prepared_proposal_sources(entity: Entity, action: str,
+                              source_ids: list[str]) -> list[dict[str, Any]] | None:
+    """Revalidate and return the authorized proposal snapshot at persistence.
+
+    Queue proposal writers call this while holding the entity write lock. The
+    same lock also fences canonical ledger writers, so neither the staged rows
+    nor the ledger revision can change between this check and proposal saves.
+    """
+    bound = _active.get()
+    if bound is None or bound.proposal_sources_json is None:
+        return None
+    if entity.path.resolve() != bound.entity_path:
+        raise PreparationDenied(0, "workspace_mismatch")
+    if action != bound.action or tuple(sorted(source_ids)) != tuple(sorted(dict(bound.source_hashes))):
+        raise PreparationDenied(0, "source_evidence_changed")
+    store = LedgerStore(entity.path / "ledger.sqlite")
+    if store.content_digest() != bound.ledger_digest:
+        raise PreparationDenied(0, "ledger_changed")
+    snapshots = json.loads(bound.proposal_sources_json)
+    if not isinstance(snapshots, list):
+        raise PreparationDenied(0, "source_evidence_changed")
+    expected = dict(bound.source_hashes)
+    from . import queue
+    for source_id in source_ids:
+        staged = queue._get_pending_txn(entity, source_id)
+        if (staged is None or expected.get(source_id) != evidence_hash(staged)):
+            raise PreparationDenied(0, "source_evidence_changed")
+    snapshot_by_id = {str(item.get("id") or ""): item for item in snapshots if isinstance(item, dict)}
+    if (set(snapshot_by_id) != set(source_ids)
+            or any(evidence_hash(snapshot_by_id[source_id]) != expected[source_id]
+                   for source_id in source_ids)):
+        raise PreparationDenied(0, "source_evidence_changed")
+    intent, _ = _source_intent(entity, action, source_ids, expected)
+    authorize_batch(bound.context, [intent])
+    return [dict(snapshot_by_id[source_id]) for source_id in source_ids]
 
 
 def _reconciliation_intent(args: Any, source_hashes: Mapping[str, str]) -> PreparationIntent:

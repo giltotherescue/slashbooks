@@ -154,6 +154,7 @@ def _atomic_ledger_write(
     ts: str | None,
     intent_description: str,
     source_transactions: list[dict[str, Any]] | None = None,
+    finalization_receipt: dict[str, Any] | None = None,
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -164,6 +165,7 @@ def _atomic_ledger_write(
             ts=ts,
             intent_description=intent_description,
             source_transactions=source_transactions,
+            finalization_receipt=finalization_receipt,
         )
 
 
@@ -175,6 +177,7 @@ def _atomic_ledger_write_unlocked(
     ts: str | None,
     intent_description: str,
     source_transactions: list[dict[str, Any]] | None = None,
+    finalization_receipt: dict[str, Any] | None = None,
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
 
@@ -192,6 +195,10 @@ def _atomic_ledger_write_unlocked(
     with store.transaction() as conn:
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
+        if finalization_receipt is not None:
+            store.append_audit_event(
+                "queue-finalization-intent", finalization_receipt, conn, ts=ts
+            )
         store.append_audit_event(
             "intent",
             {

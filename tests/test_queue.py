@@ -14,7 +14,7 @@ Edge / error:
   - propose with phantom source_id → rejected.
   - propose with unknown category → rejected.
   - reasoning with newlines/control chars → sanitized before persisting.
-  - malformed queue file → quarantined with named error.
+  - malformed queue reads → explicit diagnostics without company-file mutation.
   - reopen on amount change → item reopened, delta flagged, category pre-filled.
   - session summary counts match simulated close.
   - session summary text has no beancount/SQL jargon.
@@ -27,9 +27,11 @@ import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from io import StringIO
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +43,8 @@ from bookkeeping.entity import Entity, add_account, approve_related_entity, reco
 from bookkeeping.ledger.importer import import_transactions  # noqa: E402
 from bookkeeping.ledger.model import Open  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
+from bookkeeping.remote_contract import parse_command  # noqa: E402
+from bookkeeping import queue as queue_module  # noqa: E402
 from bookkeeping.queue import (  # noqa: E402
     _counterparty_key,
     _sanitize_reasoning,
@@ -554,33 +558,33 @@ class TestMalformedQueueFile(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def test_malformed_json_quarantined_with_named_error(self) -> None:
+    def test_read_commands_report_malformed_json_without_mutating_company_files(self) -> None:
         q_dir = self.entity.review_queue_dir
         malformed_path = q_dir / "bad_item.json"
         malformed_path.write_text("{not valid json[[[", encoding="utf-8")
+        before = {str(path.relative_to(self.entity.path)): path.read_bytes()
+                  for path in self.entity.path.rglob("*") if path.is_file()}
+        commands = [
+            (["queue", "list", "--entity", str(self.entity.path)], "[corrupt] bad_item"),
+            (["queue", "show", "--entity", str(self.entity.path), "--item", "bad_item"], "queue_item_corrupt"),
+            (["queue", "summary", "--entity", str(self.entity.path)], "Corrupt queue item"),
+        ]
+        for argv, marker in commands:
+            args, _, _ = parse_command(argv)
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(queue_module.run(args), 0)
+            self.assertIn(marker, output.getvalue())
+            after = {str(path.relative_to(self.entity.path)): path.read_bytes()
+                     for path in self.entity.path.rglob("*") if path.is_file()}
+            self.assertEqual(after, before)
 
-        # list_queue_items should not raise; malformed file is quarantined
-        items = list_queue_items(self.entity)
-        # The bad file should not appear in items
-        ids = [i.get("source_id") for i in items]
-        self.assertNotIn("bad_item", ids)
-
-        # It should have been quarantined
-        quarantine = self.entity.path / "review-queue" / "quarantine"
-        self.assertTrue(quarantine.exists())
-        # An error sidecar should be present
-        error_files = list(quarantine.glob("*.error.json"))
-        self.assertTrue(len(error_files) >= 1)
-
-    def test_missing_required_fields_quarantined(self) -> None:
+    def test_mutating_loader_can_quarantine_missing_required_fields(self) -> None:
         q_dir = self.entity.review_queue_dir
         incomplete_path = q_dir / "incomplete.json"
         incomplete_path.write_text(json.dumps({"source_id": "missing-status"}), encoding="utf-8")
-
-        items = list_queue_items(self.entity)
-        ids = [i.get("source_id") for i in items]
-        self.assertNotIn("missing-status", ids)
-
+        with self.assertRaisesRegex(ValueError, "missing required field"):
+            queue_module._load_item(self.entity, "incomplete")
         quarantine = self.entity.path / "review-queue" / "quarantine"
         error_files = list(quarantine.glob("*.error.json"))
         self.assertTrue(len(error_files) >= 1)
