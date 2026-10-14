@@ -61,7 +61,7 @@ from .statements import (
 )
 from ..reconcile import list_discrepancies
 from ..entity import load_entity
-from ..queue import list_queue_items
+from ..queue import ACTIONABLE_QUEUE_STATUSES, list_queue_items
 from ..ledger.store import LedgerStore, default_store_path
 from ..ledger.validator import parse_ledger
 from ..connectors.payroll import provider_spec
@@ -264,7 +264,7 @@ class XlsxSheet:
 def _count_open_queue_items(entity_path: Path) -> int:
     """Count every unresolved review item through the canonical queue reader."""
     entity = load_entity(entity_path)
-    actionable = {"open", "reopened", "staged", "duplicate-candidate"}
+    actionable = {*ACTIONABLE_QUEUE_STATUSES, "staged", "duplicate-candidate"}
     count = sum(
         1 for item in list_queue_items(entity)
         if str(item.get("status") or "") in actionable

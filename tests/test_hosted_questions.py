@@ -93,6 +93,14 @@ class HostedQuestionTests(unittest.TestCase):
     def ask(self, request_id="ask-1", body="Was this for business?"):
         return self.invoke("ask", "--subject", "Payment purpose", "--body", body, "--request-id", request_id)
 
+    def test_scoped_resolution_rejects_mixed_receipt_contracts_before_sending(self):
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            code = cli.main(["cloud", "--config", str(self.config), "question", "resolve", "q1",
+                             "--request-id", "human-request", "--reply-id", "r1",
+                             "--reply-watermark", "1", "--command-id", "c1"])
+        self.assertEqual(code, 1)
+        self.assertFalse(self.posts())
+
     def test_ask_is_company_scoped_typed_and_privately_fenced_before_post(self):
         previous = self.api.on_request
         def observed():

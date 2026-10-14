@@ -64,7 +64,7 @@ class RemoteContractTests(unittest.TestCase):
 
         walk(build_parser(), [], ())
         self.assertGreaterEqual(len(seen), 60)
-        for family in ("entity", "demo", "connector", "ingest", "ledger", "qb", "report", "ask", "reconcile", "reconcile-resolve", "backtest", "compare", "queue", "quarterly-review", "sanity-check", "export"):
+        for family in ("entity", "demo", "connector", "ingest", "ledger", "qb", "report", "ask", "reconcile", "reconcile-resolve", "readiness", "backtest", "compare", "queue", "quarterly-review", "sanity-check", "export"):
             self.assertTrue(any(p[0] == family for p in seen), family)
 
     def test_read_permissions_are_not_artifact_permissions(self):
@@ -75,6 +75,7 @@ class RemoteContractTests(unittest.TestCase):
             ["quarterly-review", "--entity", "@entity", "--quarter", "Q1", "--year", "2026"],
             ["export", "--entity", "@entity", "--from", "2026-01-01", "--to", "2026-03-31", "--output-dir", "@output/export"],
             ["report", "pnl", "--entity", "@entity", "--from", "2026-01-01", "--to", "2026-03-31", "--output", "@output/pnl.json"],
+            ["readiness", "--entity", "@entity", "--period", "2026-03", "--as-of", "2026-04-01", "--output", "@output/readiness.json"],
         ]
         for argv in commands:
             with self.subTest(argv=argv):

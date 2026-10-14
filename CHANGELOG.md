@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-10-14
+
+- Prepare bookkeeping under explicit standing authority, scoped to allowed actions and periods, while retaining human approval for publication and close.
+- Assess readiness from ledger, source and reconciliation evidence, with structured blockers instead of treating command success as completion.
+- Bind question replies to the exact accounting effects they support, including grouped answers applied through several commands. Preserve the existing human question and recovery commands.
+- Recover interrupted preparation and reconciliation safely, detect changed source evidence, and prevent replay from posting duplicate effects.
+- Preserve intake-only imports, existing review queues and staged source evidence when preparation works alongside routine bookkeeping.
+
+
 ## 0.4.3 — 2026-10-13
 
 - Ask for an optional company website during onboarding and research public business context before follow-up questions.

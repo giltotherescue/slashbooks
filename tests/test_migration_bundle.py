@@ -363,7 +363,8 @@ class MigrationBundleTests(unittest.TestCase):
         for name, raw in (("broken", b"{not valid json[[["), ("incomplete", b'{"source_id":"incomplete"}'),
                           ("array", b'[1,2]')):
             (self.root / "review-queue" / (name + ".json")).write_bytes(raw)
-        queue.list_queue_items(entity)
+            with self.assertRaises((ValueError, json.JSONDecodeError)):
+                queue._load_item(entity, name)
         before = self.snapshot()
         self.store = LedgerStore(self.root / "ledger.sqlite")
         with self.store.connection() as sql:
@@ -440,7 +441,8 @@ class MigrationBundleTests(unittest.TestCase):
         entity = load_entity(self.root)
         path = self.root / "review-queue/broken.json"
         path.write_bytes(b'{"source_id":"missing-status"}')
-        queue.list_queue_items(entity)
+        with self.assertRaises(ValueError):
+            queue._load_item(entity, "broken")
         _, baseline = self.export()
         self.destination.unlink()
         for raw in (b'{"nested":{"apiKey":"PRIVATE"}}', b'{"nested":{"api\\u004bey":"PRIVATE"',
@@ -450,7 +452,8 @@ class MigrationBundleTests(unittest.TestCase):
                     b'{"note":"sk_' + b'live_0123456789abcdef"'):
             with self.subTest(raw=raw):
                 path.write_bytes(raw)
-                queue.list_queue_items(entity)
+                with self.assertRaises((ValueError, json.JSONDecodeError)):
+                    queue._load_item(entity, "broken")
                 result = bundle.build_bundle(self.root, self.destination)
                 self.assertEqual(result["status"], "blocked", result)
                 self.assertTrue(set(result["blockers"]) & {"embedded_credentials", "custom_configuration"}, result)

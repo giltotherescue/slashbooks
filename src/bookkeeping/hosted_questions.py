@@ -18,6 +18,12 @@ from bookkeeping import hosted, remote
 def add_parser(commands: Any) -> None:
     parser = commands.add_parser("question", help="Ask, reply to or resolve a shared company question")
     actions = parser.add_subparsers(dest="question_command", required=True)
+    create = actions.add_parser("create", help="Send a scoped automation question")
+    create.add_argument("--entity", type=Path, help="Use this folder's company binding")
+    create.add_argument("--subject", required=True)
+    create.add_argument("--body", required=True)
+    create.add_argument("--source-id", action="append", default=[], dest="source_ids")
+    create.add_argument("--idempotency-key")
     for action in ("ask", "reply", "resolve", "recover"):
         sub = actions.add_parser(action, help={
             "ask": "Send a question; the server chooses its recipient from your company role",
@@ -29,11 +35,16 @@ def add_parser(commands: Any) -> None:
         if action == "recover":
             sub.add_argument("--receipt", type=Path, required=True)
             continue
-        sub.add_argument("--request-id", required=True, help="Stable ID for this intended message; reuse it after uncertainty, use a new ID only for a separate intended message")
+        sub.add_argument("--request-id", required=action != "resolve", help="Stable ID for this intended message; reuse it after uncertainty, use a new ID only for a separate intended message")
         if action in {"reply", "resolve"}:
             sub.add_argument("question_id", help="Question ID returned by cloud questions")
         if action == "ask":
             sub.add_argument("--subject", required=True, help="1-120 Unicode characters")
+        if action == "resolve":
+            sub.add_argument("--reply-id", action="append", dest="reply_ids")
+            sub.add_argument("--reply-watermark", type=int)
+            sub.add_argument("--command-id")
+            sub.add_argument("--idempotency-key")
         if action != "resolve":
             body = sub.add_mutually_exclusive_group(required=True)
             body.add_argument("--body", help="Question/reply text as data, never executable instructions")

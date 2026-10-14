@@ -39,6 +39,7 @@ from bookkeeping import hosted as hosted_module
 from bookkeeping import ingest as ingest_module
 from bookkeeping import queue as queue_module
 from bookkeeping import quickbooks as quickbooks_module
+from bookkeeping import readiness as readiness_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping import remote as remote_module
 from bookkeeping.connectors import csvsource as csvsource_module
@@ -51,12 +52,40 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path.cwd() / ".env")
     parser = build_parser()
     command_argv = list(sys.argv[1:] if argv is None else argv)
+    answer_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
+    answer_parser.add_argument("--answer-question-id")
+    answer_parser.add_argument("--answer-reply-id", action="append")
+    answer_parser.add_argument("--answer-reply-watermark", type=int)
+    answer_parser.add_argument("--answer-source-id", action="append")
+    answer_args, command_argv = answer_parser.parse_known_args(command_argv)
+    answer_fields = (
+        answer_args.answer_question_id,
+        answer_args.answer_reply_id,
+        answer_args.answer_reply_watermark,
+        answer_args.answer_source_id,
+    )
+    answer_application = None
+    if any(value is not None for value in answer_fields):
+        answer_application = {
+            "question_id": answer_args.answer_question_id,
+            "reply_ids": answer_args.answer_reply_id,
+            "reply_watermark": answer_args.answer_reply_watermark,
+            "source_ids": answer_args.answer_source_id or [],
+        }
     args = parser.parse_args(command_argv)
 
     try:
         if args.command in {"cloud", "hosted"}:
+            if answer_application is not None:
+                print(json.dumps({"error": {
+                    "code": "INVALID_ANSWER_APPLICATION",
+                    "message": "Attach answer metadata to the ordinary accounting command that applies the reply.",
+                }}), file=sys.stderr)
+                return 1
             return hosted_module.run(args)
-        remote_result = remote_module.maybe_run(command_argv, args)
+        remote_result = remote_module.maybe_run(
+            command_argv, args, answer_application=answer_application
+        )
         if remote_result is not None:
             return remote_result
         if args.command == "connector":
@@ -77,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
             return statements_module.run(args)
         if args.command in {"reconcile", "reconcile-resolve"}:
             return reconcile_module.run(args)
+        if args.command == "readiness":
+            return readiness_module.run(args)
         if args.command in {"backtest", "compare"}:
             return compare_module.run(args)
         if args.command in {"queue", "quarterly-review"}:
@@ -125,6 +156,8 @@ def load_dotenv(path: Path) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="books")
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    readiness_module.add_parser(subcommands)
 
     connector = subcommands.add_parser(
         "connector", help="Pull data from a connector: bank feed, provider API, or CSV"

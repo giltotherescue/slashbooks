@@ -409,6 +409,64 @@ def _command_body(name: str, body: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+def _stable_question_id(value: Any, label: str) -> str:
+    if (not isinstance(value, str) or not value or len(value) > 200
+            or any(ord(character) < 33 or ord(character) == 127 for character in value)):
+        raise HostedError(
+            "INVALID_QUESTION", f"{label} must be a nonempty stable identifier of at most 200 characters."
+        )
+    return value
+
+
+def _stable_reply_id(value: Any) -> str:
+    return _stable_question_id(value, "Reply ID")
+
+
+def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
+    """Validate the immutable public question request used for submit and retry."""
+    if route == "/questions":
+        if set(body) != {"subject", "body", "source_ids"}:
+            raise HostedError(
+                "INVALID_QUESTION", "Question create requires subject, body and source_ids."
+            )
+        if (not isinstance(body["subject"], str) or not body["subject"].strip()
+                or len(body["subject"]) > 200):
+            raise HostedError("INVALID_QUESTION", "Question subject must be 1-200 characters.")
+        if (not isinstance(body["body"], str) or not body["body"].strip()
+                or len(body["body"]) > 10000):
+            raise HostedError("INVALID_QUESTION", "Question body must be 1-10000 characters.")
+        source_ids = body.get("source_ids")
+        if (not isinstance(source_ids, list) or len(source_ids) > 100
+                or len(set(_stable_question_id(value, "Source ID") for value in source_ids))
+                != len(source_ids)):
+            raise HostedError(
+                "INVALID_QUESTION", "Question create allows at most 100 unique stable source IDs."
+            )
+        return {**body, "source_ids": sorted(source_ids)}
+    match = re.fullmatch(r"/questions/([^/]+)/resolve", route) if isinstance(route, str) else None
+    if match is None:
+        raise HostedError("INVALID_RECEIPT", "Receipt does not contain a supported question route.")
+    encoded_id = match.group(1)
+    try:
+        if _segment(parse.unquote(encoded_id)) != encoded_id:
+            raise ValueError
+    except (HostedError, ValueError) as exc:
+        raise HostedError("INVALID_RECEIPT", "Receipt question route is invalid.") from exc
+    if set(body) != {"reply_ids", "reply_watermark", "command_id"}:
+        raise HostedError(
+            "INVALID_QUESTION",
+            "Question resolve requires reply_ids, reply_watermark and command_id.",
+        )
+    reply_ids = body.get("reply_ids")
+    if (not isinstance(reply_ids, list) or not 1 <= len(reply_ids) <= 100
+            or len(set(_stable_reply_id(value) for value in reply_ids)) != len(reply_ids)):
+        raise HostedError("INVALID_QUESTION", "Question resolve requires 1-100 unique stable reply IDs.")
+    if type(body.get("reply_watermark")) is not int or body["reply_watermark"] <= 0:
+        raise HostedError("INVALID_QUESTION", "Reply watermark must be a positive integer.")
+    _segment(body.get("command_id"))
+    return dict(body)
+
+
 def _identity(client: HostedClient) -> dict[str, Any]:
     return {"endpoint": client.endpoint, "company": client.company,
             "credential_sha256": hashlib.sha256(client.token.encode()).hexdigest()}
@@ -439,12 +497,17 @@ def _mutate(args: argparse.Namespace, client: HostedClient) -> dict[str, Any]:
         if any(record.get(key) != value for key, value in _identity(client).items()):
             raise HostedError("RECEIPT_SCOPE_MISMATCH", "Receipt belongs to a different endpoint, company or credential. Restore its original configuration before retrying.")
         _key(record.get("idempotency_key"))
-        if record.get("route") not in ("/commands", "/sources") or not isinstance(record.get("body"), dict):
+        if not isinstance(record.get("body"), dict):
             raise HostedError("INVALID_RECEIPT", "Receipt must contain a supported company route and JSON body.")
         if record.get("body_sha256") != _body_digest(record["body"]):
             raise HostedError("INVALID_RECEIPT", "Receipt input changed. Restore the original receipt; never edit input under an existing key.")
         if record["route"] == "/commands":
             _command_body("command", record["body"])
+        elif record["route"] == "/sources":
+            if not isinstance(record["body"].get("source_id"), str) or not record["body"]["source_id"].strip():
+                raise HostedError("INVALID_RECEIPT", "Source receipt requires a stable source_id.")
+        else:
+            _question_body(record.get("route"), record["body"])
     else:
         body = _read_json(args.file.expanduser())
         route = "/sources" if args.hosted_command == "import-source" else "/commands"
@@ -474,6 +537,55 @@ def _mutate(args: argparse.Namespace, client: HostedClient) -> dict[str, Any]:
     return _submit(client, record, path)
 
 
+def _mutate_question(args: argparse.Namespace, client: HostedClient) -> dict[str, Any]:
+    if args.question_command == "create":
+        route = "/questions"
+        body = _question_body(route, {
+            "subject": args.subject, "body": args.body, "source_ids": list(args.source_ids),
+        })
+    else:
+        route = "/questions/" + _segment(args.question_id) + "/resolve"
+        body = _question_body(route, {
+            "reply_ids": list(args.reply_ids or []),
+            "reply_watermark": args.reply_watermark,
+            "command_id": args.command_id,
+        })
+    if _redact(body, client.secrets) != body:
+        raise HostedError("SECRET_IN_INPUT", "Question input contains an API credential. Remove it before submission.")
+    key = _key(args.idempotency_key if args.idempotency_key is not None else str(uuid.uuid4()))
+    if _redact(key, client.secrets) != key:
+        raise HostedError("SECRET_IN_INPUT", "Do not use the API token as an idempotency key.")
+    record = {
+        **_identity(client),
+        "kind": "question-" + args.question_command,
+        "idempotency_key": key,
+        "route": route,
+        "body": body,
+        "body_sha256": _body_digest(body),
+        "status": "pending",
+    }
+    name = hashlib.sha256(json.dumps(
+        [record[field] for field in ("endpoint", "company", "credential_sha256", "idempotency_key")]
+    ).encode()).hexdigest()
+    path = args.config.expanduser().absolute().parent / "hosted-receipts" / (name + ".json")
+    try:
+        _write_private(path, record, exclusive=True)
+    except FileExistsError:
+        existing = _read_json(path, private=True)
+        if any(existing.get(field) != value for field, value in record.items() if field != "status"):
+            raise HostedError(
+                "IDEMPOTENCY_CONFLICT",
+                "Local receipt already uses this key with different input. Restore the original input for retry.",
+            )
+        record = existing
+    print(json.dumps(_redact({
+        "event": "hosted_submission",
+        "idempotency_key": record["idempotency_key"],
+        "local_receipt": str(path),
+    }, client.secrets)), file=sys.stderr, flush=True)
+    return _submit(client, record, path)
+
+
 def run(args: argparse.Namespace) -> int:
     if args.hosted_command == "login":
         from . import agent_auth
@@ -494,8 +606,19 @@ def run(args: argparse.Namespace) -> int:
             from . import hosted_stripe
             return hosted_stripe.run(args)
         if args.hosted_command == "question":
-            from . import hosted_questions
-            return hosted_questions.run(args)
+            scoped = args.question_command == "create" or (
+                args.question_command == "resolve" and any(
+                    getattr(args, field, None) is not None
+                    for field in ("reply_ids", "reply_watermark", "command_id", "idempotency_key")
+                )
+            )
+            if not scoped:
+                from . import hosted_questions
+                return hosted_questions.run(args)
+            if getattr(args, "request_id", None) is not None:
+                raise HostedError("INVALID_QUESTION", "Do not mix human question receipt flags with scoped answer application flags.")
+            if getattr(args, "entity", None) is not None:
+                args.config = args.entity.expanduser() / remote.CONFIG_NAME
         if args.hosted_command == "file":
             return remote.run_file(args)
         if args.hosted_command == "retry":
@@ -532,6 +655,8 @@ def run(args: argparse.Namespace) -> int:
             client = HostedClient(config, timeout=args.timeout)
             if args.hosted_command in COLLECTIONS:
                 result = _read_collection(args, client)
+            elif args.hosted_command == "question":
+                result = _mutate_question(args, client)
             elif args.hosted_command in READS:
                 suffix = READS[args.hosted_command]
                 if args.hosted_command == "reports":
