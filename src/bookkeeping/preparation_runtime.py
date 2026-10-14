@@ -11,10 +11,13 @@ from datetime import date, datetime
 from decimal import Decimal
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 from typing import Any, Mapping
+import uuid
 
 from .automation_policy import ExecutionContext, PolicyError, PreparationDenied, PreparationIntent, authorize_batch
 from .entity import Entity, load_entity
@@ -291,29 +294,212 @@ def prepared_reconciliation_evidence(account: str, as_of: str) -> dict[str, str]
             if key != primary and key.startswith("evidence:")}
 
 
-def record_preparation_reconciliation(entity_path: Path, account: str, as_of: str,
-                                      ts: str | None = None) -> None:
-    """Record the protected reconciliation intent after its report commit."""
+_RECONCILIATION_TRANSACTION_DIR = ".reconciliation-transactions"
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_fsynced(path: Path, payload: bytes) -> None:
+    with path.open("xb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _reconciliation_transaction_root(entity_path: Path) -> Path:
+    return Path(entity_path) / "reports" / _RECONCILIATION_TRANSACTION_DIR
+
+
+def _remove_reconciliation_transaction(path: Path) -> None:
+    parent = path.parent
+    shutil.rmtree(path)
+    _fsync_directory(parent)
+
+
+def _load_reconciliation_transaction(path: Path) -> tuple[dict[str, Any], bytes]:
+    try:
+        manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+        report = (path / "report.json").read_bytes()
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Reconciliation transaction '{path.name}' is unreadable.") from exc
+    required = {
+        "schema_version", "transaction_id", "execution_id", "intent_hash",
+        "report_sha256", "destination",
+    }
+    if (not isinstance(manifest, dict) or set(manifest) != required
+            or manifest.get("schema_version") != 1
+            or manifest.get("transaction_id") != path.name
+            or manifest.get("destination") != "reconciliation.json"
+            or any(not isinstance(manifest.get(key), str) or not manifest[key]
+                   for key in required - {"schema_version"})
+            or not re.fullmatch(r"[0-9a-f]{32}", manifest["transaction_id"])
+            or not re.fullmatch(r"[0-9a-f]{64}", manifest["intent_hash"])
+            or not re.fullmatch(r"[0-9a-f]{64}", manifest["report_sha256"])
+            or hashlib.sha256(report).hexdigest() != manifest["report_sha256"]):
+        raise ValueError(f"Reconciliation transaction '{path.name}' is invalid.")
+    return manifest, report
+
+
+def _reconciliation_audit(store: LedgerStore, manifest: Mapping[str, Any]) -> dict[str, Any] | None:
+    matches = []
+    for event in store.load_audit_events():
+        if event.get("type") != "automation-preparation":
+            continue
+        payload = event.get("payload")
+        receipt = payload.get("receipt") if isinstance(payload, dict) else None
+        commit = payload.get("reconciliation_commit") if isinstance(payload, dict) else None
+        intent = payload.get("intent") if isinstance(payload, dict) else None
+        if (isinstance(receipt, dict) and isinstance(commit, dict)
+                and isinstance(intent, dict)
+                and evidence_hash(intent) == receipt.get("intent_hash")
+                and receipt.get("execution_id") == manifest.get("execution_id")
+                and receipt.get("intent_hash") == manifest.get("intent_hash")
+                and commit.get("transaction_id") == manifest.get("transaction_id")
+                and commit.get("report_sha256") == manifest.get("report_sha256")):
+            matches.append(event)
+    if len(matches) > 1:
+        raise ValueError("Duplicate reconciliation preparation audits require review.")
+    return matches[0] if matches else None
+
+
+def _published_reconciliation_audit(store: LedgerStore, execution_id: str,
+                                    intent_hash: str) -> dict[str, Any] | None:
+    matches = []
+    for event in store.load_audit_events():
+        if event.get("type") != "automation-preparation":
+            continue
+        payload = event.get("payload")
+        receipt = payload.get("receipt") if isinstance(payload, dict) else None
+        commit = payload.get("reconciliation_commit") if isinstance(payload, dict) else None
+        intent = payload.get("intent") if isinstance(payload, dict) else None
+        if (isinstance(receipt, dict) and isinstance(commit, dict)
+                and isinstance(intent, dict)
+                and evidence_hash(intent) == receipt.get("intent_hash")
+                and receipt.get("execution_id") == execution_id
+                and receipt.get("intent_hash") == intent_hash):
+            matches.append(event)
+    if len(matches) > 1:
+        raise ValueError("Duplicate reconciliation preparation audits require review.")
+    return matches[0] if matches else None
+
+
+def _publish_reconciliation_report(destination: Path, payload: bytes) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    _write_fsynced(temporary, payload)
+    os.replace(temporary, destination)
+    _fsync_directory(destination.parent)
+
+
+def recover_preparation_reconciliations(entity_path: Path) -> None:
+    """Finish audited reconciliation reports and discard unaudited stages."""
+    root = _reconciliation_transaction_root(Path(entity_path))
+    if not root.exists():
+        return
+    transactions = sorted(path for path in root.iterdir() if path.is_dir())
+    if len(transactions) > 1:
+        raise ValueError("Multiple unfinished reconciliation transactions require review.")
+    store = LedgerStore(Path(entity_path) / "ledger.sqlite")
+    for transaction in transactions:
+        if not (transaction / "manifest.json").exists():
+            _remove_reconciliation_transaction(transaction)
+            continue
+        manifest, report = _load_reconciliation_transaction(transaction)
+        if _reconciliation_audit(store, manifest) is not None:
+            _publish_reconciliation_report(
+                Path(entity_path) / "reports" / manifest["destination"], report
+            )
+        _remove_reconciliation_transaction(transaction)
+
+
+def _stage_reconciliation_report(entity_path: Path, manifest: dict[str, Any],
+                                 report: bytes) -> Path:
+    root = _reconciliation_transaction_root(entity_path)
+    root.mkdir(parents=True, exist_ok=True)
+    _fsync_directory(root.parent)
+    transaction = root / manifest["transaction_id"]
+    transaction.mkdir()
+    _write_fsynced(transaction / "report.json", report)
+    _write_fsynced(
+        transaction / "manifest.json",
+        (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+    )
+    _fsync_directory(transaction)
+    _fsync_directory(root)
+    return transaction
+
+
+def _append_reconciliation_audit(bound: _Boundary, intent: PreparationIntent,
+                                 manifest: Mapping[str, Any], ts: str | None) -> None:
+    store = LedgerStore(bound.entity_path / "ledger.sqlite")
+    with store.transaction(immediate=True) as conn:
+        if store.content_digest(conn) != bound.ledger_digest:
+            raise PreparationDenied(0, "ledger_changed")
+        receipt, = authorize_batch(bound.context, [intent])
+        if receipt.intent_hash != manifest["intent_hash"]:
+            raise PreparationDenied(0, "reconciliation_scope_changed")
+        store.append_audit_event(
+            "automation-preparation",
+            {
+                "receipt": asdict(receipt),
+                "intent": asdict(intent),
+                "reconciliation_commit": {
+                    "schema_version": 1,
+                    "transaction_id": manifest["transaction_id"],
+                    "report_sha256": manifest["report_sha256"],
+                },
+            },
+            conn,
+            ts=ts,
+        )
+
+
+def commit_preparation_reconciliation(entity_path: Path, account: str, as_of: str,
+                                      records: list[dict[str, Any]],
+                                      ts: str | None = None) -> bool:
+    """Commit one prepared report only after its final authority audit."""
     bound = _active.get()
     if bound is None:
-        return
+        return False
     primary = f"reconciliation:{account}:{as_of}"
     intent = bound.reconciliation_intent
     if (bound.action != "reconcile" or intent is None
             or Path(entity_path).resolve() != bound.entity_path
             or primary not in intent.source_ids):
         raise PreparationDenied(0, "reconciliation_scope_changed")
+    report = (json.dumps(records, indent=2, default=str) + "\n").encode()
+    intent_hash = evidence_hash(asdict(intent))
     store = LedgerStore(bound.entity_path / "ledger.sqlite")
-    with store.transaction(immediate=True) as conn:
-        if store.content_digest(conn) != bound.ledger_digest:
-            raise PreparationDenied(0, "ledger_changed")
-        receipt, = authorize_batch(bound.context, [intent])
-        store.append_audit_event(
-            "automation-preparation",
-            {"receipt": asdict(receipt), "intent": asdict(intent)},
-            conn,
-            ts=ts,
-        )
+    previous = _published_reconciliation_audit(
+        store, bound.context.execution_id, intent_hash
+    )
+    destination = bound.entity_path / "reports" / "reconciliation.json"
+    if previous is not None:
+        commit = previous["payload"]["reconciliation_commit"]
+        if (destination.is_file()
+                and hashlib.sha256(destination.read_bytes()).hexdigest()
+                == commit["report_sha256"]):
+            return True
+        raise PreparationDenied(0, "reconciliation_recovery_missing")
+    manifest = {
+        "schema_version": 1,
+        "transaction_id": uuid.uuid4().hex,
+        "execution_id": bound.context.execution_id,
+        "intent_hash": intent_hash,
+        "report_sha256": hashlib.sha256(report).hexdigest(),
+        "destination": "reconciliation.json",
+    }
+    transaction = _stage_reconciliation_report(bound.entity_path, manifest, report)
+    _append_reconciliation_audit(bound, intent, manifest, ts)
+    _publish_reconciliation_report(destination, report)
+    _remove_reconciliation_transaction(transaction)
+    return True
 
 
 def _source_intent(entity: Entity, action: str, ids: list[str],

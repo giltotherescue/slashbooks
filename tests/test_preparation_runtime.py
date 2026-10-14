@@ -15,7 +15,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from bookkeeping import queue, reconcile
+from bookkeeping import preparation_runtime, queue, reconcile
 from bookkeeping.automation_policy import ExecutionContext, PreparationDenied, StandingPolicy
 from bookkeeping.ledger import importer
 from bookkeeping.ledger.store import LedgerStore
@@ -73,6 +73,44 @@ class PreparationRuntimeTests(unittest.TestCase):
             argv.extend(["--session", session])
         with redirect_stdout(StringIO()):
             return run_preparation_command(argv, context or self.authority(), **kwargs)
+
+    def reconciliation_inputs(self):
+        self.policy = replace(self.policy, actions=tuple(sorted({*self.policy.actions, "reconcile"})))
+        evidence = {
+            "account": "Assets:Bank:Checking", "as_of": "2026-09-30",
+            "source_balance": "0.00", "source_opening_balance": "0.00",
+            "source_transaction_total": "0.00", "source_snapshot_at": "2026-10-01T12:00:00Z",
+            "source_through": "2026-09-30",
+        }
+        argv = [
+            "reconcile", "--entity", str(self.entity.path), "--account", evidence["account"],
+            "--source-balance", evidence["source_balance"], "--as-of", evidence["as_of"],
+            "--source-opening-balance", evidence["source_opening_balance"],
+            "--source-transaction-total", evidence["source_transaction_total"],
+            "--source-snapshot-at", evidence["source_snapshot_at"],
+            "--source-through", evidence["source_through"],
+            "--source-evidence-ref", "provider-record:statement-2026-09",
+            "--source-evidence-hash", "provider-record:statement-2026-09=" + "b" * 64,
+        ]
+        source_id = "reconciliation:Assets:Bank:Checking:2026-09-30"
+        hashes = {
+            source_id: evidence_hash(evidence),
+            "evidence:provider-record:statement-2026-09": evidence_hash({"verified": "statement-2026-09"}),
+        }
+        return argv, hashes
+
+    def execute_reconciliation(self, execution_id="synthetic-execution", **overrides):
+        argv, hashes = self.reconciliation_inputs()
+        kwargs = dict(entity_path=self.entity.path,
+                      expected_ledger_digest=self.store.content_digest(), source_hashes=hashes)
+        kwargs.update(overrides)
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(argv, self.authority(execution_id), **kwargs)
+        return result, argv, hashes
+
+    def preparation_audits(self):
+        return [row for row in self.store.load_audit_events()
+                if row["type"] == "automation-preparation"]
 
     def test_normal_confirmation_records_atomic_authority_without_learning_human_trust(self):
         self.prepare()
@@ -297,34 +335,8 @@ print('done', flush=True)
         self.assertEqual([row["id"] for row in rows], ["added-by-importer"])
 
     def test_preparation_reconciliation_requires_affirmative_verified_evidence(self):
-        self.policy = replace(self.policy, actions=tuple(sorted((*self.policy.actions, "reconcile"))))
-        evidence = {
-            "account": "Assets:Bank:Checking", "as_of": "2026-09-30",
-            "source_balance": "0.00", "source_opening_balance": "0.00",
-            "source_transaction_total": "0.00", "source_snapshot_at": "2026-10-01T12:00:00Z",
-            "source_through": "2026-09-30",
-        }
-        argv = [
-            "reconcile", "--entity", str(self.entity.path), "--account", evidence["account"],
-            "--source-balance", evidence["source_balance"], "--as-of", evidence["as_of"],
-            "--source-opening-balance", evidence["source_opening_balance"],
-            "--source-transaction-total", evidence["source_transaction_total"],
-            "--source-snapshot-at", evidence["source_snapshot_at"],
-            "--source-through", evidence["source_through"],
-            "--source-evidence-ref", "provider-record:statement-2026-09",
-            "--source-evidence-hash", "provider-record:statement-2026-09=" + "b" * 64,
-        ]
+        result, argv, source_hashes = self.execute_reconciliation()
         source_id = "reconciliation:Assets:Bank:Checking:2026-09-30"
-        source_hashes = {
-            source_id: evidence_hash(evidence),
-            "evidence:provider-record:statement-2026-09": evidence_hash({"verified": "statement-2026-09"}),
-        }
-        with redirect_stdout(StringIO()):
-            result = run_preparation_command(
-                argv, self.authority(), entity_path=self.entity.path,
-                expected_ledger_digest=self.store.content_digest(),
-                source_hashes=source_hashes,
-            )
         self.assertEqual(result, 0)
         record = reconcile.list_discrepancies(self.entity.path)[0]
         self.assertEqual(record["source_opening_balance"], "0.00")
@@ -333,10 +345,15 @@ print('done', flush=True)
         self.assertEqual(record["source_evidence_hashes"], {
             "provider-record:statement-2026-09": source_hashes["evidence:provider-record:statement-2026-09"],
         })
-        audit = [row for row in self.store.load_audit_events()
-                 if row["type"] == "automation-preparation"]
+        audit = self.preparation_audits()
         self.assertEqual(audit[-1]["payload"]["receipt"]["execution_id"], "synthetic-execution")
         self.assertEqual(audit[-1]["payload"]["intent"]["source_ids"], sorted(source_hashes))
+        report_before = (self.entity.path / "reports" / "reconciliation.json").read_bytes()
+        self.assertEqual(self.execute_reconciliation()[0], 0)
+        self.assertEqual(len(self.preparation_audits()), 1)
+        self.assertEqual(
+            (self.entity.path / "reports" / "reconciliation.json").read_bytes(), report_before
+        )
 
         incomplete = list(argv)
         index = incomplete.index("--source-opening-balance")
@@ -358,8 +375,78 @@ print('done', flush=True)
             run_preparation_command(
                 argv, self.authority(), entity_path=self.entity.path,
                 expected_ledger_digest=self.store.content_digest(),
-                source_hashes={source_id: evidence_hash(evidence)},
+                source_hashes={source_id: source_hashes[source_id]},
             )
+
+    def test_reconciliation_final_authority_failure_never_publishes_report(self):
+        original = preparation_runtime.authorize_batch
+        calls = 0
+
+        def expire_at_commit(context, intents, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise PreparationDenied(0, "authority_expired")
+            return original(context, intents, **kwargs)
+
+        with patch.object(preparation_runtime, "authorize_batch", side_effect=expire_at_commit), \
+                self.assertRaisesRegex(PreparationDenied, "authority_expired"):
+            self.execute_reconciliation()
+        self.assertFalse((self.entity.path / "reports" / "reconciliation.json").exists())
+        self.assertEqual(self.preparation_audits(), [])
+
+    def test_reconciliation_ledger_change_before_audit_never_publishes_report(self):
+        original = preparation_runtime._stage_reconciliation_report
+
+        def change_ledger(*args, **kwargs):
+            transaction = original(*args, **kwargs)
+            with self.store.transaction() as conn:
+                conn.execute("INSERT INTO meta (key, value) VALUES (?, ?)", ("synthetic-race", "1"))
+            return transaction
+
+        with patch.object(preparation_runtime, "_stage_reconciliation_report", side_effect=change_ledger), \
+                self.assertRaisesRegex(PreparationDenied, "ledger_changed"):
+            self.execute_reconciliation()
+        self.assertFalse((self.entity.path / "reports" / "reconciliation.json").exists())
+        self.assertEqual(self.preparation_audits(), [])
+
+    def test_reconciliation_audit_failure_discards_stage_on_exact_retry(self):
+        with patch.object(LedgerStore, "append_audit_event", side_effect=OSError("synthetic audit failure")), \
+                self.assertRaisesRegex(OSError, "synthetic audit failure"):
+            self.execute_reconciliation()
+        self.assertFalse((self.entity.path / "reports" / "reconciliation.json").exists())
+        self.assertEqual(self.preparation_audits(), [])
+        self.assertEqual(self.execute_reconciliation()[0], 0)
+        self.assertEqual(len(self.preparation_audits()), 1)
+        self.assertEqual(len(reconcile.list_discrepancies(self.entity.path)), 1)
+
+    def test_reconciliation_process_death_before_audit_discards_stage_on_replay(self):
+        pid = os.fork()
+        if pid == 0:
+            preparation_runtime._append_reconciliation_audit = lambda *args, **kwargs: os._exit(74)
+            self.execute_reconciliation()
+            os._exit(0)
+        _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 74)
+        self.assertFalse((self.entity.path / "reports" / "reconciliation.json").exists())
+        self.assertEqual(self.preparation_audits(), [])
+        self.assertEqual(self.execute_reconciliation()[0], 0)
+        self.assertEqual(len(self.preparation_audits()), 1)
+        self.assertEqual(len(reconcile.list_discrepancies(self.entity.path)), 1)
+
+    def test_reconciliation_process_death_after_audit_publishes_once_on_replay(self):
+        pid = os.fork()
+        if pid == 0:
+            preparation_runtime._publish_reconciliation_report = lambda *args, **kwargs: os._exit(75)
+            self.execute_reconciliation()
+            os._exit(0)
+        _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 75)
+        self.assertFalse((self.entity.path / "reports" / "reconciliation.json").exists())
+        self.assertEqual(len(self.preparation_audits()), 1)
+        self.assertEqual(self.execute_reconciliation()[0], 0)
+        self.assertEqual(len(self.preparation_audits()), 1)
+        self.assertEqual(len(reconcile.list_discrepancies(self.entity.path)), 1)
 
     def test_explicit_hold_leaves_ledger_queue_and_source_untouched_then_human_can_confirm(self):
         self.prepare()

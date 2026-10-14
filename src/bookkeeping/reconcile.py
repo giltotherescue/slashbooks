@@ -253,6 +253,35 @@ def reconcile(
     Returns a :class:`ReconcileResult`.
     """
     entity_path = Path(entity_path)
+    from .ledger.importer import _entity_write_lock
+    from .preparation_runtime import recover_preparation_reconciliations
+
+    with _entity_write_lock(entity_path):
+        recover_preparation_reconciliations(entity_path)
+        return _reconcile_unlocked(
+            entity_path, account, source_balance, as_of,
+            source_opening_balance=source_opening_balance,
+            source_transaction_total=source_transaction_total,
+            source_snapshot_at=source_snapshot_at,
+            source_through=source_through,
+            source_evidence_refs=source_evidence_refs,
+            source_evidence_hashes=source_evidence_hashes,
+        )
+
+
+def _reconcile_unlocked(
+    entity_path: Path,
+    account: str,
+    source_balance: Decimal,
+    as_of: date,
+    source_opening_balance: Decimal | None = None,
+    source_transaction_total: Decimal | None = None,
+    source_snapshot_at: str | None = None,
+    source_through: str | None = None,
+    source_evidence_refs: list[str] | None = None,
+    source_evidence_hashes: dict[str, str] | None = None,
+) -> ReconcileResult:
+    """Compute and persist a reconciliation while holding the entity lock."""
 
     conn = open_cache(entity_path)
     try:
@@ -334,7 +363,9 @@ def reconcile(
     else:
         records.append(record)
 
-    _save_records(entity_path, records)
+    from .preparation_runtime import commit_preparation_reconciliation
+    if not commit_preparation_reconciliation(entity_path, account, as_of.isoformat(), records):
+        _save_records(entity_path, records)
 
     return ReconcileResult(
         account=account,
@@ -362,6 +393,21 @@ def resolve(
     Raises :class:`KeyError` when the record is not found.
     """
     entity_path = Path(entity_path)
+    from .ledger.importer import _entity_write_lock
+    from .preparation_runtime import recover_preparation_reconciliations
+
+    with _entity_write_lock(entity_path):
+        recover_preparation_reconciliations(entity_path)
+        _resolve_unlocked(entity_path, account, as_of, note)
+
+
+def _resolve_unlocked(
+    entity_path: Path,
+    account: str,
+    as_of: date | str,
+    note: str = "",
+) -> None:
+    """Resolve one reconciliation while holding the entity write lock."""
     as_of_str = as_of.isoformat() if isinstance(as_of, date) else as_of
     rec_id = _record_id(account, as_of_str)
 
@@ -510,8 +556,6 @@ def run(args: Any) -> int:
                 source_evidence_refs=evidence_refs,
                 source_evidence_hashes=evidence_hashes,
             )
-            from .preparation_runtime import record_preparation_reconciliation
-            record_preparation_reconciliation(entity, account, args.as_of)
             print(result.to_text())
             print()
 
