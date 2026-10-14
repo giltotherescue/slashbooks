@@ -99,13 +99,15 @@ class PreparationRuntimeTests(unittest.TestCase):
         }
         return argv, hashes
 
-    def execute_reconciliation(self, execution_id="synthetic-execution", **overrides):
+    def execute_reconciliation(self, execution_id="synthetic-execution", context=None, **overrides):
         argv, hashes = self.reconciliation_inputs()
         kwargs = dict(entity_path=self.entity.path,
                       expected_ledger_digest=self.store.content_digest(), source_hashes=hashes)
         kwargs.update(overrides)
         with redirect_stdout(StringIO()):
-            result = run_preparation_command(argv, self.authority(execution_id), **kwargs)
+            result = run_preparation_command(
+                argv, context or self.authority(execution_id), **kwargs
+            )
         return result, argv, hashes
 
     def preparation_audits(self):
@@ -419,6 +421,39 @@ print('done', flush=True)
         self.assertEqual(self.execute_reconciliation()[0], 0)
         self.assertEqual(len(self.preparation_audits()), 1)
         self.assertEqual(len(reconcile.list_discrepancies(self.entity.path)), 1)
+
+    def test_reconciliation_replay_rejects_changed_ledger_digest_without_mutation(self):
+        self.assertEqual(self.execute_reconciliation()[0], 0)
+        report = (self.entity.path / "reports" / "reconciliation.json").read_bytes()
+        with self.store.transaction() as conn:
+            conn.execute("INSERT INTO meta (key, value) VALUES (?, ?)", ("later-ledger-change", "1"))
+        before = self.store.load_audit_events()
+        with self.assertRaisesRegex(PreparationDenied, "reconciliation_replay_identity_changed"):
+            self.execute_reconciliation()
+        self.assertEqual(self.store.load_audit_events(), before)
+        self.assertEqual((self.entity.path / "reports" / "reconciliation.json").read_bytes(), report)
+
+    def test_reconciliation_replay_rejects_changed_revision_or_policy_without_mutation(self):
+        self.assertEqual(self.execute_reconciliation()[0], 0)
+        report = (self.entity.path / "reports" / "reconciliation.json").read_bytes()
+        before = self.store.load_audit_events()
+        contexts = (
+            ExecutionContext(
+                "synthetic-company", "synthetic-execution", self.policy, 1, 5, 5,
+                datetime.now(timezone.utc) + timedelta(minutes=5),
+            ),
+            ExecutionContext(
+                "synthetic-company", "synthetic-execution",
+                replace(self.policy, policy_id="replacement-policy"), 1, 4, 4,
+                datetime.now(timezone.utc) + timedelta(minutes=5),
+            ),
+        )
+        for context in contexts:
+            with self.subTest(context=context), \
+                    self.assertRaisesRegex(PreparationDenied, "reconciliation_replay_identity_changed"):
+                self.execute_reconciliation(context=context)
+            self.assertEqual(self.store.load_audit_events(), before)
+            self.assertEqual((self.entity.path / "reports" / "reconciliation.json").read_bytes(), report)
 
     def test_reconciliation_process_death_before_audit_discards_stage_on_replay(self):
         pid = os.fork()

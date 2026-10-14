@@ -330,17 +330,32 @@ def _load_reconciliation_transaction(path: Path) -> tuple[dict[str, Any], bytes]
         raise ValueError(f"Reconciliation transaction '{path.name}' is unreadable.") from exc
     required = {
         "schema_version", "transaction_id", "execution_id", "intent_hash",
-        "report_sha256", "destination",
+        "report_sha256", "destination", "ledger_digest", "receipt",
+    }
+    receipt = manifest.get("receipt") if isinstance(manifest, dict) else None
+    receipt_keys = {
+        "rule", "policy_id", "policy_version", "policy_hash", "execution_id",
+        "expected_revision", "intent_hash",
     }
     if (not isinstance(manifest, dict) or set(manifest) != required
             or manifest.get("schema_version") != 1
             or manifest.get("transaction_id") != path.name
             or manifest.get("destination") != "reconciliation.json"
             or any(not isinstance(manifest.get(key), str) or not manifest[key]
-                   for key in required - {"schema_version"})
+                   for key in required - {"schema_version", "receipt"})
             or not re.fullmatch(r"[0-9a-f]{32}", manifest["transaction_id"])
             or not re.fullmatch(r"[0-9a-f]{64}", manifest["intent_hash"])
             or not re.fullmatch(r"[0-9a-f]{64}", manifest["report_sha256"])
+            or not re.fullmatch(r"[0-9a-f]{64}", manifest["ledger_digest"])
+            or not isinstance(receipt, dict) or set(receipt) != receipt_keys
+            or receipt.get("rule") != "standing_preparation_v1"
+            or receipt.get("execution_id") != manifest["execution_id"]
+            or receipt.get("intent_hash") != manifest["intent_hash"]
+            or any(not isinstance(receipt.get(key), str) or not receipt[key]
+                   for key in ("policy_id", "execution_id"))
+            or type(receipt.get("policy_version")) is not int
+            or type(receipt.get("expected_revision")) is not int
+            or not re.fullmatch(r"[0-9a-f]{64}", str(receipt.get("policy_hash", "")))
             or hashlib.sha256(report).hexdigest() != manifest["report_sha256"]):
         raise ValueError(f"Reconciliation transaction '{path.name}' is invalid.")
     return manifest, report
@@ -358,18 +373,18 @@ def _reconciliation_audit(store: LedgerStore, manifest: Mapping[str, Any]) -> di
         if (isinstance(receipt, dict) and isinstance(commit, dict)
                 and isinstance(intent, dict)
                 and evidence_hash(intent) == receipt.get("intent_hash")
-                and receipt.get("execution_id") == manifest.get("execution_id")
-                and receipt.get("intent_hash") == manifest.get("intent_hash")
+                and receipt == manifest.get("receipt")
                 and commit.get("transaction_id") == manifest.get("transaction_id")
-                and commit.get("report_sha256") == manifest.get("report_sha256")):
+                and commit.get("report_sha256") == manifest.get("report_sha256")
+                and commit.get("ledger_digest") == manifest.get("ledger_digest")):
             matches.append(event)
     if len(matches) > 1:
         raise ValueError("Duplicate reconciliation preparation audits require review.")
     return matches[0] if matches else None
 
 
-def _published_reconciliation_audit(store: LedgerStore, execution_id: str,
-                                    intent_hash: str) -> dict[str, Any] | None:
+def _published_reconciliation_audit(store: LedgerStore, receipt_identity: Mapping[str, Any],
+                                    ledger_digest: str) -> dict[str, Any] | None:
     matches = []
     for event in store.load_audit_events():
         if event.get("type") != "automation-preparation":
@@ -381,12 +396,19 @@ def _published_reconciliation_audit(store: LedgerStore, execution_id: str,
         if (isinstance(receipt, dict) and isinstance(commit, dict)
                 and isinstance(intent, dict)
                 and evidence_hash(intent) == receipt.get("intent_hash")
-                and receipt.get("execution_id") == execution_id
-                and receipt.get("intent_hash") == intent_hash):
+                and receipt.get("execution_id") == receipt_identity.get("execution_id")
+                and receipt.get("intent_hash") == receipt_identity.get("intent_hash")):
             matches.append(event)
     if len(matches) > 1:
         raise ValueError("Duplicate reconciliation preparation audits require review.")
-    return matches[0] if matches else None
+    if not matches:
+        return None
+    event = matches[0]
+    payload = event["payload"]
+    if (payload["receipt"] != dict(receipt_identity)
+            or payload["reconciliation_commit"].get("ledger_digest") != ledger_digest):
+        raise PreparationDenied(0, "reconciliation_replay_identity_changed")
+    return event
 
 
 def _publish_reconciliation_report(destination: Path, payload: bytes) -> None:
@@ -412,6 +434,8 @@ def recover_preparation_reconciliations(entity_path: Path) -> None:
             continue
         manifest, report = _load_reconciliation_transaction(transaction)
         if _reconciliation_audit(store, manifest) is not None:
+            if store.content_digest() != manifest["ledger_digest"]:
+                raise PreparationDenied(0, "ledger_changed")
             _publish_reconciliation_report(
                 Path(entity_path) / "reports" / manifest["destination"], report
             )
@@ -444,6 +468,8 @@ def _append_reconciliation_audit(bound: _Boundary, intent: PreparationIntent,
         receipt, = authorize_batch(bound.context, [intent])
         if receipt.intent_hash != manifest["intent_hash"]:
             raise PreparationDenied(0, "reconciliation_scope_changed")
+        if asdict(receipt) != manifest["receipt"] or bound.ledger_digest != manifest["ledger_digest"]:
+            raise PreparationDenied(0, "reconciliation_replay_identity_changed")
         store.append_audit_event(
             "automation-preparation",
             {
@@ -453,6 +479,7 @@ def _append_reconciliation_audit(bound: _Boundary, intent: PreparationIntent,
                     "schema_version": 1,
                     "transaction_id": manifest["transaction_id"],
                     "report_sha256": manifest["report_sha256"],
+                    "ledger_digest": manifest["ledger_digest"],
                 },
             },
             conn,
@@ -475,9 +502,18 @@ def commit_preparation_reconciliation(entity_path: Path, account: str, as_of: st
         raise PreparationDenied(0, "reconciliation_scope_changed")
     report = (json.dumps(records, indent=2, default=str) + "\n").encode()
     intent_hash = evidence_hash(asdict(intent))
+    receipt_identity = {
+        "rule": "standing_preparation_v1",
+        "policy_id": bound.context.policy.policy_id,
+        "policy_version": bound.context.policy.version,
+        "policy_hash": bound.context.policy.fingerprint,
+        "execution_id": bound.context.execution_id,
+        "expected_revision": bound.context.expected_revision,
+        "intent_hash": intent_hash,
+    }
     store = LedgerStore(bound.entity_path / "ledger.sqlite")
     previous = _published_reconciliation_audit(
-        store, bound.context.execution_id, intent_hash
+        store, receipt_identity, bound.ledger_digest
     )
     destination = bound.entity_path / "reports" / "reconciliation.json"
     if previous is not None:
@@ -494,6 +530,8 @@ def commit_preparation_reconciliation(entity_path: Path, account: str, as_of: st
         "intent_hash": intent_hash,
         "report_sha256": hashlib.sha256(report).hexdigest(),
         "destination": "reconciliation.json",
+        "ledger_digest": bound.ledger_digest,
+        "receipt": receipt_identity,
     }
     transaction = _stage_reconciliation_report(bound.entity_path, manifest, report)
     _append_reconciliation_audit(bound, intent, manifest, ts)
