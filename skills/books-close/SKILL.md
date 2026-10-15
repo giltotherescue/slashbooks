@@ -115,7 +115,16 @@ name to choose a cash account:
 scripts/books ingest <entity>/ingestion/banksync-<date>.json --entity <entity-path> --source banksync
 ```
 
-For each CSV source (if the owner has a new export file ready), parse it:
+For each statement-file source (if the owner has a new CSV, OFX, QFX or QBO
+export ready), import it with its saved profile. If the result is
+`needs_mapping`, follow the mapping steps in `/books-onboard` before you
+continue:
+
+```
+scripts/books statement import <file> --entity <entity-path> --profile <name>
+```
+
+For an older Amex activity CSV mapping, parse it as before:
 
 ```
 scripts/books connector csv parse --entity <entity-path> <file>

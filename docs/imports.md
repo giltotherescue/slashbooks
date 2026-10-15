@@ -1,15 +1,155 @@
 # CSV, QuickBooks, and file imports
 
-Slashbooks has two CSV paths today: operational transaction CSVs and QuickBooks
+Slashbooks reads three kinds of files: bank and card statement files (CSV, OFX,
+QFX and QBO), the older American Express activity CSV path, and QuickBooks
 migration/backtest exports.
 
-## Transaction CSVs
+## Statement files: CSV, OFX, QFX and QBO
 
-The current transaction CSV importer supports American Express activity-export
-CSVs. CSVs are a fallback, not the preferred ongoing workflow. Use them for
-canceled cards, unsupported accounts, accounts you choose not to connect to a
-live bank-feed provider, pre-feed history, or any period where the bank feed
-cannot reach far enough back.
+Use `books statement` for historical bank and card activity, for example a
+catch-up year, a closed account, or a period that the bank feed cannot reach.
+Statement files are a fallback, not the preferred ongoing workflow.
+
+Supported files:
+
+- Bank and card CSV exports in most common layouts: one signed amount column,
+  separate debit and credit columns, or unsigned amounts with a debit/credit
+  type column. The reader detects the header row (also after summary lines at
+  the top of the file), files without a header, the date format, comma or
+  semicolon separators, and comma or dot decimals.
+- OFX, QFX and QBO (Web Connect) files, OFX 1.x and 2.x. Each bank or card
+  statement in the file is read with its `FITID` values, statement period and
+  ledger balance.
+
+Slashbooks books only USD activity. A file with another currency stops with
+the error code `unsupported_currency`.
+
+### 1. Inspect the file
+
+```sh
+books statement inspect ~/Downloads/checking-2025.csv \
+  --entity ~/Documents/books/acme-co \
+  --ledger-account Assets:Bank:Checking
+```
+
+The command changes nothing. It prints JSON with a `status`:
+
+| Status | Meaning |
+|---|---|
+| `ready` | A saved profile matches the file. Import it. |
+| `ready_to_confirm` | Detection decided every field. Show the proposal and `preview` to a person, then save the profile. |
+| `needs_mapping` | Each field in `uncertain` needs an explicit decision. `evidence` says why, and `options_for_uncertain` names the option to use. |
+| `error` | The file cannot be read. `error.code` gives the reason, and `error.rows` gives the line numbers when rows are the problem. |
+
+Detection does not guess. For example, if every date fits both month/day and
+day/month, `date_format` is uncertain. If the file has one amount column and
+no reliable signal for the sign, `sign` is uncertain. `--ledger-account` is
+optional. It tells detection whether the account is a bank account or a card,
+which lets a running balance or card payment rows decide the sign.
+
+### 2. Save a profile for the account
+
+```sh
+books statement map ~/Downloads/checking-2025.csv \
+  --entity ~/Documents/books/acme-co \
+  --profile chase-checking \
+  --ledger-account Assets:Bank:Checking
+```
+
+The profile is saved in `entity.json` under
+`csv_account_mappings["statement:<profile>"]`. Next year's export from the
+same account uses the same profile. If a field is uncertain, the command
+stops with `needs_mapping` until you supply it, for example
+`--date-format %d/%m/%Y` or `--sign inverted`. You can also set columns by
+name or 1-based number: `--date-column`, `--description-column`,
+`--amount-column`, `--debit-column`, `--credit-column`, `--balance-column`,
+`--reference-column`, `--status-column`, `--direction-column`, and
+`--header-row` (0 for a file with no header).
+
+Sign values:
+
+- `standard`: positive amounts are money in (a deposit, or a payment to a card).
+- `inverted`: positive amounts are charges or withdrawals.
+- `debit_credit`: separate debit and credit columns.
+- `direction_column`: unsigned amounts and a debit/credit type column.
+
+For an OFX file with more than one account, add `--ofx-account <last four>`.
+Each OFX account needs its own profile. To share a period with a connected
+bank feed, add `--boundary YYYY-MM-DD --side before|after`, which has the
+same meaning as for the Amex CSV path below.
+
+### 3. Import
+
+```sh
+books statement import ~/Downloads/checking-2025.csv \
+  --entity ~/Documents/books/acme-co --profile chase-checking --dry-run
+
+books statement import ~/Downloads/checking-2025.csv \
+  --entity ~/Documents/books/acme-co --profile chase-checking
+```
+
+`--dry-run` shows the counts and duplicate decisions without changes. A CSV
+import needs `--profile`. An OFX import finds the profile from the account in
+the file. Imported rows go through the same importer as `books ingest`, so
+categorization, the review queue and the audit log work the same way.
+
+The command exits with 0 on success, 1 on an error, and 3 when a mapping is
+necessary.
+
+### Duplicate rules
+
+Slashbooks never posts the same activity twice. The rules apply in this order:
+
+1. **Same source ID.** OFX rows use the account identity and `FITID`. CSV rows
+   use the ledger account, date, amount, normalized description, reference and
+   the occurrence number of identical rows in the file. Two identical coffee
+   purchases on one day stay two transactions, and a second import of the same
+   or an overlapping file skips them.
+2. **Same account, date, amount and description** as an existing entry or
+   review item from another source ID: the row is held as a duplicate
+   candidate.
+3. **Same account and amount, with a date within three days** of an existing
+   entry or review item from another source (a bank feed or another
+   statement profile): the row is held as a duplicate candidate.
+
+Held rows are not posted. They appear in `books queue list`. Resolve each one:
+
+```sh
+books queue resolve-duplicate --entity ~/Documents/books/acme-co \
+  --source-id <id> --decision duplicate   # or distinct
+```
+
+Pending rows (a status column that says pending) and identical repeated OFX
+transactions are skipped and counted in the result.
+
+### Statement metadata
+
+Each import records the statement facts that a later completeness or
+reconciliation check can use:
+
+```sh
+books statement list --entity ~/Documents/books/acme-co
+```
+
+Each record has the profile and ledger account, the account identity (the
+institution ID, account type and last four characters; never the full account
+number), `period_start` and `period_end`, `period_source`, the opening and
+closing balances with their dates and `balance_source`, and the net
+transaction total. The `period_source` is `statement` for an OFX statement
+period, `file_summary` for a printed summary, or `transactions` when the file
+gives only the first and last transaction dates. Balances use the ledger sign:
+cash is positive and card debt is negative. The records are in
+`ingestion/statements/statements.json`, and a copy of each imported file is
+kept under `ingestion/statements/files/`.
+
+## American Express activity CSVs
+
+The older `books connector csv` path supports American Express activity-export
+CSVs. New imports can use `books statement` instead. CSVs are a fallback, not
+the preferred ongoing workflow. Use them for canceled cards, unsupported
+accounts, accounts you choose not to connect to a live bank-feed provider,
+pre-feed history, or any period where the bank feed cannot reach far enough
+back.
 
 For normal ongoing bookkeeping, connected bank-feed transaction and balance data
 should be the default source. BankSync is the current live provider, but shared
