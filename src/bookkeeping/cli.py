@@ -42,6 +42,7 @@ from bookkeeping import quickbooks as quickbooks_module
 from bookkeeping import readiness as readiness_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping import remote as remote_module
+from bookkeeping import statement_import as statement_import_module
 from bookkeeping.connectors import csvsource as csvsource_module
 from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
@@ -100,6 +101,8 @@ def main(argv: list[str] | None = None) -> int:
             return entity_module.run(args)
         if args.command == "ingest":
             return ingest_module.run(args)
+        if args.command == "statement":
+            return statement_import_module.run(args)
         if args.command == "forecast":
             return cashflow_module.run(args)
         if args.command == "ledger":
@@ -277,6 +280,7 @@ def build_parser() -> argparse.ArgumentParser:
     hosted_module.add_parser(subcommands)
     entity_module.add_parser(subcommands)
     ingest_module.add_parser(subcommands)
+    statement_import_module.add_parser(subcommands)
     ledger_migrate_module.add_parser(subcommands)
     quickbooks_module.add_parser(subcommands)
     statements_module.add_parser(subcommands)

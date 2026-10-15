@@ -28,10 +28,10 @@ The Python package is in `src/bookkeeping/`:
 - `cli.py` — thin argparse dispatcher; subcommands delegate to modules.
 - `ledger/` — accounting engine: `model`, `normalize`, `staging`, `writer`,
   `validator`, `auditlog`, `importer`.
-- `connectors/` — data sources: `banksync`, `stripe`, `mercury`, `csvsource`,
+- `connectors/` — data sources: `banksync`, `stripe`, `mercury`, `csvsource`, `bankcsv`, `ofx`,
   `payroll`, `provider_api`.
 - `reports/` — `statements`, `workbook`, `cache`.
-- Top level: `entity.py`, `queue.py`, `reconcile.py`, `quickbooks.py`,
+- Top level: `entity.py`, `queue.py`, `reconcile.py`, `quickbooks.py`, `statement_import.py`,
   `compare.py`.
 
 ## Static Marketing Site

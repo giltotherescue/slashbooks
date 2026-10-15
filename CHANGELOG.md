@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Import historical bank and card statements from CSV, OFX, QFX and QBO files with `books statement`. Detection proposes a column mapping, date format and sign convention, and reports every field it cannot decide instead of guessing. Confirmed mappings are saved per account.
+- Skip activity that is already imported by `FITID` or a stable row fingerprint, and hold overlaps with bank feeds or other statement files as duplicate candidates for review.
+- Record each statement's account identity, period and opening and closing balances for later completeness checks.
+
 ## 0.5.0 — 2026-10-14
 
 - Prepare bookkeeping under explicit standing authority, scoped to allowed actions and periods, while retaining human approval for publication and close.
