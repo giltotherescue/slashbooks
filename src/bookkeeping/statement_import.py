@@ -47,13 +47,22 @@ without a count in the result.
 Held rows are not posted. A person resolves each one with
 ``books queue resolve-duplicate --decision duplicate|distinct``.
 
-Statement metadata
-------------------
-Each import records account identity, statement period, opening and closing
-balances (when the file has them) and the net transaction total in
-``ingestion/statements/statements.json``. This module stores the facts; it
-does not compute reconciliation or coverage reports. Balances use the ledger
-sign: cash is positive, card debt is negative.
+Statement records
+-----------------
+Each import writes one statement record in the source-coverage contract
+(``coverage.py``; ``books coverage check`` reads it) to
+``ingestion/statements/<statement_id>.json``. Importer details (profile,
+account identity, balance dates, transaction total) are extra fields. Balances
+use the statement presentation: money held for a bank account, money owed for
+a card.
+
+The record counts as coverage only when the statement period is known: the OFX
+``DTSTART``/``DTEND``, a printed CSV summary with dates, or
+``--period-start``/``--period-end`` from a person. Otherwise the record waits
+in ``ingestion/statements/unconfirmed/`` until the same file is imported again
+with the period. An OFX ``LEDGERBAL`` is the closing balance only when its
+``DTASOF`` is the last statement day; the opening balance is then derived from
+the file's transactions.
 """
 
 from __future__ import annotations
@@ -80,7 +89,7 @@ JsonObject = dict[str, Any]
 MAPPING_PREFIX = "statement:"
 NEAR_DATE_DAYS = 3
 STATEMENTS_DIR = Path("ingestion") / "statements"
-REGISTRY_FILE = "statements.json"
+WRITER = "books statement import"
 _PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _OVERRIDE_FIELDS = ("date_column", "description_column", "amount_column", "debit_column",
                     "credit_column", "balance_column", "reference_column", "status_column",
@@ -536,22 +545,42 @@ def _ofx_statement(stmt: ofx.OfxStatement, file_sha: str, name: str, profile: Js
             extra={"fitid": t.fitid, "ofxType": t.trntype}))
     dates = sorted(t["date"] for t in txns)
     balance = factor * stmt.ledger_balance if stmt.ledger_balance is not None else None
+    period_start = stmt.period_start or (dates[0] if dates else None)
+    period_end = stmt.period_end or (dates[-1] if dates else None)
+    warnings: list[str] = []
+    opening = closing = None
+    if balance is not None and stmt.ledger_balance_date == period_end:
+        # LEDGERBAL is the balance at DTASOF. It is the closing balance only
+        # when DTASOF is the last statement day; the opening balance is then
+        # that balance less every transaction in the statement.
+        closing = balance
+        if all(period_start <= day <= period_end for day in dates):
+            opening = balance - sum((Decimal(t["amount"]) for t in txns), Decimal("0.00"))
+        else:
+            warnings.append("Some transactions are outside the statement dates; the opening balance "
+                            "was not derived.")
+    elif balance is not None:
+        warnings.append(f"The ledger balance is dated {stmt.ledger_balance_date or 'with no date'}, "
+                        f"not on the last statement day {period_end}; it was not recorded as the "
+                        "closing balance. Pass --closing-balance from the printed statement.")
     meta = {
-        "period_start": stmt.period_start or (dates[0] if dates else None),
-        "period_end": stmt.period_end or (dates[-1] if dates else None),
+        "period_start": period_start,
+        "period_end": period_end,
         "period_source": "statement" if stmt.period_start and stmt.period_end else "transactions",
-        "opening_balance": None,
-        "opening_balance_date": None,
-        "closing_balance": _money(balance),
-        "closing_balance_date": stmt.ledger_balance_date,
-        "balance_source": "ledger_balance" if balance is not None else None,
+        "opening_balance": _money(opening),
+        "opening_balance_date": period_start if opening is not None else None,
+        "closing_balance": _money(closing),
+        "closing_balance_date": period_end if closing is not None else None,
+        "balance_source": "ledger_balance" if closing is not None else None,
+        "ledger_balance": _money(balance),
+        "ledger_balance_date": stmt.ledger_balance_date,
         "first_transaction_date": dates[0] if dates else None,
         "last_transaction_date": dates[-1] if dates else None,
     }
     return {
         "statement_id": statement_id, "profile": name, "transactions": txns, "pending_rows": 0,
         "non_transaction_rows": 0, "in_file_duplicates": stmt.in_file_duplicates,
-        "identical_row_groups": 0, "warnings": [],
+        "identical_row_groups": 0, "warnings": warnings,
         "account": {"identity": stmt.account_identity, "institution": stmt.institution,
                     "account_type": stmt.account_type, "account_last4": stmt.account_last4},
         "metadata": meta,
@@ -711,44 +740,78 @@ def _record_held(entity: Any, held: list[JsonObject], ts: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Statement registry
+# Statement records (the coverage contract in coverage.py is the only format)
 # ---------------------------------------------------------------------------
 
-def registry_path(entity_path: Path) -> Path:
-    return Path(entity_path) / STATEMENTS_DIR / REGISTRY_FILE
+UNCONFIRMED_DIR = "unconfirmed"
+
+
+def _unconfirmed_path(entity_path: Path, statement_id: str) -> Path:
+    return Path(entity_path) / STATEMENTS_DIR / UNCONFIRMED_DIR / f"{statement_id}.json"
 
 
 def load_statement_records(entity_path: Path) -> list[JsonObject]:
-    """Return recorded statement metadata for a company (oldest first).
+    """Return the statement records this importer wrote (oldest first).
 
-    Each record has ``statement_id``, ``profile``, ``ledger_account``,
-    ``format``, ``account`` (identity, institution, type, last four),
-    ``period_start``/``period_end`` with ``period_source``
-    (``statement``, ``file_summary`` or ``transactions``), the opening and
-    closing balances with dates and ``balance_source`` (or None), and
-    ``transactions_total``/``transaction_count`` for the posted rows in the file.
+    Records with a confirmed period are coverage contract records in
+    ``ingestion/statements/<statement_id>.json``. Records whose period nobody
+    confirmed are in ``ingestion/statements/unconfirmed/`` with
+    ``period_confirmed: false``; the coverage check does not read them.
     """
-    path = registry_path(entity_path)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return []
-    except (OSError, ValueError) as exc:
-        raise StatementImportError("damaged_state", f"Cannot read {path}; repair it first.") from exc
-    records = data.get("statements") if isinstance(data, dict) else None
-    return [r for r in records if isinstance(r, dict)] if isinstance(records, list) else []
+    from . import coverage
+
+    records = [doc for doc in coverage.load_statement_documents(entity_path)
+               if doc.get("writer") == WRITER]
+    directory = Path(entity_path) / STATEMENTS_DIR / UNCONFIRMED_DIR
+    if directory.is_dir():
+        for path in sorted(directory.glob("*.json")):
+            try:
+                item = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise StatementImportError("damaged_state", f"Cannot read {path}; repair it first.") from exc
+            if isinstance(item, dict):
+                records.append(item)
+    records.sort(key=lambda r: (str(r.get("account")), str(r.get("period_start")), str(r.get("statement_id"))))
+    return records
 
 
 def _store_record(entity_path: Path, record: JsonObject) -> None:
-    records = [r for r in load_statement_records(entity_path) if r.get("statement_id") != record["statement_id"]]
-    records.append(record)
-    records.sort(key=lambda r: (str(r.get("ledger_account")), str(r.get("period_start")), r["statement_id"]))
-    _write_json_atomic(registry_path(entity_path), {"version": 1, "statements": records})
+    from . import coverage
+
+    pending = _unconfirmed_path(entity_path, record["statement_id"])
+    if record["period_confirmed"]:
+        contract = {k: record[k] for k in coverage.CONTRACT_FIELDS if k in record}
+        coverage.record_statement(entity_path, contract, replace=True, extra=record, check_catalog=False)
+        if pending.exists():
+            pending.unlink()
+    else:
+        _write_json_atomic(pending, record)
+
+
+_CONFIRMED_FIELDS = ("period_start", "period_end", "opening_balance", "closing_balance",
+                     "opening_balance_date", "closing_balance_date", "balance_source", "period_source")
+
+
+def _keep_confirmed_period(entity_path: Path, record: JsonObject) -> None:
+    """A repeat import without dates keeps the period a person already confirmed."""
+    from . import coverage
+
+    existing = coverage.statements_dir(entity_path) / f"{record['statement_id']}.json"
+    try:
+        previous = json.loads(existing.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if isinstance(previous, dict) and previous.get("period_confirmed"):
+        record.update({key: previous.get(key) for key in _CONFIRMED_FIELDS}, period_confirmed=True)
+
+
+def _archive_relative(path: Path, file_sha: str) -> Path:
+    suffix = path.suffix.lower() if re.fullmatch(r"\.[a-z0-9]{1,5}", path.suffix.lower()) else ".dat"
+    return STATEMENTS_DIR / "files" / f"{file_sha}{suffix}"
 
 
 def _archive_source(entity_path: Path, path: Path, file_sha: str) -> str:
-    suffix = path.suffix.lower() if re.fullmatch(r"\.[a-z0-9]{1,5}", path.suffix.lower()) else ".dat"
-    relative = STATEMENTS_DIR / "files" / f"{file_sha}{suffix}"
+    relative = _archive_relative(path, file_sha)
     destination = Path(entity_path) / relative
     if not destination.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -756,6 +819,119 @@ def _archive_source(entity_path: Path, path: Path, file_sha: str) -> str:
         shutil.copyfile(path, tmp)
         os.replace(tmp, destination)
     return relative.as_posix()
+
+
+def _presented(ledger_sign: str | None, ledger_account: str) -> str | None:
+    """Ledger-sign balance (card debt negative) to statement presentation (debt positive)."""
+    if ledger_sign is None:
+        return None
+    amount = Decimal(str(ledger_sign)).quantize(bankcsv.MONEY)
+    if ledger_account.startswith("Liabilities:"):
+        amount = -amount
+    return format(amount + Decimal("0.00"), "f")
+
+
+def _parse_override_balance(value: str | None, label: str) -> str | None:
+    if value in (None, ""):
+        return None
+    from .coverage import _parse_amount
+
+    try:
+        return format(_parse_amount(str(value)), "f")
+    except ValueError as exc:
+        raise StatementImportError("invalid_balance", f"{label}: {exc}") from exc
+
+
+def _parse_override_date(value: str | None, label: str) -> str | None:
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except ValueError as exc:
+        raise StatementImportError("invalid_period", f"{label} must be YYYY-MM-DD.") from exc
+
+
+def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, label: str,
+                     confirmed_period: tuple[str, str] | None,
+                     balances: tuple[str | None, str | None]) -> tuple[JsonObject, list[str]]:
+    """Build the coverage contract record (plus importer details) for one statement.
+
+    Balances in the record use the statement presentation: money held for a
+    bank account, money owed for a card or loan.
+    """
+    meta = dict(statement["metadata"])
+    warnings: list[str] = []
+    dates = sorted(t["date"] for t in statement["transactions"])
+    period_start, period_end = meta.get("period_start"), meta.get("period_end")
+    opening = _presented(meta.get("opening_balance"), ledger_account)
+    closing = _presented(meta.get("closing_balance"), ledger_account)
+    period_source = meta.get("period_source")
+    confirmed = (period_source == "statement" or (
+        period_source == "file_summary" and bool(meta.get("opening_balance_date"))
+        and bool(meta.get("closing_balance_date"))))
+    if confirmed_period is not None:
+        start, end = confirmed_period
+        if start > end:
+            raise StatementImportError("invalid_period", "The period start is after the period end.")
+        outside = [day for day in dates if not start <= day <= end]
+        if outside:
+            raise StatementImportError(
+                "period_mismatch",
+                f"{len(outside)} transaction(s) are outside {start} to {end}, the first on {outside[0]}. "
+                "Check the period printed on the statement.", outside=outside[:10])
+        if (start, end) != (period_start, period_end) and meta.get("balance_source") in {
+                "file_summary", "ledger_balance"}:
+            if opening is not None or closing is not None:
+                warnings.append("The confirmed period differs from the dates of the balances in the file; "
+                                "those balances were not recorded.")
+            opening = closing = None
+            meta.update(opening_balance_date=None, closing_balance_date=None, balance_source=None)
+        period_start, period_end, period_source, confirmed = start, end, "person", True
+    if balances[0] is not None:
+        opening, meta["opening_balance_date"] = balances[0], period_start
+    if balances[1] is not None:
+        closing, meta["closing_balance_date"] = balances[1], period_end
+    if any(b is not None for b in balances):
+        meta["balance_source"] = "person" if all(b is not None for b in balances) else "person_and_file"
+    total = sum((Decimal(t["amount"]) for t in statement["transactions"]), Decimal("0.00"))
+    if opening is not None and closing is not None:
+        change = Decimal(closing) - Decimal(opening)
+        expected = -total if ledger_account.startswith("Liabilities:") else total
+        if change != expected:
+            warnings.append(f"The balances change by {change} but the transactions in the file total "
+                            f"{expected}; check for missing or extra rows.")
+    if not period_start or not period_end:
+        confirmed = False
+    record: JsonObject = {
+        "schema_version": 1,
+        "statement_id": statement["statement_id"],
+        "account": ledger_account,
+        "kind": "statement",
+        "period_start": period_start,
+        "period_end": period_end,
+        "opening_balance": opening,
+        "closing_balance": closing,
+        "source": label,
+        "writer": WRITER,
+        "profile": statement["profile"],
+        "mapping_key": MAPPING_PREFIX + statement["profile"],
+        "format": fmt,
+        "institution_account": statement["account"],
+        "period_source": period_source,
+        "period_confirmed": confirmed,
+        "opening_balance_date": meta.get("opening_balance_date") if opening is not None else None,
+        "closing_balance_date": meta.get("closing_balance_date") if closing is not None else None,
+        "balance_source": meta.get("balance_source") if opening is not None or closing is not None else None,
+        "first_transaction_date": dates[0] if dates else None,
+        "last_transaction_date": dates[-1] if dates else None,
+        "transactions_total": format(total, "f"),
+        "transaction_count": len(statement["transactions"]),
+        "currency": "USD",
+    }
+    if fmt == "ofx":
+        record["ledger_balance"] = _presented(meta.get("ledger_balance"), ledger_account)
+        record["ledger_balance_date"] = meta.get("ledger_balance_date")
+    return record, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -777,8 +953,16 @@ def _apply_boundary(txns: list[JsonObject], profile: JsonObject) -> tuple[list[J
 
 def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dry_run: bool = False,
                 intake_only: bool = False, session_id: str | None = None,
-                ts: str | None = None, output: Path | None = None) -> JsonObject:
-    """Import one statement file. Returns a JSON-ready result with ``status``."""
+                ts: str | None = None, output: Path | None = None,
+                period_start: str | None = None, period_end: str | None = None,
+                opening_balance: str | None = None, closing_balance: str | None = None) -> JsonObject:
+    """Import one statement file. Returns a JSON-ready result with ``status``.
+
+    ``period_start``/``period_end`` are the statement dates a person confirmed
+    from the printed statement; both are needed. ``opening_balance`` and
+    ``closing_balance`` use the statement presentation (money owed is positive
+    for a card). They apply only when the file holds one account.
+    """
     from .entity import load_entity
     from .ledger.importer import _entity_write_lock, import_transactions
     from . import queue as queue_module
@@ -788,6 +972,14 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     profiles = _profiles(entity.entity_config)
     fmt, text = _load(path)
     file_sha = _file_sha256(path)
+    confirmed_period = None
+    if period_start or period_end:
+        if not (period_start and period_end):
+            raise StatementImportError("invalid_period", "Pass both --period-start and --period-end.")
+        confirmed_period = (_parse_override_date(period_start, "--period-start"),
+                            _parse_override_date(period_end, "--period-end"))
+    balances = (_parse_override_balance(opening_balance, "--opening-balance"),
+                _parse_override_balance(closing_balance, "--closing-balance"))
 
     try:
         if fmt == "ofx":
@@ -826,6 +1018,10 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     except StatementFileError as exc:
         status = "needs_mapping" if exc.code == "layout_changed" else "error"
         return {"status": status, "file": path.name, "error": exc.as_dict()}
+    if (confirmed_period or any(b is not None for b in balances)) and len(selected) != 1:
+        raise StatementImportError(
+            "choose_one_account",
+            "The period and balance options apply to one account; pass --profile for that account.")
 
     ts = ts or _now()
     session_id = session_id or f"statement-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
@@ -849,24 +1045,24 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                 **{k: v for k, v in plan["skipped"].items()},
                 "to_import": len(plan["import"]),
             }
-            meta = statement["metadata"]
-            total = sum((Decimal(t["amount"]) for t in statement["transactions"]), Decimal("0.00"))
-            record = {
-                "statement_id": statement["statement_id"],
-                "profile": name,
-                "mapping_key": mapping_key,
-                "ledger_account": prof["ledger_account"],
-                "format": fmt,
-                "file_name": path.name,
-                "file_sha256": file_sha,
-                "account": statement["account"],
-                **meta,
-                "transactions_total": format(total, "f"),
-                "transaction_count": len(statement["transactions"]),
-                "currency": "USD",
-            }
-            entry: JsonObject = {"statement": record, "counts": counts, "warnings": statement["warnings"],
-                                 "held": [{k: v for k, v in h.items() if k != "transaction"} for h in plan["held"]]}
+            record, record_warnings = _contract_record(
+                statement, fmt=fmt, ledger_account=prof["ledger_account"],
+                label=prof.get("account_name") or name, confirmed_period=confirmed_period,
+                balances=balances)
+            record.update(file_name=path.name, evidence_ref=_archive_relative(path, file_sha).as_posix(),
+                          evidence_sha256=file_sha)
+            if not record["period_confirmed"]:
+                _keep_confirmed_period(entity.path, record)
+            entry: JsonObject = {"statement": record, "counts": counts,
+                                 "warnings": statement["warnings"] + record_warnings,
+                                 "held": [{k: v for k, v in h.items() if k != "transaction"} for h in plan["held"]],
+                                 "coverage": "recorded" if record["period_confirmed"] else "needs_period"}
+            if not record["period_confirmed"]:
+                entry["next_step"] = (
+                    "Ask the person for the statement period printed on the statement, then run "
+                    f"books statement import FILE --entity ENTITY --profile {name} "
+                    "--period-start YYYY-MM-DD --period-end YYYY-MM-DD. Until then this file adds "
+                    "no statement coverage.")
             if not dry_run:
                 if plan["import"]:
                     outcome = import_transactions(
@@ -880,7 +1076,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                 else:
                     counts.update(posted=0, queued_for_review=0, importer_duplicates=0)
                 _record_held(entity, plan["held"], ts)
-                record["stored_file"] = _archive_source(entity.path, path, file_sha)
+                _archive_source(entity.path, path, file_sha)
                 record["imported_at"] = ts
                 record["import_session"] = session_id
                 _store_record(entity.path, record)
@@ -939,6 +1135,14 @@ def add_parser(subparsers: Any) -> None:
     import_p.add_argument("--session-id", default=None)
     import_p.add_argument("--output", type=Path, default=None,
                           help="Also write the normalized transactions to this JSON file")
+    import_p.add_argument("--period-start", default=None,
+                          help="First statement day (YYYY-MM-DD) as printed on the statement")
+    import_p.add_argument("--period-end", default=None,
+                          help="Last statement day (YYYY-MM-DD) as printed on the statement")
+    import_p.add_argument("--opening-balance", default=None,
+                          help="Opening balance as printed (money owed is positive for a card)")
+    import_p.add_argument("--closing-balance", default=None,
+                          help="Closing balance as printed (money owed is positive for a card)")
 
     list_p = sub.add_parser("list", help="List recorded statements and their periods and balances")
     list_p.add_argument("--entity", type=Path, required=True)
@@ -963,12 +1167,14 @@ def run(args: argparse.Namespace) -> int:
         elif command == "import":
             result = import_file(args.entity, args.file, profile=args.profile, dry_run=args.dry_run,
                                  intake_only=args.intake_only, session_id=args.session_id,
-                                 output=args.output)
+                                 output=args.output, period_start=args.period_start,
+                                 period_end=args.period_end, opening_balance=args.opening_balance,
+                                 closing_balance=args.closing_balance)
         elif command == "list":
             load_entity(args.entity)
             records = load_statement_records(args.entity)
             if args.account:
-                records = [r for r in records if r.get("ledger_account") == args.account]
+                records = [r for r in records if r.get("account") == args.account]
             result = {"status": "ok", "statements": records}
         else:
             raise StatementImportError("unknown_command", f"Unknown statement command: {command}")

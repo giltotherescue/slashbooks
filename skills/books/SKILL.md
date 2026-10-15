@@ -83,6 +83,9 @@ Read its shared context before deciding whether onboarding is needed.
 - If the user asks a financial question, route to `books-ask`.
 - If the user asks about future cash timing or a cash forecast, route to `books-forecast`.
 - If the user needs exports, tax files, or files for an accountant, route to `books-export`.
+- If the user has months or a year of bank or card statement files to bring in
+  (a catch-up), follow [the catch-up flow](references/catch-up.md): inspect,
+  map, import, check coverage, resolve duplicates, review, tax map, export.
 - If the user wants to report feedback about Slashbooks or prepare a handoff for
   its developers, route to `books-feedback`.
 

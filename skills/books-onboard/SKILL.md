@@ -562,8 +562,14 @@ scripts/books statement import <file> --entity <path> --profile <name>
 ```
 
 Report the counts, any rows held as duplicate candidates, and the statement
-period and balances from the result. Older Amex activity CSV mappings made
-with `scripts/books connector csv` keep working.
+period and balances from the result. If a statement has
+`"coverage": "needs_period"`, ask the owner for the period printed on the
+statement and import the same file again with `--period-start` and
+`--period-end`. Older Amex activity CSV mappings made with
+`scripts/books connector csv` keep working.
+
+For a backlog of many statement files, follow
+[the catch-up flow](../books/references/catch-up.md).
 
 ---
 

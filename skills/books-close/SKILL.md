@@ -124,6 +124,10 @@ continue:
 scripts/books statement import <file> --entity <entity-path> --profile <name>
 ```
 
+If the result says `"coverage": "needs_period"`, ask the owner for the period
+printed on the statement and import the same file again with `--period-start`
+and `--period-end`. Until then, the file adds no statement coverage.
+
 For an older Amex activity CSV mapping, parse it as before:
 
 ```

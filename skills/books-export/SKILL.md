@@ -213,6 +213,14 @@ and suggest the owner address them before sending the export.
 Use this section when the owner or accountant asks for a tax package, a mapped
 trial balance, or a file for Lacerte, UltraTax CS, Drake Tax or ProConnect Tax.
 
+Each time you show a tax mapping or hand over tax files, tell the owner this
+text: "Draft for review. Prepared from the data in these books only. It is not
+tax advice and does not replace preparation or review by a qualified tax
+professional." The command output, the files and the manifest also carry it.
+
+If the books still need a year of statement files, follow
+[the catch-up flow](../books/references/catch-up.md) first.
+
 1. Check source coverage for the tax year:
 
    ```
@@ -221,8 +229,9 @@ trial balance, or a file for Lacerte, UltraTax CS, Drake Tax or ProConnect Tax.
 
    Report each `partial` or `missing` month with its reason, such as
    "Operating Checking has no transactions for Mar 3–31." Report each balance
-   break between statements. Ask for the missing statements. Do not fill a gap
-   from model inference.
+   break between statements. Ask for the missing statements and import them
+   with `scripts/books statement import`. Do not fill a gap from model
+   inference.
 
 2. Confirm the return form. `scripts/books tax map --entity <entity-path> --year <year>`
    shows the form and where it came from. If the form is unknown or wrong,
@@ -249,4 +258,6 @@ trial balance, or a file for Lacerte, UltraTax CS, Drake Tax or ProConnect Tax.
    entry (Drake Tax, ProConnect Tax), the Lacerte Trial Balance Utility file, the
    UltraTax CS import file, and the unmapped-accounts report. Say that the
    amounts are book amounts and that the preparer makes all tax adjustments.
-   Never compute tax, deduction limits or depreciation yourself.
+   Give the draft disclaimer above. The Lacerte and UltraTax files start with
+   their import header, so `README.txt` in the same folder carries the
+   disclaimer. Never compute tax, deduction limits or depreciation yourself.

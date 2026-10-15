@@ -221,7 +221,13 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(record["balance_source"], "running_balance")
         self.assertEqual(record["period_source"], "transactions")
         self.assertEqual(record["transactions_total"], "2142.26")
-        self.assertTrue((self.entity / record["stored_file"]).exists())
+        self.assertTrue((self.entity / record["evidence_ref"]).exists())
+        # A CSV export without printed statement dates adds no statement coverage
+        # until a person confirms the period.
+        self.assertFalse(record["period_confirmed"])
+        self.assertEqual(stmt["coverage"], "needs_period")
+        self.assertIn("--period-start", stmt["next_step"])
+        self.assertFalse((self.entity / "ingestion" / "statements" / f"{record['statement_id']}.json").exists())
         self.assertEqual(len(set(_queue_ids(self.entity))), 6)
 
         again = self.imp("chase_like_checking.csv", "chase-checking")
@@ -292,8 +298,10 @@ class ImportTests(unittest.TestCase):
     def test_qfx_card_and_bofa_summary_metadata(self):
         self.map("card.qfx", "visa", account=CARD)
         card = self.imp("card.qfx")["statements"][0]["statement"]
-        self.assertEqual(card["closing_balance"], "-1270.00")
-        self.assertEqual(card["account"]["account_last4"], "0042")
+        # Statement presentation: money owed on a card is positive.
+        self.assertEqual(card["closing_balance"], "1270.00")
+        self.assertEqual(card["opening_balance"], "1540.01")
+        self.assertEqual(card["institution_account"]["account_last4"], "0042")
         self.map("bofa_like_checking.csv", "bofa-checking", account="Assets:Bank:Savings")
         bofa = self.imp("bofa_like_checking.csv", "bofa-checking")["statements"][0]
         record = bofa["statement"]
@@ -303,6 +311,93 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(bofa["counts"]["queued_for_review"], 3)
         listed = [r["profile"] for r in si.load_statement_records(self.entity)]
         self.assertEqual(sorted(listed), ["bofa-checking", "visa"])
+
+    def test_ofx_import_writes_a_coverage_contract_record(self):
+        from bookkeeping import coverage
+
+        self.map("checking.ofx", "checking-ofx")
+        result = self.imp("checking.ofx")
+        [stmt] = result["statements"]
+        self.assertEqual(stmt["coverage"], "recorded")
+        records, findings = coverage.load_statements(self.entity)
+        self.assertEqual(findings, [])
+        [record] = records
+        self.assertEqual((record.account, record.kind), (CHECKING, "statement"))
+        self.assertEqual((record.period_start.isoformat(), record.period_end.isoformat()),
+                         ("2026-01-01", "2026-01-31"))
+        # LEDGERBAL dated on the last statement day is the closing balance; the
+        # opening balance is that balance less the file's transactions.
+        self.assertEqual((str(record.opening_balance), str(record.closing_balance)), ("1000.00", "3142.26"))
+        self.assertEqual(record.evidence_sha256, stmt["statement"]["evidence_sha256"])
+        self.assertTrue((self.entity / record.evidence_ref).is_file())
+        [document] = si.load_statement_records(self.entity)
+        self.assertEqual(document["writer"], "books statement import")
+        self.assertEqual(document["ledger_balance_date"], "2026-01-31")
+
+    def test_ofx_ledger_balance_after_statement_end_is_not_a_closing_balance(self):
+        text = fixture("checking.ofx").read_text(encoding="utf-8").replace(
+            "<LEDGERBAL><BALAMT>3142.26<DTASOF>20260131", "<LEDGERBAL><BALAMT>3142.26<DTASOF>20260203")
+        path = self.root / "later-balance.ofx"
+        path.write_text(text, encoding="utf-8")
+        si.save_profile(self.entity, path, name="checking-ofx", ledger_account=CHECKING)
+        [stmt] = si.import_file(self.entity, path, ts="2026-02-04T00:00:00Z")["statements"]
+        record = stmt["statement"]
+        self.assertEqual((record["opening_balance"], record["closing_balance"]), (None, None))
+        self.assertEqual((record["ledger_balance"], record["ledger_balance_date"]), ("3142.26", "2026-02-03"))
+        self.assertTrue(any("not on the last statement day" in w for w in stmt["warnings"]))
+        self.assertEqual(stmt["coverage"], "recorded")
+
+    def test_csv_period_confirmed_later_promotes_the_record(self):
+        from bookkeeping import coverage
+
+        self.map("chase_like_checking.csv", "chase-checking")
+        first = self.imp("chase_like_checking.csv", "chase-checking")["statements"][0]
+        self.assertEqual(coverage.load_statements(self.entity), ([], []))
+        self.assertEqual([r["period_confirmed"] for r in si.load_statement_records(self.entity)], [False])
+
+        with self.assertRaises(si.StatementImportError) as ctx:
+            self.imp("chase_like_checking.csv", "chase-checking",
+                     period_start="2026-01-10", period_end="2026-01-31")
+        self.assertEqual(ctx.exception.code, "period_mismatch")
+        with self.assertRaises(si.StatementImportError) as ctx:
+            self.imp("chase_like_checking.csv", "chase-checking", period_start="2026-01-01")
+        self.assertEqual(ctx.exception.code, "invalid_period")
+
+        again = self.imp("chase_like_checking.csv", "chase-checking",
+                         period_start="2026-01-01", period_end="2026-01-31")["statements"][0]
+        self.assertEqual(again["counts"]["already_imported"], 6)
+        self.assertEqual(again["coverage"], "recorded")
+        [record], findings = coverage.load_statements(self.entity)
+        self.assertEqual(findings, [])
+        self.assertEqual(record.statement_id, first["statement"]["statement_id"])
+        self.assertEqual((record.period_start.isoformat(), record.period_end.isoformat()),
+                         ("2026-01-01", "2026-01-31"))
+        # Running-balance balances stay valid inside a confirmed period.
+        self.assertEqual((str(record.opening_balance), str(record.closing_balance)), ("1000.00", "3142.26"))
+        [listed] = si.load_statement_records(self.entity)
+        self.assertEqual((listed["period_confirmed"], listed["period_source"]), (True, "person"))
+
+        # A later import of the same file without dates keeps the confirmed period.
+        repeat = self.imp("chase_like_checking.csv", "chase-checking")["statements"][0]
+        self.assertEqual(repeat["coverage"], "recorded")
+        [listed] = si.load_statement_records(self.entity)
+        self.assertEqual((listed["period_start"], listed["period_source"]), ("2026-01-01", "person"))
+
+    def test_person_supplied_card_balances_use_statement_presentation(self):
+        from bookkeeping import coverage
+
+        self.map("card_debit_credit.csv", "card", account=CARD)
+        stmt = self.imp("card_debit_credit.csv", "card", period_start="2026-01-01",
+                        period_end="2026-01-31", opening_balance="1000.00",
+                        closing_balance="769.99")["statements"][0]
+        self.assertEqual(stmt["statement"]["balance_source"], "person")
+        self.assertEqual(stmt["warnings"], [])
+        [record], _ = coverage.load_statements(self.entity)
+        self.assertEqual((str(record.opening_balance), str(record.closing_balance)), ("1000.00", "769.99"))
+        wrong = self.imp("card_debit_credit.csv", "card", period_start="2026-01-01",
+                         period_end="2026-01-31", opening_balance="1000.00",
+                         closing_balance="900.00")["statements"][0]
+        self.assertTrue(any("check for missing or extra rows" in w for w in wrong["warnings"]))
 
     def test_pending_rows_and_boundary_are_counted(self):
         self.map("pending_rows.csv", "pending", boundary_date="2026-01-07", side="before")
@@ -386,7 +481,7 @@ class ImportTests(unittest.TestCase):
         code, result = run("statement", "import", path, "--entity", str(self.entity), "--profile", "amex")
         self.assertEqual((code, result["statements"][0]["counts"]["queued_for_review"]), (0, 4))
         code, result = run("statement", "list", "--entity", str(self.entity))
-        self.assertEqual(result["statements"][0]["ledger_account"], "Liabilities:CreditCard:Amex")
+        self.assertEqual(result["statements"][0]["account"], "Liabilities:CreditCard:Amex")
         code, result = run("statement", "inspect", str(fixture("foreign_currency.csv")))
         self.assertEqual(code, 1)
 

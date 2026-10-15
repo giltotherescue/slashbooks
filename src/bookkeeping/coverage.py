@@ -39,11 +39,25 @@ writes the same shape. Fields:
 
 Readers ignore unknown fields. A record that breaks the contract is reported
 as a ``statement_record_invalid`` finding and contributes no coverage.
+Only ``*.json`` files directly in ``ingestion/statements/`` are read;
+subdirectories (``files/`` for archived source files and ``unconfirmed/`` for
+imports whose period a person has not confirmed) are not evidence.
+
+Writers
+-------
+- ``books statement import`` writes one ``statement`` record per imported
+  statement, plus importer details as extra fields.
+- ``books ingest`` writes ``feed_sync`` records for BankSync download windows
+  and for any ``coverage_windows`` in a normalized input file
+  (``record_feed_window``).
+- ``books coverage statement-add`` and ``record_statement`` write records
+  that a person or a host supplies.
 """
 
 from __future__ import annotations
 
 import calendar
+import hashlib
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -312,12 +326,26 @@ def _invalid_finding(ref: str, reason: str) -> dict[str, Any]:
     }
 
 
-def record_statement(entity_path: Path | str, record: Mapping[str, Any], *, replace: bool = False) -> dict[str, Any]:
-    """Validate and write one statement record under ``ingestion/statements``."""
+CONTRACT_FIELDS = frozenset({
+    "schema_version", "statement_id", "account", "kind", "period_start", "period_end",
+    "opening_balance", "closing_balance", "source", "evidence_ref", "evidence_sha256",
+})
+
+
+def record_statement(entity_path: Path | str, record: Mapping[str, Any], *, replace: bool = False,
+                     extra: Mapping[str, Any] | None = None, check_catalog: bool = True) -> dict[str, Any]:
+    """Validate and write one statement record under ``ingestion/statements``.
+
+    ``extra`` adds writer details (for example the import profile) next to the
+    contract fields. Contract fields always win; readers ignore the extras.
+    ``check_catalog=False`` skips the account-catalog check for a writer that
+    already validated the account when it was mapped.
+    """
     entity = load_entity(entity_path)
     parsed = parse_statement(dict(record))
     store_path = default_store_path(entity.path)
-    if store_path.is_file() and parsed.account not in LedgerStore(store_path).load_account_names():
+    if (check_catalog and store_path.is_file()
+            and parsed.account not in LedgerStore(store_path).load_account_names()):
         raise ValueError(f"Account '{parsed.account}' is not in the account catalog.")
     directory = statements_dir(entity.path)
     directory.mkdir(parents=True, exist_ok=True)
@@ -325,11 +353,52 @@ def record_statement(entity_path: Path | str, record: Mapping[str, Any], *, repl
     existed = destination.exists()
     if existed and not replace:
         raise ValueError(f"Statement {parsed.statement_id} already exists; pass replace to update it.")
-    document = parsed.to_document()
+    document = {**{k: v for k, v in (extra or {}).items() if k not in CONTRACT_FIELDS},
+                **parsed.to_document()}
     tmp = destination.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, destination)
     return {**document, "status": "updated" if existed else "created"}
+
+
+def load_statement_documents(entity_path: Path | str) -> list[dict[str, Any]]:
+    """Return the full JSON of each valid record, extra writer fields included."""
+    records, _ = load_statements(entity_path)
+    directory = statements_dir(entity_path)
+    documents = []
+    for record in records:
+        name, _, index = record.file.partition("#")
+        try:
+            payload = json.loads((directory / name).read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        item = payload[int(index)] if index else payload
+        if isinstance(item, Mapping):
+            documents.append({**item, **record.to_document()})
+    return documents
+
+
+def feed_window_id(account: str, start: date, end: date, source: str = "") -> str:
+    """A stable ``statement_id`` for a feed window; the same window maps to one file."""
+    digest = hashlib.sha256(f"{account}|{source}".encode("utf-8")).hexdigest()[:10]
+    return f"feed-{digest}-{start:%Y%m%d}-{end:%Y%m%d}"
+
+
+def record_feed_window(entity_path: Path | str, *, account: str, start: date, end: date,
+                       source: str = "", evidence_ref: str = "", evidence_sha256: str = "",
+                       extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Write (or rewrite) one ``feed_sync`` record for a window a feed returned in full."""
+    return record_statement(entity_path, {
+        "schema_version": SCHEMA_VERSION,
+        "statement_id": feed_window_id(account, start, end, source),
+        "account": account,
+        "kind": "feed_sync",
+        "period_start": start.isoformat(),
+        "period_end": end.isoformat(),
+        "source": source,
+        "evidence_ref": evidence_ref,
+        "evidence_sha256": evidence_sha256,
+    }, replace=True, extra=extra)
 
 
 # ---------------------------------------------------------------------------

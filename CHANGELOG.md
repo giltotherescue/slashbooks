@@ -4,7 +4,11 @@
 
 - Import historical bank and card statements from CSV, OFX, QFX and QBO files with `books statement`. Detection proposes a column mapping, date format and sign convention, and reports every field it cannot decide instead of guessing. Confirmed mappings are saved per account.
 - Skip activity that is already imported by `FITID` or a stable row fingerprint, and hold overlaps with bank feeds or other statement files as duplicate candidates for review.
-- Record each statement's account identity, period and opening and closing balances for later completeness checks.
+- Record each imported statement in the source-coverage format, so `books coverage check` shows complete, partial and missing months and balance breaks between statements. OFX ledger balances count as closing balances only when they are dated on the last statement day. A CSV export without printed dates counts after the person confirms its period with `--period-start` and `--period-end`.
+- Record bank-feed windows for coverage when `books ingest` imports a BankSync download, an input with `coverage_windows`, or an Amex activity CSV whose download range the person confirmed.
+- Count statements or feed windows that cover every day of a month as affirmative source coverage in readiness.
+- Mark every tax map and tax export as a draft for review that does not replace a tax professional: in the command output, the manifest, a README in the export folder, the first row of the trial balance, summary and unmapped-accounts files, and the workbook Read Me sheet.
+- Document the full catch-up flow for agents: inspect, map, import, coverage check, duplicate resolution, review, tax map and export.
 
 ## 0.5.0 — 2026-10-14
 

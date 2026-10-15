@@ -1,5 +1,10 @@
 # Tax handoff: source coverage and tax-preparer export
 
+> **Draft for review.** Every tax map and tax export is prepared from the data
+> in the books only. It is not tax advice and does not replace preparation or
+> review by a qualified tax professional. Agents tell the person this each time
+> they show a tax mapping or hand over an export.
+
 A tax preparer needs two things from the books before preparing a return:
 
 1. Proof that each bank and card account has source data for every day of the
@@ -67,10 +72,11 @@ For consecutive statements of the same account, the check reports:
 
 ### Statement record contract (schema version 1)
 
-Importers, connectors and hosts record statement metadata as JSON files in
+This contract is the one format for statement and feed-window evidence.
+Importers, connectors and hosts record it as JSON files directly in
 `<company>/ingestion/statements/`. Each file holds one object or a list of
-objects. `books coverage statement-add` and
-`bookkeeping.coverage.record_statement()` write the same shape.
+objects. The check does not read subdirectories: `files/` holds archived
+source files and `unconfirmed/` holds imports whose period nobody confirmed.
 
 ```json
 {
@@ -98,9 +104,30 @@ objects. `books coverage statement-add` and
 | `source` | Optional label for reports. |
 | `evidence_ref`, `evidence_sha256` | Optional pointer to the source file and its SHA-256 digest. |
 
-Readers ignore unknown fields. A file importer that knows a statement's dates
-and balances writes a `statement` record. A feed or API download that returned
-a complete window writes a `feed_sync` record for that window.
+Readers ignore unknown fields, so a writer can add its own details next to
+the contract fields. A file importer that knows a statement's dates and
+balances writes a `statement` record. A feed or API download that returned a
+complete window writes a `feed_sync` record for that window.
+
+### Who writes records
+
+| Writer | Kind | When |
+|---|---|---|
+| `books statement import` | `statement` | For each imported statement whose period is known: the OFX `DTSTART`/`DTEND`, a printed CSV summary, or `--period-start`/`--period-end` from the person. See [imports.md](imports.md#statement-period-and-balances) for the balance rules. |
+| `books ingest` | `feed_sync` | After a successful local import of a BankSync download, or of any input with `coverage_windows`. See [connectors.md](connectors.md#coverage-windows). |
+| `books connector csv parse --period-start --period-end` | `feed_sync` (through `books ingest`) | For the date range a person chose for an Amex activity download. |
+| `books coverage statement-add` | either | For a record that a person reads from a statement or a host supplies. |
+| A hosted service | `feed_sync` | For each bank-feed sync window it completed. A hosted import does not write windows from its input. |
+
+A QuickBooks history import is book data, not bank source evidence, so it
+writes no coverage records.
+
+A host that writes records directly uses the same file rules: one file per
+record, named `<statement_id>.json`, written atomically. For a feed window, use
+`kind: "feed_sync"`, no balances, and a window that starts no earlier than the
+first day the feed returned and ends before the first pending item. A stable
+ID, such as the one `bookkeeping.coverage.feed_window_id()` makes, keeps a
+repeated sync from adding a second file.
 
 ### Readiness
 
@@ -113,6 +140,9 @@ accounts. It adds these items without changing other readiness behavior:
   `statement_record_invalid` for each error finding.
 - Warning `source_month_inferred`, `statement_overlap`, `statement_gap` or
   `statement_duplicate`.
+- If statements or feed windows cover every day of the period for an account,
+  that account does not also get the `source_coverage_incomplete` blocker for
+  missing declared coverage dates.
 - A `coverage` list with the month rows for each account, for display.
 
 ## Tax-line mapping
@@ -176,7 +206,15 @@ The export writes these files to `reports/tax-handoff/<form>_<period>/`:
 | `lacerte-tbu-*.csv` | Layout for the Lacerte Trial Balance Utility. |
 | `ultratax-tb-import-*.csv` | Layout for the UltraTax CS Trial Balance Excel Import. |
 | `tax-handoff-*.xlsx` | All of the above as sheets, plus a Read Me sheet. Needs the `xlsx` extra. |
-| `manifest.json` | Totals, unmapped and review lists, and the SHA-256 of each file. |
+| `README.txt` | The draft disclaimer, the period, the totals and the file list. |
+| `manifest.json` | The `disclaimer`, totals, unmapped and review lists, and the SHA-256 of each file. |
+
+The trial balance, tax-line summary and unmapped-accounts files start with a
+one-cell row that holds the draft disclaimer. The header row comes next. The
+Lacerte and UltraTax files start with their header row, because those products
+import them; the README and the manifest in the same folder carry the
+disclaimer. In the workbook, the first row of the Read Me sheet is the
+disclaimer. `books tax map` and `books tax export` print it first.
 
 Balances are cash-basis book balances from the engine. Balance columns are
 debit-positive. Income and expense accounts show activity in the period.

@@ -122,25 +122,55 @@ books queue resolve-duplicate --entity ~/Documents/books/acme-co \
 Pending rows (a status column that says pending) and identical repeated OFX
 transactions are skipped and counted in the result.
 
-### Statement metadata
+### Statement period and balances
 
-Each import records the statement facts that a later completeness or
-reconciliation check can use:
+Each import also writes a statement record that `books coverage check` reads.
+The record format is the statement record contract in
+[tax-handoff.md](tax-handoff.md#statement-record-contract-schema-version-1).
+That contract is the only format; the importer adds details as extra fields.
+
+The record goes into coverage only when the statement period is known:
+
+| File | Period | Balances |
+|---|---|---|
+| OFX, QFX or QBO | `DTSTART` and `DTEND` of the statement. | The `LEDGERBAL` amount is the closing balance only when its `DTASOF` date is the last statement day. The opening balance is then the closing balance less the transactions in the file. |
+| CSV with a printed summary (opening and closing balance rows with dates) | The summary dates. | The summary balances (bank accounts only). |
+| Any other CSV | Not known. Ask the person for the period printed on the statement. | The running balance column, when it follows the amounts. |
+
+If the `LEDGERBAL` date is after the last statement day (many banks use the
+download date), the importer keeps the balance as `ledger_balance` and does not
+use it as the closing balance. A balance from a later date can include
+activity that is not in the file.
+
+When a CSV has no printed period, the import posts the transactions and
+reports `"coverage": "needs_period"`. The record waits in
+`ingestion/statements/unconfirmed/`, and the coverage check does not read it.
+To confirm the period, import the same file again with the dates from the
+statement. The transactions are not imported again:
+
+```sh
+books statement import ~/Downloads/checking-2026-q2.csv \
+  --entity ~/Documents/books/acme-co --profile chase-checking \
+  --period-start 2026-04-01 --period-end 2026-06-30
+```
+
+Every transaction in the file must fall inside the period. To add or correct
+the balances from the printed statement, pass `--opening-balance` and
+`--closing-balance`. Use the statement presentation: money held for a bank
+account and money owed for a card. If the balances do not agree with the
+transactions in the file, the result has a warning.
 
 ```sh
 books statement list --entity ~/Documents/books/acme-co
 ```
 
-Each record has the profile and ledger account, the account identity (the
-institution ID, account type and last four characters; never the full account
-number), `period_start` and `period_end`, `period_source`, the opening and
-closing balances with their dates and `balance_source`, and the net
-transaction total. The `period_source` is `statement` for an OFX statement
-period, `file_summary` for a printed summary, or `transactions` when the file
-gives only the first and last transaction dates. Balances use the ledger sign:
-cash is positive and card debt is negative. The records are in
-`ingestion/statements/statements.json`, and a copy of each imported file is
-kept under `ingestion/statements/files/`.
+The list shows each record with the profile, the ledger `account`, the account
+identity (the institution ID, account type and last four characters; never the
+full account number), `period_start`, `period_end`, `period_source`
+(`statement`, `file_summary`, `person` or `transactions`), `period_confirmed`,
+the balances with their dates and `balance_source`, and the net transaction
+total. Records are in `ingestion/statements/<statement_id>.json`, and a copy of
+each imported file is kept under `ingestion/statements/files/`.
 
 ## American Express activity CSVs
 
