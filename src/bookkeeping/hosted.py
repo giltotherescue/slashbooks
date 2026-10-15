@@ -452,10 +452,11 @@ def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
             raise ValueError
     except (HostedError, ValueError) as exc:
         raise HostedError("INVALID_RECEIPT", "Receipt question route is invalid.") from exc
-    if set(body) != {"reply_ids", "reply_watermark", "command_id"}:
+    # The server needs a command_id only for a question that declares source IDs.
+    if set(body) not in ({"reply_ids", "reply_watermark"}, {"reply_ids", "reply_watermark", "command_id"}):
         raise HostedError(
             "INVALID_QUESTION",
-            "Question resolve requires reply_ids, reply_watermark and command_id.",
+            "Question resolve requires reply_ids and reply_watermark, and command_id when the question declares sources.",
         )
     reply_ids = body.get("reply_ids")
     if (not isinstance(reply_ids, list) or not 1 <= len(reply_ids) <= 100
@@ -463,7 +464,8 @@ def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
         raise HostedError("INVALID_QUESTION", "Question resolve requires 1-100 unique stable reply IDs.")
     if type(body.get("reply_watermark")) is not int or body["reply_watermark"] <= 0:
         raise HostedError("INVALID_QUESTION", "Reply watermark must be a positive integer.")
-    _segment(body.get("command_id"))
+    if "command_id" in body:
+        _segment(body["command_id"])
     return dict(body)
 
 
@@ -545,11 +547,10 @@ def _mutate_question(args: argparse.Namespace, client: HostedClient) -> dict[str
         })
     else:
         route = "/questions/" + _segment(args.question_id) + "/resolve"
-        body = _question_body(route, {
-            "reply_ids": list(args.reply_ids or []),
-            "reply_watermark": args.reply_watermark,
-            "command_id": args.command_id,
-        })
+        resolve = {"reply_ids": list(args.reply_ids or []), "reply_watermark": args.reply_watermark}
+        if args.command_id is not None:
+            resolve["command_id"] = args.command_id
+        body = _question_body(route, resolve)
     if _redact(body, client.secrets) != body:
         raise HostedError("SECRET_IN_INPUT", "Question input contains an API credential. Remove it before submission.")
     key = _key(args.idempotency_key if args.idempotency_key is not None else str(uuid.uuid4()))

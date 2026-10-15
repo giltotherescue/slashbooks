@@ -138,7 +138,11 @@ for typed flags, private drafts, stable request IDs, staff authorship and
 read-back-only recovery. A question in a work note is not a delivered message.
 Do not invent HTTP calls, question versions or an accounting command envelope.
 After an uncertain question write, use its saved receipt to read back; these
-routes do not provide server idempotency, so never blindly resend.
+routes do not provide server idempotency, so never blindly resend. A resolve
+needs `--request-id` like an ask or a reply. The command reads the question and
+sends every reply ID and the reply watermark itself; read the question through
+its final cursor first so the set is current. A question with no replies resolves
+with an empty set and watermark 0.
 
 ### Scoped automated answer application
 
@@ -177,6 +181,8 @@ scripts/books cloud question resolve <question-id> \
   --reply-id <reply-id> --reply-watermark <positive-watermark> \
   --command-id <committed-command-id>
 ```
+
+The service needs the command ID only for a question that declares source IDs.
 
 Repeat `--reply-id` for every reply through the watermark. If resolve returns
 `remaining_source_ids`, keep the question open and apply only the verified
@@ -222,7 +228,7 @@ implicit part of configuration.
 These procedures are the single source for the rules they cover. Run each command
 and follow its output. Do not rely on memory of the text, and do not copy it here.
 
-- `scripts/books procedures show emailed-answers` (version 1)
+- `scripts/books procedures show emailed-answers` (version 2)
 - `scripts/books procedures show mail-triage` (version 1)
 - `scripts/books procedures show grouped-replies` (version 1)
 - `scripts/books procedures show question-rules` (version 1)

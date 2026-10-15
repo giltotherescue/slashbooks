@@ -240,6 +240,11 @@ server sets the recipient from membership, preserves authorship and enforces
 `questions:write`; only staff can resolve. A forbidden or already-resolved
 response is a real boundary, not permission to use another credential.
 
+A resolve also needs a request ID. It sends every reply ID and the reply
+watermark that the command reads from the question, so reread the question
+before you resolve it. A question with no replies resolves with an empty set and
+watermark 0.
+
 Question routes have no client version or server idempotency receipt. Do not
 send guessed `version`, `expected_books_revision`, author or direction fields,
 or use an accounting command envelope for questions. The CLI saves a private
@@ -277,6 +282,7 @@ host verifies actual affected source scope independently. Resolve only after all
 scoped sources have verified committed applications, using `cloud question
 resolve <question-id> --reply-id <reply-id> --reply-watermark <watermark>
 --command-id <command-id>`. Include every reply through the current watermark.
+The command ID is needed only for a question that declares source IDs.
 If resolve reports `remaining_source_ids`, keep the question open and apply the
 remaining verified scope; reread on an incomplete, changed-answer, or
 idempotency conflict response.

@@ -255,6 +255,15 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(self.invoke("retry", "--receipt", str(resolve_receipt))[0], 0)
         self.assertEqual(self.api.calls[-1], before)
 
+    def test_scoped_resolve_without_a_command_id_sends_no_command_id(self) -> None:
+        self.api.response = {"question": {"id": "question-1", "status": "resolved"}}
+        code, _, _ = self.invoke(
+            "question", "resolve", "question-1", "--reply-id", "reply-1",
+            "--reply-watermark", "1", "--idempotency-key", "question-resolve-no-command",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(self.api.calls[-1]["body"], {"reply_ids": ["reply-1"], "reply_watermark": 1})
+
     def test_question_inputs_fail_closed_before_network(self) -> None:
         cases = [
             ("create", "--subject", "", "--body", "Body"),
