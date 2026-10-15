@@ -75,3 +75,38 @@ array. Each transaction has:
 
 A copyable starting point is in
 `examples/connectors/custom_connector_template.py`.
+
+### Coverage windows
+
+A connector can also say which dates it returned in full for an account. Add a
+`coverage_windows` list to the object form of the input:
+
+```json
+{
+  "transactions": [],
+  "coverage_windows": [
+    {"account": "Assets:Bank:Operating-Checking", "from": "2026-01-01", "to": "2026-01-31", "source": "Acme Bank API"}
+  ]
+}
+```
+
+Each window needs `from` and `to` dates and either a ledger `account` under
+`Assets:` or `Liabilities:`, or an `accountId` that is in
+`bank_account_mappings`. `books ingest` checks the windows before it imports,
+and records each one as a `feed_sync` record for `books coverage check` after
+the import succeeds. Add a window only for dates the provider returned in
+full: no paging limit, no history limit and no pending items.
+
+`books ingest` makes these windows itself for a BankSync download. Each window
+starts on the later of the requested start and the first posted transaction,
+and ends on the earlier of the requested end and the import date. If the
+account has pending items, the window ends the day before the first one.
+
+For an Amex activity CSV, pass the date range that was chosen for the download
+to `books connector csv parse --period-start YYYY-MM-DD --period-end
+YYYY-MM-DD --output <file>`. The output then carries the window for
+`books ingest`.
+
+A hosted import does not record windows from the input file. The host writes
+the `feed_sync` records itself, in the format in
+[tax-handoff.md](tax-handoff.md#statement-record-contract-schema-version-1).

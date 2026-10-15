@@ -86,7 +86,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -563,6 +563,14 @@ def add_parser(subparsers: Any) -> None:
     parse_p.add_argument(
         "--output", type=Path, default=None, help="Write JSON output to this file"
     )
+    parse_p.add_argument(
+        "--period-start", default=None,
+        help="First day of the date range chosen for the Amex download (YYYY-MM-DD)",
+    )
+    parse_p.add_argument(
+        "--period-end", default=None,
+        help="Last day of the date range chosen for the Amex download (YYYY-MM-DD)",
+    )
 
 
 def run(args: Any) -> int:
@@ -686,6 +694,40 @@ def _run_confirm_mapping(args: Any) -> int:
     return 0
 
 
+def coverage_window(mapping: JsonObject, txns: list[JsonObject], period_start: str | None,
+                    period_end: str | None) -> JsonObject | None:
+    """A coverage window for the download range a person chose, clipped to the boundary.
+
+    The Amex activity CSV does not print its date range, so the window exists
+    only when the person confirms it. Every parsed row must fall inside it.
+    """
+    if not period_start and not period_end:
+        return None
+    if not (period_start and period_end):
+        raise ValueError("Pass both --period-start and --period-end.")
+    try:
+        start, end = date.fromisoformat(period_start), date.fromisoformat(period_end)
+    except ValueError as exc:
+        raise ValueError("--period-start and --period-end must be YYYY-MM-DD.") from exc
+    if start > end:
+        raise ValueError("--period-start is after --period-end.")
+    outside = sorted(t["date"] for t in txns if not start.isoformat() <= t["date"] <= end.isoformat())
+    if outside:
+        raise ValueError(f"{len(outside)} row(s) are outside the period, the first on {outside[0]}. "
+                         "Check the date range chosen for the download.")
+    boundary = mapping.get("boundary_date")
+    if boundary:
+        limit = date.fromisoformat(boundary)
+        if mapping.get("side", "before") == "before":
+            end = min(end, limit)
+        else:
+            start = max(start, limit + timedelta(days=1))
+    if start > end:
+        return None
+    return {"account": mapping["ledger_account"], "from": start.isoformat(), "to": end.isoformat(),
+            "source": mapping.get("account_name") or "Amex CSV"}
+
+
 def _run_parse(args: Any) -> int:
     from bookkeeping.entity import load_entity  # lazy import
 
@@ -728,6 +770,15 @@ def _run_parse(args: Any) -> int:
         "excluded_count": excluded,
         "mapping": result["mapping"],
     }
+    try:
+        window = coverage_window(result["mapping"], txns, getattr(args, "period_start", None),
+                                 getattr(args, "period_end", None))
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    if window is not None:
+        # `books ingest` records this as feed_sync coverage after the import.
+        output["coverage_windows"] = [window]
 
     json_str = json.dumps(output, indent=2)
     if args.output:

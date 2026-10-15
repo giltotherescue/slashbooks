@@ -1,0 +1,4 @@
+Transaction Date,Posted Date,Card No.,Description,Category,Debit,Credit
+2026-01-03,2026-01-04,0000,CONTOSO SOFTWARE,Software,49.99,
+2026-01-10,2026-01-10,0000,PAYMENT RECEIVED,Payment,,400.00
+2026-01-15,2026-01-16,0000,FABRIKAM SUPPLY,Merchandise,120.00,

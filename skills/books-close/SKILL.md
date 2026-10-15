@@ -115,7 +115,20 @@ name to choose a cash account:
 scripts/books ingest <entity>/ingestion/banksync-<date>.json --entity <entity-path> --source banksync
 ```
 
-For each CSV source (if the owner has a new export file ready), parse it:
+For each statement-file source (if the owner has a new CSV, OFX, QFX or QBO
+export ready), import it with its saved profile. If the result is
+`needs_mapping`, follow the mapping steps in `/books-onboard` before you
+continue:
+
+```
+scripts/books statement import <file> --entity <entity-path> --profile <name>
+```
+
+If the result says `"coverage": "needs_period"`, ask the owner for the period
+printed on the statement and import the same file again with `--period-start`
+and `--period-end`. Until then, the file adds no statement coverage.
+
+For an older Amex activity CSV mapping, parse it as before:
 
 ```
 scripts/books connector csv parse --entity <entity-path> <file>
@@ -245,6 +258,12 @@ the deterministic readiness assessment for the completed calendar period:
 ```
 scripts/books readiness --entity <entity-path> --period <YYYY-MM> --as-of <today>
 ```
+
+Source coverage blockers (`source_month_partial`, `source_month_missing`,
+`source_balance_discontinuity`) name the account and the gap dates. To see
+every month and account at once, run
+`scripts/books coverage check --entity <entity-path> --from <start> --to <end>`.
+Ask for the missing statement or feed window rather than inferring activity.
 
 Read the returned `state` and blockers. A successful command only means the
 assessment was produced; it does not mean the period is ready. Resolve every

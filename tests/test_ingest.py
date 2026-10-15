@@ -129,6 +129,86 @@ class IngestCommandTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(len(_pending(entity_dir)), 2)
 
+    def _ledger_entity(self, tmp: str) -> Path:
+        from datetime import date as _date
+
+        from bookkeeping.ledger.model import Open
+        from bookkeeping.ledger.store import LedgerStore
+
+        entity_dir = _make_entity(Path(tmp))
+        config = json.loads((entity_dir / "entity.json").read_text())
+        config["bank_account_mappings"] = {"acct_chk": "Assets:Bank:Checking"}
+        (entity_dir / "entity.json").write_text(json.dumps(config) + "\n", encoding="utf-8")
+        store = LedgerStore(entity_dir / "ledger.sqlite")
+        store.initialize()
+        with store.transaction() as conn:
+            store.insert_opens([Open(_date(2025, 1, 1), account, ("USD",)) for account in (
+                "Assets:Bank:Checking", "Liabilities:CreditCard:Amex-CSV")], conn)
+        return entity_dir
+
+    def test_banksync_download_records_a_conservative_feed_window(self) -> None:
+        from bookkeeping.coverage import load_statements
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = self._ledger_entity(tmp)
+            txns = _txns() + [{
+                "id": "x3", "date": "2026-01-28", "description": "Card auth", "amount": "-12.00",
+                "accountId": "acct_chk", "pending": True,
+            }]
+            infile = Path(tmp) / "banksync.json"
+            infile.write_text(json.dumps({
+                "source": "banksync",
+                "dateRange": {"from": "2025-12-01", "to": "2026-01-31"},
+                "banks": [{"accounts": [
+                    {"account": {"id": "acct_chk", "accountName": "Checking", "accountNumberLast4": "0021"},
+                     "transactions": txns},
+                    {"account": {"id": "acct_unmapped_empty"}, "transactions": []},
+                ]}],
+            }), encoding="utf-8")
+            out = io.StringIO()
+            with redirect_stdout(out):
+                rc = main(["ingest", str(infile), "--entity", str(entity_dir), "--source", "banksync"])
+            self.assertEqual(rc, 0)
+            self.assertIn("feed windows:         1 recorded", out.getvalue())
+            [record], findings = load_statements(entity_dir)
+            self.assertEqual(findings, [])
+            # Starts at the first posted row (the feed may return less history than
+            # requested) and ends before the first pending row.
+            self.assertEqual((record.kind, record.account), ("feed_sync", "Assets:Bank:Checking"))
+            self.assertEqual((record.period_start.isoformat(), record.period_end.isoformat()),
+                             ("2026-01-03", "2026-01-27"))
+            self.assertEqual(record.source, "BankSync Checking ending 0021")
+            self.assertEqual(len(record.evidence_sha256), 64)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["ingest", str(infile), "--entity", str(entity_dir),
+                                       "--source", "banksync"]), 0)
+            self.assertEqual(len(load_statements(entity_dir)[0]), 1)
+
+    def test_explicit_coverage_windows_are_validated_then_recorded(self) -> None:
+        from bookkeeping.coverage import load_statements
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = self._ledger_entity(tmp)
+            infile = Path(tmp) / "amex.json"
+            infile.write_text(json.dumps({"transactions": _txns(), "coverage_windows": [
+                {"account": "Assets:Bank:Ghost", "from": "2026-01-01", "to": "2026-01-31"}]}),
+                encoding="utf-8")
+            err = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(err):
+                rc = main(["ingest", str(infile), "--entity", str(entity_dir)])
+            self.assertEqual(rc, 1)
+            self.assertIn("not in the account catalog", err.getvalue())
+            self.assertEqual(_pending(entity_dir), [])
+
+            infile.write_text(json.dumps({"transactions": _txns(), "coverage_windows": [
+                {"accountId": "acct_chk", "from": "2026-01-01", "to": "2026-01-31", "source": "Export"}]}),
+                encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["ingest", str(infile), "--entity", str(entity_dir)]), 0)
+            [record], _ = load_statements(entity_dir)
+            self.assertEqual((record.kind, record.period_start.isoformat(), record.period_end.isoformat()),
+                             ("feed_sync", "2026-01-01", "2026-01-31"))
+
     def test_banksync_download_without_mapping_stops_before_staging_work(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             entity_dir = _make_entity(Path(tmp))
