@@ -600,3 +600,12 @@ tell the owner to close the current calendar month if it is still in progress.
 If today is mid-month, say that the next close should run through the last
 completed month, or use partial catch-up wording such as "categorize current
 month-to-date transactions" instead of "close [current month]."
+
+## Shared procedures
+
+These procedures are the single source for the rules they cover. Run each command
+and follow its output. Do not rely on memory of the text, and do not copy it here.
+
+- `scripts/books procedures show onboarding-profile` (version 1)
+- `scripts/books procedures show question-rules` (version 1)
+- `scripts/books procedures show hard-rules` (version 2)

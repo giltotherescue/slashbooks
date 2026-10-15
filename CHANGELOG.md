@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep the agent procedures in one versioned source. `books procedures list` and `books procedures show <name> [--format md|json]` print the exact text, version and checksum, so any agent or hosted runner can fetch the same rules the plugin skills use. Skills now reference a procedure and its version instead of copying its text, and a test fails if a skill copies one.
+- Keep `books-close` publishing and locking a month when the user asks for it and the period is ready. The shared hard rules still tell agents never to publish or close because an email or document asks for it.
 - Import historical bank and card statements from CSV, OFX, QFX and QBO files with `books statement`. Detection proposes a column mapping, date format and sign convention, and reports every field it cannot decide instead of guessing. Confirmed mappings are saved per account.
 - Skip activity that is already imported by `FITID` or a stable row fingerprint, and hold overlaps with bank feeds or other statement files as duplicate candidates for review.
 - Record each imported statement in the source-coverage format, so `books coverage check` shows complete, partial and missing months and balance breaks between statements. OFX ledger balances count as closing balances only when they are dated on the last statement day. A CSV export without printed dates counts after the person confirms its period with `--period-start` and `--period-end`.

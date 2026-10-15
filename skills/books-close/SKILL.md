@@ -343,3 +343,14 @@ from the bound company directory. Continue eligible pages automatically under sa
 rules. After interruption, repeat the same request ID and dates. Inspect held items
 and ask only for missing material facts; do not expand company authority. See
 [Stripe accounting](../../docs/stripe-accounting.md).
+
+## Shared procedures
+
+These procedures are the single source for the rules they cover. Run each command
+and follow its output. Do not rely on memory of the text, and do not copy it here.
+
+- `scripts/books procedures show categorize-record` (version 1)
+- `scripts/books procedures show reconcile` (version 1)
+- `scripts/books procedures show non-blocking` (version 1)
+- `scripts/books procedures show month-end-check` (version 1)
+- `scripts/books procedures show hard-rules` (version 2)
