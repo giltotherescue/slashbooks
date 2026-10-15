@@ -236,6 +236,22 @@ class CatchUpPipelineTests(unittest.TestCase):
         self.assertEqual(body["Income › Consulting"]["Tax Line Code"], "1120s/p1/1a")
         self.assertTrue(all(row["Tax Line Code"] != "UNMAPPED" for name, row in body.items() if name != "Total"))
 
+    def test_statement_import_reports_an_imported_work_event(self):
+        ofx = str(FIXTURES / "checking-2026-01-to-04.ofx")
+        self.cli_json("statement", "map", ofx, "--entity", self.entity, "--profile", "checking-ofx",
+                      "--ledger-account", CHECKING, "--account-name", "Operating Checking")
+        first = self.root / "work-first.json"
+        self.cli("statement", "import", ofx, "--entity", self.entity, "--work-out", str(first))
+        events = json.loads(first.read_text(encoding="utf-8"))["work"]
+        [imported] = [event for event in events if event["kind"] == "imported"]
+        self.assertGreater(imported["counts"]["transactions"], 0)
+
+        # The same file again adds nothing: no imported event, and coverage commands never emit one.
+        again = self.root / "work-again.json"
+        self.cli("statement", "import", ofx, "--entity", self.entity, "--work-out", str(again))
+        repeated = json.loads(again.read_text(encoding="utf-8"))["work"]
+        self.assertEqual([event for event in repeated if event["kind"] == "imported"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

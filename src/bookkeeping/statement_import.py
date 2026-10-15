@@ -83,6 +83,7 @@ from typing import Any
 from .connectors import bankcsv, ofx
 from .connectors.bankcsv import StatementFileError
 from .ledger.normalize import normalize_description
+from .work import observe_import
 
 JsonObject = dict[str, Any]
 
@@ -1064,6 +1065,10 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                     "--period-start YYYY-MM-DD --period-end YYYY-MM-DD. Until then this file adds "
                     "no statement coverage.")
             if not dry_run:
+                # Rows skipped before the importer runs are still skipped duplicates for work events.
+                observe_import(plan["skipped"].get("already_imported", 0)
+                               + plan["skipped"].get("confirmed_duplicate", 0)
+                               + statement["in_file_duplicates"])
                 if plan["import"]:
                     outcome = import_transactions(
                         entity, plan["import"], session_id=session_id,
