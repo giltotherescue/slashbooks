@@ -97,6 +97,9 @@ def add_parser(subparsers: Any) -> None:
         ))
         sub.add_argument("--file", type=Path, required=True, help="JSON object; commands use {payload, explanation?, expected_books_revision?, run_id?, operation?}")
         sub.add_argument("--idempotency-key", help="Reuse the SAME key and input after an uncertain outcome; otherwise generated and saved")
+    evidence = commands.add_parser("evidence-upload", help=(
+        "Upload one document (PDF, PNG, JPEG, plain text or CSV, up to 10 MB) as company evidence"))
+    evidence.add_argument("--file", type=Path, required=True)
     retry = commands.add_parser("retry", help="Resubmit an immutable local receipt with its original key")
     retry.add_argument("--receipt", type=Path, required=True)
     migration = commands.add_parser("migration", help="Export or adopt a verified company snapshot")
@@ -123,6 +126,51 @@ def add_parser(subparsers: Any) -> None:
     put.add_argument("--explanation")
     put.add_argument("--idempotency-key")
     put.add_argument("--overwrite", action="store_true", help="Explicitly replace an existing remote file without a downloaded baseline")
+
+
+EVIDENCE_MAX_BYTES = 10 * 1024 * 1024
+EVIDENCE_TYPES = {
+    "pdf": ("application/pdf", b"%PDF-"),
+    "png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+    "jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    "jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+    "txt": ("text/plain", b""),
+    "csv": ("text/csv", b""),
+}
+
+
+def _evidence_upload(args: argparse.Namespace, client: "HostedClient") -> dict[str, Any]:
+    """Upload one local file as company evidence, after the same checks the service makes."""
+    path = args.file.expanduser()
+    suffix = path.suffix.lower().lstrip(".")
+    if suffix not in EVIDENCE_TYPES:
+        raise HostedError("INVALID_EVIDENCE", "Use a PDF, PNG, JPEG, plain text or CSV file.")
+    mime, magic = EVIDENCE_TYPES[suffix]
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(EVIDENCE_MAX_BYTES + 1)
+    except OSError:
+        raise HostedError("INVALID_EVIDENCE", "Cannot read the file. Nothing was uploaded.") from None
+    if not data or len(data) > EVIDENCE_MAX_BYTES:
+        raise HostedError("INVALID_EVIDENCE", "The file must hold 1 byte to 10 MB. Nothing was uploaded.")
+    if not data.startswith(magic):
+        raise HostedError("INVALID_EVIDENCE", "The file content does not match its extension. Nothing was uploaded.")
+    if not magic:
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HostedError("INVALID_EVIDENCE", "Text and CSV files must be UTF-8. Nothing was uploaded.") from None
+    name = "".join(ch for ch in path.name if ch.isprintable() and ch not in '"\\')[:180] or f"evidence.{suffix}"
+    boundary = "slashbooks-" + uuid.uuid4().hex
+    head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n"
+            f"Content-Type: {mime}\r\n\r\n").encode("utf-8")
+    body = head + data + f"\r\n--{boundary}--\r\n".encode("ascii")
+    result = client.request("/evidence", upload=(body, f"multipart/form-data; boundary={boundary}"))
+    digest = hashlib.sha256(data).hexdigest()
+    if result.get("sha256") != digest:
+        raise HostedError("EVIDENCE_MISMATCH", "The service stored different bytes than the file. Do not rely on this upload.",
+                          local_sha256=digest, evidence_id=result.get("id"))
+    return result
 
 
 def _json_loads(raw: str) -> Any:
@@ -275,11 +323,15 @@ class HostedClient:
         self.opener = request.build_opener(request.ProxyHandler({}), _NoRedirect())
 
     def request(self, suffix: str, *, body: dict[str, Any] | None = None, key: str | None = None,
-                method: str | None = None, preserve_artifacts: bool = False) -> Any:
+                method: str | None = None, preserve_artifacts: bool = False,
+                upload: tuple[bytes, str] | None = None) -> Any:
         headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json",
                    "User-Agent": f"slashbooks/{__version__}"}
         data = None
-        if body is not None:
+        if upload is not None:
+            data, headers["Content-Type"] = upload
+            method = method or "POST"
+        elif body is not None:
             data = json.dumps(body, sort_keys=True, allow_nan=False).encode("utf-8")
             if len(data) > MAX_REQUEST_BYTES:
                 raise HostedError("REQUEST_TOO_LARGE", "Encoded JSON request exceeds 16 MiB. Reduce the inputs; nothing was submitted.")
@@ -691,6 +743,8 @@ def run(args: argparse.Namespace) -> int:
                 result = client.request(suffix)
                 if args.hosted_command == "held-mail":
                     result = _held_mail(client, result)
+            elif args.hosted_command == "evidence-upload":
+                result = _evidence_upload(args, client)
             elif args.hosted_command == "command-result":
                 result = client.request("/commands/" + _segment(args.command_id))
             else:

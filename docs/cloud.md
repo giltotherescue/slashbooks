@@ -77,6 +77,16 @@ shows how many emails wait, the date of the oldest one, and a link to the Inbox
 review view. It never shows a sender, subject or content, and no command lets an
 agent read or release held email. A person reviews it in Inbox.
 
+## Upload a document as evidence
+
+`books cloud evidence-upload --file PATH` uploads one document to the company as
+evidence. It accepts a PDF, PNG, JPEG, plain text or CSV file of 1 byte to
+10 MB. The command checks the extension, the file type and the size before it
+sends anything, and it compares the checksum that the service reports with the
+checksum of the local file. It needs the `evidence:write` permission. An upload
+does not change the books and does not match a document to a transaction. Each
+upload creates a new evidence record, so do not repeat an upload that succeeded.
+
 ## Errors and retries
 
 Cloud book requests use a 180-second network timeout by default, including

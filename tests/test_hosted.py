@@ -47,13 +47,20 @@ class LocalAPI:
             def do_POST(self) -> None:
                 self.respond()
 
+            @staticmethod
+            def parse(body: bytes):
+                try:
+                    return json.loads(body) if body else None
+                except ValueError:
+                    return None
+
             def log_message(self, *args: object) -> None:
                 pass
 
             def respond(self) -> None:
                 body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 fixture.calls.append({"method": self.command, "path": self.path,
-                                      "headers": dict(self.headers), "body": json.loads(body) if body else None})
+                                      "headers": dict(self.headers), "body": self.parse(body), "raw": body})
                 if fixture.on_request:
                     fixture.on_request()
                 if fixture.drop:
@@ -185,6 +192,47 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(json.loads(err)["error"]["code"], "AUTH_REQUIRED")
         self.assertFalse(self.api.calls)
         self.assertFalse((self.directory / "ledger.sqlite").exists())
+
+    def test_evidence_upload_sends_one_multipart_file_and_checks_the_stored_hash(self) -> None:
+        import hashlib
+
+        data = b"%PDF-1.4\nsynthetic statement\n"
+        path = self.directory / "stmt.pdf"
+        path.write_bytes(data)
+        self.api.response = {"id": "ev-1", "filename": "stmt.pdf", "content_type": "application/pdf",
+                             "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        code, out, err = self.invoke("evidence-upload", "--file", str(path))
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(json.loads(out)["id"], "ev-1")
+        call = self.api.calls[-1]
+        self.assertEqual((call["method"], call["path"]), ("POST", "/api/v1/companies/company-A/evidence"))
+        self.assertTrue(call["headers"]["Content-Type"].startswith("multipart/form-data; boundary="))
+        self.assertNotIn("Idempotency-Key", call["headers"])
+        self.assertIn(b'name="file"; filename="stmt.pdf"', call["raw"])
+        self.assertIn(data, call["raw"])
+
+    def test_evidence_upload_refuses_a_bad_file_before_any_request(self) -> None:
+        cases = {
+            "a.exe": b"MZ\x00",
+            "b.pdf": b"not a pdf",
+            "c.csv": b"",
+            "d.txt": b"\xff\xfe bad utf8",
+        }
+        for name, content in cases.items():
+            with self.subTest(name=name):
+                (self.directory / name).write_bytes(content)
+                code, out, err = self.invoke("evidence-upload", "--file", str(self.directory / name))
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(json.loads(err)["error"]["code"], "INVALID_EVIDENCE")
+        self.assertEqual(self.api.calls, [])
+
+    def test_evidence_upload_fails_when_the_stored_hash_differs(self) -> None:
+        path = self.directory / "a.csv"
+        path.write_bytes(b"date,amount\n2026-01-01,1.00\n")
+        self.api.response = {"id": "ev-2", "sha256": "0" * 64}
+        code, _, err = self.invoke("evidence-upload", "--file", str(path))
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(err)["error"]["code"], "EVIDENCE_MISMATCH")
 
     def test_held_mail_summary_gives_count_age_and_a_link_without_content(self) -> None:
         self.api.response = {"held_count": 3, "oldest_held_at": "2026-10-01T09:30:00Z",
