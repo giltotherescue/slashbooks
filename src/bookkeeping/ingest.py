@@ -44,7 +44,11 @@ evidence for ``books coverage check`` (see ``coverage.py``):
   provider returned in full.
 
 A hosted import (a prepared snapshot) records no windows here; the host writes
-the ``feed_sync`` records itself.
+the ``feed_sync`` records itself. A host that reads a provider in chunks passes
+``--no-feed-window`` (``record_feed_window=False``) so that a chunk that stops
+early claims no days. BankSync marks an incomplete read with ``meta.partial``;
+the download then carries ``"partial": true`` for that account, and the engine
+writes no window for it.
 """
 
 from __future__ import annotations
@@ -86,6 +90,11 @@ def add_parser(subparsers: Any) -> None:
     parser.add_argument(
         "--intake-only", action="store_true",
         help="Stage transactions for explicit review without learned auto-posting",
+    )
+    parser.add_argument(
+        "--no-feed-window", dest="record_feed_window", action="store_false",
+        help="Write no feed_sync coverage windows for this ingest. A host that reads a provider "
+             "in chunks uses this and writes its own windows",
     )
     parser.add_argument(
         "--session-id",
@@ -166,13 +175,16 @@ def _parse_day(value: Any) -> date | None:
         return None
 
 
-def coverage_windows(data: Any, entity: Any, *, today: date) -> list[dict[str, Any]]:
+def coverage_windows(data: Any, entity: Any, *, today: date,
+                     record_feed_window: bool = True) -> list[dict[str, Any]]:
     """Feed windows (``feed_sync`` evidence) that an input file supports.
 
     Raises ``ValueError`` for an explicit window that is not valid, so the
-    import stops before it changes the ledger.
+    import stops before it changes the ledger. With ``record_feed_window=False``
+    the engine makes no window at all (``books ingest --no-feed-window``), and
+    it does not read ``coverage_windows`` from the input.
     """
-    if not isinstance(data, dict):
+    if not isinstance(data, dict) or not record_feed_window:
         return []
     mappings = entity.entity_config.get("bank_account_mappings") or {}
     windows: list[dict[str, Any]] = []
@@ -184,6 +196,10 @@ def coverage_windows(data: Any, entity: Any, *, today: date) -> list[dict[str, A
                 for entry in (bank.get("accounts") or []) if isinstance(bank, dict) else []:
                     account = entry.get("account") if isinstance(entry, dict) else None
                     if not isinstance(account, dict):
+                        continue
+                    if entry.get("partial") is True:
+                        # BankSync marked this read incomplete: any window would claim
+                        # days that the provider did not return in full.
                         continue
                     ledger_account = mappings.get(str(account.get("id") or ""))
                     if not isinstance(ledger_account, str):
@@ -262,7 +278,8 @@ def run(args: argparse.Namespace) -> int:
             txns = load_transactions(args.input)
             is_banksync = args.source == "banksync" or _is_banksync_download(args.input)
             windows = coverage_windows(json.loads(args.input.read_text(encoding="utf-8")), entity,
-                                       today=datetime.now(tz=timezone.utc).date())
+                                       today=datetime.now(tz=timezone.utc).date(),
+                                       record_feed_window=getattr(args, "record_feed_window", True))
             _check_window_accounts(entity, windows)
         else:
             txns, verified_banksync = prepared

@@ -184,6 +184,74 @@ class IngestCommandTests(unittest.TestCase):
                                        "--source", "banksync"]), 0)
             self.assertEqual(len(load_statements(entity_dir)[0]), 1)
 
+    def _chunk(self, tmp: str, txns: list[dict], **extra) -> Path:
+        infile = Path(tmp) / "chunk.json"
+        infile.write_text(json.dumps({
+            "source": "banksync",
+            "dateRange": {"from": "2026-01-01", "to": "2026-01-31"},
+            "banks": [{"accounts": [{"account": {"id": "acct_chk", "accountName": "Checking"},
+                                     "transactions": txns, **extra}]}],
+        }), encoding="utf-8")
+        return infile
+
+    def test_no_feed_window_flag_writes_no_windows_for_a_chunk(self) -> None:
+        from bookkeeping.coverage import load_statements
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = self._ledger_entity(tmp)
+            infile = self._chunk(tmp, _txns())
+            out = io.StringIO()
+            with redirect_stdout(out):
+                rc = main(["ingest", str(infile), "--entity", str(entity_dir),
+                           "--source", "banksync", "--no-feed-window"])
+            self.assertEqual(rc, 0)
+            self.assertNotIn("feed windows", out.getvalue())
+            self.assertEqual(load_statements(entity_dir)[0], [])
+            self.assertEqual(len(_pending(entity_dir)), 2)
+            # The flag also stops windows that the input itself lists.
+            data = json.loads(infile.read_text())
+            data["coverage_windows"] = [{"accountId": "acct_chk", "from": "2026-01-01", "to": "2026-01-31"}]
+            infile.write_text(json.dumps(data), encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["ingest", str(infile), "--entity", str(entity_dir),
+                                       "--source", "banksync", "--no-feed-window"]), 0)
+            self.assertEqual(load_statements(entity_dir)[0], [])
+
+    def test_host_written_window_is_read_by_the_coverage_check(self) -> None:
+        from datetime import date
+        from bookkeeping.coverage import check_coverage
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = self._ledger_entity(tmp)
+            with redirect_stdout(io.StringIO()):
+                main(["ingest", str(self._chunk(tmp, _txns())), "--entity", str(entity_dir),
+                      "--source", "banksync", "--no-feed-window"])
+            statements = entity_dir / "ingestion" / "statements"
+            statements.mkdir(parents=True, exist_ok=True)
+            # The record a hosted service writes, as in docs/tax-handoff.md.
+            (statements / "feed-0123456789-20260103-20260131.json").write_text(json.dumps({
+                "schema_version": 1, "statement_id": "feed-0123456789-20260103-20260131",
+                "account": "Assets:Bank:Checking", "kind": "feed_sync",
+                "period_start": "2026-01-03", "period_end": "2026-01-31", "source": "Chase",
+                "provider": "banksync", "account_id": "feed-1",
+            }), encoding="utf-8")
+            doc = check_coverage(entity_dir, date(2026, 1, 3), date(2026, 1, 31),
+                                 accounts=["Assets:Bank:Checking"])
+            [account] = [a for a in doc["accounts"] if a["account"] == "Assets:Bank:Checking"]
+            [month] = account["months"]
+            self.assertEqual((month["status"], month["basis"]), ("complete", ["feed_sync"]))
+
+    def test_partial_banksync_read_does_not_claim_a_window(self) -> None:
+        from bookkeeping.coverage import load_statements
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity_dir = self._ledger_entity(tmp)
+            infile = self._chunk(tmp, _txns(), partial=True)
+            with redirect_stdout(io.StringIO()):
+                rc = main(["ingest", str(infile), "--entity", str(entity_dir), "--source", "banksync"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(load_statements(entity_dir)[0], [])
+
     def test_explicit_coverage_windows_are_validated_then_recorded(self) -> None:
         from bookkeeping.coverage import load_statements
 

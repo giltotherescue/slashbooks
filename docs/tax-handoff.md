@@ -114,10 +114,10 @@ complete window writes a `feed_sync` record for that window.
 | Writer | Kind | When |
 |---|---|---|
 | `books statement import` | `statement` | For each imported statement whose period is known: the OFX `DTSTART`/`DTEND`, a printed CSV summary, or `--period-start`/`--period-end` from the person. See [imports.md](imports.md#statement-period-and-balances) for the balance rules. |
-| `books ingest` | `feed_sync` | After a successful local import of a BankSync download, or of any input with `coverage_windows`. See [connectors.md](connectors.md#coverage-windows). |
+| `books ingest` | `feed_sync` | After a successful local import of a BankSync download (not for an account that BankSync marked partial), or of any input with `coverage_windows`. `--no-feed-window` turns this off. See [connectors.md](connectors.md#coverage-windows). |
 | `books connector csv parse --period-start --period-end` | `feed_sync` (through `books ingest`) | For the date range a person chose for an Amex activity download. |
 | `books coverage statement-add` | either | For a record that a person reads from a statement or a host supplies. |
-| A hosted service | `feed_sync` | For each bank-feed sync window it completed. A hosted import does not write windows from its input. |
+| A hosted service | `feed_sync` | For each bank-feed sync window it completed. A host that reads in chunks passes `--no-feed-window` to `books ingest`, so the host is the only writer. |
 
 A QuickBooks history import is book data, not bank source evidence, so it
 writes no coverage records.
@@ -128,6 +128,17 @@ record, named `<statement_id>.json`, written atomically. For a feed window, use
 first day the feed returned and ends before the first pending item. A stable
 ID, such as the one `bookkeeping.coverage.feed_window_id()` makes, keeps a
 repeated sync from adding a second file.
+
+A host writes a window only when it read the account to the end and the
+provider did not mark the read partial. This is a complete record. The engine
+reads it, and it ignores the `provider` and `account_id` fields:
+
+```json
+{"schema_version": 1, "statement_id": "feed-0123456789-20260103-20260131",
+ "account": "Assets:Bank:Checking", "kind": "feed_sync",
+ "period_start": "2026-01-03", "period_end": "2026-01-31", "source": "Chase",
+ "provider": "banksync", "account_id": "feed-1"}
+```
 
 ### Readiness
 

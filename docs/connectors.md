@@ -107,6 +107,18 @@ to `books connector csv parse --period-start YYYY-MM-DD --period-end
 YYYY-MM-DD --output <file>`. The output then carries the window for
 `books ingest`.
 
+If BankSync marks an account read as incomplete (`meta.partial`), the download
+carries `"partial": true` for that account, and `books ingest` writes no window
+for it.
+
+To turn off every window that `books ingest` would write from its input, pass
+`--no-feed-window` (the API parameter is `record_feed_window=False` on
+`bookkeeping.ingest.coverage_windows`). The flag also ignores `coverage_windows`
+in the input. A host that reads a provider in chunks uses it on every chunk,
+because a chunk that stops during paging has not read the days that its date
+range names. Local use is unchanged: without the flag, the engine writes the
+windows as above.
+
 A hosted import does not record windows from the input file. The host writes
 the `feed_sync` records itself, in the format in
 [tax-handoff.md](tax-handoff.md#statement-record-contract-schema-version-1).
