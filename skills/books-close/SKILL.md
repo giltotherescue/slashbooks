@@ -286,11 +286,15 @@ For a remote-bound entity, completed review, reconciliation, a session summary,
 or a generated report does not publish a statement or lock the period. If the
 user requested only imports, categorization, or review, do not publish or lock.
 
-A human publishes and locks a period in the product (Financials > Publish
-statement > Publish and lock). Do not publish, lock, or reopen a period, even
-when the user asks and the period is ready. Tell the user that the step is
-theirs, and leave the period open. Do not invent a CLI subcommand, send
-`period.publish` through `/commands`, or request broader credentials.
+When publication and locking are requested and the period is ready, use the
+existing authorized hosted workflow: Financials > Publish statement > Publish
+and lock. Its API is `POST /api/v1/companies/{id}/publications` with `from`, `to`,
+`summary`, and `expected_books_revision` from the reviewed current company state,
+plus an `Idempotency-Key`. This is the `period.publish` server operation, not a
+generic command envelope. The current `books cloud command` does **not** support
+`period.publish`; do not invent a CLI subcommand or send it through `/commands`.
+If no authorized publication workflow is available, report that limitation and
+leave the period open. Do not request broader credentials or bypass permissions.
 
 Before saying "closed through [date]", verify both the saved publication for
 the intended company/period and fresh company state: read
@@ -349,4 +353,4 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 - `scripts/books procedures show reconcile` (version 1)
 - `scripts/books procedures show non-blocking` (version 1)
 - `scripts/books procedures show month-end-check` (version 1)
-- `scripts/books procedures show hard-rules` (version 1)
+- `scripts/books procedures show hard-rules` (version 2)

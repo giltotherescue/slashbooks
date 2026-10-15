@@ -228,4 +228,4 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 - `scripts/books procedures show question-rules` (version 1)
 - `scripts/books procedures show document-intake` (version 1)
 - `scripts/books procedures show draft-insights` (version 1)
-- `scripts/books procedures show hard-rules` (version 1)
+- `scripts/books procedures show hard-rules` (version 2)
