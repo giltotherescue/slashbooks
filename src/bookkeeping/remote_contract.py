@@ -70,7 +70,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     network = path[0] == "connector" and path[1] != "csv"
     statement_read = path in {("statement", "inspect"), ("statement", "list")} or (
         path == ("statement", "import") and args.dry_run)
-    read = statement_read or (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast"}
+    read = statement_read or (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast",
+                           "work"}
             or path in {("qb", "inventory"), ("entity", "related-entity", "list"),
                         ("connector", "csv", "inspect"), ("connector", "csv", "propose-mapping"),
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),

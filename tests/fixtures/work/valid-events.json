@@ -1,0 +1,445 @@
+[
+  {
+    "accounts": [
+      "Assets:Bank:Operating-Checking",
+      "Assets:Bank:Reserve-Savings"
+    ],
+    "actor": {
+      "name": "Connected agent",
+      "type": "agent"
+    },
+    "breakdown": [
+      {
+        "count": 6,
+        "label": "Assets:Bank:Operating-Checking"
+      },
+      {
+        "count": 1,
+        "label": "Assets:Bank:Reserve-Savings"
+      }
+    ],
+    "command_id": "cmd-0001",
+    "counts": {
+      "duplicates_skipped": 0,
+      "transactions": 7
+    },
+    "fingerprint": "58322ef07fe15585c797a59c95f9f616a0bc201c767117cfc1608c346240eaff",
+    "kind": "imported",
+    "occurred_at": "2026-10-12T09:12:00Z",
+    "period": {
+      "from": "2026-10-01",
+      "to": "2026-10-06"
+    },
+    "run": {
+      "id": "run-0001",
+      "kind": "agent_run"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "syn-001",
+        "type": "source"
+      },
+      {
+        "id": "syn-002",
+        "type": "source"
+      },
+      {
+        "id": "syn-003",
+        "type": "source"
+      },
+      {
+        "id": "syn-004",
+        "type": "source"
+      },
+      {
+        "id": "syn-005",
+        "type": "source"
+      },
+      {
+        "id": "syn-006",
+        "type": "source"
+      },
+      {
+        "id": "syn-007",
+        "type": "source"
+      }
+    ],
+    "via": "connected_agent",
+    "visibility": "everyone"
+  },
+  {
+    "accounts": [],
+    "breakdown": [
+      {
+        "count": 2,
+        "label": "Expenses:Office"
+      }
+    ],
+    "counts": {
+      "suggestions": 2
+    },
+    "fingerprint": "f244b306a6a3852bb502e5b2f58a0d37689090815e52c6c96d1b34ecb2a659ad",
+    "kind": "categorized",
+    "period": {
+      "from": "2026-10-03",
+      "to": "2026-10-05"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "syn-003",
+        "type": "suggestion"
+      },
+      {
+        "id": "syn-005",
+        "type": "suggestion"
+      }
+    ]
+  },
+  {
+    "accounts": [
+      "Assets:Bank:Operating-Checking"
+    ],
+    "actor": {
+      "name": "Bookkeeper",
+      "type": "person"
+    },
+    "breakdown": [
+      {
+        "count": 1,
+        "label": "Expenses:Software"
+      }
+    ],
+    "command_id": "cmd-0001",
+    "counts": {
+      "direct": 0,
+      "entries": 1,
+      "from_suggestions": 1
+    },
+    "fingerprint": "f37773ef19865ba34a8fc75349f37aa19d1e8d4ea1a4c10ea94da43e33cabb92",
+    "kind": "recorded",
+    "occurred_at": "2026-10-12T09:12:00Z",
+    "period": {
+      "from": "2026-10-01",
+      "to": "2026-10-01"
+    },
+    "run": {
+      "id": "2026-10-12",
+      "kind": "web_day"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "1",
+        "source_id": "syn-001",
+        "type": "entry"
+      }
+    ],
+    "via": "web",
+    "visibility": "everyone"
+  },
+  {
+    "accounts": [
+      "Assets:Bank:Operating-Checking"
+    ],
+    "breakdown": [
+      {
+        "count": 1,
+        "label": "Expenses:Office"
+      }
+    ],
+    "counts": {
+      "entries": 1,
+      "reversals": 1,
+      "withdrawn": 0
+    },
+    "fingerprint": "d6fd0fe20b0ebe533fdc2d72a38b7a4f5a0577522a0cfb7c52cd8ed4318e340a",
+    "kind": "corrected",
+    "period": {
+      "from": "2026-10-01",
+      "to": "2026-10-01"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "6",
+        "type": "entry"
+      },
+      {
+        "id": "7",
+        "source_id": "syn-001-fix",
+        "type": "entry"
+      }
+    ]
+  },
+  {
+    "accounts": [
+      "Assets:Bank:Operating-Checking"
+    ],
+    "actor": {
+      "name": "Connected agent",
+      "type": "agent"
+    },
+    "breakdown": [],
+    "command_id": "cmd-0001",
+    "counts": {
+      "documents": 1
+    },
+    "kind": "matched_receipt",
+    "occurred_at": "2026-10-12T09:12:00Z",
+    "period": {
+      "from": "2026-10-11",
+      "to": "2026-10-11"
+    },
+    "run": {
+      "id": "run-0001",
+      "kind": "agent_run"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "doc-0001",
+        "type": "evidence"
+      },
+      {
+        "id": "12",
+        "source_id": "syn-012",
+        "type": "entry"
+      }
+    ],
+    "via": "connected_agent",
+    "visibility": "everyone"
+  },
+  {
+    "accounts": [
+      "Assets:Bank:Operating-Checking"
+    ],
+    "breakdown": [
+      {
+        "count": 1,
+        "label": "Assets:Bank:Operating-Checking"
+      }
+    ],
+    "counts": {
+      "accounts": 1,
+      "clean": 0,
+      "open": 1
+    },
+    "fingerprint": "a65e071910d47e8099ca02f386a5551ba72e584daa02cb99a0ea3092ae2c17c6",
+    "kind": "reconciled",
+    "period": {
+      "from": "2026-10-12",
+      "to": "2026-10-12"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "Assets:Bank:Operating-Checking@2026-10-12",
+        "type": "reconciliation"
+      }
+    ]
+  },
+  {
+    "accounts": [
+      "Assets:Bank:Operating-Checking"
+    ],
+    "actor": {
+      "name": "Connected agent",
+      "type": "agent"
+    },
+    "breakdown": [
+      {
+        "count": 1,
+        "label": "Assets:Bank:Operating-Checking"
+      }
+    ],
+    "command_id": "cmd-0001",
+    "counts": {
+      "duplicates": 1
+    },
+    "fingerprint": "c8fb8ba95f0b63f2f6ca38c5b6df29bd49eda0a938a38c05454a0d472f98840a",
+    "kind": "flagged",
+    "occurred_at": "2026-10-12T09:12:00Z",
+    "period": {
+      "from": "2026-10-08",
+      "to": "2026-10-08"
+    },
+    "run": {
+      "id": "run-0001",
+      "kind": "agent_run"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "feed-legacy-001",
+        "type": "source"
+      }
+    ],
+    "via": "connected_agent",
+    "visibility": "staff"
+  },
+  {
+    "accounts": [],
+    "actor": {
+      "name": "Company email",
+      "type": "email"
+    },
+    "breakdown": [],
+    "command_id": null,
+    "counts": {
+      "held_emails": 2
+    },
+    "kind": "flagged",
+    "occurred_at": "2026-10-12T08:00:00Z",
+    "period": null,
+    "run": null,
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "mail-0001",
+        "type": "email"
+      },
+      {
+        "id": "mail-0002",
+        "type": "email"
+      }
+    ],
+    "via": "company_email",
+    "visibility": "staff"
+  },
+  {
+    "accounts": [],
+    "actor": {
+      "name": "Slashbooks",
+      "type": "automation"
+    },
+    "breakdown": [],
+    "command_id": null,
+    "counts": {
+      "questions": 2
+    },
+    "kind": "asked_question",
+    "occurred_at": "2026-10-12T09:40:00Z",
+    "period": null,
+    "run": {
+      "id": "auto-0001",
+      "kind": "automation_run"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "q-0001",
+        "type": "question"
+      },
+      {
+        "id": "q-0002",
+        "type": "question"
+      }
+    ],
+    "via": "hosted_automation",
+    "visibility": "everyone"
+  },
+  {
+    "accounts": [
+      "Assets:Bank:Operating-Checking"
+    ],
+    "actor": {
+      "name": "Owner",
+      "type": "person"
+    },
+    "breakdown": [
+      {
+        "count": 1,
+        "label": "Expenses:Meals"
+      }
+    ],
+    "command_id": "cmd-0002",
+    "counts": {
+      "answers": 1,
+      "entries": 1
+    },
+    "kind": "applied_answer",
+    "occurred_at": "2026-10-12T10:00:00Z",
+    "period": {
+      "from": "2026-10-03",
+      "to": "2026-10-03"
+    },
+    "run": {
+      "id": "2026-10-12",
+      "kind": "web_day"
+    },
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "q-0001",
+        "type": "question"
+      },
+      {
+        "id": "7",
+        "source_id": "syn-003",
+        "type": "entry"
+      }
+    ],
+    "via": "web",
+    "visibility": "everyone"
+  },
+  {
+    "accounts": [],
+    "actor": {
+      "name": "Accountant",
+      "type": "person"
+    },
+    "breakdown": [],
+    "command_id": "cmd-0003",
+    "counts": {
+      "months": 1
+    },
+    "kind": "published",
+    "occurred_at": "2026-10-05T16:00:00Z",
+    "period": {
+      "from": "2026-09-01",
+      "to": "2026-09-30"
+    },
+    "run": null,
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "2026-09",
+        "type": "publication"
+      }
+    ],
+    "via": "web",
+    "visibility": "everyone"
+  },
+  {
+    "accounts": [],
+    "actor": {
+      "name": "Accountant",
+      "type": "person"
+    },
+    "breakdown": [],
+    "command_id": "cmd-0004",
+    "counts": {
+      "months": 1
+    },
+    "derived": true,
+    "kind": "reopened",
+    "occurred_at": "2026-10-06T16:00:00Z",
+    "period": {
+      "from": "2026-09-01",
+      "to": "2026-09-30"
+    },
+    "run": null,
+    "schema_version": 1,
+    "subjects": [
+      {
+        "id": "2026-09",
+        "type": "publication"
+      }
+    ],
+    "subjects_key": "work-subjects/example",
+    "via": "web",
+    "visibility": "staff"
+  }
+]

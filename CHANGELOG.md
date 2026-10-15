@@ -9,6 +9,9 @@
 - Count statements or feed windows that cover every day of a month as affirmative source coverage in readiness.
 - Mark every tax map and tax export as a draft for review that does not replace a tax professional: in the command output, the manifest, a README in the export folder, the first row of the trial balance, summary and unmapped-accounts files, and the workbook Read Me sheet.
 - Document the full catch-up flow for agents: inspect, map, import, coverage check, duplicate resolution, review, tax map and export.
+- Report what each command did to the books as typed work events, in counts with references to the rows behind them. Add `--work-out PATH` to a command to get its events; existing output does not change.
+- Add `books work` to summarize the books work in a period.
+- Publish the versioned work event schema (`docs/work-event.schema.json`) with a validator and shared fixtures.
 
 ## 0.5.0 — 2026-10-14
 

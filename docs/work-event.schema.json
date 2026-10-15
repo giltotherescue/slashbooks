@@ -1,0 +1,600 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/giltotherescue/slashbooks/docs/work-event.schema.json",
+  "title": "Slashbooks work event",
+  "description": "One typed, countable record of books work (schema version 1). The engine sets the books fields. A host sets actor, via, run, command_id, occurred_at, visibility and subjects_key. Phase 1 events contain counts only and never contain money amounts. See docs/work-events.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "period",
+    "accounts",
+    "counts",
+    "breakdown",
+    "subjects"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "kind": {
+      "enum": [
+        "imported",
+        "categorized",
+        "recorded",
+        "corrected",
+        "matched_receipt",
+        "reconciled",
+        "flagged",
+        "asked_question",
+        "applied_answer",
+        "published",
+        "reopened"
+      ]
+    },
+    "period": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to"
+          ],
+          "properties": {
+            "from": {
+              "$ref": "#/$defs/day"
+            },
+            "to": {
+              "$ref": "#/$defs/day"
+            }
+          }
+        }
+      ],
+      "description": "First and last books date that the event touches; from <= to."
+    },
+    "accounts": {
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      },
+      "description": "Engine account names, sorted. For entries: the funding (first posting) account."
+    },
+    "counts": {
+      "type": "object",
+      "description": "Kind-specific counts; see the allOf rules."
+    },
+    "breakdown": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "count"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "count": {
+            "$ref": "#/$defs/count"
+          }
+        }
+      },
+      "description": "Top rows by count, then label. Labels are engine account names or engine treatment names."
+    },
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "id"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "source",
+              "entry",
+              "suggestion",
+              "evidence",
+              "question",
+              "reconciliation",
+              "publication",
+              "email"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      },
+      "description": "Engine-side stable references to the rows behind the counts. The engine lists every subject; a host may store more than 200 elsewhere and set subjects_key."
+    },
+    "fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 of the canonical JSON of the engine fields. The same change always gives the same fingerprint."
+    },
+    "derived": {
+      "const": true,
+      "description": "Set only on events that are rebuilt from current state, not captured at commit time."
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "name"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "person",
+            "agent",
+            "automation",
+            "rule",
+            "import",
+            "email",
+            "system"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "description": "Host field. Display snapshot; never an email address or a user ID."
+    },
+    "via": {
+      "enum": [
+        "web",
+        "connected_agent",
+        "developer_key",
+        "hosted_automation",
+        "routine",
+        "stripe",
+        "bank_sync",
+        "company_email"
+      ],
+      "description": "Host field."
+    },
+    "run": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "id"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "automation_run",
+                "agent_run",
+                "agent_session",
+                "routine_job",
+                "stripe_sync",
+                "web_day"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        }
+      ],
+      "description": "Host field."
+    },
+    "command_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200,
+      "description": "Host field: the engine command that committed the change."
+    },
+    "occurred_at": {
+      "type": "string",
+      "pattern": "Z$",
+      "maxLength": 40,
+      "description": "Host field: commit time, ISO UTC."
+    },
+    "visibility": {
+      "enum": [
+        "everyone",
+        "staff"
+      ],
+      "description": "Host field."
+    },
+    "subjects_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Host field: storage key for the full subject list."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "imported"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "transactions": {
+                "$ref": "#/$defs/count"
+              },
+              "duplicates_skipped": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "transactions",
+              "duplicates_skipped"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "categorized"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "suggestions": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "suggestions"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "recorded"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "entries": {
+                "$ref": "#/$defs/count"
+              },
+              "from_suggestions": {
+                "$ref": "#/$defs/count"
+              },
+              "direct": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "entries",
+              "from_suggestions",
+              "direct"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "corrected"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "entries": {
+                "$ref": "#/$defs/count"
+              },
+              "reversals": {
+                "$ref": "#/$defs/count"
+              },
+              "withdrawn": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "entries",
+              "reversals",
+              "withdrawn"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "matched_receipt"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "documents": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "documents"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "reconciled"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "accounts": {
+                "$ref": "#/$defs/count"
+              },
+              "clean": {
+                "$ref": "#/$defs/count"
+              },
+              "open": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "accounts",
+              "clean",
+              "open"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "flagged"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "duplicates": {
+                "$ref": "#/$defs/count"
+              },
+              "transfer_exceptions": {
+                "$ref": "#/$defs/count"
+              },
+              "held_emails": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "minProperties": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "asked_question"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "questions": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "questions"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "applied_answer"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "answers": {
+                "$ref": "#/$defs/count"
+              },
+              "entries": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "answers",
+              "entries"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "published"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "months": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "months"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "reopened"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "months": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "months"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "day": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    }
+  }
+}

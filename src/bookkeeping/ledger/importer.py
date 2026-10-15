@@ -357,10 +357,13 @@ def import_transactions(
     """Import transactions while serializing staging, queue, and ledger writes."""
     _validate_normalized_transactions(normalized_txns)
     with _entity_write_lock(entity.path):
-        return _import_transactions_unlocked(
+        result = _import_transactions_unlocked(
             entity, normalized_txns, session_id, categorizer, ts, session_date,
             legacy_duplicate_guard, intake_only,
         )
+    from ..work import observe_import
+    observe_import(result.skipped_duplicate)
+    return result
 
 
 def _import_transactions_unlocked(
