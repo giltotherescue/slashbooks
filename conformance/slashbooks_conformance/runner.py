@@ -26,7 +26,8 @@ def run_scenario(scenario: Scenario, agent: Agent) -> ScenarioResult:
         error = f"{type(exc).__name__}: {exc}"
     try:
         run = Run(state=session.state(), final_text=final_text or "", prompt=scenario.full_prompt(),
-                  agent_commands=session.agent_commands, error=error)
+                  agent_commands=session.agent_commands, error=error,
+                  publish_allowed=scenario.publish_allowed)
         commands = [{"argv": e["argv"], "ok": e["ok"], "violations": e["violations"]}
                     for e in run.state["trace"]]
         return ScenarioResult(scenario.id, scenario.title, evaluate(scenario.checks, run), error,
