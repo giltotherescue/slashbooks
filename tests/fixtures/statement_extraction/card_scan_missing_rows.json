@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "source": "model",
+  "account_kind": "card",
+  "period_start": null,
+  "period_end": "2026-08-12",
+  "opening_balance": "1840.22",
+  "closing_balance": "7269.26",
+  "transactions": [
+    {
+      "date": "2026-07-16",
+      "description": "ORCHARD OFFICE SUPPLY",
+      "amount": "461.35"
+    },
+    {
+      "date": "2026-07-18",
+      "description": "CLOUDNEST HOSTING",
+      "amount": "341.74"
+    },
+    {
+      "date": "2026-07-19",
+      "description": "NORTHSIDE HARDWARE BEAVERTON OR",
+      "amount": "143.03"
+    },
+    {
+      "date": "2026-07-20",
+      "description": "TALLGRASS SOFTWARE SAN JOSE CA",
+      "amount": "430.00"
+    },
+    {
+      "date": "2026-07-20",
+      "description": "TALLGRASS SOFTWARE SAN JOSE CA",
+      "amount": "574.67"
+    },
+    {
+      "date": "2026-07-20",
+      "description": "NORTHSIDE HARDWARE BEAVERTON OR",
+      "amount": "55.92"
+    },
+    {
+      "date": "2026-07-20",
+      "description": "CLOUDNEST HOSTING",
+      "amount": "183.82"
+    },
+    {
+      "date": "2026-07-22",
+      "description": "HALCYON HOTELS SEATTLE WA",
+      "amount": "136.87"
+    },
+    {
+      "date": "2026-07-24",
+      "description": "HALCYON HOTELS SEATTLE WA",
+      "amount": "334.56"
+    },
+    {
+      "date": "2026-07-25",
+      "description": "HALCYON HOTELS SEATTLE WA",
+      "amount": "461.61"
+    },
+    {
+      "date": "2026-07-28",
+      "description": "AUTOPAY PAYMENT",
+      "amount": "-1840.22"
+    },
+    {
+      "date": "2026-07-29",
+      "description": "RIVERSTONE FUEL 118 SALEM OR",
+      "amount": "622.02"
+    },
+    {
+      "date": "2026-07-31",
+      "description": "CLOUDNEST HOSTING",
+      "amount": "370.42"
+    },
+    {
+      "date": "2026-07-31",
+      "description": "RIVERSTONE FUEL 118 SALEM OR",
+      "amount": "503.07"
+    },
+    {
+      "date": "2026-08-01",
+      "description": "ORCHARD OFFICE SUPPLY",
+      "amount": "46.30"
+    },
+    {
+      "date": "2026-08-02",
+      "description": "SKYHOP AIRLINES 0062 800-555-0144",
+      "amount": "21.36"
+    },
+    {
+      "date": "2026-08-02",
+      "description": "PIXELFORGE ADS 650-555-0110 CA",
+      "amount": "556.04"
+    },
+    {
+      "date": "2026-08-02",
+      "description": "CREDIT ADJUSTMENT",
+      "amount": "-45.00"
+    },
+    {
+      "date": "2026-08-03",
+      "description": "TALLGRASS SOFTWARE SAN JOSE CA",
+      "amount": "66.08"
+    },
+    {
+      "date": "2026-08-08",
+      "description": "CLOUDNEST HOSTING",
+      "amount": "225.18"
+    },
+    {
+      "date": "2026-08-12",
+      "description": "HALCYON HOTELS SEATTLE WA",
+      "amount": "385.83"
+    },
+    {
+      "date": "2026-08-12",
+      "description": "COPPERLEAF CAFE PORTLAND OR",
+      "amount": "338.68"
+    },
+    {
+      "date": "2026-08-12",
+      "description": "ANNUAL MEMBERSHIP FEE",
+      "amount": "95.00"
+    }
+  ],
+  "excluded": [
+    "Account summary: Previous Balance 1,840.22 New Balance 7,269.26",
+    "Invalid date; cannot correct as printed: 98/03 31167202044689730 NORTHSIDE HARDWARE BEAVERTON OR 609.47",
+    "Invalid date; cannot correct as printed: 038/09 \u20ac3530508269413260 HALCYON HOTELS SEATTLE WA 351.24"
+  ],
+  "extractor": {
+    "name": "synthetic-fixture",
+    "version": "1"
+  },
+  "confidence": "medium"
+}

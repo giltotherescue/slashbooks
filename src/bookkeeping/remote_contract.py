@@ -55,7 +55,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     entity = [name for name in ("entity", "entity_path") if hasattr(args, name)]
     if path[0] in {"entity", "demo"}:
         entity.append("path")
-    inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json")
+    inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json",
+                          "evidence", "cross_check")
               if hasattr(args, name)]
     outputs = [name for name in ("output", "output_dir") if hasattr(args, name)]
     if path == ("ledger", "snapshot"):
@@ -68,8 +69,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             if action.type is Path and action.dest not in classified:
                 raise ContractError(f"Path field {action.dest} has no transport classification.")
     network = path[0] == "connector" and path[1] != "csv"
-    statement_read = path in {("statement", "inspect"), ("statement", "list")} or (
-        path == ("statement", "import") and args.dry_run)
+    statement_read = path in {("statement", "inspect"), ("statement", "list"), ("statement", "validate")} or (
+        path in {("statement", "import"), ("statement", "import-extracted")} and args.dry_run)
     read = statement_read or (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast",
                            "work"}
             or path in {("qb", "inventory"), ("entity", "related-entity", "list"),

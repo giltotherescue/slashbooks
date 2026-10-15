@@ -172,6 +172,108 @@ the balances with their dates and `balance_source`, and the net transaction
 total. Records are in `ingestion/statements/<statement_id>.json`, and a copy of
 each imported file is kept under `ingestion/statements/files/`.
 
+## PDF and image statements
+
+The engine does not read a PDF or an image. A reader outside the engine, either a
+set of rules or a model, turns the statement text into one JSON object. The
+engine treats that object as untrusted. It checks the object with code, and it
+records the statement only when every check passes. Use CSV, OFX, QFX or QBO
+files when you have them; they need no extraction.
+
+### The extraction contract
+
+```json
+{
+  "schema_version": 1,
+  "source": "model",
+  "account_kind": "card",
+  "period_start": "2026-05-04",
+  "period_end": "2026-06-03",
+  "period_source": "printed",
+  "opening_balance": "0.00",
+  "closing_balance": "5732.51",
+  "confidence": "high",
+  "row_order": "chronological",
+  "transactions": [
+    {"date": "2026-05-05", "description": "ORCHARD OFFICE SUPPLY", "amount": "282.00"}
+  ],
+  "excluded": ["Account summary: Previous balance $0.00"]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `source` | `rules` or `model`: who read the statement. |
+| `account_kind` | `bank`, or `card` for any liability account such as a loan. |
+| `period_start`, `period_end` | Inclusive dates. Both are required. |
+| `period_source` | `printed` (default) or `derived`, when the reader did not read the start date from the statement. |
+| `opening_balance`, `closing_balance` | Decimal strings in the statement's own presentation: money held for a bank account, money owed for a card. |
+| `transactions` | `date`, `description` and `amount`. `running_balance` and `confidence` are optional. `amount` is the effect on the printed balance: for a bank account a deposit is positive; for a card a purchase is positive and a payment is negative. |
+| `confidence` | Optional `high`, `medium` or `low`. `low` always goes to review. |
+| `row_order` | Optional. Say `chronological` when the statement prints rows in date order, and the engine checks the order. |
+| `excluded` | Rows that the reader left out, such as pending rows. For the reviewer only. |
+| `confirmation` | Optional `{name, at}` of a person who corrected or confirmed the numbers. The engine records it as `balance_source: manual_confirmed`. It never replaces a check. |
+
+Amounts are plain numbers with at most two decimals. The engine refuses a sign
+such as parentheses or `CR`, a currency symbol and a thousands separator.
+
+### The checks
+
+`books statement validate FILE [--ledger-account ACCOUNT] [--cross-check FILE]`
+runs these checks and changes nothing:
+
+1. The period and both balances are present.
+2. The opening balance plus every transaction equals the closing balance, to
+   the cent.
+3. Each printed running balance equals the balance before the row plus the
+   amount of the row.
+4. Every date is a real date inside the period. A card row may be dated up to
+   7 days before the period starts. Rows are in date order when `row_order` is
+   `chronological`. A wrong date can hide in a balance that still adds up, so
+   this check is separate from the tie-out.
+5. The account kind agrees with the ledger account, so a card cannot be read
+   with bank signs.
+6. The reader did not mark the statement low confidence.
+7. With `--cross-check`, a second reading of the same statement agrees.
+
+The result has `status` (`verified` or `needs_review`), `reasons` in plain
+words with the row numbers that broke, and the `tieout` figures. The command
+exits with code 4 when the statement needs review.
+
+### Record or review
+
+```sh
+books statement map-extracted --entity ~/Documents/books/acme-co \
+  --profile chase-checking-pdf --ledger-account Assets:Bank:Checking
+books statement import-extracted extraction.json --entity ~/Documents/books/acme-co \
+  --profile chase-checking-pdf --evidence statement.pdf --dry-run
+```
+
+`map-extracted` saves a confirmed profile once for an account. Do it after the
+owner confirms the account. `import-extracted` runs every check again and then
+uses the same duplicate plan and the same statement record as the other
+formats, so the statement feeds `books coverage check`. Remove `--dry-run` to
+record it.
+
+**A statement that fails a check is never recorded.** The command stages no
+row and writes no coverage record, so the month stays a gap. It writes a review
+record in `ingestion/statements/needs-review/` with the reasons, the rows and
+the evidence file, and `books statement list` shows it as `needs_review`. A
+corrected reading of the same statement records normally and closes the review
+record. A person's confirmation does not lift a failed check. If the printed
+statement itself does not add up, ask the bank for a corrected statement.
+
+### Sign conventions
+
+Two conventions meet at one place. A statement and a statement record use the
+statement presentation: money held for a bank account, money owed for a card or
+loan, so a card purchase is positive. Transactions in the ledger use the ledger
+sign, so a card purchase is negative because it lowers the account. The
+function `presentation_sign` in `statement_import.py` converts between them, and
+every importer calls it. Balances you pass with `--opening-balance` and
+`--closing-balance` and the balances in `tax-handoff.md` are always in the
+statement presentation.
+
 ## American Express activity CSVs
 
 The older `books connector csv` path supports American Express activity-export

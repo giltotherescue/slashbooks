@@ -353,5 +353,5 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 - `scripts/books procedures show reconcile` (version 1)
 - `scripts/books procedures show non-blocking` (version 1)
 - `scripts/books procedures show month-end-check` (version 1)
-- `scripts/books procedures show catch-up` (version 1)
+- `scripts/books procedures show catch-up` (version 2)
 - `scripts/books procedures show hard-rules` (version 2)

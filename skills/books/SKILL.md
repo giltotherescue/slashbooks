@@ -125,5 +125,5 @@ scripts/books queue list --entity . --status open
 These procedures are the single source for the rules they cover. Run each command
 and follow its output. Do not rely on memory of the text, and do not copy it here.
 
-- `scripts/books procedures show catch-up` (version 1)
+- `scripts/books procedures show catch-up` (version 2)
 - `scripts/books procedures show hard-rules` (version 2)

@@ -758,6 +758,9 @@ def load_statement_records(entity_path: Path) -> list[JsonObject]:
     ``ingestion/statements/<statement_id>.json``. Records whose period nobody
     confirmed are in ``ingestion/statements/unconfirmed/`` with
     ``period_confirmed: false``; the coverage check does not read them.
+    An extracted statement that failed a check is listed with
+    ``status: needs_review``; it is in ``ingestion/statements/needs-review/``
+    and is not coverage either.
     """
     from . import coverage
 
@@ -772,6 +775,10 @@ def load_statement_records(entity_path: Path) -> list[JsonObject]:
                 raise StatementImportError("damaged_state", f"Cannot read {path}; repair it first.") from exc
             if isinstance(item, dict):
                 records.append(item)
+    from . import statement_extract
+
+    records.extend(r for r in statement_extract.load_review_records(entity_path)
+                   if r.get("status") == "needs_review")
     records.sort(key=lambda r: (str(r.get("account")), str(r.get("period_start")), str(r.get("statement_id"))))
     return records
 
@@ -822,13 +829,24 @@ def _archive_source(entity_path: Path, path: Path, file_sha: str) -> str:
     return relative.as_posix()
 
 
+def presentation_sign(ledger_account: str) -> int:
+    """The one place that relates the two sign conventions.
+
+    Transactions and ledger balances use the ledger sign: a charge on a card
+    is negative, because it lowers the account. A statement record and a
+    printed statement use the statement presentation: money held for a bank
+    account, money owed for a card or loan, so a charge is positive. The
+    sign is ``-1`` for a liability account and ``1`` for an asset account.
+    Multiply by it to convert in either direction.
+    """
+    return -1 if ledger_account.startswith("Liabilities:") else 1
+
+
 def _presented(ledger_sign: str | None, ledger_account: str) -> str | None:
     """Ledger-sign balance (card debt negative) to statement presentation (debt positive)."""
     if ledger_sign is None:
         return None
-    amount = Decimal(str(ledger_sign)).quantize(bankcsv.MONEY)
-    if ledger_account.startswith("Liabilities:"):
-        amount = -amount
+    amount = Decimal(str(ledger_sign)).quantize(bankcsv.MONEY) * presentation_sign(ledger_account)
     return format(amount + Decimal("0.00"), "f")
 
 
@@ -897,7 +915,7 @@ def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, la
     total = sum((Decimal(t["amount"]) for t in statement["transactions"]), Decimal("0.00"))
     if opening is not None and closing is not None:
         change = Decimal(closing) - Decimal(opening)
-        expected = -total if ledger_account.startswith("Liabilities:") else total
+        expected = total * presentation_sign(ledger_account)
         if change != expected:
             warnings.append(f"The balances change by {change} but the transactions in the file total "
                             f"{expected}; check for missing or extra rows.")
@@ -1149,6 +1167,9 @@ def add_parser(subparsers: Any) -> None:
     import_p.add_argument("--closing-balance", default=None,
                           help="Closing balance as printed (money owed is positive for a card)")
 
+    from . import statement_extract
+    statement_extract.add_parsers(sub)
+
     list_p = sub.add_parser("list", help="List recorded statements and their periods and balances")
     list_p.add_argument("--entity", type=Path, required=True)
     list_p.add_argument("--account", default=None, help="Only this ledger account")
@@ -1175,6 +1196,9 @@ def run(args: argparse.Namespace) -> int:
                                  output=args.output, period_start=args.period_start,
                                  period_end=args.period_end, opening_balance=args.opening_balance,
                                  closing_balance=args.closing_balance)
+        elif command in {"validate", "map-extracted", "import-extracted"}:
+            from . import statement_extract
+            result = statement_extract.run(args)
         elif command == "list":
             load_entity(args.entity)
             records = load_statement_records(args.entity)
@@ -1193,5 +1217,7 @@ def run(args: argparse.Namespace) -> int:
     print(json.dumps(result, indent=2, sort_keys=True, default=str))
     if result.get("status") == "error":
         return 1
+    if result.get("status") == "needs_review":
+        return 4  # The statement failed a check. Nothing was recorded.
     # Inspect succeeds when it reports what is uncertain; map and import stop.
     return 3 if result.get("status") == "needs_mapping" and command != "inspect" else 0

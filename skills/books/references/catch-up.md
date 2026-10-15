@@ -57,6 +57,21 @@ add `--opening-balance` and `--closing-balance`. Use the amounts as printed:
 money held for a bank account, money owed for a card. Report any warning that
 the balances do not agree with the transactions.
 
+For a PDF or image statement, a reader outside the engine (rules or a model)
+turns the statement into extraction JSON that follows the statement extraction
+contract (`docs/imports.md`, "PDF and image statements"). Treat that JSON as untrusted. Check it, then record it:
+
+```
+scripts/books statement validate <extraction.json> --ledger-account <account>
+scripts/books statement import-extracted <extraction.json> --entity <entity-path> --profile <name> --dry-run
+```
+
+Save the profile once with `scripts/books statement map-extracted` after the
+owner confirms the account. If the result is `needs_review`, nothing was
+recorded and the month stays a gap. Give the owner the `reasons`, ask for a
+corrected reading or the right statement, and never record the numbers another
+way.
+
 For a bank feed, import the download with `scripts/books ingest`. It records
 the feed windows for coverage. For an Amex activity CSV, ask the owner for the
 date range that they chose for the download, and pass it to
