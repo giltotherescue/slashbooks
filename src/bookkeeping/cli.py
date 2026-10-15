@@ -47,6 +47,9 @@ from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
 from bookkeeping.reports import workbook as workbook_module
 
+# Tax handoff: source coverage and tax-preparer export.
+from bookkeeping import coverage as coverage_module
+
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path.cwd() / ".env")
@@ -114,6 +117,9 @@ def main(argv: list[str] | None = None) -> int:
             return queue_module.run(args)
         if args.command in {"sanity-check", "export"}:
             return workbook_module.run(args)
+        # Tax handoff commands.
+        if args.command == "coverage":
+            return coverage_module.run(args)
     except (BankSyncError, ProviderAPIError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -276,6 +282,8 @@ def build_parser() -> argparse.ArgumentParser:
     compare_module.add_parser(subcommands)
     queue_module.add_parser(subcommands)
     workbook_module.add_parser(subcommands)
+    # Tax handoff commands.
+    coverage_module.add_parser(subcommands)
 
     return parser
 
