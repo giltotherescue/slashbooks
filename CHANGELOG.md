@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Protect every CSV and XLSX that the engine writes from spreadsheet formula injection. A text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading apostrophe in CSV, and is stored as plain text in XLSX. Numbers, including negative amounts, stay numbers. This covers the accountant package, the tax exports and the cash schedule.
 - Add `books ingest --no-feed-window` (API: `record_feed_window=False`). A host that reads BankSync in chunks uses it so that a chunk that stops early claims no days. Without the flag, local use is unchanged.
 - Write no feed window for a BankSync account that the provider marks partial (`meta.partial`). The download carries `"partial": true` for that account. The coverage contract now shows the exact record that a host writes.
 - Add `books cloud held-mail`. It tells an agent how many incoming emails wait for a person to review, the date of the oldest one, and the Inbox link. It shows no sender, subject or content, and an agent cannot read or release held email. The `mail-triage` procedure (version 2) tells agents to say so plainly when the count is above zero.

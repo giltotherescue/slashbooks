@@ -51,6 +51,7 @@ import sys
 from typing import Any, Iterable, Mapping, Sequence
 
 from .entity import load_entity
+from .safe_cells import neutralize_rows
 
 
 FORMS: dict[str, str] = {
@@ -931,7 +932,7 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
 def _write_csv(path: Path, rows: list[list[str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
-        csv.writer(handle).writerows(rows)
+        csv.writer(handle).writerows(neutralize_rows(rows))
 
 
 def export_handoff(

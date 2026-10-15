@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -285,6 +286,45 @@ class HandoffTests(unittest.TestCase):
         with zipfile.ZipFile(out / "tax-handoff-1120s-2026-01-01_2026-12-31.xlsx") as archive:
             text = "".join(archive.read(n).decode() for n in archive.namelist() if n.endswith(".xml"))
         self.assertIn("Draft for review. Prepared from the data in these books only.", text)
+
+    def test_exports_neutralize_formula_text_and_keep_numbers_numeric(self):
+        import zipfile
+        from unittest.mock import patch
+
+        from bookkeeping import taxmap
+
+        real = taxmap._ultratax_table
+
+        def hostile(handoff):
+            rows = real(handoff)
+            rows[1][1] = '=HYPERLINK("http://x","y")'
+            rows[2][1] = "@SUM(1+1)"
+            rows[3][1] = "-2+3"
+            return rows
+
+        out = Path(self.temp.name) / "out"
+        with patch.object(taxmap, "_ultratax_table", hostile):
+            manifest = export_handoff(self.company, *YEAR, output_dir=out, formats=["csv", "xlsx"])
+        for name in manifest["files"]:
+            if not name.endswith(".csv"):
+                continue
+            with self.subTest(file=name):
+                with (out / name).open(newline="", encoding="utf-8") as handle:
+                    for row in csv.reader(handle):
+                        for cell in row:
+                            if cell.startswith(("=", "@", "\t", "\r")) or (cell.startswith("-") and not re.fullmatch(r"-[\d,]*\.?\d+", cell)):
+                                self.fail(f"Formula text left in {name}: {cell!r}")
+        with (out / "ultratax-tb-import-1120s-2026-01-01_2026-12-31.csv").open(newline="", encoding="utf-8") as handle:
+            ultratax = list(csv.reader(handle))
+        self.assertEqual([row[1] for row in ultratax[1:4]], ["'=HYPERLINK(\"http://x\",\"y\")", "'@SUM(1+1)", "'-2+3"])
+        # A negative amount is still a plain number, not text with an apostrophe.
+        self.assertIn("-50000.00", [row[4] for row in ultratax])
+        if importlib.util.find_spec("xlsxwriter"):
+            with zipfile.ZipFile(out / "tax-handoff-1120s-2026-01-01_2026-12-31.xlsx") as archive:
+                sheets = [archive.read(n).decode() for n in archive.namelist() if n.startswith("xl/worksheets/")]
+            self.assertTrue(sheets)
+            for xml in sheets:
+                self.assertNotIn("<f>", xml)
 
     def test_require_mapped_refuses_unmapped_accounts(self):
         with self.assertRaisesRegex(ValueError, "2 account\\(s\\) have no tax line"):

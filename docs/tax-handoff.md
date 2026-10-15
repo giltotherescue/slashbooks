@@ -227,6 +227,11 @@ import them; the README and the manifest in the same folder carry the
 disclaimer. In the workbook, the first row of the Read Me sheet is the
 disclaimer. `books tax map` and `books tax export` print it first.
 
+Account names, notes and other text come from your source files. A text cell
+that starts with `=`, `+`, `-`, `@`, a tab or a carriage return would run as a
+formula in a spreadsheet program, so the CSV files write it with a leading
+apostrophe and the workbook stores it as plain text. Amounts stay numbers.
+
 Balances are cash-basis book balances from the engine. Balance columns are
 debit-positive. Income and expense accounts show activity in the period.
 Balance sheet accounts show the start and end balances. Because the books are
