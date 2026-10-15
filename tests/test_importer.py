@@ -1409,6 +1409,55 @@ class TestLegacyDuplicateCandidates(unittest.TestCase):
             self.assertEqual(aliases[0]["canonical_source_id"], "provider-original")
             self.assertEqual(candidates[0]["transaction"]["id"], "provider-recovered")
 
+    def test_duplicates_command_lists_held_rows_as_json_and_changes_nothing(self) -> None:
+        import io
+        from contextlib import redirect_stdout
+        from bookkeeping.cli import main
+        from bookkeeping.queue import list_duplicate_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            self.assertEqual(list_duplicate_candidates(entity), [])
+            import_transactions(
+                entity, [_make_posted_txn("provider-original", description="Recovered merchant", amount="18.50")],
+                SESSION, categorizer=_simple_categorizer("Expenses:Services"),
+                ts=TS, session_date=date(2026, 1, 15),
+            )
+            import_transactions(
+                entity, [_make_posted_txn("provider-recovered", description="Recovered merchant", amount="18.50")],
+                SESSION + "-retry", categorizer=_simple_categorizer("Expenses:Services"),
+                ts=TS, session_date=date(2026, 1, 15), legacy_duplicate_guard=True,
+            )
+            path = entity.staging_dir / "duplicate-candidates.json"
+            before = path.read_bytes()
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = main(["queue", "duplicates", "--entity", str(entity.path), "--json"])
+            self.assertEqual(code, 0)
+            document = json.loads(out.getvalue())
+            self.assertEqual((document["kind"], document["count"]), ("duplicate_candidates", 1))
+            item = document["candidates"][0]
+            self.assertEqual(item["source_id"], "provider-recovered")
+            self.assertEqual(item["match_rule"], "legacy_id_same_account_date_amount_description")
+            self.assertEqual(item["held"]["amount"], "18.50")
+            self.assertEqual(item["held"]["description"], "Recovered merchant")
+            self.assertEqual(item["existing"]["source_id"], "provider-original")
+            self.assertEqual(item["existing"]["description"], "Recovered merchant")
+            self.assertEqual(item["existing"]["date"], item["held"]["date"])
+            self.assertEqual(item["existing"]["amount"], "18.50")
+            self.assertEqual(item["existing"]["account"], item["held"]["account"])
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_duplicates_command_refuses_an_unreadable_file(self) -> None:
+        from bookkeeping.queue import list_duplicate_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            entity.staging_dir.mkdir(parents=True, exist_ok=True)
+            (entity.staging_dir / "duplicate-candidates.json").write_text("{not json", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                list_duplicate_candidates(entity)
+
     def test_confirmed_duplicate_is_resolved_and_remains_skipped(self) -> None:
         from bookkeeping.queue import resolve_duplicate_candidate
 

@@ -570,9 +570,11 @@ def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
         "currency": "USD",
     }
     preview = []
+    row_count = len(candidate_dates) if date_col is not None else len(body)
     if not uncertain:
         try:
             parsed = parse_rows(rows, layout, kind=kind)
+            row_count = len(parsed.rows)
             preview = [_preview(r) for r in parsed.rows[:5]]
             warnings += parsed.warnings
         except StatementFileError as exc:
@@ -583,6 +585,7 @@ def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
         "evidence": evidence,
         "warnings": warnings,
         "preview": preview,
+        "row_count": row_count,
     }
 
 

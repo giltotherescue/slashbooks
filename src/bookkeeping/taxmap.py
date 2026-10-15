@@ -718,9 +718,16 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
         for account in sorted(_catalog_accounts(entity.path))
     ]
     mapping = {m.account: m for m in build_mapping(entity.entity_config, (r["account"] for r in rows), resolved)}
+    settings = _settings(entity.entity_config)
+    numbers = settings.get("account_numbers") or {}
+    ultratax = settings.get("ultratax_codes") or {}
     accounts = []
     for row in rows:
         item = mapping[row["account"]].to_document()
+        # Recorded values only; an export may still assign a generated number.
+        item["account_number"] = numbers.get(row["account"]) or None
+        item["return_type"] = resolved
+        item["ultratax_code"] = ultratax.get(row["account"]) or None
         if row["balance"] is not None:
             item["balance"] = _money(row["balance"])
         accounts.append(item)

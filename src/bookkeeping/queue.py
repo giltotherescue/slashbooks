@@ -106,6 +106,7 @@ _QUEUE_TRANSACTION_DIR = "review-queue/.transactions"
 _LEARNED_CONTEXT_FILE = "learned-context/counterparties.json"
 _PENDING_CATEGORIZATION_FILE = "staging/pending-categorization.json"
 _DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
+_LEGACY_MATCH_RULE = "legacy_id_same_account_date_amount_description"
 ACTIONABLE_QUEUE_STATUSES = frozenset({"open", "reopened", "requires-reproposal"})
 _SOURCE_ID_ALIASES_FILE = "source-id-aliases.json"
 _REASONING_MAX_LEN = 2000
@@ -676,6 +677,75 @@ def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> lis
 
 
 @_locked_queue_mutation
+def list_duplicate_candidates(entity: Entity) -> list[dict]:
+    """Return held duplicate candidates as a stable, read-only document list.
+
+    Each item names the held row, the existing ledger row it may duplicate and
+    the rule that held it. Nothing is changed. A missing file means no holds;
+    an unreadable file raises ``ValueError`` so a host never reads it as empty.
+    """
+    path = entity.staging_dir / _DUPLICATE_CANDIDATES_FILE
+    if not path.exists():
+        return []
+    try:
+        candidates = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Could not read duplicate candidates: {exc}") from exc
+    if not isinstance(candidates, list):
+        raise ValueError("Duplicate candidates file is not a JSON list.")
+    open_items = [
+        item for item in candidates
+        if isinstance(item, dict) and item.get("status") == "duplicate-candidate"
+    ]
+    existing_rows: dict[str, dict] = {}
+    if open_items:
+        from .ledger.store import LedgerStore, default_store_path
+
+        store_path = default_store_path(entity.path)
+        if store_path.exists():
+            wanted = {str(item.get("existing_source_id") or "") for item in open_items}
+            for entry in LedgerStore(store_path).load_entries():
+                if entry.source_id in wanted and entry.source_id not in existing_rows:
+                    existing_rows[entry.source_id] = {
+                        "date": entry.date.isoformat(),
+                        "description": entry.narration,
+                        "postings": [
+                            {"account": posting.account, "amount": str(posting.amount)}
+                            for posting in entry.postings
+                        ],
+                    }
+    result = []
+    for item in open_items:
+        account = str(item.get("account") or "")
+        existing_id = str(item.get("existing_source_id") or "")
+        ledger_row = existing_rows.get(existing_id)
+        existing_amount = None
+        if ledger_row is not None:
+            existing_amount = next(
+                (p["amount"] for p in ledger_row["postings"] if p["account"] == account), None
+            )
+        result.append({
+            "source_id": str(item.get("source_id") or ""),
+            "status": "duplicate-candidate",
+            "match_rule": str(item.get("match_rule") or _LEGACY_MATCH_RULE),
+            "created_at": item.get("created_at"),
+            "held": {
+                "account": account,
+                "date": str(item.get("date") or ""),
+                "amount": str(item.get("amount") or ""),
+                "description": str(item.get("description") or ""),
+            },
+            "existing": {
+                "source_id": existing_id,
+                "account": account,
+                "date": (ledger_row or {}).get("date") or item.get("existing_date"),
+                "amount": existing_amount,
+                "description": (ledger_row or {}).get("description"),
+            },
+        })
+    return sorted(result, key=lambda row: (row["held"]["date"], row["source_id"]))
+
+
 def resolve_duplicate_candidate(
     entity: Entity,
     source_id: str,
@@ -2536,6 +2606,10 @@ def add_parser(subparsers: Any) -> None:
     related_p.add_argument("--related-entity", required=True, dest="related_entity", help="Configured related entity name")
     related_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
 
+    duplicates_p = queue_sub.add_parser("duplicates", help="List held duplicate candidates without changing them")
+    duplicates_p.add_argument("--entity", required=True, help="Path to entity directory")
+    duplicates_p.add_argument("--json", action="store_true", dest="as_json", help="Print the JSON document")
+
     # list
     list_p = queue_sub.add_parser("list", help="List queue items")
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -2742,6 +2816,25 @@ def run(args: Any) -> int:
             except (FileNotFoundError, ValueError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
+
+        elif qcmd == "duplicates":
+            try:
+                candidates = list_duplicate_candidates(entity)
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            if args.as_json:
+                print(json.dumps({"schema_version": 1, "kind": "duplicate_candidates",
+                                  "count": len(candidates), "candidates": candidates},
+                                 indent=2, sort_keys=True))
+                return 0
+            if not candidates:
+                print("No held duplicate candidates.")
+            for item in candidates:
+                held, existing = item["held"], item["existing"]
+                print(f"{item['source_id']}: {held['date']} {held['amount']} {held['description']} "
+                      f"may duplicate {existing['source_id']} ({item['match_rule']})")
+            return 0
 
         elif qcmd == "resolve-duplicate":
             try:

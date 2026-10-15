@@ -199,6 +199,7 @@ def inspect_file(path: Path, *, entity_config: JsonObject | None = None,
             statements = ofx.parse_ofx(text)
             accounts = [_ofx_summary(s, profiles) for s in statements]
             result["accounts"] = accounts
+            result["row_count"] = sum(a["transaction_count"] for a in accounts)
             result["uncertain"] = []
             if all(a["profile"] for a in accounts):
                 result["status"] = "ready"
@@ -229,6 +230,7 @@ def inspect_file(path: Path, *, entity_config: JsonObject | None = None,
                 status="ready", profile=profile, layout=layout, uncertain=[],
                 preview=[bankcsv._preview(r) for r in parsed.rows[:5]],
                 statement=_serialize_meta(parsed.metadata), transaction_count=len(parsed.rows),
+                row_count=len(parsed.rows),
                 pending_rows=parsed.pending_rows, warnings=parsed.warnings,
                 next_step=f"books statement import FILE --entity ENTITY --profile {profile}")
             return result
@@ -259,7 +261,8 @@ def _detection_view(detected: JsonObject) -> JsonObject:
         role: (header[index] if index < len(header) else f"column {index + 1}")
         for role, index in layout.get("columns", {}).items()}
     return {"layout": layout, "uncertain": detected["uncertain"], "evidence": detected["evidence"],
-            "warnings": detected["warnings"], "preview": detected["preview"]}
+            "warnings": detected["warnings"], "preview": detected["preview"],
+            "row_count": detected["row_count"]}
 
 
 def _serialize_meta(meta: JsonObject) -> JsonObject:

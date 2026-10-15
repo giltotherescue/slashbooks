@@ -73,6 +73,12 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(layout["sign"], "standard")
         self.assertEqual(layout["date_format"], "%m/%d/%Y")
 
+    def test_inspect_reports_the_detected_row_count(self):
+        # Data rows: file lines minus the header line where the file has one.
+        for name, rows in (("chase_like_checking.csv", 6), ("wells_like_headerless.csv", 4),
+                           ("amex_like_card.csv", 4)):
+            self.assertEqual(self.inspect(name)["row_count"], rows, name)
+
     def test_chase_like_card_prefers_posting_date(self):
         result = self.inspect("chase_like_card.csv")
         self.assertEqual(result["status"], "ready_to_confirm")

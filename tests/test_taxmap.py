@@ -214,6 +214,20 @@ class HandoffTests(unittest.TestCase):
         update_settings(self.company, account="Expenses:Mystery", clear_line=True)
         self.assertIn("Expenses:Mystery", mapping_report(self.company)["unmapped"])
 
+    def test_map_report_carries_number_return_type_and_ultratax_code(self):
+        update_settings(self.company, account="Expenses:Mystery", account_number="6123", ultratax_code="UT-9")
+        report = mapping_report(self.company)
+        mystery = next(item for item in report["accounts"] if item["account"] == "Expenses:Mystery")
+        self.assertEqual((mystery["account_number"], mystery["ultratax_code"]), ("6123", "UT-9"))
+        for item in report["accounts"]:
+            self.assertEqual(item["return_type"], report["form"])
+            self.assertIn("account_number", item)
+            self.assertIn("ultratax_code", item)
+            self.assertIn("line", item)
+        other = next(item for item in report["accounts"] if item["account"] != "Expenses:Mystery")
+        self.assertIsNone(other["account_number"])
+        self.assertIsNone(other["ultratax_code"])
+
     def test_settings_validation(self):
         with self.assertRaisesRegex(ValueError, "not a Form 1120-S line"):
             update_settings(self.company, account="Expenses:Mystery", line="1065/p1/21")

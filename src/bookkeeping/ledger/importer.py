@@ -679,6 +679,7 @@ def _record_legacy_duplicate_candidate(
                 "amount": str(amount),
                 "description": str(txn.get("description") or ""),
                 "transaction": dict(txn),
+                "match_rule": "legacy_id_same_account_date_amount_description",
                 "status": "duplicate-candidate",
                 "created_at": _now_iso(),
             }

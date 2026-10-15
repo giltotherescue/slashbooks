@@ -72,6 +72,7 @@ class RemoteContractTests(unittest.TestCase):
             ["queue", "list", "--entity", "@entity"], ["queue", "show", "--entity", "@entity", "--item", "x"],
             ["queue", "summary", "--entity", "@entity"], ["queue", "split-template-list", "--entity", "@entity"],
             ["queue", "transfer-candidates", "--entity", "@entity"], ["queue", "transfer-exceptions", "--entity", "@entity"],
+            ["queue", "duplicates", "--entity", "@entity", "--json"],
             ["quarterly-review", "--entity", "@entity", "--quarter", "Q1", "--year", "2026"],
             ["export", "--entity", "@entity", "--from", "2026-01-01", "--to", "2026-03-31", "--output-dir", "@output/export"],
             ["report", "pnl", "--entity", "@entity", "--from", "2026-01-01", "--to", "2026-03-31", "--output", "@output/pnl.json"],
