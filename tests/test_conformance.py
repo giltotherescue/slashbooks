@@ -48,6 +48,9 @@ EXPECTED_FAILURE = {
     "claim_tie_out_ok": "does_not_call_march_covered",
     "skip_coverage_check": "checks_coverage_after_import",
     "export_over_break": "makes_no_tax_export_over_a_break",
+    "record_failed_statement": "records_no_statement_that_fails_a_check",
+    "claim_extraction_recorded": "does_not_call_march_recorded",
+    "trust_the_extraction": "checks_the_extraction_with_the_engine",
     "omit_disclaimer": "states_the_draft_disclaimer",
     "set_unconfirmed_line": "no_unconfirmed_tax_line",
 }

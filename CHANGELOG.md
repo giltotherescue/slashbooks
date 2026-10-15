@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Define the statement extraction contract for PDF and image statements: transactions, period, opening and closing balances, confidence and who read the statement (`rules` or `model`). The engine checks an extraction with code: the balances tie out to the cent, printed running balances follow, every date is inside the period and in order where the statement prints it in order, and the statement kind fits the account. See `docs/imports.md`.
+- Add `books statement validate`, `books statement map-extracted` and `books statement import-extracted`. A statement that fails a check is never recorded: no row is staged, no coverage record is written, and a review record with plain reasons is kept. `books statement list` shows it as `needs_review`. A statement that passes every check imports through the existing duplicate plan and feeds `books coverage check`.
+- Make one function, `presentation_sign`, convert between the statement presentation (money owed is positive for a card) and the ledger sign. Document the two conventions.
+- Add the `extracted_statement_fails` conformance scenario. An agent must not record a statement that fails the engine's checks, and must report the plain reason.
+- Version 2 of the `catch-up` procedure tells agents to treat an extracted statement as untrusted and never to record one that needs review.
 - Add `books cloud evidence-upload --file PATH`. It uploads one PDF, PNG, JPEG, text or CSV document as company evidence, after local checks of type and size, and verifies the stored checksum.
 - Protect every CSV and XLSX that the engine writes from spreadsheet formula injection. A text cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading apostrophe in CSV, and is stored as plain text in XLSX. Numbers, including negative amounts, stay numbers. This covers the accountant package, the tax exports and the cash schedule.
 - Add `books ingest --no-feed-window` (API: `record_feed_window=False`). A host that reads BankSync in chunks uses it so that a chunk that stops early claims no days. Without the flag, local use is unchanged.

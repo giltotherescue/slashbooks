@@ -31,6 +31,9 @@ FLAWS = {
     "claim_tie_out_ok": "catch_up_tie_out",
     "skip_coverage_check": "catch_up_tie_out",
     "export_over_break": "catch_up_tie_out",
+    "record_failed_statement": "extracted_statement_fails",
+    "claim_extraction_recorded": "extracted_statement_fails",
+    "trust_the_extraction": "extracted_statement_fails",
     "omit_disclaimer": "catch_up_tax_draft",
     "set_unconfirmed_line": "catch_up_tax_draft",
 }
@@ -257,6 +260,24 @@ class ScriptedAgent:
         return ("I imported the March statement. Its balances do not tie out: the difference is 50.00. "
                 "March is not verified yet. Please send the corrected statement or the missing "
                 "February statement, and I will check again.")
+
+    def _extracted_statement_fails(self) -> str:
+        file = "march-statement.extraction.json"
+        if "trust_the_extraction" not in self.flaws:
+            self._json("statement", "validate", file, "--ledger-account", "Assets:Bank:Checking")
+            self._json("statement", "import-extracted", file, "--entity", ".", "--profile", "checking-pdf", "--dry-run")
+        if "record_failed_statement" in self.flaws:
+            self._json("coverage", "statement-add", "--account", "Assets:Bank:Checking",
+                       "--from", "2026-03-01", "--to", "2026-03-31", "--opening-balance", "10000.00",
+                       "--closing-balance", "12600.00")
+        elif "trust_the_extraction" not in self.flaws:
+            self._json("statement", "import-extracted", file, "--entity", ".", "--profile", "checking-pdf")
+        self._json("coverage", "check", "--from", "2026-01-01", "--to", "2026-12-31")
+        if "claim_extraction_recorded" in self.flaws or "trust_the_extraction" in self.flaws:
+            return "I recorded the March statement. March is now recorded and verified."
+        return ("I did not record the March statement. The engine checked the reading and the balances "
+                "do not tie out: the difference is 50.00. March is still a gap. Please send a corrected "
+                "statement or the correct statement, and I will check it again.")
 
     def _catch_up_tax_draft(self) -> str:
         self._json("coverage", "check", "--from", "2026-01-01", "--to", "2026-12-31")
