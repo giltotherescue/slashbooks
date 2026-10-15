@@ -21,6 +21,7 @@ from bookkeeping.ledger.store import LedgerStore
 from bookkeeping.remote_contract import command_spec
 from bookkeeping.taxmap import (
     CATALOG,
+    DISCLAIMER,
     FORMS,
     PRIOR_EARNINGS_ACCOUNT,
     build_handoff,
@@ -255,6 +256,36 @@ class HandoffTests(unittest.TestCase):
             types = {row[1]: row[2] for row in csv.reader(handle)}
         self.assertEqual((types["Equity › Owner-Draws"], types["Income › Consulting"]), ("L", "R"))
 
+    def test_every_export_output_carries_the_draft_disclaimer(self):
+        out = Path(self.temp.name) / "out"
+        manifest = export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
+        self.assertEqual(manifest["disclaimer"], DISCLAIMER)
+        self.assertIn("not tax advice", DISCLAIMER)
+        stored = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(stored["disclaimer"], DISCLAIMER)
+        vendor = {"Lacerte TBU", "UltraTax CS Import"}
+        self.assertIn("README.txt", manifest["files"])
+        for name, info in manifest["files"].items():
+            text = (out / name).read_text(encoding="utf-8")
+            with self.subTest(file=name):
+                if info["sheet"] in vendor:
+                    # Vendor import layouts keep their header row first; the
+                    # README and manifest in the same folder carry the note.
+                    self.assertNotIn(DISCLAIMER, text)
+                else:
+                    self.assertEqual(text.splitlines()[0], DISCLAIMER)
+
+    @unittest.skipUnless(importlib.util.find_spec("xlsxwriter"), "xlsx extra not installed")
+    def test_xlsx_read_me_starts_with_the_disclaimer(self):
+        import zipfile
+
+        out = Path(self.temp.name) / "out"
+        manifest = export_handoff(self.company, *YEAR, output_dir=out, formats=["xlsx"])
+        self.assertEqual(manifest["disclaimer"], DISCLAIMER)
+        with zipfile.ZipFile(out / "tax-handoff-1120s-2026-01-01_2026-12-31.xlsx") as archive:
+            text = "".join(archive.read(n).decode() for n in archive.namelist() if n.endswith(".xml"))
+        self.assertIn("Draft for review. Prepared from the data in these books only.", text)
+
     def test_require_mapped_refuses_unmapped_accounts(self):
         with self.assertRaisesRegex(ValueError, "2 account\\(s\\) have no tax line"):
             export_handoff(self.company, *YEAR, output_dir=Path(self.temp.name) / "x", require_mapped=True)
@@ -308,7 +339,12 @@ class TaxCliTests(unittest.TestCase):
                                     "--output-dir", str(out), "--formats", "csv")
         self.assertEqual(code, 0)
         self.assertIn("2 unmapped account(s): Assets:Crypto-Wallet, Expenses:Officer-Salary", output)
+        self.assertEqual(output.splitlines()[0], DISCLAIMER)
         self.assertTrue((out / "manifest.json").is_file())
+        code, output = self.run_cli("tax", "map", "--entity", str(self.company), "--year", "2026")
+        self.assertEqual((code, output.splitlines()[0]), (0, DISCLAIMER))
+        code, output = self.run_cli("tax", "map", "--entity", str(self.company), "--format", "json")
+        self.assertEqual(json.loads(output)["disclaimer"], DISCLAIMER)
 
     def test_remote_contract_classifies_tax_commands(self):
         self.assertFalse(command_spec(["tax", "export", "--entity", "@entity", "--year", "2026"])["mutates"])

@@ -727,6 +727,7 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
     return {
         "schema_version": 1,
         "kind": "tax_line_mapping",
+        "disclaimer": DISCLAIMER,
         "form": resolved,
         "form_name": FORMS[resolved],
         "form_basis": form_basis,
@@ -813,6 +814,25 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     }
 
 
+DISCLAIMER = (
+    "Draft for review. Prepared from the data in these books only. It is not tax advice and does "
+    "not replace preparation or review by a qualified tax professional."
+)
+# Vendor import layouts (Lacerte, UltraTax) must start with their header row,
+# so they carry no note row; README.txt and the manifest carry the disclaimer.
+_NOTE_TABLES = frozenset({"Trial Balance", "Tax Line Summary", "Unmapped Accounts"})
+
+
+def _readme_text(handoff: Mapping[str, Any], files: Mapping[str, str]) -> str:
+    lines = [DISCLAIMER, ""]
+    lines += [f"{item}: {value}" for item, value in _readme_table(handoff, {})[2:]]
+    lines += ["", "Files:"]
+    lines += [f"  {name} ({sheet})" for sheet, name in files.items()]
+    lines += ["", "The Lacerte and UltraTax files start with the header row that those products "
+              "import, so they do not repeat this note."]
+    return "\n".join(lines) + "\n"
+
+
 _TB_HEADER = [
     "Account Number", "Account", "Account Type", "Beginning Balance", "Debit", "Credit", "Balance",
     "Tax Form", "Schedule", "Form Line", "Tax Line Code", "Tax Line", "Statement Detail",
@@ -891,6 +911,7 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
     totals = handoff["totals"]
     rows = [
         ["Item", "Value"],
+        ["Disclaimer", DISCLAIMER],
         ["Company", handoff["entity_name"]],
         ["Return", f"{FORMS[handoff['form']]} ({handoff['form']}, chosen by {handoff['form_basis']})"],
         ["Line numbers", f"Tax year {TAX_YEAR_BASIS} federal forms; confirm against the current year's form"],
@@ -945,7 +966,7 @@ def export_handoff(
         raise ValueError(f"Unknown export format(s): {', '.join(sorted(unknown))}. Use csv and/or xlsx.")
     if "csv" in formats:
         for sheet, (name, rows) in tables.items():
-            _write_csv(output_dir / name, rows)
+            _write_csv(output_dir / name, ([[DISCLAIMER]] if sheet in _NOTE_TABLES else []) + rows)
             written[sheet] = name
     xlsx_note = None
     if "xlsx" in formats:
@@ -968,6 +989,9 @@ def export_handoff(
             written["Workbook"] = name
         else:
             xlsx_note = XLSX_EXTRA_MESSAGE
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "README.txt").write_text(_readme_text(handoff, written), encoding="utf-8")
+    written["Read Me"] = "README.txt"
     totals = handoff["totals"]
     files = {}
     for sheet, name in written.items():
@@ -976,6 +1000,7 @@ def export_handoff(
     manifest = {
         "schema_version": 1,
         "kind": "tax_handoff",
+        "disclaimer": DISCLAIMER,
         "form": handoff["form"],
         "form_name": FORMS[handoff["form"]],
         "form_basis": handoff["form_basis"],
@@ -1051,7 +1076,8 @@ def add_parser(subparsers: Any) -> None:
 
 
 def _render_mapping_text(report: Mapping[str, Any]) -> str:
-    lines = [f"Tax line mapping for {report['form_name']} (form from {report['form_basis']})"]
+    lines = [report["disclaimer"], "",
+             f"Tax line mapping for {report['form_name']} (form from {report['form_basis']})"]
     for item in report["accounts"]:
         target = (f"{item['line']}  {item['label']}" + (f" — {item['detail']}" if item["detail"] else "")
                   if item["line"] else "UNMAPPED")
@@ -1096,6 +1122,7 @@ def run(args: Any) -> int:
             formats = [item.strip() for item in args.formats.split(",") if item.strip()]
             manifest = export_handoff(args.entity, from_date, to_date, form=args.form, output_dir=args.output_dir,
                                       formats=formats, require_mapped=args.require_mapped)
+            print(manifest["disclaimer"])
             print(f"Tax handoff for {manifest['form_name']} written to: {manifest['output_dir']}")
             for name in sorted(manifest["files"]):
                 print(f"  {name}")

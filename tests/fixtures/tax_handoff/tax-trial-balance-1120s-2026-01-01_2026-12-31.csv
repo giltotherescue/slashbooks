@@ -1,3 +1,4 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
 Account Number,Account,Account Type,Beginning Balance,Debit,Credit,Balance,Tax Form,Schedule,Form Line,Tax Line Code,Tax Line,Statement Detail,On Return,Mapping Basis,Needs Review,Note
 1010,Assets › Accumulated-Depreciation,Assets,0.00,0.00,600.00,-600.00,Form 1120-S,L,10b,1120s/L/10b,Less accumulated depreciation,,yes,name,yes,
 1001,Assets › Bank › Checking,Assets,6000.00,24507.34,0.00,24507.34,Form 1120-S,L,1,1120s/L/1,Cash,,yes,name,yes,

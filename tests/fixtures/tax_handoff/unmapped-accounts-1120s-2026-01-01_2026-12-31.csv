@@ -1,3 +1,4 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
 Account Number,Account,Account Type,Balance,Reason,How to fix
 1020,Assets › Crypto-Wallet,Assets,50.00,No name rule or safe default matches this account.,books tax set --entity <company> --form 1120s --account Assets:Crypto-Wallet --line <code>
 6050,Expenses › Mystery,Expenses,75.00,No name rule or safe default matches this account.,books tax set --entity <company> --form 1120s --account Expenses:Mystery --line <code>
