@@ -216,3 +216,16 @@ Report missing file CAS, command routing, downloads or other runtime support as
 concrete gaps. These instructions do not establish server completion or live
 verification. Do not deploy, change provider access or migrate local books as an
 implicit part of configuration.
+
+## Shared procedures
+
+These procedures are the single source for the rules they cover. Run each command
+and follow its output. Do not rely on memory of the text, and do not copy it here.
+
+- `scripts/books procedures show emailed-answers` (version 1)
+- `scripts/books procedures show mail-triage` (version 1)
+- `scripts/books procedures show grouped-replies` (version 1)
+- `scripts/books procedures show question-rules` (version 1)
+- `scripts/books procedures show document-intake` (version 1)
+- `scripts/books procedures show draft-insights` (version 1)
+- `scripts/books procedures show hard-rules` (version 1)

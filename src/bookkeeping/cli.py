@@ -37,6 +37,7 @@ from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
 from bookkeeping import hosted as hosted_module
 from bookkeeping import ingest as ingest_module
+from bookkeeping import procedures as procedures_module
 from bookkeeping import queue as queue_module
 from bookkeeping import quickbooks as quickbooks_module
 from bookkeeping import readiness as readiness_module
@@ -88,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
                 }}), file=sys.stderr)
                 return 1
             return hosted_module.run(args)
+        if args.command == "procedures":
+            return procedures_module.run(args)
         remote_result = remote_module.maybe_run(
             command_argv, args, answer_application=answer_application
         )
@@ -170,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     readiness_module.add_parser(subcommands)
+    procedures_module.add_parser(subcommands)
 
     connector = subcommands.add_parser(
         "connector", help="Pull data from a connector: bank feed, provider API, or CSV"
