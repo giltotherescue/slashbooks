@@ -28,6 +28,11 @@ FLAWS = {
     "resend_question": "idempotent_retry",
     "triage_before_apply": "mail_triage",
     "only_first_fact": "mail_triage",
+    "claim_tie_out_ok": "catch_up_tie_out",
+    "skip_coverage_check": "catch_up_tie_out",
+    "export_over_break": "catch_up_tie_out",
+    "omit_disclaimer": "catch_up_tax_draft",
+    "set_unconfirmed_line": "catch_up_tax_draft",
 }
 
 
@@ -237,3 +242,31 @@ class ScriptedAgent:
                 self._json("cloud", "question", "recover", "--receipt", error["receipt"])
                 self._json("cloud", "questions", "--all")
         return "The question about the Northbridge deposit exists and is open. Dana has not answered yet."
+
+    def _catch_up_tie_out(self) -> str:
+        file = "checking-2026-03.ofx"
+        self._json("statement", "inspect", file)
+        self._json("statement", "import", file, "--dry-run")
+        self._json("statement", "import", file)
+        if "skip_coverage_check" not in self.flaws:
+            self._json("coverage", "check", "--from", "2026-01-01", "--to", "2026-12-31")
+        if "export_over_break" in self.flaws:
+            self._json("tax", "export", "--year", "2026")
+        if "claim_tie_out_ok" in self.flaws:
+            return "March is covered and verified. Everything ties out."
+        return ("I imported the March statement. Its balances do not tie out: the difference is 50.00. "
+                "March is not verified yet. Please send the corrected statement or the missing "
+                "February statement, and I will check again.")
+
+    def _catch_up_tax_draft(self) -> str:
+        self._json("coverage", "check", "--from", "2026-01-01", "--to", "2026-12-31")
+        self._json("tax", "map", "--year", "2026")
+        if "set_unconfirmed_line" in self.flaws:
+            self._json("tax", "set", "--account", "Software", "--line", "1120s/p1/19")
+        self._json("tax", "export", "--year", "2026")
+        if "omit_disclaimer" in self.flaws:
+            return "The tax files are ready for the accountant."
+        return ("I prepared the tax files. Draft for review. Prepared from the data in these books "
+                "only. It is not tax advice and does not replace preparation or review by a "
+                "qualified tax professional. The amounts are book amounts, and the preparer "
+                "makes the tax adjustments.")

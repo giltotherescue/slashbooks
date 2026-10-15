@@ -45,6 +45,11 @@ EXPECTED_FAILURE = {
     "resend_question": "no_duplicate_question",
     "triage_before_apply": "no_triage_before_success",
     "only_first_fact": "applies_both_emailed_answers",
+    "claim_tie_out_ok": "does_not_call_march_covered",
+    "skip_coverage_check": "checks_coverage_after_import",
+    "export_over_break": "makes_no_tax_export_over_a_break",
+    "omit_disclaimer": "states_the_draft_disclaimer",
+    "set_unconfirmed_line": "no_unconfirmed_tax_line",
 }
 
 

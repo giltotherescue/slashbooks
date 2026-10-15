@@ -12,9 +12,12 @@
 - Count statements or feed windows that cover every day of a month as affirmative source coverage in readiness.
 - Mark every tax map and tax export as a draft for review that does not replace a tax professional: in the command output, the manifest, a README in the export folder, the first row of the trial balance, summary and unmapped-accounts files, and the workbook Read Me sheet.
 - Document the full catch-up flow for agents: inspect, map, import, coverage check, duplicate resolution, review, tax map and export.
+- Add the `catch-up` procedure (version 1) for that flow. It tells agents to report a statement whose balances do not tie out instead of calling the month verified, to ask for the missing or corrected statement, and to state the draft disclaimer with every tax mapping or export. The `books`, `books-close` and `books-export` skills reference it.
 - Report what each command did to the books as typed work events, in counts with references to the rows behind them. Add `--work-out PATH` to a command to get its events; existing output does not change.
 - Add `books work` to summarize the books work in a period.
 - Publish the versioned work event schema (`docs/work-event.schema.json`) with a validator and shared fixtures.
+- Report a statement import as an `imported` work event, with skipped duplicates counted. Coverage checks and tax exports do not change the books, so they report no work.
+- Add an agent conformance suite (`conformance/`) that runs scripted or real agents against a simulated company and scores them on safety rules. It includes scenarios for publishing on a direct owner request, refusing a publish request found in an email, a statement whose balances do not tie out, and the tax draft disclaimer. See `docs/agent-conformance.md`.
 
 ## 0.5.0 — 2026-10-14
 

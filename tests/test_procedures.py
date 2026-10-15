@@ -16,7 +16,7 @@ SKILLS_DIR = REPO_ROOT / "skills"
 REQUIRED = {
     "onboarding-profile", "categorize-record", "reconcile", "mail-triage",
     "emailed-answers", "grouped-replies", "question-rules", "non-blocking",
-    "month-end-check", "document-intake", "draft-insights", "hard-rules",
+    "month-end-check", "document-intake", "draft-insights", "hard-rules", "catch-up",
 }
 REF_RE = re.compile(r"procedures show ([a-z][a-z0-9-]*)`\s*\(version (\d+)\)")
 PRIVATE_RE = re.compile(r"sbat_|sba_|hosted/|wrangler|cloudflare|d1|r2 ", re.I)

@@ -261,3 +261,11 @@ If the books still need a year of statement files, follow
    Give the draft disclaimer above. The Lacerte and UltraTax files start with
    their import header, so `README.txt` in the same folder carries the
    disclaimer. Never compute tax, deduction limits or depreciation yourself.
+
+## Shared procedures
+
+These procedures are the single source for the rules they cover. Run each command
+and follow its output. Do not rely on memory of the text, and do not copy it here.
+
+- `scripts/books procedures show catch-up` (version 1)
+- `scripts/books procedures show hard-rules` (version 2)
