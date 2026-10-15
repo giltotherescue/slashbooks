@@ -140,6 +140,25 @@ scripts/books entity related-entity approve <entity-path> --name "Legacy Company
 scripts/books queue propose-related --entity <entity-path> --source-id <id> --related-entity "Legacy Company" --reasoning "<owner-approved context>"
 ```
 
+For an exact transaction whose receipt ownership or expense beneficiary has
+already been established, use a source-specific intercompany proposal instead
+of setting a standing policy. This does not authorize future transactions:
+
+```bash
+scripts/books queue propose-intercompany --entity <entity-path> --source-id <id> --related-entity "Related Company" --account Liabilities:DueTo:RelatedCompany --treatment funds-held --reasoning "<confirmed ownership and evidence>"
+scripts/books queue confirm --entity <entity-path> --item <id>
+```
+
+`funds-held` requires a positive bank receipt and an existing
+`Liabilities:DueTo:*` account. `expense-paid` requires a negative bank transaction
+and an existing `Assets:DueFrom:*` account. Use the ordinary account setup flow
+if the account is missing. Never infer later repayment, netting, revenue, or an
+entry in the other company's books. A receipt held for another company does not
+need that company's revenue breakdown to record the cash and corresponding
+liability here. Preserve any unresolved settlement question separately. In
+hosted automation, confirm with the protected answer metadata for the exact
+source and current reply snapshot. These proposals never teach a vendor rule.
+
 If a split, transfer-pair, or related-entity proposal is wrong, withdraw it and
 create a fresh specialized proposal. Do not use generic correction for these
 items.

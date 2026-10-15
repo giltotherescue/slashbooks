@@ -59,6 +59,54 @@ class PreparationRuntimeTests(unittest.TestCase):
             with self.subTest(rejected=argv), self.assertRaisesRegex(PreparationDenied, "command_not_supported"):
                 supported_preparation_command(argv)
 
+    def test_exact_source_intercompany_receipt_posts_liability_without_learning(self):
+        from bookkeeping.entity import add_account
+        add_account(self.entity.path, "Liabilities:DueTo:Related")
+        _add_pending_categorization(self.entity, "held-funds", "Processor settlement", amount="72.00")
+        source = queue._get_pending_txn(self.entity, "held-funds")
+        argv = ["queue", "propose-intercompany", "--entity", str(self.entity.path),
+                "--source-id", "held-funds", "--related-entity", "Related Company",
+                "--account", "Liabilities:DueTo:Related", "--treatment", "funds-held",
+                "--reasoning", "Owner confirms these receipts belong to the separate company."]
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(argv, self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(), source_hashes={"held-funds": evidence_hash(source)})
+        self.assertEqual(result, 0)
+        self.assertEqual(self.execute(item="held-funds"), 0)
+        self.assertTrue(self.store.source_exists("held-funds"))
+        self.assertEqual(queue._load_item(self.entity, "held-funds")["confirmed_category"], "Liabilities:DueTo:Related")
+        self.assertFalse(self.entity.entity_config.get("related_entities"))
+        self.assertNotIn("PROCESSOR SETTLEMENT", queue.load_learned_context(self.entity))
+
+    def test_exact_source_intercompany_expense_creates_receivable(self):
+        from bookkeeping.entity import add_account
+        add_account(self.entity.path, "Assets:DueFrom:Related")
+        _add_pending_categorization(self.entity, "paid-expense", "Synthetic service", amount="-84.00")
+        queue.propose_intercompany(self.entity, "paid-expense", "Related", "Assets:DueFrom:Related", "expense-paid", "Confirmed beneficiary")
+        self.assertEqual(self.execute(item="paid-expense"), 0)
+        self.assertEqual(queue._load_item(self.entity, "paid-expense")["confirmed_category"], "Assets:DueFrom:Related")
+        self.assertNotIn("SYNTHETIC SERVICE", queue.load_learned_context(self.entity))
+        with self.assertRaises(ValueError):
+            queue.propose_intercompany(self.entity, "paid-expense", "Related", "Assets:DueFrom:Related", "expense-paid", "Duplicate")
+
+    def test_intercompany_confirmation_rechecks_treatment(self):
+        from bookkeeping.entity import add_account
+        add_account(self.entity.path, "Liabilities:DueTo:Related")
+        _add_pending_categorization(self.entity, "held-funds", "Synthetic receipt", amount="72.00")
+        item = queue.propose_intercompany(self.entity, "held-funds", "Related", "Liabilities:DueTo:Related", "funds-held", "Confirmed ownership")
+        item["proposed_category"] = "Income:Consulting"
+        queue._save_item(self.entity, item)
+        with self.assertRaisesRegex(ValueError, "must match"):
+            queue.confirm(self.entity, "held-funds", "synthetic")
+        self.assertFalse(self.store.source_exists("held-funds"))
+
+    def test_intercompany_rejects_wrong_direction_and_income_account(self):
+        _add_pending_categorization(self.entity, "incoming", "Synthetic receipt", amount="72.00")
+        for account, treatment in [("Income:Consulting", "funds-held"), ("Assets:Bank:Checking", "expense-paid")]:
+            with self.subTest(account=account), self.assertRaisesRegex(ValueError, "must match"):
+                queue.propose_intercompany(self.entity, "incoming", "Related Company", account, treatment, "Evidence")
+        self.assertFalse(self.store.source_exists("incoming"))
+
     def prepare(self):
         _add_pending_categorization(self.entity, "source-a", "Synthetic software", amount="-100.00")
         queue.propose(self.entity, "source-a", "Expenses:Software", "Synthetic evidence")

@@ -37,6 +37,7 @@ _READ_PATHS = frozenset({
 })
 _PROPOSAL_ACTIONS = {
     ("queue", "propose"): "categorize",
+    ("queue", "propose-intercompany"): "categorize",
     ("queue", "propose-group"): "categorize",
     ("queue", "propose-split"): "split",
     ("queue", "propose-transfer"): "match_transfer",
@@ -172,7 +173,7 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
     elif path in _CONFIRM_PATHS:
         item = queue._load_item(entity, args.item_id)
         proposal = item.get("proposal_type", "category")
-        if proposal not in {"category", "split", "transfer-pair"}:
+        if proposal not in {"category", "split", "transfer-pair", "intercompany"}:
             raise PreparationDenied(0, "specialized_policy_required")
         action = {"split": "split", "transfer-pair": "match_transfer"}.get(proposal, "categorize")
         raw_ids = item.get("source_ids") if action == "match_transfer" else [item.get("source_id")]

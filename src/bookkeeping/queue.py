@@ -1653,6 +1653,42 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
 # ---------------------------------------------------------------------------
 
 @_locked_queue_mutation
+def propose_intercompany(entity: Entity, source_id: str, related_entity_name: str,
+                         account: str, treatment: str, reasoning: str) -> dict:
+    """Propose an exact-source balance-sheet treatment, without a future policy.
+
+    Receipt ownership and expense beneficiary must be established by evidence.
+    No settlement, netting, revenue, or matching other-company entry is inferred.
+    """
+    txn = _get_pending_txn(entity, source_id)
+    if txn is None:
+        raise ValueError("Only staged transactions may receive an intercompany proposal.")
+    name = related_entity_name.strip()
+    if not name or not reasoning.strip():
+        raise ValueError("Related entity and factual reasoning are required.")
+    _validate_intercompany_treatment(txn, account, treatment)
+    item = propose(entity, source_id, account, reasoning,
+                   context=f"Related entity: {name}; {treatment}; exact source only.")
+    item["proposal_type"] = "intercompany"
+    item["related_entity"] = name
+    item["related_entity_treatment"] = treatment
+    _save_item(entity, item)
+    return item
+
+
+def _validate_intercompany_treatment(txn: dict, account: str, treatment: str) -> None:
+    amount = _txn_amount(txn)
+    if treatment == "funds-held":
+        valid = amount > 0 and account.startswith("Liabilities:DueTo:")
+    elif treatment == "expense-paid":
+        valid = amount < 0 and account.startswith("Assets:DueFrom:")
+    else:
+        valid = False
+    if not valid:
+        raise ValueError("Intercompany treatment must match source direction and balance-sheet account.")
+
+
+@_locked_queue_mutation
 def propose_related_entity(entity: Entity, source_id: str, related_entity_name: str, reasoning: str) -> dict:
     """Apply an owner-authorized related-entity policy to one staged item.
 
@@ -1899,7 +1935,7 @@ def confirm(
         from .ledger.staging import StagingStore
         StagingStore(entity.staging_dir).mark_seen(source_id)
         _remove_from_pending_categorization(entity, source_id, strict=True)
-        if item.get("proposal_type") != "related-entity":
+        if item.get("proposal_type") not in {"related-entity", "intercompany"}:
             cp_key = str(item.get("counterparty") or _counterparty_key(
                 item.get("description", ""), ""
             ))
@@ -1913,6 +1949,8 @@ def confirm(
         _save_item(entity, item)
         return item
     txn, = _live_proposal_sources(entity, item, [source_id])
+    if item.get("proposal_type") == "intercompany":
+        _validate_intercompany_treatment(txn, category, item.get("related_entity_treatment", ""))
 
     completed_at = ts or _now_iso()
     receipt = _finalization_receipt(
@@ -1928,7 +1966,7 @@ def confirm(
     # Related-entity policies remain explicit for every item.  Learning this
     # counterparty as a normal category could silently bypass the policy and
     # turn later migration activity into income or an intercompany balance.
-    if learn and item.get("proposal_type") != "related-entity":
+    if learn and item.get("proposal_type") not in {"related-entity", "intercompany"}:
         cp_key = str(item.get("counterparty") or _counterparty_key(
             item.get("description", ""), ""
         ))
@@ -1975,7 +2013,7 @@ def correct(
 
     item = _load_item(entity, item_id)
 
-    if item.get("proposal_type") in {"split", "transfer-pair", "related-entity"}:
+    if item.get("proposal_type") in {"split", "transfer-pair", "related-entity", "intercompany"}:
         raise ValueError("Specialized proposals cannot use generic correction. Withdraw and repropose the item.")
 
     if item.get("status") not in ("open", "reopened"):
@@ -2484,6 +2522,14 @@ def add_parser(subparsers: Any) -> None:
     duplicate_p.add_argument("--decision", required=True, choices=["duplicate", "distinct"])
     duplicate_p.add_argument("--session", default="duplicate-review", dest="session_id", help="Session ID")
 
+    intercompany_p = queue_sub.add_parser("propose-intercompany", help="Propose an exact-source intercompany balance without a future policy")
+    intercompany_p.add_argument("--entity", required=True)
+    intercompany_p.add_argument("--source-id", required=True)
+    intercompany_p.add_argument("--related-entity", required=True)
+    intercompany_p.add_argument("--account", required=True, help="Existing due-to liability or due-from asset account")
+    intercompany_p.add_argument("--treatment", required=True, choices=["funds-held", "expense-paid"])
+    intercompany_p.add_argument("--reasoning", required=True)
+
     related_p = queue_sub.add_parser("propose-related", help="Propose one owner-authorized related-entity treatment")
     related_p.add_argument("--entity", required=True, help="Path to entity directory")
     related_p.add_argument("--source-id", required=True, dest="source_id", help="Staged transaction source ID")
@@ -2708,6 +2754,16 @@ def run(args: Any) -> int:
                 print(f"Resolved duplicate candidate {candidate['source_id']} as {args.decision}.")
                 if args.decision == "distinct":
                     print("Distinct activity was released to the normal categorization workflow.")
+                return 0
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        elif qcmd == "propose-intercompany":
+            try:
+                item = propose_intercompany(entity, args.source_id, args.related_entity,
+                                            args.account, args.treatment, args.reasoning)
+                print(f"Proposed intercompany treatment: {item['source_id']} → {item['proposed_category']}")
                 return 0
             except ValueError as exc:
                 print(f"Error: {exc}", file=sys.stderr)
