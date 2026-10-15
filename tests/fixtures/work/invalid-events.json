@@ -1,0 +1,466 @@
+[
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "sorted",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "unknown kind"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 2,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "wrong schema version"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1
+    },
+    "name": "missing subjects"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1,
+        "suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "count for another kind"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "entries": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "missing required count"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": -1,
+        "from_suggestions": 0
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "negative count"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ],
+      "total": "54.99"
+    },
+    "name": "money amount field"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-05",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "reversed period",
+    "validator_only": true
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "L0"
+        },
+        {
+          "count": 1,
+          "label": "L1"
+        },
+        {
+          "count": 1,
+          "label": "L2"
+        },
+        {
+          "count": 1,
+          "label": "L3"
+        },
+        {
+          "count": 1,
+          "label": "L4"
+        },
+        {
+          "count": 1,
+          "label": "L5"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "too many breakdown rows"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "type": "customer"
+        }
+      ]
+    },
+    "name": "unknown subject type"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "actor": {
+        "email": "a@example.invalid",
+        "name": "A",
+        "type": "person"
+      },
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "actor with email"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ],
+      "via": "sms"
+    },
+    "name": "unknown via"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "derived": false,
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "derived false"
+  },
+  {
+    "event": {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {},
+      "kind": "flagged",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    },
+    "name": "empty flagged counts"
+  }
+]

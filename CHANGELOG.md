@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Report what each command did to the books as typed work events, in counts with references to the rows behind them. Add `--work-out PATH` to a command to get its events; existing output does not change.
+- Add `books work` to summarize the books work in a period.
+- Publish the versioned work event schema (`docs/work-event.schema.json`) with a validator and shared fixtures.
+
+
 ## 0.5.0 — 2026-10-14
 
 - Prepare bookkeeping under explicit standing authority, scoped to allowed actions and periods, while retaining human approval for publication and close.

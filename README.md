@@ -65,6 +65,7 @@ To use Slashbooks for a company, read:
 - [Connectors](docs/connectors.md)
 - [BankSync setup](docs/banksync.md)
 - [CSV, QuickBooks, and file imports](docs/imports.md)
+- [Work events](docs/work-events.md)
 
 The short version: after installing the plugin, create or choose a parent folder
 for company books, such as `~/Documents/books`. Each company gets its own

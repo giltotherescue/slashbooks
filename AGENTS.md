@@ -32,7 +32,7 @@ The Python package is in `src/bookkeeping/`:
   `payroll`, `provider_api`.
 - `reports/` — `statements`, `workbook`, `cache`.
 - Top level: `entity.py`, `queue.py`, `reconcile.py`, `quickbooks.py`,
-  `compare.py`.
+  `compare.py`, `work.py` (work events: what a command changed, in counts).
 
 ## Static Marketing Site
 
