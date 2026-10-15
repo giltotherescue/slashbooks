@@ -7,7 +7,8 @@ description: >
   Trigger phrases: "export my books", "prepare for my accountant", "year-end
   package", "tax package", "create the workbook", "accountant handoff",
   "export for accountant", "prepare financials for accountant", "close
-  year-end", "generate financials".
+  year-end", "generate financials", "tax trial balance", "map accounts to tax
+  lines", "export for Lacerte, UltraTax, Drake or ProConnect".
 allowed-tools: Bash(scripts/books:*) Read
 ---
 
@@ -204,3 +205,48 @@ server path or metadata-only listing. Do not claim delivery before bytes arrive:
 If the sanity check or export generation flagged open questions (items that
 need the owner's input before the accountant call), list them in plain English
 and suggest the owner address them before sending the export.
+
+---
+
+## Tax-preparer handoff
+
+Use this section when the owner or accountant asks for a tax package, a mapped
+trial balance, or a file for Lacerte, UltraTax CS, Drake Tax or ProConnect Tax.
+
+1. Check source coverage for the tax year:
+
+   ```
+   scripts/books coverage check --entity <entity-path> --from <start-date> --to <end-date>
+   ```
+
+   Report each `partial` or `missing` month with its reason, such as
+   "Operating Checking has no transactions for Mar 3–31." Report each balance
+   break between statements. Ask for the missing statements. Do not fill a gap
+   from model inference.
+
+2. Confirm the return form. `scripts/books tax map --entity <entity-path> --year <year>`
+   shows the form and where it came from. If the form is unknown or wrong,
+   ask the owner or accountant. Record the answer with
+   `scripts/books tax set --entity <entity-path> --return-form <schc|1065|1120s|1120>`.
+
+3. Review the mapping. List the unmapped accounts and the accounts marked for
+   review. Ask the accountant which line each unmapped account belongs on. Record
+   only lines that a person confirmed:
+
+   ```
+   scripts/books tax set --entity <entity-path> --account <account> --line <line-code>
+   ```
+
+   `scripts/books tax lines --form <form>` lists the valid line codes.
+
+4. Generate the files:
+
+   ```
+   scripts/books tax export --entity <entity-path> --year <year>
+   ```
+
+   Explain the files: the tax trial balance, the tax-line summary for manual
+   entry (Drake Tax, ProConnect Tax), the Lacerte Trial Balance Utility file, the
+   UltraTax CS import file, and the unmapped-accounts report. Say that the
+   amounts are book amounts and that the preparer makes all tax adjustments.
+   Never compute tax, deduction limits or depreciation yourself.

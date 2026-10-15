@@ -246,6 +246,12 @@ the deterministic readiness assessment for the completed calendar period:
 scripts/books readiness --entity <entity-path> --period <YYYY-MM> --as-of <today>
 ```
 
+Source coverage blockers (`source_month_partial`, `source_month_missing`,
+`source_balance_discontinuity`) name the account and the gap dates. To see
+every month and account at once, run
+`scripts/books coverage check --entity <entity-path> --from <start> --to <end>`.
+Ask for the missing statement or feed window rather than inferring activity.
+
 Read the returned `state` and blockers. A successful command only means the
 assessment was produced; it does not mean the period is ready. Resolve every
 independent blocker you can, then group the remaining missing evidence or policy
