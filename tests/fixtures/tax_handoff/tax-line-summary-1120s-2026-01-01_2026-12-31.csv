@@ -1,0 +1,21 @@
+Tax Form,Schedule,Form Line,Tax Line Code,Tax Line,Statement Detail,Beginning Book Amount,Book Amount,Normal Side,On Return,Accounts,Note
+Form 1120-S,p1,1a,1120s/p1/1a,Gross receipts or sales,,,50000.00,credit,yes,Income:Consulting,
+Form 1120-S,p1,1b,1120s/p1/1b,Returns and allowances,,,500.00,debit,yes,Income:Refunds,
+Form 1120-S,p1,7,1120s/p1/7,Compensation of officers,,,20000.00,debit,yes,Expenses:Officer-Salary,
+Form 1120-S,p1,11,1120s/p1/11,Rents,,,6000.00,debit,yes,Expenses:Rent,
+Form 1120-S,p1,12,1120s/p1/12,Taxes and licenses,,,1530.00,debit,yes,Expenses:Payroll-Taxes,
+Form 1120-S,p1,14,1120s/p1/14,Depreciation,,,600.00,debit,yes,Expenses:Depreciation,Book depreciation; the preparer computes tax depreciation.
+Form 1120-S,p1,16,1120s/p1/16,Advertising,,,800.00,debit,yes,Expenses:Advertising,
+Form 1120-S,p1,20,1120s/p1/20,Other deductions,Meals (full book amount),,240.00,debit,yes,Expenses:Meals,
+Form 1120-S,p1,20,1120s/p1/20,Other deductions,Software,,1200.00,debit,yes,Expenses:Software,
+Form 1120-S,K,4,1120s/K/4,Interest income,,,12.34,credit,yes,Income:Interest,
+Form 1120-S,K,12a,1120s/K/12a,Cash charitable contributions,,,100.00,debit,yes,Expenses:Charitable-Donations,
+Form 1120-S,M-2,7,1120s/M-2/7,Distributions,,,4000.00,debit,yes,Equity:Owner-Draws,Change in the equity account during the period; books are not closed.
+Form 1120-S,L,1,1120s/L/1,Cash,,6000.00,24507.34,debit,yes,Assets:Bank:Checking,
+Form 1120-S,L,7,1120s/L/7,Loans to shareholders,,0.00,250.00,debit,yes,Assets:Loan-To-Shareholder,
+Form 1120-S,L,10a,1120s/L/10a,Buildings and other depreciable assets,,0.00,3000.00,debit,yes,Assets:Equipment,
+Form 1120-S,L,10b,1120s/L/10b,Less accumulated depreciation,,0.00,600.00,credit,yes,Assets:Accumulated-Depreciation,
+Form 1120-S,L,18,1120s/L/18,Other current liabilities,,0.00,2240.00,credit,yes,Liabilities:CreditCard,
+Form 1120-S,L,20,1120s/L/20,"Mortgages, notes, bonds payable in 1 year or more",,0.00,3000.00,credit,yes,Liabilities:SBA-Loan,
+Form 1120-S,L,23,1120s/L/23,Additional paid-in capital,,0.00,1000.00,credit,yes,Equity:Owner-Contributions,
+Form 1120-S,L,24,1120s/L/24,Retained earnings,,6700.00,6700.00,credit,yes,Equity:Opening-Balances; Equity:Prior-Periods-Net-Income,Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.

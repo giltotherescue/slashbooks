@@ -1,0 +1,24 @@
+Account Number,Account Description,Unit,Tax Code,Amount
+1010,Assets › Accumulated-Depreciation,,,-600.00
+1001,Assets › Bank › Checking,,,24507.34
+1020,Assets › Crypto-Wallet,,,50.00
+1030,Assets › Equipment,,,3000.00
+1040,Assets › Loan-To-Shareholder,,,250.00
+3010,Equity › Opening-Balances,,,-5000.00
+3020,Equity › Owner-Contributions,,,-1000.00
+3030,Equity › Owner-Draws,,,4700.00
+6010,Expenses › Advertising,,,800.00
+6020,Expenses › Charitable-Donations,,,100.00
+6030,Expenses › Depreciation,,,600.00
+6040,Expenses › Meals,,,240.00
+6050,Expenses › Mystery,,,75.00
+6060,Expenses › Officer-Salary,,,20000.00
+6070,Expenses › Payroll-Taxes,,,1530.00
+6080,Expenses › Rent,,,6000.00
+6090,Expenses › Software,,80,1200.00
+4010,Income › Consulting,,,-50000.00
+4020,Income › Interest,,,-12.34
+4030,Income › Refunds,,,500.00
+2010,Liabilities › CreditCard,,,-2240.00
+2020,Liabilities › SBA-Loan,,,-3000.00
+3040,Equity › Prior-Periods-Net-Income,,,-1700.00

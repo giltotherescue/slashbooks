@@ -76,7 +76,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                         ("queue", "split-template-list"), ("queue", "transfer-candidates"),
                         ("queue", "transfer-exceptions")}
             # Tax handoff: read-only checks and exports.
-            or path in {("coverage", "check"), ("coverage", "statement-list")})
+            or path in {("coverage", "check"), ("coverage", "statement-list"),
+                        ("tax", "lines"), ("tax", "map"), ("tax", "export")})
     mutates = not read and not network
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False

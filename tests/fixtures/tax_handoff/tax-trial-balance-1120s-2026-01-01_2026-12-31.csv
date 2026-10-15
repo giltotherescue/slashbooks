@@ -1,0 +1,25 @@
+Account Number,Account,Account Type,Beginning Balance,Debit,Credit,Balance,Tax Form,Schedule,Form Line,Tax Line Code,Tax Line,Statement Detail,On Return,Mapping Basis,Needs Review,Note
+1010,Assets › Accumulated-Depreciation,Assets,0.00,0.00,600.00,-600.00,Form 1120-S,L,10b,1120s/L/10b,Less accumulated depreciation,,yes,name,yes,
+1001,Assets › Bank › Checking,Assets,6000.00,24507.34,0.00,24507.34,Form 1120-S,L,1,1120s/L/1,Cash,,yes,name,yes,
+1020,Assets › Crypto-Wallet,Assets,0.00,50.00,0.00,50.00,Form 1120-S,,,UNMAPPED,,,,unmapped,yes,No name rule or safe default matches this account.
+1030,Assets › Equipment,Assets,0.00,3000.00,0.00,3000.00,Form 1120-S,L,10a,1120s/L/10a,Buildings and other depreciable assets,,yes,name,yes,
+1040,Assets › Loan-To-Shareholder,Assets,0.00,250.00,0.00,250.00,Form 1120-S,L,7,1120s/L/7,Loans to shareholders,,yes,name,yes,
+3010,Equity › Opening-Balances,Equity,-5000.00,0.00,5000.00,-5000.00,Form 1120-S,L,24,1120s/L/24,Retained earnings,,yes,name,yes,Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.
+3020,Equity › Owner-Contributions,Equity,0.00,0.00,1000.00,-1000.00,Form 1120-S,L,23,1120s/L/23,Additional paid-in capital,,yes,name,yes,
+3030,Equity › Owner-Draws,Equity,700.00,4700.00,0.00,4700.00,Form 1120-S,M-2,7,1120s/M-2/7,Distributions,,yes,name,yes,Change in the equity account during the period; books are not closed.
+6010,Expenses › Advertising,Expenses,,800.00,0.00,800.00,Form 1120-S,p1,16,1120s/p1/16,Advertising,,yes,name,yes,
+6020,Expenses › Charitable-Donations,Expenses,,100.00,0.00,100.00,Form 1120-S,K,12a,1120s/K/12a,Cash charitable contributions,,yes,name,yes,
+6030,Expenses › Depreciation,Expenses,,600.00,0.00,600.00,Form 1120-S,p1,14,1120s/p1/14,Depreciation,,yes,name,yes,Book depreciation; the preparer computes tax depreciation.
+6040,Expenses › Meals,Expenses,,240.00,0.00,240.00,Form 1120-S,p1,20,1120s/p1/20,Other deductions,Meals (full book amount),yes,name,yes,
+6050,Expenses › Mystery,Expenses,,75.00,0.00,75.00,Form 1120-S,,,UNMAPPED,,,,unmapped,yes,No name rule or safe default matches this account.
+6060,Expenses › Officer-Salary,Expenses,,20000.00,0.00,20000.00,Form 1120-S,p1,7,1120s/p1/7,Compensation of officers,,yes,name,yes,
+6070,Expenses › Payroll-Taxes,Expenses,,1530.00,0.00,1530.00,Form 1120-S,p1,12,1120s/p1/12,Taxes and licenses,,yes,name,yes,
+6080,Expenses › Rent,Expenses,,6000.00,0.00,6000.00,Form 1120-S,p1,11,1120s/p1/11,Rents,,yes,name,yes,
+6090,Expenses › Software,Expenses,,1200.00,0.00,1200.00,Form 1120-S,p1,20,1120s/p1/20,Other deductions,Software,yes,name,yes,
+4010,Income › Consulting,Income,,0.00,50000.00,-50000.00,Form 1120-S,p1,1a,1120s/p1/1a,Gross receipts or sales,,yes,account_type,yes,
+4020,Income › Interest,Income,,0.00,12.34,-12.34,Form 1120-S,K,4,1120s/K/4,Interest income,,yes,name,yes,
+4030,Income › Refunds,Income,,500.00,0.00,500.00,Form 1120-S,p1,1b,1120s/p1/1b,Returns and allowances,,yes,name,yes,
+2010,Liabilities › CreditCard,Liabilities,0.00,0.00,2240.00,-2240.00,Form 1120-S,L,18,1120s/L/18,Other current liabilities,,yes,name,yes,
+2020,Liabilities › SBA-Loan,Liabilities,0.00,0.00,3000.00,-3000.00,Form 1120-S,L,20,1120s/L/20,"Mortgages, notes, bonds payable in 1 year or more",,yes,name,yes,
+3040,Equity › Prior-Periods-Net-Income,Equity,-1700.00,0.00,1700.00,-1700.00,Form 1120-S,L,24,1120s/L/24,Retained earnings,,yes,account_type,yes,"Computed: income and expenses before the period, not yet closed to equity. Book balance before closing the current period's net income and distributions; the preparer rolls equity forward."
+,Total,,,63552.34,63552.34,0.00,,,,,,,,,,

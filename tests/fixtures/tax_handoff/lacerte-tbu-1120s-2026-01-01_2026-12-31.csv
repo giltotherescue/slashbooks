@@ -1,0 +1,24 @@
+Account Number,Account Name,Account Type,Balance,Slashbooks Tax Line
+1010,Assets › Accumulated-Depreciation,A,-600.00,1120s/L/10b Less accumulated depreciation
+1001,Assets › Bank › Checking,A,24507.34,1120s/L/1 Cash
+1020,Assets › Crypto-Wallet,A,50.00,UNMAPPED
+1030,Assets › Equipment,A,3000.00,1120s/L/10a Buildings and other depreciable assets
+1040,Assets › Loan-To-Shareholder,A,250.00,1120s/L/7 Loans to shareholders
+3010,Equity › Opening-Balances,L,-5000.00,1120s/L/24 Retained earnings
+3020,Equity › Owner-Contributions,L,-1000.00,1120s/L/23 Additional paid-in capital
+3030,Equity › Owner-Draws,L,4700.00,1120s/M-2/7 Distributions
+6010,Expenses › Advertising,E,800.00,1120s/p1/16 Advertising
+6020,Expenses › Charitable-Donations,E,100.00,1120s/K/12a Cash charitable contributions
+6030,Expenses › Depreciation,E,600.00,1120s/p1/14 Depreciation
+6040,Expenses › Meals,E,240.00,1120s/p1/20 Other deductions
+6050,Expenses › Mystery,E,75.00,UNMAPPED
+6060,Expenses › Officer-Salary,E,20000.00,1120s/p1/7 Compensation of officers
+6070,Expenses › Payroll-Taxes,E,1530.00,1120s/p1/12 Taxes and licenses
+6080,Expenses › Rent,E,6000.00,1120s/p1/11 Rents
+6090,Expenses › Software,E,1200.00,1120s/p1/20 Other deductions
+4010,Income › Consulting,R,-50000.00,1120s/p1/1a Gross receipts or sales
+4020,Income › Interest,R,-12.34,1120s/K/4 Interest income
+4030,Income › Refunds,R,500.00,1120s/p1/1b Returns and allowances
+2010,Liabilities › CreditCard,L,-2240.00,1120s/L/18 Other current liabilities
+2020,Liabilities › SBA-Loan,L,-3000.00,"1120s/L/20 Mortgages, notes, bonds payable in 1 year or more"
+3040,Equity › Prior-Periods-Net-Income,L,-1700.00,1120s/L/24 Retained earnings

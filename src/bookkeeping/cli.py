@@ -49,6 +49,7 @@ from bookkeeping.reports import workbook as workbook_module
 
 # Tax handoff: source coverage and tax-preparer export.
 from bookkeeping import coverage as coverage_module
+from bookkeeping import taxmap as taxmap_module
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -120,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
         # Tax handoff commands.
         if args.command == "coverage":
             return coverage_module.run(args)
+        if args.command == "tax":
+            return taxmap_module.run(args)
     except (BankSyncError, ProviderAPIError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -284,6 +287,7 @@ def build_parser() -> argparse.ArgumentParser:
     workbook_module.add_parser(subcommands)
     # Tax handoff commands.
     coverage_module.add_parser(subcommands)
+    taxmap_module.add_parser(subcommands)
 
     return parser
 
