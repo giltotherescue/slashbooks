@@ -120,6 +120,12 @@ open "codex://plugins/slashbooks?marketplacePath=${MARKETPLACE_URL}"
 
 In the Codex CLI, run `/plugins` and switch to the `slashbooks` marketplace.
 
+## Agent Conformance Suite
+
+To check that an agent follows the skills safely, run the conformance suite
+against a synthetic company with seeded traps. It needs no credentials for the
+scripted check. See [docs/agent-conformance.md](docs/agent-conformance.md).
+
 ## Before You Push
 
 Run the test suite:

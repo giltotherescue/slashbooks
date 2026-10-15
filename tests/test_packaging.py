@@ -38,7 +38,7 @@ class TestPackagedTemplates(unittest.TestCase):
             config = tomllib.load(handle)
         self.assertEqual(
             set(config["tool"]["setuptools"]["package-data"]["bookkeeping"]),
-            {f"templates/{name}" for name in TEMPLATES},
+            {f"templates/{name}" for name in TEMPLATES} | {"procedures/*.md"},
         )
         self.assertEqual(config["project"]["dependencies"], [])
 

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "source": "model",
+  "account_kind": "card",
+  "period_start": "2026-05-04",
+  "period_end": "2026-06-03",
+  "opening_balance": "0.00",
+  "closing_balance": "5732.51",
+  "transactions": [
+    {
+      "date": "2026-05-05",
+      "description": "ORCHARD OFFICE SUPPLY",
+      "amount": "282.00"
+    },
+    {
+      "date": "2026-05-10",
+      "description": "MAPLE & RYE BISTRO",
+      "amount": "246.29"
+    },
+    {
+      "date": "2026-05-11",
+      "description": "CLOUDNEST HOSTING",
+      "amount": "533.12"
+    },
+    {
+      "date": "2026-05-12",
+      "description": "NORTHSIDE HARDWARE BEAVERTON OR",
+      "amount": "49.82"
+    },
+    {
+      "date": "2026-05-13",
+      "description": "RIVERSTONE FUEL 118 SALEM OR",
+      "amount": "415.67"
+    },
+    {
+      "date": "2026-05-13",
+      "description": "COPPERLEAF CAFE PORTLAND OR",
+      "amount": "658.56"
+    },
+    {
+      "date": "2026-05-16",
+      "description": "COPPERLEAF CAFE PORTLAND OR",
+      "amount": "580.77"
+    },
+    {
+      "date": "2026-05-20",
+      "description": "SKYHOP AIRLINES REFUND",
+      "amount": "-318.60"
+    },
+    {
+      "date": "2026-05-21",
+      "description": "HALCYON HOTELS SEATTLE WA",
+      "amount": "696.56"
+    },
+    {
+      "date": "2026-05-21",
+      "description": "INTL PURCHASE ATELIER LUMEN PARIS FR",
+      "amount": "214.30"
+    },
+    {
+      "date": "2026-05-21",
+      "description": "FOREIGN TRANSACTION FEE",
+      "amount": "6.43"
+    },
+    {
+      "date": "2026-05-26",
+      "description": "MAPLE & RYE BISTRO",
+      "amount": "96.14"
+    },
+    {
+      "date": "2026-05-26",
+      "description": "NORTHSIDE HARDWARE BEAVERTON OR",
+      "amount": "529.40"
+    },
+    {
+      "date": "2026-05-26",
+      "description": "HALCYON HOTELS SEATTLE WA",
+      "amount": "442.14"
+    },
+    {
+      "date": "2026-05-28",
+      "description": "CLOUDNEST HOSTING",
+      "amount": "567.04"
+    },
+    {
+      "date": "2026-05-29",
+      "description": "TALLGRASS SOFTWARE SAN JOSE CA",
+      "amount": "518.19"
+    },
+    {
+      "date": "2026-05-30",
+      "description": "CLOUDNEST HOSTING",
+      "amount": "214.68"
+    }
+  ],
+  "excluded": [
+    "Account summary: Previous balance $0.00 New balance $5,732.51 Payment due June 28, 2026",
+    "Exchange-rate detail: 214.30 USD = 197.15 EUR RATE 1.08699"
+  ],
+  "extractor": {
+    "name": "synthetic-fixture",
+    "version": "1"
+  },
+  "confidence": "high"
+}

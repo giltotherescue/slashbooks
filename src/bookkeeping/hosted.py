@@ -30,7 +30,7 @@ OPERATIONS = {
 }
 READS = {"status": "", **{name: "/" + name for name in (
     "context", "integrations", "sources", "proposals", "entries", "reports", "history", "runs", "questions", "evidence",
-)}}
+)}, "held-mail": "/agent/mail/held-summary"}
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_REQUEST_BYTES = 16 * 1024 * 1024
 COLLECTIONS = {name: name for name in ("sources", "proposals", "entries", "runs", "questions", "evidence")}
@@ -97,6 +97,9 @@ def add_parser(subparsers: Any) -> None:
         ))
         sub.add_argument("--file", type=Path, required=True, help="JSON object; commands use {payload, explanation?, expected_books_revision?, run_id?, operation?}")
         sub.add_argument("--idempotency-key", help="Reuse the SAME key and input after an uncertain outcome; otherwise generated and saved")
+    evidence = commands.add_parser("evidence-upload", help=(
+        "Upload one document (PDF, PNG, JPEG, plain text or CSV, up to 10 MB) as company evidence"))
+    evidence.add_argument("--file", type=Path, required=True)
     retry = commands.add_parser("retry", help="Resubmit an immutable local receipt with its original key")
     retry.add_argument("--receipt", type=Path, required=True)
     migration = commands.add_parser("migration", help="Export or adopt a verified company snapshot")
@@ -123,6 +126,51 @@ def add_parser(subparsers: Any) -> None:
     put.add_argument("--explanation")
     put.add_argument("--idempotency-key")
     put.add_argument("--overwrite", action="store_true", help="Explicitly replace an existing remote file without a downloaded baseline")
+
+
+EVIDENCE_MAX_BYTES = 10 * 1024 * 1024
+EVIDENCE_TYPES = {
+    "pdf": ("application/pdf", b"%PDF-"),
+    "png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+    "jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    "jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+    "txt": ("text/plain", b""),
+    "csv": ("text/csv", b""),
+}
+
+
+def _evidence_upload(args: argparse.Namespace, client: "HostedClient") -> dict[str, Any]:
+    """Upload one local file as company evidence, after the same checks the service makes."""
+    path = args.file.expanduser()
+    suffix = path.suffix.lower().lstrip(".")
+    if suffix not in EVIDENCE_TYPES:
+        raise HostedError("INVALID_EVIDENCE", "Use a PDF, PNG, JPEG, plain text or CSV file.")
+    mime, magic = EVIDENCE_TYPES[suffix]
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(EVIDENCE_MAX_BYTES + 1)
+    except OSError:
+        raise HostedError("INVALID_EVIDENCE", "Cannot read the file. Nothing was uploaded.") from None
+    if not data or len(data) > EVIDENCE_MAX_BYTES:
+        raise HostedError("INVALID_EVIDENCE", "The file must hold 1 byte to 10 MB. Nothing was uploaded.")
+    if not data.startswith(magic):
+        raise HostedError("INVALID_EVIDENCE", "The file content does not match its extension. Nothing was uploaded.")
+    if not magic:
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            raise HostedError("INVALID_EVIDENCE", "Text and CSV files must be UTF-8. Nothing was uploaded.") from None
+    name = "".join(ch for ch in path.name if ch.isprintable() and ch not in '"\\')[:180] or f"evidence.{suffix}"
+    boundary = "slashbooks-" + uuid.uuid4().hex
+    head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n"
+            f"Content-Type: {mime}\r\n\r\n").encode("utf-8")
+    body = head + data + f"\r\n--{boundary}--\r\n".encode("ascii")
+    result = client.request("/evidence", upload=(body, f"multipart/form-data; boundary={boundary}"))
+    digest = hashlib.sha256(data).hexdigest()
+    if result.get("sha256") != digest:
+        raise HostedError("EVIDENCE_MISMATCH", "The service stored different bytes than the file. Do not rely on this upload.",
+                          local_sha256=digest, evidence_id=result.get("id"))
+    return result
 
 
 def _json_loads(raw: str) -> Any:
@@ -275,11 +323,15 @@ class HostedClient:
         self.opener = request.build_opener(request.ProxyHandler({}), _NoRedirect())
 
     def request(self, suffix: str, *, body: dict[str, Any] | None = None, key: str | None = None,
-                method: str | None = None, preserve_artifacts: bool = False) -> Any:
+                method: str | None = None, preserve_artifacts: bool = False,
+                upload: tuple[bytes, str] | None = None) -> Any:
         headers = {"Authorization": "Bearer " + self.token, "Accept": "application/json",
                    "User-Agent": f"slashbooks/{__version__}"}
         data = None
-        if body is not None:
+        if upload is not None:
+            data, headers["Content-Type"] = upload
+            method = method or "POST"
+        elif body is not None:
             data = json.dumps(body, sort_keys=True, allow_nan=False).encode("utf-8")
             if len(data) > MAX_REQUEST_BYTES:
                 raise HostedError("REQUEST_TOO_LARGE", "Encoded JSON request exceeds 16 MiB. Reduce the inputs; nothing was submitted.")
@@ -452,10 +504,11 @@ def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
             raise ValueError
     except (HostedError, ValueError) as exc:
         raise HostedError("INVALID_RECEIPT", "Receipt question route is invalid.") from exc
-    if set(body) != {"reply_ids", "reply_watermark", "command_id"}:
+    # The server needs a command_id only for a question that declares source IDs.
+    if set(body) not in ({"reply_ids", "reply_watermark"}, {"reply_ids", "reply_watermark", "command_id"}):
         raise HostedError(
             "INVALID_QUESTION",
-            "Question resolve requires reply_ids, reply_watermark and command_id.",
+            "Question resolve requires reply_ids and reply_watermark, and command_id when the question declares sources.",
         )
     reply_ids = body.get("reply_ids")
     if (not isinstance(reply_ids, list) or not 1 <= len(reply_ids) <= 100
@@ -463,8 +516,33 @@ def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
         raise HostedError("INVALID_QUESTION", "Question resolve requires 1-100 unique stable reply IDs.")
     if type(body.get("reply_watermark")) is not int or body["reply_watermark"] <= 0:
         raise HostedError("INVALID_QUESTION", "Reply watermark must be a positive integer.")
-    _segment(body.get("command_id"))
+    if "command_id" in body:
+        _segment(body["command_id"])
     return dict(body)
+
+
+def _held_mail(client: HostedClient, summary: dict[str, Any]) -> dict[str, Any]:
+    """Describe held email for a person: a count, the age of the oldest, and a link.
+
+    The service returns no sender, subject or content for held mail, and the CLI
+    has no command that reads or releases it. A person reviews it in the Inbox.
+    """
+    count, oldest, path = summary.get("held_count"), summary.get("oldest_held_at"), summary.get("review_path")
+    if (type(count) is not int or count < 0 or not isinstance(path, str)
+            or not re.fullmatch(r"/(?!/)[^\s\\\x00-\x1f\x7f]{0,500}", path)
+            or not (oldest is None or isinstance(oldest, str)) or (count > 0 and not oldest)):
+        raise HostedError("INVALID_RESPONSE", "The held-mail summary is incomplete. Do not guess the count.")
+    parts = parse.urlsplit(client.endpoint)
+    url = f"{parts.scheme}://{parts.netloc}{path}"
+    if count == 0:
+        message = "No emails are waiting for your review in Inbox."
+    else:
+        day = re.match(r"\d{4}-\d{2}-\d{2}", oldest)
+        arrived = f" The oldest arrived on {day.group(0)}." if day else ""
+        subject = "1 email is" if count == 1 else f"{count} emails are"
+        message = f"{subject} waiting for your review in Inbox.{arrived}"
+    return {"held_count": count, "oldest_held_at": oldest, "review_url": url, "message": message,
+            "note": "Held email needs a person's review. Release and read it in Inbox only."}
 
 
 def _identity(client: HostedClient) -> dict[str, Any]:
@@ -545,11 +623,10 @@ def _mutate_question(args: argparse.Namespace, client: HostedClient) -> dict[str
         })
     else:
         route = "/questions/" + _segment(args.question_id) + "/resolve"
-        body = _question_body(route, {
-            "reply_ids": list(args.reply_ids or []),
-            "reply_watermark": args.reply_watermark,
-            "command_id": args.command_id,
-        })
+        resolve = {"reply_ids": list(args.reply_ids or []), "reply_watermark": args.reply_watermark}
+        if args.command_id is not None:
+            resolve["command_id"] = args.command_id
+        body = _question_body(route, resolve)
     if _redact(body, client.secrets) != body:
         raise HostedError("SECRET_IN_INPUT", "Question input contains an API credential. Remove it before submission.")
     key = _key(args.idempotency_key if args.idempotency_key is not None else str(uuid.uuid4()))
@@ -664,6 +741,10 @@ def run(args: argparse.Namespace) -> int:
                     if query:
                         suffix += "?" + parse.urlencode(query)
                 result = client.request(suffix)
+                if args.hosted_command == "held-mail":
+                    result = _held_mail(client, result)
+            elif args.hosted_command == "evidence-upload":
+                result = _evidence_upload(args, client)
             elif args.hosted_command == "command-result":
                 result = client.request("/commands/" + _segment(args.command_id))
             else:

@@ -50,7 +50,7 @@ class HostedQuestionTests(unittest.TestCase):
         self.api.status = 200
         suffix = urlsplit(call["path"]).path.removeprefix("/api/v1/companies/company-A")
         if call["method"] == "GET":
-            self.api.response = {"questions": deepcopy(self.questions), "next_cursor": None}
+            self.api.response = {"questions": [self.shown(item) for item in self.questions], "next_cursor": None}
             return
         if self.forbidden:
             self.api.status = 403
@@ -71,10 +71,17 @@ class HostedQuestionTests(unittest.TestCase):
                     "actor_name": "Synthetic Accountant", "created_at": "2026-01-01T00:00:01Z"})
             else:
                 result["status"] = "resolved"
-        self.api.response = deepcopy(result)
+        self.api.response = self.shown(result)
         if self.malformed:
             self.api.response.pop("id")
         self.api.drop = self.dropped
+
+    @staticmethod
+    def shown(item):
+        """The server shows the highest reply sequence as reply_watermark."""
+        shown = deepcopy(item)
+        shown["reply_watermark"] = len(shown["replies"])
+        return shown
 
     def invoke(self, *args, entity=None):
         out, err = StringIO(), StringIO()
@@ -131,8 +138,42 @@ class HostedQuestionTests(unittest.TestCase):
         code, result, _ = self.invoke("resolve", "q?other#fragment", "--request-id", "resolve-1")
         self.assertEqual(code, 0)
         self.assertEqual(result["response_snapshot"]["status"], "resolved")
-        self.assertEqual(self.posts()[-1]["body"], {})
+        self.assertEqual(self.posts()[-1]["body"], {"reply_ids": ["r-1"], "reply_watermark": 1})
         self.assertTrue(all("version" not in call["body"] and "expected_books_revision" not in call["body"] for call in self.posts()))
+
+    def test_resolve_without_replies_sends_an_empty_reply_set_and_watermark_zero(self):
+        self.questions = [question("q-1")]
+        code, _, _ = self.invoke("resolve", "q-1", "--request-id", "resolve-empty")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.posts()[-1]["body"], {"reply_ids": [], "reply_watermark": 0})
+
+    def test_resolve_sends_every_reply_and_repeat_does_not_resend(self):
+        self.questions = [question("q-1")]
+        self.invoke("reply", "q-1", "--body", "First", "--request-id", "r1")
+        self.invoke("reply", "q-1", "--body", "Second", "--request-id", "r2")
+        self.assertEqual(self.invoke("resolve", "q-1", "--request-id", "done")[0], 0)
+        self.assertEqual(self.posts()[-1]["body"], {"reply_ids": ["r-1", "r-2"], "reply_watermark": 2})
+        posts = len(self.posts())
+        code, result, _ = self.invoke("resolve", "q-1", "--request-id", "done")
+        self.assertEqual(code, 0)
+        self.assertTrue(result["historical"])
+        self.assertEqual(len(self.posts()), posts)
+
+    def test_resolve_requires_a_request_id_before_any_network_call(self):
+        self.questions = [question("q-1")]
+        code, _, errors = self.invoke("resolve", "q-1")
+        self.assertEqual(code, 1)
+        self.assertEqual(errors[-1]["error"]["code"], "REQUEST_ID_REQUIRED")
+        self.assertEqual(self.api.calls, [])
+
+    def test_resolve_refuses_replies_without_a_watermark(self):
+        self.questions = [{**question("q-1"), "replies": [{"id": "r-1", "body": "Yes", "actor_name": "Synthetic",
+                                                           "created_at": "2026-01-01T00:00:01Z"}]}]
+        self.shown = lambda item: deepcopy(item)  # a server answer without reply_watermark
+        code, _, errors = self.invoke("resolve", "q-1", "--request-id", "no-mark")
+        self.assertEqual(code, 1)
+        self.assertEqual(errors[-1]["error"]["code"], "INVALID_RESPONSE")
+        self.assertFalse(self.posts())
 
     def test_received_repeat_is_historical_and_recover_reads_current_state(self):
         self.assertEqual(self.ask()[0], 0)

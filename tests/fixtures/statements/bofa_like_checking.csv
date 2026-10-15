@@ -1,0 +1,11 @@
+Description,,Summary Amt.
+Beginning balance as of 01/01/2026,,"5,000.00"
+Total credits,,"1,200.00"
+Total debits,,"-845.25"
+Ending balance as of 01/31/2026,,"5,354.75"
+
+Date,Description,Amount,Running Bal.
+01/01/2026,Beginning balance as of 01/01/2026,,"5,000.00"
+01/03/2026,"CONTOSO SOFTWARE DES:SUBSCR",-45.25,"4,954.75"
+01/08/2026,"ACME PAYROLL DES:DIR DEP","1,200.00","6,154.75"
+01/14/2026,"Online Banking transfer to CHK 0000",-800.00,"5,354.75"

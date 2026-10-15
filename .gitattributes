@@ -1,0 +1,2 @@
+# OFX statement fixtures keep the CRLF line endings of real bank downloads.
+tests/fixtures/**/*.ofx whitespace=cr-at-eol

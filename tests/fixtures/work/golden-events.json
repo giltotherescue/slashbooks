@@ -1,0 +1,598 @@
+{
+  "confirm": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "fingerprint": "f37773ef19865ba34a8fc75349f37aa19d1e8d4ea1a4c10ea94da43e33cabb92",
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "confirm_group": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Income:Consulting"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "fingerprint": "2770076190293d93e7364395bc0e2e2b0cfb63bb6932e127b2a19805ec12b989",
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-02",
+        "to": "2026-10-02"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "5",
+          "source_id": "syn-002",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "confirm_split": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Split transaction"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "fingerprint": "d10cb97e2f91afdf7d1646b3cb88e11c40fd72181d1d225644be725543e35d34",
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-04",
+        "to": "2026-10-04"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "2",
+          "source_id": "syn-004",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "confirm_transfer": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Internal transfer"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 1,
+        "from_suggestions": 1
+      },
+      "fingerprint": "154abf5990eebc54e54e349cc390939f5f50420b4d09261b3c5ccea121af38d1",
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-06",
+        "to": "2026-10-06"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "3",
+          "source_id": "syn-006",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "correct": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Meals"
+        }
+      ],
+      "counts": {
+        "entries": 1,
+        "reversals": 0,
+        "withdrawn": 0
+      },
+      "fingerprint": "edc8d92a6903e0404f1ba546085ab315d1adbbf2f65b4060ef5e7b2d8a294b3e",
+      "kind": "corrected",
+      "period": {
+        "from": "2026-10-03",
+        "to": "2026-10-03"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "4",
+          "source_id": "syn-003",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "entity_init": [],
+  "ingest": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking",
+        "Assets:Bank:Reserve-Savings"
+      ],
+      "breakdown": [
+        {
+          "count": 6,
+          "label": "Assets:Bank:Operating-Checking"
+        },
+        {
+          "count": 1,
+          "label": "Assets:Bank:Reserve-Savings"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 0,
+        "transactions": 7
+      },
+      "fingerprint": "58322ef07fe15585c797a59c95f9f616a0bc201c767117cfc1608c346240eaff",
+      "kind": "imported",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-06"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "syn-001",
+          "type": "source"
+        },
+        {
+          "id": "syn-002",
+          "type": "source"
+        },
+        {
+          "id": "syn-003",
+          "type": "source"
+        },
+        {
+          "id": "syn-004",
+          "type": "source"
+        },
+        {
+          "id": "syn-005",
+          "type": "source"
+        },
+        {
+          "id": "syn-006",
+          "type": "source"
+        },
+        {
+          "id": "syn-007",
+          "type": "source"
+        }
+      ]
+    }
+  ],
+  "ingest_auto_post": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Operating-Checking"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 7,
+        "transactions": 1
+      },
+      "fingerprint": "d9efd0705f67f21359bb216ea4f7cd722fbc97314db7926a73a9aa5783dbe65e",
+      "kind": "imported",
+      "period": {
+        "from": "2026-10-08",
+        "to": "2026-10-08"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "syn-008",
+          "type": "source"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "direct": 1,
+        "entries": 1,
+        "from_suggestions": 0
+      },
+      "fingerprint": "252cb8db32e153e033e7556c663b592ac6b23d23d1d735d72b5238a3779ee9b3",
+      "kind": "recorded",
+      "period": {
+        "from": "2026-10-08",
+        "to": "2026-10-08"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "9",
+          "source_id": "syn-008",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "ingest_duplicate_candidate": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Operating-Checking"
+        }
+      ],
+      "counts": {
+        "duplicates": 1
+      },
+      "fingerprint": "c8fb8ba95f0b63f2f6ca38c5b6df29bd49eda0a938a38c05454a0d472f98840a",
+      "kind": "flagged",
+      "period": {
+        "from": "2026-10-08",
+        "to": "2026-10-08"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "feed-legacy-001",
+          "type": "source"
+        }
+      ]
+    }
+  ],
+  "ledger_correct": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Office"
+        }
+      ],
+      "counts": {
+        "entries": 1,
+        "reversals": 1,
+        "withdrawn": 0
+      },
+      "fingerprint": "d6fd0fe20b0ebe533fdc2d72a38b7a4f5a0577522a0cfb7c52cd8ed4318e340a",
+      "kind": "corrected",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "6",
+          "type": "entry"
+        },
+        {
+          "id": "7",
+          "source_id": "syn-001-fix",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "ledger_reverse": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [],
+      "counts": {
+        "entries": 0,
+        "reversals": 1,
+        "withdrawn": 0
+      },
+      "fingerprint": "816cd75ca5036d3291ce2d0a9b8d9e32be2075669e503645cc50c932551ab343",
+      "kind": "corrected",
+      "period": {
+        "from": "2026-10-02",
+        "to": "2026-10-02"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "8",
+          "type": "entry"
+        }
+      ]
+    }
+  ],
+  "propose": [
+    {
+      "accounts": [],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Expenses:Software"
+        }
+      ],
+      "counts": {
+        "suggestions": 1
+      },
+      "fingerprint": "dc12a7fb4febee8f487390551f01b2daba6dafb9f1fd261a9086d19a09d1f770",
+      "kind": "categorized",
+      "period": {
+        "from": "2026-10-01",
+        "to": "2026-10-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "syn-001",
+          "type": "suggestion"
+        }
+      ]
+    }
+  ],
+  "propose_group": [
+    {
+      "accounts": [],
+      "breakdown": [
+        {
+          "count": 2,
+          "label": "Expenses:Office"
+        }
+      ],
+      "counts": {
+        "suggestions": 2
+      },
+      "fingerprint": "f244b306a6a3852bb502e5b2f58a0d37689090815e52c6c96d1b34ecb2a659ad",
+      "kind": "categorized",
+      "period": {
+        "from": "2026-10-03",
+        "to": "2026-10-05"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "syn-003",
+          "type": "suggestion"
+        },
+        {
+          "id": "syn-005",
+          "type": "suggestion"
+        }
+      ]
+    }
+  ],
+  "propose_income": [
+    {
+      "accounts": [],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Income:Consulting"
+        }
+      ],
+      "counts": {
+        "suggestions": 1
+      },
+      "fingerprint": "f4cc43574e7017d24b8498145a8a7f17165632bbe2de205d98579d9e02fe19fa",
+      "kind": "categorized",
+      "period": {
+        "from": "2026-10-02",
+        "to": "2026-10-02"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "syn-002",
+          "type": "suggestion"
+        }
+      ]
+    }
+  ],
+  "propose_split": [
+    {
+      "accounts": [],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Split transaction"
+        }
+      ],
+      "counts": {
+        "suggestions": 1
+      },
+      "fingerprint": "2f4e8bbeb1798a237234b2c683076850169346ab65a474af57de43da627121b6",
+      "kind": "categorized",
+      "period": {
+        "from": "2026-10-04",
+        "to": "2026-10-04"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "syn-004",
+          "type": "suggestion"
+        }
+      ]
+    }
+  ],
+  "propose_transfer": [
+    {
+      "accounts": [],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Internal transfer"
+        }
+      ],
+      "counts": {
+        "suggestions": 1
+      },
+      "fingerprint": "55898f8c33fb23e18ee25580d5b3aef92cf231acec0cac8a1b1378ac6ca2f90d",
+      "kind": "categorized",
+      "period": {
+        "from": "2026-10-06",
+        "to": "2026-10-06"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "transfer-pair-dd3e708a42d3a76d1c30",
+          "type": "suggestion"
+        }
+      ]
+    }
+  ],
+  "reconcile": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Operating-Checking"
+        }
+      ],
+      "counts": {
+        "accounts": 1,
+        "clean": 0,
+        "open": 1
+      },
+      "fingerprint": "a65e071910d47e8099ca02f386a5551ba72e584daa02cb99a0ea3092ae2c17c6",
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-10-12",
+        "to": "2026-10-12"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "Assets:Bank:Operating-Checking@2026-10-12",
+          "type": "reconciliation"
+        }
+      ]
+    }
+  ],
+  "reconcile_resolve": [
+    {
+      "accounts": [
+        "Assets:Bank:Operating-Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Operating-Checking"
+        }
+      ],
+      "counts": {
+        "accounts": 1,
+        "clean": 1,
+        "open": 0
+      },
+      "fingerprint": "a6ba1f4a39997192be7267131a9c3e6ec84b0a7ec24773380c7a7ea72ae3d186",
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-10-12",
+        "to": "2026-10-12"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "Assets:Bank:Operating-Checking@2026-10-12",
+          "type": "reconciliation"
+        }
+      ]
+    }
+  ],
+  "withdraw": [
+    {
+      "accounts": [],
+      "breakdown": [],
+      "counts": {
+        "entries": 0,
+        "reversals": 0,
+        "withdrawn": 1
+      },
+      "fingerprint": "a7d7cf601300702e0a9dd83dced816b36b934aea1541d9246b21c31fedfdc5c3",
+      "kind": "corrected",
+      "period": {
+        "from": "2026-10-05",
+        "to": "2026-10-05"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "syn-005",
+          "type": "suggestion"
+        }
+      ]
+    }
+  ]
+}
