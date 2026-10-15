@@ -570,7 +570,14 @@ def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
         "currency": "USD",
     }
     preview = []
-    row_count = len(candidate_dates) if date_col is not None else len(body)
+    if date_col is not None:
+        row_count = len(candidate_dates)
+    else:
+        # No date column: a leading line with no digits above lines that carry
+        # digits is an unrecognized header line, not a data row.
+        has_digits = [any(re.search(r"\d", cell) for cell in row) for row in body]
+        header_line = header_index is None and body and not has_digits[0] and any(has_digits)
+        row_count = len(body) - (1 if header_line else 0)
     if not uncertain:
         try:
             parsed = parse_rows(rows, layout, kind=kind)

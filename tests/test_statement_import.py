@@ -79,6 +79,16 @@ class DetectionTests(unittest.TestCase):
                            ("amex_like_card.csv", 4)):
             self.assertEqual(self.inspect(name)["row_count"], rows, name)
 
+    def test_row_count_excludes_the_header_line_in_every_detection_state(self):
+        from bookkeeping.connectors import bankcsv
+        body = "2026-01-01,A,-5.00\n2026-01-02,B,6.00\n"
+        for label, text in (
+                ("header detected", "Date,Description,Amount\n" + body),
+                ("header present but not detected", "When,What,Howmuch\n" + body),
+                ("no header", body)):
+            with self.subTest(label):
+                self.assertEqual(bankcsv.detect_layout(text)["row_count"], 2)
+
     def test_chase_like_card_prefers_posting_date(self):
         result = self.inspect("chase_like_card.csv")
         self.assertEqual(result["status"], "ready_to_confirm")
