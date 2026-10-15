@@ -70,6 +70,13 @@ company. QuickBooks browser exports and custom ingestion scripts stay local:
 their output goes to the cloud company through the ordinary `books ingest` and
 import commands.
 
+## Held email
+
+Incoming email can wait for a person to review it. `books cloud held-mail`
+shows how many emails wait, the date of the oldest one, and a link to the Inbox
+review view. It never shows a sender, subject or content, and no command lets an
+agent read or release held email. A person reviews it in Inbox.
+
 ## Errors and retries
 
 Cloud book requests use a 180-second network timeout by default, including

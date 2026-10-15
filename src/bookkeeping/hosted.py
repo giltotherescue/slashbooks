@@ -30,7 +30,7 @@ OPERATIONS = {
 }
 READS = {"status": "", **{name: "/" + name for name in (
     "context", "integrations", "sources", "proposals", "entries", "reports", "history", "runs", "questions", "evidence",
-)}}
+)}, "held-mail": "/agent/mail/held-summary"}
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_REQUEST_BYTES = 16 * 1024 * 1024
 COLLECTIONS = {name: name for name in ("sources", "proposals", "entries", "runs", "questions", "evidence")}
@@ -469,6 +469,30 @@ def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
     return dict(body)
 
 
+def _held_mail(client: HostedClient, summary: dict[str, Any]) -> dict[str, Any]:
+    """Describe held email for a person: a count, the age of the oldest, and a link.
+
+    The service returns no sender, subject or content for held mail, and the CLI
+    has no command that reads or releases it. A person reviews it in the Inbox.
+    """
+    count, oldest, path = summary.get("held_count"), summary.get("oldest_held_at"), summary.get("review_path")
+    if (type(count) is not int or count < 0 or not isinstance(path, str)
+            or not re.fullmatch(r"/(?!/)[^\s\\\x00-\x1f\x7f]{0,500}", path)
+            or not (oldest is None or isinstance(oldest, str)) or (count > 0 and not oldest)):
+        raise HostedError("INVALID_RESPONSE", "The held-mail summary is incomplete. Do not guess the count.")
+    parts = parse.urlsplit(client.endpoint)
+    url = f"{parts.scheme}://{parts.netloc}{path}"
+    if count == 0:
+        message = "No emails are waiting for your review in Inbox."
+    else:
+        day = re.match(r"\d{4}-\d{2}-\d{2}", oldest)
+        arrived = f" The oldest arrived on {day.group(0)}." if day else ""
+        subject = "1 email is" if count == 1 else f"{count} emails are"
+        message = f"{subject} waiting for your review in Inbox.{arrived}"
+    return {"held_count": count, "oldest_held_at": oldest, "review_url": url, "message": message,
+            "note": "Held email needs a person's review. Release and read it in Inbox only."}
+
+
 def _identity(client: HostedClient) -> dict[str, Any]:
     return {"endpoint": client.endpoint, "company": client.company,
             "credential_sha256": hashlib.sha256(client.token.encode()).hexdigest()}
@@ -665,6 +689,8 @@ def run(args: argparse.Namespace) -> int:
                     if query:
                         suffix += "?" + parse.urlencode(query)
                 result = client.request(suffix)
+                if args.hosted_command == "held-mail":
+                    result = _held_mail(client, result)
             elif args.hosted_command == "command-result":
                 result = client.request("/commands/" + _segment(args.command_id))
             else:

@@ -186,7 +186,44 @@ class HostedTests(unittest.TestCase):
         self.assertFalse(self.api.calls)
         self.assertFalse((self.directory / "ledger.sqlite").exists())
 
+    def test_held_mail_summary_gives_count_age_and_a_link_without_content(self) -> None:
+        self.api.response = {"held_count": 3, "oldest_held_at": "2026-10-01T09:30:00Z",
+                             "review_path": "/companies/company-A/inbox?view=review",
+                             "note": "Held email needs a person's review. Details are not available to agents."}
+        code, out, err = self.invoke("held-mail")
+        self.assertEqual((code, err), (0, ""))
+        result = json.loads(out)
+        self.assertEqual(self.api.calls[-1]["path"], "/api/v1/companies/company-A/agent/mail/held-summary")
+        self.assertEqual(result["held_count"], 3)
+        self.assertEqual(result["message"], "3 emails are waiting for your review in Inbox. The oldest arrived on 2026-10-01.")
+        self.assertEqual(result["review_url"], self.api.endpoint + "/companies/company-A/inbox?view=review")
+        self.assertEqual(set(result), {"held_count", "oldest_held_at", "review_url", "message", "note"})
+        self.api.response = {"held_count": 1, "oldest_held_at": "2026-10-14 08:00:00",
+                             "review_path": "/companies/company-A/inbox?view=review", "note": "x"}
+        self.assertTrue(json.loads(self.invoke("held-mail")[1])["message"].startswith("1 email is waiting"))
+        self.api.response = {"held_count": 0, "oldest_held_at": None,
+                             "review_path": "/companies/company-A/inbox?view=review", "note": "x"}
+        self.assertEqual(json.loads(self.invoke("held-mail")[1])["message"],
+                         "No emails are waiting for your review in Inbox.")
+
+    def test_held_mail_summary_refuses_an_unsafe_or_incomplete_response(self) -> None:
+        bad = [
+            {"held_count": 2, "oldest_held_at": "2026-10-01", "review_path": "https://evil.example/inbox"},
+            {"held_count": 2, "oldest_held_at": "2026-10-01", "review_path": "//evil.example/inbox"},
+            {"held_count": 2, "oldest_held_at": None, "review_path": "/companies/company-A/inbox"},
+            {"held_count": -1, "oldest_held_at": None, "review_path": "/companies/company-A/inbox"},
+            {"held_count": "3", "oldest_held_at": "2026-10-01", "review_path": "/companies/company-A/inbox"},
+            {"ok": True},
+        ]
+        for response in bad:
+            with self.subTest(response=response):
+                self.api.response = response
+                code, _, err = self.invoke("held-mail")
+                self.assertEqual(code, 1)
+                self.assertEqual(json.loads(err)["error"]["code"], "INVALID_RESPONSE")
+
     def test_all_reads_are_company_scoped(self) -> None:
+        self.api.response = {"held_count": 0, "oldest_held_at": None, "review_path": "/companies/company-A/inbox?view=review"}
         for command, suffix in hosted.READS.items():
             with self.subTest(command=command):
                 self.assertEqual(self.invoke(command)[0], 0)

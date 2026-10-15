@@ -210,6 +210,16 @@ observed state: submitted, posted, reconciled, exported or published are distinc
 Do not invent evidence IDs or policy versions. A finished run is not a close or
 publication. Follow all collection cursors; first-page context is not completeness.
 
+## Held email
+
+Some incoming email waits for a person to review it. Run
+`scripts/books cloud --config <bound-directory>/.slashbooks-remote.json held-mail`
+at the start of a run. It returns the count, the date of the oldest held email,
+a plain `message` and a `review_url`. If the count is above zero, tell the person
+the `message` and give the link. The summary has no sender, subject or content.
+You cannot read or release held email, and you must not look for another way to
+do it.
+
 ## Failures and proof
 
 Keep the binding in place on error. Never use stale local ledger/config copies as
@@ -229,7 +239,7 @@ These procedures are the single source for the rules they cover. Run each comman
 and follow its output. Do not rely on memory of the text, and do not copy it here.
 
 - `scripts/books procedures show emailed-answers` (version 2)
-- `scripts/books procedures show mail-triage` (version 1)
+- `scripts/books procedures show mail-triage` (version 2)
 - `scripts/books procedures show grouped-replies` (version 1)
 - `scripts/books procedures show question-rules` (version 1)
 - `scripts/books procedures show document-intake` (version 1)
