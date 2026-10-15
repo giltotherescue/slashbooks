@@ -90,6 +90,23 @@ class RemoteContractTests(unittest.TestCase):
         args, _, _ = parse_command(rewrite_paths(argv, {"@input/a.json": "/tmp/a.json"}))
         self.assertEqual(args.banksync_json, [Path("/tmp/a.json"), Path("@input/b.json")])
 
+    def test_work_out_is_an_output_file_that_a_host_can_rewrite(self):
+        argv = ["--work-out", "@output/work.json", "statement", "import", "@input/a.csv", "--entity", "@entity", "--profile", "p"]
+        spec = command_spec(argv)
+        self.assertEqual(spec["path"], ("statement", "import"))
+        self.assertIn("work_out", spec["output_fields"])
+        self.assertTrue(spec["mutates"])
+        rewritten = rewrite_paths(argv, {"@output/work.json": "/tmp/out/work.json", "@input/a.csv": "/tmp/in/a.csv"})
+        self.assertEqual(rewritten[0], "--work-out=/tmp/out/work.json")
+        args, _, path = parse_command(rewritten)
+        self.assertEqual((args.work_out, path), (Path("/tmp/out/work.json"), ("statement", "import")))
+        # The option may also follow the subcommand, as the CLI accepts.
+        self.assertEqual(command_spec(["queue", "list", "--entity", "@entity", "--work-out", "@output/w.json"])["output_fields"],
+                         ["work_out"])
+        self.assertNotIn("work_out", command_spec(["queue", "list", "--entity", "@entity"])["output_fields"])
+        with self.assertRaises(ContractError):
+            command_spec(["queue", "list", "--entity", "@entity", "--work-out"])
+
     def test_unsafe_paths_and_commands(self):
         for value in ("../a", "/etc/passwd", "a//b", "a/./b", "a\\b", "C:/x", "%2e%2e/x", ".", "a/../b", "a\x00b"):
             with self.subTest(path=value), self.assertRaises(ContractError):

@@ -23,6 +23,14 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
         raise ContractError("Expected a bounded, nonempty argv array of strings.")
     if any(v in {"-h", "--help"} for v in argv):
         raise ContractError("Help is handled locally, not by remote execution.")
+    # ``--work-out`` is a global option that the CLI reads before the subcommand parser,
+    # so the contract reads it the same way. A host classifies it as an output file.
+    work_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
+    work_parser.error = _error
+    work_parser.add_argument("--work-out", type=Path)
+    work_args, argv = work_parser.parse_known_args(argv)
+    if not argv:
+        raise ContractError("Expected a bounded, nonempty argv array of strings.")
     parser = build_parser()
 
     def prepare(p: argparse.ArgumentParser) -> None:
@@ -35,6 +43,7 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
 
     prepare(parser)
     args = parser.parse_args(argv)
+    args.work_out = work_args.work_out
     levels, path = [], []
     while True:
         levels.append(parser)
@@ -59,6 +68,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                           "evidence", "cross_check")
               if hasattr(args, name)]
     outputs = [name for name in ("output", "output_dir") if hasattr(args, name)]
+    if args.work_out is not None:
+        outputs.append("work_out")
     if path == ("ledger", "snapshot"):
         inputs.append("store")
     elif path == ("ledger", "migrate"):
@@ -106,6 +117,9 @@ def rewrite_paths(argv: list[str], replacements: dict[str, str]) -> list[str]:
     def render(value: Any, field: str) -> str:
         value = str(value)
         return replacements.get(value, value) if field in fields else value
+
+    if args.work_out is not None:
+        result.append("--work-out=" + render(args.work_out, "work_out"))
 
     for index, level in enumerate(levels):
         for action in level._actions:

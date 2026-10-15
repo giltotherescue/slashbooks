@@ -42,6 +42,14 @@ change state (for example, a partial import). A read-only command gives
 `"work": []`. A command for a remote company binding, and the `cloud` and
 `hosted` commands, reject `--work-out`.
 
+A host that runs the engine as a command, for example in a sandbox, treats
+`--work-out` as an output file. The host sends `--work-out @output/work.json`.
+The command contract (`remote_contract.command_spec`) lists `work_out` in
+`output_fields`, and `rewrite_paths` replaces the placeholder with a real path.
+The host reads the file after the command and puts its `work` list in the
+result of that command. The engine does not print the events in its normal
+output, so the output of a command does not change when a host asks for them.
+
 A host that embeds the engine in Python wraps one command:
 
 ```python
