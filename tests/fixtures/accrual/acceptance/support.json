@@ -1,11 +1,11 @@
 {
   "items": [
-    {"id":"customer-open","kind":"receivable","account":"Accounts Receivable","currency":"USD","original_amount":"1000.00","remaining_amount":"1000.00","evidence_refs":["evidence/opening.txt"],"settlement_strategy":"direct"},
-    {"id":"vendor-open","kind":"payable","account":"Accounts Payable","currency":"USD","original_amount":"500.00","remaining_amount":"500.00","evidence_refs":["evidence/opening.txt"],"settlement_strategy":"direct"}
+    {"id":"customer-open","kind":"receivable","account":"Accounts Receivable","currency":"USD","original_amount":"1000.00","remaining_amount":"1000.00","evidence_refs":["evidence/opening.txt"]},
+    {"id":"vendor-open","kind":"payable","account":"Accounts Payable","currency":"USD","original_amount":"500.00","remaining_amount":"500.00","evidence_refs":["evidence/opening.txt"]}
   ],
   "schedules": [
-    {"id":"prepaid-open","kind":"prepaid","account":"Prepaid Insurance","recognition_account":"Operating Costs","currency":"USD","amount":"1200.00","recognized_amount":"600.00","remaining_amount":"600.00","start_date":"2026-01-01","end_date":"2027-01-01","method":"equal_month","evidence_refs":["evidence/opening.txt"]},
-    {"id":"deferred-open","kind":"deferred","account":"Deferred Revenue","recognition_account":"Services","currency":"USD","amount":"1200.00","recognized_amount":"600.00","remaining_amount":"600.00","start_date":"2026-01-01","end_date":"2027-01-01","method":"equal_month","evidence_refs":["evidence/opening.txt"]}
+    {"id":"prepaid-open","kind":"prepaid","account":"Prepaid Insurance","recognition_account":"Operating Costs","currency":"USD","amount":"1200.00","recognized_amount":"600.00","remaining_amount":"600.00","service_start":"2026-01-01","service_end":"2026-12-31","method":"equal_month","evidence_refs":["evidence/opening.txt"]},
+    {"id":"deferred-open","kind":"deferred","account":"Deferred Revenue","recognition_account":"Services","currency":"USD","amount":"1200.00","recognized_amount":"600.00","remaining_amount":"600.00","service_start":"2026-01-01","service_end":"2026-12-31","method":"equal_month","evidence_refs":["evidence/opening.txt"]}
   ],
   "external": [
     {"id":"equipment-open","account":"Equipment","balance":"2400.00","currency":"USD","evidence_refs":["evidence/opening.txt"]},

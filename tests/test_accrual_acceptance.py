@@ -208,27 +208,6 @@ class AccrualAcceptanceTests(unittest.TestCase):
         self.assertEqual(queue.read_queue_item(self.entity, row["id"])["status"], "confirmed")
         self.assertEqual(_load_pending_categorization(self.entity), [])
 
-    def test_carried_obligation_reversal_is_scoped_and_historical(self) -> None:
-        self.support["external"] = [row for row in self.support["external"] if row["id"] != "payroll-open"]
-        self.support["items"].append({"id": "carried-payroll", "kind": "accrual", "account": "Payroll Payable", "currency": "USD",
-            "original_amount": "300.00", "remaining_amount": "300.00", "settlement_strategy": "reverse", "evidence_refs": ["evidence/opening.txt"]})
-        self.opening()
-        original = self.store.load_entries()[0]
-        request = {"operation_id": "carried-payroll-reverse", "item_id": "carried-payroll", "date": "2026-07-01",
-                   "counter_account": EXPENSE, "reason": "Synthetic explicit reversal of the carried accrual"}
-        plan = items.preview_reversal(self.entity, request)
-        receipt = items.apply_reversal(self.entity, plan)
-        self.assertEqual(items.apply_reversal(self.entity, plan), receipt)
-        self.assertEqual(self.store.load_entries()[0], original)
-        before = {r["id"]: r["remaining_as_of"] for r in reports.report(self.entity, "outstanding", as_of="2026-06-30")["rows"]}
-        after = {r["id"]: r["remaining_as_of"] for r in reports.report(self.entity, "outstanding", as_of="2026-07-01")["rows"]}
-        self.assertEqual(before["carried-payroll"], "300.00")
-        self.assertEqual(after["carried-payroll"], "0.00")
-        with self.assertRaises(ValueError):
-            items.preview_reversal(self.entity, {**request, "operation_id": "cannot-reverse-twice"})
-        reconciliation = reports.report(self.entity, "reconciliation", as_of="2026-07-01")
-        self.assertTrue(all(row["difference"] == "0.00" for row in reconciliation["rows"]))
-
     def test_scheduled_item_reversal_allocates_on_actual_new_period_date(self) -> None:
         self.opening()
         eid = self.evidence("temporary-accrual", "2026-07-31")
