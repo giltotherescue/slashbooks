@@ -54,8 +54,8 @@ class AccrualFixture(unittest.TestCase):
 
     def schedule(self, **changes):
         request = {"operation_id": "schedule-create", "id": "annual", "kind": "prepaid", "account": PREPAID,
-            "recognition_account": EXPENSE, "currency": "USD", "amount": "1200.00", "start_date": "2026-01-01",
-            "end_date": "2027-01-01", "method": "equal_month", "origin": {
+            "recognition_account": EXPENSE, "currency": "USD", "amount": "1200.00", "service_start": "2026-01-01",
+            "service_end": "2026-12-31", "method": "equal_month", "origin": {
                 "mode": "new", "source_id": "annual-payment", "funding_account": BANK}, "evidence_ids": [self.eid]}
         request.update(changes)
         return request
@@ -207,7 +207,7 @@ class ScheduleTests(AccrualFixture):
         self.assertEqual(len(plan["entries"]), 1)
         self.assertEqual(plan["entries"][0]["description"], "Fund prepaid expense")
         self.assertEqual([row["amount"] for row in plan["details"]["installments"]], ["100.00"] * 12)
-        self.assertEqual(plan["details"]["end_date_convention"], "exclusive")
+        self.assertIn("inclusive", plan["details"]["service_dates"])
         self.assertEqual(plan["details"]["remaining_amount"], "1200.00")
         self.assertEqual(self.store.content_digest(), before)
         receipt = apply_schedule(self.entity, plan)
@@ -228,12 +228,12 @@ class ScheduleTests(AccrualFixture):
         self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
 
     def test_actual_day_crosses_leap_day_and_assigns_residual_to_final_period(self):
-        record = {"start_date": "2023-12-15", "end_date": "2024-03-15", "remaining_amount": "100.00", "method": "actual_day"}
+        record = {"service_start": "2023-12-15", "service_end": "2024-03-14", "remaining_amount": "100.00", "method": "actual_day"}
         rows = installments(record)
         self.assertEqual([r["date"] for r in rows], ["2023-12-31", "2024-01-31", "2024-02-29", "2024-03-14"])
         self.assertEqual([r["amount"] for r in rows], ["18.68", "34.06", "31.86", "15.40"])
         self.assertEqual(sum(Decimal(r["amount"]) for r in rows), Decimal("100.00"))
-        thirds = installments({"start_date": "2026-01-01", "end_date": "2026-04-01", "remaining_amount": "100.00", "method": "equal_month"})
+        thirds = installments({"service_start": "2026-01-01", "service_end": "2026-03-31", "remaining_amount": "100.00", "method": "equal_month"})
         self.assertEqual([r["amount"] for r in thirds], ["33.33", "33.33", "33.34"])
 
     def test_existing_expense_payment_is_reclassified_without_another_cash_effect(self):
@@ -316,7 +316,7 @@ class ScheduleTests(AccrualFixture):
         apply_schedule(self.entity, preview_schedule(self.entity, self.schedule()))
         apply_due(self.entity, preview_due(self.entity, "2026-01-31", operation_id="jan"))
         change = {"operation_id": "revise", "id": "annual", "action": "supersede", "date": "2026-02-01", "reason": "Synthetic revised service",
-                  "evidence_ids": [self.evidence("revision")], "replacement": {"id": "revised", "start_date": "2026-02-01", "end_date": "2026-08-01", "method": "equal_month"}}
+                  "evidence_ids": [self.evidence("revision")], "replacement": {"id": "revised", "service_start": "2026-02-01", "service_end": "2026-07-31", "method": "equal_month"}}
         before = self.store.counts().entries
         apply_change(self.entity, preview_change(self.entity, change))
         self.assertEqual(self.store.counts().entries, before)
@@ -341,8 +341,8 @@ class ScheduleTests(AccrualFixture):
         self.assertEqual(list_schedules(self.entity)[0]["status"], "cancelled")
 
     def test_invalid_dates_precision_or_missing_facts_never_publish(self):
-        for changes in ({"start_date": ""}, {"end_date": "2026-02-30"}, {"amount": "1.001"},
-                        {"start_date": "2026-01-02"}, {"currency": "EUR"}, {"method": "guess"}):
+        for changes in ({"service_start": ""}, {"service_end": "2026-02-30"}, {"amount": "1.001"},
+                        {"service_start": "2026-01-02"}, {"currency": "EUR"}, {"method": "guess"}):
             before = self.store.content_digest()
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 preview_schedule(self.entity, self.schedule(**changes))

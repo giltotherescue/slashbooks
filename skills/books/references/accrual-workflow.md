@@ -30,8 +30,9 @@ amount strings; use one representation per posting and retain the engine's exact
 preview. Do not calculate journal totals yourself.
 
 Ask for the first and last days covered by a contract in ordinary language. Map
-those facts to the engine's exclusive end date, preserving a source's explicitly
-stated date convention; clarify ambiguous dates before posting. Determine funding
+those facts to the schedule's inclusive `service_start` and `service_end` (a
+service from 2026-01-15 for one year ends 2027-01-14), preserving a source's
+explicitly stated date convention; clarify ambiguous dates before posting. Determine funding
 linkage and supporting-balance mode from current books and the schema, rather
 than asking owners for internal IDs, amount signs, or full/residual field names.
 
@@ -67,9 +68,18 @@ role or ask repeatedly for authority that the trusted host already supplied.
   queue confirm/split/group/correct needs explicit `new_cash_event` treatment
   only when this is established as a new current-period event. Routine cash trust
   cannot infer that treatment for an accrual company.
-- Prepaid/deferred schedules use an exclusive end date, complete original service
-  dates, and explicit recognition method. Preview due recognition through the
-  requested date. Changes, refunds, credits, writeoffs, corrections and reversals
+- Schedules (`prepaid`, `deferred`, `depreciation`) use inclusive `service_start`
+  and `service_end`, complete original service dates, and an explicit method:
+  `actual_day` (daily, exact), `equal_month` (whole calendar months only) or
+  `custom` with an `installments` list of dated amounts (usage, milestones,
+  uneven patterns). Computed methods floor each installment to the cent and put
+  residual cents on the last one. Depreciation needs a `contra_account` (for
+  example `Assets:Fixed:Accumulated-Depreciation`), keeps the asset cost, and
+  accepts `salvage_value`. To end a schedule early use `schedule change` with
+  action `terminate` and `effective_date` (last service day, inclusive); it
+  recognizes service through that day (daily proration for a partial month) and
+  releases the unearned balance to an explicit `offset_account`. Preview due
+  recognition through the requested date. Changes, refunds, credits, writeoffs, corrections and reversals
   use their schema contracts and retain lineage.
 - Invoices, bills and credits (`item`):
   - Apply a customer deposit, credit memo, overpayment or vendor prepayment to

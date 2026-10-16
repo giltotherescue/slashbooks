@@ -249,7 +249,7 @@ class AccrualAcceptanceTests(unittest.TestCase):
         import_transactions(self.entity, [row], "intake")
         queue.propose(self.entity, row["id"], EXPENSE, "Select schedule accounting before confirming expense")
         request = {"operation_id": "new-prepaid-create", "id": "new-prepaid", "kind": "prepaid", "account": "Assets:Other:Prepaid-Insurance",
-            "recognition_account": EXPENSE, "amount": "1200.00", "currency": "USD", "start_date": "2026-08-01", "end_date": "2027-08-01",
+            "recognition_account": EXPENSE, "amount": "1200.00", "currency": "USD", "service_start": "2026-08-01", "service_end": "2027-07-31",
             "method": "equal_month", "origin": {"mode": "new", "source_id": row["id"], "date": row["date"], "funding_account": BANK},
             "evidence_ids": [self.evidence("new-prepaid", row["date"])]}
         with self.assertRaisesRegex(journals.JournalError, "exact staged bank source"):

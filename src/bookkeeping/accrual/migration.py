@@ -229,7 +229,7 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
     common_fields = {"id", "account", "currency", "evidence_refs", "evidence_ids", "counterparty", "reference", "description"}
     source_fields = {
         "items": common_fields | {"kind", "original_amount", "remaining_amount", "settlement_strategy", "direction", "due_date"},
-        "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "start_date", "end_date", "method", "recognition_account"},
+        "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "service_start", "service_end", "method", "recognition_account"},
         "external": common_fields | {"balance"},
     }
     for collection in ("items", "schedules", "external"):
@@ -341,8 +341,10 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                     amount, recognized = _money(row.get("amount")), _money(row.get("recognized_amount"))
                     if amount < 0 or recognized < 0 or amount - recognized != remaining:
                         raise ValueError("Opening schedule original/recognized/remaining amounts do not reconcile.")
-                    start, end = _day(row.get("start_date")), _day(row.get("end_date"))
-                    if start >= end or end <= cutover or row.get("method") not in {"actual_day", "equal_month"}:
+                    if "start_date" in row or "end_date" in row:
+                        raise ValueError("Opening schedule start_date/end_date were replaced by inclusive service_start and service_end (last day of service).")
+                    start, end = _day(row.get("service_start")), _day(row.get("service_end"))
+                    if start > end or end < cutover or row.get("method") not in {"actual_day", "equal_month"}:
                         raise ValueError("Opening schedule needs a supported remaining service interval and method.")
                     recognition = mapping.get(row.get("recognition_account"), row.get("recognition_account"))
                     _validate_account_name(recognition)

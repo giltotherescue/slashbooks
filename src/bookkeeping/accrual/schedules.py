@@ -22,11 +22,22 @@ def _money(value: Any, field: str = "amount", *, positive: bool = True) -> Decim
     return result
 
 
-def _account(store, value: Any, field: str, roots: tuple[str, ...] = ()) -> str:
+_ROOT_NAMES = {"Assets:": "an asset", "Liabilities:": "a liability", "Expenses:": "an expense", "Income:": "an income"}
+KINDS = ("prepaid", "deferred", "depreciation")
+METHODS = ("actual_day", "equal_month", "custom")
+
+
+def _account(store, value: Any, field: str, roots: tuple[str, ...] = (), purpose: str = "") -> str:
     account = _text(value, field)
     catalog = {o.account: o for o in store.load_opens()}
-    if account not in catalog or (roots and not account.startswith(roots)):
-        raise JournalError("unmapped_account", f"{field} must name a permitted existing account: {account}.")
+    if account not in catalog:
+        raise JournalError("unmapped_account", f"{field} {account} is not an open account.",
+                           f"Open it first with `books entity account-add <entity> --account {account} --open-date YYYY-MM-DD`, or name an existing account in {field}.")
+    if roots and not account.startswith(roots):
+        wanted = " or ".join(_ROOT_NAMES.get(r, r) for r in roots)
+        raise JournalError("wrong_account_direction", f"{field} {account} must be {wanted} account ({'/'.join(roots)}...)"
+                           + (f" because {purpose}." if purpose else "."),
+                           f"Set {field} to an existing {'/'.join(roots)} account.")
     if catalog[account].currencies and catalog[account].currencies != ("USD",):
         raise JournalError("unsupported_currency", f"{account} is not a USD account.")
     return account
@@ -44,13 +55,101 @@ def _evidence_ids(value: Any) -> list[str]:
 
 
 def _request(value: Mapping[str, Any], allowed: set[str]) -> dict[str, Any]:
-    if not isinstance(value, Mapping) or set(value) - allowed:
-        raise JournalError("invalid_request", "Request contains unknown fields or authority claims.")
+    if not isinstance(value, Mapping):
+        raise JournalError("invalid_request", "Request must be a JSON object.")
+    if set(value) - allowed:
+        raise JournalError("invalid_request", "Request contains unknown fields or authority claims: "
+                           + ", ".join(sorted(map(str, set(value) - allowed))) + ".",
+                           "Remove the listed fields; see `books accrual schema` for the accepted fields.")
     return deepcopy(dict(value))
 
 
 def _normal_sign(record: Mapping[str, Any]) -> Decimal:
-    return Decimal(1 if record["kind"] == "prepaid" else -1)
+    return Decimal(-1 if record["kind"] == "deferred" else 1)
+
+
+def _credit_account(record: Mapping[str, Any]) -> str:
+    """Account credited (debited for deferred) when recognizing: the contra account for depreciation."""
+    return record["contra_account"] if record["kind"] == "depreciation" else record["account"]
+
+
+def _label(record: Mapping[str, Any]) -> str:
+    return {"prepaid": "prepaid expense", "deferred": "deferred revenue", "depreciation": "depreciation"}[record["kind"]]
+
+
+def _reject_legacy_dates(value: Mapping[str, Any], where: str = "") -> None:
+    old = [name for name in ("start_date", "end_date") if isinstance(value, Mapping) and name in value]
+    if old:
+        raise JournalError("renamed_service_fields", f"{where}{' and '.join(old)} no longer exist: end_date was exclusive and is replaced by inclusive dates.",
+                           f"Use {where}service_start (first day of service) and {where}service_end (last day of service, inclusive). "
+                           "For an old exclusive end_date, service_end is the day before it.")
+
+
+def _service(record: Mapping[str, Any]) -> tuple[date, date]:
+    """First and last day of service, both inclusive. Opening records stored before the rename carry an exclusive end_date."""
+    if "service_start" in record:
+        return _day(record["service_start"], "service_start"), _day(record["service_end"], "service_end")
+    return _day(record["start_date"], "start_date"), _day(record["end_date"], "end_date") - timedelta(days=1)
+
+
+def _depreciable(record: Mapping[str, Any]) -> Decimal:
+    return _money(record["amount"]) - _money(record.get("salvage_value", "0.00"), "salvage_value", positive=False)
+
+
+def _check_service(method: Any, start: date, end: date, recognition_start: date, installments_in: Any,
+                   total: Decimal, remaining: Decimal, field: str = "") -> list[dict[str, str]] | None:
+    """Validate service dates against a method; return normalized custom installments (else None)."""
+    if method not in METHODS:
+        raise JournalError("invalid_method", f"{field}method must be one of actual_day, equal_month, custom.",
+                           "Use actual_day (exact daily), equal_month (whole calendar months), or custom with an installments list.")
+    if end < start or (end - start).days > 36600:
+        raise JournalError("invalid_service_period", f"{field}service_end must not precede {field}service_start, and service may span at most 100 years. "
+                           "Both dates are inclusive: a one-year contract starting 2026-01-15 ends 2027-01-14.")
+    if not start <= recognition_start <= end:
+        raise JournalError("invalid_recognition_start", "Recognition start must fall inside the service interval.")
+    if method == "equal_month":
+        problems = []
+        if start.day != 1:
+            problems.append(f"{field}service_start {start} is not the first day of a month")
+        if (end + timedelta(days=1)).day != 1:
+            problems.append(f"{field}service_end {end} is not the last day of a month")
+        if recognition_start.day != 1:
+            problems.append(f"recognition_start {recognition_start} is not the first day of a month")
+        if problems:
+            raise JournalError("incomplete_calendar_month", "equal_month needs whole calendar months, but " + "; ".join(problems)
+                               + ", so a month would be partial.",
+                               "Change method to actual_day (daily, exact over the real number of days), or to custom with an installments list of dated amounts.")
+    if method != "custom":
+        if installments_in is not None:
+            raise JournalError("installments_not_allowed", "installments is only allowed with method custom.",
+                               "Remove installments, or set method to custom.")
+        return None
+    if not isinstance(installments_in, list) or not installments_in or len(installments_in) > 1200:
+        raise JournalError("invalid_installments", "method custom needs installments: a list of 1 to 1200 {\"date\", \"amount\"} objects.",
+                           'Supply installments such as [{"date": "2026-03-31", "amount": "100.00"}, ...].')
+    result, previous, total_seen, remaining_seen = [], None, Decimal(0), Decimal(0)
+    for index, row in enumerate(installments_in):
+        if not isinstance(row, Mapping) or set(row) != {"date", "amount"}:
+            raise JournalError("invalid_installments", f"installments[{index}] must have exactly date and amount.")
+        when = _day(row.get("date"), f"installments[{index}].date")
+        if previous is not None and when <= previous:
+            raise JournalError("installments_not_ascending", f"installments[{index}].date {when} is not after the previous date {previous}.",
+                               "List installments in strictly ascending date order, one per date.")
+        if not start <= when <= end:
+            raise JournalError("installment_outside_service", f"installments[{index}].date {when} is outside service {start} to {end}.",
+                               "Move the date inside the service period or widen service_start/service_end.")
+        amount = _money(row.get("amount"), f"installments[{index}].amount")
+        previous, total_seen = when, total_seen + amount
+        if when >= recognition_start:
+            remaining_seen += amount
+        result.append({"date": when.isoformat(), "amount": f"{amount:.2f}"})
+    if total_seen != total:
+        raise JournalError("installments_sum_mismatch", f"installments add up to {total_seen:.2f} but the schedule amount to recognize is {total:.2f} (difference {total_seen - total:+.2f}).",
+                           "Adjust the installment amounts so they add up exactly to the amount to recognize (amount minus salvage_value).")
+    if remaining_seen != remaining:
+        raise JournalError("installments_sum_mismatch", f"installments from recognition_start add up to {remaining_seen:.2f} but the remaining amount is {remaining:.2f} (difference {remaining_seen - remaining:+.2f}).",
+                           "Installments dated before recognition_start must equal recognized_amount.")
+    return result
 
 
 def _narration(action: str, record: Mapping[str, Any]) -> str:
@@ -63,20 +162,23 @@ def _narration(action: str, record: Mapping[str, Any]) -> str:
 
 
 def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) -> list[Entry]:
+    """Plan the origin journal. Also records `origin_date`, the day the control balance starts to exist."""
     store, origin = _store(entity), record["origin"]
     mode, source_id = origin["mode"], origin["source_id"]
     amount = _money(record["amount"])
     remaining = _money(record["remaining_amount"], positive=False)
     sign, account = _normal_sign(record), record["account"]
-    label = "prepaid expense" if record["kind"] == "prepaid" else "deferred revenue"
-    when = _day(origin.get("date", record["start_date"]), "origin.date")
+    label = _label(record)
+    when = _day(origin["date"], "origin.date") if origin.get("date") else None
     if mode == "new":
+        when = when or _service(record)[0]
+        record["origin_date"] = when.isoformat()
         if store.source_exists(source_id):
             raise JournalError("duplicate_origin", "Funding source is already posted; link it as an existing origin.")
         bank = _account(store, origin.get("funding_account"), "origin.funding_account")
         card = bank == "Liabilities:CreditCard" or bank.startswith("Liabilities:CreditCard:")
-        if not bank.startswith("Assets:") and not (record["kind"] == "prepaid" and card):
-            raise JournalError("invalid_funding_account", "Prepaid funding requires an asset or credit-card account; deferred revenue requires an incoming asset account.")
+        if not bank.startswith("Assets:") and not (sign > 0 and card):
+            raise JournalError("invalid_funding_account", "Prepaid and depreciation funding requires an asset or credit-card account; deferred revenue requires an incoming asset account.")
         if bank == account:
             raise JournalError("invalid_origin", "Funding and control accounts must differ.")
         from ..ledger.importer import _load_pending_categorization, _ledger_account_for_txn
@@ -89,6 +191,9 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
         return [_entry(when, source_id, _narration("Fund " + label, record),
                        [(account, sign * amount), (bank, -sign * amount)], schedule_id=record["id"])]
     original = _find_live_entry(store, source_id)
+    # The posted payment date is when the control balance starts, whatever the service dates are.
+    when = when or original.date
+    record["origin_date"] = original.date.isoformat()
     if original.date > when and mode == "existing":
         raise JournalError("invalid_origin_date", "The reclassification cannot precede its posted payment.")
     if mode == "opening":
@@ -96,7 +201,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
         reserved = sum((_money(s.get("origin_reserved_amount", s.get("base_remaining_amount", s["remaining_amount"])), positive=False)
                         for s in list_records(store, "schedules") if s.get("origin", {}).get("source_id") == source_id
                         and s.get("account") == account and not s.get("supersedes")), Decimal(0))
-        if reserved + remaining > available:
+        if reserved + (amount if record["kind"] == "depreciation" else remaining) > available:
             raise JournalError("opening_support_exceeds_balance", "Schedules exceed the linked opening control balance.")
         return []
     prior = [s for s in list_records(store, "schedules") if s.get("origin", {}).get("source_id") == source_id]
@@ -108,7 +213,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
     if control:
         return []
     old_account = _account(store, origin.get("reclass_account"), "origin.reclass_account",
-                           ("Expenses:",) if sign > 0 else ("Income:",))
+                           ("Expenses:",) if sign > 0 else ("Income:",), "the payment is being reclassified out of the original expense or income")
     matched = [p for p in original.postings if p.account == old_account and p.amount == sign * amount]
     if len(matched) != 1:
         raise JournalError("origin_amount_mismatch", "The existing payment's category amount does not match this schedule.")
@@ -117,34 +222,66 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
                    schedule_id=record["id"], origin_source_id=source_id)]
 
 
+def _supporting_period_check(records: list[dict[str, Any]], start: date, end: date) -> None:
+    for record in records:
+        period = record.get("envelope", {}).get("service_period")
+        if not period:
+            continue
+        first = date.fromisoformat(period["start"])
+        last = date.fromisoformat(period["end"]) - (timedelta(days=0) if period.get("end_inclusive", True) else timedelta(days=1))
+        if start < first or end > last:
+            raise JournalError("service_outside_supporting_document",
+                f"Schedule service {start} to {end} is not inside the supporting document's service period {first} to {last} (both inclusive).",
+                f"Set service_start and service_end inside {first} to {last}, or link the supporting document that covers the schedule (evidence {record['id']}).")
+
+
 def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
-    request = _request(payload, {"operation_id", "id", "kind", "account", "recognition_account", "currency",
-        "amount", "start_date", "end_date", "method", "origin", "evidence_ids", "recognition_start", "recognized_amount", "reference"})
+    _reject_legacy_dates(payload)
+    request = _request(payload, {"operation_id", "id", "kind", "account", "recognition_account", "contra_account", "currency",
+        "amount", "salvage_value", "service_start", "service_end", "method", "installments", "origin", "evidence_ids",
+        "recognition_start", "recognized_amount", "reference"})
     operation_id, schedule_id = _id(request.get("operation_id")), _id(request.get("id"))
     if "reference" in request:
         request["reference"] = _text(request["reference"], "reference")
     store = _store(entity)
     kind = request.get("kind")
-    if kind not in {"prepaid", "deferred"} or request.get("currency", "USD") != "USD":
-        raise JournalError("invalid_schedule", "Schedules support prepaid/deferred in USD.")
-    start, end = _day(request.get("start_date"), "start_date"), _day(request.get("end_date"), "end_date")
-    if end <= start or (end - start).days > 36600:
-        raise JournalError("invalid_service_period", "Service dates must cover a positive interval of at most 100 years.")
+    if kind not in KINDS or request.get("currency", "USD") != "USD":
+        raise JournalError("invalid_schedule", "Schedules support kind prepaid, deferred or depreciation in USD.")
+    start, end = _day(request.get("service_start"), "service_start"), _day(request.get("service_end"), "service_end")
     method = request.get("method")
-    if method not in {"actual_day", "equal_month"}:
-        raise JournalError("invalid_method", "Use actual_day or equal_month.")
-    recognition_start = _day(request.get("recognition_start", start.isoformat()), "recognition_start")
-    if not start <= recognition_start < end:
-        raise JournalError("invalid_recognition_start", "Recognition start must fall inside the service interval.")
-    if method == "equal_month" and (start.day != 1 or end.day != 1 or recognition_start.day != 1):
-        raise JournalError("incomplete_calendar_month", "equal_month requires whole calendar months; use actual_day for partial months.")
-    account = _account(store, request.get("account"), "account", ("Assets:",) if kind == "prepaid" else ("Liabilities:",))
-    recognition_account = _account(store, request.get("recognition_account"), "recognition_account",
-                                   ("Expenses:",) if kind == "prepaid" else ("Income:",))
+    recognition_start = _day(request.get("recognition_start", start.isoformat()), "recognition_start") if method in METHODS else start
+    if kind == "deferred":
+        control_roots, recognition_roots = ("Liabilities:",), ("Income:",)
+        why, why_recognition = "deferred revenue is money received before it is earned (a liability)", "deferred revenue is released into income"
+    else:
+        control_roots, recognition_roots = ("Assets:",), ("Expenses:",)
+        why = "a " + kind + " schedule spreads an asset" + (" (the cost of the asset)" if kind == "depreciation" else " paid in advance")
+        why_recognition = "a " + kind + " schedule releases the asset into expense"
+    account = _account(store, request.get("account"), "account", control_roots, why)
+    recognition_account = _account(store, request.get("recognition_account"), "recognition_account", recognition_roots, why_recognition)
+    if kind == "depreciation":
+        contra = _account(store, request.get("contra_account"), "contra_account", ("Assets:",),
+                          "accumulated depreciation is a contra-asset account such as Assets:Fixed:Accumulated Depreciation")
+        if contra == account:
+            raise JournalError("invalid_contra_account", "contra_account must differ from the asset account.",
+                               "Use a separate accumulated depreciation account such as Assets:Fixed:Accumulated Depreciation.")
+        request["contra_account"] = contra
+    elif "contra_account" in request or "salvage_value" in request:
+        raise JournalError("depreciation_only_field", "contra_account and salvage_value apply only to kind depreciation.",
+                           "Remove them, or set kind to depreciation.")
     amount = _money(request.get("amount"))
+    salvage = _money(request.get("salvage_value", "0.00"), "salvage_value", positive=False)
+    if salvage >= amount:
+        raise JournalError("invalid_salvage_value", f"salvage_value {salvage:.2f} must be less than amount {amount:.2f}.")
+    if "salvage_value" in request:
+        request["salvage_value"] = f"{salvage:.2f}"
+    base = amount - salvage
     recognized = _money(request.get("recognized_amount", "0.00"), "recognized_amount", positive=False)
-    if recognized >= amount:
+    if recognized >= base:
         raise JournalError("invalid_recognized_amount", "Initial recognition must leave a positive supported balance.")
+    installments_in = _check_service(method, start, end, recognition_start, request.get("installments"), base, base - recognized)
+    if installments_in is not None:
+        request["installments"] = installments_in
     origin = request.get("origin")
     if not isinstance(origin, Mapping) or set(origin) - {"mode", "source_id", "date", "funding_account", "reclass_account"}:
         raise JournalError("invalid_origin", "Supply a bounded new, existing, or opening origin.")
@@ -156,13 +293,14 @@ def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
     ids = _evidence_ids(request.get("evidence_ids", []))
     if not ids and origin["mode"] == "new":
         raise JournalError("evidence_required", "New schedule funding requires stored evidence.")
+    _supporting_period_check(_evidence(store, ids), start, end)
     request.update(operation_id=operation_id, id=schedule_id, kind=kind, account=account,
                    recognition_account=recognition_account, currency="USD", amount=f"{amount:.2f}",
                    recognized_amount=f"{recognized:.2f}", recognition_start=recognition_start.isoformat(), evidence_ids=ids)
     record = {key: deepcopy(value) for key, value in request.items() if key != "operation_id"}
-    record.update(remaining_amount=f"{amount - recognized:.2f}", base_remaining_amount=f"{amount - recognized:.2f}",
+    record.update(remaining_amount=f"{base - recognized:.2f}", base_remaining_amount=f"{base - recognized:.2f}",
                   base_recognized_amount=f"{recognized:.2f}", status="active", generation=0,
-                  origin_reserved_amount=f"{amount - recognized:.2f}" if origin["mode"] == "opening" else f"{amount:.2f}",
+                  origin_reserved_amount=f"{base - recognized:.2f}" if origin["mode"] == "opening" and kind != "depreciation" else f"{amount:.2f}",
                   created_operation_id=operation_id)
     mutations = []
     replay = None
@@ -185,7 +323,7 @@ def preview_schedule(entity: Entity, payload: Mapping[str, Any]) -> dict[str, An
     details = _schedule_details(record) if record else {"existing_receipt": replay}
     plan = _preview_operation(entity, operation_id=request["operation_id"], kind="schedule_create", request=request,
                               entries=entries, mutations=mutations, evidence_ids=request["evidence_ids"],
-                              affected_dates=[request["origin"].get("date", request["recognition_start"])], details=details)
+                              affected_dates=[(record or {}).get("origin_date") or request["origin"].get("date", request["recognition_start"])], details=details)
     if replay:
         plan["existing_receipt"] = replay
     return plan
@@ -217,10 +355,19 @@ def apply_schedule(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def installments(record: Mapping[str, Any]) -> list[dict[str, str]]:
-    """Allocate cents exactly; end_date is exclusive and the final period gets residual cents."""
-    start = _day(record.get("recognition_start", record["start_date"]), "recognition_start")
-    end = _day(record["end_date"], "end_date")
+    """Allocate cents exactly. Service dates are inclusive.
+
+    equal_month gives each whole month floor(remaining / months) cents and actual_day gives each month
+    floor(remaining * days in month / total days) cents; the final installment receives the residual cents.
+    custom returns the supplied installments dated on or after recognition_start.
+    """
+    first, last = _service(record)
+    start = _day(record.get("recognition_start", first.isoformat()), "recognition_start")
+    end = last + timedelta(days=1)
     remaining = _money(record.get("base_remaining_amount", record["remaining_amount"]), positive=False)
+    if record["method"] == "custom":
+        return [{"date": row["date"], "amount": row["amount"], "service_start": row["date"], "service_end": row["date"]}
+                for row in record.get("installments", []) if row["date"] >= start.isoformat()]
     segments = []
     cursor = start
     while cursor < end:
@@ -229,7 +376,8 @@ def installments(record: Mapping[str, Any]) -> list[dict[str, str]]:
         segments.append((cursor, stop))
         cursor = stop
     if record["method"] == "equal_month" and (start.day != 1 or end.day != 1):
-        raise JournalError("incomplete_calendar_month", "equal_month requires complete calendar months.")
+        raise JournalError("incomplete_calendar_month", "equal_month needs whole calendar months; the remaining service does not start on the 1st and end on a month end.",
+                           "Supersede with method actual_day (daily, exact) or custom installments.")
     if not segments:
         return []
     minor = int(remaining * 100)
@@ -241,15 +389,26 @@ def installments(record: Mapping[str, Any]) -> list[dict[str, str]]:
         used += cents
         if cents:
             results.append({"date": (stop - timedelta(days=1)).isoformat(), "amount": f"{Decimal(cents) / 100:.2f}",
-                            "service_start": begin.isoformat(), "service_end": stop.isoformat()})
+                            "service_start": begin.isoformat(), "service_end": (stop - timedelta(days=1)).isoformat()})
     return results
 
 
 def _schedule_details(record: Mapping[str, Any]) -> dict[str, Any]:
     return {"schedule_id": record["id"], "installments": installments(record) if record.get("status") == "active" else [],
-            "end_date_convention": "exclusive", "rounding": "Floor exact minor units; final installment receives residual cents.",
+            "service_dates": "service_start and service_end are both inclusive",
+            "rounding": "Floor exact minor units (cents) per installment; the final installment receives the residual cents. custom uses the supplied amounts.",
             "recognized_amount": record["recognized_amount"], "remaining_amount": record["remaining_amount"],
             "recognized_refund_amount": record.get("recognized_refund_amount", "0.00")}
+
+
+def _recognition_entry(record: Mapping[str, Any], allocation_id: str, installment: Mapping[str, str], generation: int):
+    amount, sign = _money(installment["amount"]), _normal_sign(record)
+    source_id = "schedule:" + allocation_id
+    entry = _entry(_day(installment["date"], "recognition date"), source_id, _narration("Recognize " + _label(record), record),
+                   [(record["recognition_account"], sign * amount), (_credit_account(record), -sign * amount)], schedule_id=record["id"])
+    allocation = {"id": allocation_id, "kind": "recognition", "schedule_id": record["id"], **installment,
+                  "source_id": source_id, "generation": generation, "evidence_ids": record.get("evidence_ids", [])}
+    return entry, allocation
 
 
 def _due_effect(entity: Entity, payload: Mapping[str, Any]):
@@ -263,6 +422,8 @@ def _due_effect(entity: Entity, payload: Mapping[str, Any]):
         record = deepcopy(record)
         _account(store, record["account"], "account")
         _account(store, record["recognition_account"], "recognition_account")
+        if record["kind"] == "depreciation":
+            _account(store, record["contra_account"], "contra_account")
         generation = record.get("generation", 0)
         record.setdefault("base_recognized_amount", record["recognized_amount"])
         record.setdefault("base_remaining_amount", record["remaining_amount"])
@@ -273,15 +434,9 @@ def _due_effect(entity: Entity, payload: Mapping[str, Any]):
             allocation_id = f"recognition:{record['id']}:{generation}:{installment['date']}"
             if installment["date"] > through.isoformat() or load_record(store, "allocations", allocation_id):
                 continue
-            amount, sign = _money(installment["amount"]), _normal_sign(record)
-            due_total += amount
-            source_id = "schedule:" + allocation_id
-            entries.append(_entry(_day(installment["date"], "recognition date"), source_id,
-                _narration("Recognize " + ("prepaid expense" if record["kind"] == "prepaid" else "deferred revenue"), record),
-                [(record["recognition_account"], sign * amount), (record["account"], -sign * amount)], schedule_id=record["id"]))
-            allocation = {"id": allocation_id, "kind": "recognition", "schedule_id": record["id"],
-                          **installment, "source_id": source_id, "generation": generation,
-                          "evidence_ids": record.get("evidence_ids", [])}
+            entry, allocation = _recognition_entry(record, allocation_id, installment, generation)
+            due_total += _money(installment["amount"])
+            entries.append(entry)
             mutations.append(SupportingMutation("allocations", allocation_id, allocation))
         if due_total:
             if due_total > remaining:
@@ -310,8 +465,71 @@ def apply_due(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
     return _apply(entity, plan, "schedule_due", _preview_due_request, _due_effect)
 
 
+def _terminate(store, record: dict[str, Any], changed: dict[str, Any], request: dict[str, Any], when: date,
+               operation_id: str, ids: list[str], remaining: Decimal, entries: list[Entry], mutations: list[SupportingMutation]) -> None:
+    """Recognize service through effective_date (inclusive), then release the unearned balance to offset_account."""
+    effective = _day(request.get("effective_date"), "effective_date")
+    first, last = _service(record)
+    current_start = _day(record.get("recognition_start", first.isoformat()), "recognition_start")
+    generation = record.get("generation", 0)
+    if effective >= last:
+        raise JournalError("terminate_after_service_end", f"effective_date {effective} is not before the last service day {last}; nothing is left to terminate.",
+                           "Run `books accrual schedule due-preview` to recognize the rest, or choose an earlier effective_date.")
+    if effective < current_start:
+        raise JournalError("terminate_before_service", f"effective_date {effective} is before recognition starts on {current_start}; no service was earned.",
+                           "Use action cancel to release the whole remaining balance, or choose a later effective_date.")
+    if when < effective:
+        raise JournalError("change_precedes_effective", f"date {when} is before effective_date {effective}.",
+                           "Set date (the posting date of the refund or write-off) on or after effective_date.")
+    sign, label = _normal_sign(record), _label(record)
+    earned, parts = Decimal(0), []
+    for part in installments(record):
+        allocation_id = f"recognition:{record['id']}:{generation}:{part['date']}"
+        if part["service_end"] <= effective.isoformat():
+            if not load_record(store, "allocations", allocation_id):
+                parts.append((allocation_id, part))
+        elif record["method"] != "custom" and part["service_start"] <= effective.isoformat():
+            days = (effective - date.fromisoformat(part["service_start"])).days + 1
+            total_days = (date.fromisoformat(part["service_end"]) - date.fromisoformat(part["service_start"])).days + 1
+            cents = int(_money(part["amount"]) * 100) * days // total_days
+            if cents:
+                parts.append((f"recognition:{record['id']}:{generation}:{effective.isoformat()}",
+                              {"date": effective.isoformat(), "amount": f"{Decimal(cents) / 100:.2f}",
+                               "service_start": part["service_start"], "service_end": effective.isoformat()}))
+    for allocation_id, part in parts:
+        entry, allocation = _recognition_entry(record, allocation_id, part, generation)
+        entries.append(entry)
+        mutations.append(SupportingMutation("allocations", allocation_id, allocation))
+        earned += _money(part["amount"])
+    unearned = remaining - earned
+    if unearned < 0:
+        raise JournalError("schedule_balance_conflict", "Earned recognition exceeds the supported remaining balance.")
+    offset = None
+    if record["kind"] == "depreciation":
+        if request.get("offset_account"):
+            raise JournalError("offset_not_allowed", "Terminating depreciation posts no refund or write-off, so offset_account is not allowed.",
+                               "Remove offset_account. The asset cost and accumulated depreciation stay; depreciation simply stops.")
+    elif unearned:
+        offset = _account(store, request.get("offset_account"), "offset_account")
+        if offset == record["account"]:
+            raise JournalError("invalid_offset", "Offset and control accounts must differ.")
+        entries.append(_entry(when, "schedule:" + operation_id + ":terminate", _text(request.get("reason"), "reason"),
+                              [(record["account"], -sign * unearned), (offset, sign * unearned)], schedule_id=record["id"]))
+    elif request.get("offset_account"):
+        raise JournalError("offset_not_allowed", "Nothing is left unearned at effective_date, so offset_account is not allowed.", "Remove offset_account.")
+    allocation_id = "schedule-change:" + operation_id
+    mutations.append(SupportingMutation("allocations", allocation_id, {
+        "id": allocation_id, "kind": "schedule_terminate", "schedule_id": record["id"], "date": when.isoformat(),
+        "effective_date": effective.isoformat(), "amount": f"{unearned:.2f}", "remaining_refund_amount": f"{unearned:.2f}",
+        "recognized_refund_amount": "0.00", "recognized_refund_account": None, "offset_account": offset,
+        "recognized_through_termination": f"{earned:.2f}", "evidence_ids": ids, "operation_id": operation_id}))
+    changed.update(status="terminated", remaining_amount="0.00", terminated_amount=f"{unearned:.2f}", terminated_on=effective.isoformat(),
+                   recognized_amount=f"{_money(record['recognized_amount'], positive=False) + earned:.2f}")
+
+
 def _change_effect(entity: Entity, payload: Mapping[str, Any]):
-    request = _request(payload, {"operation_id", "id", "action", "date", "reason", "evidence_ids", "amount", "offset_account", "replacement",
+    _reject_legacy_dates(payload.get("replacement") if isinstance(payload, Mapping) else None, "replacement.")
+    request = _request(payload, {"operation_id", "id", "action", "date", "effective_date", "reason", "evidence_ids", "amount", "offset_account", "replacement",
                                  "remaining_refund_amount", "recognized_refund_amount", "recognized_refund_account"})
     operation_id, schedule_id = _id(request.get("operation_id")), _id(request.get("id"))
     when, reason = _day(request.get("date"), "date"), _text(request.get("reason"), "reason")
@@ -323,6 +541,8 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
     for field in ("amount", "remaining_refund_amount", "recognized_refund_amount"):
         if field in request:
             request[field] = f"{_money(request[field], field, positive=field == 'amount'):.2f}"
+    if "effective_date" in request:
+        request["effective_date"] = _day(request["effective_date"], "effective_date").isoformat()
     logical = {key: value for key, value in request.items() if key not in {"operation_id", "evidence_ids"}}
     claims, replay = _source_claims(store, _evidence(store, ids), canonical_hash({"kind": "schedule_change", **logical}), operation_id)
     if replay:
@@ -332,15 +552,29 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("inactive_schedule", "Only an active schedule can be changed.")
     remaining = _money(record["remaining_amount"], positive=False)
     action = request.get("action")
-    if action not in {"cancel", "supersede", "refund"}:
-        raise JournalError("invalid_change", "Use cancel, supersede, or refund with explicit effects.")
+    if action not in {"cancel", "supersede", "refund", "terminate"}:
+        raise JournalError("invalid_change", "Use cancel, supersede, refund, or terminate with explicit effects.")
+    if action == "terminate" and "effective_date" not in request:
+        raise JournalError("effective_date_required", "terminate needs effective_date, the last day of service (inclusive).",
+                           "Add effective_date, for example the last day the customer or vendor service ran.")
+    if action != "terminate" and "effective_date" in request:
+        raise JournalError("invalid_request", "effective_date applies only to action terminate.", "Remove effective_date, or use action terminate.")
+    if record["kind"] == "depreciation" and action != "terminate":
+        raise JournalError("depreciation_change_unsupported", f"Action {action} does not apply to a depreciation schedule.",
+                           "Use action terminate with effective_date to stop depreciation (for example at disposal); the asset cost stays in place.")
     original = _find_live_entry(store, record["origin"]["source_id"])
     earliest = max(original.date, _day(record.get("effective_from", original.date.isoformat()), "effective_from"))
     if when < earliest:
         raise JournalError("change_precedes_origin", "A schedule change cannot precede its financial origin or effective support date.")
     posted_dates = [a["date"] for a in list_records(store, "allocations") if a.get("schedule_id") == schedule_id and a.get("kind") == "recognition"]
-    if posted_dates and when.isoformat() < max(posted_dates):
-        raise JournalError("change_precedes_recognition", "A change cannot rewrite already recognized service history.")
+    guard = request["effective_date"] if action == "terminate" else when.isoformat()
+    if posted_dates and guard < max(posted_dates):
+        last_posted = max(posted_dates)
+        raise JournalError("change_precedes_recognition",
+            f"Recognition is already posted through {last_posted}, which is after the change date {guard}. A posted recognition cannot be rewritten by a schedule change.",
+            f"Set {'effective_date' if action == 'terminate' else 'date'} on or after {last_posted}. If service really stopped earlier, "
+            "run `books accrual schedule change-preview` with action refund, recognized_refund_amount (the over-recognized amount), "
+            "recognized_refund_account and offset_account, dated on or after " + last_posted + ".")
     request.update(operation_id=operation_id, id=schedule_id, evidence_ids=ids)
     entries, mutations = [], list(claims)
     changed = deepcopy(record)
@@ -351,26 +585,31 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
     }]
     changed["changes"] = [*changed.get("changes", []), {"operation_id": operation_id, "action": action,
         "date": when.isoformat(), "reason": reason, "evidence_ids": ids}]
-    if action == "supersede":
+    roots = ("Expenses:",) if record["kind"] == "prepaid" else ("Income:",)
+    if action == "terminate":
+        _terminate(store, record, changed, request, when, operation_id, ids, remaining, entries, mutations)
+    elif action == "supersede":
         replacement = request.get("replacement")
-        if not isinstance(replacement, Mapping) or set(replacement) - {"id", "start_date", "end_date", "method", "recognition_account"}:
-            raise JournalError("invalid_replacement", "Replacement defines a fresh ID, service dates, method and recognition account.")
+        if not isinstance(replacement, Mapping) or set(replacement) - {"id", "service_start", "service_end", "method", "installments", "recognition_account"}:
+            raise JournalError("invalid_replacement", "Replacement defines a fresh ID, service_start, service_end, method (with installments for custom) and recognition account.")
         replacement_id = _id(replacement.get("id"))
         if load_record(store, "schedules", replacement_id) or replacement_id == schedule_id:
             raise JournalError("identity_conflict", "Replacement schedule requires a new identity.")
-        start, end = _day(replacement.get("start_date"), "replacement.start_date"), _day(replacement.get("end_date"), "replacement.end_date")
-        if start < when or end <= start:
-            raise JournalError("invalid_service_period", "Replacement service must begin on/after the change and end later.")
+        start, end = _day(replacement.get("service_start"), "replacement.service_start"), _day(replacement.get("service_end"), "replacement.service_end")
+        if start < when:
+            raise JournalError("invalid_service_period", "Replacement service must begin on/after the change date.")
         method = replacement.get("method")
-        if method not in {"actual_day", "equal_month"} or (method == "equal_month" and (start.day != 1 or end.day != 1)):
-            raise JournalError("invalid_method", "Replacement method and service dates are inconsistent.")
-        account = _account(store, replacement.get("recognition_account", record["recognition_account"]), "recognition_account",
-                           ("Expenses:",) if record["kind"] == "prepaid" else ("Income:",))
-        successor = {**record, "id": replacement_id, "amount": f"{remaining:.2f}", "recognized_amount": "0.00",
+        custom = _check_service(method, start, end, start, replacement.get("installments"), remaining, remaining, "replacement.")
+        account = _account(store, replacement.get("recognition_account", record["recognition_account"]), "recognition_account", roots,
+                           "the recognition account follows the schedule kind")
+        successor = {**{k: v for k, v in record.items() if k not in {"installments", "service_start", "service_end", "start_date", "end_date"}},
+            "id": replacement_id, "amount": f"{remaining:.2f}", "recognized_amount": "0.00",
             "remaining_amount": f"{remaining:.2f}", "base_recognized_amount": "0.00", "base_remaining_amount": f"{remaining:.2f}",
-            "start_date": start.isoformat(), "recognition_start": start.isoformat(), "end_date": end.isoformat(),
+            "service_start": start.isoformat(), "recognition_start": start.isoformat(), "service_end": end.isoformat(),
             "method": method, "recognition_account": account, "status": "active", "generation": 0,
             "supersedes": schedule_id, "evidence_ids": ids, "changes": [], "created_operation_id": operation_id}
+        if custom is not None:
+            successor["installments"] = custom
         successor["history"] = []
         successor["effective_from"] = when.isoformat()
         changed.update(status="superseded", remaining_amount="0.00", transferred_amount=f"{remaining:.2f}", superseded_by=replacement_id)
@@ -398,8 +637,8 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
         postings = [(record["account"], -sign * remaining_refund), (offset, sign * amount)]
         recognized_account = None
         if recognized_refund:
-            recognized_account = _account(store, request.get("recognized_refund_account"), "recognized_refund_account",
-                                           ("Expenses:",) if record["kind"] == "prepaid" else ("Income:",))
+            recognized_account = _account(store, request.get("recognized_refund_account"), "recognized_refund_account", roots,
+                                          "the recognized portion of a refund reverses expense or income")
             postings.append((recognized_account, -sign * recognized_refund))
         if amount:
             entries.append(_entry(when, "schedule:" + operation_id + ":" + action,
@@ -417,11 +656,16 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
         if action == "cancel" or remaining_refund == remaining:
             changed["status"] = "cancelled" if action == "cancel" else "completed"
         else:
-            new_start = max(_day(record.get("recognition_start", record["start_date"]), "recognition_start"), when + timedelta(days=1))
-            if new_start >= _day(record["end_date"], "end_date"):
+            if record["method"] == "custom":
+                raise JournalError("custom_partial_refund", "A partial refund cannot be spread over the remaining custom installments automatically.",
+                                   "Use action supersede with a new custom installments list for the reduced balance, or refund the whole remaining balance.")
+            first, last = _service(record)
+            new_start = max(_day(record.get("recognition_start", first.isoformat()), "recognition_start"), when + timedelta(days=1))
+            if new_start > last:
                 raise JournalError("no_future_service", "No future service remains to allocate the revised balance.")
             if record["method"] == "equal_month" and new_start.day != 1:
-                raise JournalError("incomplete_calendar_month", "A partial-month refund needs an explicitly superseded actual_day schedule.")
+                raise JournalError("incomplete_calendar_month", "A partial-month refund cannot keep equal_month, which needs whole calendar months.",
+                                   "Use action supersede with method actual_day (daily, exact), or date the refund on the last day of a month.")
             changed.update(recognition_start=new_start.isoformat(), base_remaining_amount=f"{remaining - remaining_refund:.2f}",
                            base_recognized_amount=record["recognized_amount"], generation=record.get("generation", 0) + 1)
     mutations.append(SupportingMutation("schedules", schedule_id, changed, record_revision(store, "schedules", schedule_id)))
