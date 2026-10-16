@@ -96,7 +96,9 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     mutates = not read and not network
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False
-    if path == ("qb", "repair-opening") and not args.apply:
+    if path == ("qb", "sync-import"):
+        mutates = True  # Persists company source evidence and review proposals.
+    if path in {("qb", "repair-opening"), ("qb", "sync-rules")} and not args.apply:
         mutates = False
     # mutates is a business-write permission, not an artifact/cache-write flag.
     return dict(path=path, entity_fields=entity, input_fields=inputs,

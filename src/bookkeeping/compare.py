@@ -1219,12 +1219,11 @@ def _find_unmatched(
 
 def _find_report_file(folder: Path, report_type: str, multiple: bool = False) -> list[Path]:
     """Find QuickBooks export files of the given report type in the folder."""
-    from .quickbooks import _read_export_rows, detect_report_type
+    from .quickbooks import _fingerprint_file
     results = []
     for f in iter_export_files(folder):
         try:
-            rows = _read_export_rows(f)
-            if detect_report_type(rows) == report_type:
+            if _fingerprint_file(f).report_type == report_type:
                 results.append(f)
                 if not multiple:
                     return results
