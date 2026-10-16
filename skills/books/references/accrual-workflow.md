@@ -70,8 +70,21 @@ role or ask repeatedly for authority that the trusted host already supplied.
 - Prepaid/deferred schedules use an exclusive end date, complete original service
   dates, and explicit recognition method. Preview due recognition through the
   requested date. Changes, refunds, credits, writeoffs, corrections and reversals
-  use their schema contracts and retain lineage. Never both settle and reverse
-  the same obligation.
+  use their schema contracts and retain lineage.
+- Invoices, bills and credits (`item`):
+  - Apply a customer deposit, credit memo, overpayment or vendor prepayment to
+    an invoice or bill with `item offset-preview|offset-apply`. Both items need the
+    same `counterparty`. Different control accounts post a balancing entry;
+    one shared account only links.
+  - Record an overpayment or unapplied cash in the settlement with `excess`
+    {id, account, counterparty}. It creates an open credit item. A deposit with
+    no invoice yet uses empty `allocations` plus `excess`.
+  - Put a bill split across accounts in `origin.lines` (one control balance).
+  - Accrue an estimate that reverses itself with a journal: `estimate_basis` plus
+    `reversal_date`, then `journal due-reversals --apply`. To track an estimate
+    until the real bill, create a `kind: accrual` item with `estimate_basis`, record
+    the real bill as an item, then `item adjust` with `action: true_up` and
+    `actual_item_id`. Use `credit` for a discount and `writeoff` for bad debt.
 - Provider-determined payroll, depreciation, tax, or other adjustments can use
   generic journals and dated external-support snapshots. Require exact control
   reconciliation. Do not invent those calculations or claim a dedicated engine

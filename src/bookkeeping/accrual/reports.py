@@ -111,8 +111,8 @@ def _managed_support(conn, as_of):
         row = _at_history(current, as_of)
         if (_origin_date(row, opening) or "9999-12-31") > as_of:
             continue
-        relevant = [a for a in allocations if a.get("item_id") == row["id"] and a.get("kind") in {"settlement", "credit", "writeoff", "reversal"} and a.get("date", "9999-12-31") <= as_of]
-        all_allocations = [a for a in allocations if a.get("item_id") == row["id"] and a.get("kind") in {"settlement", "credit", "writeoff", "reversal"}]
+        relevant = [a for a in allocations if a.get("item_id") == row["id"] and a.get("kind") in {"settlement", "credit", "writeoff", "reversal", "application"} and a.get("date", "9999-12-31") <= as_of]
+        all_allocations = [a for a in allocations if a.get("item_id") == row["id"] and a.get("kind") in {"settlement", "credit", "writeoff", "reversal", "application"}]
         base = Decimal(row.get("base_remaining_amount", row["remaining_amount"]))
         if "base_remaining_amount" not in row and all_allocations:
             base = Decimal(row["original_amount"])

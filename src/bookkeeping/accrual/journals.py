@@ -406,8 +406,7 @@ def apply_evidence_link(entity: Entity, plan: Mapping[str, Any]) -> dict[str, An
 def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any], Entry]:
     if not isinstance(request, Mapping):
         raise JournalError("invalid_request", "Journal request must be an object.")
-    allowed = {"id", "date", "description", "postings", "evidence_ids", "estimate_basis", "reversal_date",
-               "reversal_strategy", "origin", "obligation_ids"}
+    allowed = {"id", "date", "description", "postings", "evidence_ids", "estimate_basis", "reversal_date", "origin"}
     if set(request) - allowed:
         raise JournalError("unknown_field", "Journal request contains unsupported fields or authority claims.")
     normalized = dict(request)
@@ -450,15 +449,6 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
         reversal_date = _day(request["reversal_date"], "reversal_date")
         if reversal_date <= when:
             raise JournalError("invalid_reversal_date", "A scheduled reversal must be later than its journal.")
-        if request.get("reversal_strategy", "reverse") != "reverse":
-            raise JournalError("invalid_strategy", "A scheduled reversal requires the reverse strategy.")
-        normalized["reversal_strategy"] = "reverse"
-    if "reversal_strategy" in request and request["reversal_strategy"] not in {"direct", "reverse"}:
-        raise JournalError("invalid_strategy", "reversal_strategy must be direct or reverse.")
-    obligations = request.get("obligation_ids", [])
-    if not isinstance(obligations, list) or any(not isinstance(i, str) for i in obligations) or len(set(obligations)) != len(obligations):
-        raise JournalError("invalid_obligations", "obligation_ids must be unique stored item IDs.")
-    normalized["obligation_ids"] = sorted(obligations)
     if "origin" in request:
         origin = request["origin"]
         if not isinstance(origin, Mapping) or set(origin) != {"mode", "source_id"} or origin["mode"] != "existing":
@@ -481,13 +471,14 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
     return normalized, Entry(when, description, postings=tuple(postings), meta=tuple(meta))
 
 
-def _warnings(entity: Entity, entry: Entry, obligations: Sequence[str]) -> list[dict[str, Any]]:
+def _warnings(entity: Entity, entry: Entry, auto_reversing: bool = False) -> list[dict[str, Any]]:
+    """An auto-reversing accrual needs no supporting detail: it reverses itself."""
     supported = {item.get("account") for item in list_records(_store(entity), "items")}
     control_tokens = ("Receivable", "Payable", "Deferred", "Prepaid", "Accrued", "PayrollLiabil")
     return [{"code": "control_support_required", "account": p.account,
              "message": "Control-account posting requires reconciled supporting detail."}
             for p in entry.postings if any(t in p.account for t in control_tokens) and p.account not in supported
-            and not obligations]
+            and not auto_reversing]
 
 
 def _source_claims(store: LedgerStore, records: Sequence[dict[str, Any]], financial_hash: str,
@@ -534,13 +525,7 @@ def _journal_effect(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[st
         reverse_id = "reversal:" + normalized["id"]
         mutations.append(SupportingMutation("intents", reverse_id, {"id": reverse_id, "kind": "scheduled_reversal",
             "status": "pending", "date": normalized["reversal_date"], "original_id": normalized["id"],
-            "strategy": "reverse", "obligation_ids": normalized["obligation_ids"]}))
-    for item_id in normalized["obligation_ids"]:
-        item = load_record(store, "items", item_id)
-        if not item:
-            raise JournalError("missing_obligation", f"Outstanding item {item_id} is missing.")
-        if "reversal_date" in normalized and item.get("settlement_strategy") != "reverse":
-            raise JournalError("settlement_strategy_conflict", "Direct settlement and scheduled reversal cannot extinguish the same obligation.")
+            "strategy": "reverse"}))
     return normalized, entry, mutations, replay
 
 
@@ -557,7 +542,7 @@ def preview_journal(entity: Entity, request: Mapping[str, Any]) -> dict[str, Any
     plan = _preview_operation(entity, operation_id=normalized["id"], kind="journal", request=normalized,
         entries=[] if replay else [entry], mutations=[] if replay else mutations, evidence_ids=normalized["evidence_ids"],
         affected_dates=[entry.date.isoformat(), *([normalized["reversal_date"]] if "reversal_date" in normalized else [])],
-        warnings=_warnings(entity, entry, normalized["obligation_ids"]))
+        warnings=_warnings(entity, entry, "reversal_date" in normalized))
     if replay:
         plan["existing_receipt"] = replay
     return plan
@@ -609,14 +594,13 @@ def _correction_effect(entity: Entity, request: Mapping[str, Any], kind: str) ->
         or row.get("id") == dict(original.meta).get("schedule-id")]
     linked_items = [row for row in list_records(_store(entity), "items")
         if row.get("origin", {}).get("source_id") == original.source_id or row.get("created_operation_id") == original_id
-        or row.get("reversal_operation_id") == original_id or row.get("id") == dict(original.meta).get("item-id")]
+        or row.get("id") == dict(original.meta).get("item-id")]
     if linked_schedules or intent.get("kind", "").startswith("schedule_"):
         raise JournalError("managed_schedule_requires_change", "This financial origin funds a recognition schedule.",
                            "Use a reviewed schedule change/refund so its remaining balance and allocations change atomically.")
-    if ((linked_items and (kind == "correction" or any(row["id"] not in intent["request"].get("obligation_ids", []) for row in linked_items)))
-            or (intent.get("kind", "").startswith("item_") and intent["kind"] != "item_create")):
+    if linked_items or (intent.get("kind", "").startswith("item_") and intent["kind"] != "item_create"):
         raise JournalError("managed_item_requires_change", "This financial origin carries outstanding-item support.",
-                           "Use an item adjustment or explicit item reversal so financial and supporting balances remain consistent.")
+                           "Use `books accrual item adjust-preview` (credit, writeoff or true_up) or `item offset-preview` so financial and supporting balances stay consistent.")
     when = _day(request.get("date"), "date")
     if when < original.date:
         raise JournalError("reversal_precedes_origin", "A correction or reversal cannot precede its original financial entry.")
@@ -645,13 +629,13 @@ def _correction_effect(entity: Entity, request: Mapping[str, Any], kind: str) ->
             raise JournalError("identity_conflict", "Replacement operation identity is already committed.")
         child_plan = _preview_operation(entity, operation_id=replacement["id"], kind="journal", request=replacement,
             entries=[entry], mutations=[], evidence_ids=replacement["evidence_ids"],
-            warnings=_warnings(entity, entry, replacement["obligation_ids"]))
+            warnings=_warnings(entity, entry))
         child_receipt = {"status": "applied", "id": replacement["id"], "kind": "journal",
             "request_hash": canonical_hash({"kind": "journal", "request": replacement}),
             "plan_hash": child_plan["plan_hash"],
             "entry_source_ids": [entry.source_id], "evidence_ids": replacement["evidence_ids"],
             "authority": {"mode": "linked_correction", "operation_id": operation_id},
-            "warnings": _warnings(entity, entry, replacement["obligation_ids"])}
+            "warnings": _warnings(entity, entry)}
         mutations.append(SupportingMutation("intents", child_id, {"id": child_id, "kind": "journal",
             "status": "applied", "parent_operation_id": operation_id, "request": replacement,
             "request_hash": child_receipt["request_hash"], "plan": child_plan, "receipt": child_receipt}))
@@ -681,24 +665,6 @@ def _correction_effect(entity: Entity, request: Mapping[str, Any], kind: str) ->
     if due and due.get("status") == "pending":
         mutations.append(SupportingMutation("intents", due["id"], {**due, "status": "applied" if kind == "reversal" else "superseded",
             "operation_id": operation_id}, record_revision(store, "intents", due["id"])))
-    for item_id in intent["request"].get("obligation_ids", []):
-        item = load_record(store, "items", item_id)
-        if not item or item.get("settlement_strategy") != "reverse":
-            raise JournalError("settlement_strategy_conflict", "This obligation is not eligible for reversal.")
-        if item.get("status") in {"settled", "closed", "reversed"}:
-            raise JournalError("obligation_extinguished", "The obligation has already been extinguished.")
-        if kind == "reversal":
-            prior_remaining = normalize_amount(item["remaining_amount"])
-            if Decimal(prior_remaining) <= 0:
-                raise JournalError("obligation_extinguished", "The obligation has no remaining amount to reverse.")
-            mutations.append(SupportingMutation("items", item_id, {**item,
-                "base_remaining_amount": item.get("base_remaining_amount", prior_remaining),
-                "status": "reversed", "remaining_amount": "0.00",
-                "reversal_operation_id": operation_id}, record_revision(store, "items", item_id)))
-            allocation_id = "reversal:" + operation_id + ":" + item_id
-            mutations.append(SupportingMutation("allocations", allocation_id, {"id": allocation_id,
-                "kind": "reversal", "item_id": item_id, "amount": prior_remaining,
-                "date": when.isoformat(), "source_id": reversal.source_id, "operation_id": operation_id}))
     return normalized, entries, mutations
 
 
@@ -712,7 +678,7 @@ def preview_correction(entity: Entity, request: Mapping[str, Any], *, reverse_on
     return _preview_operation(entity, operation_id=normalized["id"], kind=kind, request=normalized,
         entries=entries, mutations=mutations, evidence_ids=sorted(ids),
         affected_dates=[], warnings=[warning for entry in entries[1:]
-            for warning in _warnings(entity, entry, normalized.get("replacement", {}).get("obligation_ids", []))])
+            for warning in _warnings(entity, entry)])
 
 
 def apply_correction(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:

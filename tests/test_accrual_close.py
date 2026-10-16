@@ -100,22 +100,6 @@ class AccrualCloseTests(unittest.TestCase):
                 self.close(assessment)
         self.assertIsNone(load_record(self.store, "periods", "2026-07"))
 
-    def test_future_posted_reversal_does_not_clear_earlier_due_or_balance(self):
-        self.opening()
-        request = {"operation_id": "reverse-payroll-origin", "id": "reverse-payroll", "kind": "accrual", "account": "Liabilities:Other:Payroll-Payable",
-                   "original_amount": "50.00", "as_of": "2026-07-15", "currency": "USD", "settlement_strategy": "reverse", "reversal_date": "2026-08-01",
-                   "origin": {"mode": "new", "source_id": "reverse-payroll-provider", "counter_account": "Expenses:Operating-Costs"},
-                   "evidence_ids": [self.evidence_for("reverse-payroll-provider")]}
-        items.apply_item(self.entity, items.preview_item(self.entity, request))
-        journals.apply_correction(self.entity, journals.preview_correction(self.entity, {"id": "late-payroll-reversal", "original_id": "reverse-payroll-origin",
-            "date": "2026-09-01", "description": "Late explicitly dated reversal"}, reverse_only=True))
-        august = reports.report(self.entity, "outstanding", as_of="2026-08-31")
-        self.assertEqual(next(r["remaining_as_of"] for r in august["rows"] if r["id"] == "reverse-payroll"), "50.00")
-        self.assertTrue(any(i["code"] == "reversal_due" for i in august["issues"]))
-        september = reports.report(self.entity, "outstanding", as_of="2026-09-01")
-        self.assertEqual(next(r["remaining_as_of"] for r in september["rows"] if r["id"] == "reverse-payroll"), "0.00")
-        self.assertFalse(any(i["code"] == "reversal_due" for i in september["issues"]))
-
 
 class MidmonthCutoverReadinessTests(unittest.TestCase):
     fiscal_start = "2026-01-01"

@@ -22,7 +22,7 @@ def add_parser(subparsers: Any) -> None:
     for domain, selector, verbs in (
         ("journal", "journal_command", ("preview", "apply", "correct-preview", "correct-apply", "reverse-preview", "reverse-apply")),
         ("schedule", "schedule_command", ("preview", "apply", "due-apply", "change-preview", "change-apply")),
-        ("item", "item_command", ("preview", "apply", "settle-preview", "settle-apply", "adjust-preview", "adjust-apply", "reverse-preview", "reverse-apply")),
+        ("item", "item_command", ("preview", "apply", "settle-preview", "settle-apply", "adjust-preview", "adjust-apply", "offset-preview", "offset-apply")),
         ("support", "support_command", ("preview", "apply")),
         ("evidence-link", "evidence_link_command", ("preview", "apply")),
         ("period", "period_command", ("preview", "apply")),
@@ -76,7 +76,7 @@ def contracts() -> dict[str, Any]:
                 "accrual schedule preview|apply|change-preview|change-apply|due-apply --entity PATH --input FILE",
                 "accrual schedule due-preview --entity PATH --through YYYY-MM-DD --operation-id ID",
                 "accrual schedule list --entity PATH", "accrual item list --entity PATH",
-                "accrual item preview|apply|settle-preview|settle-apply|adjust-preview|adjust-apply|reverse-preview|reverse-apply --entity PATH --input FILE",
+                "accrual item preview|apply|settle-preview|settle-apply|adjust-preview|adjust-apply|offset-preview|offset-apply --entity PATH --input FILE",
                 "accrual support preview|apply --entity PATH --input FILE",
                 "accrual evidence-link preview|apply --entity PATH --input FILE",
                 "accrual period preview|apply --entity PATH --input FILE (local operator only; adjust authority does not cover close/reopen)",
@@ -85,7 +85,8 @@ def contracts() -> dict[str, Any]:
                 "accrual migration apply --entity PATH --input FILE"],
             "evidence": schema(), "journal": {
                 "required": ["id", "date", "description", "postings"],
-                "optional": ["evidence_ids", "estimate_basis", "reversal_date", "reversal_strategy", "origin", "obligation_ids"],
+                "optional": ["evidence_ids", "estimate_basis", "reversal_date", "origin"],
+                "accrued_estimate": "To accrue an estimate that reverses itself, set estimate_basis and reversal_date, then run `journal due-reversals --apply` on or after that date. Record the real bill as a normal item afterwards.",
                 "posting": {"account": "mapped chart account", "amount": "signed exact USD amount, or use nonnegative debit/credit fields instead", "debit": "exact USD amount", "credit": "exact USD amount", "currency": "USD"},
                 "evidence_rule": "Stored evidence or an explicitly disclosed estimate basis is required.",
                 "authority": "Local operator or independently authenticated adjust context; JSON claims grant no permission.",
@@ -116,7 +117,8 @@ def request_schemas() -> dict[str, Any]:
     journal = record(["id", "date", "description", "postings"], {
         "id": text, "date": day, "description": text, "evidence_ids": ids, "estimate_basis": text,
         "postings": {"type": "array", "minItems": 2, "maxItems": 1000, "items": posting},
-        "reversal_date": day, "reversal_strategy": {"enum": ["direct", "reverse"]}, "obligation_ids": ids,
+        "estimate_basis": {**text, "description": "Plain-text basis of an estimate. Replaces stored supporting documents."},
+        "reversal_date": {**day, "description": "Posts the exact reversal of this journal on this later date when `books accrual journal due-reversals --as-of DATE --apply` runs. This is the one path for an accrued estimate that reverses when the real bill arrives."},
         "origin": record(["mode", "source_id"], {"mode": {"const": "existing"}, "source_id": text})},
         anyOf=[{"required": ["evidence_ids"], "properties": {"evidence_ids": {"minItems": 1}}},
                {"required": ["estimate_basis"]}],
@@ -126,6 +128,9 @@ def request_schemas() -> dict[str, Any]:
     schedule_origin = record(["mode", "source_id"], {key: value for key, value in origin["properties"].items() if key != "counter_account"})
     schedule_origin["properties"]["funding_account"] = {**text, "description": "Existing USD asset account; prepaid schedules also allow Liabilities:CreditCard or its colon-separated subaccounts. Deferred revenue remains asset-funded."}
     item_origin = record(["mode", "source_id"], {key: value for key, value in origin["properties"].items() if key in {"mode", "source_id", "counter_account"}})
+    item_origin["properties"]["counter_account"] = {**text, "description": "Income or expense account for a new origin. Use origin.lines instead to split one bill across several accounts."}
+    item_origin["properties"]["lines"] = {"type": "array", "minItems": 1, "maxItems": 200, "description": "Split a new origin across several income or expense accounts. Amounts must add up exactly to original_amount. One control-account balance is posted. Do not combine with counter_account.",
+        "items": record(["account", "amount"], {"account": text, "amount": amount})}
     schedule = record(["operation_id", "id", "kind", "account", "recognition_account", "currency", "amount",
                        "start_date", "end_date", "method", "origin"], {
         "operation_id": text, "id": text, "kind": {"enum": ["prepaid", "deferred"]}, "account": text,
@@ -139,15 +144,29 @@ def request_schemas() -> dict[str, Any]:
             "amount": "1200.00", "start_date": "2026-01-01", "end_date": "2027-01-01", "method": "equal_month",
             "origin": {"mode": "new", "source_id": "synthetic-funding", "date": "2026-01-01", "funding_account": "Assets:Bank:Checking"},
             "evidence_ids": ["synthetic-stored-evidence-id"]}])
-    item = record(["operation_id", "id", "kind", "account", "currency", "original_amount", "as_of", "origin", "settlement_strategy"], {
+    item = record(["operation_id", "id", "kind", "account", "currency", "original_amount", "as_of", "origin"], {
         "operation_id": text, "id": text, "kind": {"enum": ["receivable", "payable", "accrual", "credit"]},
         "account": text, "currency": {"const": "USD"}, "original_amount": amount, "as_of": day, "origin": item_origin,
-        "settlement_strategy": {"enum": ["direct", "reverse"]}, "direction": {"enum": ["debit", "credit"]},
-        "counterparty": text, "reference": text, "due_date": {**day, "description": "Explicit payment due date; distinct from accounting as_of. Omit when unknown."}, "evidence_ids": ids, "reversal_date": day, "obligation_ids": ids, "remaining_amount": amount},
+        "direction": {"enum": ["debit", "credit"], "description": "Only for kind credit. credit = the counterparty holds a credit with you (customer deposit, credit memo, overpayment). debit = you hold a prepayment or credit with the counterparty (vendor prepayment)."},
+        "counterparty": {**text, "description": "Name of the customer or supplier. A credit and the invoice or bill it is applied to must share one exact counterparty."},
+        "reference": text, "due_date": {**day, "description": "Explicit payment due date; distinct from accounting as_of. Omit when unknown."}, "evidence_ids": ids,
+        "estimate_basis": {**text, "description": "Plain-text basis of an estimate (for kind accrual). A new origin then needs no stored supporting document."}, "remaining_amount": amount},
+        description="kind receivable/payable = invoice or bill; accrual = estimated liability to settle or true up later; credit = deposit, credit memo or prepayment that `item offset-preview` applies to an invoice or bill.",
         examples=[{"operation_id": "synthetic-payable-create", "id": "synthetic-payable", "kind": "payable",
             "account": "Liabilities:AccountsPayable", "currency": "USD", "original_amount": "100.00", "as_of": "2026-01-31",
             "origin": {"mode": "new", "source_id": "synthetic-bill", "counter_account": "Expenses:Software"},
-            "settlement_strategy": "direct", "evidence_ids": ["synthetic-stored-evidence-id"]}])
+            "evidence_ids": ["synthetic-stored-evidence-id"]},
+            {"operation_id": "synthetic-split-bill", "id": "synthetic-split", "kind": "payable", "counterparty": "Synthetic Vendor",
+             "account": "Liabilities:AccountsPayable", "currency": "USD", "original_amount": "100.00", "as_of": "2026-01-31",
+             "origin": {"mode": "new", "source_id": "synthetic-split-bill-doc", "lines": [
+                 {"account": "Expenses:Software", "amount": "60.00"}, {"account": "Expenses:Utilities", "amount": "40.00"}]},
+             "evidence_ids": ["synthetic-stored-evidence-id"]},
+            {"operation_id": "synthetic-deposit", "id": "synthetic-deposit-credit", "kind": "credit", "direction": "credit", "counterparty": "Synthetic Customer",
+             "account": "Liabilities:CustomerDeposits", "currency": "USD", "original_amount": "500.00", "as_of": "2026-02-01",
+             "origin": {"mode": "existing", "source_id": "synthetic-deposit-journal"}, "evidence_ids": ["synthetic-stored-evidence-id"]},
+            {"operation_id": "synthetic-bonus-estimate", "id": "synthetic-bonus", "kind": "accrual", "account": "Liabilities:AccruedBonus",
+             "currency": "USD", "original_amount": "1000.00", "as_of": "2026-01-31", "estimate_basis": "Synthetic target bonus pool",
+             "origin": {"mode": "new", "source_id": "synthetic-bonus-estimate-src", "counter_account": "Expenses:Bonuses"}}])
     support_row = {"type": "object", "required": ["id", "account", "currency"],
         "properties": {"id": text, "account": text, "currency": {"const": "USD"},
             "evidence_refs": ids, "evidence_ids": ids, "counterparty": text, "reference": text, "description": text},
@@ -188,13 +207,35 @@ def request_schemas() -> dict[str, Any]:
             "operation_id": text, "date": day, "evidence_ids": ids,
             "source": record(["mode", "source_id", "bank_account", "amount"], {"mode": {"enum": ["new", "existing"]},
                 "source_id": text, "bank_account": text, "amount": amount}),
-            "allocations": {"type": "array", "minItems": 1, "items": record(["item_id", "amount"], {"item_id": text, "amount": amount})}}),
-        "item_adjustment": record(["operation_id", "item_id", "action", "amount", "date", "counter_account", "source_id", "reason"], {
-            "operation_id": text, "item_id": text, "action": {"enum": ["credit", "writeoff"]}, "amount": amount,
-            "date": day, "counter_account": text, "source_id": text, "reason": text, "evidence_ids": ids}),
-        "item_reversal": record(["operation_id", "item_id", "date", "counter_account", "reason"], {
-            "operation_id": text, "item_id": text, "date": day, "counter_account": text, "reason": text, "evidence_ids": ids},
-            description="Reverse a carried or new reverse-strategy obligation with explicit income/expense offset; original opening journal stays intact."),
+            "allocations": {"type": "array", "minItems": 0, "items": record(["item_id", "amount"], {"item_id": text, "amount": amount}),
+                "description": "Items this payment settles. Empty is allowed only when excess records the whole payment, for example a customer deposit."},
+            "excess": record(["id", "account"], {"id": text, "account": {**text, "description": "Control account that holds the credit: a receivable, payable, customer deposit or vendor prepayment account (never cash)."},
+                "counterparty": {**text, "description": "Customer or supplier name. Defaults to the shared counterparty of the allocated items."}, "reference": text},
+                description="Records the part of the payment not allocated to items (overpayment or unapplied cash) as a new open credit item. Apply it later with `item offset-preview`.")},
+            description="Settle open invoices or bills with one bank movement. A receipt carries excess as a customer credit; a payment carries excess as a supplier credit.",
+            examples=[{"operation_id": "synthetic-overpayment", "date": "2026-02-10", "evidence_ids": ["synthetic-stored-evidence-id"],
+                "source": {"mode": "new", "source_id": "synthetic-bank-receipt", "bank_account": "Assets:Bank:Checking", "amount": "1200.00"},
+                "allocations": [{"item_id": "synthetic-invoice", "amount": "1000.00"}],
+                "excess": {"id": "synthetic-overpayment-credit", "account": "Liabilities:CustomerDeposits", "counterparty": "Synthetic Customer"}}]),
+        "item_adjustment": record(["operation_id", "item_id", "action", "date", "counter_account", "reason"], {
+            "operation_id": text, "item_id": text,
+            "action": {"enum": ["credit", "writeoff", "true_up"], "description": "credit = reduce the item and the income or expense (discount, credit memo). writeoff = remove an uncollectable or forgiven balance. true_up = settle an accrued estimate against the actual item and record the variance; needs actual_item_id."},
+            "amount": {**amount, "description": "Amount to remove from the item. Required for credit and writeoff. For true_up it defaults to the whole remaining estimate."},
+            "date": day, "counter_account": {**text, "description": "Income or expense account that absorbs the adjustment."},
+            "source_id": {**text, "description": "Unique ID of this adjustment source. For true_up it defaults to operation_id."},
+            "reason": text, "evidence_ids": {**ids, "description": "Stored supporting documents. Required for credit and writeoff; optional for true_up, because the actual item already carries its own."},
+            "actual_item_id": {**text, "description": "Only for true_up: the receivable or payable item that holds the real amount. Variance = actual amount minus the estimate removed; it is stored on the adjustment record."}},
+            description="Adjust one open item. A true-up posts Dr accrued liability, Cr expense for the estimate; the actual bill keeps its own expense, so net expense equals the actual.",
+            examples=[{"operation_id": "synthetic-true-up", "item_id": "synthetic-bonus", "action": "true_up", "actual_item_id": "synthetic-bonus-actual",
+                "date": "2026-03-31", "counter_account": "Expenses:Bonuses", "reason": "Synthetic bonus paid at actual"}]),
+        "item_offset": record(["operation_id", "date", "credit_item_id", "target_item_id", "amount", "reason"], {
+            "operation_id": text, "date": day, "amount": {**amount, "description": "At most the open balance of both items."},
+            "credit_item_id": {**text, "description": "Open item of kind credit: customer deposit, credit memo, overpayment, or vendor prepayment."},
+            "target_item_id": {**text, "description": "Open receivable (for a customer credit) or payable (for a vendor prepayment) with the same counterparty."},
+            "reason": text, "evidence_ids": ids},
+            description="Apply a credit to an invoice or bill. If the two items sit in different accounts, posts Dr customer deposits (or Dr payable), Cr receivable (or Cr prepayment). If both sit in one account, links only. Aging shows the lower balances.",
+            examples=[{"operation_id": "synthetic-apply-deposit", "date": "2026-03-01", "credit_item_id": "synthetic-deposit-credit",
+                "target_item_id": "synthetic-invoice", "amount": "500.00", "reason": "Apply customer deposit to invoice"}]),
         "support": record(["operation_id", "account", "as_of", "currency", "details", "evidence_ids"], {
             "operation_id": text, "account": text, "as_of": day, "currency": {"const": "USD"}, "evidence_ids": ids,
             "mode": {"enum": ["full", "residual"], "default": "full"}, "managed_support_ids": ids,
@@ -228,7 +269,7 @@ def run(args: argparse.Namespace) -> int:
             result = contracts()
         elif command == "capabilities":
             result = {"capability_version": CAPABILITY_VERSION, "currency": "USD", "basis": "accrual",
-                      "operations": ["intake", "evidence_link", "journal", "correction", "reversal", "schedule", "item", "item_reversal", "migration", "support", "report"],
+                      "operations": ["intake", "evidence_link", "journal", "correction", "reversal", "schedule", "item", "item_offset", "migration", "support", "report"],
                       "authority_action": "adjust", "posting_requires_opt_in": True}
         else:
             entity = load_entity(args.entity)
@@ -272,7 +313,7 @@ def run(args: argparse.Namespace) -> int:
                     function = {"preview": items.preview_item, "apply": items.apply_item,
                         "settle-preview": items.preview_settlement, "settle-apply": items.apply_settlement,
                         "adjust-preview": items.preview_adjustment, "adjust-apply": items.apply_adjustment,
-                        "reverse-preview": items.preview_reversal, "reverse-apply": items.apply_reversal}[verb]
+                        "offset-preview": items.preview_offset, "offset-apply": items.apply_offset}[verb]
                     result = function(entity, _input(args.input))
             elif command == "migration":
                 from . import migration

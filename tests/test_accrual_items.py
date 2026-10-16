@@ -19,7 +19,7 @@ class ItemTests(AccrualFixture):
         request = {"operation_id": "invoice-create", "id": "invoice-1", "kind": "receivable", "account": AR,
             "currency": "USD", "original_amount": "1000.00", "as_of": "2026-01-01",
             "origin": {"mode": "new", "source_id": "provider-invoice-1", "counter_account": INCOME},
-            "evidence_ids": [self.eid], "settlement_strategy": "direct"}
+            "evidence_ids": [self.eid]}
         request.update(changes)
         return request
 
@@ -224,31 +224,6 @@ class ItemTests(AccrualFixture):
         self.assertEqual(self.store.counts().entries, before)
         self.assertEqual(len(list_items(self.entity)), 1)
         self.assertNotEqual(alternate, self.eid)
-
-    def test_reverse_strategy_cannot_be_directly_settled_and_forward_reversal_respects_closed_origin(self):
-        self.create(kind="accrual", account=AP, original_amount="400.00", as_of="2025-12-31", settlement_strategy="reverse", reversal_date="2026-01-01",
-                    origin={"mode": "new", "source_id": "dec-obligation", "counter_account": EXPENSE})
-        forbidden = self.settlement(source={"mode": "new", "source_id": "payment", "bank_account": BANK, "amount": "-400.00"})
-        before = self.store.content_digest()
-        with self.assertRaisesRegex(ValueError, "assigned to reversal"):
-            preview_settlement(self.entity, forbidden)
-        self.assertEqual(self.store.content_digest(), before)
-        config = json.loads((self.root / "entity.json").read_text()); config["closed_periods"] = ["2025-12"]
-        (self.root / "entity.json").write_text(json.dumps(config)); self.entity = load_entity(self.root)
-        result = due_reversals(self.entity, "2026-01-01", apply=True)
-        self.assertEqual(result["blockers"], [], result)
-        self.assertEqual(load_record(self.store, "items", "invoice-1")["status"], "reversed")
-        self.assertEqual(self.balances()[AP], Decimal(0))
-        self.assertEqual(self.balances()[EXPENSE], Decimal(0))
-        from bookkeeping.queue import propose, confirm
-        bank = {"id": "jan-payment", "date": "2026-01-15", "amount": "-400.00", "accountName": "Checking", "description": "Synthetic January payment"}
-        import_transactions(self.entity, [bank], "stage")
-        propose(self.entity, "jan-payment", EXPENSE, "New January payment after reversed December accrual")
-        confirm(self.entity, "jan-payment", "review", accrual_treatment="new_cash_event")
-        jan_expense = sum((p.amount for e in self.store.load_entries() if e.date.year == 2026 for p in e.postings if p.account == EXPENSE), Decimal(0))
-        self.assertEqual(jan_expense, Decimal(0))
-        self.assertEqual(self.balances()[EXPENSE], Decimal("400"))
-        self.assertEqual(self.balances()[BANK], Decimal("-400"))
 
     def test_opening_reservation_does_not_reuse_balance_after_partial_settlement(self):
         self.post("opening", "2025-12-31", [(AR, "600.00"), ("Equity:Opening-Balances", "-600.00")])

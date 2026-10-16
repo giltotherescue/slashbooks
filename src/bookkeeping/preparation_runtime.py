@@ -78,7 +78,7 @@ def supported_preparation_command(argv: list[str]) -> PreparationCommandSpec:
                         ("schedule", "change-preview"), ("schedule", "change-apply"),
                         ("item", "preview"), ("item", "apply"), ("item", "settle-preview"),
                         ("item", "settle-apply"), ("item", "adjust-preview"), ("item", "adjust-apply"),
-                        ("item", "reverse-preview"), ("item", "reverse-apply"),
+                        ("item", "offset-preview"), ("item", "offset-apply"),
                         ("migration", "preview"), ("migration", "apply"), ("support", "preview"), ("support", "apply"),
                         ("evidence-link", "preview"), ("evidence-link", "apply")}:
             return PreparationCommandSpec(path, "ledger", "adjust")

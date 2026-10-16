@@ -72,7 +72,6 @@ For example, this payable creates one expense and its outstanding liability:
   "original_amount": "1200.00",
   "as_of": "2026-07-31",
   "origin": {"mode": "new", "source_id": "provider-bill-001", "counter_account": "Expenses:Software"},
-  "settlement_strategy": "direct",
   "evidence_ids": ["<canonical-evidence-id>"]
 }
 ```

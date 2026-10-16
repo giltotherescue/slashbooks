@@ -26,7 +26,7 @@ def bank_row(source_id="bank-row", **changes):
 class AccrualImportTests(AccrualFixture):
     def test_queue_correction_cannot_recognize_an_accrued_receipt_as_income_implicitly(self):
         invoice = {"operation_id": "invoice", "id": "invoice", "kind": "receivable", "account": AR,
-            "original_amount": "1000.00", "as_of": "2026-01-01", "settlement_strategy": "direct",
+            "original_amount": "1000.00", "as_of": "2026-01-01",
             "origin": {"mode": "new", "source_id": "provider-invoice", "counter_account": INCOME},
             "evidence_ids": [self.eid]}
         apply_item(self.entity, preview_item(self.entity, invoice))
@@ -75,7 +75,7 @@ class AccrualImportTests(AccrualFixture):
             _write_confirmed_entry(self.entity, row, EXPENSE, "private-writer")
         self.assertEqual(self.store.content_digest(), before)
         invoice = {"operation_id": "invoice", "id": "invoice", "kind": "receivable", "account": AR,
-            "original_amount": "100.00", "as_of": "2026-01-01", "settlement_strategy": "direct",
+            "original_amount": "100.00", "as_of": "2026-01-01",
             "origin": {"mode": "new", "source_id": row["id"], "counter_account": INCOME}, "evidence_ids": [self.eid]}
         apply_item(self.entity, preview_item(self.entity, invoice))
         before = self.store.content_digest()
@@ -108,7 +108,7 @@ class AccrualImportTests(AccrualFixture):
     def test_bank_intake_settlement_uses_staged_source_once_without_revenue(self):
         self.post("opening", "2025-12-31", [(AR, "1000"), ("Equity:Opening-Balances", "-1000")])
         item = {"operation_id": "opening-item", "id": "invoice", "kind": "receivable", "account": AR, "original_amount": "1000.00",
-                "as_of": "2026-01-01", "origin": {"mode": "opening", "source_id": "opening"}, "settlement_strategy": "direct"}
+                "as_of": "2026-01-01", "origin": {"mode": "opening", "source_id": "opening"}}
         apply_item(self.entity, preview_item(self.entity, item))
         row = bank_row(amount="400.00")
         import_transactions(self.entity, [row], "intake", lambda _: (INCOME, "high"))

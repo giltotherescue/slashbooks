@@ -80,7 +80,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
         mutates = path[1:] not in {("schema",), ("capabilities",), ("journal", "preview"),
             ("journal", "correct-preview"), ("journal", "reverse-preview"), ("schedule", "preview"),
             ("schedule", "due-preview"), ("schedule", "change-preview"), ("schedule", "list"),
-            ("item", "preview"), ("item", "settle-preview"), ("item", "adjust-preview"), ("item", "reverse-preview"), ("item", "list"),
+            ("item", "preview"), ("item", "settle-preview"), ("item", "adjust-preview"), ("item", "offset-preview"), ("item", "list"),
             ("migration", "preview"), ("support", "preview"), ("report",), ("evidence-link", "preview")}
         if path[1:] == ("journal", "due-reversals"):
             mutates = args.apply

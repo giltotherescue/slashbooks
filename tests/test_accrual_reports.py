@@ -55,19 +55,6 @@ class AdjustmentRegisterTests(AccrualFixture):
         self.assertEqual([row["source_id"] for row in self.register(end="2026-01-09")], ["accrual:invoice-create"])
         self.assertEqual([row["source_id"] for row in self.register(start="2026-01-11")], ["bank-payment-1"])
 
-    def test_carried_item_reversal_appears_on_its_actual_date(self):
-        self.post("opening", "2025-12-31", [(AP, "-1000.00"), ("Equity:Opening-Balances", "1000.00")])
-        self.create(kind="accrual", account=AP, settlement_strategy="reverse",
-                    origin={"mode": "opening", "source_id": "opening"})
-        request = {"operation_id": "carried-reversal", "item_id": "invoice-1", "date": "2026-01-10",
-                   "counter_account": EXPENSE, "reason": "Synthetic carried reversal", "evidence_ids": [self.eid]}
-        items.apply_reversal(self.entity, items.preview_reversal(self.entity, request))
-        self.assertEqual(self.register(end="2026-01-09"), [])
-        row, = self.register()
-        self.assertEqual(row["source_id"], "item-reversal:carried-reversal")
-        self.assertEqual(row["metadata"]["reverses-obligation"], "invoice-1")
-        self.assertEqual(row["operations"][0]["kind"], "item_reversal")
-
     def test_existing_control_payment_is_linked_once_across_multiple_nonposting_allocations(self):
         self.create()
         self.post("provider-bank-object", "2026-01-15", [(BANK, "1000.00"), (AR, "-1000.00")])
