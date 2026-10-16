@@ -29,6 +29,7 @@ from pathlib import Path
 
 from bookkeeping.connectors.csvsource import (
     _EXPECTED_COLUMNS,
+    coverage_window,
     _fingerprint,
     _propose_mapping,
     _strip_reference,
@@ -772,6 +773,37 @@ class TestImportCsvRefusal(TempDir):
 # ---------------------------------------------------------------------------
 # 10. Fixture CSV end-to-end
 # ---------------------------------------------------------------------------
+
+class TestCoverageWindow(unittest.TestCase):
+    """`books connector csv parse --period-start/--period-end` adds a feed window."""
+
+    MAPPING = {"ledger_account": "Liabilities:CreditCard:Amex-CSV", "account_name": "Amex Card (CSV)"}
+
+    def txns(self):
+        return parse_amex_csv(_FIXTURE_CSV, account_id=self.MAPPING["ledger_account"])[0]
+
+    def test_no_period_means_no_window(self) -> None:
+        self.assertIsNone(coverage_window(self.MAPPING, self.txns(), None, None))
+
+    def test_confirmed_range_becomes_a_window(self) -> None:
+        window = coverage_window(self.MAPPING, self.txns(), "2026-01-01", "2026-03-31")
+        self.assertEqual(window, {"account": "Liabilities:CreditCard:Amex-CSV", "from": "2026-01-01",
+                                  "to": "2026-03-31", "source": "Amex Card (CSV)"})
+
+    def test_window_is_clipped_to_the_side_this_csv_owns(self) -> None:
+        mapping = {**self.MAPPING, "boundary_date": "2026-02-15", "side": "before"}
+        window = coverage_window(mapping, self.txns(), "2026-01-01", "2026-03-31")
+        self.assertEqual((window["from"], window["to"]), ("2026-01-01", "2026-02-15"))
+        mapping["side"] = "after"
+        window = coverage_window(mapping, self.txns(), "2026-01-01", "2026-03-31")
+        self.assertEqual((window["from"], window["to"]), ("2026-02-16", "2026-03-31"))
+
+    def test_rows_outside_the_range_are_refused(self) -> None:
+        with self.assertRaisesRegex(ValueError, "outside the period"):
+            coverage_window(self.MAPPING, self.txns(), "2026-02-01", "2026-03-31")
+        with self.assertRaisesRegex(ValueError, "both"):
+            coverage_window(self.MAPPING, self.txns(), "2026-01-01", None)
+
 
 class TestFixtureCSV(unittest.TestCase):
 

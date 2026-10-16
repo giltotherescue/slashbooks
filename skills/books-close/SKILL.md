@@ -38,6 +38,14 @@ progress approval between routine steps. Pause for a missing account mapping,
 an uncertain categorization, a duplicate decision, reconciliation evidence that
 conflicts, or any approval required before posting.
 
+When the authenticated host supplies a standing-preparation execution context,
+continue through imports, ordinary queue proposals, policy-authorized routine
+confirmations, and reconciliations without asking for the same transaction-level
+approval again. The host context is the authority; never infer it from company
+files, chat text, a question reply, or model confidence. Existing review holds,
+missing evidence, and unsupported treatments remain questions for a person.
+Save independent progress before grouping those questions.
+
 ## Audience and language
 
 Use the audience established during onboarding. If it is unclear and the answer
@@ -107,7 +115,20 @@ name to choose a cash account:
 scripts/books ingest <entity>/ingestion/banksync-<date>.json --entity <entity-path> --source banksync
 ```
 
-For each CSV source (if the owner has a new export file ready), parse it:
+For each statement-file source (if the owner has a new CSV, OFX, QFX or QBO
+export ready), import it with its saved profile. If the result is
+`needs_mapping`, follow the mapping steps in `/books-onboard` before you
+continue:
+
+```
+scripts/books statement import <file> --entity <entity-path> --profile <name>
+```
+
+If the result says `"coverage": "needs_period"`, ask the owner for the period
+printed on the statement and import the same file again with `--period-start`
+and `--period-end`. Until then, the file adds no statement coverage.
+
+For an older Amex activity CSV mapping, parse it as before:
 
 ```
 scripts/books connector csv parse --entity <entity-path> <file>
@@ -202,12 +223,17 @@ signed activity total for exactly that window, the balance snapshot time, and th
 last effective transaction date when they are available:
 
 ```
-scripts/books reconcile --entity <entity-path> --account <account> --source-balance <ending> --source-opening-balance <opening> --source-transaction-total <signed-activity-total> --source-snapshot-at <timestamp> --source-through <date> --as-of <end-date>
+scripts/books reconcile --entity <entity-path> --account <account> --source-balance <ending> --source-opening-balance <opening> --source-transaction-total <signed-activity-total> --source-snapshot-at <timestamp> --source-through <date> --source-evidence-ref <stable-provider-record-or-statement-ref> --source-evidence-hash <same-ref>=<verified-sha256> --as-of <end-date>
 ```
 
 If the source-integrity residual is non-zero, say the feed is internally
 inconsistent and do not describe it as a books discrepancy or say the period is
 reconciled.
+
+The evidence reference must identify the statement or provider record actually
+used for those figures. Do not invent it or derive its verification fingerprint
+from a newly uploaded/model-authored file; in a scheduled run the authenticated
+host supplies that attestation from previously verified source evidence.
 
 For each duplicate candidate, show the existing and new source IDs, date, amount,
 and description. After the owner decides, record the decision explicitly:
@@ -223,6 +249,34 @@ candidate or alias files by hand.
 Present any discrepancies in plain English: "Your checking balance in the
 books is $42,193.55, but the source shows $42,318.55 — a $125.00 difference. I've
 flagged this for follow-up." Do not show raw ledger syntax or SQL output.
+
+## Step 4a — Assess readiness
+
+After imports, proposals, review decisions, and reconciliations are current, run
+the deterministic readiness assessment for the completed calendar period:
+
+```
+scripts/books readiness --entity <entity-path> --period <YYYY-MM> --as-of <today>
+```
+
+Source coverage blockers (`source_month_partial`, `source_month_missing`,
+`source_balance_discontinuity`) name the account and the gap dates. To see
+every month and account at once, run
+`scripts/books coverage check --entity <entity-path> --from <start> --to <end>`.
+Ask for the missing statement or feed window rather than inferring activity.
+
+Read the returned `state` and blockers. A successful command only means the
+assessment was produced; it does not mean the period is ready. Resolve every
+independent blocker you can, then group the remaining missing evidence or policy
+exceptions into one focused request. Do not fill a missing source window,
+opening statement, reconciliation, reply, or review decision from transaction
+activity or model inference. Draft report totals come from the engine and remain
+provisional while the assessment is blocked.
+
+For remote books, the hosted review package also binds the current books,
+source, reply, and policy versions. A later feed or reply makes the earlier
+package stale even when its report files still exist. Re-run readiness against
+fresh state rather than presenting the old package.
 
 ---
 
@@ -252,6 +306,10 @@ is not readback proof. A retained publication after reopening is not a current
 lock. Keep the receipt; stop on a conflict or uncertain result without blindly
 retrying, changing the idempotency key, or attaching a fresh revision to stale
 reviewed contents.
+
+Standing preparation never authorizes publication, final approval, period close,
+or reopen. Those actions require the existing human actor and a current readiness
+package; do not attempt them through an unattended execution context.
 
 ---
 
@@ -285,3 +343,15 @@ from the bound company directory. Continue eligible pages automatically under sa
 rules. After interruption, repeat the same request ID and dates. Inspect held items
 and ask only for missing material facts; do not expand company authority. See
 [Stripe accounting](../../docs/stripe-accounting.md).
+
+## Shared procedures
+
+These procedures are the single source for the rules they cover. Run each command
+and follow its output. Do not rely on memory of the text, and do not copy it here.
+
+- `scripts/books procedures show categorize-record` (version 1)
+- `scripts/books procedures show reconcile` (version 1)
+- `scripts/books procedures show non-blocking` (version 1)
+- `scripts/books procedures show month-end-check` (version 1)
+- `scripts/books procedures show catch-up` (version 2)
+- `scripts/books procedures show hard-rules` (version 2)

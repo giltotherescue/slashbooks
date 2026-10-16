@@ -410,6 +410,24 @@ class PaginationTests(unittest.TestCase):
             {"from": "2026-01-01", "to": "2026-01-31", "cursor": "page/2?opaque=+&"},
         ])
 
+    def test_meta_partial_is_carried_to_the_download_entry(self):
+        from bookkeeping.connectors.banksync import collect_bank_data
+
+        for partial, expected in ((True, True), (False, None)):
+            client, _ = self.paged_client([
+                {"data": [_make_txn(1)], "meta": {"hasMore": True, "cursor": "c2"}},
+                {"data": [_make_txn(2)], "meta": {"hasMore": False, **({"partial": True} if partial else {})}},
+            ])
+
+            class Wrapper:
+                list_banks = staticmethod(lambda scope=None: [{"id": "bank", "name": "Bank", "source": "plaid"}])
+                list_accounts = staticmethod(lambda bank_id: [{"id": "account", "accountName": "Checking"}])
+                list_transactions = staticmethod(client.list_transactions)
+
+            collected = collect_bank_data(Wrapper(), bank_name="Bank", from_date="2026-01-01", to_date="2026-01-31")
+            [entry] = collected["banks"][0]["accounts"]
+            self.assertEqual(entry.get("partial"), expected)
+
     def test_explicit_terminal_meta_can_echo_last_cursor(self):
         client, calls = self.paged_client([
             {"data": [_make_txn(1)], "meta": {"hasMore": True, "cursor": "second"}},

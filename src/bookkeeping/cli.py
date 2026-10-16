@@ -37,26 +37,87 @@ from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
 from bookkeeping import hosted as hosted_module
 from bookkeeping import ingest as ingest_module
+from bookkeeping import procedures as procedures_module
 from bookkeeping import queue as queue_module
 from bookkeeping import quickbooks as quickbooks_module
+from bookkeeping import readiness as readiness_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping import remote as remote_module
+from bookkeeping import statement_import as statement_import_module
+from bookkeeping import work as work_module
 from bookkeeping.connectors import csvsource as csvsource_module
 from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
 from bookkeeping.reports import workbook as workbook_module
+
+# Tax handoff: source coverage and tax-preparer export.
+from bookkeeping import coverage as coverage_module
+from bookkeeping import taxmap as taxmap_module
 
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path.cwd() / ".env")
     parser = build_parser()
     command_argv = list(sys.argv[1:] if argv is None else argv)
+    answer_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
+    answer_parser.add_argument("--answer-question-id")
+    answer_parser.add_argument("--answer-reply-id", action="append")
+    answer_parser.add_argument("--answer-reply-watermark", type=int)
+    answer_parser.add_argument("--answer-source-id", action="append")
+    answer_args, command_argv = answer_parser.parse_known_args(command_argv)
+    answer_fields = (
+        answer_args.answer_question_id,
+        answer_args.answer_reply_id,
+        answer_args.answer_reply_watermark,
+        answer_args.answer_source_id,
+    )
+    answer_application = None
+    if any(value is not None for value in answer_fields):
+        answer_application = {
+            "question_id": answer_args.answer_question_id,
+            "reply_ids": answer_args.answer_reply_id,
+            "reply_watermark": answer_args.answer_reply_watermark,
+            "source_ids": answer_args.answer_source_id or [],
+        }
+    work_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
+    work_parser.add_argument("--work-out", type=Path)
+    work_args, command_argv = work_parser.parse_known_args(command_argv)
     args = parser.parse_args(command_argv)
 
+    if work_args.work_out is not None:
+        if args.command in {"cloud", "hosted"} or remote_module.is_bound(args):
+            print(json.dumps({"error": {
+                "code": "WORK_OUTPUT_LOCAL_ONLY",
+                "message": "--work-out applies to commands that change local books.",
+            }}), file=sys.stderr)
+            return 1
+        with work_module.capture(work_module.entity_path_from_args(args)) as receipt:
+            code = _dispatch(args, command_argv, parser, answer_application)
+        work_module.write_document(work_args.work_out, receipt.events)
+        return code
+    return _dispatch(args, command_argv, parser, answer_application)
+
+
+def _dispatch(
+    args: argparse.Namespace,
+    command_argv: list[str],
+    parser: argparse.ArgumentParser,
+    answer_application: dict[str, Any] | None,
+) -> int:
     try:
         if args.command in {"cloud", "hosted"}:
+            if answer_application is not None:
+                print(json.dumps({"error": {
+                    "code": "INVALID_ANSWER_APPLICATION",
+                    "message": "Attach answer metadata to the ordinary accounting command that applies the reply.",
+                }}), file=sys.stderr)
+                return 1
             return hosted_module.run(args)
-        remote_result = remote_module.maybe_run(command_argv, args)
+        if args.command == "procedures":
+            return procedures_module.run(args)
+        remote_result = remote_module.maybe_run(
+            command_argv, args, answer_application=answer_application
+        )
         if remote_result is not None:
             return remote_result
         if args.command == "connector":
@@ -67,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             return entity_module.run(args)
         if args.command == "ingest":
             return ingest_module.run(args)
+        if args.command == "statement":
+            return statement_import_module.run(args)
         if args.command == "forecast":
             return cashflow_module.run(args)
         if args.command == "ledger":
@@ -77,12 +140,21 @@ def main(argv: list[str] | None = None) -> int:
             return statements_module.run(args)
         if args.command in {"reconcile", "reconcile-resolve"}:
             return reconcile_module.run(args)
+        if args.command == "readiness":
+            return readiness_module.run(args)
         if args.command in {"backtest", "compare"}:
             return compare_module.run(args)
         if args.command in {"queue", "quarterly-review"}:
             return queue_module.run(args)
         if args.command in {"sanity-check", "export"}:
             return workbook_module.run(args)
+        # Tax handoff commands.
+        if args.command == "coverage":
+            return coverage_module.run(args)
+        if args.command == "tax":
+            return taxmap_module.run(args)
+        if args.command == "work":
+            return work_module.run(args)
     except (BankSyncError, ProviderAPIError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -125,6 +197,9 @@ def load_dotenv(path: Path) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="books")
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    readiness_module.add_parser(subcommands)
+    procedures_module.add_parser(subcommands)
 
     connector = subcommands.add_parser(
         "connector", help="Pull data from a connector: bank feed, provider API, or CSV"
@@ -235,6 +310,7 @@ def build_parser() -> argparse.ArgumentParser:
     hosted_module.add_parser(subcommands)
     entity_module.add_parser(subcommands)
     ingest_module.add_parser(subcommands)
+    statement_import_module.add_parser(subcommands)
     ledger_migrate_module.add_parser(subcommands)
     quickbooks_module.add_parser(subcommands)
     statements_module.add_parser(subcommands)
@@ -243,6 +319,10 @@ def build_parser() -> argparse.ArgumentParser:
     compare_module.add_parser(subcommands)
     queue_module.add_parser(subcommands)
     workbook_module.add_parser(subcommands)
+    # Tax handoff commands.
+    coverage_module.add_parser(subcommands)
+    taxmap_module.add_parser(subcommands)
+    work_module.add_parser(subcommands)
 
     return parser
 

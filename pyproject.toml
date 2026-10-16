@@ -1,6 +1,6 @@
 [project]
 name = "agent-books"
-version = "0.4.3"
+version = "0.5.0"
 license = "Apache-2.0"
 description = "Slashbooks — agent-native cash-basis bookkeeping tools."
 authors = [{ name = "Gil Hildebrand" }]
@@ -22,4 +22,5 @@ bookkeeping = [
     "templates/business-profile.md",
     "templates/trust-policy.json",
     "templates/gitignore-template",
+    "procedures/*.md",
 ]

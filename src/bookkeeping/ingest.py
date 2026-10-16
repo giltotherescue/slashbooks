@@ -25,14 +25,39 @@ Normalized transaction shape (one JSON object per transaction)::
 
 The input file is either a JSON array of these objects, or an object with a
 ``"transactions"`` array.
+
+Feed windows for source coverage
+--------------------------------
+After a successful local import, ``books ingest`` records ``feed_sync``
+evidence for ``books coverage check`` (see ``coverage.py``):
+
+- A BankSync download (``books connector banksync download``) gives one
+  window per mapped account with posted transactions. The window starts on
+  the later of the requested start and the first posted transaction, because
+  a feed can return less history than requested. It ends on the earlier of the
+  requested end and the import date, and before the first pending
+  transaction, because a pending item can post on a later date.
+- Any input object can carry ``"coverage_windows"``: a list of
+  ``{"account": "Assets:...", "from": "YYYY-MM-DD", "to": "YYYY-MM-DD",
+  "source": "label"}``. ``accountId`` may replace ``account`` when it is in
+  ``bank_account_mappings``. A connector adds a window only for dates that the
+  provider returned in full.
+
+A hosted import (a prepared snapshot) records no windows here; the host writes
+the ``feed_sync`` records itself. A host that reads a provider in chunks passes
+``--no-feed-window`` (``record_feed_window=False``) so that a chunk that stops
+early claims no days. BankSync marks an incomplete read with ``meta.partial``;
+the download then carries ``"partial": true`` for that account, and the engine
+writes no window for it.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -67,6 +92,11 @@ def add_parser(subparsers: Any) -> None:
         help="Stage transactions for explicit review without learned auto-posting",
     )
     parser.add_argument(
+        "--no-feed-window", dest="record_feed_window", action="store_false",
+        help="Write no feed_sync coverage windows for this ingest. A host that reads a provider "
+             "in chunks uses this and writes its own windows",
+    )
+    parser.add_argument(
         "--session-id",
         default=None,
         help="Override the import session id (defaults to <source>-<timestamp>)",
@@ -76,6 +106,11 @@ def add_parser(subparsers: Any) -> None:
 def load_transactions(path: Path) -> list[dict]:
     """Read and shape-check a normalized transactions file."""
     data = json.loads(path.read_text(encoding="utf-8"))
+    return _transactions_from_data(data)
+
+
+def _transactions_from_data(data: Any) -> list[dict]:
+    """Shape an already verified JSON value into normalized transactions."""
     if isinstance(data, list):
         txns = data
     elif isinstance(data, dict) and isinstance(data.get("transactions"), list):
@@ -133,6 +168,98 @@ def _require_banksync_mappings(entity: Any, txns: list[dict], source: str) -> No
         )
 
 
+def _parse_day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def coverage_windows(data: Any, entity: Any, *, today: date,
+                     record_feed_window: bool = True) -> list[dict[str, Any]]:
+    """Feed windows (``feed_sync`` evidence) that an input file supports.
+
+    Raises ``ValueError`` for an explicit window that is not valid, so the
+    import stops before it changes the ledger. With ``record_feed_window=False``
+    the engine makes no window at all (``books ingest --no-feed-window``), and
+    it does not read ``coverage_windows`` from the input.
+    """
+    if not isinstance(data, dict) or not record_feed_window:
+        return []
+    mappings = entity.entity_config.get("bank_account_mappings") or {}
+    windows: list[dict[str, Any]] = []
+    if data.get("source") == "banksync" and isinstance(data.get("banks"), list):
+        requested = data.get("dateRange") if isinstance(data.get("dateRange"), dict) else {}
+        first, last = _parse_day(requested.get("from")), _parse_day(requested.get("to"))
+        if first and last:
+            for bank in data["banks"]:
+                for entry in (bank.get("accounts") or []) if isinstance(bank, dict) else []:
+                    account = entry.get("account") if isinstance(entry, dict) else None
+                    if not isinstance(account, dict):
+                        continue
+                    if entry.get("partial") is True:
+                        # BankSync marked this read incomplete: any window would claim
+                        # days that the provider did not return in full.
+                        continue
+                    ledger_account = mappings.get(str(account.get("id") or ""))
+                    if not isinstance(ledger_account, str):
+                        continue
+                    txns = [t for t in entry.get("transactions") or [] if isinstance(t, dict)]
+                    posted = sorted(d for t in txns if not t.get("pending") and (d := _parse_day(t.get("date"))))
+                    pending = sorted(d for t in txns if t.get("pending") and (d := _parse_day(t.get("date"))))
+                    if not posted:
+                        continue
+                    start = max(first, posted[0])
+                    end = min(last, today)
+                    if pending:
+                        end = min(end, pending[0] - timedelta(days=1))
+                    if start <= end:
+                        name = str(account.get("accountName") or "account")
+                        last4 = account.get("accountNumberLast4")
+                        windows.append({"account": ledger_account, "from": start, "to": end,
+                                        "source": f"BankSync {name}" + (f" ending {last4}" if last4 else "")})
+    for index, item in enumerate(data.get("coverage_windows") or []):
+        if not isinstance(item, dict):
+            raise ValueError(f"coverage_windows[{index}] must be an object.")
+        account = item.get("account") or mappings.get(str(item.get("accountId") or ""))
+        start, end = _parse_day(item.get("from")), _parse_day(item.get("to"))
+        if not isinstance(account, str) or not account.startswith(("Assets:", "Liabilities:")):
+            raise ValueError(f"coverage_windows[{index}] needs an Assets: or Liabilities: account "
+                             "or a mapped accountId.")
+        if start is None or end is None or start > end:
+            raise ValueError(f"coverage_windows[{index}] needs from and to dates (YYYY-MM-DD), in order.")
+        windows.append({"account": account, "from": start, "to": end, "source": str(item.get("source") or "")})
+    return windows
+
+
+def _check_window_accounts(entity: Any, windows: list[dict[str, Any]]) -> None:
+    from .ledger.store import LedgerStore, default_store_path
+
+    store_path = default_store_path(entity.path)
+    if not windows or not store_path.is_file():
+        return
+    names = LedgerStore(store_path).load_account_names()
+    missing = sorted({w["account"] for w in windows if w["account"] not in names})
+    if missing:
+        raise ValueError(f"Coverage window account(s) not in the account catalog: {', '.join(missing)}")
+
+
+def _record_windows(entity: Any, windows: list[dict[str, Any]], input_path: Path) -> int:
+    from . import coverage
+
+    digest = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    try:
+        ref = input_path.resolve().relative_to(entity.path.resolve()).as_posix()
+    except ValueError:
+        ref = input_path.name
+    for window in windows:
+        coverage.record_feed_window(
+            entity.path, account=window["account"], start=window["from"], end=window["to"],
+            source=window["source"], evidence_ref=ref, evidence_sha256=digest,
+            extra={"writer": "books ingest"})
+    return len(windows)
+
+
 def _is_banksync_download(path: Path) -> bool:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -144,9 +271,21 @@ def _is_banksync_download(path: Path) -> bool:
 def run(args: argparse.Namespace) -> int:
     entity = load_entity(args.entity)
     try:
-        txns = load_transactions(args.input)
+        from .preparation_runtime import prepared_ingest_transactions
+        prepared = prepared_ingest_transactions(args.input)
+        windows: list[dict[str, Any]] = []
+        if prepared is None:
+            txns = load_transactions(args.input)
+            is_banksync = args.source == "banksync" or _is_banksync_download(args.input)
+            windows = coverage_windows(json.loads(args.input.read_text(encoding="utf-8")), entity,
+                                       today=datetime.now(tz=timezone.utc).date(),
+                                       record_feed_window=getattr(args, "record_feed_window", True))
+            _check_window_accounts(entity, windows)
+        else:
+            txns, verified_banksync = prepared
+            is_banksync = args.source == "banksync" or verified_banksync
         _require_banksync_mappings(
-            entity, txns, "banksync" if args.source == "banksync" or _is_banksync_download(args.input) else args.source
+            entity, txns, "banksync" if is_banksync else args.source
         )
 
         session_id = args.session_id or (
@@ -159,7 +298,7 @@ def run(args: argparse.Namespace) -> int:
             session_id=session_id,
             categorizer=categorizer,
             ts=None,
-            legacy_duplicate_guard=args.source == "banksync" or _is_banksync_download(args.input),
+            legacy_duplicate_guard=is_banksync,
             intake_only=getattr(args, "intake_only", False),
         )
     except ValueError as exc:
@@ -182,4 +321,6 @@ def run(args: argparse.Namespace) -> int:
         for err in result.errors[:20]:
             print(f"    - {err}")
         return 1
+    if windows:
+        print(f"  feed windows:         {_record_windows(entity, windows, args.input)} recorded for coverage")
     return 0

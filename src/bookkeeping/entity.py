@@ -505,6 +505,7 @@ def record_source_coverage(
     source_name: str,
     coverage_from: str,
     coverage_to: str,
+    account: str | None = None,
 ) -> dict[str, str]:
     """Record an owner-confirmed covered date range for one declared source."""
     entity = load_entity(entity_path)
@@ -525,6 +526,17 @@ def record_source_coverage(
         "coverage_from": start.isoformat(),
         "coverage_to": end.isoformat(),
     }
+    existing_coverage = coverage.get(name)
+    if (not account and isinstance(existing_coverage, dict)
+            and isinstance(existing_coverage.get("account"), str)):
+        replacement["account"] = existing_coverage["account"]
+    if account:
+        from .ledger.store import LedgerStore, default_store_path
+        if account not in LedgerStore(default_store_path(entity.path)).load_account_names():
+            raise ValueError(f"Source account '{account}' is not in the account catalog.")
+        if not account.startswith(("Assets:", "Liabilities:")):
+            raise ValueError("A statement source must map to an asset or liability account.")
+        replacement["account"] = account
     status = "updated" if name in coverage else "created"
     for source in sources:
         existing_name = source if isinstance(source, str) else source.get("name", "")
@@ -546,6 +558,7 @@ def record_source_coverage(
         "source": name,
         "coverage_from": start.isoformat(),
         "coverage_to": end.isoformat(),
+        "account": str(replacement.get("account") or ""),
         "status": status,
     }
 
@@ -810,6 +823,8 @@ def add_parser(subparsers: Any) -> None:
                                  help="First covered date in YYYY-MM-DD format")
     coverage_parser.add_argument("--to", required=True, dest="coverage_to",
                                  help="Last covered date in YYYY-MM-DD format")
+    coverage_parser.add_argument("--account", default=None,
+                                 help="Existing asset or liability account covered by this source")
 
     related_parser = entity_sub.add_parser(
         "related-entity",
@@ -896,7 +911,7 @@ def run(args: Any) -> int:
         target = _resolve_target(args.path)
         try:
             report = record_source_coverage(
-                target, args.source_name, args.coverage_from, args.coverage_to
+                target, args.source_name, args.coverage_from, args.coverage_to, args.account
             )
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)

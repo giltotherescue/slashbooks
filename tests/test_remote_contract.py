@@ -64,7 +64,7 @@ class RemoteContractTests(unittest.TestCase):
 
         walk(build_parser(), [], ())
         self.assertGreaterEqual(len(seen), 60)
-        for family in ("entity", "demo", "connector", "ingest", "ledger", "qb", "report", "ask", "reconcile", "reconcile-resolve", "backtest", "compare", "queue", "quarterly-review", "sanity-check", "export"):
+        for family in ("entity", "demo", "connector", "ingest", "ledger", "qb", "report", "ask", "reconcile", "reconcile-resolve", "readiness", "backtest", "compare", "queue", "quarterly-review", "sanity-check", "export"):
             self.assertTrue(any(p[0] == family for p in seen), family)
 
     def test_read_permissions_are_not_artifact_permissions(self):
@@ -72,9 +72,11 @@ class RemoteContractTests(unittest.TestCase):
             ["queue", "list", "--entity", "@entity"], ["queue", "show", "--entity", "@entity", "--item", "x"],
             ["queue", "summary", "--entity", "@entity"], ["queue", "split-template-list", "--entity", "@entity"],
             ["queue", "transfer-candidates", "--entity", "@entity"], ["queue", "transfer-exceptions", "--entity", "@entity"],
+            ["queue", "duplicates", "--entity", "@entity", "--json"],
             ["quarterly-review", "--entity", "@entity", "--quarter", "Q1", "--year", "2026"],
             ["export", "--entity", "@entity", "--from", "2026-01-01", "--to", "2026-03-31", "--output-dir", "@output/export"],
             ["report", "pnl", "--entity", "@entity", "--from", "2026-01-01", "--to", "2026-03-31", "--output", "@output/pnl.json"],
+            ["readiness", "--entity", "@entity", "--period", "2026-03", "--as-of", "2026-04-01", "--output", "@output/readiness.json"],
         ]
         for argv in commands:
             with self.subTest(argv=argv):
@@ -88,6 +90,23 @@ class RemoteContractTests(unittest.TestCase):
         argv = ["backtest", "run", "--entity=@entity", "--qb-folder=@input/qb", "--from=2026-01-01", "--to=2026-02-01", "--banksync-json", "@input/a.json", "@input/b.json"]
         args, _, _ = parse_command(rewrite_paths(argv, {"@input/a.json": "/tmp/a.json"}))
         self.assertEqual(args.banksync_json, [Path("/tmp/a.json"), Path("@input/b.json")])
+
+    def test_work_out_is_an_output_file_that_a_host_can_rewrite(self):
+        argv = ["--work-out", "@output/work.json", "statement", "import", "@input/a.csv", "--entity", "@entity", "--profile", "p"]
+        spec = command_spec(argv)
+        self.assertEqual(spec["path"], ("statement", "import"))
+        self.assertIn("work_out", spec["output_fields"])
+        self.assertTrue(spec["mutates"])
+        rewritten = rewrite_paths(argv, {"@output/work.json": "/tmp/out/work.json", "@input/a.csv": "/tmp/in/a.csv"})
+        self.assertEqual(rewritten[0], "--work-out=/tmp/out/work.json")
+        args, _, path = parse_command(rewritten)
+        self.assertEqual((args.work_out, path), (Path("/tmp/out/work.json"), ("statement", "import")))
+        # The option may also follow the subcommand, as the CLI accepts.
+        self.assertEqual(command_spec(["queue", "list", "--entity", "@entity", "--work-out", "@output/w.json"])["output_fields"],
+                         ["work_out"])
+        self.assertNotIn("work_out", command_spec(["queue", "list", "--entity", "@entity"])["output_fields"])
+        with self.assertRaises(ContractError):
+            command_spec(["queue", "list", "--entity", "@entity", "--work-out"])
 
     def test_unsafe_paths_and_commands(self):
         for value in ("../a", "/etc/passwd", "a//b", "a/./b", "a\\b", "C:/x", "%2e%2e/x", ".", "a/../b", "a\x00b"):

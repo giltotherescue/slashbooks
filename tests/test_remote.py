@@ -239,7 +239,7 @@ class RemoteTests(unittest.TestCase):
             selectors = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]
             if selectors:
                 for name, child in selectors[0].choices.items():
-                    if route or name not in {"cloud", "hosted"}:
+                    if route or name not in {"cloud", "hosted", "procedures"}:  # procedures is static and local-only
                         walk(child, route + [name], actions)
                 return
             argv = list(route)
@@ -287,6 +287,18 @@ class RemoteTests(unittest.TestCase):
             self.assertEqual(self.invoke("queue", "summary", "--entity", str(self.directory / "local"))[0], 23)
         local.assert_called_once()
         self.assertEqual(self.api.calls, [])
+
+    def test_answer_application_never_falls_back_to_local_execution(self):
+        local_entity = self.directory / "local"
+        with patch.object(cli.queue_module, "run", side_effect=AssertionError("local fallback")) as local:
+            code, _, err = self.invoke(
+                "queue", "confirm", "--entity", str(local_entity), "--item", "proposal-1",
+                "--answer-question-id", "question-1", "--answer-reply-id", "reply-1",
+                "--answer-reply-watermark", "1", "--answer-source-id", "source-1",
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("ANSWER_APPLICATION_REMOTE_ONLY", err)
+        local.assert_not_called()
 
     def test_configured_company_never_reads_stale_ledger(self):
         ledger = self.entity / "ledger.sqlite"
@@ -703,6 +715,90 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(self.api.calls[-1]["key"], original["key"])
         self.assertEqual(self.api.calls[-1]["body"], original["body"])
         self.assertEqual(len(self.api.results), 1)
+
+    def test_answer_application_is_outside_engine_argv_and_inside_immutable_receipt(self):
+        flags = (
+            "--answer-question-id", "question-1",
+            "--answer-reply-id", "reply-1",
+            "--answer-reply-id", "reply-2",
+            "--answer-reply-watermark", "2",
+            "--answer-source-id", "receipt-2",
+            "--answer-source-id", "bank-transaction-1",
+        )
+        code, _, err = self.command("queue", "confirm", "--item", "proposal-1", *flags)
+        self.assertEqual(code, 0, err)
+        body = self.api.calls[-1]["body"]
+        self.assertEqual(body["answer_application"], {
+            "question_id": "question-1",
+            "reply_ids": ["reply-1", "reply-2"],
+            "reply_watermark": 2,
+            "source_ids": ["bank-transaction-1", "receipt-2"],
+        })
+        self.assertTrue(all(not argument.startswith("--answer-") for argument in body["argv"]))
+        receipt = json.loads(self.receipts()[0].read_text())
+        self.assertEqual(receipt["body"], body)
+        self.assertEqual(receipt["body_sha256"], hosted._body_digest(body))
+
+    def test_answer_application_retry_reuses_exact_metadata_and_request(self):
+        self.api.drop = True
+        code, _, _ = self.command(
+            "queue", "confirm", "--item", "proposal-1",
+            "--answer-question-id", "question-1",
+            "--answer-reply-id", "reply-1",
+            "--answer-reply-watermark", "1",
+            "--answer-source-id", "source-1",
+        )
+        self.assertEqual(code, 1)
+        original = self.api.calls[-1]
+        self.assertEqual(original["body"]["answer_application"]["source_ids"], ["source-1"])
+        self.api.drop = False
+        code, _, err = self.invoke("hosted", "retry", "--receipt", str(self.receipts()[0]))
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.api.calls[-1]["body"], original["body"])
+        self.assertEqual(self.api.calls[-1]["key"], original["key"])
+
+    def test_answer_application_allows_protected_reconciliation_effect(self):
+        source_id = "reconciliation:Assets:Bank:Checking:2026-09-30"
+        evidence_id = "evidence:provider-record:statement-2026-09"
+        code, _, err = self.command(
+            "reconcile", "--account", "Assets:Bank:Checking",
+            "--source-balance", "100.00", "--as-of", "2026-09-30",
+            "--source-opening-balance", "90.00", "--source-transaction-total", "10.00",
+            "--source-snapshot-at", "2026-10-01T12:00:00Z",
+            "--source-through", "2026-09-30",
+            "--source-evidence-ref", "provider-record:statement-2026-09",
+            "--answer-question-id", "question-1", "--answer-reply-id", "reply-1",
+            "--answer-reply-watermark", "1",
+            "--answer-source-id", source_id, "--answer-source-id", evidence_id,
+        )
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.api.calls[-1]["body"]["answer_application"]["source_ids"], [
+            evidence_id, source_id,
+        ])
+
+    def test_invalid_answer_application_is_rejected_before_network(self):
+        cases = (
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1"),
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1",
+             "--answer-reply-id", "same", "--answer-reply-id", "same",
+             "--answer-reply-watermark", "2"),
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1",
+             "--answer-reply-id", "reply-1", "--answer-reply-watermark", "0"),
+            ("queue", "confirm", "--item", "proposal-1", "--answer-question-id", "question-1",
+             "--answer-reply-id", "reply-1", "--answer-reply-watermark", "1"),
+            ("queue", "summary", "--answer-question-id", "question-1",
+             "--answer-reply-id", "reply-1", "--answer-reply-watermark", "1"),
+            ("compare", "period", "--qb-folder", str(self.directory / "qb"),
+             "--from", "2026-09-01", "--to", "2026-09-30",
+             "--answer-question-id", "question-1", "--answer-reply-id", "reply-1",
+             "--answer-reply-watermark", "1"),
+        )
+        for argv in cases:
+            with self.subTest(argv=argv):
+                code, _, err = self.command(*argv)
+                self.assertEqual(code, 1)
+                self.assertIn("ANSWER_APPLICATION", err)
+        self.assertEqual(self.api.calls, [])
 
     def test_download_failure_recovers_without_another_request(self):
         output = self.directory / "report.json"

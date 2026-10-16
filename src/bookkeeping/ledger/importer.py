@@ -49,6 +49,7 @@ import os
 import re
 from collections.abc import Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -71,6 +72,9 @@ _PENDING_CATEGORIZATION_FILE = "pending-categorization.json"
 _DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
 _SOURCE_ID_ALIASES_FILE = "source-id-aliases.json"
 _LOCK_FILE = ".books.lock"
+_held_entity_locks: ContextVar[tuple[Path, ...]] = ContextVar(
+    "books_held_entity_locks", default=()
+)
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -116,16 +120,23 @@ def _sha256_text(text: str) -> str:
 
 @contextmanager
 def _entity_write_lock(entity_path: Path):
-    """Serialize ledger mutations for one entity directory."""
-    lock_path = entity_path / _LOCK_FILE
+    """Serialize all entity mutations, allowing nested writers in one context."""
+    resolved = entity_path.resolve()
+    held = _held_entity_locks.get()
+    if resolved in held:
+        yield
+        return
+    lock_path = resolved / _LOCK_FILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a", encoding="utf-8") as fh:
         import fcntl
 
         fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        token = _held_entity_locks.set((*held, resolved))
         try:
             yield
         finally:
+            _held_entity_locks.reset(token)
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
@@ -155,6 +166,7 @@ def _atomic_ledger_write(
     ts: str | None,
     intent_description: str,
     source_transactions: list[dict[str, Any]] | None = None,
+    finalization_receipt: dict[str, Any] | None = None,
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -165,6 +177,7 @@ def _atomic_ledger_write(
             ts=ts,
             intent_description=intent_description,
             source_transactions=source_transactions,
+            finalization_receipt=finalization_receipt,
         )
 
 
@@ -176,6 +189,7 @@ def _atomic_ledger_write_unlocked(
     ts: str | None,
     intent_description: str,
     source_transactions: list[dict[str, Any]] | None = None,
+    finalization_receipt: dict[str, Any] | None = None,
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
 
@@ -191,6 +205,12 @@ def _atomic_ledger_write_unlocked(
     source_transactions = source_transactions or []
     seal_hash = ""
     with store.transaction() as conn:
+        from ..preparation_runtime import record_preparation
+        record_preparation(entity, store, conn, new_entries, source_transactions, ts)
+        if finalization_receipt is not None:
+            store.append_audit_event(
+                "queue-finalization-intent", finalization_receipt, conn, ts=ts
+            )
         store.append_audit_event(
             "intent",
             {
@@ -289,13 +309,14 @@ def _add_pending_categorization(entity: Entity, txn: dict) -> bool:
     Returns True if newly added, or False if an item with the same id was
     already queued, so callers can treat a repeat ingest as a duplicate.
     """
-    items = _load_pending_categorization(entity)
-    txn_id = txn.get("id")
-    if txn_id and any(i.get("id") == txn_id for i in items):
-        return False  # Already queued.
-    items.append(dict(txn))
-    _save_pending_categorization(entity, items)
-    return True
+    with _entity_write_lock(entity.path):
+        items = _load_pending_categorization(entity)
+        txn_id = txn.get("id")
+        if txn_id and any(i.get("id") == txn_id for i in items):
+            return False  # Already queued.
+        items.append(dict(txn))
+        _save_pending_categorization(entity, items)
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +345,28 @@ def _validate_normalized_transactions(txns: list[dict]) -> None:
 
 
 def import_transactions(
+    entity: Entity,
+    normalized_txns: list[dict],
+    session_id: str,
+    categorizer: Callable[[dict], tuple[str, str]] | None = None,
+    ts: str | None = None,
+    session_date: date | None = None,
+    legacy_duplicate_guard: bool = False,
+    intake_only: bool = False,
+) -> ImportResult:
+    """Import transactions while serializing staging, queue, and ledger writes."""
+    _validate_normalized_transactions(normalized_txns)
+    with _entity_write_lock(entity.path):
+        result = _import_transactions_unlocked(
+            entity, normalized_txns, session_id, categorizer, ts, session_date,
+            legacy_duplicate_guard, intake_only,
+        )
+    from ..work import observe_import
+    observe_import(result.skipped_duplicate)
+    return result
+
+
+def _import_transactions_unlocked(
     entity: Entity,
     normalized_txns: list[dict],
     session_id: str,
@@ -636,6 +679,7 @@ def _record_legacy_duplicate_candidate(
                 "amount": str(amount),
                 "description": str(txn.get("description") or ""),
                 "transaction": dict(txn),
+                "match_rule": "legacy_id_same_account_date_amount_description",
                 "status": "duplicate-candidate",
                 "created_at": _now_iso(),
             }

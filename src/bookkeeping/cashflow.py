@@ -15,6 +15,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from .entity import load_entity
+from .safe_cells import neutralize_cell, neutralize_row
 from .ledger.store import LedgerStore, default_store_path
 
 PAYMENT_GROUPS = ('cogs', 'overhead', 'tax', 'debt', 'owner', 'other')
@@ -179,13 +180,22 @@ def cash_schedule(entity, assumptions, *, as_of, weeks=13):
 
 
 def _cell(value):
-    text = str(value)
-    return "'" + text if text.lstrip().startswith(('=', '+', '-', '@')) else text
+    return neutralize_cell(str(value))
+
+
+class _SafeWriter:
+    """CSV writer that neutralizes every cell that a spreadsheet could run as a formula."""
+
+    def __init__(self, writer):
+        self._writer = writer
+
+    def writerow(self, row):
+        self._writer.writerow(neutralize_row(row))
 
 
 def schedule_csv(report):
     """Portable sections; untrusted text is spreadsheet-formula neutralized."""
-    stream = io.StringIO(newline=''); writer = csv.writer(stream)
+    stream = io.StringIO(newline=''); writer = _SafeWriter(csv.writer(stream))
     writer.writerow(['section', 'scenario', 'from', 'to', 'opening_cash', 'receipts', *PAYMENT_GROUPS, 'ending_cash'])
     for sid, schedule in [('base', report), *[(row['id'], row) for row in report['scenarios']]]:
         for row in schedule['weeks']:

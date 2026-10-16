@@ -52,6 +52,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from ..safe_cells import neutralize_row
 from .statements import (
     StatementResult,
     balance_sheet,
@@ -61,7 +62,7 @@ from .statements import (
 )
 from ..reconcile import list_discrepancies
 from ..entity import load_entity
-from ..queue import list_queue_items
+from ..queue import ACTIONABLE_QUEUE_STATUSES, list_queue_items
 from ..ledger.store import LedgerStore, default_store_path
 from ..ledger.validator import parse_ledger
 from ..connectors.payroll import provider_spec
@@ -264,7 +265,7 @@ class XlsxSheet:
 def _count_open_queue_items(entity_path: Path) -> int:
     """Count every unresolved review item through the canonical queue reader."""
     entity = load_entity(entity_path)
-    actionable = {"open", "reopened", "staged", "duplicate-candidate"}
+    actionable = {*ACTIONABLE_QUEUE_STATUSES, "staged", "duplicate-candidate"}
     count = sum(
         1 for item in list_queue_items(entity)
         if str(item.get("status") or "") in actionable
@@ -1574,7 +1575,7 @@ def _write_csv(path: Path, rows: list[list[str]]) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         for row in rows:
-            writer.writerow(row)
+            writer.writerow(neutralize_row(row))
 
 
 # ---------------------------------------------------------------------------
@@ -1600,7 +1601,7 @@ def _write_xlsx(
 
     xlsx_path.parent.mkdir(parents=True, exist_ok=True)
 
-    wb = xlsxwriter.Workbook(str(xlsx_path), {"strings_to_urls": False})
+    wb = xlsxwriter.Workbook(str(xlsx_path), {"strings_to_urls": False, "strings_to_formulas": False})
 
     fmt_header = wb.add_format({
         "bold": True,
@@ -1663,7 +1664,7 @@ def _write_xlsx(
 
         # Write header row with format
         for col_idx, cell in enumerate(header_row):
-            ws.write(0, col_idx, str(cell), fmt_header)
+            ws.write_string(0, col_idx, str(cell), fmt_header)
 
         # Freeze header row
         ws.freeze_panes(1, 0)
@@ -1683,15 +1684,16 @@ def _write_xlsx(
                     ws.write_number(row_idx, col_idx, num_val, fmt)
                 else:
                     if cell_str in {"PASS"} or cell_str.startswith("[PASS]"):
-                        ws.write(row_idx, col_idx, cell_str, fmt_pass)
+                        ws.write_string(row_idx, col_idx, cell_str, fmt_pass)
                     elif cell_str in {"WARN", "REVIEW"} or cell_str.startswith("[WARN]"):
-                        ws.write(row_idx, col_idx, cell_str, fmt_warn)
+                        ws.write_string(row_idx, col_idx, cell_str, fmt_warn)
                     elif cell_str in {"FAIL", "OVERRIDE"} or cell_str.startswith("[FAIL]"):
-                        ws.write(row_idx, col_idx, cell_str, fmt_fail)
+                        ws.write_string(row_idx, col_idx, cell_str, fmt_fail)
                     elif cell_str.startswith(("https://", "http://")):
                         ws.write_url(row_idx, col_idx, cell_str, string=cell_str)
                     else:
-                        ws.write(row_idx, col_idx, cell_str)
+                        # Text is always stored as a string, never as a formula.
+                        ws.write_string(row_idx, col_idx, cell_str)
 
         table_added = False
         if spec.table and len(rows) > 1 and max_cols > 0:

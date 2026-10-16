@@ -61,6 +61,11 @@ def _binding(directory: Path) -> Path | None:
     return None
 
 
+def is_bound(args: argparse.Namespace) -> bool:
+    """Return True when the command would run against a remote company binding."""
+    return _discover(args) is not None
+
+
 def _discover(args: argparse.Namespace) -> Path | None:
     entity = getattr(args, "entity", None) or getattr(args, "entity_path", None)
     if args.command in {"entity", "demo"}:
@@ -460,6 +465,64 @@ def _localize_output(text: str, downloaded: dict[str, str]) -> str:
     return json.dumps(localized, ensure_ascii=False, allow_nan=False) + trailing
 
 
+def _answer_id(value: Any, label: str) -> str:
+    if (not isinstance(value, str) or not value or len(value) > 200
+            or any(ord(character) < 33 or ord(character) == 127 for character in value)):
+        raise _error(
+            "INVALID_ANSWER_APPLICATION",
+            f"{label} must be a nonempty stable identifier of at most 200 characters.",
+        )
+    return value
+
+
+def _answer_application(value: Any) -> dict[str, Any] | None:
+    """Validate reply provenance kept outside the ordinary engine argv."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {
+        "question_id", "reply_ids", "reply_watermark", "source_ids",
+    }:
+        raise _error(
+            "INVALID_ANSWER_APPLICATION",
+            "Answer application requires question, replies, watermark and source IDs.",
+        )
+    question_id = _answer_id(value.get("question_id"), "Question ID")
+    reply_ids = value.get("reply_ids")
+    if (not isinstance(reply_ids, list) or not 1 <= len(reply_ids) <= 100
+            or len(set(_answer_id(item, "Reply ID") for item in reply_ids)) != len(reply_ids)):
+        raise _error(
+            "INVALID_ANSWER_APPLICATION",
+            "Answer application requires 1-100 unique stable reply IDs.",
+        )
+    source_ids = value.get("source_ids")
+    if (not isinstance(source_ids, list) or not 1 <= len(source_ids) <= 100
+            or len(set(_answer_id(item, "Source ID") for item in source_ids)) != len(source_ids)):
+        raise _error(
+            "INVALID_ANSWER_APPLICATION",
+            "Answer application requires 1-100 unique stable source IDs.",
+        )
+    watermark = value.get("reply_watermark")
+    if type(watermark) is not int or watermark <= 0:
+        raise _error("INVALID_ANSWER_APPLICATION", "Reply watermark must be a positive integer.")
+    return {
+        "question_id": question_id,
+        "reply_ids": list(reply_ids),
+        "reply_watermark": watermark,
+        "source_ids": sorted(source_ids),
+    }
+
+
+def _answer_application_command(argv: list[str]) -> bool:
+    """Allow metadata only on protected commands with a committed ledger effect."""
+    from .automation_policy import PreparationDenied
+    from .preparation_runtime import supported_preparation_command
+
+    try:
+        return supported_preparation_command(argv).effect in {"ledger", "reconciliation"}
+    except PreparationDenied:
+        return False
+
+
 def _record_digest(record: dict) -> str:
     return hosted._body_digest({key: value for key, value in record.items() if key not in {
         "record_sha256", "status", "response", "response_sha256",
@@ -554,11 +617,19 @@ def _report_error(exc: Exception, secrets: Any = None) -> int:
     return 1
 
 
-def maybe_run(argv: list[str], args: argparse.Namespace) -> int | None:
+def maybe_run(
+    argv: list[str], args: argparse.Namespace, *, answer_application: Any = None,
+) -> int | None:
     secrets: Any = None
     try:
+        answer_application = _answer_application(answer_application)
         config_path = _discover(args)
         if config_path is None:
+            if answer_application is not None:
+                raise _error(
+                    "ANSWER_APPLICATION_REMOTE_ONLY",
+                    "Answer application metadata requires an authenticated remote company binding.",
+                )
             return None
         config = hosted._read_json(config_path, private=True)
         try:
@@ -566,13 +637,25 @@ def maybe_run(argv: list[str], args: argparse.Namespace) -> int | None:
         except ImportError:
             raise _error("REMOTE_CONTRACT_UNAVAILABLE", "Shared remote command contract is unavailable. No local fallback was used.") from None
         spec = command_spec(argv)
+        if answer_application is not None and not _answer_application_command(argv):
+            raise _error(
+                "ANSWER_APPLICATION_REQUIRES_MUTATION",
+                "Answer application metadata requires a supported command with a committed accounting effect.",
+            )
         if spec["network"] and args.command == "connector" and os.environ.get(args.api_key_env):
+            if answer_application is not None:
+                raise _error(
+                    "ANSWER_APPLICATION_REMOTE_ONLY",
+                    "Answer application metadata cannot accompany a locally executed connector command.",
+                )
             return None
         client = hosted.HostedClient(config)
         secrets = client.secrets
         normalized, inputs, outputs = _prepare(args, spec, config_path.parent)
         body = {"argv": normalized, "inputs": inputs,
                 "expected_books_revision": _expected_revision(config_path, client, mutates=spec["mutates"])}
+        if answer_application is not None:
+            body["answer_application"] = answer_application
         explanation = next((getattr(args, field, None) for field in ("reason", "reasoning", "explanation", "approval_note", "note")
                             if isinstance(getattr(args, field, None), str) and getattr(args, field).strip()), None)
         if explanation is not None:

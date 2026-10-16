@@ -47,13 +47,20 @@ class LocalAPI:
             def do_POST(self) -> None:
                 self.respond()
 
+            @staticmethod
+            def parse(body: bytes):
+                try:
+                    return json.loads(body) if body else None
+                except ValueError:
+                    return None
+
             def log_message(self, *args: object) -> None:
                 pass
 
             def respond(self) -> None:
                 body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
                 fixture.calls.append({"method": self.command, "path": self.path,
-                                      "headers": dict(self.headers), "body": json.loads(body) if body else None})
+                                      "headers": dict(self.headers), "body": self.parse(body), "raw": body})
                 if fixture.on_request:
                     fixture.on_request()
                 if fixture.drop:
@@ -186,7 +193,85 @@ class HostedTests(unittest.TestCase):
         self.assertFalse(self.api.calls)
         self.assertFalse((self.directory / "ledger.sqlite").exists())
 
+    def test_evidence_upload_sends_one_multipart_file_and_checks_the_stored_hash(self) -> None:
+        import hashlib
+
+        data = b"%PDF-1.4\nsynthetic statement\n"
+        path = self.directory / "stmt.pdf"
+        path.write_bytes(data)
+        self.api.response = {"id": "ev-1", "filename": "stmt.pdf", "content_type": "application/pdf",
+                             "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        code, out, err = self.invoke("evidence-upload", "--file", str(path))
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(json.loads(out)["id"], "ev-1")
+        call = self.api.calls[-1]
+        self.assertEqual((call["method"], call["path"]), ("POST", "/api/v1/companies/company-A/evidence"))
+        self.assertTrue(call["headers"]["Content-Type"].startswith("multipart/form-data; boundary="))
+        self.assertNotIn("Idempotency-Key", call["headers"])
+        self.assertIn(b'name="file"; filename="stmt.pdf"', call["raw"])
+        self.assertIn(data, call["raw"])
+
+    def test_evidence_upload_refuses_a_bad_file_before_any_request(self) -> None:
+        cases = {
+            "a.exe": b"MZ\x00",
+            "b.pdf": b"not a pdf",
+            "c.csv": b"",
+            "d.txt": b"\xff\xfe bad utf8",
+        }
+        for name, content in cases.items():
+            with self.subTest(name=name):
+                (self.directory / name).write_bytes(content)
+                code, out, err = self.invoke("evidence-upload", "--file", str(self.directory / name))
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(json.loads(err)["error"]["code"], "INVALID_EVIDENCE")
+        self.assertEqual(self.api.calls, [])
+
+    def test_evidence_upload_fails_when_the_stored_hash_differs(self) -> None:
+        path = self.directory / "a.csv"
+        path.write_bytes(b"date,amount\n2026-01-01,1.00\n")
+        self.api.response = {"id": "ev-2", "sha256": "0" * 64}
+        code, _, err = self.invoke("evidence-upload", "--file", str(path))
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(err)["error"]["code"], "EVIDENCE_MISMATCH")
+
+    def test_held_mail_summary_gives_count_age_and_a_link_without_content(self) -> None:
+        self.api.response = {"held_count": 3, "oldest_held_at": "2026-10-01T09:30:00Z",
+                             "review_path": "/companies/company-A/inbox?view=review",
+                             "note": "Held email needs a person's review. Details are not available to agents."}
+        code, out, err = self.invoke("held-mail")
+        self.assertEqual((code, err), (0, ""))
+        result = json.loads(out)
+        self.assertEqual(self.api.calls[-1]["path"], "/api/v1/companies/company-A/agent/mail/held-summary")
+        self.assertEqual(result["held_count"], 3)
+        self.assertEqual(result["message"], "3 emails are waiting for your review in Inbox. The oldest arrived on 2026-10-01.")
+        self.assertEqual(result["review_url"], self.api.endpoint + "/companies/company-A/inbox?view=review")
+        self.assertEqual(set(result), {"held_count", "oldest_held_at", "review_url", "message", "note"})
+        self.api.response = {"held_count": 1, "oldest_held_at": "2026-10-14 08:00:00",
+                             "review_path": "/companies/company-A/inbox?view=review", "note": "x"}
+        self.assertTrue(json.loads(self.invoke("held-mail")[1])["message"].startswith("1 email is waiting"))
+        self.api.response = {"held_count": 0, "oldest_held_at": None,
+                             "review_path": "/companies/company-A/inbox?view=review", "note": "x"}
+        self.assertEqual(json.loads(self.invoke("held-mail")[1])["message"],
+                         "No emails are waiting for your review in Inbox.")
+
+    def test_held_mail_summary_refuses_an_unsafe_or_incomplete_response(self) -> None:
+        bad = [
+            {"held_count": 2, "oldest_held_at": "2026-10-01", "review_path": "https://evil.example/inbox"},
+            {"held_count": 2, "oldest_held_at": "2026-10-01", "review_path": "//evil.example/inbox"},
+            {"held_count": 2, "oldest_held_at": None, "review_path": "/companies/company-A/inbox"},
+            {"held_count": -1, "oldest_held_at": None, "review_path": "/companies/company-A/inbox"},
+            {"held_count": "3", "oldest_held_at": "2026-10-01", "review_path": "/companies/company-A/inbox"},
+            {"ok": True},
+        ]
+        for response in bad:
+            with self.subTest(response=response):
+                self.api.response = response
+                code, _, err = self.invoke("held-mail")
+                self.assertEqual(code, 1)
+                self.assertEqual(json.loads(err)["error"]["code"], "INVALID_RESPONSE")
+
     def test_all_reads_are_company_scoped(self) -> None:
+        self.api.response = {"held_count": 0, "oldest_held_at": None, "review_path": "/companies/company-A/inbox?view=review"}
         for command, suffix in hosted.READS.items():
             with self.subTest(command=command):
                 self.assertEqual(self.invoke(command)[0], 0)
@@ -211,6 +296,108 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(parse_qs(parsed.query), {"from": ["2026-09-01"], "to": ["2026-09-19&company=other"]})
         self.assertEqual(self.invoke("command-result", "command?other#fragment")[0], 0)
         self.assertEqual(self.api.calls[-1]["path"], "/api/v1/companies/company-A/commands/command%3Fother%23fragment")
+
+    def test_question_create_and_resolve_use_scoped_routes_and_durable_receipts(self) -> None:
+        self.api.response = {"question": {"id": "question-1", "status": "open"}}
+        code, out, _ = self.invoke(
+            "question", "create", "--subject", "September charge",
+            "--body", "Was the Acme payment for business use?",
+            "--source-id", "receipt-2", "--source-id", "bank-transaction-1",
+            "--idempotency-key", "question-create-1",
+        )
+        self.assertEqual(code, 0)
+        created = json.loads(out)
+        self.assertEqual(self.api.calls[-1]["method"], "POST")
+        self.assertEqual(self.api.calls[-1]["path"], "/api/v1/companies/company-A/questions")
+        self.assertEqual(self.api.calls[-1]["body"], {
+            "subject": "September charge",
+            "body": "Was the Acme payment for business use?",
+            "source_ids": ["bank-transaction-1", "receipt-2"],
+        })
+        create_receipt = Path(created["local_receipt"])
+        self.assertEqual(json.loads(create_receipt.read_text())["kind"], "question-create")
+
+        self.api.response = {"question": {"id": "question?1#reply", "status": "resolved"}}
+        code, out, _ = self.invoke(
+            "question", "resolve", "question?1#reply",
+            "--reply-id", "reply-1", "--reply-id", "reply-2",
+            "--reply-watermark", "2", "--command-id", "command-9",
+            "--idempotency-key", "question-resolve-1",
+        )
+        self.assertEqual(code, 0)
+        resolved = json.loads(out)
+        self.assertEqual(
+            self.api.calls[-1]["path"],
+            "/api/v1/companies/company-A/questions/question%3F1%23reply/resolve",
+        )
+        self.assertEqual(self.api.calls[-1]["body"], {
+            "reply_ids": ["reply-1", "reply-2"],
+            "reply_watermark": 2,
+            "command_id": "command-9",
+        })
+        resolve_receipt = Path(resolved["local_receipt"])
+        before = self.api.calls[-1]
+        self.assertEqual(self.invoke("retry", "--receipt", str(resolve_receipt))[0], 0)
+        self.assertEqual(self.api.calls[-1], before)
+
+    def test_scoped_resolve_without_a_command_id_sends_no_command_id(self) -> None:
+        self.api.response = {"question": {"id": "question-1", "status": "resolved"}}
+        code, _, _ = self.invoke(
+            "question", "resolve", "question-1", "--reply-id", "reply-1",
+            "--reply-watermark", "1", "--idempotency-key", "question-resolve-no-command",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(self.api.calls[-1]["body"], {"reply_ids": ["reply-1"], "reply_watermark": 1})
+
+    def test_question_inputs_fail_closed_before_network(self) -> None:
+        cases = [
+            ("create", "--subject", "", "--body", "Body"),
+            ("create", "--subject", "x" * 201, "--body", "Body"),
+            ("create", "--subject", "Subject", "--body", "x" * 10001),
+            ("create", "--subject", "Subject", "--body", "Body",
+             "--source-id", "same", "--source-id", "same"),
+            ("resolve", "question-1", "--reply-id", "same", "--reply-id", "same",
+             "--reply-watermark", "2", "--command-id", "command-1"),
+            ("resolve", "question-1", "--reply-id", "reply-1",
+             "--reply-watermark", "0", "--command-id", "command-1"),
+            ("resolve", "../other", "--reply-id", "reply-1",
+             "--reply-watermark", "1", "--command-id", "command-1"),
+        ]
+        for arguments in cases:
+            with self.subTest(arguments=arguments):
+                self.assertEqual(self.invoke("question", *arguments)[0], 1)
+        self.assertEqual(self.api.calls, [])
+
+    def test_question_key_cannot_be_reused_for_different_input(self) -> None:
+        self.assertEqual(self.invoke(
+            "question", "create", "--subject", "First", "--body", "First question",
+            "--idempotency-key", "same-question-key",
+        )[0], 0)
+        self.assertEqual(self.api.calls[-1]["body"]["source_ids"], [])
+        code, _, err = self.invoke(
+            "question", "create", "--subject", "Second", "--body", "Different question",
+            "--idempotency-key", "same-question-key",
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(err)["error"]["code"], "IDEMPOTENCY_CONFLICT")
+        self.assertEqual(len(self.api.calls), 1)
+
+    def test_tampered_question_receipt_is_not_retried(self) -> None:
+        code, out, _ = self.invoke(
+            "question", "resolve", "question-1", "--reply-id", "reply-1",
+            "--reply-watermark", "1", "--command-id", "command-1",
+            "--idempotency-key", "tampered-question-receipt",
+        )
+        self.assertEqual(code, 0)
+        receipt = Path(json.loads(out)["local_receipt"])
+        record = json.loads(receipt.read_text())
+        record["body"]["reply_ids"] = ["reply-other"]
+        receipt.write_text(json.dumps(record))
+        calls = len(self.api.calls)
+        code, _, err = self.invoke("retry", "--receipt", str(receipt))
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(err)["error"]["code"], "INVALID_RECEIPT")
+        self.assertEqual(len(self.api.calls), calls)
 
     def test_collection_query_encoding_keeps_cursor_opaque(self) -> None:
         cursor = "https://untrusted.example/a?company=B&cursor=next#x +/=\u00e9"

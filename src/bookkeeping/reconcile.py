@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
@@ -241,6 +242,8 @@ def reconcile(
     source_transaction_total: Decimal | None = None,
     source_snapshot_at: str | None = None,
     source_through: str | None = None,
+    source_evidence_refs: list[str] | None = None,
+    source_evidence_hashes: dict[str, str] | None = None,
 ) -> ReconcileResult:
     """Reconcile ledger balance for *account* against *source_balance* as of *as_of*.
 
@@ -250,6 +253,35 @@ def reconcile(
     Returns a :class:`ReconcileResult`.
     """
     entity_path = Path(entity_path)
+    from .ledger.importer import _entity_write_lock
+    from .preparation_runtime import recover_preparation_reconciliations
+
+    with _entity_write_lock(entity_path):
+        recover_preparation_reconciliations(entity_path)
+        return _reconcile_unlocked(
+            entity_path, account, source_balance, as_of,
+            source_opening_balance=source_opening_balance,
+            source_transaction_total=source_transaction_total,
+            source_snapshot_at=source_snapshot_at,
+            source_through=source_through,
+            source_evidence_refs=source_evidence_refs,
+            source_evidence_hashes=source_evidence_hashes,
+        )
+
+
+def _reconcile_unlocked(
+    entity_path: Path,
+    account: str,
+    source_balance: Decimal,
+    as_of: date,
+    source_opening_balance: Decimal | None = None,
+    source_transaction_total: Decimal | None = None,
+    source_snapshot_at: str | None = None,
+    source_through: str | None = None,
+    source_evidence_refs: list[str] | None = None,
+    source_evidence_hashes: dict[str, str] | None = None,
+) -> ReconcileResult:
+    """Compute and persist a reconciliation while holding the entity lock."""
 
     conn = open_cache(entity_path)
     try:
@@ -293,8 +325,12 @@ def reconcile(
         "status": "source-inconsistent" if source_inconsistent else ("open" if not is_clean else "clean"),
         "causes": causes,
         "source_integrity_residual": str(source_residual) if source_residual is not None else None,
+        "source_opening_balance": str(source_opening_balance) if source_opening_balance is not None else None,
+        "source_transaction_total": str(source_transaction_total) if source_transaction_total is not None else None,
         "source_snapshot_at": source_snapshot_at,
         "source_through": source_through,
+        "source_evidence_refs": sorted(source_evidence_refs or []),
+        "source_evidence_hashes": dict(sorted((source_evidence_hashes or {}).items())),
         "created_at": now,
         "updated_at": now,
         "resolved_at": None,
@@ -311,8 +347,12 @@ def reconcile(
             "source_balance",
             "discrepancy",
             "source_integrity_residual",
+            "source_opening_balance",
+            "source_transaction_total",
             "source_snapshot_at",
             "source_through",
+            "source_evidence_refs",
+            "source_evidence_hashes",
         )
         same_evidence = all(existing.get(field) == record.get(field) for field in resolution_fields)
         if existing.get("status") == "resolved" and same_evidence and not source_inconsistent:
@@ -323,7 +363,9 @@ def reconcile(
     else:
         records.append(record)
 
-    _save_records(entity_path, records)
+    from .preparation_runtime import commit_preparation_reconciliation
+    if not commit_preparation_reconciliation(entity_path, account, as_of.isoformat(), records):
+        _save_records(entity_path, records)
 
     return ReconcileResult(
         account=account,
@@ -351,6 +393,21 @@ def resolve(
     Raises :class:`KeyError` when the record is not found.
     """
     entity_path = Path(entity_path)
+    from .ledger.importer import _entity_write_lock
+    from .preparation_runtime import recover_preparation_reconciliations
+
+    with _entity_write_lock(entity_path):
+        recover_preparation_reconciliations(entity_path)
+        _resolve_unlocked(entity_path, account, as_of, note)
+
+
+def _resolve_unlocked(
+    entity_path: Path,
+    account: str,
+    as_of: date | str,
+    note: str = "",
+) -> None:
+    """Resolve one reconciliation while holding the entity write lock."""
     as_of_str = as_of.isoformat() if isinstance(as_of, date) else as_of
     rec_id = _record_id(account, as_of_str)
 
@@ -408,6 +465,10 @@ def add_parser(subparsers: Any) -> None:
     p.add_argument("--source-transaction-total", default=None, help="Signed total of source activity in that same window")
     p.add_argument("--source-snapshot-at", default=None, help="Timestamp when the source ending balance was read")
     p.add_argument("--source-through", default=None, help="Latest effective transaction date included by the source")
+    p.add_argument("--source-evidence-ref", action="append", dest="source_evidence_refs", default=[],
+                   help="Stable provider record or statement reference supporting the source figures")
+    p.add_argument("--source-evidence-hash", action="append", dest="source_evidence_hashes", default=[],
+                   metavar="REF=SHA256", help="Verified SHA-256 attestation for a source evidence reference")
     p.add_argument(
         "--balances-json",
         dest="balances_json",
@@ -465,6 +526,26 @@ def run(args: Any) -> int:
             return 1
         opening = Decimal(args.source_opening_balance) if args.source_opening_balance is not None else None
         activity = Decimal(args.source_transaction_total) if args.source_transaction_total is not None else None
+        from .preparation_runtime import prepared_reconciliation_evidence
+        verified_evidence = prepared_reconciliation_evidence(args.account or "", args.as_of)
+        evidence_refs = list(args.source_evidence_refs)
+        evidence_hashes: dict[str, str] = {}
+        if verified_evidence is not None:
+            evidence_refs = sorted(verified_evidence)
+            evidence_hashes = verified_evidence
+        else:
+            try:
+                for value in args.source_evidence_hashes:
+                    ref, separator, digest = value.partition("=")
+                    if (not separator or not ref or ref in evidence_hashes
+                            or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+                        raise ValueError("source evidence hashes must use unique REF=SHA256 values")
+                    evidence_hashes[ref] = digest
+                if evidence_hashes and set(evidence_hashes) != set(evidence_refs):
+                    raise ValueError("source evidence hashes must exactly match the evidence references")
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
         for account, source_bal in accounts_and_balances:
             result = reconcile(
                 entity, account, source_bal, as_of,
@@ -472,6 +553,8 @@ def run(args: Any) -> int:
                 source_transaction_total=activity,
                 source_snapshot_at=args.source_snapshot_at,
                 source_through=args.source_through,
+                source_evidence_refs=evidence_refs,
+                source_evidence_hashes=evidence_hashes,
             )
             print(result.to_text())
             print()
