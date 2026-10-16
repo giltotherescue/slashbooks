@@ -180,7 +180,7 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
     try:
         return _build_plan(
             entity, store, operation="accrual-opening", import_source="accrual-opening",
-            narration="Accrual opening balances", financial=financial, mapping=mapping, chart=chart,
+            narration=f"Opening balances ({(cutover - timedelta(days=1)).isoformat()})", financial=financial, mapping=mapping, chart=chart,
             supporting=supporting, cutover=cutover, fiscal_start=cutover, closed_position=True,
             source_id=request["operation_id"], coverage_extra={"source_hashes": {}, "mapping_hash": _hash(mapping)},
             request_extra={"opening": "accrual-opening"}, plan_extra={"request": raw_request, "folder": None})

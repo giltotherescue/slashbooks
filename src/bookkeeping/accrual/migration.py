@@ -451,7 +451,7 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
     hashes = {kind: hashlib.sha256(path.read_bytes()).hexdigest() for kind, path in sorted(paths.items())}
     return _build_plan(
         entity, store, operation="quickbooks-opening", import_source="quickbooks-opening",
-        narration="Reconciled accrual opening balances from QuickBooks", financial=financial, mapping=mapping,
+        narration=f"Opening balances ({as_of.isoformat()})", financial=financial, mapping=mapping,
         chart=chart, supporting=supporting, cutover=cutover, fiscal_start=fiscal_start,
         closed_position=closed_position, source_id=source_id,
         coverage_extra={"source_hashes": hashes, "mapping_hash": _hash(mapping),

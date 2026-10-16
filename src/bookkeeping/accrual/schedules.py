@@ -152,15 +152,6 @@ def _check_service(method: Any, start: date, end: date, recognition_start: date,
     return result
 
 
-def _narration(action: str, record: Mapping[str, Any]) -> str:
-    """Use bounded human labels for display; canonical IDs remain in metadata."""
-    for field in ("reference", "counterparty"):
-        label = record.get(field)
-        if isinstance(label, str) and label.strip():
-            return action + ": " + " ".join(label.split())[:2000]
-    return action
-
-
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
@@ -181,6 +172,31 @@ def _item_ref(record: Mapping[str, Any]) -> str:
             return label
     start = record.get("service_start") or record.get("as_of") or record.get("start_date")
     return f"dated {start}" if start else "no reference"
+
+
+def _party_ref(record: Mapping[str, Any]) -> str:
+    """Counterparty and reference as one label. A reference that repeats the counterparty is not written twice."""
+    who, ref = _human(record.get("counterparty")), _human(record.get("reference"))
+    if not ref or ref.casefold() == who.casefold():
+        return who
+    return f"{who} {ref}" if who else ref
+
+
+def _labelled(label: str, text: str) -> str:
+    return f"{label}: {text}"[:2000] if text else label
+
+
+_FUNDING = {"prepaid": "Prepaid expense", "deferred": "Deferred revenue received", "depreciation": "Equipment purchase"}
+_RECLASS = {"prepaid": "Reclassified as prepaid expense", "deferred": "Reclassified as deferred revenue",
+            "depreciation": "Reclassified as equipment purchase"}
+
+
+def _funding_narration(record: Mapping[str, Any]) -> str:
+    return _labelled(_FUNDING[record["kind"]], _human(record.get("reference"), 1900) or _human(record.get("counterparty"), 1900))
+
+
+def _reclass_narration(record: Mapping[str, Any]) -> str:
+    return _labelled(_RECLASS[record["kind"]], _human(record.get("reference"), 1900) or _human(record.get("counterparty"), 1900))
 
 
 def _recognition_narration(record: Mapping[str, Any], when: str) -> str:
@@ -215,7 +231,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
             if (Decimal(normalize_amount(staged.get("amount"))) != -sign * amount
                     or str(staged.get("date"))[:10] != when.isoformat() or staged_bank != bank):
                 raise JournalError("staged_payment_mismatch", "Schedule funding differs from the exact staged bank source.")
-        return [_entry(when, source_id, _narration("Fund " + label, record),
+        return [_entry(when, source_id, _funding_narration(record),
                        [(account, sign * amount), (bank, -sign * amount)], schedule_id=record["id"])]
     original = _find_live_entry(store, source_id)
     # The posted payment date is when the control balance starts, whatever the service dates are.
@@ -244,7 +260,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
     matched = [p for p in original.postings if p.account == old_account and p.amount == sign * amount]
     if len(matched) != 1:
         raise JournalError("origin_amount_mismatch", "The existing payment's category amount does not match this schedule.")
-    return [_entry(when, "schedule:" + operation_id + ":reclass", _narration("Reclassify funding for " + label, record),
+    return [_entry(when, "schedule:" + operation_id + ":reclass", _reclass_narration(record),
                    [(account, sign * amount), (old_account, -sign * amount)],
                    schedule_id=record["id"], origin_source_id=source_id)]
 

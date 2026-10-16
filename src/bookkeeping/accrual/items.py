@@ -10,7 +10,7 @@ from ..entity import Entity
 from ..ledger.importer import _find_live_entry, _load_pending_categorization, _ledger_account_for_txn
 from .intake import canonical_hash, normalize_amount
 from .journals import JournalError, _day, _evidence, _existing_receipt, _id, _preview_operation, _source_claims, _store, _text
-from .schedules import _account, _apply, _entry, _evidence_ids, _money, _request, _narration, _item_ref, _human
+from .schedules import _account, _apply, _entry, _evidence_ids, _money, _request, _item_ref, _human, _party_ref, _labelled
 from .store import SupportingMutation, list_records, load_record, record_revision
 
 
@@ -100,9 +100,8 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
         for counter, _ in lines:
             if counter == account or counter.startswith(("Assets:Bank:", "Assets:Cash")):
                 raise JournalError("invalid_counter_account", "An outstanding origin cannot create cash or use its control as its offset.")
-        label = "accrued balance" if kind == "accrual" else kind
         meta = {"estimate_basis": request["estimate_basis"]} if "estimate_basis" in request else {}
-        entries.append(_entry(when, "accrual:" + operation_id, _narration("Record " + label, record),
+        entries.append(_entry(when, "accrual:" + operation_id, _origin_narration(record),
                               [(account, sign * amount), *[(c, -sign * n) for c, n in lines]], item_id=item_id,
                               origin_source_id=origin["source_id"], **meta))
     else:
@@ -150,10 +149,26 @@ def _remaining(item: Mapping[str, Any], allocations: list[dict[str, Any]]) -> De
     return remaining
 
 
+def _origin_narration(record: Mapping[str, Any]) -> str:
+    kind = record["kind"]
+    if kind == "accrual":
+        return _labelled("Estimate", _human(record.get("reference"), 1900) or _human(record.get("counterparty"), 1900)
+                         or _human(record.get("estimate_basis"), 1900))
+    label = {"receivable": "Invoice", "payable": "Bill", "credit": "Customer credit" if record.get("direction") == "credit" else "Supplier credit"}[kind]
+    return _labelled(label, _party_ref(record))
+
+
+def _offset_narration(credit: Mapping[str, Any], target: Mapping[str, Any]) -> str:
+    who = _human(credit.get("counterparty"))
+    ref = lambda item: _human(item.get("reference")) if _human(item.get("reference")).casefold() != who.casefold() else ""
+    applied = " ".join(part for part in (who, ref(credit)) if part)
+    return f"Credit applied: {applied} to {ref(target) or ('invoice' if target['kind'] == 'receivable' else 'bill')}"[:2000]
+
+
 def _payment_narration(cash: Decimal, counterparties: set, refs: list) -> str:
     names = sorted({_human(c) for c in counterparties if _human(c)})
     head = ("Payment from " if cash > 0 else "Payment to ") + names[0] if len(names) == 1 else ("Payment received" if cash > 0 else "Payment made")
-    unique = list(dict.fromkeys(refs))
+    unique = [r for r in dict.fromkeys(refs) if len(names) != 1 or r.casefold() != names[0].casefold()]
     return (head + (": " + ", ".join(unique) if unique else ""))[:2000]
 
 
@@ -486,7 +501,7 @@ def _offset_effect(entity: Entity, payload: Mapping[str, Any]):
     if credit["account"] != target["account"]:
         # Same control account: the two open balances already net in the ledger, so only link them.
         entries.append(_entry(when, "offset:" + operation_id,
-                              f"Credit applied: {_human(who)} {_item_ref(credit)} to {_item_ref(target)}",
+                              _offset_narration(credit, target),
                               [(target["account"], -sign * amount), (credit["account"], sign * amount)],
                               item_id=target_id, credit_item_id=credit_id))
     mutations = []
