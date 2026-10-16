@@ -68,7 +68,8 @@ def supported_preparation_command(argv: list[str]) -> PreparationCommandSpec:
     if path in _READ_PATHS:
         return PreparationCommandSpec(path, "read", None)
     if path[0] == "accrual":
-        if path[1:] in {("schema",), ("capabilities",), ("schedule", "list"), ("item", "list"), ("report",)}:
+        if path[1:] in {("schema",), ("capabilities",), ("schedule", "list"), ("item", "list"), ("report",),
+                        ("accounts",), ("receipt",), ("opening", "draft")}:
             return PreparationCommandSpec(path, "read", None)
         if path[1:] in {("intake",), ("journal", "preview"), ("journal", "apply"),
                         ("journal", "correct-preview"), ("journal", "correct-apply"),
@@ -79,6 +80,7 @@ def supported_preparation_command(argv: list[str]) -> PreparationCommandSpec:
                         ("item", "preview"), ("item", "apply"), ("item", "settle-preview"),
                         ("item", "settle-apply"), ("item", "adjust-preview"), ("item", "adjust-apply"),
                         ("item", "offset-preview"), ("item", "offset-apply"),
+                        ("opening", "preview"), ("opening", "apply"),
                         ("migration", "preview"), ("migration", "apply"), ("support", "preview"), ("support", "apply"),
                         ("evidence-link", "preview"), ("evidence-link", "apply")}:
             return PreparationCommandSpec(path, "ledger", "adjust")
