@@ -124,9 +124,10 @@ payroll tax account as `ledger_only` with the note "Ledger balance, no supportin
 detail required".
 
 A journal needs `evidence_ids` or an `estimate_basis`. Its preview can show a
-`control_support_required` warning when the account name contains Receivable,
-Payable, Deferred, Prepaid or Accrued. The warning is advice: the balance stays
-`ledger_only` unless you register items or schedules for that account.
+`control_support_required` warning only when the account already has registered
+items, schedules or a support snapshot. A `ledger_only` account never gets the
+warning, and neither does a journal with a `reversal_date`, which is its own
+supporting detail from its date until its reversal posts.
 
 **When an account has detail and a journal posts to it.** Once an account has
 items or schedules, its ledger balance must equal that detail. A plain journal on
@@ -579,7 +580,9 @@ before `effective_date`. Other actions are `cancel`, `refund` and `supersede`; s
 
 Use it for a cost you know you incurred but have no bill for. Give an
 `estimate_basis` and a `reversal_date`. The journal needs no stored document, and
-no supporting detail for the accrued liability.
+no supporting detail for the accrued liability. The journal is its own supporting
+detail from its date until its reversal posts, so it can share an account with
+registered items (recipe 12).
 
 ```json
 {
@@ -687,8 +690,10 @@ on 2026-03-31. The approved bill posts Dr bonuses 2700.00 and Cr accounts payabl
 2700.00. The true-up posts Dr accrued liabilities 3000.00 and Cr bonuses 3000.00,
 so net bonus expense is 2700.00 and the accrued liability is zero. The variance (actual
 minus the estimate removed) is stored on the adjustment and shown in the preview
-`details.true_up` and in the receipt `warnings` entry `true_up_variance`, with
-`estimate_amount`, `actual_amount` and `variance`. Two other actions exist: `credit` reduces an item and
+`details.true_up` and in the receipt `details.true_up`, with
+`estimate_amount`, `actual_amount` and `variance`. `books accrual report --kind adjustments`
+also shows the estimate, actual and variance on each true-up row, with the combined
+variance when several estimates share one actual. Two other actions exist: `credit` reduces an item and
 the income or expense (a discount), and `writeoff` removes a balance (recipe 13).
 
 ### Recipe 13: bad-debt write-off

@@ -21,7 +21,15 @@ from .store import SupportingMutation, TABLES, list_records, load_record, record
 
 
 class CoverageError(ValueError):
-    """A requested subperiod cannot be reconstructed from summary evidence."""
+    """A requested subperiod cannot be reconstructed from summary evidence.
+
+    `first_date` is the first date a report can start from, when it is known.
+    """
+
+    def __init__(self, message, first_date=None, field=None):
+        super().__init__(message)
+        self.first_date = first_date
+        self.field = field  # "from" or "to": the date argument that is too early
 
 
 def _records(conn, table):
@@ -52,12 +60,12 @@ def coverage_metadata(conn, kind, start, end):
     source_as_of = date.fromisoformat(opening["source_as_of"])
     cutover = date.fromisoformat(opening["cutover_date"])
     if end < source_as_of:
-        raise CoverageError(f"Historical balances before {source_as_of} are unavailable from the imported opening summary.")
+        raise CoverageError(f"Historical balances before {source_as_of} are unavailable from the imported opening summary.", source_as_of.isoformat(), "to")
     if start is not None and start < cutover:
         summary_from, summary_to = opening.get("summary_from"), opening.get("summary_to")
         if (not summary_from or start.isoformat() != summary_from
                 or end.isoformat() < summary_to):
-            raise CoverageError("The requested pre-cutover subperiod is unavailable; request the full fiscal summary or a post-cutover period.")
+            raise CoverageError("The requested pre-cutover subperiod is unavailable; request the full fiscal summary or a post-cutover period.", cutover.isoformat(), "from")
         result["summary_included"] = True
         result["historical_detail_available"] = False
     else:
@@ -167,6 +175,36 @@ def _managed_support(conn, as_of):
     return items, schedules
 
 
+def estimate_support(conn, as_of, accounts):
+    """Auto-reversing estimate journals are their own supporting detail.
+
+    A journal with a `reversal_date` supports its balance-sheet postings from
+    its date until its reversal entry posts. Only accounts in `accounts` (those
+    that already require supporting detail) receive these rows.
+    """
+    as_of = as_of.isoformat() if isinstance(as_of, date) else as_of
+    intents = _records(conn, "intents")
+    rows = []
+    for intent in intents:
+        if intent.get("kind") != "scheduled_reversal" or intent.get("strategy") != "reverse":
+            continue
+        original_id = intent["original_id"]
+        original = conn.execute("SELECT id,date FROM entries WHERE source_id=?", ("accrual:" + original_id,)).fetchone()
+        if not original or original[1] > as_of:
+            continue
+        extinguished = next((r for r in intents if r.get("id") == "extinguished:" + original_id), None)
+        operation = next((r for r in intents if extinguished and r.get("id") == "operation:" + extinguished["operation_id"]), None)
+        source_ids = (operation or {}).get("receipt", {}).get("entry_source_ids", [])
+        if any(conn.execute("SELECT 1 FROM entries WHERE source_id=? AND date<=?", (source_id, as_of)).fetchone() for source_id in source_ids):
+            continue
+        for account, amount in conn.execute("SELECT account,SUM(amount) FROM postings WHERE entry_id=? GROUP BY account", (original[0],)).fetchall():
+            if account in accounts and Decimal(amount):
+                rows.append({"id": f"estimate:{original_id}:{account}", "kind": "estimate", "account": account,
+                             "signed_balance": f"{Decimal(amount):.2f}", "journal_id": original_id,
+                             "date": original[1], "reversal_date": intent["date"]})
+    return sorted(rows, key=lambda r: r["id"])
+
+
 def support_snapshot(conn, as_of):
     """Reconstruct managed balances and choose immutable external snapshots."""
     as_of = as_of.isoformat() if isinstance(as_of, date) else as_of
@@ -177,19 +215,57 @@ def support_snapshot(conn, as_of):
     for row in external:
         account = row["account"]
         grouped.setdefault(account, []).append(row)
-    selected = []
+    selected, stale = [], []
     for account, rows in grouped.items():
         snapshots = [r for r in rows if r["kind"] == "external_support_snapshot"]
         if snapshots:
-            selected.append(max(snapshots, key=lambda r: (r["as_of"], r.get("snapshot_revision", 0), r["id"])))
+            latest = max(snapshots, key=lambda r: (r["as_of"], r.get("snapshot_revision", 0), r["id"]))
+            # A snapshot states the balance on its own date. It supports the
+            # account only until the next posting to that account.
+            later = conn.execute("SELECT MIN(e.date) FROM postings p JOIN entries e ON e.id=p.entry_id "
+                                 "WHERE p.account=? AND e.date>? AND e.date<=?", (account, latest["as_of"], as_of)).fetchone()[0]
+            if later:
+                stale.append({"id": latest["id"], "account": account, "as_of": latest["as_of"], "next_posting": later})
+            else:
+                selected.append(latest)
         else:
             selected.extend(rows)
-    return {"items": items, "schedules": schedules, "external": sorted(selected, key=lambda r: r["id"])}
+    backed = {r["account"] for r in [*items, *schedules, *selected, *stale]}
+    return {"items": items, "schedules": schedules, "external": sorted(selected, key=lambda r: r["id"]),
+            "stale": sorted(stale, key=lambda r: r["id"]), "estimates": estimate_support(conn, as_of, backed)}
 
 
 def is_credit_card_account(account):
     """Recognize only the established starter card account and its subaccounts."""
     return account == "Liabilities:CreditCard" or account.startswith("Liabilities:CreditCard:")
+
+
+def settlement_details(conn):
+    """Map a settlement entry's source_id to "counterparty (item references)".
+
+    Settlement entries keep their committed narration. Readable reports add the
+    counterparty and references from the item records at report time.
+    """
+    items = {r["id"]: r for r in _records(conn, "items")}
+    grouped = {}
+    for allocation in _records(conn, "allocations"):
+        if allocation.get("kind") not in {"settlement", "unapplied_receipt"} or allocation["item_id"] not in items:
+            continue
+        item = items[allocation["item_id"]]
+        keys = [allocation.get("source_id")]
+        prefix, suffix = "settlement:", ":" + allocation["item_id"]
+        if allocation["kind"] == "settlement" and allocation["id"].startswith(prefix) and allocation["id"].endswith(suffix):
+            keys.append(allocation["id"][:-len(suffix)] + ":reclass")
+        for key in keys:
+            if key:
+                grouped.setdefault(key, []).append(item)
+    result = {}
+    for key, rows in grouped.items():
+        parties = sorted({r.get("counterparty") for r in rows if r.get("counterparty")})
+        refs = sorted({r.get("reference") or r["id"] for r in rows})
+        shown = ", ".join(refs[:3]) + (f" and {len(refs) - 3} more" if len(refs) > 3 else "")
+        result[key] = (", ".join(parties) + " " if parties else "") + f"({shown})"
+    return result
 
 
 def _entity_arg(conn):
@@ -213,12 +289,15 @@ def _plain_journals(conn, account, as_of):
     return sorted(found, key=lambda j: (j["date"], j["journal_id"]))
 
 
-def _unexplained_message(conn, account, as_of, financial, detail, managed_ids):
+def _unexplained_message(conn, account, as_of, financial, detail, managed_ids, stale=None):
     managed, unexplained = detail, financial - detail
     journals = _plain_journals(conn, account, as_of)
     named = "; ".join(f"journal {j['journal_id']} ({j['date']}, {j['amount']})" for j in journals[:5]) or "an entry with no registered item or schedule"
     message = (f"{account} has registered items or schedules (supporting detail {managed:.2f} USD) but the ledger balance is "
                f"{financial:.2f} USD, so {unexplained:.2f} USD is unexplained by supporting detail. Entries that posted to it without an item or schedule: {named}.")
+    if stale:
+        message = (f"The supporting-detail snapshot {stale['id']} is dated {stale['as_of']} and supports {account} only on that date; "
+                   f"the account posted again on {stale['next_posting']}. " + message)
     request = {"operation_id": "<new-id>", "account": account, "as_of": as_of, "currency": "USD", "mode": "residual",
                "managed_support_ids": managed_ids,
                "details": [{"id": "<detail-id>", "balance": f"{unexplained:.2f}", "description": "<what the balance is>"}],
@@ -239,7 +318,7 @@ def reconciliation(conn, as_of):
     as_of = as_of.isoformat() if isinstance(as_of, date) else as_of
     support = support_snapshot(conn, as_of)
     totals, refs, managed_refs, managed_totals = {}, {}, {}, {}
-    for managed, group in ((True, [*support["items"], *support["schedules"]]), (False, support["external"])):
+    for managed, group in ((True, [*support["items"], *support["schedules"], *support["estimates"]]), (False, support["external"])):
         for row in group:
             account = row["account"]
             amount = Decimal(row.get("signed_balance", row.get("balance", "0")))
@@ -249,6 +328,9 @@ def reconciliation(conn, as_of):
                 managed_totals[account] = managed_totals.get(account, Decimal(0)) + amount
                 if amount:
                     managed_refs.setdefault(account, []).append(row["id"])
+    stale = {r["account"]: r for r in support["stale"]}
+    for account in stale:
+        totals.setdefault(account, Decimal(0))
     ledger = _balances(conn, as_of)
     rows = []
     for account in sorted(set(ledger) | set(totals)):
@@ -268,7 +350,7 @@ def reconciliation(conn, as_of):
                "support_required": True, "support_ids": sorted(refs.get(account, [])), "currency": "USD"}
         if detail != financial:
             row["message"], row["action"] = _unexplained_message(
-                conn, account, as_of, financial, detail, sorted(managed_refs.get(account, [])))
+                conn, account, as_of, financial, detail, sorted(managed_refs.get(account, [])), stale.get(account))
         rows.append(row)
     return rows
 
@@ -361,16 +443,35 @@ def _adjustment_rows(store, conn, start, end):
                     identity, {**trace, "role": "linked_existing_source"})
     opening = opening_coverage(conn)
     opening_source = opening.get("opening_source_id") if opening else None
+    true_ups, by_actual = {}, {}
+    for allocation in _records(conn, "allocations"):
+        if allocation.get("action") == "true_up" and "variance" in allocation and allocation.get("date", "9999-12-31") <= end.isoformat():
+            true_ups.setdefault(allocation.get("operation_id"), []).append(allocation)
+            by_actual.setdefault(allocation["actual_item_id"], []).append(allocation)
     rows = []
     for entry in store.load_entries(from_date=start, to_date=end):
         linked = associations.get(entry.source_id, {})
         if not linked and not (opening_source and entry.source_id == opening_source):
             continue
-        rows.append({"date": entry.date.isoformat(), "source_id": entry.source_id,
-                     "description": entry.narration, "metadata": dict(entry.meta),
-                     "operations": [linked[key] for key in sorted(linked)],
-                     "postings": [{"account": p.account, "amount": str(p.amount), "currency": p.currency}
-                                  for p in entry.postings]})
+        row = {"date": entry.date.isoformat(), "source_id": entry.source_id,
+               "description": entry.narration, "metadata": dict(entry.meta),
+               "operations": [linked[key] for key in sorted(linked)],
+               "postings": [{"account": p.account, "amount": str(p.amount), "currency": p.currency}
+                            for p in entry.postings]}
+        trued = [a for key in sorted(linked) for a in true_ups.get(key, [])]
+        if trued:
+            row["true_up"] = []
+            for allocation in trued:
+                group = by_actual[allocation["actual_item_id"]]
+                estimates = sum((Decimal(a["estimate_amount"]) for a in group), Decimal(0))
+                row["true_up"].append({
+                    "item_id": allocation["item_id"], "actual_item_id": allocation["actual_item_id"],
+                    "estimate": allocation["estimate_amount"], "actual": allocation["actual_amount"],
+                    "variance": allocation["variance"],
+                    "all_estimates_for_actual": f"{estimates:.2f}",
+                    "combined_variance": f"{Decimal(allocation['actual_amount']) - estimates:.2f}",
+                    "estimates_trued_up": len(group)})
+        rows.append(row)
     return rows
 
 
@@ -485,8 +586,20 @@ def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
             extra = {"summary": summary, "bucket_labels": dict(AGING_BUCKETS),
                      "aging_basis": "due_date", "credits_netted": False,
                      "totals": aging_totals(rows)}
-        elif kind in {"schedules", "outstanding", "support"}:
-            rows = snapshot[{"schedules": "schedules", "outstanding": "items", "support": "external"}[kind]]
+        elif kind == "schedules":
+            # One row per schedule. The contra support row of a depreciation
+            # schedule stays in reconciliation; here it is shown as columns.
+            rows = []
+            for row in snapshot["schedules"]:
+                if row.get("role") == "accumulated_depreciation":
+                    continue
+                if row.get("kind") == "depreciation":
+                    cost, accumulated = Decimal(row["amount"]), Decimal(row["recognized_amount"])
+                    row = {**row, "asset_cost": f"{cost:.2f}", "accumulated_depreciation": f"{accumulated:.2f}",
+                           "net_book_value": f"{cost - accumulated:.2f}"}
+                rows.append(row)
+        elif kind in {"outstanding", "support"}:
+            rows = snapshot[{"outstanding": "items", "support": "external"}[kind]]
         elif kind == "reconciliation":
             rows = reconciliation(conn, end)
         elif kind == "adjustments":
@@ -531,7 +644,7 @@ def _support_effect(entity, payload):
     with store.connection() as conn:
         coverage_metadata(conn, "support", None, when)
         snapshot = support_snapshot(conn, when)
-        managed_rows = [r for r in [*snapshot["items"], *snapshot["schedules"]] if r["account"] == account and Decimal(r["signed_balance"])]
+        managed_rows = [r for r in [*snapshot["items"], *snapshot["schedules"], *snapshot["estimates"]] if r["account"] == account and Decimal(r["signed_balance"])]
         managed = sum((Decimal(r["signed_balance"]) for r in managed_rows), Decimal(0))
         financial = _balances(conn, when.isoformat()).get(account, Decimal(0))
         previous = [r for r in snapshot["external"] if r["account"] == account]

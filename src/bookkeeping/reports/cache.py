@@ -507,10 +507,12 @@ def iter_postings(
     account: str | None = None,
     from_date: date | str | None = None,
     to_date: date | str | None = None,
+    include_source: bool = False,
 ) -> Iterator[tuple]:
     """Yield (date, narration, payee, account, amount, currency) tuples.
 
-    All date boundaries are inclusive.
+    All date boundaries are inclusive. With ``include_source`` each tuple ends
+    with the entry's source_id.
     """
     clauses: list[str] = []
     params: list = []
@@ -531,14 +533,15 @@ def iter_postings(
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     sql = f"""
-        SELECT e.date, e.narration, e.payee, p.account, p.amount, p.currency
+        SELECT e.date, e.narration, e.payee, p.account, p.amount, p.currency, e.source_id
         FROM postings p
         JOIN entries e ON e.id = p.entry_id
         {where}
         ORDER BY e.date, e.id, p.id
     """
     for row in conn.execute(sql, params):
-        yield (row[0], row[1], row[2], row[3], Decimal(row[4]), row[5])
+        values = (row[0], row[1], row[2], row[3], Decimal(row[4]), row[5])
+        yield (*values, row[6]) if include_source else values
 
 
 def list_accounts(conn: sqlite3.Connection) -> list[dict]:

@@ -12,7 +12,7 @@ def _text(value: Any) -> str:
 def _label(value: Any) -> str:
     labels = {"receivable": "Receivable", "payable": "Payable", "accrual": "Accrued balance",
               "credit": "Unapplied credit", "prepaid": "Prepaid expense", "prepaid_expense": "Prepaid expense",
-              "deferred": "Deferred revenue", "deferred_revenue": "Deferred revenue"}
+              "deferred": "Deferred revenue", "depreciation": "Depreciation", "deferred_revenue": "Deferred revenue"}
     return labels.get(value, _text(value))
 
 
@@ -37,12 +37,15 @@ def render_report(document: Mapping[str, Any]) -> str:
         lines.append(f"Detailed activity begins {coverage['cutover_date']}; imported opening as of {coverage['source_as_of']}.")
         if coverage.get("summary_from"):
             lines.append(f"Imported fiscal summary: {coverage['summary_from']} through {coverage['summary_to']}; earlier monthly detail is unavailable.")
+    if kind == "schedules":
+        document = {**document, "rows": [{**r, **{k: r.get(k, "-") for k in ("asset_cost", "accumulated_depreciation", "net_book_value")}} for r in document["rows"]]}
     rows = [{**row, "display_reference": row.get("reference") or row.get("counterparty") or row.get("description") or row.get("id"),
              "kind": _label(row.get("kind"))} for row in document["rows"]]
     columns = {
         "aging": [("display_reference", "Reference"), ("kind", "Type"), ("counterparty", "Customer / vendor"), ("due_date", "Due date"), ("bucket_label", "Aging"), ("aging_amount", "Balance")],
         "outstanding": [("display_reference", "Reference"), ("kind", "Type"), ("counterparty", "Customer / vendor"), ("due_date", "Due date"), ("remaining_amount", "Remaining"), ("status", "Status")],
-        "schedules": [("display_reference", "Schedule"), ("kind", "Type"), ("account", "Account"), ("recognized_amount", "Recognized"), ("remaining_amount", "Remaining"), ("status", "Status")],
+        "schedules": [("display_reference", "Schedule"), ("kind", "Type"), ("account", "Account"), ("recognized_amount", "Recognized"), ("remaining_amount", "Remaining"), ("asset_cost", "Asset cost"),
+                      ("accumulated_depreciation", "Accumulated depreciation"), ("net_book_value", "Net book value"), ("status", "Status")],
         "support": [("display_reference", "Support"), ("account", "Account"), ("as_of", "Evidence date"), ("balance", "Balance")],
         "reconciliation": [("account", "Account"), ("ledger_balance", "Ledger"), ("support_balance", "Supporting detail"), ("difference", "Difference"), ("status", "Status")],
     }
@@ -54,6 +57,12 @@ def render_report(document: Mapping[str, Any]) -> str:
             postings = [{**p, "debit": f"{max(Decimal(p['amount']), Decimal(0)):.2f}",
                          "credit": f"{max(-Decimal(p['amount']), Decimal(0)):.2f}"} for p in row["postings"]]
             lines.extend(_table([("account", "Account"), ("debit", "Debit"), ("credit", "Credit"), ("currency", "Currency")], postings))
+            for true_up in row.get("true_up", []):
+                lines.append(f"True-up of {true_up['item_id']} against {true_up['actual_item_id']}: estimate {true_up['estimate']}, "
+                             f"actual {true_up['actual']}, variance {true_up['variance']} (actual minus estimate).")
+                if true_up["estimates_trued_up"] > 1:
+                    lines.append(f"  {true_up['estimates_trued_up']} estimates ({true_up['all_estimates_for_actual']} in total) are trued up against this actual: "
+                                 f"combined variance {true_up['combined_variance']}.")
     else:
         lines.extend(["", *_table(columns[kind], rows)])
     if kind == "aging":

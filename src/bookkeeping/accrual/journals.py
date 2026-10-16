@@ -305,6 +305,9 @@ def _apply_operation(entity: Entity, plan: Mapping[str, Any], *, entries: Sequen
                    "request_hash": plan["request_hash"], "plan_hash": plan["plan_hash"],
                    "entry_source_ids": [e.source_id for e in entries], "authority": plan["authority"],
                    "evidence_ids": [row["id"] for row in plan["evidence"]], "warnings": plan["warnings"]}
+        true_up = (plan.get("details") or {}).get("true_up")
+        if true_up:
+            receipt["details"] = {"true_up": dict(true_up)}
         if replay_receipt is not None:
             if entries or mutations or opens:
                 raise JournalError("invalid_replay", "An alias receipt cannot add financial or supporting effects.")
@@ -491,13 +494,22 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
 
 
 def _warnings(entity: Entity, entry: Entry, auto_reversing: bool = False) -> list[dict[str, Any]]:
-    """An auto-reversing accrual needs no supporting detail: it reverses itself."""
-    supported = {item.get("account") for item in list_records(_store(entity), "items")}
-    control_tokens = ("Receivable", "Payable", "Deferred", "Prepaid", "Accrued", "PayrollLiabil")
+    """Warn only about an account that registered items, schedules or a support snapshot back.
+
+    A ledger-only account never blocks, and an auto-reversing estimate is its
+    own supporting detail, so neither one gets a warning.
+    """
+    if auto_reversing:
+        return []
+    store = _store(entity)
+    backed = {record.get("account") for table in ("items", "schedules") for record in list_records(store, table)}
+    backed |= {record.get("account") for record in list_records(store, "coverage")
+               if record.get("kind") in {"external_support", "external_support_snapshot"}}
     return [{"code": "control_support_required", "account": p.account,
-             "message": "Control-account posting requires reconciled supporting detail."}
-            for p in entry.postings if any(t in p.account for t in control_tokens) and p.account not in supported
-            and not auto_reversing]
+             "message": f"{p.account} has registered items, schedules or a supporting-detail snapshot. This posting changes its balance "
+                        "without one, so the account is unreconciled until the amount is registered as an item or schedule, or a "
+                        "supporting-detail snapshot explains it (see `books accrual report --kind reconciliation`)."}
+            for p in entry.postings if p.account in backed]
 
 
 def _source_claims(store: LedgerStore, records: Sequence[dict[str, Any]], financial_hash: str,

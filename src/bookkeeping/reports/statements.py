@@ -502,9 +502,13 @@ def _compute_general_ledger(conn: Any, from_date: date, to_date: date) -> Statem
     metadata = financial_metadata(conn, "general_ledger", from_date, to_date)
     rows_by_account: dict[str, list[dict]] = {}
 
-    for entry_date, narration, payee, account, amount, currency in iter_postings(
-        conn, from_date=from_date, to_date=to_date
+    from ..accrual.reports import settlement_details
+    details = settlement_details(conn)
+    for entry_date, narration, payee, account, amount, currency, source_id in iter_postings(
+        conn, from_date=from_date, to_date=to_date, include_source=True
     ):
+        if source_id in details and details[source_id] not in narration:
+            narration = f"{narration}: {details[source_id]}"
         d = entry_date if isinstance(entry_date, date) else date.fromisoformat(entry_date)
         label_parts = [str(d)]
         if payee:
@@ -750,10 +754,6 @@ def ask(
         return AskResult(question=question, intent="unavailable_basis", answer_text=text,
                          data={"unavailable": "basis_not_kept", "requested_basis": wanted, "books_basis": kept,
                                "from_date": str(from_date), "to_date": str(to_date)})
-    result = _ask_core(entity_path, question, today=today)
-    if result.intent == "unknown":
-        return result
-    answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
     names = ask_intents.match(question)
     routed = None
     if names:
@@ -765,6 +765,10 @@ def ask(
         result.answer_text = f"Answer covers: {kept or 'unknown'} basis, from {routed.data['from_date']} to {routed.data['to_date']}.{note}\n\n" + result.answer_text
         result.data.setdefault("basis", kept)
         return result
+    result = _ask_core(entity_path, question, today=today)
+    if result.intent == "unknown":
+        return result
+    answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
     note = "" if named else " No period was named in the question, so this covers the year to date."
     result.answer_text = (f"Answer covers: {kept or 'unknown'} basis, from {answered_from} to {answered_to}.{note}\n\n"
                           + result.answer_text)
@@ -1108,7 +1112,45 @@ def add_parser(subparsers: Any) -> None:
     ask_p.add_argument("--today", default=None, help="Override today's date (YYYY-MM-DD) for deterministic tests")
 
 
+def _coverage_failure(args: Any, exc: Exception) -> int:
+    """Print a clean coverage error with the first available date and the corrected command."""
+    first, field = getattr(exc, "first_date", None), getattr(exc, "field", None)
+    command = getattr(args, "report_command", None)
+    lines = [f"Error: {exc}"]
+    if first and command:
+        parts = [f"books report {command} --entity {args.entity}"]
+        if command in {"pnl", "general-ledger"}:
+            from_date, to_date = args.from_date, args.to_date
+            if field == "from":
+                from_date = first
+                to_date = max(to_date, first)
+            else:
+                to_date = first
+                from_date = min(from_date, first)
+            parts.append(f"--from {from_date} --to {to_date}")
+        else:
+            parts.append(f"--as-of {first}")
+        if getattr(args, "output", None):
+            parts.append(f"--output {args.output}")
+        if getattr(args, "fmt", "text") != "text":
+            parts.append(f"--format {args.fmt}")
+        lines.append(f"The first available date is {first}. Run: {' '.join(parts)}")
+    print("\n".join(lines), file=sys.stderr)
+    return 1
+
+
 def run(args: Any) -> int:
+    """Dispatch report or ask command."""
+    from ..accrual.reports import CoverageError
+    if getattr(args, "command", None) == "report":
+        try:
+            return _run(args)
+        except CoverageError as exc:
+            return _coverage_failure(args, exc)
+    return _run(args)
+
+
+def _run(args: Any) -> int:
     """Dispatch report or ask command."""
     cmd = getattr(args, "command", None)
 
