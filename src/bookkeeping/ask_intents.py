@@ -48,6 +48,10 @@ CASH_FLOW = re.compile(r"\bcash\b(?:\s+\w+){0,3}?\s+(?:spen[dt]|paid|pay|receive
                        r"|\b(?:spen[dt]|paid|received|collected)\b[^?.]*\bin cash\b")
 
 
+_BUCKET_LABELS = {"current": "Current", "1_30": "1-30 days overdue", "31_60": "31-60 days overdue",
+                  "61_90": "61-90 days overdue", "over_90": "Over 90 days overdue", "unknown_due_date": "No due date"}
+
+
 def match(question: str) -> list[str]:
     lowered = question.lower()
     return [name for name, pattern in INTENT_TABLE if re.search(pattern, lowered)]
@@ -68,7 +72,7 @@ def _side_text(label: str, side: dict[str, Any]) -> str:
     lines = [f"{label}: {_money(side['total'])} across {side['count']} open item(s); overdue {_money(side['overdue_total'])}."]
     for bucket, amount in side["buckets"].items():
         if float(amount):
-            lines.append(f"  {bucket.replace('_', ' ')}: {_money(amount)}")
+            lines.append(f"  {_BUCKET_LABELS.get(bucket, bucket)}: {_money(amount)}")
     credits = side["unapplied_credits"]
     if credits["count"]:
         lines.append(f"  Unapplied credits (not netted): {_money(credits['total'])}")
