@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from bookkeeping import cli, procedures  # noqa: E402
 from bookkeeping.queue import (  # noqa: E402
     check_taught, clear_taught, confirm, correct, eligible_for_autopost, list_taught,
-    load_learned_context, propose, read_queue_item, set_taught, taught_for,
+    load_learned_context, propose, read_queue_item, set_taught, taught_for, validate_accrual_hint,
 )
 from bookkeeping.remote_contract import command_spec  # noqa: E402
 from test_queue import _add_pending_categorization, _make_entity  # noqa: E402
@@ -129,6 +129,27 @@ class TaughtCategoryTests(unittest.TestCase):
         self.assertEqual(data["instructions"][0]["counterparty"], KEY)
         spec = command_spec(["queue", "taught", "--entity", str(self.entity.path)])
         self.assertFalse(spec["mutates"])
+
+    def test_accrual_hint_shape_is_checked_and_independent_of_taught(self) -> None:
+        good = {"version": 1, "treatment": "prepaid", "term_months": 12, "method": "actual_day",
+                "accounts": {"account": "Assets:Prepaid", "recognition_account": SOFTWARE},
+                "threshold": "1000.00", "note": "annual", "set_by": "u1",
+                "set_at": "2026-10-16T10:00:00Z", "source": "person"}
+        self.assertEqual(validate_accrual_hint(good), [])
+        for bad in ({**good, "treatment": "magic"}, {**good, "version": 2}, {**good, "source": "robot"},
+                    {**good, "term_months": 0}, {**good, "method": "daily"}, {**good, "extra": 1},
+                    {**good, "accounts": {"account": "x"}}, {**good, "threshold": "lots"}, "prepaid"):
+            with self.subTest(bad=bad):
+                self.assertNotEqual(validate_accrual_hint(bad), [])
+        self.assertEqual(validate_accrual_hint({"version": 1, "treatment": "bill", "set_by": "u1",
+                                                "set_at": "2026-10-16T10:00:00Z", "source": "agent"}), [])
+        self.teach()
+        ctx = load_learned_context(self.entity)
+        ctx[KEY]["accrual"] = good
+        (self.entity.path / "learned-context" / "counterparties.json").write_text(json.dumps(ctx))
+        self.assertEqual(taught_for(self.entity, KEY)["category"], SOFTWARE)
+        set_taught(self.entity, KEY, "Expenses:Office", by="u1", by_name="Gil", ts="2026-10-18T10:00:00Z")
+        self.assertEqual(load_learned_context(self.entity)[KEY]["accrual"], good)
 
     def test_procedure_carries_the_rule(self) -> None:
         proc = procedures.get_procedure("categorize-record")

@@ -215,6 +215,54 @@ def _taught_id(key: str, category: str, at: str, by: str) -> str:
     return hashlib.sha256("\0".join((key, category, at, by)).encode("utf-8")).hexdigest()[:16]
 
 
+# Reserved: an optional ``accrual`` object sits beside ``taught`` on a counterparty
+# record. This module checks only its shape and version. It never writes it. The
+# accrual semantics belong to a later change. ``taught`` and ``accrual`` are
+# independent: neither reads or changes the other.
+_ACCRUAL_TREATMENTS = ("prepaid", "deferred", "depreciation", "bill", "invoice", "estimate")
+_ACCRUAL_METHODS = ("actual_day", "equal_month")
+_ACCRUAL_SOURCES = ("person", "agent")
+_ACCRUAL_KEYS = {"version", "treatment", "term_months", "method", "accounts", "threshold",
+                 "note", "set_by", "set_at", "source"}
+
+
+def validate_accrual_hint(value: Any) -> list[str]:
+    """Return shape errors for a counterparty ``accrual`` object (empty when valid)."""
+    if not isinstance(value, dict):
+        return ["accrual must be an object"]
+    errors = [f"unknown accrual field: {key}" for key in sorted(set(value) - _ACCRUAL_KEYS)]
+    if value.get("version") != 1 or isinstance(value.get("version"), bool):
+        errors.append("accrual.version must be 1")
+    if value.get("treatment") not in _ACCRUAL_TREATMENTS:
+        errors.append(f"accrual.treatment must be one of {', '.join(_ACCRUAL_TREATMENTS)}")
+    term = value.get("term_months")
+    if "term_months" in value and (not isinstance(term, int) or isinstance(term, bool) or term < 1):
+        errors.append("accrual.term_months must be a positive integer")
+    if "method" in value and value["method"] not in _ACCRUAL_METHODS:
+        errors.append(f"accrual.method must be one of {', '.join(_ACCRUAL_METHODS)}")
+    if "accounts" in value:
+        accounts = value["accounts"]
+        if (not isinstance(accounts, dict) or set(accounts) - {"account", "recognition_account", "contra_account"}
+                or not all(isinstance(accounts.get(k), str) and accounts[k] for k in ("account", "recognition_account"))
+                or ("contra_account" in accounts and not isinstance(accounts["contra_account"], str))):
+            errors.append("accrual.accounts must name account and recognition_account (and optional contra_account)")
+    if "threshold" in value:
+        try:
+            ok = isinstance(value["threshold"], str) and Decimal(value["threshold"]).is_finite()
+        except Exception:
+            ok = False
+        if not ok:
+            errors.append("accrual.threshold must be a decimal string")
+    if "note" in value and not isinstance(value["note"], str):
+        errors.append("accrual.note must be text")
+    for key in ("set_by", "set_at"):
+        if not isinstance(value.get(key), str) or not value.get(key):
+            errors.append(f"accrual.{key} is required")
+    if value.get("source") not in _ACCRUAL_SOURCES:
+        errors.append("accrual.source must be person or agent")
+    return errors
+
+
 def taught_for(entity: Entity, key: str) -> Optional[dict]:
     """Return the active taught instruction for a counterparty key, or None."""
     entry = load_learned_context(entity).get(key)
