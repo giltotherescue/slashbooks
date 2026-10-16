@@ -180,6 +180,11 @@ def support_snapshot(conn, as_of):
     return {"items": items, "schedules": schedules, "external": sorted(selected, key=lambda r: r["id"])}
 
 
+def is_credit_card_account(account):
+    """Recognize only the established starter card account and its subaccounts."""
+    return account == "Liabilities:CreditCard" or account.startswith("Liabilities:CreditCard:")
+
+
 def reconciliation(conn, as_of):
     as_of = as_of.isoformat() if isinstance(as_of, date) else as_of
     support = support_snapshot(conn, as_of)
@@ -192,7 +197,8 @@ def reconciliation(conn, as_of):
     ledger = _balances(conn, as_of)
     rows = []
     for account in sorted(set(ledger) | set(totals)):
-        if not account.startswith(("Assets:", "Liabilities:")) or account.startswith(("Assets:Bank:", "Assets:Cash:")):
+        if (not account.startswith(("Assets:", "Liabilities:"))
+                or account.startswith(("Assets:Bank:", "Assets:Cash:")) or is_credit_card_account(account)):
             continue
         financial, detail = ledger.get(account, Decimal(0)), totals.get(account, Decimal(0))
         if financial or detail:

@@ -124,7 +124,8 @@ def _account_from_mapping(value: Any) -> str:
     return ""
 
 
-def _source_rows(config: Mapping[str, Any], start: date, end: date) -> list[dict[str, Any]]:
+def _source_rows(config: Mapping[str, Any], start: date, end: date,
+                 required_accounts: tuple[str, ...] = ()) -> list[dict[str, Any]]:
     """Normalize affirmative expected-source coverage without inferring activity."""
     coverage = config.get("source_coverage")
     coverage = coverage if isinstance(coverage, Mapping) else {}
@@ -155,6 +156,11 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date) -> list[dict
         if account not in represented:
             bounds = coverage.get(source) if isinstance(coverage.get(source), Mapping) else {}
             candidates.append({"source": source, "account": account, **bounds})
+    represented = {str(item.get("account") or "") for item in candidates}
+    for account in required_accounts:
+        if account not in represented:
+            bounds = coverage.get(account) if isinstance(coverage.get(account), Mapping) else {}
+            candidates.append({"source": account, "account": account, **bounds})
 
     rows: list[dict[str, Any]] = []
     for candidate in candidates:
@@ -293,6 +299,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         raise TypeError("A deterministic as_of date is required.")
     start, end = _period_dates(period)
     entity = load_entity(entity_path)
+    if entity.basis == "accrual":
+        from .accrual.reports import is_credit_card_account
     store_path = default_store_path(entity.path)
     partial_opening = None
     if entity.basis == "accrual" and store_path.is_file():
@@ -310,7 +318,30 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     if period_status != "completed":
         blockers.append({"code": f"period_{period_status}", "message": "Final review readiness requires a completed calendar period.", "refs": [period]})
 
-    sources = _source_rows(entity.entity_config, start, end)
+    work_blockers, open_work = _open_work(entity.path, start, end)
+    blockers.extend(work_blockers)
+    question_blockers, open_questions = _question_blockers(entity.path, start, end)
+    blockers.extend(question_blockers)
+
+    ledger_balances: dict[str, Decimal] = {}
+    opening_balances: dict[str, Decimal] = {}
+    card_activity: set[str] = set()
+    account_catalog: set[str] = set()
+    if store_path.is_file():
+        store = LedgerStore(store_path)
+        account_catalog = store.load_account_names()
+        for entry in store.load_entries(to_date=end):
+            for posting in entry.postings:
+                ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
+                if entity.basis == "accrual" and entry.date >= start:
+                    if is_credit_card_account(posting.account):
+                        card_activity.add(posting.account)
+                if partial_opening and entry.date < start:
+                    opening_balances[posting.account] = opening_balances.get(posting.account, Decimal("0")) + posting.amount
+
+    if entity.basis == "accrual":
+        card_activity.update(account for account, balance in ledger_balances.items() if balance and is_credit_card_account(account))
+    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)))
     if not sources:
         blockers.append({"code": "source_scope_missing", "message": "No expected source accounts are declared for this period.", "refs": []})
     for source in sources:
@@ -319,24 +350,6 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             blockers.append({"code": "source_account_missing", "message": "An expected source is not bound to a ledger account.", "refs": [ref]})
         if source["coverage_status"] != "complete":
             blockers.append({"code": "source_coverage_incomplete", "message": "Affirmative source coverage does not span the full period.", "refs": [ref]})
-
-    work_blockers, open_work = _open_work(entity.path, start, end)
-    blockers.extend(work_blockers)
-    question_blockers, open_questions = _question_blockers(entity.path, start, end)
-    blockers.extend(question_blockers)
-
-    ledger_balances: dict[str, Decimal] = {}
-    opening_balances: dict[str, Decimal] = {}
-    account_catalog: set[str] = set()
-    if store_path.is_file():
-        store = LedgerStore(store_path)
-        account_catalog = store.load_account_names()
-        for entry in store.load_entries(to_date=end):
-            for posting in entry.postings:
-                ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
-                if partial_opening and entry.date < start:
-                    opening_balances[posting.account] = opening_balances.get(posting.account, Decimal("0")) + posting.amount
-
     source_accounts = sorted({str(source["account"]) for source in sources if source["account"]})
     for account in source_accounts:
         if (not account.startswith(("Assets:", "Liabilities:"))

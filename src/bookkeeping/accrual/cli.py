@@ -124,6 +124,7 @@ def request_schemas() -> dict[str, Any]:
     origin = record(["mode", "source_id"], {"mode": {"enum": ["new", "existing", "opening"]},
         "source_id": text, "date": day, "funding_account": text, "reclass_account": text, "counter_account": text})
     schedule_origin = record(["mode", "source_id"], {key: value for key, value in origin["properties"].items() if key != "counter_account"})
+    schedule_origin["properties"]["funding_account"] = {**text, "description": "Existing USD asset account; prepaid schedules also allow Liabilities:CreditCard or its colon-separated subaccounts. Deferred revenue remains asset-funded."}
     item_origin = record(["mode", "source_id"], {key: value for key, value in origin["properties"].items() if key in {"mode", "source_id", "counter_account"}})
     schedule = record(["operation_id", "id", "kind", "account", "recognition_account", "currency", "amount",
                        "start_date", "end_date", "method", "origin"], {
@@ -131,8 +132,9 @@ def request_schemas() -> dict[str, Any]:
         "recognition_account": text, "currency": {"const": "USD"}, "amount": amount,
         "start_date": day, "end_date": {**day, "description": "Exclusive service-period end date."},
         "method": {"enum": ["actual_day", "equal_month"]}, "origin": schedule_origin, "evidence_ids": ids,
-        "recognition_start": day, "recognized_amount": amount},
-        examples=[{"operation_id": "synthetic-prepaid-create", "id": "synthetic-prepaid", "kind": "prepaid",
+        "recognition_start": day, "recognized_amount": amount,
+        "reference": {**text, "maxLength": 2000, "description": "Human reference or description, separate from the stable machine ID."}},
+        examples=[{"operation_id": "synthetic-prepaid-create", "id": "synthetic-prepaid", "reference": "Annual software subscription #104", "kind": "prepaid",
             "account": "Assets:PrepaidExpenses", "recognition_account": "Expenses:Software", "currency": "USD",
             "amount": "1200.00", "start_date": "2026-01-01", "end_date": "2027-01-01", "method": "equal_month",
             "origin": {"mode": "new", "source_id": "synthetic-funding", "date": "2026-01-01", "funding_account": "Assets:Bank:Checking"},

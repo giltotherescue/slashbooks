@@ -61,6 +61,59 @@ class AccrualFixture(unittest.TestCase):
 
 
 class ScheduleTests(AccrualFixture):
+    def test_new_prepaid_card_funding_posts_card_once_without_cash_and_replays(self):
+        for card in ("Liabilities:CreditCard", "Liabilities:CreditCard:Synthetic"):
+            with self.subTest(card=card):
+                add_account(self.root, card, open_date="2000-01-01")
+                identity = "card-" + card.rsplit(":", 1)[-1]
+                request = self.schedule(id=identity, operation_id=identity,
+                    origin={"mode": "new", "source_id": identity + "-purchase", "funding_account": card},
+                    evidence_ids=[self.evidence(identity)])
+                plan = preview_schedule(self.entity, request)
+                self.assertEqual(plan["entries"][0]["postings"], [
+                    {"account": PREPAID, "amount": "1200.00", "currency": "USD", "debit": "1200.00", "credit": "0.00"},
+                    {"account": card, "amount": "-1200.00", "currency": "USD", "debit": "0.00", "credit": "1200.00"}])
+                receipt = apply_schedule(self.entity, plan)
+                before = self.store.content_digest()
+                self.assertEqual(apply_schedule(self.entity, plan), receipt)
+                self.assertEqual(self.store.content_digest(), before)
+                self.assertEqual(self.balances()[card], Decimal("-1200.00"))
+                self.assertEqual(self.balances().get(BANK, Decimal(0)), Decimal(0))
+                duplicate = {**request, "id": identity + "-duplicate", "operation_id": identity + "-duplicate",
+                             "evidence_ids": [self.evidence(identity + "-duplicate")]}
+                before = self.store.content_digest()
+                with self.assertRaisesRegex(ValueError, "already posted"):
+                    preview_schedule(self.entity, duplicate)
+                self.assertEqual(self.store.content_digest(), before)
+        self.assertEqual(self.store.counts().entries, 2)
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_existing_card_expense_reclassifies_without_another_card_or_cash_effect(self):
+        card = "Liabilities:CreditCard:Synthetic"
+        add_account(self.root, card, open_date="2000-01-01")
+        self.post("existing-card-purchase", "2026-01-01", [(EXPENSE, "1200.00"), (card, "-1200.00")])
+        request = self.schedule(origin={"mode": "existing", "source_id": "existing-card-purchase", "reclass_account": EXPENSE})
+        plan = preview_schedule(self.entity, request)
+        self.assertTrue(all(posting["account"] not in {card, BANK} for entry in plan["entries"] for posting in entry["postings"]))
+        receipt = apply_schedule(self.entity, plan)
+        self.assertEqual(apply_schedule(self.entity, plan), receipt)
+        self.assertEqual(self.balances()[card], Decimal("-1200.00"))
+        self.assertEqual(self.balances()[PREPAID], Decimal("1200.00"))
+        self.assertEqual(self.balances()[EXPENSE], Decimal(0))
+        self.assertEqual(self.balances().get(BANK, Decimal(0)), Decimal(0))
+
+    def test_card_cannot_fund_deferred_revenue_and_other_liabilities_do_not_fund_prepaids(self):
+        for account in ("Liabilities:CreditCard", "Liabilities:CreditCard:Synthetic", "Liabilities:CreditCardboard", AP):
+            add_account(self.root, account, open_date="2000-01-01")
+        before = self.store.content_digest()
+        for kind, funding in (("deferred", "Liabilities:CreditCard"), ("deferred", "Liabilities:CreditCard:Synthetic"),
+                              ("prepaid", AP), ("prepaid", "Liabilities:CreditCardboard")):
+            with self.subTest(kind=kind, funding=funding), self.assertRaisesRegex(ValueError, "funding requires"):
+                preview_schedule(self.entity, self.schedule(kind=kind, account=DEFERRED if kind == "deferred" else PREPAID,
+                    recognition_account=INCOME if kind == "deferred" else EXPENSE,
+                    origin={"mode": "new", "source_id": "invalid-funding", "funding_account": funding}))
+            self.assertEqual(self.store.content_digest(), before)
+
     def test_refund_evidence_cannot_post_cash_again_with_another_operation_id(self):
         apply_schedule(self.entity, preview_schedule(self.entity, self.schedule()))
         request = {"operation_id": "refund-one", "id": "annual", "action": "refund", "date": "2026-01-31",
@@ -104,6 +157,29 @@ class ScheduleTests(AccrualFixture):
         with self.assertRaisesRegex(ValueError, "managed accrual"):
             reverse_entry(self.entity, "annual-payment", "legacy-funding-reversal")
         self.assertEqual(self.store.content_digest(), before)
+
+    def test_human_reference_is_validated_stored_reported_and_replay_safe(self):
+        from bookkeeping.accrual.reports import report
+        from bookkeeping.accrual.render import render_report
+        from bookkeeping.accrual.cli import request_schemas
+        reference = "Annual software subscription #104"
+        plan = preview_schedule(self.entity, self.schedule(reference=reference))
+        self.assertEqual(plan["request"]["reference"], reference)
+        self.assertEqual(plan["request"]["id"], "annual")
+        receipt = apply_schedule(self.entity, plan)
+        before = self.store.content_digest()
+        self.assertEqual(apply_schedule(self.entity, plan), receipt)
+        self.assertEqual(self.store.content_digest(), before)
+        self.assertEqual(list_schedules(self.entity)[0]["reference"], reference)
+        document = report(self.entity, "schedules", as_of="2026-01-31")
+        self.assertEqual(document["rows"][0]["reference"], reference)
+        self.assertIn(reference, render_report(document))
+        self.assertEqual(request_schemas()["schedule"]["properties"]["reference"]["maxLength"], 2000)
+        self.assertEqual(check_integrity(self.entity).status, "ok")
+        for invalid in ("", "  ", None, 104, "x" * 2001):
+            with self.subTest(reference=invalid), self.assertRaises(ValueError):
+                preview_schedule(self.entity, self.schedule(id="another", operation_id="another-create", reference=invalid))
+            self.assertEqual(self.store.content_digest(), before)
 
     def test_full_calendar_year_twelve_hundred_posts_twelve_hundreds_once(self):
         request = self.schedule()

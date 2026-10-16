@@ -63,7 +63,10 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
     if mode == "new":
         if store.source_exists(source_id):
             raise JournalError("duplicate_origin", "Funding source is already posted; link it as an existing origin.")
-        bank = _account(store, origin.get("funding_account"), "origin.funding_account", ("Assets:",))
+        bank = _account(store, origin.get("funding_account"), "origin.funding_account")
+        card = bank == "Liabilities:CreditCard" or bank.startswith("Liabilities:CreditCard:")
+        if not bank.startswith("Assets:") and not (record["kind"] == "prepaid" and card):
+            raise JournalError("invalid_funding_account", "Prepaid funding requires an asset or credit-card account; deferred revenue requires an incoming asset account.")
         if bank == account:
             raise JournalError("invalid_origin", "Funding and control accounts must differ.")
         from ..ledger.importer import _load_pending_categorization, _ledger_account_for_txn
@@ -106,8 +109,10 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
 
 def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
     request = _request(payload, {"operation_id", "id", "kind", "account", "recognition_account", "currency",
-        "amount", "start_date", "end_date", "method", "origin", "evidence_ids", "recognition_start", "recognized_amount"})
+        "amount", "start_date", "end_date", "method", "origin", "evidence_ids", "recognition_start", "recognized_amount", "reference"})
     operation_id, schedule_id = _id(request.get("operation_id")), _id(request.get("id"))
+    if "reference" in request:
+        request["reference"] = _text(request["reference"], "reference")
     store = _store(entity)
     kind = request.get("kind")
     if kind not in {"prepaid", "deferred"} or request.get("currency", "USD") != "USD":
