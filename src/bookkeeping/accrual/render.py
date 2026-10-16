@@ -58,6 +58,11 @@ def render_report(document: Mapping[str, Any]) -> str:
         lines.extend(["", *_table(columns[kind], rows)])
     if kind == "aging":
         lines.append("\nSummary by type, account and customer/vendor; unapplied credits are separate.")
+        for side, totals in (document.get("totals") or {}).items():
+            line = f"Total {side} | {totals['total']} | Overdue {totals['overdue_total']} | Items {totals['count']} | Overdue items {totals['overdue_count']}"
+            if totals["unapplied_credits"]["count"]:
+                line += f" | Unapplied credits {totals['unapplied_credits']['total']} (separate)"
+            lines.append(line)
         for group in document["summary"]:
             lines.append(f"{_label(group['kind'])} | {group['account']} | {_text(group['counterparty'])} | {group['currency']} | Total {group['total']}")
             lines.extend(f"  {document['bucket_labels'][key]}: {amount}" for key, amount in group["buckets"].items() if Decimal(amount) != 0)

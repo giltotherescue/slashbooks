@@ -435,6 +435,36 @@ def aging(items, as_of):
     return sorted(rows, key=lambda r: (r["kind"], r["account"], r.get("counterparty") or "", r["id"])), summary
 
 
+def aging_totals(rows):
+    """Per-side headline totals over aging rows; credits stay separate, never netted."""
+    sides = {side: {"total": Decimal(0), "overdue_total": Decimal(0), "count": 0, "overdue_count": 0,
+                    "buckets": {name: Decimal(0) for name in AGING_BUCKETS if name != "unapplied_credit"},
+                    "unapplied_credits": {"total": Decimal(0), "count": 0}}
+             for side in ("receivable", "payable")}
+    for row in rows:
+        kind = row["kind"]
+        amount = Decimal(row["aging_amount"])
+        if kind == "credit":
+            side = sides["receivable" if row["account"].startswith("Assets:") else "payable"]["unapplied_credits"]
+            side["total"] += amount
+            side["count"] += 1
+            continue
+        side = sides[kind]
+        side["buckets"][row["bucket"]] += amount
+        side["total"] += amount
+        side["count"] += 1
+        if row["bucket"] not in {"current", "unknown_due_date"}:
+            side["overdue_total"] += amount
+            side["overdue_count"] += 1
+    money = lambda value: f"{value:.2f}"
+    return {name: {"total": money(s["total"]), "overdue_total": money(s["overdue_total"]),
+                   "count": s["count"], "overdue_count": s["overdue_count"],
+                   "buckets": {k: money(v) for k, v in s["buckets"].items()},
+                   "unapplied_credits": {"total": money(s["unapplied_credits"]["total"]),
+                                         "count": s["unapplied_credits"]["count"]}}
+            for name, s in sides.items()}
+
+
 def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
     entity = load_entity(entity.path) if isinstance(entity, Entity) else load_entity(entity)
     if resolve_basis(entity.entity_config) != "accrual":
@@ -450,7 +480,8 @@ def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
         if kind == "aging":
             rows, summary = aging(snapshot["items"], end)
             extra = {"summary": summary, "bucket_labels": dict(AGING_BUCKETS),
-                     "aging_basis": "due_date", "credits_netted": False}
+                     "aging_basis": "due_date", "credits_netted": False,
+                     "totals": aging_totals(rows)}
         elif kind in {"schedules", "outstanding", "support"}:
             rows = snapshot[{"schedules": "schedules", "outstanding": "items", "support": "external"}[kind]]
         elif kind == "reconciliation":
