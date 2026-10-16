@@ -88,7 +88,17 @@ class AccrualReportsTests(unittest.TestCase):
         self.assertEqual(july.meta["basis"], "accrual")
         self.assertFalse(july.meta["summary_included"])
         self.assertTrue(ytd.meta["summary_included"])
+        text = ytd.to_text()
+        self.assertIn("Accounting basis: accrual", text)
+        self.assertIn("Activity cutover: 2026-07-01, opening balances as of 2026-06-30", text)
+        self.assertIn("Imported activity summary: 2026-01-01 through 2026-06-30 (included)", text)
+        self.assertIn("not included in this report", july.to_text())
+        ytd.meta["unresolved_issues"] = [{"code": "external_support_missing", "message": "Update supporting detail.", "refs": ["synthetic-support"]}]
+        self.assertIn("Unresolved accounting issues:\n  - Update supporting detail. [synthetic-support]", ytd.to_text())
+        self.assertEqual(ytd.totals["net_income"], Decimal("2560.00"))
         bs = statements.balance_sheet(self.root, date(2026, 7, 31))
+        self.assertIn("Retained fiscal summary coverage: 2026-01-01 through 2026-06-30", bs.to_text())
+        self.assertNotIn("not included in this report", bs.to_text())
         self.assertEqual(bs.totals["total_assets"], Decimal("12660.00"))
         self.assertEqual(bs.totals["total_liabilities_and_equity"], Decimal("12660.00"))
         ledger = {r["label"].replace(" › ", ":"): r["amount"] for section in statements.trial_balance(self.root, date(2026, 7, 31)).sections for r in section["rows"]}
@@ -108,6 +118,23 @@ class AccrualReportsTests(unittest.TestCase):
                 statements.profit_and_loss(self.root, start, end)
         with self.assertRaises(reports.CoverageError):
             statements.balance_sheet(self.root, date(2026, 5, 31))
+
+    def test_ask_uses_coverage_and_recognition_without_inventing_cash_payments(self):
+        self.opening()
+        self.july()
+        for question in ("What was Q1 2026 revenue?", "What were Q1 2026 expenses?", "Owner draws Q1 2026", "How much did we pay Acme Q1 2026?"):
+            with self.subTest(question=question), self.assertRaises(reports.CoverageError):
+                statements.ask(self.root, question, today=date(2026, 7, 31))
+        for question, key, expected in (("July 2026 revenue", "total_revenue", "100.00"),
+                ("July 2026 expenses", "total_expenses", "740.00"), ("Net income YTD", "net_income", "2560.00")):
+            answer = statements.ask(self.root, question, today=date(2026, 7, 31))
+            self.assertEqual(answer.data[key], expected)
+            self.assertEqual(answer.data["meta"]["basis"], "accrual")
+            self.assertIn("Accounting basis: accrual", answer.answer_text)
+            self.assertIn("Activity cutover: 2026-07-01", answer.answer_text)
+        cash = statements.ask(self.root, "How much did we pay Acme July 2026?", today=date(2026, 7, 31))
+        self.assertEqual(cash.data["unavailable"], "cash_payment_linkage_required")
+        self.assertNotIn("total", cash.data)
 
     def test_historical_support_survives_later_settlements_recognition_and_external_refresh(self):
         self.opening()

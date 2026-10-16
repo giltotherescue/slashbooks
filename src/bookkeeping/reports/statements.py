@@ -133,6 +133,25 @@ class StatementResult:
         _head = self._header()
         lines.append(_head)
         lines.append("=" * len(_head))
+        if self.meta.get("basis"):
+            lines.append(f"Accounting basis: {self.meta['basis']}")
+        coverage = self.meta.get("coverage")
+        if coverage:
+            lines.append(f"Activity cutover: {coverage['cutover_date']}, opening balances as of {coverage['source_as_of']}")
+            if coverage.get("summary_from") and coverage.get("summary_to"):
+                period = f"{coverage['summary_from']} through {coverage['summary_to']}"
+                if self.kind in {"pnl", "general_ledger"}:
+                    included = "included" if self.meta.get("summary_included") else "not included in this report"
+                    lines.append(f"Imported activity summary: {period} ({included})")
+                else:
+                    lines.append(f"Retained fiscal summary coverage: {period}")
+        issues = self.meta.get("unresolved_issues", [])
+        if issues:
+            lines.append("Unresolved accounting issues:")
+            for issue in issues:
+                message = issue.get("message") or issue.get("code", "Unresolved issue").replace("_", " ")
+                refs = ", ".join(str(ref) for ref in issue.get("refs", []))
+                lines.append(f"  - {message}" + (f" [{refs}]" if refs else ""))
         for section in self.sections:
             lines.append("")
             lines.append(section.get("label", ""))
@@ -708,6 +727,40 @@ def ask(
 
     conn = open_cache(entity_path)
     try:
+        from ..accrual.reports import CoverageError, basis, financial_metadata
+        if basis(conn) == "accrual" and intent != "unknown":
+            if is_net and not is_draws and not is_vendor:
+                intent = "net_income"
+            # Use the same coverage checks and recognition totals as statements.
+            # A summarized opening cannot answer an arbitrary historical period.
+            metadata = financial_metadata(conn, "pnl", from_date, to_date)
+            context = StatementResult("pnl", from_date, to_date, meta=metadata).to_text()
+            dates = {"from_date": str(from_date), "to_date": str(to_date), "meta": metadata}
+            if intent == "vendor" or (intent in {"revenue", "spend"} and re.search(r"\b(paid|pay|payments?|receipts)\b", q_lower)):
+                return AskResult(question=question, intent=intent,
+                    answer_text="Cash payments and receipts require linked bank movements and settlement evidence. Use the general ledger and settlement reports to inspect those movements.\n\n" + context,
+                    data={**dates, "unavailable": "cash_payment_linkage_required"})
+            if intent == "draws":
+                if metadata.get("summary_included"):
+                    raise CoverageError("Owner draw activity before cutover is unavailable from the imported fiscal summary; request a post-cutover period.")
+                balances = _account_balances_in_range(conn, from_date, to_date)
+                total = sum((n for a, n in balances.items() if _is_equity(a) and re.search(r"draw|distribution|owner", a.lower())), Decimal("0.00"))
+                return AskResult(question=question, intent=intent,
+                    answer_text=f"Recorded owner draws {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + context,
+                    data={**dates, "total_draws": str(total)})
+            pnl = _compute_pnl(conn, from_date, to_date)
+            if intent == "revenue":
+                total, key, label = pnl.sections[0]["total"], "total_revenue", "Recognized revenue"
+            elif intent == "spend":
+                category = _extract_category(question)
+                total = (sum((r["amount"] for r in pnl.sections[1]["rows"] if category.lower() in r["label"].lower()), Decimal("0.00"))
+                         if category else pnl.sections[1]["total"])
+                key, label = "total_expenses", "Recognized expenses" + (f" matching '{category}'" if category else "")
+            else:
+                total, key, label = pnl.totals["net_income"], "net_income", "Net income"
+            return AskResult(question=question, intent=intent,
+                answer_text=f"{label} {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + pnl.to_text(),
+                data={**dates, key: str(total)})
         if intent == "revenue":
             balances = _account_balances_in_range(conn, from_date, to_date)
             total = sum(
