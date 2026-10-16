@@ -46,7 +46,7 @@ def render_report(document: Mapping[str, Any]) -> str:
         "outstanding": [("display_reference", "Reference"), ("kind", "Type"), ("counterparty", "Customer / vendor"), ("due_date", "Due date"), ("remaining_amount", "Remaining"), ("status", "Status")],
         "schedules": [("display_reference", "Schedule"), ("kind", "Type"), ("account", "Account"), ("recognized_amount", "Recognized"), ("remaining_amount", "Remaining"), ("asset_cost", "Asset cost"),
                       ("accumulated_depreciation", "Accumulated depreciation"), ("net_book_value", "Net book value"), ("status", "Status")],
-        "support": [("display_reference", "Support"), ("account", "Account"), ("as_of", "Evidence date"), ("balance", "Balance")],
+        "support": [("display_reference", "Support"), ("account", "Account"), ("as_of", "Supporting document date"), ("balance", "Balance")],
         "reconciliation": [("account", "Account"), ("ledger_balance", "Ledger"), ("support_balance", "Supporting detail"), ("difference", "Difference"), ("status", "Status")],
     }
     if not rows:

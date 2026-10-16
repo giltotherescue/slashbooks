@@ -27,6 +27,7 @@ _STARTER_SUBTYPES = {
     "Liabilities:Other:Accrued-Liabilities": "accrued_liabilities",
     "Liabilities:Other:Deferred-Revenue": "deferred_revenue",
     "Liabilities:Other:Customer-Deposits": "customer_deposits",
+    "Expenses:Depreciation": "expense",
 }
 # When one account has several registered uses, the earliest in this tuple wins.
 _USAGE_PRIORITY = ("receivable", "payable", "prepaid", "deferred_revenue", "fixed_asset", "accumulated_depreciation", "accrued_liabilities")

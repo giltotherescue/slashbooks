@@ -16,7 +16,8 @@ shape. This page is a set of examples, not a second contract.
 `Assets:Receivable:Accounts-Receivable`, `Liabilities:Payable:Accounts-Payable`,
 `Assets:Other:Prepaid-Expenses`, `Assets:Fixed:Equipment`,
 `Assets:Fixed:Accumulated-Depreciation`, `Liabilities:Other:Accrued-Liabilities`,
-`Liabilities:Other:Deferred-Revenue` and `Liabilities:Other:Customer-Deposits`.
+`Liabilities:Other:Deferred-Revenue`, `Liabilities:Other:Customer-Deposits` and
+`Expenses:Depreciation`.
 List the chart and each account's role with:
 
 ```sh
@@ -31,7 +32,6 @@ books entity account-add . --account Liabilities:Other:Payroll-Tax
 books entity account-add . --account Expenses:Utilities
 books entity account-add . --account Expenses:Bonuses
 books entity account-add . --account Expenses:Bad-Debt
-books entity account-add . --account Expenses:Depreciation
 books entity account-add . --account Income:Services
 ```
 

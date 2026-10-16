@@ -161,6 +161,33 @@ def _narration(action: str, record: Mapping[str, Any]) -> str:
     return action
 
 
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _human(text: Any, limit: int = 200) -> str:
+    return " ".join(str(text or "").split())[:limit]
+
+
+def _month_label(day: str | date) -> str:
+    when = date.fromisoformat(day) if isinstance(day, str) else day
+    return f"{_MONTHS[when.month - 1]} {when.year}"
+
+
+def _item_ref(record: Mapping[str, Any]) -> str:
+    """Human reference of a schedule or item: reference, then counterparty, then its start date. Never an ID."""
+    for field in ("reference", "counterparty"):
+        label = _human(record.get(field))
+        if label:
+            return label
+    start = record.get("service_start") or record.get("as_of") or record.get("start_date")
+    return f"dated {start}" if start else "no reference"
+
+
+def _recognition_narration(record: Mapping[str, Any], when: str) -> str:
+    verb = {"prepaid": "Prepaid expense used", "deferred": "Deferred revenue earned", "depreciation": "Depreciation"}[record["kind"]]
+    return f"{verb}: {_item_ref(record)} ({_month_label(when)})"
+
+
 def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) -> list[Entry]:
     """Plan the origin journal. Also records `origin_date`, the day the control balance starts to exist."""
     store, origin = _store(entity), record["origin"]
@@ -404,7 +431,7 @@ def _schedule_details(record: Mapping[str, Any]) -> dict[str, Any]:
 def _recognition_entry(record: Mapping[str, Any], allocation_id: str, installment: Mapping[str, str], generation: int):
     amount, sign = _money(installment["amount"]), _normal_sign(record)
     source_id = "schedule:" + allocation_id
-    entry = _entry(_day(installment["date"], "recognition date"), source_id, _narration("Recognize " + _label(record), record),
+    entry = _entry(_day(installment["date"], "recognition date"), source_id, _recognition_narration(record, installment["date"]),
                    [(record["recognition_account"], sign * amount), (_credit_account(record), -sign * amount)], schedule_id=record["id"])
     allocation = {"id": allocation_id, "kind": "recognition", "schedule_id": record["id"], **installment,
                   "source_id": source_id, "generation": generation, "evidence_ids": record.get("evidence_ids", [])}
@@ -513,7 +540,7 @@ def _terminate(store, record: dict[str, Any], changed: dict[str, Any], request: 
         offset = _account(store, request.get("offset_account"), "offset_account")
         if offset == record["account"]:
             raise JournalError("invalid_offset", "Offset and control accounts must differ.")
-        entries.append(_entry(when, "schedule:" + operation_id + ":terminate", _text(request.get("reason"), "reason"),
+        entries.append(_entry(when, "schedule:" + operation_id + ":terminate", "Ended early: " + _item_ref(record),
                               [(record["account"], -sign * unearned), (offset, sign * unearned)], schedule_id=record["id"]))
     elif request.get("offset_account"):
         raise JournalError("offset_not_allowed", "Nothing is left unearned at effective_date, so offset_account is not allowed.", "Remove offset_account.")
@@ -642,7 +669,7 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
             postings.append((recognized_account, -sign * recognized_refund))
         if amount:
             entries.append(_entry(when, "schedule:" + operation_id + ":" + action,
-                reason, postings, schedule_id=schedule_id))
+                {"cancel": "Cancelled", "refund": "Refund"}.get(action, "Balance released") + ": " + _item_ref(record), postings, schedule_id=schedule_id))
         changed["remaining_amount"] = f"{remaining - remaining_refund:.2f}"
         changed["refunded_amount" if action == "refund" else "terminated_amount"] = f"{_money(changed.get('refunded_amount' if action == 'refund' else 'terminated_amount', '0.00'), positive=False) + remaining_refund:.2f}"
         changed["recognized_refund_amount"] = f"{previously_recognized_refund + recognized_refund:.2f}"

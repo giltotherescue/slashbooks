@@ -175,7 +175,7 @@ class ScheduleTests(AccrualFixture):
         self.assertEqual(self.store.content_digest(), before)
         self.assertEqual(list_schedules(self.entity)[0]["reference"], reference)
         due = preview_due(self.entity, "2026-01-31", operation_id="recognize-reference")
-        self.assertEqual(due["entries"][0]["description"], "Recognize prepaid expense: " + reference)
+        self.assertEqual(due["entries"][0]["description"], "Prepaid expense used: " + reference + " (Jan 2026)")
         document = report(self.entity, "schedules", as_of="2026-01-31")
         self.assertEqual(document["rows"][0]["reference"], reference)
         self.assertIn(reference, render_report(document))
@@ -190,7 +190,7 @@ class ScheduleTests(AccrualFixture):
         with patch("bookkeeping.accrual.schedules._narration", return_value="Fund prepaid schedule annual"):
             plan = preview_schedule(self.entity, self.schedule(reference="Annual software subscription #104"))
             receipt = apply_schedule(self.entity, plan)
-        with patch("bookkeeping.accrual.schedules._narration", return_value="Recognize prepaid schedule annual"):
+        with patch("bookkeeping.accrual.schedules._recognition_narration", return_value="Recognize prepaid schedule annual"):
             due = preview_due(self.entity, "2026-01-31", operation_id="legacy-recognition")
             due_receipt = apply_due(self.entity, due)
         before = self.store.content_digest()
@@ -214,7 +214,7 @@ class ScheduleTests(AccrualFixture):
         self.assertEqual(apply_schedule(self.entity, plan), {**receipt, "status": "already_applied"})
         due = preview_due(self.entity, "2026-12-31", operation_id="recognize-year")
         self.assertEqual([p["postings"][0]["amount"] for p in due["entries"]], ["100.00"] * 12)
-        self.assertEqual({p["description"] for p in due["entries"]}, {"Recognize prepaid expense"})
+        self.assertEqual({p["description"] for p in due["entries"]}, {f"Prepaid expense used: dated 2026-01-01 ({m} 2026)" for m in "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()})
         first = apply_due(self.entity, due)
         self.assertEqual(apply_due(self.entity, due), {**first, "status": "already_applied"})
         self.assertEqual(self.balances()[PREPAID], Decimal(0))
@@ -270,7 +270,7 @@ class ScheduleTests(AccrualFixture):
         apply_schedule(self.entity, plan)
         self.assertEqual(self.balances()[INCOME], Decimal(0))
         due = preview_due(self.entity, "2026-01-31", operation_id="jan")
-        self.assertEqual(due["entries"][0]["description"], "Recognize deferred revenue")
+        self.assertEqual(due["entries"][0]["description"], "Deferred revenue earned: dated 2026-01-01 (Jan 2026)")
         apply_due(self.entity, due)
         self.assertEqual(self.balances()[DEFERRED], Decimal("-1100"))
         self.assertEqual(self.balances()[INCOME], Decimal("-100"))

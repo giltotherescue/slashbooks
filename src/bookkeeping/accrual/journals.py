@@ -729,6 +729,12 @@ def apply_correction(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
     return _apply_operation(entity, current, entries=entries, mutations=mutations)
 
 
+def _reversal_narration(original: Entry) -> str:
+    """Human narration for a scheduled reversal: the original description, else its date. Never an ID."""
+    text = " ".join(str(original.narration or "").split())[:1900]
+    return "Reversal of: " + (text or "entry dated " + original.date.isoformat())
+
+
 def due_reversals(entity: Entity, as_of: str, *, apply: bool = False) -> dict[str, Any]:
     """Preview or explicitly apply pending reversals due through an evidenced date."""
     with _entity_write_lock(entity.path):
@@ -741,9 +747,9 @@ def _due_reversals_unlocked(entity: Entity, as_of: str, *, apply: bool = False) 
     for record in list_records(_store(entity), "intents"):
         if record.get("kind") != "scheduled_reversal" or record.get("status") != "pending" or record["date"] > as_of:
             continue
-        request = {"id": "due:" + record["original_id"], "original_id": record["original_id"],
-                   "date": record["date"], "description": "Scheduled reversal of " + record["original_id"]}
         try:
+            request = {"id": "due:" + record["original_id"], "original_id": record["original_id"], "date": record["date"],
+                       "description": _reversal_narration(_original(entity, record["original_id"])[1])}
             plan = preview_correction(entity, request, reverse_only=True)
             results.append(apply_correction(entity, plan) if apply else plan)
         except (JournalError, IntakeValidationError, PermissionError) as exc:

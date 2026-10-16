@@ -257,6 +257,7 @@ _ACCRUAL_STARTER_ACCOUNTS: tuple[str, ...] = (
     "Liabilities:Other:Accrued-Liabilities",
     "Liabilities:Other:Deferred-Revenue",
     "Liabilities:Other:Customer-Deposits",
+    "Expenses:Depreciation",
 )
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DEFAULT_ACCOUNT_OPEN_DATE = date(2026, 1, 1)
