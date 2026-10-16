@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 
 from .ledger.importer import _ledger_account_for_txn, _load_pending_categorization, _validate_normalized_transactions
 from .ledger.store import LedgerStore, default_store_path
-from .queue import _counterparty_key
+from .queue import _counterparty_key, taught_for
 
 
 def _text(value, field):
@@ -325,6 +325,9 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                     if 'max_abs_amount' in rule and abs(_money(source['amount'])) > _money(rule['max_abs_amount']):
                         continue
                     eligible.append((rule['category'], rule['id']))
+                taught = taught_for(entity, source['counterparty_key']) if eligible else None
+                if taught and any(category != taught['category'] for category, _ in eligible):
+                    raise ValueError('taught_conflict')
             if len(eligible) > 1:
                 raise ValueError('ambiguous_authority')
             if eligible:
@@ -338,7 +341,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 'mapping_required', 'mapping_conflict', 'source_account_type_unknown', 'source_account_role_conflict',
                 'source_catalog_conflict', 'category_catalog_conflict', 'existing_review', 'policy_disabled',
                 'stale_decision', 'mapping_changed', 'ambiguous_authority', 'human_hold', 'suspected_processor_payout',
-                'accrual_treatment_required'} else 'invalid_source'
+                'accrual_treatment_required', 'taught_conflict'} else 'invalid_source'
         detail['reason'] = reason
         result['unresolved'].append(detail)
     return result

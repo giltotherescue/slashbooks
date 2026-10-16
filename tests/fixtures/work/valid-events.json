@@ -413,6 +413,29 @@
     "visibility": "everyone"
   },
   {
+    "accounts": [
+      "Expenses:Software"
+    ],
+    "actor": {
+      "name": "Accountant",
+      "type": "person"
+    },
+    "breakdown": [],
+    "command_id": "cmd-0004",
+    "counts": {
+      "instructions": 1,
+      "waiting_fixed": 2
+    },
+    "kind": "taught",
+    "occurred_at": "2026-10-05T16:30:00Z",
+    "period": null,
+    "run": null,
+    "schema_version": 1,
+    "subjects": [],
+    "via": "web",
+    "visibility": "everyone"
+  },
+  {
     "accounts": [],
     "actor": {
       "name": "Accountant",

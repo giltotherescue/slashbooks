@@ -177,7 +177,9 @@ For each item that needs categorization:
    it verbatim when presenting to the owner).
 2. If the counterparty is unfamiliar, research it: search only the counterparty name,
    never include amounts, balances, or business patterns in the search query.
-3. Propose a category based on what you learn, then submit via:
+3. Run `scripts/books queue taught --entity <entity-path>`. If the payee has a taught
+   category, propose that category. The engine refuses a different one.
+4. Otherwise propose a category based on what you learn, then submit via:
 
 ```
 scripts/books queue propose --entity <entity-path> --source-id <id> --category <account> --reasoning "<plain English explanation>"
@@ -395,7 +397,7 @@ and ask only for missing material facts; do not expand company authority. See
 These procedures are the single source for the rules they cover. Run each command
 and follow its output. Do not rely on memory of the text, and do not copy it here.
 
-- `scripts/books procedures show categorize-record` (version 1)
+- `scripts/books procedures show categorize-record` (version 2)
 - `scripts/books procedures show reconcile` (version 1)
 - `scripts/books procedures show non-blocking` (version 1)
 - `scripts/books procedures show month-end-check` (version 1)

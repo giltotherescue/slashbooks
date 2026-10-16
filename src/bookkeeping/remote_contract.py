@@ -88,7 +88,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                         ("connector", "csv", "inspect"), ("connector", "csv", "propose-mapping"),
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),
                         ("queue", "list"), ("queue", "show"), ("queue", "summary"),
-                        ("queue", "split-template-list"), ("queue", "transfer-candidates"),
+                        ("queue", "split-template-list"), ("queue", "taught"), ("queue", "transfer-candidates"),
                         ("queue", "transfer-exceptions"), ("queue", "duplicates")}
             # Tax handoff: read-only checks and exports.
             or path in {("coverage", "check"), ("coverage", "statement-list"),

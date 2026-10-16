@@ -14,7 +14,7 @@ from bookkeeping.entity import Entity
 from bookkeeping.ledger.importer import import_transactions, reverse_and_correct
 from bookkeeping.ledger.model import Entry, Open, Posting
 from bookkeeping.ledger.store import LedgerStore
-from bookkeeping.queue import confirm, load_learned_context, make_categorizer, propose
+from bookkeeping.queue import confirm, load_learned_context, make_categorizer, propose, set_taught
 from bookkeeping.routine import routine_context, routine_plan, routine_source_digest
 from decimal import Decimal
 
@@ -90,6 +90,15 @@ class RoutineTest(unittest.TestCase):
         self.assertEqual(before, self.files())
         result = self.stage(txn())
         self.assertEqual((0, 0, 1), (result.new_entries, result.pending_categorization, result.skipped_duplicate))
+
+    def test_taught_category_holds_a_conflicting_rule_for_a_person(self):
+        self.stage(txn())
+        set_taught(self.entity, 'SERVICE', 'Expenses:Fees', by='u1', by_name='Gil', ts='2026-10-16T10:00:00Z')
+        plan = routine_plan(self.entity, self.policy)
+        self.assertEqual([], plan['actions'])
+        self.assertEqual(['taught_conflict'], [row['reason'] for row in plan['unresolved']])
+        set_taught(self.entity, 'SERVICE', CATEGORY, by='u1', by_name='Gil', ts='2026-10-17T10:00:00Z')
+        self.assertEqual(['one'], [row['source_id'] for row in routine_plan(self.entity, self.policy)['actions']])
 
     def test_default_confirm_still_learns(self):
         self.stage(txn())

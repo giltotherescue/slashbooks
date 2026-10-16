@@ -42,6 +42,7 @@ KINDS: tuple[str, ...] = (
     "asked_question",
     "applied_answer",
     "published",
+    "taught",
     "reopened",
 )
 
@@ -68,6 +69,7 @@ COUNT_KEYS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "asked_question": (("questions",), ()),
     "applied_answer": (("answers", "entries"), ()),
     "published": (("months",), ()),
+    "taught": (("instructions", "waiting_fixed"), ()),
     "reopened": (("months",), ()),
 }
 

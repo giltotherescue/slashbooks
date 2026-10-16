@@ -200,6 +200,131 @@ def _counterparty_key(description: str, counterparty: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Taught category: a person's preference for what is suggested for a payee
+# ---------------------------------------------------------------------------
+# A taught category is a preference, not a permission. It changes what an agent
+# proposes. It never records anything, never confirms, and never changes the
+# trust ramp (confirmed_count, reset, auto-post). The record lives inside the
+# counterparty record in learned-context/counterparties.json.
+
+_TAUGHT_KEYS = ("id", "category", "at", "by", "by_name", "previous")
+_TAUGHT_BLOCKED_PREFIXES = ("Assets:Bank:", "Assets:Cash", "Liabilities:CreditCard:")
+
+
+def _taught_id(key: str, category: str, at: str, by: str) -> str:
+    return hashlib.sha256("\0".join((key, category, at, by)).encode("utf-8")).hexdigest()[:16]
+
+
+def taught_for(entity: Entity, key: str) -> Optional[dict]:
+    """Return the active taught instruction for a counterparty key, or None."""
+    entry = load_learned_context(entity).get(key)
+    taught = entry.get("taught") if isinstance(entry, dict) else None
+    return taught if isinstance(taught, dict) and taught.get("category") else None
+
+
+def list_taught(entity: Entity) -> list[dict]:
+    """Return every active taught instruction, sorted by counterparty key."""
+    rows = []
+    for key, entry in sorted(load_learned_context(entity).items()):
+        taught = entry.get("taught") if isinstance(entry, dict) else None
+        if isinstance(taught, dict) and taught.get("category"):
+            rows.append({
+                "counterparty": key,
+                "category": taught["category"],
+                "id": taught.get("id", ""),
+                "at": taught.get("at", ""),
+                "by": taught.get("by", ""),
+                "by_name": taught.get("by_name", ""),
+            })
+    return rows
+
+
+def set_taught(entity: Entity, key: str, category: str, *, by: str, by_name: str,
+               ts: Optional[str] = None) -> dict:
+    """Record that a person told Slashbooks which category to suggest for *key*.
+
+    Validates that the category is an open account and not a cash, bank or card
+    account. Keeps the prior instruction one level deep as ``previous`` so an
+    undo has one step. Teaching the category that is already taught changes
+    nothing. Never touches confirmed_count, reset or canonical_category.
+    Returns the taught record.
+    """
+    key = str(key or "").strip()
+    if not key:
+        raise ValueError("A counterparty key is required to teach a category.")
+    opened = _get_opened_accounts(entity)
+    if opened and category not in opened:
+        raise ValueError(f"Category '{category}' is not an account in the account catalog.")
+    if category.startswith(_TAUGHT_BLOCKED_PREFIXES):
+        raise ValueError(f"Category '{category}' is a bank, cash or card account and cannot be taught.")
+    at = ts or _now_iso()
+    with _queue_mutation(entity):
+        ctx = load_learned_context(entity)
+        entry = ctx.get(key)
+        if not isinstance(entry, dict):
+            entry = {"canonical_category": "", "confirmed_count": 0,
+                     "last_confirmed_date": "", "reset": False, "notes": ""}
+        current = entry.get("taught") if isinstance(entry.get("taught"), dict) else None
+        if current and current.get("category") == category:
+            return current
+        taught = {"id": _taught_id(key, category, at, by), "category": category, "at": at,
+                  "by": by, "by_name": by_name}
+        if current:
+            taught["previous"] = {k: current[k] for k in _TAUGHT_KEYS[:-1] if k in current}
+        entry["taught"] = taught
+        ctx[key] = entry
+        _save_learned_context(entity, ctx)
+        return taught
+
+
+def clear_taught(entity: Entity, key: str, instruction_id: str) -> Optional[dict]:
+    """Undo one taught instruction. Restore ``previous`` or remove ``taught``.
+
+    Raises ValueError if the instruction id is no longer the current one.
+    Returns the restored instruction, or None when none remains.
+    """
+    with _queue_mutation(entity):
+        ctx = load_learned_context(entity)
+        entry = ctx.get(key)
+        current = entry.get("taught") if isinstance(entry, dict) else None
+        if not isinstance(current, dict) or current.get("id") != instruction_id:
+            raise ValueError("That instruction was replaced or removed.")
+        previous = current.get("previous")
+        if isinstance(previous, dict) and previous.get("category"):
+            entry["taught"] = dict(previous)
+        else:
+            entry.pop("taught", None)
+        ctx[key] = entry
+        _save_learned_context(entity, ctx)
+        return entry.get("taught")
+
+
+def taught_stamp(entity: Entity, key: str, category: str) -> Optional[dict]:
+    """Return the compact taught stamp for an item whose category matches."""
+    taught = taught_for(entity, key)
+    if taught and taught["category"] == category:
+        return {"id": taught.get("id", ""), "category": category,
+                "at": taught.get("at", ""), "by_name": taught.get("by_name", "")}
+    return None
+
+
+def check_taught(entity: Entity, source_ids: list[str], category: str) -> None:
+    """Refuse a category that differs from a taught one, for an agent proposal.
+
+    Raises ValueError naming the taught category. Used by the CLI proposal
+    commands. The propose() API stays open on purpose.
+    """
+    for txn in _proposal_sources(entity, "categorize", source_ids):
+        key = _counterparty_key(str(txn.get("description") or ""), str(txn.get("counterparty") or ""))
+        taught = taught_for(entity, key)
+        if taught and taught["category"] != category:
+            raise ValueError(
+                f"A person told Slashbooks to use {taught['category']} for {key} on "
+                f"{str(taught.get('at') or '')[:10]}. Propose that category, "
+                f"or leave the item open and ask a question.")
+
+
+# ---------------------------------------------------------------------------
 # Trust-ramp gate (pure code)
 # ---------------------------------------------------------------------------
 
@@ -1244,6 +1369,7 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
         # across reproposal. Interactive confirmation may resolve it; standing
         # preparation authority may not silently absorb the changed evidence.
         "requires_human_review": bool(existing_item.get("requires_human_review", False)),
+        **({"taught": stamp} if (stamp := taught_stamp(entity, counterparty, category)) else {}),
     }
 
 
@@ -2659,6 +2785,13 @@ def add_parser(subparsers: Any) -> None:
     summary_p.add_argument("--entity", required=True, help="Path to entity directory")
     summary_p.add_argument("--status", default="actionable", help="Filter by status (default: actionable review work)")
 
+    # taught
+    taught_p = queue_sub.add_parser(
+        "taught",
+        help="List the categories a person told Slashbooks to suggest for a payee (read-only)",
+    )
+    taught_p.add_argument("--entity", required=True, help="Path to entity directory")
+
     # show
     show_p = queue_sub.add_parser("show", help="Show a single queue item")
     show_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -2703,6 +2836,7 @@ def run(args: Any) -> int:
 
         if qcmd == "propose":
             try:
+                check_taught(entity, [args.source_id], args.category)
                 item = propose(entity, args.source_id, args.category, args.reasoning, args.context)
                 print(f"Proposed: {item['source_id']} → {item['proposed_category']}")
                 print(f"  Status: {item['status']}")
@@ -2713,6 +2847,7 @@ def run(args: Any) -> int:
 
         elif qcmd == "propose-group":
             try:
+                check_taught(entity, list(args.source_ids), args.category)
                 items = propose_group(entity, args.source_ids, args.category, args.reasoning, args.context)
                 print(f"Proposed {len(items)} item(s) → {args.category}")
                 return 0
@@ -2940,6 +3075,12 @@ def run(args: Any) -> int:
                 )
                 for diagnostic in group.get("diagnostics", []):
                     print(f"    [{diagnostic['code']}] {diagnostic['file']}: {diagnostic['error']}")
+            return 0
+
+        elif qcmd == "taught":
+            rows = list_taught(entity)
+            print(json.dumps({"schema_version": 1, "kind": "taught", "count": len(rows),
+                              "instructions": rows}, indent=2, sort_keys=True))
             return 0
 
         elif qcmd == "show":

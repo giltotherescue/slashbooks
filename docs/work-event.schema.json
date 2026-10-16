@@ -30,6 +30,7 @@
         "asked_question",
         "applied_answer",
         "published",
+        "taught",
         "reopened"
       ]
     },
@@ -553,6 +554,38 @@
             },
             "required": [
               "months"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "taught"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "instructions": {
+                "$ref": "#/$defs/count"
+              },
+              "waiting_fixed": {
+                "$ref": "#/$defs/count"
+              }
+            },
+            "required": [
+              "instructions",
+              "waiting_fixed"
             ]
           }
         }
