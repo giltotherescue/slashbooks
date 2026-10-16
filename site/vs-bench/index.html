@@ -60,30 +60,30 @@
           <tr>
             <td>Where the books live</td>
             <td data-label="Outsourced bookkeeping">Typically inside the service's workflow and whatever accounting software they use on your behalf.</td>
-            <td data-label="Slashbooks">Local company files you control, or a shared Slashbooks Cloud workspace. Both retain the ledger, evidence, supporting records, and reports.</td>
+            <td data-label="Slashbooks">Local company files you control, or a shared Slashbooks Cloud workspace. Both retain the ledger, supporting documents, and reports.</td>
           </tr>
           <tr>
             <td>Accountant's role</td>
             <td data-label="Outsourced bookkeeping">Your accountant reviews the books the service prepares.</td>
-            <td data-label="Slashbooks">Financial and supporting reports, Excel/CSV handoff, and optional shared Cloud access. The owner and accountant can trace the evidence and review the treatment.</td>
+            <td data-label="Slashbooks">Financial and supporting reports, Excel/CSV handoff, and optional shared Cloud access. The owner and accountant can trace the supporting document and review the treatment.</td>
           </tr>
           <tr>
             <td>Scope</td>
             <td data-label="Outsourced bookkeeping">Varies by service — some cover payroll, tax prep, or advisory as add-ons.</td>
-            <td data-label="Slashbooks">Cash books and opt-in accrual for straightforward SaaS and services: journals, fixed-period schedules, outstanding balances, and settlements.</td>
+            <td data-label="Slashbooks">Cash books and opt-in accrual for straightforward SaaS and services: journals, prepaid, deferred and depreciation schedules, outstanding balances, and settlements.</td>
           </tr>
         </tbody>
       </table>
 
       <h2>You control the agent</h2>
       <p>With outsourced bookkeeping, you hand off transaction categorization and monthly closes to people who work on a schedule. When they have questions, the back-and-forth adds delay.</p>
-      <p>With Slashbooks, your agent works from the company state and source evidence you make available. You review proposed treatments in plain English. The ledger, support, and decisions persist between conversations.</p>
+      <p>With Slashbooks, your agent works from the company state and source documents you make available. You review proposed treatments in plain English. The ledger, support, and decisions persist between conversations.</p>
       <p>The agent is the interface — it guides setup, close, review, and export. The numbers come from deterministic software that imports transactions, writes ledger entries, validates balances, and generates reports. The AI never invents totals.</p>
 
       <h2>Preparation on your schedule</h2>
       <p>A common frustration with outsourced bookkeeping is that reports arrive late — sometimes weeks after the month ends. By then you're already making decisions on stale numbers.</p>
-      <p>Run <code>/books-close</code> to prepare the period: import evidence, review transactions and adjustments, recognize due service amounts, and reconcile balances. An assistant with scheduling and explicitly delegated scope can prepare this work regularly. Final close and publication remain separate authorized actions.</p>
-      <p>The plugin works in Claude Cowork, Claude Code, and Codex. Other assistants can use the documented CLI or Cloud API when they have the required tools and persistent company access. An MCP or connector can supply evidence; source text cannot approve an entry.</p>
+      <p>Run <code>/books-close</code> to prepare the period: import source documents, review transactions and adjustments, recognize due service amounts, and reconcile balances. An assistant with scheduling and explicitly delegated scope can prepare this work regularly. Final close and publication remain separate authorized actions.</p>
+      <p>The plugin works in Claude Cowork, Claude Code, and Codex. Other assistants can use the documented CLI or Cloud API when they have the required tools and persistent company access. An MCP or connector can supply a supporting document; source text cannot approve an entry.</p>
 
       <h2>Your accountant stays in the loop</h2>
       <p>Slashbooks prepares reviewable books with deterministic accounting logic, locally or in a shared Cloud workspace. Professional judgment remains part of reviewing the output.</p>
@@ -92,7 +92,7 @@
 
       <h2>A clear accounting scope</h2>
       <p>Outsourced services sometimes offer broader scope — payroll, tax filing, advisory. Slashbooks focuses on cash books and opt-in accrual for straightforward, single-entity USD SaaS and service businesses.</p>
-      <p>Accrual includes adjusting entries, fixed-amount prepaid and deferred schedules, receivables and payables, partial settlements, credits, and write-offs. Supporting balances must reconcile to the ledger, and due recognition or missing support blocks readiness.</p>
+      <p>Accrual includes adjusting entries, prepaid, deferred and straight-line depreciation schedules, receivables and payables, partial settlements, deposits and overpayments kept as credits, and write-offs. Supporting balances must reconcile to the ledger, and due recognition or missing support blocks readiness.</p>
       <p>For a QuickBooks cutover, retain the source basis and reconcile the full opening position. Covered fiscal totals can be carried as a summary; reports label that boundary and do not invent earlier monthly detail.</p>
       <p><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Explore the supported accrual workflow</a>.</p>
 

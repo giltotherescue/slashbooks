@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Slashbooks | Replace QuickBooks with an AI agent you control</title>
-  <meta name="description" content="Bookkeeping for an AI agent you control. Free, open-source cash books and opt-in accrual for straightforward USD SaaS and service businesses, locally or with Slashbooks Cloud.">
+  <meta name="description" content="Bookkeeping for an AI agent you control. Free, open-source cash books and opt-in accrual for straightforward USD SaaS and service businesses, kept in files on your own computer.">
   <link rel="canonical" href="https://slashbooks.org/">
   <meta property="og:title" content="Slashbooks | Replace QuickBooks with an AI agent you control">
   <meta property="og:description" content="Cash books and opt-in accrual for straightforward USD SaaS and service businesses. Your agent runs the workflow; deterministic software keeps the numbers.">
@@ -58,9 +58,9 @@
         </a>
       </section>
 
-      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity USD SaaS or service business. Work in local files or connect to Slashbooks Cloud for shared books.</p>
+      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity USD SaaS or service business. Your books live in local files you own. A shared Slashbooks Cloud workspace is optional.</p>
 
-      <p>The <code>/books</code> plugin guides setup, imports, review, reconciliation, and export in Claude Cowork, Claude Code, and Codex. Other agents can use the same command-line interface or Cloud API. The accounting engine calculates the numbers; you decide what work the agent may do.</p>
+      <p>The <code>/books</code> plugin guides setup, imports, review, reconciliation, and export in Claude Cowork, Claude Code, and Codex. Other agents can use the same command-line interface. The accounting engine calculates the numbers; you decide what work the agent may do.</p>
 
       <blockquote>
         <p>I was tired of paying for QuickBooks and an outsourced bookkeeper for books that were always behind, so I built a bookkeeper my AI agent runs and that I control.</p>
@@ -76,7 +76,7 @@
               <li>You run a straightforward SaaS or service business in USD.</li>
               <li>You need cash books or accrual books that track unpaid balances, prepayments, and monthly adjustments.</li>
               <li>You want current books without living inside accounting software.</li>
-              <li>You want inspectable books, in your own files or a shared Cloud workspace.</li>
+              <li>You want inspectable books in your own files.</li>
               <li>Your accountant reviews the output before tax filing.</li>
             </ul>
           </article>
@@ -101,7 +101,7 @@
           <article>
             <span aria-hidden="true">01</span>
             <h3>Bring in activity</h3>
-            <p>Use bank feeds, connectors, files, or an MCP connection your agent can access. Keep the source evidence with the books.</p>
+            <p>Use bank feeds, connectors, files, or an MCP connection your agent can access. Keep the source documents with the books.</p>
           </article>
           <article>
             <span aria-hidden="true">02</span>
@@ -122,11 +122,12 @@
         <ul class="capabilities">
           <li><strong>“Record this bill for July; we have not paid it yet.”</strong> Record the expense and amount owed, then match the payment when it is paid.</li>
           <li><strong>“Spread this annual software payment across the months it covers.”</strong> Review the monthly expense and the amount still prepaid. Customer prepayments can be earned over their agreed service period too.</li>
-          <li><strong>“Match this customer receipt to what they owe us.”</strong> Apply a full or partial payment to the existing balance. Credits and write-offs retain their supporting detail.</li>
+          <li><strong>“Match this customer receipt to what they owe us.”</strong> Apply a full or partial payment to the existing balance. Overpayments and deposits stay as credits you can apply to an invoice. Credits and write-offs retain their supporting documents.</li>
+          <li><strong>“Depreciate this laptop over 24 months.”</strong> The asset stays at cost, and each month adds depreciation expense and accumulated depreciation from the cost, salvage value, and dates you give. Cancelled subscriptions, usage-based schedules, and accrued estimates that reverse themselves are supported too.</li>
           <li><strong>“Prepare July and tell me what is missing.”</strong> Review financial statements, unpaid balances, monthly allocations, and reconciliations. The agent explains the work still needed before close.</li>
         </ul>
-        <p>The agent should show the accounting date, business effect, supporting document, and remaining balance. It checks whether a payment is already recorded so income, expenses, and cash are counted once.</p>
-        <p><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">See common accrual tasks and their results</a></p>
+        <p>The agent should show the accounting date, business effect, supporting document, and remaining balance. It checks whether a payment is already recorded so income, expenses, and cash are counted once. Accrual books are one company in USD, and they do not produce a cash-basis profit and loss; bank movements are in the general ledger. Slashbooks does not calculate payroll, tax, or inventory.</p>
+        <p><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">See common accrual tasks and their results</a> or <a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-recipes.md">a tested request for each pattern</a></p>
       </section>
 
       <section class="difference" aria-labelledby="difference-title">
@@ -134,7 +135,7 @@
         <div class="difference-grid">
           <article>
             <h3>Your books stay with you</h3>
-            <p>Each local company has its own folder, ledger, evidence, review queue, and reports. Cloud books offer a shared workspace with the same accounting engine.</p>
+            <p>Each local company has its own folder, ledger, supporting documents, review queue, and reports. An optional Cloud workspace shares the same books with your accountant.</p>
           </article>
           <article>
             <h3>The AI is the interface, not the accountant</h3>
@@ -191,7 +192,7 @@
       <ul class="capabilities">
         <li>Start books for a company in an empty directory.</li>
         <li>Keep the ledger in a local SQLite store you own, with Beancount-style exports when you need plain text.</li>
-        <li>Use Stripe, Mercury, bank feeds, CSV, or other evidence sources available to your agent.</li>
+        <li>Use Stripe, Mercury, bank feeds, CSV, or other document sources available to your agent.</li>
         <li>Schedule preparation within the authority you delegate; review exceptions before final close.</li>
         <li>Review unfamiliar transactions before they become trusted rules.</li>
         <li>Ask questions about the recorded books, with the report basis and coverage visible.</li>
@@ -201,7 +202,7 @@
       </ul>
 
       <h2>Your books persist between conversations</h2>
-      <p>Each local company directory holds its own <code>ledger.sqlite</code>, evidence, review queue, schedules, and reports. Or link a folder to Slashbooks Cloud, where authorized people and agents share the company state. Switching conversations does not reset the books.</p>
+      <p>Each local company directory holds its own <code>ledger.sqlite</code>, supporting documents, review queue, schedules, and reports. Optionally, link a folder to Slashbooks Cloud, where authorized people and agents share the company state. Switching conversations does not reset the books.</p>
       <p>An always-on assistant can inspect activity, prepare changes, and bring back exceptions using the <code>books</code> CLI or Cloud API. Give it access to the company and explicitly delegate the actions it may perform. A recurring task supplies a schedule; it does not grant accounting authority. Source documents supply facts, not approval.</p>
       <p>Start with a reviewed run, then schedule the supported preparation steps if your assistant provides scheduling. Final close and publication have their own authority. Slashbooks records accounting; it does not move money.</p>
 
@@ -239,7 +240,7 @@
 
         <details>
           <summary>What if I stop using it?</summary>
-          <p>Local books are ordinary files you keep: a SQLite ledger, supporting records, and plain-text, Excel, or CSV exports. Cloud books can be exported too. Keep the evidence and backups with the accounting state.</p>
+          <p>Local books are ordinary files you keep: a SQLite ledger, supporting records, and plain-text, Excel, or CSV exports. Cloud books can be exported too. Keep the supporting documents and backups with the accounting state.</p>
         </details>
 
         <details>
@@ -290,7 +291,7 @@
 
       <section class="final-cta" aria-labelledby="final-cta-title">
         <h2 id="final-cta-title">Own your books again</h2>
-        <p>Install the plugin, start with the demo company, and follow the evidence from transaction to report. The source is open if you want to read it first.</p>
+        <p>Install the plugin, start with the demo company, and follow a transaction through to the report. The source is open if you want to read it first.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="https://github.com/giltotherescue/slashbooks">View Slashbooks on GitHub</a>
           <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks/blob/main/docs/doing-your-books.md">Read: doing your books</a>
@@ -304,7 +305,8 @@
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/for-accountants.md">For accountants</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/connectors.md">Connectors</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Accrual books and opening balances</a></li>
-        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-intake.md">Using evidence from any provider</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-recipes.md">Accrual recipes: a tested request for each pattern</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-intake.md">Using supporting documents from any provider</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/cloud.md">Local books and Slashbooks Cloud</a></li>
       </ul>
 
