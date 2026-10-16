@@ -131,6 +131,27 @@ def _name(name, mapping):
     return matches[0]
 
 
+def _chart(accounts, mapping, store, as_of):
+    """Retain every source account, including accounts absent from the TB.
+
+    The export has no historical opening dates. Open mapped accounts no later
+    than the opening position while preserving any earlier canonical opening.
+    Source type/detail remain inspectable alongside the canonical account root.
+    """
+    existing = {opened.account: opened for opened in store.load_opens()}
+    chart = []
+    for source in sorted(accounts, key=lambda account: account.name):
+        account = mapping[source.name]
+        opened = existing.get(account)
+        if opened and opened.currencies and "USD" not in opened.currencies:
+            raise ValueError(f"Opening chart conflicts with the existing account currency: {account}")
+        effective_date = min(as_of, opened.date) if opened else as_of
+        chart.append({"source_account": source.name, "account": account,
+                      "account_type": source.account_type, "detail_type": source.detail_type,
+                      "open_date": effective_date.isoformat(), "currency": "USD"})
+    return chart
+
+
 def _tie_reports(tb, bs, pnl, mapping, *, closed_position=False):
     balances = {}
     for row in tb.entries:
@@ -321,6 +342,8 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                         raise ValueError("Opening schedule needs a supported remaining service interval and method.")
                     recognition = mapping.get(row.get("recognition_account"), row.get("recognition_account"))
                     _validate_account_name(recognition)
+                    if recognition not in mapping.values():
+                        raise ValueError("Opening schedule recognition account is not in the mapped source chart.")
                     expected_root = "Expenses:" if row["kind"] == "prepaid" else "Income:"
                     if not recognition.startswith(expected_root):
                         raise ValueError("Opening schedule recognition account conflicts with its kind.")
@@ -403,6 +426,7 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
     financial = _tie_reports(tb, bs, pnl, mapping, closed_position=closed_position)
     source_id = f"quickbooks-opening-trial-balance-{cutover.isoformat()}"
     store = LedgerStore(default_store_path(entity.path))
+    chart = _chart(accounts, mapping, store, as_of)
     mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
     hashes = {kind: hashlib.sha256(path.read_bytes()).hexdigest() for kind, path in sorted(paths.items())}
     coverage = {"id": "opening", "basis": "accrual", "currency": "USD", "cutover_date": cutover.isoformat(),
@@ -410,6 +434,7 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
                 "summary_from": None if closed_position else fiscal_start.isoformat(),
                 "summary_to": None if closed_position else as_of.isoformat(), "closed_position": closed_position,
                 "opening_source_id": source_id, "source_hashes": hashes, "mapping_hash": _hash(mapping),
+                "chart": chart,
                 "source_paths": {kind: path.relative_to(entity.path.resolve()).as_posix() for kind, path in paths.items()},
                 "verified": not differences, "support_status": "reconciled" if not differences else "incomplete",
                 "support_evidence_hashes": evidence_hashes}
@@ -441,6 +466,7 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
         plan["accounting_plan"] = _preview_operation(entity, operation_id=source_id, kind="migration",
             request={"cutover": plan["cutover"], "fiscal_start": plan["fiscal_start"],
                      "source_hashes": hashes, "mapping_hash": coverage["mapping_hash"],
+                     "chart_hash": _hash(chart),
                      "support_evidence_hashes": evidence_hashes, "facts_hash": plan["preview_hash"]},
             entries=entries, opens=opens, mutations=changes, evidence_ids=sorted(evidence_hashes),
             affected_dates=(as_of.isoformat(),))
@@ -464,7 +490,9 @@ def _effects(plan):
     entry = Entry(date=opened, narration="Reconciled accrual opening balances from QuickBooks", meta=metadata, postings=postings)
     mutations = [SupportingMutation(row["table"], row["id"], row["payload"]) for row in plan["support"]]
     mutations.append(SupportingMutation("coverage", "opening", coverage))
-    return [entry], [Open(opened, p.account) for p in postings], mutations
+    opens = [Open(_day(account["open_date"]), account["account"], (account["currency"],))
+             for account in coverage["chart"]]
+    return [entry], opens, mutations
 
 
 def apply(entity, plan):

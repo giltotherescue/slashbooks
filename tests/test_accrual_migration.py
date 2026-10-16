@@ -71,6 +71,107 @@ class AccrualMigrationTests(unittest.TestCase):
             migration.apply(self.entity, plan)
         self.assertEqual(self.store.content_digest(), before)
 
+    def test_zero_source_chart_accounts_survive_without_financial_postings_or_report_changes(self):
+        from bookkeeping.reports import statements
+        baseline = self.root.parent / "baseline"
+        shutil.copytree(self.root, baseline)
+        baseline_entity = load_entity(baseline)
+        migration.apply(baseline_entity, migration.preview(baseline_entity, baseline / "qb-exports", "2026-07-01",
+            fiscal_start="2026-01-01", supporting=self.support))
+        path = self.exports / "accounts.csv"
+        path.write_text(path.read_text() + "Unused Research,Expenses,Advertising\n")
+        account = "Expenses:Unused-Research"
+        plan = self.preview()
+        row = next(row for row in plan["coverage"]["chart"] if row["account"] == account)
+        self.assertEqual(row, {"source_account": "Unused Research", "account": account,
+            "account_type": "Expenses", "detail_type": "Advertising", "open_date": "2026-06-30", "currency": "USD"})
+        self.assertNotIn(account, plan["balances"])
+        self.assertIn(account, {row["account"] for row in plan["accounting_plan"]["opens"]})
+        migration.apply(self.entity, plan)
+        self.assertIn(account, self.store.load_account_names())
+        self.assertEqual(load_record(self.store, "coverage", "opening")["chart"], plan["coverage"]["chart"])
+        self.assertEqual(self.store.load_entries(), LedgerStore(baseline / "ledger.sqlite").load_entries())
+        self.assertTrue(all(posting.amount for entry in self.store.load_entries() for posting in entry.postings))
+        for report in (
+            lambda folder: statements.trial_balance(folder, date(2026, 7, 31)),
+            lambda folder: statements.balance_sheet(folder, date(2026, 7, 31)),
+            lambda folder: statements.profit_and_loss(folder, date(2026, 1, 1), date(2026, 7, 31)),
+        ):
+            expected, actual = report(baseline), report(self.root)
+            self.assertEqual((actual.sections, actual.totals), (expected.sections, expected.totals))
+        after = self.store.content_digest()
+        self.assertTrue(migration.apply(self.entity, plan)["replayed"])
+        self.assertTrue(migration.apply(self.entity, self.preview())["replayed"])
+        self.assertEqual(self.store.content_digest(), after)
+
+    def test_zero_chart_mapping_and_source_metadata_are_bound_and_existing_opens_preserved(self):
+        from bookkeeping.entity import add_account
+        path = self.exports / "accounts.csv"
+        path.write_text(path.read_text() + "Unused Research,Expenses,Advertising\n")
+        add_account(self.root, "Expenses:Unused-Research", open_date="2026-01-01")
+        plan = self.preview()
+        self.assertEqual(next(row["open_date"] for row in plan["coverage"]["chart"]
+                              if row["account"] == "Expenses:Unused-Research"), "2026-01-01")
+        before = self.store.content_digest()
+        config_path = self.root / "entity.json"
+        original_config = config_path.read_text()
+        config = json.loads(original_config)
+        config["compare"] = {"qbo_account_crosswalk": {"Unused Research": "Expenses:Other-Research"}}
+        config_path.write_text(json.dumps(config))
+        with self.assertRaisesRegex(ValueError, "Stale"):
+            migration.apply(self.entity, plan)
+        config_path.write_text(original_config)
+        original_source = path.read_text()
+        path.write_text(original_source.replace("Unused Research,Expenses,Advertising", "Unused Research,Expenses,Research"))
+        with self.assertRaisesRegex(ValueError, "Stale"):
+            migration.apply(self.entity, plan)
+        path.write_text(original_source)
+        changed = deepcopy(plan)
+        changed["coverage"]["chart"][-1]["detail_type"] = "Invented source detail"
+        with self.assertRaisesRegex(ValueError, "preview was changed"):
+            migration.apply(self.entity, changed)
+        self.assertEqual(self.store.content_digest(), before)
+        migration.apply(self.entity, plan)
+        opened = next(row for row in self.store.load_opens() if row.account == "Expenses:Unused-Research")
+        self.assertEqual((opened.date, opened.currencies), (date(2026, 1, 1), ("USD",)))
+
+    def test_migrated_schedule_requires_mapped_recognition_and_opens_zero_expense_for_due(self):
+        from bookkeeping.accrual import schedules
+        from bookkeeping.entity import add_account
+        path = self.exports / "accounts.csv"
+        path.write_text(path.read_text() + "Future Recognition,Expenses,Advertising\n")
+        # A target-catalog account alone is not evidence of a source-chart mapping.
+        add_account(self.root, "Expenses:Missing", open_date="2026-01-01")
+        self.support["schedules"][0]["recognition_account"] = "Expenses:Missing"
+        with self.assertRaisesRegex(ValueError, "not in the mapped source chart"):
+            self.preview()
+        self.support["schedules"][0]["recognition_account"] = "Future Recognition"
+        config = json.loads((self.root / "entity.json").read_text())
+        config["compare"] = {"qbo_account_crosswalk": {"Future Recognition": "Expenses:Supported-Recognition"}}
+        (self.root / "entity.json").write_text(json.dumps(config))
+        self.entity = load_entity(self.root)
+        plan = self.preview()
+        self.assertNotIn("Expenses:Supported-Recognition", plan["balances"])
+        migration.apply(self.entity, plan)
+        due = schedules.preview_due(self.entity, "2026-07-31", operation_id="zero-chart-recognition")
+        schedules.apply_due(self.entity, due)
+        totals = {}
+        for entry in self.store.load_entries():
+            for posting in entry.postings:
+                totals[posting.account] = totals.get(posting.account, Decimal(0)) + posting.amount
+        self.assertEqual(totals["Expenses:Supported-Recognition"], Decimal("100.00"))
+        self.assertEqual(totals["Assets:Bank:Checking"], Decimal("10000.00"))
+
+    def test_zero_chart_account_currency_conflict_is_not_overwritten(self):
+        from bookkeeping.entity import add_account
+        path = self.exports / "accounts.csv"
+        path.write_text(path.read_text() + "Unused Research,Expenses,Advertising\n")
+        add_account(self.root, "Expenses:Unused-Research", open_date="2026-01-01", currency="EUR")
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "existing account currency"):
+            self.preview()
+        self.assertEqual(self.store.content_digest(), before)
+
     def test_source_support_cannot_inject_engine_history_or_lifecycle_state(self):
         injected = deepcopy(self.support)
         original = deepcopy(injected["schedules"][0])
@@ -305,6 +406,13 @@ class AccrualMigrationTests(unittest.TestCase):
         entry = self.store.load_entries()[0]
         self.assertFalse(any(p.account.startswith(("Income:", "Expenses:")) for p in entry.postings))
         self.assertEqual(next(p.amount for p in entry.postings if p.account == "Equity:Retained-Earnings"), Decimal("-11800.00"))
+        from bookkeeping.accrual import schedules
+        self.assertTrue({"Income:Services", "Expenses:Operating-Costs"} <= self.store.load_account_names())
+        due = schedules.preview_due(self.entity, "2027-01-31", operation_id="first-new-year-recognition")
+        schedules.apply_due(self.entity, due)
+        recognized = [posting for entry in self.store.load_entries()[1:] for posting in entry.postings]
+        self.assertEqual(sum(p.amount for p in recognized if p.account == "Income:Services"), Decimal("-150.00"))
+        self.assertEqual(sum(p.amount for p in recognized if p.account == "Expenses:Operating-Costs"), Decimal("100.00"))
 
     def test_period_lock_and_stale_ledger_preview_fail_without_partial_opening(self):
         plan = self.preview()

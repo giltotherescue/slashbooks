@@ -23,8 +23,9 @@ No bloated accounting app. No spreadsheet wrangling. Nothing new to learn.
 > bookkeeper for books that were always behind, so I built a bookkeeper my AI
 > agent runs and that I control.
 
-Your books also stay yours: they live in local files you own, not a vendor's
-cloud. Slashbooks works from QuickBooks exports and live bank/card feeds (via
+Choose local books in files you own or shared books in a selected Slashbooks Cloud
+workspace. That choice determines where the canonical books live. Slashbooks
+works from QuickBooks exports and live bank/card feeds (via
 BankSync) and exports the Excel/CSV files your accountant needs; it does not sync
 back to QuickBooks or Google Sheets.
 
@@ -37,7 +38,7 @@ back to QuickBooks or Google Sheets.
 - Keep the ledger in a local SQLite store you own, with Beancount-style exports
   when you need plain text.
 - Connect Stripe, Mercury, and bank feeds, or have your agent build a connector for anything else.
-- Schedule the monthly close to run on its own, with current books waiting.
+- Schedule authorized bookkeeping preparation with current books ready for review; final close requires explicit authorization.
 - Review unfamiliar transactions before they become trusted rules.
 - Ask for an analysis of anything, anytime, with every figure at hand.
 - Get any report, chart, or export on demand, without clicking around an app.
