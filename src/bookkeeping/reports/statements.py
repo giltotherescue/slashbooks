@@ -610,6 +610,31 @@ def _parse_period(question: str, today: date) -> tuple[Optional[date], Optional[
     year_m = re.search(r"\b(20\d{2})\b", q)
     explicit_year = int(year_m.group(1)) if year_m else today.year
 
+    # Explicit ISO range: "2026-01-01 to 2026-05-31"
+    iso = re.findall(r"\b(\d{4}-\d{2}-\d{2})\b", q)
+    if len(iso) == 2:
+        try:
+            first, last = date.fromisoformat(iso[0]), date.fromisoformat(iso[1])
+            if first <= last:
+                return first, last
+        except ValueError:
+            pass
+
+    # Month range: "January through May", "jan to may 2026", "from March - June"
+    names = "|".join(sorted(_MONTH_NAMES, key=len, reverse=True))
+    span = re.search(rf"\b({names})(?:\s+(20\d{{2}}))?\s*(?:through|thru|to|until|-|–)\s*({names})(?:\s+(20\d{{2}}))?\b", q)
+    if span:
+        first_month, last_month = _MONTH_NAMES[span.group(1)], _MONTH_NAMES[span.group(3)]
+        first_year = int(span.group(2) or span.group(4) or explicit_year)
+        last_year = int(span.group(4) or span.group(2) or explicit_year)
+        if last_year == first_year and last_month < first_month:
+            last_year += 1
+        return date(first_year, first_month, 1), date(last_year, last_month, _days_in_month(last_year, last_month))
+
+    # "last year"
+    if "last year" in q:
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+
     # "last quarter"
     if "last quarter" in q:
         return _last_quarter_dates(today)
@@ -672,7 +697,60 @@ def _extract_vendor(question: str) -> Optional[str]:
     return None
 
 
+_CASH_VIEW = re.compile(r"\bcash[- ]?(?:basis|view|method|based|accounting)\b|\bon a cash\b|\bcash[- ]profit\b|\bcash[- ]income\b|\bcash[- ]p&l\b")
+_ACCRUAL_VIEW = re.compile(r"\baccrual[- ]?(?:basis|view|method|based|accounting)\b|\bon an accrual\b|\baccrual[- ](?:profit|income|p&l)\b")
+
+
 def ask(
+    entity_path: Path | str,
+    question: str,
+    *,
+    today: Optional[date] = None,
+) -> AskResult:
+    """Answer a question and always say which basis and period the answer covers.
+
+    A question that asks for a basis the books do not keep is refused with the
+    nearest valid report, never answered on the other basis.
+    """
+    from ..entity import load_entity, resolve_basis
+    if today is None:
+        today = date.today()
+    entity_path = Path(entity_path)
+    try:
+        kept = resolve_basis(load_entity(entity_path).entity_config)
+    except Exception:
+        kept = None
+    q_lower = question.lower()
+    wanted = "cash" if _CASH_VIEW.search(q_lower) else "accrual" if _ACCRUAL_VIEW.search(q_lower) else None
+    from_date, to_date = _parse_period(question, today)
+    named = from_date is not None
+    if from_date is None:
+        from_date, to_date = date(today.year, 1, 1), today
+    span = f"from {from_date} to {to_date}"
+    if kept and wanted and wanted != kept:
+        options = [f"- Bank movements for the period: books report general-ledger --entity {entity_path} --from {from_date} --to {to_date} (read the Assets:Bank accounts)."]
+        if kept == "accrual":
+            options.append(f"- The same period on the accrual basis: books ask --entity {entity_path} \"{re.sub(r'(?i)cash[- ]?(basis|view|method|based|accounting)', '', question).strip()}\"")
+            options.append(f"- Future cash only: books forecast {entity_path}")
+        text = (f"Not available: you asked for the {wanted} basis, but these books are kept on the {kept} basis, "
+                f"so no {wanted}-basis figure is computed. Period asked: {span}.\n" + "\n".join(options))
+        return AskResult(question=question, intent="unavailable_basis", answer_text=text,
+                         data={"unavailable": "basis_not_kept", "requested_basis": wanted, "books_basis": kept,
+                               "from_date": str(from_date), "to_date": str(to_date)})
+    result = _ask_core(entity_path, question, today=today)
+    if result.intent == "unknown":
+        return result
+    answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
+    note = "" if named else " No period was named in the question, so this covers the year to date."
+    result.answer_text = (f"Answer covers: {kept or 'unknown'} basis, from {answered_from} to {answered_to}.{note}\n\n"
+                          + result.answer_text)
+    result.data.setdefault("basis", kept)
+    result.data.setdefault("from_date", answered_from)
+    result.data.setdefault("to_date", answered_to)
+    return result
+
+
+def _ask_core(
     entity_path: Path | str,
     question: str,
     *,
