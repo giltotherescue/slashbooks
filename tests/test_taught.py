@@ -151,6 +151,13 @@ class TaughtCategoryTests(unittest.TestCase):
         set_taught(self.entity, KEY, "Expenses:Office", by="u1", by_name="Gil", ts="2026-10-18T10:00:00Z")
         self.assertEqual(load_learned_context(self.entity)[KEY]["accrual"], good)
 
+    def test_a_withdrawn_suggestion_can_be_replaced_by_a_split_proposal(self) -> None:
+        from bookkeeping.queue import propose_split, withdraw
+        propose(self.entity, "t1", SOFTWARE, "first")
+        withdraw(self.entity, "t1", "changed")
+        item = propose_split(self.entity, "t1", "replacement", ["Expenses:Meals=-60.00", "Expenses:Fees=-40.00"])
+        self.assertEqual(item["status"], "open")
+
     def test_procedure_carries_the_rule(self) -> None:
         proc = procedures.get_procedure("categorize-record")
         self.assertEqual(proc["version"], 2)

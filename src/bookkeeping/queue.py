@@ -1556,7 +1556,8 @@ def _propose_split_unlocked(
     existing_item: dict = {}
     if existing_path.exists():
         existing_item = _load_item(entity, source_id)
-        if existing_item.get("status") not in ACTIONABLE_QUEUE_STATUSES:
+        if existing_item.get("status") not in ACTIONABLE_QUEUE_STATUSES | {"withdrawn"}:
+            # A withdrawn suggestion may be replaced, as propose() already allows.
             raise ValueError("A confirmed transaction cannot receive a new split proposal.")
     item = {
         "source_id": source_id,
