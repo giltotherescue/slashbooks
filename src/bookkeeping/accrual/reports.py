@@ -185,15 +185,63 @@ def is_credit_card_account(account):
     return account == "Liabilities:CreditCard" or account.startswith("Liabilities:CreditCard:")
 
 
+def _entity_arg(conn):
+    database = next((r[2] for r in conn.execute("PRAGMA database_list") if r[1] == "main"), "")
+    return str(Path(database).resolve().parent) if database else "<entity>"
+
+
+def _plain_journals(conn, account, as_of):
+    """Applied plain journals that posted to `account` up to `as_of` (for precise messages)."""
+    found = []
+    for operation in _records(conn, "intents"):
+        receipt = operation.get("receipt") or {}
+        if (operation.get("status") != "applied" or receipt.get("kind") != "journal"
+                or operation.get("id") != "operation:" + str(receipt.get("id"))):
+            continue
+        for source_id in receipt.get("entry_source_ids", []):
+            for entry_date, amount in conn.execute(
+                    "SELECT e.date,p.amount FROM entries e JOIN postings p ON p.entry_id=e.id "
+                    "WHERE e.source_id=? AND p.account=? AND e.date<=?", (source_id, account, as_of)):
+                found.append({"journal_id": receipt["id"], "date": entry_date, "amount": f"{Decimal(amount):.2f}"})
+    return sorted(found, key=lambda j: (j["date"], j["journal_id"]))
+
+
+def _unexplained_message(conn, account, as_of, financial, detail, managed_ids):
+    managed, unexplained = detail, financial - detail
+    journals = _plain_journals(conn, account, as_of)
+    named = "; ".join(f"journal {j['journal_id']} ({j['date']}, {j['amount']})" for j in journals[:5]) or "an entry with no registered item or schedule"
+    message = (f"{account} has registered items or schedules (supporting detail {managed:.2f} USD) but the ledger balance is "
+               f"{financial:.2f} USD, so {unexplained:.2f} USD is unexplained by supporting detail. Entries that posted to it without an item or schedule: {named}.")
+    request = {"operation_id": "<new-id>", "account": account, "as_of": as_of, "currency": "USD", "mode": "residual",
+               "managed_support_ids": managed_ids,
+               "details": [{"id": "<detail-id>", "balance": f"{unexplained:.2f}", "description": "<what the balance is>"}],
+               "evidence_ids": ["<supporting document id from books accrual evidence>"]}
+    action = (f"Explain the amount with a supporting-detail snapshot: run books accrual support preview --entity {_entity_arg(conn)} --input <file>, then books accrual support apply with the saved preview, "
+              "with this request in <file>: " + json.dumps(request, sort_keys=True) + f". Or register the amount as an item (books accrual item preview --entity {_entity_arg(conn)} --input <file>) or a schedule.")
+    return message, action
+
+
 def reconciliation(conn, as_of):
+    """Control-account rows.
+
+    An account requires supporting detail only when it has registered items or
+    schedules, or opted in with a support snapshot. Every other non-bank asset
+    or liability account is ledger-only: its balance is shown for the
+    accountant and never blocks.
+    """
     as_of = as_of.isoformat() if isinstance(as_of, date) else as_of
     support = support_snapshot(conn, as_of)
-    totals, refs = {}, {}
-    for row in [*support["items"], *support["schedules"], *support["external"]]:
-        account = row["account"]
-        amount = Decimal(row.get("signed_balance", row.get("balance", "0")))
-        totals[account] = totals.get(account, Decimal(0)) + amount
-        refs.setdefault(account, []).append(row["id"])
+    totals, refs, managed_refs, managed_totals = {}, {}, {}, {}
+    for managed, group in ((True, [*support["items"], *support["schedules"]]), (False, support["external"])):
+        for row in group:
+            account = row["account"]
+            amount = Decimal(row.get("signed_balance", row.get("balance", "0")))
+            totals[account] = totals.get(account, Decimal(0)) + amount
+            refs.setdefault(account, []).append(row["id"])
+            if managed:
+                managed_totals[account] = managed_totals.get(account, Decimal(0)) + amount
+                if amount:
+                    managed_refs.setdefault(account, []).append(row["id"])
     ledger = _balances(conn, as_of)
     rows = []
     for account in sorted(set(ledger) | set(totals)):
@@ -201,10 +249,20 @@ def reconciliation(conn, as_of):
                 or account.startswith(("Assets:Bank:", "Assets:Cash:")) or is_credit_card_account(account)):
             continue
         financial, detail = ledger.get(account, Decimal(0)), totals.get(account, Decimal(0))
-        if financial or detail:
-            rows.append({"account": account, "ledger_balance": f"{financial:.2f}", "support_balance": f"{detail:.2f}",
-                         "difference": f"{detail - financial:.2f}", "status": "reconciled" if detail == financial else "unreconciled",
-                         "support_ids": sorted(refs.get(account, [])), "currency": "USD"})
+        if not (financial or detail):
+            continue
+        if account not in totals:
+            rows.append({"account": account, "ledger_balance": f"{financial:.2f}", "support_balance": None, "difference": None,
+                         "status": "ledger_only", "support_required": False,
+                         "note": "Ledger balance, no supporting detail required.", "support_ids": [], "currency": "USD"})
+            continue
+        row = {"account": account, "ledger_balance": f"{financial:.2f}", "support_balance": f"{detail:.2f}",
+               "difference": f"{detail - financial:.2f}", "status": "reconciled" if detail == financial else "unreconciled",
+               "support_required": True, "support_ids": sorted(refs.get(account, [])), "currency": "USD"}
+        if detail != financial:
+            row["message"], row["action"] = _unexplained_message(
+                conn, account, as_of, financial, detail, sorted(managed_refs.get(account, [])))
+        rows.append(row)
     return rows
 
 
@@ -229,10 +287,11 @@ def unresolved(conn, as_of):
             safe = (not path.is_absolute() and ".." not in path.parts and (root / path).is_file()
                     and not any(root.joinpath(*path.parts[:i]).is_symlink() for i in range(1, len(path.parts) + 1)))
             if not safe or not digest or hashlib.sha256((root / path).read_bytes()).hexdigest() != digest:
-                issues.append({"code": "supporting_evidence_changed", "message": "Retained accounting evidence is missing or differs from its recorded hash.", "refs": [reference]})
+                issues.append({"code": "supporting_evidence_changed", "message": f"Retained supporting document {reference} is missing or differs from its recorded hash.", "refs": [reference],
+                               "action": f"Restore the original file at {reference} inside {root}, or record a corrected supporting document with books accrual evidence preview --entity {root} --input <file>."})
     for row in reconciliation(conn, as_of):
-        if row["status"] != "reconciled":
-            issues.append({"code": "control_balance_unreconciled", "message": f"{row['account']} support differs by {row['difference']} USD.",
+        if row["status"] == "unreconciled":
+            issues.append({"code": "control_balance_unreconciled", "message": row["message"], "action": row["action"],
                            "refs": [row["account"], *row["support_ids"]]})
     allocated = {a["id"] for a in _records(conn, "allocations") if a.get("date", "9999-12-31") <= as_of}
     for current in _records(conn, "schedules"):
@@ -243,9 +302,11 @@ def unresolved(conn, as_of):
             for part in installments(row):
                 identity = f"recognition:{row['id']}:{row.get('generation', 0)}:{part['date']}"
                 if part["date"] <= as_of and identity not in allocated:
-                    issues.append({"code": "recognition_due", "message": f"Schedule {row['id']} has unposted recognition on {part['date']} ({part['amount']} USD).", "refs": [row["id"], identity]})
+                    issues.append({"code": "recognition_due", "message": f"Schedule {row['id']} has unposted recognition on {part['date']} ({part['amount']} USD).", "refs": [row["id"], identity],
+                                   "action": f"Run books accrual schedule due-preview --entity {_entity_arg(conn)} --through {as_of}, review it, then books accrual schedule due-apply --entity {_entity_arg(conn)} --input <saved preview>."})
         except ValueError as exc:
-            issues.append({"code": "schedule_incomplete", "message": str(exc), "refs": [row["id"]]})
+            issues.append({"code": "schedule_incomplete", "message": f"Schedule {row['id']}: {exc}", "refs": [row["id"]],
+                           "action": f"Fix schedule {row['id']} with books accrual schedule change-preview --entity {_entity_arg(conn)} --input <file> (action cancel or supersede)."})
     intents = _records(conn, "intents")
     for intent in _records(conn, "intents"):
         if intent.get("kind") != "scheduled_reversal" or intent.get("strategy") != "reverse" or intent.get("date", "9999-12-31") > as_of:
@@ -256,10 +317,12 @@ def unresolved(conn, as_of):
         source_ids = operation.get("receipt", {}).get("entry_source_ids", []) if operation else []
         posted = any(conn.execute("SELECT 1 FROM entries WHERE source_id=? AND date<=?", (source_id, as_of)).fetchone() for source_id in source_ids)
         if not posted:
-            issues.append({"code": "reversal_due", "message": f"Journal {original_id} has an unposted reversal due {intent['date']}.", "refs": [original_id]})
+            issues.append({"code": "reversal_due", "message": f"Journal {original_id} has an unposted reversal due {intent['date']}.", "refs": [original_id],
+                           "action": f"Run books accrual journal due-reversals --entity {_entity_arg(conn)} --as-of {as_of} (add --apply to post it)."})
     for row in _records(conn, "coverage"):
         if row.get("kind") == "unresolved_settlement" and row.get("status") != "resolved" and row.get("as_of", row.get("date", "9999-12-31")) <= as_of:
-            issues.append({"code": "settlement_unresolved", "message": "An imported cash movement needs explicit settlement treatment.", "refs": [row["id"]]})
+            issues.append({"code": "settlement_unresolved", "message": f"Imported cash movement {row['id']} needs explicit settlement treatment.", "refs": [row["id"]],
+                           "action": f"Settle it against an item with books accrual item settle-preview --entity {_entity_arg(conn)} --input <file>, or record it as a plain journal with books accrual journal preview."})
     return sorted(issues, key=lambda i: (i["code"], i["refs"]))
 
 
@@ -478,6 +541,30 @@ def apply_support(entity, plan):
         return _apply_operation(entity, fresh, entries=[], mutations=[mutation])
 
 
+def closed_period_action(entity_path, message):
+    """Exact reopen instructions for a closed-period error; never a generic pointer.
+
+    Reopening is a person-only act: an agent cannot reopen a period.
+    """
+    match = re.search(r"\d{4}-\d{2}-\d{2}", message or "")
+    day = match.group(0) if match else None
+    period = day[:7] if day else "<YYYY-MM>"
+    path = str(entity_path) if entity_path else "<entity>"
+    host = ""
+    try:
+        config = load_entity(entity_path).entity_config
+        if day and (period in config.get("closed_periods", []) or (config.get("closed_through") or "") >= day):
+            host = (f"Period {period} is locked in {path}/entity.json (closed_periods or closed_through). A person must edit that file: "
+                    f"remove \"{period}\" from closed_periods and lower closed_through below {day}. ")
+    except Exception:
+        pass
+    local = (f"If the period was closed with books accrual period apply, a person reopens it: write reopen.json with "
+             f'{{"operation_id": "reopen-{period}", "period": "{period}", "action": "reopen", "as_of": "<today>", "reason": "<why>"}}, '
+             f"then run books accrual period preview --entity {path} --input reopen.json and books accrual period apply --entity {path} --input <saved preview>. ")
+    return (host + local + "An agent cannot reopen a period (period operations are refused in agent runs); "
+            "otherwise ask the person, or choose a correction date in an open period.")
+
+
 def _local_period_authority():
     from ..preparation_runtime import is_preparation, PreparationDenied
     if is_preparation():
@@ -513,7 +600,8 @@ def _period_effect(entity, payload):
             raise ValueError("Only a locally closed period can be reopened.")
         config = entity.entity_config
         if request["period"] in config.get("closed_periods", []) or config.get("closed_through", "") >= start.isoformat():
-            raise ValueError("Host-owned period locks require the host's existing reopen authority.")
+            raise ValueError(f"Period {request['period']} is locked in entity.json (closed_periods or closed_through), not by a local close. "
+                             f"A person must edit {entity.path / 'entity.json'}: remove \"{request['period']}\" from closed_periods and lower closed_through below {start.isoformat()}. An agent cannot do this.")
         status = "open"
     else:
         raise ValueError("Period action must be close or reopen.")

@@ -342,6 +342,9 @@ def run(args: argparse.Namespace) -> int:
     except (ValueError, PermissionError, OSError, ImportError) as exc:
         if isinstance(exc, (IntakeValidationError, journals.JournalError)):
             result = exc.as_dict()
+            if getattr(exc, "code", None) == "closed_period":
+                from .reports import closed_period_action
+                result["errors"][0]["action"] = closed_period_action(getattr(args, "entity", None), str(exc))
         else:
             result = {"status": "blocked", "errors": [{"code": getattr(exc, "reason", "invalid_operation"), "message": str(exc)}]}
         print(json.dumps(result, sort_keys=True, indent=2))

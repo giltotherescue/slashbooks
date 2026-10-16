@@ -289,7 +289,7 @@ class OpeningDueDateTests(unittest.TestCase):
         self.assertIn(['Detailed activity begins', '2026-07-01'], rows)
         self.assertIn(['Imported fiscal summary', '2026-01-01', '2026-06-30'], rows)
         self.assertIn(['Historical coverage', 'Earlier monthly detail is unavailable'], rows)
-        self.assertTrue(any(row and 'support differs' in row[0] for row in rows))
+        self.assertTrue(any(row and 'unexplained by supporting detail' in row[0] for row in rows))
         self.assertNotIn(['No outstanding review items'], rows)
 
     def test_opening_due_date_precedes_cutover_and_is_preserved_for_historical_aging(self):

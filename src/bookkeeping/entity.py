@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -582,6 +582,41 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str) -> d
     return {"feed_account_id": stable_id, "account": account, "status": "updated" if previous else "created"}
 
 
+def coverage_ranges(bounds: Any) -> list[tuple[date, date]]:
+    """Return the covered (from, to) date ranges recorded for one source.
+
+    A source has a single `coverage_from`/`coverage_to` pair, plus an optional
+    `ranges` list when separate ranges were recorded with a gap between them.
+    """
+    if not isinstance(bounds, dict):
+        return []
+    found: list[tuple[date, date]] = []
+    for item in [*(bounds.get("ranges") or []), {"from": bounds.get("coverage_from"), "to": bounds.get("coverage_to")}]:
+        try:
+            first, last = date.fromisoformat(str(item["from"])), date.fromisoformat(str(item["to"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if first <= last:
+            found.append((first, last))
+    return found
+
+
+def merge_coverage_ranges(ranges: list[tuple[date, date]]) -> list[tuple[date, date]]:
+    """Union of date ranges; overlapping or touching ranges become one."""
+    merged: list[tuple[date, date]] = []
+    for first, last in sorted(ranges):
+        if merged and first <= merged[-1][1] + timedelta(days=1):
+            merged[-1] = (merged[-1][0], max(merged[-1][1], last))
+        else:
+            merged.append((first, last))
+    return merged
+
+
+def coverage_spans(bounds: Any, start: date, end: date) -> bool:
+    """True when one recorded range covers the whole of start..end."""
+    return any(first <= start and last >= end for first, last in coverage_ranges(bounds))
+
+
 def record_source_coverage(
     entity_path: Path,
     source_name: str,
@@ -604,11 +639,15 @@ def record_source_coverage(
 
     sources = list(entity.entity_config.get("declared_sources") or [])
     coverage = dict(entity.entity_config.get("source_coverage") or {})
-    replacement = {
-        "coverage_from": start.isoformat(),
-        "coverage_to": end.isoformat(),
-    }
     existing_coverage = coverage.get(name)
+    # Coverage is additive: a new range joins the ranges already recorded and
+    # never shrinks them. Replace-by-latest-call silently re-blocked earlier months.
+    previous_ranges = merge_coverage_ranges(coverage_ranges(existing_coverage))
+    merged = merge_coverage_ranges([*previous_ranges, (start, end)])
+    block = max(merged, key=lambda r: r[1])
+    replacement: dict[str, Any] = {"coverage_from": block[0].isoformat(), "coverage_to": block[1].isoformat()}
+    if len(merged) > 1:
+        replacement["ranges"] = [{"from": a.isoformat(), "to": b.isoformat()} for a, b in merged]
     if (not account and isinstance(existing_coverage, dict)
             and isinstance(existing_coverage.get("account"), str)):
         replacement["account"] = existing_coverage["account"]
@@ -642,6 +681,9 @@ def record_source_coverage(
         "coverage_to": end.isoformat(),
         "account": str(replacement.get("account") or ""),
         "status": status,
+        "ranges": [{"from": a.isoformat(), "to": b.isoformat()} for a, b in merged],
+        "added": {"from": start.isoformat(), "to": end.isoformat()},
+        "already_covered": any(a <= start and b >= end for a, b in previous_ranges),
     }
 
 
@@ -1023,6 +1065,13 @@ def run(args: Any) -> int:
             f"{verb} coverage for {report['source']}: "
             f"{report['coverage_from']} through {report['coverage_to']}"
         )
+        print(
+            "Coverage now recorded for this source (earlier ranges are kept): "
+            + ", ".join(f"{r['from']} through {r['to']}" for r in report["ranges"])
+        )
+        if len(report["ranges"]) > 1:
+            print("Warning: these ranges have a gap between them; a period that spans the gap stays blocked. "
+                  f"Fill the gap with: books entity source-coverage {target} --source \"{report['source']}\" --from <gap start> --to <gap end>")
         return 0
 
     if args.entity_command == "related-entity":

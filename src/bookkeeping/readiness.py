@@ -172,7 +172,8 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date,
         try:
             available_from = date.fromisoformat(raw_from)
             available_to = date.fromisoformat(raw_to)
-            if available_from > start or available_to < end:
+            from .entity import coverage_spans
+            if not coverage_spans(candidate, start, end) and (available_from > start or available_to < end):
                 status = "partial"
         except ValueError:
             status = "missing" if not raw_from and not raw_to else "invalid"
@@ -288,6 +289,46 @@ def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool
             "provisional": provisional,
         })
     return result
+
+
+def _annotate_blockers(blockers: list[dict[str, Any]], path: Path, period: str, start: date, end: date,
+                       sources: list[dict[str, Any]]) -> None:
+    """Give each blocker the account/period it concerns and the exact next command."""
+    by_source = {str(row["source"]): row for row in sources}
+    for item in blockers:
+        if item.get("action"):
+            continue
+        refs = item.get("refs") or []
+        ref = str(refs[0]) if refs else ""
+        code = item["code"]
+        if code == "source_coverage_incomplete":
+            row = by_source.get(ref, {})
+            have = f"{row.get('coverage_from') or 'no date'} through {row.get('coverage_to') or 'no date'}"
+            item["message"] = (f"Source {ref} (account {row.get('account') or 'unbound'}) has recorded coverage {have}, "
+                               f"but period {period} needs {start} through {end}.")
+            item["action"] = (f'After you confirm the source covers it, run: books entity source-coverage {path} --source "{ref}" '
+                              f"--from {start} --to {end}. Coverage is additive; earlier ranges stay.")
+        elif code == "source_account_missing":
+            item["message"] = f"Source {ref} is not bound to a ledger account for period {period}."
+            item["action"] = (f'Run: books entity source-coverage {path} --source "{ref}" --from {start} --to {end} '
+                              "--account <ledger account such as Assets:Bank:Checking>")
+        elif code in {"reconciliation_missing", "reconciliation_not_clean", "opening_evidence_missing",
+                      "source_statement_incomplete", "source_evidence_provenance_missing", "cutover_opening_mismatch"}:
+            item["message"] = f"{item['message']} Account {ref}, period {period}."
+            item["action"] = (f"Run: books reconcile --entity {path} --account {ref} --source-balance <statement ending balance> --as-of {end} "
+                              f"--source-opening-balance <statement opening balance> --source-transaction-total <signed activity {start} to {end}> "
+                              f"--source-snapshot-at <ISO time you read the statement> --source-through {end} --source-evidence-ref <statement id>")
+        elif code in {"period_current", "period_future"}:
+            item["action"] = f"Wait until {period} has ended, then run: books readiness --entity {path} --period {period} --as-of {end + timedelta(days=1)}"
+        elif code == "unresolved_period_work":
+            item["message"] = f"Period {period} still has staged transactions, proposals, or duplicate decisions: {', '.join(map(str, refs[:5]))}."
+            item["action"] = f"Run: books queue list --entity {path} and confirm, correct, or withdraw each item."
+        elif code == "unresolved_questions":
+            item["message"] = f"Period {period} has unanswered accounting questions: {', '.join(map(str, refs[:5]))}."
+            item["action"] = f"Run: books queue list --entity {path}; answer each question, then rerun books readiness --entity {path} --period {period} --as-of {end + timedelta(days=1)}."
+        elif code == "source_scope_missing":
+            item["action"] = (f'Run: books entity source-coverage {path} --source "<source name>" --from {start} --to {end} '
+                              "--account <ledger account>")
 
 
 def assess_review_readiness(entity_path: Path | str, period: str,
@@ -457,6 +498,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         except Exception as exc:
             blockers.append({"code": "report_validation_failed", "message": "Draft financial reports could not be validated.", "refs": [type(exc).__name__]})
 
+    _annotate_blockers(blockers, entity.path, period, start, end, sources)
     blockers = sorted(blockers, key=lambda item: (item["code"], item["refs"], item["message"]))
     state = "ready_for_review" if not blockers else "blocked"
     for report in reports:
