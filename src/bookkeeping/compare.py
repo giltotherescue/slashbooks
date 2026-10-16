@@ -1574,13 +1574,15 @@ def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dic
             continue
 
         exceptions: list[dict[str, str]] = []
-        if available_from > from_date:
+        from .entity import coverage_spans
+        spanned = coverage_spans(src, from_date, to_date)
+        if not spanned and available_from > from_date:
             exceptions.append({
                 "kind": "missing-start-coverage",
                 "from": str(from_date),
                 "to": str(min(available_from - timedelta(days=1), to_date)),
             })
-        if available_to < to_date:
+        if not spanned and available_to < to_date:
             exceptions.append({
                 "kind": "missing-end-coverage",
                 "from": str(max(available_to + timedelta(days=1), from_date)),
