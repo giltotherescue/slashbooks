@@ -65,7 +65,7 @@ class AccrualJournalTests(unittest.TestCase):
         self.assertEqual(self.store.content_digest(), before)
         receipt = journals.apply_journal(self.entity, plan)
         after = self.store.content_digest()
-        self.assertEqual(journals.apply_journal(self.entity, plan), receipt)
+        self.assertEqual(journals.apply_journal(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.content_digest(), after)
         self.assertEqual(self.store.counts().entries, 1)
         self.assertEqual(check_store_integrity(self.store).status, "ok")
@@ -91,7 +91,7 @@ class AccrualJournalTests(unittest.TestCase):
         replay_plan = journals.preview_journal(self.entity, self.request)
         replay = journals.apply_journal(self.entity, replay_plan)
         self.assertEqual(replay, receipt)
-        self.assertEqual(journals.apply_journal(self.entity, replay_plan), receipt)
+        self.assertEqual(journals.apply_journal(self.entity, replay_plan), {**receipt, "status": "already_applied"})
         with self.assertRaisesRegex(journals.JournalError, "replay alias"):
             journals.preview_correction(self.entity, {"id": "reverse-alias", "original_id": "transport-replay",
                 "date": "2026-02-01", "description": "Aliases cannot extinguish an origin twice"}, reverse_only=True)
@@ -125,9 +125,9 @@ class AccrualJournalTests(unittest.TestCase):
         plan = journals.preview_evidence_link(self.entity, request)
         self.assertEqual(plan["entries"], [])
         receipt = journals.apply_evidence_link(self.entity, plan)
-        self.assertEqual(journals.apply_evidence_link(self.entity, plan), receipt)
+        self.assertEqual(journals.apply_evidence_link(self.entity, plan), {**receipt, "status": "already_applied"})
         fresh = journals.preview_evidence_link(self.entity, request)
-        self.assertEqual(journals.apply_evidence_link(self.entity, fresh), receipt)
+        self.assertEqual(journals.apply_evidence_link(self.entity, fresh), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.counts().entries, 1)
         config["closed_periods"] = []
         (self.root / "entity.json").write_text(json.dumps(config))
@@ -165,7 +165,7 @@ class AccrualJournalTests(unittest.TestCase):
         self.request.update(id="new-version", evidence_ids=[second["id"]])
         with self.assertRaisesRegex(journals.JournalError, "different financial treatment"):
             journals.preview_journal(self.entity, self.request)
-        self.assertEqual(journals.apply_journal(self.entity, plan), original)
+        self.assertEqual(journals.apply_journal(self.entity, plan), {**original, "status": "already_applied"})
 
     def test_reused_id_different_facts_is_a_conflict(self) -> None:
         journals.apply_journal(self.entity, journals.preview_journal(self.entity, self.request))
@@ -251,7 +251,7 @@ class AccrualJournalTests(unittest.TestCase):
         self.assertEqual(self.store.counts().entries, 0)
         self.assertIsNone(load_record(self.store, "intents", "operation:journal-1"))
         receipt = journals.apply_journal(self.entity, plan)
-        self.assertEqual(journals.apply_journal(self.entity, plan), receipt)
+        self.assertEqual(journals.apply_journal(self.entity, plan), {**receipt, "status": "already_applied"})
 
     def test_correction_is_linked_atomic_reversal_and_replacement(self) -> None:
         original_plan = journals.preview_journal(self.entity, self.request)
@@ -264,7 +264,7 @@ class AccrualJournalTests(unittest.TestCase):
                    "description": "Correct synthetic estimate", "replacement": replacement}
         plan = journals.preview_correction(self.entity, request)
         receipt = journals.apply_correction(self.entity, plan)
-        self.assertEqual(journals.apply_correction(self.entity, plan), receipt)
+        self.assertEqual(journals.apply_correction(self.entity, plan), {**receipt, "status": "already_applied"})
         entries = self.store.load_entries()
         self.assertEqual(len(entries), 3)
         self.assertEqual(dict(entries[1].meta)["reverses"], "accrual:journal-1")
@@ -294,7 +294,7 @@ class AccrualJournalTests(unittest.TestCase):
             "description": "Correct once across both transports", "replacement": replacement}
         plan = journals.preview_correction(self.entity, correction)
         receipt = journals.apply_correction(self.entity, plan)
-        self.assertEqual(journals.apply_correction(self.entity, plan), receipt)
+        self.assertEqual(journals.apply_correction(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.counts().entries, 3)
         conflict = journals.intake_evidence(self.entity, self.evidence("api", version="2"))
         changed = {**correction, "id": "conflicting-correction", "original_id": "corrected-transport",
@@ -367,13 +367,13 @@ class AccrualJournalTests(unittest.TestCase):
         replay = journals.apply_journal(self.entity, journals.preview_journal(self.entity, duplicate))
         self.assertEqual(replay["entry_source_ids"], ["accrual:replacement-2"])
         child_preview = journals.preview_journal(self.entity, replacement)
-        self.assertEqual(journals.apply_journal(self.entity, child_preview), replay)
+        self.assertEqual(journals.apply_journal(self.entity, child_preview), {**replay, "status": "already_applied"})
         request = {"id": "final-reversal", "original_id": "replacement-2", "date": "2026-02-03", "description": "Final synthetic reversal"}
         journals.apply_correction(self.entity, journals.preview_correction(self.entity, request, reverse_only=True))
         self.assertEqual(self.store.counts().entries, 6)
         software = sum(p.amount for e in self.store.load_entries() for p in e.postings if p.account == "Expenses:Software")
         self.assertEqual(software, 0)
-        self.assertEqual(journals.apply_journal(self.entity, original_plan), original_receipt)
+        self.assertEqual(journals.apply_journal(self.entity, original_plan), {**original_receipt, "status": "already_applied"})
         self.assertEqual(check_store_integrity(self.store).status, "ok")
 
     def test_forward_reversal_after_original_period_closed_is_allowed(self) -> None:

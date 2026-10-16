@@ -229,7 +229,7 @@ class AccrualReportsTests(unittest.TestCase):
         count = self.store.counts().entries
         plan = reports.preview_support(self.entity, request)
         receipt = reports.apply_support(self.entity, plan)
-        self.assertEqual(reports.apply_support(self.entity, plan), receipt)
+        self.assertEqual(reports.apply_support(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.counts().entries, count)
         self.assertTrue(load_record(self.store, "coverage", "opening-support:equipment-open"))
         correction = deepcopy(request)

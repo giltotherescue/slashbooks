@@ -53,6 +53,21 @@ def add_parser(subparsers: Any) -> None:
     report.add_argument("--from", dest="from_date")
     report.add_argument("--to", dest="to_date")
     report.add_argument("--format", choices=("json", "text"), default="json", help="JSON by default; text prints a readable accounting report")
+    accounts = commands.add_parser("accounts", help="List the chart of accounts with open dates and roles (read-only)")
+    accounts.add_argument("--entity", required=True, type=Path)
+    accounts.add_argument("--format", choices=("json", "text"), default="json")
+    receipt = commands.add_parser("receipt", help="Show the committed receipt for an operation ID (read-only)")
+    receipt.add_argument("--entity", required=True, type=Path)
+    receipt.add_argument("--id", required=True, help="The operation_id used in the request")
+    opening = commands.add_parser("opening", help="Source-neutral opening balances for a new accrual company")
+    children = opening.add_subparsers(dest="accrual_opening_command", required=True)
+    for verb in ("preview", "apply"):
+        child = children.add_parser(verb)
+        child.add_argument("--entity", required=True, type=Path)
+        child.add_argument("--input", required=True, type=Path)
+    draft = children.add_parser("draft", help="Draft an opening request from an existing company's balances (read-only)")
+    draft.add_argument("--entity", required=True, type=Path, help="Existing (for example cash-basis) company")
+    draft.add_argument("--cutover", required=True, help="First day of the new accrual books; balances are taken the day before")
     migration = commands.add_parser("migration")
     children = migration.add_subparsers(dest="accrual_migration_command", required=True)
     preview = children.add_parser("preview")
@@ -67,36 +82,51 @@ def add_parser(subparsers: Any) -> None:
     apply.add_argument("--input", required=True, type=Path)
 
 
+_METAVARS = {"entity": "PATH", "input": "FILE", "supporting": "FILE", "folder": "REPORTS", "operation_id": "ID",
+             **{name: "YYYY-MM-DD" for name in ("as_of", "through", "from_date", "to_date", "cutover", "fiscal_start")}}
+
+
+def _command_lines() -> tuple[list[str], dict[str, list[str]]]:
+    """Describe every command from the argparse tree so the listing cannot drift."""
+    root = argparse.ArgumentParser(prog="books")
+    add_parser(root.add_subparsers(dest="top"))
+    top = next(a for a in root._actions if isinstance(a, argparse._SubParsersAction)).choices["accrual"]
+    nodes = next(a for a in top._actions if isinstance(a, argparse._SubParsersAction)).choices
+
+    def usage(parser: argparse.ArgumentParser) -> str:
+        parts = []
+        for action in parser._actions:
+            if not action.option_strings or isinstance(action, argparse._HelpAction):
+                continue
+            flag = action.option_strings[0]
+            if action.nargs == 0:
+                text = flag
+            else:
+                value = "|".join(map(str, action.choices)) if action.choices else (action.metavar or _METAVARS.get(action.dest, action.dest.upper()))
+                text = f"{flag} {value}"
+            parts.append(text if action.required else f"[{text}]")
+        return " ".join(parts)
+
+    lines: list[str] = []
+    verbs: dict[str, list[str]] = {}
+    for name, node in nodes.items():
+        sub = next((a for a in node._actions if isinstance(a, argparse._SubParsersAction)), None)
+        if sub is None:
+            lines.append(f"accrual {name} {usage(node)}".rstrip())
+            continue
+        groups: dict[str, list[str]] = {}
+        for verb, child in sub.choices.items():
+            groups.setdefault(usage(child), []).append(verb)
+        verbs[name] = list(sub.choices)
+        for signature, names in groups.items():
+            lines.append(f"accrual {name} {'|'.join(names)} {signature}".rstrip())
+    return lines, verbs
+
+
 def contracts() -> dict[str, Any]:
+    lines, _ = _command_lines()
     return {"schema_version": 1, "capability_version": CAPABILITY_VERSION,
-            "requests": request_schemas(),
-            "commands": ["accrual schema", "accrual capabilities", "accrual intake --entity PATH --input FILE",
-                "accrual journal preview|apply|correct-preview|correct-apply|reverse-preview|reverse-apply --entity PATH --input FILE",
-                "accrual journal due-reversals --entity PATH --as-of YYYY-MM-DD [--apply]",
-                "accrual schedule preview|apply|change-preview|change-apply|due-apply --entity PATH --input FILE",
-                "accrual schedule due-preview --entity PATH --through YYYY-MM-DD --operation-id ID",
-                "accrual schedule list --entity PATH", "accrual item list --entity PATH",
-                "accrual item preview|apply|settle-preview|settle-apply|adjust-preview|adjust-apply|offset-preview|offset-apply --entity PATH --input FILE",
-                "accrual support preview|apply --entity PATH --input FILE",
-                "accrual evidence-link preview|apply --entity PATH --input FILE",
-                "accrual period preview|apply --entity PATH --input FILE (local operator only; adjust authority does not cover close/reopen)",
-                "accrual report --entity PATH --kind schedules|outstanding|aging|adjustments|support|reconciliation [--as-of DATE --from DATE --to DATE --format json|text]",
-                "accrual migration preview --entity PATH --folder REPORTS --cutover YYYY-MM-DD --fiscal-start YYYY-MM-DD --supporting FILE [--closed-position]",
-                "accrual migration apply --entity PATH --input FILE"],
-            "evidence": schema(), "journal": {
-                "required": ["id", "date", "description", "postings"],
-                "optional": ["evidence_ids", "estimate_basis", "reversal_date", "origin"],
-                "accrued_estimate": "To accrue an estimate that reverses itself, set estimate_basis and reversal_date, then run `journal due-reversals --apply` on or after that date. Record the real bill as a normal item afterwards.",
-                "posting": {"account": "mapped chart account", "amount": "signed exact USD amount, or use nonnegative debit/credit fields instead", "debit": "exact USD amount", "credit": "exact USD amount", "currency": "USD"},
-                "evidence_rule": "Stored evidence or an explicitly disclosed estimate basis is required.",
-                "authority": "Local operator or independently authenticated adjust context; JSON claims grant no permission.",
-                "correction": {"required": ["id", "original_id", "date", "description", "replacement"],
-                               "replacement": "journal request with a fresh id"},
-                "reversal": {"required": ["id", "original_id", "date", "description"]},
-                "example": {"id": "synthetic-adjustment", "date": "2026-01-31", "description": "Synthetic estimate",
-                    "estimate_basis": "Synthetic documented estimate", "postings": [
-                        {"account": "Expenses:Software", "amount": "100.00"},
-                        {"account": "Liabilities:AccountsPayable", "amount": "-100.00"}]}}}
+            "requests": request_schemas(), "commands": lines, "evidence": schema()}
 
 
 def request_schemas() -> dict[str, Any]:
@@ -157,7 +187,7 @@ def request_schemas() -> dict[str, Any]:
         "recognized_amount": {**amount, "description": "Opening-balance carry-over only: amount already recognized (accumulated depreciation for depreciation)."},
         "reference": {**text, "maxLength": 2000, "description": "Human reference or description, separate from the stable machine ID."}},
         examples=[{"operation_id": "synthetic-prepaid-create", "id": "synthetic-prepaid", "reference": "Annual software subscription #104", "kind": "prepaid",
-            "account": "Assets:PrepaidExpenses", "recognition_account": "Expenses:Software", "currency": "USD",
+            "account": "Assets:Other:Prepaid-Expenses", "recognition_account": "Expenses:Software", "currency": "USD",
             "amount": "1200.00", "service_start": "2026-01-01", "service_end": "2026-12-31", "method": "equal_month",
             "origin": {"mode": "new", "source_id": "synthetic-funding", "date": "2026-01-01", "funding_account": "Assets:Bank:Checking"},
             "evidence_ids": ["synthetic-stored-evidence-id"]},
@@ -184,7 +214,7 @@ def request_schemas() -> dict[str, Any]:
         "estimate_basis": {**text, "description": "Plain-text basis of an estimate (for kind accrual). A new origin then needs no stored supporting document."}, "remaining_amount": amount},
         description="kind receivable/payable = invoice or bill; accrual = estimated liability to settle or true up later; credit = deposit, credit memo or prepayment that `item offset-preview` applies to an invoice or bill.",
         examples=[{"operation_id": "synthetic-payable-create", "id": "synthetic-payable", "kind": "payable",
-            "account": "Liabilities:AccountsPayable", "currency": "USD", "original_amount": "100.00", "as_of": "2026-01-31",
+            "account": "Liabilities:Payable:Accounts-Payable", "currency": "USD", "original_amount": "100.00", "as_of": "2026-01-31",
             "origin": {"mode": "new", "source_id": "synthetic-bill", "counter_account": "Expenses:Software"},
             "evidence_ids": ["synthetic-stored-evidence-id"]},
             {"operation_id": "synthetic-split-bill", "id": "synthetic-split", "kind": "payable", "counterparty": "Synthetic Vendor",
@@ -210,15 +240,44 @@ def request_schemas() -> dict[str, Any]:
                           {"required": ["evidence_ids"], "properties": {"evidence_ids": {"minItems": 1}}}]}
     opening_item = opening_support(["kind", "original_amount", "remaining_amount"], {
         "kind": {"enum": ["receivable", "payable", "accrual", "credit"]}, "original_amount": amount,
-        "remaining_amount": amount, "settlement_strategy": {"enum": ["direct", "reverse"]},
+        "remaining_amount": amount,
         "direction": {"enum": ["debit", "credit"]}, "due_date": {**day, "description": "Original explicit due date; may precede cutover."}})
     opening_schedule = opening_support(["kind", "amount", "recognized_amount", "remaining_amount", "service_start", "service_end", "method", "recognition_account"], {
-        "kind": {"enum": ["prepaid", "deferred"]}, "amount": amount, "recognized_amount": amount, "remaining_amount": amount,
+        "kind": {"enum": ["prepaid", "deferred", "depreciation"]},
+        "contra_account": {**text, "description": "depreciation only: accumulated depreciation account (Assets:). Carry its balance in lines; recognized_amount is the accumulated depreciation."},
+        "salvage_value": {**amount, "description": "depreciation only: residual value that is not depreciated. remaining_amount is amount minus salvage_value minus recognized_amount."}, "amount": amount, "recognized_amount": amount, "remaining_amount": amount,
         "service_start": {**day, "description": "First day of service, inclusive."},
         "service_end": {**day, "description": "Last day of service, inclusive."},
         "method": {"enum": ["actual_day", "equal_month"]}, "recognition_account": text})
     opening_external = opening_support(["balance"], {"balance": amount})
-    return {"journal": journal,
+    line = record(["account"], {"account": {**text, "description": "Balance sheet account (Assets, Liabilities or Equity). Opened as of the opening date if not yet open."},
+        "amount": {**amount, "description": "Signed exact USD amount: debit positive, credit negative. Or use debit/credit instead."},
+        "debit": amount, "credit": amount})
+    refs = {"evidence_refs": {**ids, "description": "Company-relative supporting document paths."}, "evidence_ids": ids}
+    open_item = record(["id", "kind", "account", "open_amount"], {
+        "id": text, "kind": {"enum": ["receivable", "payable", "accrual", "credit"]},
+        "account": {**text, "description": "Control account that carries the balance, for example Assets:Receivable:Accounts-Receivable."},
+        "counterparty": {**text, "description": "Customer or supplier name."}, "reference": {**text, "description": "Invoice or bill number."},
+        "due_date": {**day, "description": "Original due date; may precede the cutover."},
+        "open_amount": {**amount, "description": "Unpaid amount at the cutover."},
+        "original_amount": {**amount, "description": "Original invoice or bill amount. Defaults to open_amount."},
+        "direction": {"enum": ["debit", "credit"]}, "description": text, **refs})
+    opening = record(["cutover", "lines"], {
+        "operation_id": {**text, "description": "Stable ID. Defaults to opening-<cutover>."},
+        "cutover": {**day, "description": "First day of the accrual books. The opening entry is dated the day before; accounts it uses are opened as of that date."},
+        "lines": {"type": "array", "minItems": 1, "items": line, "description": "Opening balance lines. Debits must equal credits; balance sheet accounts only."},
+        "items": {"type": "array", "items": open_item, "description": "Open customer invoices and supplier bills. Their open amounts must equal the control account balance."},
+        "schedules": {"type": "array", "items": opening_schedule, "description": "Remaining prepaid, deferred or depreciation (fixed asset) balances."},
+        "external": {"type": "array", "items": opening_external, "description": "Support for other control accounts (fixed assets, loans, accruals)."},
+        **refs}, description="Source-neutral opening balances. Use `books accrual opening draft` to start from an existing company; apply the unchanged preview.",
+        examples=[{"operation_id": "synthetic-opening", "cutover": "2026-01-01", "evidence_refs": ["evidence/opening-ar-list.pdf"],
+            "lines": [{"account": "Assets:Bank:Checking", "amount": "30000.00"}, {"account": "Assets:Receivable:Accounts-Receivable", "amount": "300.00"},
+                      {"account": "Liabilities:Payable:Accounts-Payable", "amount": "-100.00"}, {"account": "Equity:Opening-Balances", "amount": "-30200.00"}],
+            "items": [{"id": "synthetic-inv-1", "kind": "receivable", "account": "Assets:Receivable:Accounts-Receivable", "counterparty": "Synthetic Customer",
+                       "reference": "INV-1", "due_date": "2025-12-15", "open_amount": "300.00"},
+                      {"id": "synthetic-bill-1", "kind": "payable", "account": "Liabilities:Payable:Accounts-Payable", "counterparty": "Synthetic Supplier",
+                       "reference": "BILL-9", "due_date": "2026-01-10", "open_amount": "100.00"}]}])
+    return {"opening": opening, "journal": journal,
         "evidence_link": record(["operation_id", "target_operation_id", "evidence_ids", "reason"], {
             "operation_id": text, "target_operation_id": text, "evidence_ids": ids, "reason": text},
             description="Explicitly identify another source as evidence of a committed effect; no matching heuristic or financial posting."),
@@ -302,6 +361,11 @@ def request_schemas() -> dict[str, Any]:
             "description": "Pass the complete unchanged engine preview; do not construct or edit an apply payload."}}
 
 
+def _read_only_store(entity: Any) -> Any:
+    from ..ledger.store import LedgerStore
+    return LedgerStore(entity.path / "ledger.sqlite")
+
+
 def _input(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -315,13 +379,36 @@ def run(args: argparse.Namespace) -> int:
         if command == "schema":
             result = contracts()
         elif command == "capabilities":
+            _, verbs = _command_lines()
             result = {"capability_version": CAPABILITY_VERSION, "currency": "USD", "basis": "accrual",
-                      "operations": ["intake", "evidence_link", "journal", "correction", "reversal", "schedule", "item", "item_offset", "migration", "support", "report"],
-                      "authority_action": "adjust", "posting_requires_opt_in": True}
+                      "operations": ["intake", *verbs, "report", "accounts", "receipt"],
+                      "verbs": verbs, "authority_action": "adjust", "posting_requires_opt_in": True,
+                      "operator_only": ["period"], "request_schemas": sorted(request_schemas())}
         else:
             entity = load_entity(args.entity)
             if command == "intake":
                 result = journals.intake_evidence(entity, _input(args.input))
+            elif command == "accounts":
+                from . import accounts
+                result = accounts.list_accounts(entity)
+            elif command == "receipt":
+                from .store import operation_receipt
+                record = operation_receipt(_read_only_store(entity), args.id)
+                if record is None:
+                    raise journals.JournalError("receipt_not_found", f"No committed operation has ID {args.id}.",
+                                                "Check operation_id, or `books accrual report --kind adjustments`. The operation was not applied.")
+                result = {"status": record["status"], "id": args.id, "kind": record["kind"], "request_hash": record["request_hash"],
+                          "plan_hash": record["plan_hash"], "receipt": record["receipt"]}
+            elif command == "opening":
+                from . import opening
+                verb = args.accrual_opening_command
+                if verb == "draft":
+                    result = opening.draft_from_cash_company(entity, args.cutover)
+                elif verb == "preview":
+                    result = opening.preview_opening(entity, _input(args.input))
+                else:
+                    plan = _input(args.input)
+                    result = opening.apply_opening(entity, plan)
             elif command == "evidence-link":
                 function = journals.preview_evidence_link if args.evidence_link_command == "preview" else journals.apply_evidence_link
                 result = function(entity, _input(args.input))
@@ -383,11 +470,14 @@ def run(args: argparse.Namespace) -> int:
         if command == "report" and args.format == "text":
             from .render import render_report
             print(render_report(result))
+        elif command == "accounts" and args.format == "text":
+            from .accounts import render_accounts
+            print(render_accounts(result))
         else:
             print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
         return 1 if isinstance(result, dict) and result.get("status") == "blocked" else 0
     except (ValueError, PermissionError, OSError, ImportError) as exc:
-        if isinstance(exc, (IntakeValidationError, journals.JournalError)):
+        if hasattr(exc, "as_dict"):
             result = exc.as_dict()
             if getattr(exc, "code", None) == "closed_period":
                 from .reports import closed_period_action

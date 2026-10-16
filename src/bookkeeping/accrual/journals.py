@@ -58,6 +58,8 @@ def _complete_linked_source_review(entity: Entity, source_id: str, receipt: Mapp
     """
     from .. import queue
     from ..ledger.staging import StagingStore
+    # A replayed receipt carries status already_applied; the committed receipt carries applied.
+    receipt = {**receipt, "status": "applied"}
     owner = load_record(_store(entity), "intents", "operation:" + receipt["id"])
     if not owner or owner.get("receipt") != dict(receipt):
         raise JournalError("missing_committed_receipt", "Linked-source cleanup requires its exact canonical receipt.")
@@ -249,8 +251,9 @@ def _existing_receipt(entity: Entity, operation_id: str, request_hash: str) -> d
     if record is None:
         return None
     if record.get("request_hash") != request_hash:
-        raise JournalError("identity_conflict", "This operation ID already has different committed facts.",
-                           "Use an explicit correction with a new operation ID.")
+        raise JournalError("identity_conflict", f"Operation ID {operation_id} already has different committed facts.",
+                           f"Inspect it with `books accrual receipt --id {operation_id}`; "
+                           "use the committed facts, or make an explicit correction with a new operation_id.")
     return record["receipt"]
 
 
@@ -267,11 +270,12 @@ def _replay_operation(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]
         raise JournalError("plan_changed", "The accounting preview has been changed.")
     receipt = _existing_receipt(entity, _id(plan["id"]), request_hash)
     if receipt is not None:
-        record = load_record(_store(entity), "intents", "operation:" + plan["id"])
-        if plan.get("plan_hash") != record.get("plan_hash", receipt["plan_hash"]):
-            raise JournalError("plan_changed", "The supplied preview differs from the committed operation.")
+        # The request hash already matches the committed operation. A fresh preview of the same request
+        # has a newer ledger digest and plan_hash; it still replays, because a replay writes nothing.
         records = _evidence(_store(entity), [r["id"] for r in plan["evidence"]])
         _authority(entity, plan["affected_dates"], records, [])
+        # An exact repeat is a no-op: return the original receipt, marked as a replay.
+        return {**receipt, "status": "already_applied"}
     return receipt
 
 
@@ -289,7 +293,7 @@ def _apply_operation(entity: Entity, plan: Mapping[str, Any], *, entries: Sequen
     with _entity_write_lock(entity.path):
         receipt = _existing_receipt(entity, operation_id, plan["request_hash"])
         if receipt is not None:
-            return receipt
+            return {**receipt, "status": "already_applied"}
         current = load_entity(entity.path)
         if _configuration(current) != plan["configuration_hash"]:
             raise JournalError("stale_preview", "Company configuration changed after preview.")
@@ -318,6 +322,18 @@ def _apply_operation(entity: Entity, plan: Mapping[str, Any], *, entries: Sequen
         return receipt
 
 
+def _check_intake_conflict(store: LedgerStore, incoming: Mapping[str, Any]) -> None:
+    """Refuse a new fact set for a source identity and revision that is already stored."""
+    from .store import IntakeConflict
+    identity, facts = source_identity(incoming), facts_hash(incoming)
+    for record in list_records(store, "evidence"):
+        if record.get("source_identity") == identity and record.get("facts_hash") != facts:
+            stored = record["envelope"]
+            if stored["source"] == incoming["source"]:
+                view = lambda e: {k: e.get(k) for k in ("source", "dates", "amounts", "service_period", "observed_facts", "settlement_links") if k in e}
+                raise IntakeConflict(view(stored), view(incoming), record["id"])
+
+
 def intake_evidence(entity: Entity, envelope: Mapping[str, Any]) -> dict[str, Any]:
     """Persist immutable evidence, retaining every distinct transport provenance."""
     normalized = normalize_evidence(envelope)
@@ -326,6 +342,7 @@ def intake_evidence(entity: Entity, envelope: Mapping[str, Any]) -> dict[str, An
     existing = load_record(store, "evidence", record_id)
     if existing:
         return {key: existing[key] for key in ("id", "source_identity", "facts_hash", "evidence_hash")}
+    _check_intake_conflict(store, normalized)
     record = {"id": record_id, "envelope": normalized, "source_identity": source_identity(normalized),
               "facts_hash": facts_hash(normalized), "evidence_hash": evidence_hash(normalized)}
     mutation = SupportingMutation("evidence", record_id, record)
@@ -408,7 +425,9 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
         raise JournalError("invalid_request", "Journal request must be an object.")
     allowed = {"id", "date", "description", "postings", "evidence_ids", "estimate_basis", "reversal_date", "origin"}
     if set(request) - allowed:
-        raise JournalError("unknown_field", "Journal request contains unsupported fields or authority claims.")
+        raise JournalError("unknown_field", "Journal request contains unsupported fields or authority claims: "
+                           + ", ".join(sorted(map(str, set(request) - allowed))) + ".",
+                           "Remove the listed fields; accepted journal fields are " + ", ".join(sorted(allowed)) + ". See `books accrual schema`.")
     normalized = dict(request)
     normalized["id"] = _id(request.get("id"))
     when = _day(request.get("date"), "date")
@@ -690,7 +709,7 @@ def apply_correction(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
     request_hash = canonical_hash({"kind": plan["kind"], "request": plan["request"]})
     existing = _existing_receipt(entity, plan["id"], request_hash)
     if existing is not None:
-        return existing
+        return {**existing, "status": "already_applied"}
     current = preview_correction(entity, plan["request"], reverse_only=plan["kind"] == "reversal")
     if plan.get("plan_hash") != current["plan_hash"]:
         raise JournalError("stale_preview", "The correction preview changed.")

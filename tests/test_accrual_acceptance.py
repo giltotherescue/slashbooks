@@ -79,7 +79,7 @@ class AccrualAcceptanceTests(unittest.TestCase):
             "evidence_ids": [self.evidence(identity, when)]}
         plan = items.preview_settlement(self.entity, request)
         receipt = items.apply_settlement(self.entity, plan)
-        self.assertEqual(items.apply_settlement(self.entity, plan), receipt)
+        self.assertEqual(items.apply_settlement(self.entity, plan), {**receipt, "status": "already_applied"})
         if staged:
             self.assertEqual(queue.read_queue_item(self.entity, identity)["status"], "confirmed")
             self.assertEqual(queue.read_queue_item(self.entity, identity)["accrual_treatment"], "settlement")
@@ -156,7 +156,7 @@ class AccrualAcceptanceTests(unittest.TestCase):
         plan = reports.preview_period(self.entity, {"operation_id": "close-july", "period": "2026-07", "action": "close",
             "as_of": "2026-08-02", "reason": "Synthetic owner reviewed exact reconciliation package", "readiness_package_id": readiness.package_id})
         receipt = reports.apply_period(self.entity, plan)
-        self.assertEqual(reports.apply_period(self.entity, plan), receipt)
+        self.assertEqual(reports.apply_period(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(load_record(self.store, "periods", "2026-07")["status"], "closed")
         digest = self.store.content_digest()
         destination = self.root.parent / "portable.zip"
@@ -233,7 +233,7 @@ class AccrualAcceptanceTests(unittest.TestCase):
             "description": "Synthetic corrected provider amount", "replacement": replacement}
         correction = journals.preview_correction(self.entity, request)
         receipt = journals.apply_correction(self.entity, correction)
-        self.assertEqual(journals.apply_correction(self.entity, correction), receipt)
+        self.assertEqual(journals.apply_correction(self.entity, correction), {**receipt, "status": "already_applied"})
         reversal = journals.preview_correction(self.entity, {"id": "temporary-final-reversal", "original_id": "temporary-replacement",
             "date": "2026-08-03", "description": "Synthetic full refund"}, reverse_only=True)
         journals.apply_correction(self.entity, reversal)

@@ -42,7 +42,7 @@ class ItemTests(AccrualFixture):
         self.assertEqual(dict(plan["entries"][0]["meta"])["item-id"], "item-machine-id")
         receipt = apply_item(self.entity, plan)
         before = self.store.content_digest()
-        self.assertEqual(apply_item(self.entity, plan), receipt)
+        self.assertEqual(apply_item(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.content_digest(), before)
         for number, (labels, expected) in enumerate((
                 ({"counterparty": "Synthetic Customer"}, "Record receivable: Synthetic Customer"),
@@ -57,7 +57,7 @@ class ItemTests(AccrualFixture):
             plan = preview_item(self.entity, self.item(reference="Invoice #104"))
             receipt = apply_item(self.entity, plan)
         before = self.store.content_digest()
-        self.assertEqual(apply_item(self.entity, plan), receipt)
+        self.assertEqual(apply_item(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.content_digest(), before)
         self.assertEqual(self.store.load_entries()[0].narration, "Record receivable invoice-1")
 
@@ -66,7 +66,7 @@ class ItemTests(AccrualFixture):
         self.create(origin={"mode": "opening", "source_id": "opening"})
         plan = preview_settlement(self.entity, self.settlement())
         receipt = apply_settlement(self.entity, plan)
-        self.assertEqual(apply_settlement(self.entity, plan), receipt)
+        self.assertEqual(apply_settlement(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(load_record(self.store, "items", "invoice-1")["remaining_amount"], "600.00")
         self.assertEqual(self.balances()[AR], Decimal("600"))
         self.assertEqual(self.balances()[BANK], Decimal("400"))
@@ -201,7 +201,7 @@ class ItemTests(AccrualFixture):
             "date": "2026-01-10", "counter_account": INCOME, "source_id": "credit-note-1", "reason": "Synthetic credit note", "evidence_ids": [self.evidence("credit-note")]}
         plan = preview_adjustment(self.entity, request)
         receipt = apply_adjustment(self.entity, plan)
-        self.assertEqual(apply_adjustment(self.entity, plan), receipt)
+        self.assertEqual(apply_adjustment(self.entity, plan), {**receipt, "status": "already_applied"})
         writeoff = {**request, "operation_id": "writeoff", "action": "writeoff", "source_id": "writeoff-1", "counter_account": "Expenses:Bad-Debt",
                     "amount": "100.00", "evidence_ids": [self.evidence("writeoff")]}
         apply_adjustment(self.entity, preview_adjustment(self.entity, writeoff))

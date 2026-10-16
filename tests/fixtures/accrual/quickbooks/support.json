@@ -9,8 +9,7 @@
       "remaining_amount": "1000.00",
       "evidence_refs": [
         "evidence/opening.pdf"
-      ],
-      "settlement_strategy": "direct"
+      ]
     },
     {
       "id": "vendor-open",
@@ -21,8 +20,7 @@
       "remaining_amount": "700.00",
       "evidence_refs": [
         "evidence/opening.pdf"
-      ],
-      "settlement_strategy": "direct"
+      ]
     }
   ],
   "schedules": [

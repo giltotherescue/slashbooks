@@ -52,7 +52,7 @@ class ItemsV2Tests(AccrualFixture):
         self.assertEqual({p["account"]: p["amount"] for p in plan["entries"][0]["postings"]}, {DEPOSITS: "500.00", AR: "-500.00"})
         receipt = apply_offset(self.entity, plan)
         before = self.store.content_digest()
-        self.assertEqual(apply_offset(self.entity, plan), receipt)
+        self.assertEqual(apply_offset(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.content_digest(), before)
         self.assertEqual((self.remaining("invoice-1"), self.remaining("deposit-credit")), ("1500.00", "0.00"))
         self.assertEqual(self.balances()[DEPOSITS], Decimal(0))

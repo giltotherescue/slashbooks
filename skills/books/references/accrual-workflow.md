@@ -41,7 +41,8 @@ than asking owners for internal IDs, amount signs, or full/residual field names.
 Read the selected company's basis and capability before choosing a workflow.
 Cash remains the default. Accrual is opt-in for a single USD services/SaaS entity;
 ordinary accrual is supported, governmental modified accrual is not. Preserve
-existing basis. A report toggle or re-init cannot convert populated books.
+existing basis. A report toggle or re-init cannot convert populated books. To move a cash company to accrual,
+start a new accrual company and use `books accrual opening draft`/`preview`/`apply` (see accrual-intake.md); prior periods stay in the cash company.
 
 Use [accrual books](../../../docs/accrual.md) and
 [source-neutral intake](../../../docs/accrual-intake.md). Any connector, MCP,

@@ -228,8 +228,8 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
     sums, mutations, ids, evidence = {}, [], set(), {}
     common_fields = {"id", "account", "currency", "evidence_refs", "evidence_ids", "counterparty", "reference", "description"}
     source_fields = {
-        "items": common_fields | {"kind", "original_amount", "remaining_amount", "settlement_strategy", "direction", "due_date"},
-        "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "service_start", "service_end", "method", "recognition_account"},
+        "items": common_fields | {"kind", "original_amount", "remaining_amount", "direction", "due_date"},
+        "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "service_start", "service_end", "method", "recognition_account", "contra_account", "salvage_value"},
         "external": common_fields | {"balance"},
     }
     for collection in ("items", "schedules", "external"):
@@ -320,9 +320,6 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                         raise ValueError("Unsupported opening item kind.")
                     if _money(row.get("original_amount")) < remaining:
                         raise ValueError("Opening item remainder exceeds original amount.")
-                    if row.get("settlement_strategy", "direct") not in {"direct", "reverse"}:
-                        raise ValueError("Opening item requires an explicit settlement strategy.")
-                    row["settlement_strategy"] = row.get("settlement_strategy", "direct")
                     row["status"] = "open" if remaining else "settled"
                     if row["kind"] == "receivable" and not account.startswith("Assets:") or row["kind"] == "payable" and not account.startswith("Liabilities:"):
                         raise ValueError("Opening item kind conflicts with its control account.")
@@ -334,23 +331,29 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                     balance = remaining * sign
                     mutation_table = "items"
                 else:
-                    if row.get("kind") not in {"prepaid", "deferred"}:
+                    if row.get("kind") not in {"prepaid", "deferred", "depreciation"}:
                         raise ValueError("Unsupported opening schedule kind.")
-                    if row["kind"] == "prepaid" and not account.startswith("Assets:") or row["kind"] == "deferred" and not account.startswith("Liabilities:"):
+                    if row["kind"] != "deferred" and not account.startswith("Assets:") or row["kind"] == "deferred" and not account.startswith("Liabilities:"):
                         raise ValueError("Opening schedule kind conflicts with its control account.")
                     amount, recognized = _money(row.get("amount")), _money(row.get("recognized_amount"))
-                    if amount < 0 or recognized < 0 or amount - recognized != remaining:
+                    salvage = _money(row.get("salvage_value", "0.00")) if row["kind"] == "depreciation" else Decimal(0)
+                    if row["kind"] != "depreciation" and ("salvage_value" in row or "contra_account" in row):
+                        raise ValueError("salvage_value and contra_account apply only to opening schedules of kind depreciation.")
+                    if amount < 0 or recognized < 0 or salvage < 0 or amount - salvage - recognized != remaining:
                         raise ValueError("Opening schedule original/recognized/remaining amounts do not reconcile.")
                     if "start_date" in row or "end_date" in row:
                         raise ValueError("Opening schedule start_date/end_date were replaced by inclusive service_start and service_end (last day of service).")
-                    start, end = _day(row.get("service_start")), _day(row.get("service_end"))
+                    try:
+                        start, end = _day(row.get("service_start")), _day(row.get("service_end"))
+                    except (TypeError, ValueError):
+                        raise ValueError(f"Opening schedule {identity} needs service_start and service_end (inclusive YYYY-MM-DD dates).") from None
                     if start > end or end < cutover or row.get("method") not in {"actual_day", "equal_month"}:
                         raise ValueError("Opening schedule needs a supported remaining service interval and method.")
                     recognition = mapping.get(row.get("recognition_account"), row.get("recognition_account"))
                     _validate_account_name(recognition)
                     if recognition not in mapping.values():
                         raise ValueError("Opening schedule recognition account is not in the mapped source chart.")
-                    expected_root = "Expenses:" if row["kind"] == "prepaid" else "Income:"
+                    expected_root = "Income:" if row["kind"] == "deferred" else "Expenses:"
                     if not recognition.startswith(expected_root):
                         raise ValueError("Opening schedule recognition account conflicts with its kind.")
                     row["recognition_account"] = recognition
@@ -359,12 +362,24 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                     row["base_recognized_amount"] = format(recognized, ".2f")
                     row["status"] = "active"
                     balance = remaining * (1 if row["kind"] == "prepaid" else -1)
+                    if row["kind"] == "depreciation":
+                        contra = mapping.get(row.get("contra_account"), row.get("contra_account"))
+                        _validate_account_name(contra)
+                        if contra not in financial or not contra.startswith("Assets:") or contra == account:
+                            raise ValueError("Opening depreciation schedule needs a separate Assets: contra_account with a carried balance.")
+                        row["contra_account"] = contra
+                        row["salvage_value"] = format(salvage, ".2f")
+                        row["origin_reserved_amount"] = format(amount, ".2f")
+                        balance = amount
+                        sums[contra] = sums.get(contra, Decimal(0)) - recognized
                     mutation_table = "schedules"
             sums[account] = sums.get(account, Decimal(0)) + balance
             mutations.append({"table": mutation_table, "id": row["id"], "payload": row})
     differences = []
     for account, balance in sorted(financial.items()):
-        if balance and account.startswith(("Assets:", "Liabilities:")) and not account.startswith("Assets:Bank:"):
+        if (balance and account.startswith(("Assets:", "Liabilities:"))
+                and not account.startswith(("Assets:Bank:", "Assets:Cash:", "Liabilities:CreditCard:"))
+                and account != "Liabilities:CreditCard"):
             delta = sums.get(account, Decimal(0)) - balance
             if delta:
                 differences.append({"account": account, "ledger": format(balance, ".2f"),
@@ -433,15 +448,32 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
     source_id = f"quickbooks-opening-trial-balance-{cutover.isoformat()}"
     store = LedgerStore(default_store_path(entity.path))
     chart = _chart(accounts, mapping, store, as_of)
-    mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
     hashes = {kind: hashlib.sha256(path.read_bytes()).hexdigest() for kind, path in sorted(paths.items())}
+    return _build_plan(
+        entity, store, operation="quickbooks-opening", import_source="quickbooks-opening",
+        narration="Reconciled accrual opening balances from QuickBooks", financial=financial, mapping=mapping,
+        chart=chart, supporting=supporting, cutover=cutover, fiscal_start=fiscal_start,
+        closed_position=closed_position, source_id=source_id,
+        coverage_extra={"source_hashes": hashes, "mapping_hash": _hash(mapping),
+                        "source_paths": {kind: path.relative_to(entity.path.resolve()).as_posix() for kind, path in paths.items()}},
+        request_extra={"source_hashes": hashes, "mapping_hash": _hash(mapping)},
+        plan_extra={"folder": source_folder})
+
+
+def _build_plan(entity, store, *, operation, import_source, narration, financial, mapping, chart, supporting,
+                cutover, fiscal_start, closed_position, source_id, coverage_extra, request_extra, plan_extra):
+    """Shared opening core: tie support to control balances and bind the accounting preview.
+
+    QuickBooks reports and the source-neutral opening request both end here.
+    """
+    as_of = cutover - timedelta(days=1)
+    mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
     coverage = {"id": "opening", "basis": "accrual", "currency": "USD", "cutover_date": cutover.isoformat(),
                 "source_as_of": as_of.isoformat(), "fiscal_start": fiscal_start.isoformat(),
                 "summary_from": None if closed_position else fiscal_start.isoformat(),
                 "summary_to": None if closed_position else as_of.isoformat(), "closed_position": closed_position,
-                "opening_source_id": source_id, "source_hashes": hashes, "mapping_hash": _hash(mapping),
+                "opening_source_id": source_id, **coverage_extra,
                 "chart": chart,
-                "source_paths": {kind: path.relative_to(entity.path.resolve()).as_posix() for kind, path in paths.items()},
                 "verified": not differences, "support_status": "reconciled" if not differences else "incomplete",
                 "support_evidence_hashes": evidence_hashes}
     facts = {"coverage": coverage, "balances": {a: format(n, ".2f") for a, n in sorted(financial.items())},
@@ -455,32 +487,32 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
             raise ValueError("Opening evidence conflicts with the already applied cutover.")
         if not existing and (conn.execute("SELECT 1 FROM entries UNION ALL SELECT 1 FROM balance_assertions UNION ALL SELECT 1 FROM source_transactions LIMIT 1").fetchone()
                              or any(list_records(store, table, conn) for table in TABLES if table not in {"evidence", "periods", "intents"})):
-            raise ValueError("Opening cutover requires an empty target.")
+            raise ValueError("Opening cutover requires an empty target. A company that already has entries cannot take an opening; start a new accrual company at the cutover date.")
         digest = store.content_digest(conn)
     integrity = check_store_integrity(store)
     if integrity.status != "ok":
         raise ValueError("Opening target ledger integrity must be verified before migration.")
-    plan = {"version": VERSION, "operation": "quickbooks-opening", "status": "blocked" if differences else "ready",
-            "replayed": bool(existing), "folder": source_folder, "cutover": cutover.isoformat(),
+    plan = {"version": VERSION, "operation": operation, "status": "blocked" if differences else "ready",
+            "replayed": bool(existing), "cutover": cutover.isoformat(),
             "fiscal_start": fiscal_start.isoformat(), "closed_position": closed_position, "supporting": deepcopy(supporting or {}),
             "coverage": coverage, "balances": facts["balances"], "support": mutations,
             "support_differences": differences, "expected_digest": digest,
-            "config_hash": _hash(entity.entity_config), "preview_hash": _hash(facts)}
+            "config_hash": _hash(entity.entity_config), "preview_hash": _hash(facts),
+            "import_source": import_source, "narration": narration, **plan_extra}
     if not differences and not existing:
         from .journals import _preview_operation
         entries, opens, changes = _effects(plan)
         plan["accounting_plan"] = _preview_operation(entity, operation_id=source_id, kind="migration",
             request={"cutover": plan["cutover"], "fiscal_start": plan["fiscal_start"],
-                     "source_hashes": hashes, "mapping_hash": coverage["mapping_hash"],
-                     "chart_hash": _hash(chart),
+                     "chart_hash": _hash(chart), **request_extra,
                      "support_evidence_hashes": evidence_hashes, "facts_hash": plan["preview_hash"]},
             entries=entries, opens=opens, mutations=changes, evidence_ids=sorted(evidence_hashes),
             affected_dates=(as_of.isoformat(),))
     elif existing:
-        operation = load_record(store, "intents", "operation:" + source_id)
-        if not operation or not isinstance(operation.get("plan"), dict):
+        operation_record = load_record(store, "intents", "operation:" + source_id)
+        if not operation_record or not isinstance(operation_record.get("plan"), dict):
             raise ValueError("Opening cutover is missing its immutable original accounting preview.")
-        plan["accounting_plan"] = operation["plan"]
+        plan["accounting_plan"] = operation_record["plan"]
     return plan
 
 
@@ -488,12 +520,12 @@ def _effects(plan):
     coverage = plan["coverage"]
     opened = _day(coverage["source_as_of"])
     postings = tuple(Posting(a, _money(n)) for a, n in sorted(plan["balances"].items()) if _money(n))
-    metadata = (("source-id", coverage["opening_source_id"]), ("import-source", "quickbooks-opening"),
+    metadata = (("source-id", coverage["opening_source_id"]), ("import-source", plan.get("import_source", "quickbooks-opening")),
                         ("accrual-opening", "true"), ("coverage-id", "opening"),
                         ("cutover-date", coverage["cutover_date"]))
     if not coverage["closed_position"]:
         metadata += (("summary-from", coverage["summary_from"]), ("summary-to", coverage["summary_to"]))
-    entry = Entry(date=opened, narration="Reconciled accrual opening balances from QuickBooks", meta=metadata, postings=postings)
+    entry = Entry(date=opened, narration=plan.get("narration", "Reconciled accrual opening balances from QuickBooks"), meta=metadata, postings=postings)
     mutations = [SupportingMutation(row["table"], row["id"], row["payload"]) for row in plan["support"]]
     mutations.append(SupportingMutation("coverage", "opening", coverage))
     opens = [Open(_day(account["open_date"]), account["account"], (account["currency"],))
@@ -503,14 +535,18 @@ def _effects(plan):
 
 def apply(entity, plan):
     """Apply the exact preview atomically, or return its original receipt on replay."""
-    if plan.get("version") != VERSION or plan.get("operation") != "quickbooks-opening":
+    if plan.get("version") != VERSION or plan.get("operation") not in {"quickbooks-opening", "accrual-opening"}:
         raise ValueError("Unsupported opening preview.")
     with _entity_write_lock(entity.path):
         current_entity = load_entity(entity.path)
         require_accrual(current_entity)
-        fresh = preview(current_entity, plan["folder"], plan["cutover"],
-                        fiscal_start=plan["fiscal_start"], supporting=plan["supporting"],
-                        closed_position=plan.get("closed_position", False))
+        if plan["operation"] == "accrual-opening":
+            from .opening import preview_opening
+            fresh = preview_opening(current_entity, plan.get("request"))
+        else:
+            fresh = preview(current_entity, plan["folder"], plan["cutover"],
+                            fiscal_start=plan["fiscal_start"], supporting=plan["supporting"],
+                            closed_position=plan.get("closed_position", False))
         if fresh["preview_hash"] != plan.get("preview_hash") or fresh["config_hash"] != plan.get("config_hash"):
             raise ValueError("Stale opening preview: source evidence or account mapping changed.")
         if fresh["status"] != "ready":
@@ -527,7 +563,7 @@ def apply(entity, plan):
             receipt = _replay_operation(current_entity, plan.get("accounting_plan", {}))
             if receipt is None:
                 raise ValueError("Opening cutover is missing its canonical operation receipt.")
-            return {"status": "applied", "replayed": True, "source_id": coverage["opening_source_id"],
+            return {"status": "already_applied", "replayed": True, "source_id": coverage["opening_source_id"],
                     "coverage": coverage, "entries_written": 0, "receipt": receipt}
         if fresh["expected_digest"] != plan.get("expected_digest"):
             raise ValueError("Stale opening preview: canonical ledger state changed.")

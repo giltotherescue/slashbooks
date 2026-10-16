@@ -147,3 +147,29 @@ def apply_mutations(store: LedgerStore, mutations: Sequence[SupportingMutation],
         else:
             conn.execute(f"UPDATE {name} SET payload_json=?,revision=revision+1 WHERE id=? AND revision=?",
                          (payload, mutation.record_id, mutation.expected_revision))
+
+
+def operation_receipt(store: LedgerStore, operation_id: str) -> dict[str, Any] | None:
+    """Return the committed intent record for an operation ID, or None. Read-only."""
+    return load_record(store, "intents", "operation:" + operation_id)
+
+
+class IntakeConflict(ValueError):
+    """Same source revision stored earlier with different facts."""
+
+    def __init__(self, existing: dict[str, Any], incoming: dict[str, Any], existing_id: str) -> None:
+        self.existing_id = existing_id
+        self.existing, self.incoming = existing, incoming
+        source = incoming["source"]
+        super().__init__(
+            f"Source {source['namespace']}/{source['object_id']} version "
+            f"{source.get('version', source.get('content_hash', ''))} is already stored (id {existing_id}) with different facts.")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"status": "blocked", "errors": [{
+            "code": "intake_conflict", "message": str(self),
+            "action": ("If the source document changed, intake it again with a new source.version (or source.content_hash). "
+                       "If the earlier intake was wrong, stored supporting documents cannot be edited: intake the corrected facts under a new source.object_id, "
+                       "then use `books accrual evidence-link preview` to tie it to the original operation. "
+                       "Never reuse the same source revision with different facts."),
+            "stored_id": self.existing_id, "stored_version": self.existing, "submitted_version": self.incoming}]}

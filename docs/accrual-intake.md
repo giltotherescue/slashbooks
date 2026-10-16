@@ -69,7 +69,7 @@ For example, this payable creates one expense and its outstanding liability:
   "operation_id": "record-service-bill-001",
   "id": "service-bill-001",
   "kind": "payable",
-  "account": "Liabilities:AccountsPayable",
+  "account": "Liabilities:Payable:Accounts-Payable",
   "currency": "USD",
   "original_amount": "1200.00",
   "as_of": "2026-07-31",
@@ -110,7 +110,45 @@ not create authority. Client-only access does not gain posting rights. Publicati
 close/reopen, money movement, and permission changes retain their separate controls.
 See [standing authority](standing-policy.md) and [Cloud access](cloud.md).
 
+## Opening balances (any source)
+
+A new accrual company starts with one opening operation. It works for a spreadsheet,
+another system, or a cash-basis Slashbooks company. The cutover is the first day of the
+accrual books; the opening entry is dated the day before, and every account it uses is
+opened as of that date (so a Dec 31 opening works with a Jan 1 cutover).
+
+```sh
+books entity init ~/Documents/books/acme-accrual --name "Acme" --basis accrual --cutover-date 2026-01-01
+books accrual opening preview --entity ~/Documents/books/acme-accrual --input opening.json > plan.json
+books accrual opening apply --entity ~/Documents/books/acme-accrual --input plan.json
+```
+
+`opening.json` has `cutover`, balanced `lines` (account, signed amount) and optional
+supporting rows: `items` (open invoices and bills with `counterparty`, `reference`,
+`due_date`, `open_amount`, `account`), `schedules` (remaining prepaid or deferred)
+and `external`. Support rows must equal the control account balances; a difference
+blocks the preview. See `schema.requests.opening` for an example.
+
+A repeated apply of the same committed request returns the original receipt with
+`status: already_applied`. `books accrual receipt --entity PATH --id OPERATION_ID`
+shows a committed receipt without changing anything.
+
+### Cash company to accrual
+
+Slashbooks does not convert a company in place. Prior periods stay in the cash company.
+
+```sh
+books entity init NEW_DIR --name NAME --basis accrual --cutover-date 2026-01-01
+books accrual opening draft --entity CASH_DIR --cutover 2026-01-01 > opening.json
+```
+
+The draft holds the cash company balances for 2025-12-31, with prior earnings in
+`Equity:Retained-Earnings`. Add the open invoices and bills the owner provides (and the
+receivable and payable lines with a balancing equity line), then preview and apply as above.
+
 ## QuickBooks opening
+
+QuickBooks is one parser for the same opening core: it reads the reports, then uses the same support tie-out and apply path.
 
 Establish that both companies use accrual; the report basis selector alone is not
 policy evidence. Select an explicit cutover and fiscal-year start. Keep original

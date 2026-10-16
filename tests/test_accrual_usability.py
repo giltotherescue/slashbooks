@@ -73,7 +73,7 @@ class JournalUsabilityTests(unittest.TestCase):
         self.assertEqual(plan['entries'][0]['totals'], expected)
         self.assertEqual(plan['details']['journal_totals'], expected)
         receipt = journals.apply_journal(self.entity, plan)
-        self.assertEqual(journals.apply_journal(self.entity, journals.preview_journal(self.entity, request)), receipt)
+        self.assertEqual(journals.apply_journal(self.entity, journals.preview_journal(self.entity, request)), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.counts().entries, 1)
         self.assertEqual(check_integrity(self.entity).status, 'ok')
 
@@ -115,7 +115,7 @@ class JournalUsabilityTests(unittest.TestCase):
             old_plan = journals.preview_journal(self.entity, self.request)
             old_receipt = journals.apply_journal(self.entity, old_plan)
         before = self.store.content_digest()
-        self.assertEqual(journals.apply_journal(self.entity, old_plan), old_receipt)
+        self.assertEqual(journals.apply_journal(self.entity, old_plan), {**old_receipt, "status": "already_applied"})
         self.assertEqual(journals.preview_journal(self.entity, self.request), old_plan)
         self.assertEqual(self.store.content_digest(), before)
         self.assertEqual(self.store.counts().entries, 1)

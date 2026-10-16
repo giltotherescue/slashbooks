@@ -50,7 +50,7 @@ class AccrualCloseTests(unittest.TestCase):
         assessment = self.ready()
         plan = self.close(assessment)
         receipt = reports.apply_period(self.entity, plan)
-        self.assertEqual(reports.apply_period(self.entity, plan), receipt)
+        self.assertEqual(reports.apply_period(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(load_record(self.store, "periods", "2026-07")["status"], "closed")
         with self.assertRaisesRegex(ValueError, "closed"):
             self.journal("closed-depreciation", "2026-07-31", [("Expenses:Operating-Costs", "10.00"), ("Assets:Fixed:Accumulated-Depreciation", "-10.00")])
