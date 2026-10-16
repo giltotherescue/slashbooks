@@ -685,8 +685,10 @@ books accrual item adjust-apply --entity . --input preview.json
 The estimate posts Dr `Expenses:Bonuses` 3000.00 and Cr accrued liabilities 3000.00
 on 2026-03-31. The approved bill posts Dr bonuses 2700.00 and Cr accounts payable
 2700.00. The true-up posts Dr accrued liabilities 3000.00 and Cr bonuses 3000.00,
-so net bonus expense is 2700.00 and the accrued liability is zero. The variance is
-stored on the adjustment. Two other actions exist: `credit` reduces an item and
+so net bonus expense is 2700.00 and the accrued liability is zero. The variance (actual
+minus the estimate removed) is stored on the adjustment and shown in the preview
+`details.true_up` and in the receipt `warnings` entry `true_up_variance`, with
+`estimate_amount`, `actual_amount` and `variance`. Two other actions exist: `credit` reduces an item and
 the income or expense (a discount), and `writeoff` removes a balance (recipe 13).
 
 ### Recipe 13: bad-debt write-off

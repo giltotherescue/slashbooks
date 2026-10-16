@@ -731,7 +731,9 @@ def ask(
     except Exception:
         kept = None
     q_lower = question.lower()
-    wanted = "cash" if _CASH_VIEW.search(q_lower) else "accrual" if _ACCRUAL_VIEW.search(q_lower) else None
+    from .. import ask_intents
+    cash_flow = bool(ask_intents.CASH_FLOW.search(q_lower))
+    wanted = "cash" if _CASH_VIEW.search(q_lower) or cash_flow else "accrual" if _ACCRUAL_VIEW.search(q_lower) else None
     from_date, to_date = _parse_period(question, today)
     named = from_date is not None
     if from_date is None:
@@ -740,7 +742,8 @@ def ask(
     if kept and wanted and wanted != kept:
         options = [f"- Bank movements for the period: books report general-ledger --entity {entity_path} --from {from_date} --to {to_date} (read the Assets:Bank accounts)."]
         if kept == "accrual":
-            options.append(f"- The same period on the accrual basis: books ask --entity {entity_path} \"{_without_cash_wording(question)}\"")
+            options.append(f"- The same period on the accrual basis: books ask --entity {entity_path} \""
+                           + (f"What was our net income from {from_date} to {to_date}?" if cash_flow else _without_cash_wording(question)) + "\"")
             options.append(f"- Future cash only: books forecast {entity_path}")
         text = (f"Not available: you asked for the {wanted} basis, but these books are kept on the {kept} basis, "
                 f"so no {wanted}-basis figure is computed. Period asked: {span}.\n" + "\n".join(options))
@@ -751,6 +754,17 @@ def ask(
     if result.intent == "unknown":
         return result
     answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
+    names = ask_intents.match(question)
+    routed = None
+    if names:
+        as_of = to_date if named else today
+        routed = ask_intents.answer(entity_path, question, names, kept, as_of)
+    if routed is not None:
+        result = AskResult(question=question, intent=routed.intent, answer_text=routed.text, data=routed.data)
+        note = "" if named else " No period was named in the question, so this uses today's date."
+        result.answer_text = f"Answer covers: {kept or 'unknown'} basis, from {routed.data['from_date']} to {routed.data['to_date']}.{note}\n\n" + result.answer_text
+        result.data.setdefault("basis", kept)
+        return result
     note = "" if named else " No period was named in the question, so this covers the year to date."
     result.answer_text = (f"Answer covers: {kept or 'unknown'} basis, from {answered_from} to {answered_to}.{note}\n\n"
                           + result.answer_text)
@@ -786,7 +800,7 @@ def _ask_core(
     q_lower = question.lower()
 
     # --- Determine intent ---------------------------------------------------
-    is_revenue = bool(re.search(r"\b(revenue|income|sales|earned|receipts)\b", q_lower))
+    is_revenue = bool(re.search(r"\b(revenue|income|sales|earn|earned|earnings|receipts)\b", q_lower))
     is_spend = bool(re.search(r"\b(spend|spent|expenses?|cost|costs|paid|pay)\b", q_lower))
     is_draws = bool(re.search(r"\b(draw|draws|owner pay|owner draws|distribution|distributions)\b", q_lower))
     is_vendor = bool(re.search(r"\b(?:how much did we pay|how much have we paid|paid to|payments? to)\b", q_lower))
@@ -998,22 +1012,8 @@ def _ask_core(
 
         else:
             # Unknown intent — helpful guidance
-            answer = (
-                "I didn't recognise the type of question. Here's what you can ask:\n\n"
-                "  Revenue/income:\n"
-                "    'What was Q1 revenue?'\n"
-                "    'How much did we earn in January?'\n\n"
-                "  Spending:\n"
-                "    'How much did we spend on software last quarter?'\n"
-                "    'What were our total expenses this year?'\n\n"
-                "  Owner draws:\n"
-                "    'What were owner draws this month?'\n\n"
-                "  Vendor payments:\n"
-                "    'How much did we pay Acme last quarter?'\n\n"
-                "  Overall performance:\n"
-                "    'How are we doing this year?'\n"
-                "    'What is our net income for Q2?'"
-            )
+            from .. import ask_intents
+            answer = ask_intents.SUPPORTED_TEXT
             return AskResult(question=question, intent="unknown", answer_text=answer)
     finally:
         conn.close()

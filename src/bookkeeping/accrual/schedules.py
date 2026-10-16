@@ -664,8 +664,12 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
             if new_start > last:
                 raise JournalError("no_future_service", "No future service remains to allocate the revised balance.")
             if record["method"] == "equal_month" and new_start.day != 1:
-                raise JournalError("incomplete_calendar_month", "A partial-month refund cannot keep equal_month, which needs whole calendar months.",
-                                   "Use action supersede with method actual_day (daily, exact), or date the refund on the last day of a month.")
+                raise JournalError("incomplete_calendar_month", "A refund dated mid-month cannot keep equal_month, which needs whole calendar months.",
+                                   "To end service mid-month with daily proration, use action terminate with effective_date set to the last service day; "
+                                   "date is the posting date of the refund and may differ. Example: {\"operation_id\": \"end-service\", \"id\": \"" + record["id"]
+                                   + "\", \"action\": \"terminate\", \"effective_date\": \"2026-03-14\", \"date\": \"2026-03-15\", "
+                                   "\"offset_account\": \"Assets:Bank:Checking\", \"reason\": \"Customer refund\", \"evidence_ids\": [\"<evidence-id>\"]}. "
+                                   "Or use action supersede with new terms (for example method actual_day) for the remaining service.")
             changed.update(recognition_start=new_start.isoformat(), base_remaining_amount=f"{remaining - remaining_refund:.2f}",
                            base_recognized_amount=record["recognized_amount"], generation=record.get("generation", 0) + 1)
     mutations.append(SupportingMutation("schedules", schedule_id, changed, record_revision(store, "schedules", schedule_id)))
