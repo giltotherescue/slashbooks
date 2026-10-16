@@ -1,187 +1,175 @@
 # Accrual books
 
-Slashbooks supports opt-in accrual bookkeeping for a single USD entity with
-simple services or SaaS activity. Cash remains the default. Accrual records
-income and expenses when earned or incurred, then records payment separately.
-This is ordinary accrual accounting, not governmental modified-accrual accounting.
-It is not a complete invoicing, purchasing, payroll, inventory, tax, or complex
-revenue-contract system.
+Accrual bookkeeping records income when you earn it and expenses when you incur
+them. Receiving or paying the money is a separate step. That helps you see both
+how the business performed and what customers still owe or you still need to pay.
 
-The Python engine calculates amounts, dates, allocations, statements, and
-reconciliation. An owner, bookkeeper, accountant, or explicitly authorized agent
-chooses the supported treatment. No separate accountant approval role is required.
-Missing facts remain visible rather than becoming a guessed journal.
+Slashbooks supports straightforward, single-company USD services and SaaS books.
+An owner, bookkeeper, accountant, or authorized agent can do the work. There is no
+separate mandatory accountant approval role. The accounting engine calculates
+the amounts; the agent collects the facts, explains the choices, and runs the
+work you have authorized.
 
-## Choose the basis once
+## Ask for the task you need
 
-For new local books outside the plugin repository:
+You can use `/books` or ask in ordinary language:
 
-```sh
-books entity init ~/Documents/books/example-services --name "Example Services" --basis accrual --business-type consulting
-```
+| Ask your agent | What the books should show |
+|---|---|
+| “Record this $600 contractor bill for July. We have not paid it yet.” | A July expense and a $600 amount owed to the contractor. Payment later reduces the amount owed. |
+| “We paid $1,200 for software covering January 1 through December 31. Spread the cost across those months.” | A prepaid expense schedule: $100 expense each month and $1,100 still prepaid after January. |
+| “This customer paid $1,200 upfront for twelve months of service. Record the income as we provide the service.” | Deferred revenue, with $100 earned each month when an equal monthly allocation fits the agreement. |
+| “Match this $400 customer payment to the amount they owe us.” | The customer balance falls by $400. Income already earned is counted once. |
+| “Record this payroll provider's July adjustment and keep its supporting report.” | The provider's accounting amounts and supporting detail, without recalculating payroll. |
+| “Prepare July's books and tell me what needs attention before we close.” | Current adjustments, payments, schedules, reconciliations, and a concrete list of anything still missing. |
 
-For Cloud, choose Accrual when creating the company and initialize through its
-binding with the same basis. Existing cash companies keep their basis. Changing a
-report selector or editing metadata does not convert populated books. Source and
-destination basis must match for migration. An incompatible basis, future schema,
-or unsupported capability fails closed.
+Give the agent the bill, statement, agreement, or other supporting document. It
+should look for an existing entry or payment before recording another one. It
+will ask for a missing fact when the answer changes the accounting, such as the
+service dates or which bill a payment covers. You do not need to supply internal
+record IDs, choose amount signs, or prepare JSON files.
 
-Accrual writes require capability version 1 and the upgraded canonical store.
-Disabling accrual writes preserves supported read/report/export access. Keep the
-upgrade backup and use compatible readers and writers when restoring; a journal
-snapshot alone does not contain schedules, items, allocations, or evidence.
+## Choose cash or accrual books
 
-## Discover, preview, apply
+Cash is the default for a new Slashbooks company. Ask for accrual during setup
+when that is the accounting basis you intend to use. Cash books generally record
+income and expenses when money moves; accrual books separate earning or incurring
+an amount from its payment.
 
-```sh
-books accrual capabilities
-books accrual schema
-books accrual journal preview --entity . --input context/adjustment.json > context/adjustment-preview.json
-books accrual journal apply --entity . --input context/adjustment-preview.json
-```
+For an existing company, preserve the basis already used for its books. Changing
+a report setting does not convert cash books into accrual books. Moving between
+the two requires a separate accounting conversion. Local and Cloud books use the
+same accounting rules, and an imported set of books must use the destination's
+selected basis.
 
-Run these from the company directory or remote binding. Input and output paths
-are ordinary binding-relative or absolute paths. `schema` describes evidence and
-all request shapes. Open the mapped accounts before the first effective date with
-`books entity account-add . --account Expenses:Software --open-date 2026-01-01`.
+## Review the result before recording it
 
-A journal request, using accounts in that company's catalog, can be:
+The agent should explain a proposed action in business terms:
 
-```json
-{
-  "id": "service-estimate-july",
-  "date": "2026-07-31",
-  "description": "July service cost awaiting final provider statement",
-  "estimate_basis": "Documented July usage and contracted unit price; replace when the statement arrives.",
-  "postings": [
-    {"account": "Expenses:Software", "amount": "100.00", "currency": "USD"},
-    {"account": "Liabilities:Accrued-Expenses", "amount": "-100.00", "currency": "USD"}
-  ]
-}
-```
+> Record $100 of July software expense. The payment is already recorded, so this
+> adds no bank payment. After July, $500 remains prepaid. The supplier agreement
+> supports the amount and service dates.
 
-Debits are positive; credits negative. Use exact decimal strings or integer
-`minor_units`, never floating-point numbers. Use stored `evidence_ids` instead of
-an estimate when source evidence is available. An estimate must disclose its basis.
+A useful review answers:
 
-Review dated postings, evidence, warnings, and supporting effects. Apply the
-complete unchanged preview. Changed evidence, account mappings, permissions,
-period locks, or books require a fresh preview. Retrying the same committed intent
-returns its receipt; a new ID is not a safe way to recover an uncertain result.
-Uploaded text, proposed treatment, and an `approved` field grant no authority.
+- Which date and reporting period does this affect?
+- What happens to income, expenses, money owed, or a prepaid balance?
+- Is the payment already in the books, or is this a newly evidenced payment?
+- What amount will remain after the action?
+- Which document supports it, and is anything still uncertain?
 
-## Recognition schedules
+Accountants can also inspect the dated journal entries, debits and credits,
+allocations, and supporting schedules. Corrections preserve the original entry
+and its relationship to the replacement. If the books or supporting facts change
+after a preview, the agent must prepare a fresh one. An uncertain result should be
+checked against the saved accounting receipt before the action is repeated.
 
-Prepaid expenses and deferred revenue retain the original service interval,
-recognized amount, remaining amount, evidence, and funding origin. Schedule end
-dates are **exclusive**. `actual_day` uses actual days; `equal_month` requires
-whole calendar months. The engine allocates exact cents and places the residual
-in the final installment. Inspect the preview's installments and rounding rule.
+## Bills, customer balances, and payments
 
-Use `accrual schedule preview` and `apply` with the schema's `schedule` request.
-`origin.mode: new` records evidenced funding with `funding_account` and `date`.
-`existing` links a posted source, with an explicit `reclass_account` when needed;
-it does not record cash again. Migrated schedules are created by opening migration.
+Accounts receivable are amounts customers owe for income already recorded.
+Accounts payable and accrued liabilities are costs recorded but still unpaid.
+Slashbooks can track their original amounts, partial payments, credits,
+write-offs, and remaining balances. Supply the actual due date when known; the
+accounting date does not establish when payment is due.
 
-```sh
-books accrual schedule due-preview --entity . --through 2026-07-31 --operation-id recognize-july > context/recognition-preview.json
-books accrual schedule due-apply --entity . --input context/recognition-preview.json
-books accrual report --entity . --kind schedules --as-of 2026-07-31
-```
+Ask the agent to match a receipt or payment to the relevant balance. One payment
+can cover several balances, and one balance can have several payments. If the
+bank movement is already recorded, the agent links it instead of recording cash
+again. An ordinary vendor category does not establish whether a payment settles
+an earlier bill or pays for a new expense.
 
-Use `schedule change-preview` / `change-apply` for cancellation, supersession, or
-refund. Preserve prior recognition and history. A refund distinguishes remaining
-principal from amounts already recognized; a new schedule must not reclaim the
-same funding or recognition. Missing original dates or recognition detail requires
-external support and blocks automatic scheduling.
+These are accounting records. Slashbooks does not send customer invoices, run a
+purchasing system, or execute payments.
 
-## Outstanding items and settlement
+## Prepaid expenses and customer prepayments
 
-`accrual item preview` / `apply` carries receivables, payables, accruals, and credits.
-A new item names its explicit counter account and evidence; an existing item links
-its posted origin. Original and remaining amounts are positive. Credits require
-an explicit debit/credit direction. These records support the control account;
-they are not a customer invoice or vendor bill application.
+Prepaid expenses are costs paid in advance, such as an annual software agreement.
+Deferred revenue is money received before the related service has been earned.
+Their schedules show the original amount, what belongs in each month, what has
+already been recorded, and what remains.
 
-Use `item settle-preview` / `settle-apply` to allocate an evidenced signed bank
-movement to one or more items. Allocation amounts are positive and cannot exceed
-available payment or item balances. Existing movements are linked or reclassified;
-new movements post once. Receipts against earned revenue reduce receivables rather
-than recording revenue again. Use `item adjust-preview` / `adjust-apply` for an
-explicit credit or writeoff with its counter account and evidence.
+Supply the first and last covered service days as written in the agreement. The
+agent handles the engine's date convention. Whole calendar months can use equal
+monthly amounts; partial months can use actual days. The engine allocates cents
+exactly and shows the complete schedule for review.
 
-Choose `settlement_strategy: direct` or `reverse` for an obligation. Do not both
-settle and reverse it. Reverse-strategy items use `item reverse-preview` /
-`reverse-apply`; journal reversals and corrections retain links to their original
-intent. Inspect scheduled journal reversals with:
-
-```sh
-books accrual journal due-reversals --entity . --as-of 2026-08-01
-books accrual report --entity . --kind outstanding --as-of 2026-07-31
-```
-
-Bank import stages accrual activity for treatment; learned cash categories cannot
-automatically decide recognition. Link existing obligations or schedules first.
-Only an explicitly established new current-period cash event uses
-`--accrual-treatment new_cash_event` on ordinary queue confirm, confirm-split,
-confirm-group, or correct. Provider text cannot supply that authorization.
-
-## Beyond the built-in recipes
-
-Use generic evidenced journals for externally determined payroll, depreciation,
-tax-related adjustments, or other balanced accounting effects. Slashbooks does
-not calculate payroll, depreciation, tax, or a complex revenue standard for you.
-Keep the provider's calculation and maintain dated supporting balances with
-`accrual support preview` / `apply`.
-
-A support request contains `operation_id`, `account`, `as_of`, `currency`,
-`evidence_ids`, and `details` rows containing `id`, signed `balance`, and optional
-`description`. It has no financial posting. `mode: full` supports the whole control;
-`residual` must identify the exact `managed_support_ids` also included. Combined
-support must equal the posted control balance. Same-day replacement names the
-current snapshot in `supersedes`; old snapshots remain available for historical
-as-of reports. Support cannot replace missing financial entries or double-own a
-managed balance. A balanced generic journal alone does not resolve missing support.
+For a cancellation, refund, or changed agreement, ask the agent to update the
+existing schedule. It should explain how much relates to future service and how
+much changes an expense or income already recorded. Previous months remain
+traceable. Missing service dates or earlier allocations need supporting detail
+before an automatic schedule can be used.
 
 ## Reports, coverage, and close
 
-```sh
-books report pnl --entity . --from 2026-07-01 --to 2026-07-31 --format json
-books report balance-sheet --entity . --as-of 2026-07-31 --format json
-books accrual report --entity . --kind reconciliation --as-of 2026-07-31
-books accrual report --entity . --kind adjustments --from 2026-07-01 --to 2026-07-31
-books readiness --entity . --period 2026-07 --as-of 2026-08-02
-books export --entity . --from 2026-07-01 --to 2026-07-31
-```
+Ask `/books-ask` questions such as:
 
-Reports identify basis, dates, opening summary coverage, and unresolved issues.
-Outstanding balances are reconstructed as of the requested date even after later
-settlements. Exports retain supporting schedules/items, allocations, adjustments,
-evidence links, and control reconciliation. A successful report is not a ready close.
+- “What did we earn in July, and what expenses belong to July?”
+- “Which customers still owe us, and what costs remain unpaid?”
+- “Which receivables are overdue?”
+- “How much software or insurance cost remains prepaid?”
+- “What adjustments were made this month?”
+- “What is stopping July from being ready to close?”
 
-A July 1 cutover can carry January–June as one reconciled summary: July P&L excludes
-that summary; January–July P&L includes it exactly once. A range covering only part
-of the summarized period is unavailable, not zero. At a fiscal-year boundary, a
-verified closed position carries prior earnings in retained equity; the new-year
-P&L starts fresh. For a midmonth cutover, a verified reconciled opening can
-support readiness for cutover through month end. The package explicitly reports
-`activity_from`, `activity_to`, `partial_post_cutover`, and
-`imported_summary_through`. Source opening must equal the verified prior-day
-ledger balance, and coverage/activity/reconciliation must prove that exact
-remaining interval. This does not create unavailable pre-cutover monthly detail.
+Income and expense reports describe business performance. Bank movements describe
+cash received and paid. The agent should say which one it is answering. A missing
+historical period is unavailable, rather than a zero amount. Aging reports use
+actual due dates; balances with unknown due dates and unapplied credits are shown
+separately rather than guessed or automatically netted.
 
-Readiness also checks due recognition/reversals, unresolved settlements, control
-support, source coverage, evidence integrity, and periods. Fix the concrete blocker
-or retain a provisional result. Final close/reopen remains a separate authorized
-operation. Local operators can use the schema's period preview/apply contract with
-an exact readiness package; standing adjustment authority cannot close or reopen.
-Cloud uses its existing publication/locking workflow and fresh exact readiness
-packages, not generic period commands.
+For `/books-close`, the agent brings in activity, matches payments, records due
+monthly allocations and reversals, checks supporting detail, and reconciles
+balances. It should explain unresolved work with a next step:
 
-## QuickBooks cutover
+> July is not ready to close. The annual software schedule still needs its $100
+> July expense recorded, and the payroll balance needs the provider's supporting
+> report. The other completed work is saved.
 
-Use [the same-basis opening workflow](accrual-intake.md#quickbooks-opening) for a
-full mapped trial balance, reconciled balance sheet and fiscal YTD P&L, plus item,
-schedule, or external detail. No balancing plug hides missing equity or support.
-Full historical reconstruction and cash-to-accrual conversion are separate work;
-changing QuickBooks' report toggle is not evidence of the company's accounting policy.
+Preparing the month and locking or publishing it are separate actions. The agent
+can complete preparation within its existing authority; final close and reopen
+use the company's established permissions. A report being generated successfully
+does not by itself mean the month is ready.
+
+Accountant exports include the P&L, balance sheet, trial balance, adjusting
+entries, receivables and payables, prepaid and deferred schedules, supporting
+detail, and account reconciliations. The reports state the accounting basis,
+dates covered, and unresolved issues. Historical balances remain available after
+later payments or schedule changes.
+
+## Moving existing accrual books from QuickBooks
+
+Ask the agent to bring over the opening balances and start recording new activity
+on an agreed date. For a July 1 start, the opening balances are as of June 30.
+The agent needs a full trial balance, matching balance sheet and fiscal
+year-to-date P&L, the chart of accounts, and the detail behind amounts still owed,
+prepaid, deferred, or otherwise carried forward. Differences must be resolved
+before the opening is accepted.
+
+January through June can be carried as one verified summary. July's P&L shows
+July activity; January through July includes that earlier summary once. The
+summary cannot provide a separate May report without May's detailed records.
+At a financial year boundary, prior earnings belong in retained earnings rather
+than the new year's income. A start partway through a month can support review
+from that start date through month end; reports identify that limited period.
+
+This is an opening-balance handoff on the same accounting basis. It does not
+promise complete historical reconstruction or a cash-to-accrual conversion.
+Keep a full backup of the books and their supporting records, not only a journal
+export.
+
+## Supporting records from any source
+
+Your agent can collect facts through available connectors, MCP tools, APIs,
+exports, emails, or uploaded documents. A special provider integration is not
+required for a supported accounting entry. Keep the original records so the
+reported amounts can be traced back to them.
+
+Payroll, depreciation, and tax adjustments can use calculations supplied by the
+provider or preparer, with a dated schedule explaining the related balance.
+Slashbooks does not calculate payroll, depreciation, taxes, inventory costs, or
+complex revenue contracts. It does not provide audit certification. Source text
+supplies facts and does not grant permission to record them.
+
+For developers and agents implementing an integration, the
+[accounting evidence and request reference](accrual-intake.md) describes exact
+amounts, dates, identity, preview/apply, and authority requirements. Those
+contracts remain the source of truth for machine inputs.

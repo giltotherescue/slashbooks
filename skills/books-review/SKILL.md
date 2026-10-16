@@ -6,7 +6,7 @@ description: >
   Trigger phrases: "review the queue", "approve transactions", "review pending items",
   "confirm categorizations", "go through the queue", "review bookkeeping",
   "approve the queue", "what needs review".
-allowed-tools: Bash(scripts/books:*) Read
+allowed-tools: Bash(scripts/books:*) Read Edit
 ---
 
 # Review Queue
@@ -62,7 +62,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
   transaction appears to be and the decision needed. Avoid internal file names,
   database details, raw account codes, and accounting jargon unless they ask.
 - **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, cash basis, review queue, chart of accounts, and exports.
+  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
   Still keep product internals out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, SQLite, command
   wrappers, and validation details when they help.
@@ -201,6 +201,14 @@ plain-language guidance is not a hard ban on accounting terms.
 ---
 
 ## Step 3 — Confirm or correct
+
+For accrual books, first determine whether the payment belongs to an existing
+customer balance, bill, prepaid cost, or customer prepayment. Use the dedicated
+settlement or schedule workflow when it does; do not record the income or expense
+again. Ask for missing business facts, not internal identifiers or amount signs.
+The ordinary queue commands below are appropriate only for an established new
+current-period cash event and then require `--accrual-treatment new_cash_event`.
+Corrections to tracked accrual entries use their dedicated correction workflow.
 
 **If the owner confirms:**
 

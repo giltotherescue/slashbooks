@@ -114,13 +114,14 @@ _SHEET_NAMES: dict[str, str] = {
     "audit-log": "Audit Log",
     "recognition-schedules": "Recognition Schedules",
     "outstanding-balances": "Outstanding Balances",
+    "receivables-payables-aging": "Receivables Payables Aging",
     "external-support": "External Support",
     "control-reconciliation": "Control Reconciliation",
     "accrual-adjustments": "Accrual Adjustments",
     "accounting-coverage": "Accounting Coverage",
 }
 
-_ACCRUAL_SHEETS = ("recognition-schedules", "outstanding-balances", "external-support",
+_ACCRUAL_SHEETS = ("recognition-schedules", "outstanding-balances", "receivables-payables-aging", "external-support",
                    "control-reconciliation", "accrual-adjustments", "accounting-coverage")
 
 _SHEET_ALIASES: dict[str, str] = {
@@ -256,13 +257,14 @@ class XlsxSheet:
     """Worksheet rows plus Excel-specific rendering metadata."""
 
     name: str
-    rows: list[list[str]]
+    rows: list[list[str | Decimal]]
     table: bool = False
     tab_color: str = ""
     formula_columns: frozenset[int] = frozenset()
     numeric_columns: frozenset[int] = frozenset()
     total_label_column: Optional[int] = None
     total_label: str = "Account Total"
+    autofilter: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -1601,7 +1603,7 @@ def _build_audit_log_rows(entity_path: Path) -> list[list[str]]:
 # ---------------------------------------------------------------------------
 
 
-def _write_csv(path: Path, rows: list[list[str]]) -> None:
+def _write_csv(path: Path, rows: list[list[str | Decimal]]) -> None:
     """Write *rows* to a CSV file at *path*."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
@@ -1709,7 +1711,12 @@ def _write_xlsx(
                     ws.write_formula(row_idx, col_idx, cell_str, fmt_number if col_idx in spec.numeric_columns else None)
                     continue
 
-                num_val = _is_numeric(cell_str) if col_idx in spec.numeric_columns else None
+                if isinstance(cell, Decimal):
+                    if not cell.is_finite():
+                        raise ValueError("XLSX monetary cells must contain finite amounts.")
+                    num_val = cell
+                else:
+                    num_val = _is_numeric(cell_str) if col_idx in spec.numeric_columns else None
                 if num_val is not None:
                     row_label = row[spec.total_label_column] if spec.total_label_column is not None and len(row) > spec.total_label_column else ""
                     fmt = fmt_total if row_label == spec.total_label else fmt_number
@@ -1724,7 +1731,7 @@ def _write_xlsx(
                     elif cell_str.startswith(("https://", "http://")):
                         ws.write_url(row_idx, col_idx, cell_str, string=cell_str)
                     else:
-                        ws.write(row_idx, col_idx, cell_str)
+                        ws.write_string(row_idx, col_idx, cell_str)
 
         table_added = False
         if spec.table and len(rows) > 1 and max_cols > 0:
@@ -1738,7 +1745,7 @@ def _write_xlsx(
                 table_added = True
 
         last_row = _last_data_row(rows) - 1
-        if not table_added and last_row >= 1 and max_cols > 0:
+        if spec.autofilter and not table_added and last_row >= 1 and max_cols > 0:
             ws.autofilter(0, 0, last_row, max_cols - 1)
 
         ws.set_landscape()
@@ -1859,7 +1866,7 @@ def generate_accountant_package(
     summary_formulas = summary_formula_deps.issubset(selected_set)
     checks_formulas = checks_formula_deps.issubset(selected_set)
 
-    rows_cache: dict[str, list[list[str]]] = {}
+    rows_cache: dict[str, list[list[str | Decimal]]] = {}
     xlsx_cache: dict[str, XlsxSheet] = {}
     entries_unloaded = object()
     entries_cache: list[Any] | None | object = entries_unloaded
@@ -1895,7 +1902,7 @@ def generate_accountant_package(
             entity_config_cache = _load_entity_config(entity_path)
         return entity_config_cache
 
-    def _rows(key: str) -> list[list[str]]:
+    def _rows(key: str) -> list[list[str | Decimal]]:
         if key in rows_cache:
             return rows_cache[key]
         if key == "cover":
@@ -1933,6 +1940,42 @@ def generate_accountant_package(
             rows_cache[key] = _build_audit_log_rows(entity_path)
         elif key in _ACCRUAL_SHEETS:
             from ..accrual.reports import report
+            if key == "receivables-payables-aging":
+                document = report(load_entity(entity_path), "aging", as_of=to_date)
+                fields = ("kind", "counterparty", "reference", "as_of", "due_date", "bucket_label", "aging_amount", "account", "currency", "id")
+                rows = [["Receivables and payables aging"], ["Report as of", document["as_of"]],
+                        ["Accounting basis", document["basis"]], ["Currency", document["currency"]],
+                        ["Aging basis", "Explicit due dates; unapplied credits remain separate"]]
+                coverage = document.get("coverage")
+                if coverage:
+                    rows.extend([["Detailed activity begins", coverage["cutover_date"]],
+                                 ["Imported opening as of", coverage["source_as_of"]],
+                                 ["Opening verified", str(coverage.get("verified") is True)],
+                                 ["Opening supporting status", coverage.get("support_status", "Not provided")]])
+                    if coverage.get("summary_from"):
+                        rows.extend([["Imported fiscal summary", coverage["summary_from"], coverage["summary_to"]],
+                                     ["Historical coverage", "Earlier monthly detail is unavailable"]])
+                else:
+                    rows.append(["Opening coverage", "No imported opening summary recorded"])
+                rows.extend([[], ["Type", "Customer / vendor", "Reference", "Accounting date", "Due date", "Aging", "Balance", "Account", "Currency", "Item ID"]])
+                rows.extend([[Decimal(record[field]) if field == "aging_amount" else str(record.get(field) or ("Not provided" if field in {"counterparty", "due_date"} else ""))
+                              for field in fields] for record in document["rows"]])
+                buckets = tuple(document["bucket_labels"])
+                rows.extend([[], ["Summary by type/account/customer; unapplied credits are separate"],
+                             ["Type", "Account", "Customer / vendor", "Currency", *[document["bucket_labels"][bucket] for bucket in buckets], "Total"]])
+                rows.extend([[group["kind"], group["account"], group["counterparty"] or "Not provided", group["currency"],
+                              *[Decimal(group["buckets"][bucket]) for bucket in buckets], Decimal(group["total"])] for group in document["summary"]])
+                rows.extend([[], ["Review items"]])
+                seen = set()
+                for issue in [*document.get("unresolved_issues", []), *document["issues"]]:
+                    identity = (issue["code"], tuple(issue.get("refs", [])))
+                    if identity not in seen:
+                        rows.append([issue.get("message") or issue["code"], ", ".join(issue.get("refs", []))])
+                        seen.add(identity)
+                if not seen:
+                    rows.append(["No outstanding review items"])
+                rows_cache[key] = rows
+                return rows
             if key == "accounting-coverage":
                 document = report(load_entity(entity_path), "reconciliation", as_of=to_date)
                 records = [{"basis": document["basis"], "as_of": document["as_of"], "coverage": document["coverage"], "issues": document["issues"]}]
@@ -2046,6 +2089,10 @@ def generate_accountant_package(
             spec = XlsxSheet("Source Index", _rows(key), table=True, numeric_columns=frozenset({2, 3, 4}))
         elif key == "audit-log":
             spec = XlsxSheet("Audit Log", _rows(key), table=True)
+        elif key == "receivables-payables-aging":
+            # Separate metadata, detail and summary sections have different
+            # headers. Explicit Decimal cells identify money in each section.
+            spec = XlsxSheet(_SHEET_NAMES[key], _rows(key), autofilter=False)
         elif key in _ACCRUAL_SHEETS:
             spec = XlsxSheet(_SHEET_NAMES[key], _rows(key), table=True)
         else:

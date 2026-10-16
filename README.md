@@ -5,7 +5,7 @@
 **Website: [slashbooks.org](https://slashbooks.org/)**
 
 Bookkeeping for people who keep putting it off. Your AI agent keeps the
-books current and tax-ready, so you always know where you stand.
+books current and ready for review, so you can see where you stand.
 
 **Replace QuickBooks and your outsourced bookkeeper.** Slashbooks gives you
 faster, better, cheaper financials from an AI agent you control. It runs in
@@ -14,8 +14,8 @@ just ask in plain English.
 
 It does the tedious work: set up the books, pull in bank and card activity,
 categorize the repeat transactions, close the month, answer your questions, and
-export the files your accountant needs. You only step in to help clarify the
-occasional transaction.
+export the files your accountant needs. You help clarify unfamiliar transactions,
+missing documents, and accounting choices that need your judgment.
 
 No bloated accounting app. No spreadsheet wrangling. Nothing new to learn.
 
@@ -24,7 +24,7 @@ No bloated accounting app. No spreadsheet wrangling. Nothing new to learn.
 > agent runs and that I control.
 
 Choose local books in files you own or shared books in a selected Slashbooks Cloud
-workspace. That choice determines where the canonical books live. Slashbooks
+workspace. That choice determines where the shared, current books live. Slashbooks
 works from QuickBooks exports and live bank/card feeds (via
 BankSync) and exports the Excel/CSV files your accountant needs; it does not sync
 back to QuickBooks or Google Sheets.
@@ -33,18 +33,35 @@ back to QuickBooks or Google Sheets.
 
 ## What You Can Do
 
-- Start cash books by default, or explicitly choose supported accrual books in an empty directory.
-- Record evidenced adjustments, prepaid/deferred schedules, outstanding items, and settlements with reviewable engine previews.
+- Keep cash books, or choose accrual to separate income and expenses from their payments.
+- Record unpaid bills and customer balances, then match their payments without counting income or expenses twice.
+- Spread annual software or insurance costs across their service months, and record customer prepayments as income when earned.
+- Record adjustments from payroll, depreciation, or other provider reports and retain the supporting detail.
 - Keep the ledger in a local SQLite store you own, with Beancount-style exports
   when you need plain text.
 - Connect Stripe, Mercury, and bank feeds, or have your agent build a connector for anything else.
 - Schedule authorized bookkeeping preparation with current books ready for review; final close requires explicit authorization.
 - Review unfamiliar transactions before they become trusted rules.
-- Ask for an analysis of anything, anytime, with every figure at hand.
-- Get any report, chart, or export on demand, without clicking around an app.
+- Ask about recorded income, expenses, unpaid balances, overdue amounts, or what needs attention before close.
+- Get financial statements, supporting schedules, charts, and accountant exports without clicking through an accounting app.
 - Collect and validate the QuickBooks Online reports needed for a migration or backtest.
 - Backtest against QuickBooks exports (prove the numbers match) before trusting a migration.
 - Export the workbook and CSV files your accountant needs at tax time.
+
+For example, ask your agent:
+
+> Record this contractor bill for July; we have not paid it yet.
+>
+> Spread this annual software payment across the months it covers.
+>
+> Match this customer receipt to what they owe us.
+>
+> Prepare July and tell me what still needs attention before we close.
+
+The agent should explain the proposed result, the supporting document, whether a
+payment is already recorded, and what balance will remain. You do not need to
+choose internal record IDs or prepare accounting input files. See the
+[accrual task guide](docs/accrual.md) for examples and supported limits.
 
 ## Status
 

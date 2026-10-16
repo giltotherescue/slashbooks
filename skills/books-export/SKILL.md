@@ -50,7 +50,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
   Avoid internal file names, database details, raw account codes, and accounting
   jargon unless they ask.
 - **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, cash basis, review queue, chart of accounts, and exports.
+  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
   Still keep product internals out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, SQLite, command
   wrappers, and validation details when they help.
@@ -183,6 +183,12 @@ scripts/books export --entity <entity-path> --from <start-date> --to <end-date> 
 ---
 
 ## Step 4 — Explain the outputs
+
+For accrual books, explain that the package also includes customer/supplier aging,
+prepaid and deferred-revenue schedules, unpaid balances, adjusting entries, and
+the detail reconciling supported accounts. State the accounting basis, dates,
+historical summary coverage, and unresolved issues. Missing due dates remain
+unknown; unapplied credits are shown separately rather than netted against bills.
 
 When generation completes, verify the files at usable local output paths, then
 tell the owner where they are and what each contains. For remote results, retrieve

@@ -38,7 +38,7 @@
     <div class="narrow">
       <section class="hero" aria-labelledby="hero-title">
         <h1 id="hero-title">Replace QuickBooks and your outsourced bookkeeper with an AI agent you control.</h1>
-        <p class="hero-tagline">Cash books or scoped accrual for your SaaS or service business. Your agent brings in the evidence, prepares reviewable books, and creates the reports your accountant needs.</p>
+        <p class="hero-tagline">Cash or accrual books for your SaaS or service business. Know what you earned, what you owe, and what needs attention before the month is ready.</p>
         <div class="cta-row hero-actions">
           <a class="btn btn-primary" href="#install">Install Slashbooks</a>
           <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks">Read the source on GitHub</a>
@@ -74,7 +74,7 @@
             <h3 id="fit-yes">A good fit if&hellip;</h3>
             <ul class="fit-list fit-list-yes">
               <li>You run a straightforward SaaS or service business in USD.</li>
-              <li>You need cash books or supported accrual entries, schedules, and outstanding balances.</li>
+              <li>You need cash books or accrual books that track unpaid balances, prepayments, and monthly adjustments.</li>
               <li>You want current books without living inside accounting software.</li>
               <li>You want inspectable books, in your own files or a shared Cloud workspace.</li>
               <li>Your accountant reviews the output before tax filing.</li>
@@ -117,16 +117,16 @@
       </section>
 
       <section aria-labelledby="basis-title">
-        <h2 id="basis-title">Cash books or supported accrual</h2>
-        <p>Cash is the default. Accrual is an explicit company choice for straightforward SaaS and service businesses. Both use the same deterministic ledger, evidence trail, and reports.</p>
+        <h2 id="basis-title">Ask for the bookkeeping task you need</h2>
+        <p>Cash books record income and expenses when money moves. Accrual books separate when you earn income or incur expenses from when you get paid or pay the bill. Choose the basis for your company during setup and preserve it when moving existing books.</p>
         <ul class="capabilities">
-          <li><strong>Adjusting entries.</strong> Preview balanced journals from source evidence or a disclosed estimate, with linked corrections and reversals.</li>
-          <li><strong>Prepaid and deferred schedules.</strong> Allocate a fixed amount across a known service period, inspect what has been recognized, and review refunds or changes.</li>
-          <li><strong>Outstanding balances.</strong> Carry receivables, payables, and accrued obligations; apply partial settlements, credits, or write-offs with supporting detail.</li>
-          <li><strong>Reports that show their coverage.</strong> Review the P&amp;L, balance sheet, trial balance, and supporting registers. Unposted recognition and unreconciled control balances block readiness.</li>
+          <li><strong>“Record this bill for July; we have not paid it yet.”</strong> Record the expense and amount owed, then match the payment when it is paid.</li>
+          <li><strong>“Spread this annual software payment across the months it covers.”</strong> Review the monthly expense and the amount still prepaid. Customer prepayments can be earned over their agreed service period too.</li>
+          <li><strong>“Match this customer receipt to what they owe us.”</strong> Apply a full or partial payment to the existing balance. Credits and write-offs retain their supporting detail.</li>
+          <li><strong>“Prepare July and tell me what is missing.”</strong> Review financial statements, unpaid balances, monthly allocations, and reconciliations. The agent explains the work still needed before close.</li>
         </ul>
-        <p>Link payments to their existing accounting effect instead of booking income, expense, or cash a second time. In accrual books, a learned vendor category alone does not authorize that treatment.</p>
-        <p><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Read the supported accrual workflow</a></p>
+        <p>The agent should show the accounting date, business effect, supporting document, and remaining balance. It checks whether a payment is already recorded so income, expenses, and cash are counted once.</p>
+        <p><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">See common accrual tasks and their results</a></p>
       </section>
 
       <section class="difference" aria-labelledby="difference-title">
@@ -196,7 +196,7 @@
         <li>Review unfamiliar transactions before they become trusted rules.</li>
         <li>Ask questions about the recorded books, with the report basis and coverage visible.</li>
         <li>Generate financial reports and have your agent explain or visualize them.</li>
-        <li>Compare with QuickBooks exports and preserve the source accounting basis at cutover.</li>
+        <li>Compare with QuickBooks exports and keep the same accounting basis when moving your books.</li>
         <li>Export the workbook and CSV files your accountant needs at tax time.</li>
       </ul>
 
@@ -205,9 +205,9 @@
       <p>An always-on assistant can inspect activity, prepare changes, and bring back exceptions using the <code>books</code> CLI or Cloud API. Give it access to the company and explicitly delegate the actions it may perform. A recurring task supplies a schedule; it does not grant accounting authority. Source documents supply facts, not approval.</p>
       <p>Start with a reviewed run, then schedule the supported preparation steps if your assistant provides scheduling. Final close and publication have their own authority. Slashbooks records accounting; it does not move money.</p>
 
-      <h2>A cutover you can trace</h2>
-      <p>Keep the established source basis when moving from QuickBooks. For accrual, a reconciled opening trial balance, matching financial reports, and supporting balances establish the cutover. Missing mappings, unsupported currency, or differences in the supporting detail block activation.</p>
-      <p>A midyear opening can carry fiscal totals as one summary. Reports show that boundary, and review covers the first partial period after cutover. Earlier monthly detail is available only when the evidence supports it.</p>
+      <h2>Bring over existing books with a clear start date</h2>
+      <p>Keep the established accounting basis when moving from QuickBooks. Your agent checks the opening balances, matching financial reports, and the detail behind unpaid amounts and prepayments before new activity begins.</p>
+      <p>For a July 1 start, January through June can be retained as one verified summary and July can have detailed new entries. A separate May report still needs May's records. Reports explain which dates are available, including a first partial month.</p>
 
       <section class="faq" aria-labelledby="faq-title">
         <h2 id="faq-title">Common questions</h2>
@@ -303,7 +303,7 @@
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/philosophy.md">Accounting philosophy</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/for-accountants.md">For accountants</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/connectors.md">Connectors</a></li>
-        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Supported accrual accounting and cutover</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Accrual books and opening balances</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-intake.md">Using evidence from any provider</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/cloud.md">Local books and Slashbooks Cloud</a></li>
       </ul>

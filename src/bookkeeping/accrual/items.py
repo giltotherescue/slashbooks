@@ -27,9 +27,14 @@ def item_sign(record: Mapping[str, Any]) -> Decimal:
     raise JournalError("invalid_control_account", "Outstanding support needs an asset or liability control account.")
 
 
+def validate_due_date(record: Mapping[str, Any]) -> str | None:
+    """Validate an explicit payment due date without inferring it from book dates."""
+    return _day(record["due_date"], "due_date").isoformat() if "due_date" in record else None
+
+
 def _item_effect(entity: Entity, payload: Mapping[str, Any]):
     request = _request(payload, {"operation_id", "id", "kind", "account", "currency", "original_amount", "as_of",
-                                "origin", "evidence_ids", "settlement_strategy", "direction", "counterparty", "reference", "obligation_ids", "reversal_date", "remaining_amount"})
+                                "origin", "evidence_ids", "settlement_strategy", "direction", "counterparty", "reference", "obligation_ids", "reversal_date", "remaining_amount", "due_date"})
     operation_id, item_id = _id(request.get("operation_id")), _id(request.get("id"))
     store = _store(entity)
     kind = request.get("kind")
@@ -41,6 +46,9 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
     account = _account(store, request.get("account"), "account", roots)
     amount = _money(request.get("original_amount"), "original_amount")
     when = _day(request.get("as_of"), "as_of")
+    due_date = validate_due_date(request)
+    if due_date is not None:
+        request["due_date"] = due_date
     strategy = request.get("settlement_strategy", "direct")
     if strategy not in {"direct", "reverse"}:
         raise JournalError("invalid_strategy", "Use exactly one settlement strategy: direct or reverse.")

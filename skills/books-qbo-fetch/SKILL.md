@@ -20,8 +20,11 @@ default; existing basis and delegated authority are preserved.
 
 Before company discovery or file access, follow
 [the shared local/remote workspace rules](../books/references/company-workspace.md).
-QBO browser exports stay local inputs even for remote books. Run inventory from
-the bound directory; metadata file put is not an export uploader.
+Collect browser exports locally and run inventory from the bound directory.
+Remote accrual opening also requires explicitly retaining the original reports,
+support JSON, and referenced evidence under a durable company ingestion prefix
+using the documented cloud file-put workflow in the accrual intake guide.
+Temporary uploads are not opening evidence. Retaining files does not import books.
 
 Collect source reports from QuickBooks Online and place them in the company's
 `ingestion/quickbooks/` folder. This is an acquisition workflow: it does not import
@@ -49,7 +52,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
 - **Business owner** — explain which reports are needed and ask only for decisions
   or interactive steps that require them. Avoid internal file names and accounting
   jargon unless they ask.
-- **Accountant/bookkeeper** — use report names, dates, and cash-basis terminology
+- **Accountant/bookkeeper** — use report names, dates, and the confirmed accounting basis
   when useful.
 - **Developer/tester** — it is okay to mention local paths, browser capabilities,
   inventory output, and file-validation details.

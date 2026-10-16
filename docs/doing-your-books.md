@@ -2,8 +2,10 @@
 
 This guide is for a founder, owner, or operator who wants to use Slashbooks for a
 simple cash-basis company or opt-in single-entity USD services/SaaS accrual books.
-Cash is the default. For recognition, outstanding items, and same-basis migration,
-read [accrual books](accrual.md) and [accounting evidence](accrual-intake.md).
+Cash is the default. Accrual separates income and expenses from their payments;
+it also tracks what customers owe, unpaid costs, and amounts paid in advance.
+The [accrual task guide](accrual.md) explains what to ask your agent and what the
+result should show. Developers can use the [accounting evidence reference](accrual-intake.md).
 
 Slashbooks works best when each company has its own directory, bank and card data
 comes from BankSync or known CSV exports, and you review unfamiliar transactions
@@ -49,6 +51,8 @@ The agent will route to `/books-onboard` and ask for:
   distributions rather than assuming you already know the terms
 - The date Slashbooks should start tracking from
 - Fiscal year
+- Whether the existing books use cash or accrual accounting; for new books, the
+  agent explains the choice before setup
 - Bank accounts and cards
 - CSV fallbacks for canceled, unsupported, disconnected, or intentionally
   unconnected accounts
@@ -139,11 +143,25 @@ The close should get the month current:
 
 - Pull new BankSync transactions
 - Parse any CSVs you provide
-- In cash books, auto-post transactions from trusted counterparties; in accrual
-  books, stage activity for explicit linkage or recognition treatment
+- In cash books, record eligible transactions from trusted counterparties
+- In accrual books, match payments to existing bills or customer balances, record
+  the month's share of prepaid costs and customer prepayments, and review other
+  adjustments supported by documents
 - Pause for review when unfamiliar transactions need owner judgment
 - Reconcile account balances
 - Save a session summary
+
+For accrual books, you can supply an unpaid contractor bill, an annual software
+agreement, or the payroll provider's report and ask the agent to include it in
+the right month. The agent should explain what changes and whether the related
+payment is already recorded. It should ask for missing facts, such as service
+dates or which bill a payment covers, rather than ask you for internal IDs or
+accounting input files.
+
+A useful close update is specific: “July is prepared except for the payroll
+provider's supporting report. The software allocation and customer receipts are
+recorded.” Preparing the month is separate from locking or publishing it; those
+actions use your company's established permissions.
 
 You usually don't need to think of `/books-review` as a separate step after the
 close. The close flow will tell you when review is required and guide you through
@@ -156,9 +174,10 @@ through the queue outside a close session:
 /books-review
 ```
 
-Review is where you confirm or correct queued transactions. Once a counterparty
-has been confirmed enough times, Slashbooks can handle similar future transactions
-with less interruption.
+Review is where you confirm or correct transactions that need judgment. In cash
+books, repeated confirmations can reduce interruptions for similar transactions.
+In accrual books, the agent still checks whether a payment belongs to an earlier
+bill, a customer balance, a prepaid service, or a new expense.
 
 If something looks wrong, correct it in review instead of editing ledger files by
 hand. The agent should translate plain-English corrections into deterministic Slashbooks actions.
@@ -172,6 +191,20 @@ Use `/books-ask` for routine questions:
 /books-ask how much did we pay contractors this quarter?
 /books-ask what were owner draws this year?
 ```
+
+For accrual books, also ask:
+
+```text
+/books-ask which customers still owe us as of July 31?
+/books-ask which unpaid balances are overdue?
+/books-ask how much software cost remains prepaid?
+/books-ask what needs attention before July can close?
+```
+
+The agent should distinguish expenses incurred from cash paid. Overdue amounts
+require actual due dates; an unknown date stays unknown. Reports also explain
+which historical periods are available, especially after moving existing books
+from another system.
 
 If you're migrating from QuickBooks, or want a confidence check over a
 historical period, run:

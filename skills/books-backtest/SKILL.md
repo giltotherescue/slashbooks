@@ -58,7 +58,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
   names, database details, raw account codes, and accounting jargon unless they
   ask.
 - **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, cash basis, review queue, chart of accounts, and exports.
+  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
   Still keep product internals out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, SQLite, command
   wrappers, and validation details when they help.

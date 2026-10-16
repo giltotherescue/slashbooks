@@ -6,7 +6,7 @@ description: >
   Trigger phrases: "close the books", "run the close", "close this month",
   "close June", "pull in new transactions", "do the bookkeeping", "monthly close",
   "import transactions", "categorize transactions".
-allowed-tools: Bash(scripts/books:*) Read
+allowed-tools: Bash(scripts/books:*) Read Edit
 ---
 
 # Monthly Close
@@ -64,7 +64,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
   file names, database details, raw account codes, and accounting jargon unless
   they ask.
 - **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, cash basis, review queue, chart of accounts, and exports.
+  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
   Still keep product internals out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, SQLite, command
   wrappers, and validation details when they help.
@@ -192,9 +192,12 @@ present it as part of closing the month rather than as an unrelated follow-up.
 ### Correct already-posted activity
 
 Inspect the original source and its posted entries before changing them. Use
-`scripts/books ledger correct` on the live original source ID to reverse and
-replace it atomically with explicit balanced postings and preserved correction
-lineage. Do not run `ledger reverse` first when a replacement is intended.
+the dedicated accrual journal correction, item adjustment/reversal, or schedule
+change operation for activity tracked by those workflows. Legacy ledger commands
+cannot edit those entries. For eligible cash entries, use `scripts/books ledger
+correct` on the live original source ID to reverse and replace atomically. An
+ordinary queue correction in accrual books requires established `new_cash_event`
+treatment. Do not run a reversal first when a replacement is intended.
 Never invent a normalized transaction or use ingest/queue confirmation as a
 replacement for an audited correction; input metadata does not create ledger
 correction authority.
@@ -247,6 +250,11 @@ flagged this for follow-up." Do not show raw ledger syntax or SQL output.
 
 ## Accrual recognition and support
 
+Review unpaid customer balances and bills, match receipts and payments, record
+this month's share of prepaid costs and customer prepayments, and retain the
+provider reports behind payroll or other adjustments. Use actual due dates for
+overdue balances; missing dates stay unknown.
+
 For accrual books, complete evidence-backed journal/schedule/item treatment before
 readiness. Preview/apply due schedule recognition through the period end; inspect
 due reversals and unresolved settlements. Reconcile each non-bank control to
@@ -254,6 +262,11 @@ managed items/schedules plus exact dated external support. A balanced generic
 journal cannot clear missing detail. Use externally determined payroll or
 depreciation journals with retained provider support; do not calculate those
 amounts or send them through the cash-only Stripe recipe.
+
+Summarize each proposed action with its accounting date, business effect,
+whether its payment is already recorded, remaining balance, and supporting
+document. Resolve technical references from the books; ask the owner for missing
+business facts. Apply the reviewed preview within established authority.
 
 ## Step 4a — Assess readiness
 
@@ -271,6 +284,11 @@ exceptions into one focused request. Do not fill a missing source window,
 opening statement, reconciliation, reply, or review decision from transaction
 activity or model inference. Draft report totals come from the engine and remain
 provisional while the assessment is blocked.
+
+Explain each remaining blocker as a concrete next step, naming the document or
+balance involved: for example, obtain the payroll provider report or resolve an
+unmatched customer receipt. Keep diagnostic codes and internal references in the
+working record. State what is complete and what must happen before close.
 
 For remote books, the hosted review package also binds the current books,
 source, reply, and policy versions. A later feed or reply makes the earlier

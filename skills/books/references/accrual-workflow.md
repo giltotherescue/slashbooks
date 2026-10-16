@@ -1,5 +1,42 @@
 # Accrual workflow for agents
 
+## Start with the business task
+
+Use familiar terms with owners and conventional accounting terms when reviewing
+with an accountant. Keep request fields and transport details in the working record.
+
+| Owner's task | Accounting workflow |
+| --- | --- |
+| Record what a customer owes or an unpaid bill | Receivable or payable, with the actual due date if known |
+| Spread an annual cost over the months it covers | Prepaid-expense recognition schedule |
+| Earn a customer's advance payment over the service period | Deferred-revenue recognition schedule |
+| Match a receipt or bill payment | Apply payment to the existing balance; avoid a second income/expense entry |
+| Check the detail behind an account | Reconcile item/schedule detail and external supporting balances to the ledger |
+| Prepare month end | Record due recognition and adjustments, match payments, reconcile, then assess readiness |
+
+Use the report routes in `/books-ask` for unpaid balances, customer/supplier aging,
+remaining prepayments, adjustments, and close blockers. Optional `due_date` is a
+documented payment deadline, not the item's accounting `as_of` date. Aging groups
+receivables and payables by recorded due date; missing dates remain unknown and
+credits remain separate unapplied credits. Generic accrual estimates are excluded.
+Use engine summaries, not agent-calculated totals. Accrual reports accept
+`--format text` for readable inspection or `--format json` for structured results.
+
+Summarize a proposed action with its date, business effect, whether payment is
+already recorded, remaining balance, and supporting document or missing fact.
+Accountants can also inspect engine-produced debits, credits, and balance checks.
+Journal inputs accept debit/credit amount strings as an alternative to signed
+amount strings; use one representation per posting and retain the engine's exact
+preview. Do not calculate journal totals yourself.
+
+Ask for the first and last days covered by a contract in ordinary language. Map
+those facts to the engine's exclusive end date, preserving a source's explicitly
+stated date convention; clarify ambiguous dates before posting. Determine funding
+linkage and supporting-balance mode from current books and the schema, rather
+than asking owners for internal IDs, amount signs, or full/residual field names.
+
+## Apply the accounting contracts
+
 Read the selected company's basis and capability before choosing a workflow.
 Cash remains the default. Accrual is opt-in for a single USD services/SaaS entity;
 ordinary accrual is supported, governmental modified accrual is not. Preserve

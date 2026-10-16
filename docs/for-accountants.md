@@ -71,6 +71,12 @@ reconciliation. Corrections preserve originals and lineage. There is no new
 mandatory accountant approval role; authority comes from the operator or trusted
 delegation, and final publication/locking remains separately controlled.
 
+Receivables/payables aging uses recorded due dates: current, 1–30, 31–60, 61–90,
+and over 90 days past due. Missing due dates are identified separately, and
+unapplied credits are not automatically netted against invoices. The accounting
+date is not a substitute for the due date. Generic accrual estimates are outside
+the customer/supplier aging report.
+
 A reconciled midyear opening carries fiscal YTD income/expense once, alongside
 source retained equity. Post-cutover P&L excludes the opening summary; a full
 fiscal-prefix report includes it once. Partial historical overlap is unavailable.
@@ -94,7 +100,7 @@ reconciliation/source index, plus native filtering on the ledger and review
 sheets. The CSV exports remain plain values for portability. If the Excel
 workbook is not available, the same data is provided as CSV files.
 
-Accrual exports also carry recognition schedules, outstanding balances, external
+Accrual exports also carry receivables/payables aging, recognition schedules, outstanding balances, external
 support, control reconciliation, accrual adjustments, and accounting coverage.
 Read the reported basis and coverage before comparing periods.
 

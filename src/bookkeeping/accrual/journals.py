@@ -111,7 +111,31 @@ def _id(value: Any) -> str:
 def _entry_document(entry: Entry) -> dict[str, Any]:
     return {"date": entry.date.isoformat(), "description": entry.narration,
             "meta": dict(entry.meta), "postings": [{"account": p.account, "amount": str(p.amount),
-            "currency": p.currency} for p in entry.postings]}
+            "currency": p.currency, "debit": f"{max(p.amount, Decimal(0)):.2f}",
+            "credit": f"{max(-p.amount, Decimal(0)):.2f}"} for p in entry.postings],
+            "totals": _journal_totals([entry])}
+
+
+def _journal_totals(entries: Sequence[Entry]) -> dict[str, str]:
+    debit = sum((p.amount for entry in entries for p in entry.postings if p.amount > 0), Decimal(0))
+    credit = sum((-p.amount for entry in entries for p in entry.postings if p.amount < 0), Decimal(0))
+    return {"debits": f"{debit:.2f}", "credits": f"{credit:.2f}",
+            "difference": f"{debit - credit:.2f}", "currency": "USD"}
+
+
+def _posting_amount(row: Mapping[str, Any]) -> str:
+    sides = {"debit", "credit"} & set(row)
+    if "amount" in row:
+        if sides:
+            raise JournalError("mixed_posting_amount", "Use either signed amount or debit/credit fields on a posting.")
+        return normalize_amount(row["amount"])
+    if not sides:
+        raise JournalError("missing_amount", "Supply a signed amount, debit, or credit.")
+    debit = Decimal(normalize_amount(row.get("debit", "0.00")))
+    credit = Decimal(normalize_amount(row.get("credit", "0.00")))
+    if debit < 0 or credit < 0 or (debit > 0 and credit > 0):
+        raise JournalError("invalid_debit_credit", "Debit and credit must be nonnegative, with only one nonzero side.")
+    return f"{debit - credit:.2f}"
 
 
 def _configuration(entity: Entity) -> str:
@@ -214,7 +238,7 @@ def _preview_operation(entity: Entity, *, operation_id: str, kind: str, request:
             "entries": [_entry_document(entry) for entry in entries],
             "opens": [{"account": o.account, "date": o.date.isoformat(), "currencies": list(o.currencies)} for o in opens],
             "supporting_hash": canonical_hash([asdict(m) for m in mutations]),
-            "warnings": list(warnings), "details": dict(details or {})}
+            "warnings": list(warnings), "details": {**dict(details or {}), "journal_totals": _journal_totals(entries)}}
     body["request_hash"] = canonical_hash({"kind": kind, "request": dict(request)})
     body["plan_hash"] = canonical_hash(body)
     return body
@@ -403,8 +427,8 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
     accounts = {o.account: o for o in _store(entity).load_opens()}
     postings, serialized = [], []
     for row in raw:
-        if not isinstance(row, Mapping) or set(row) - {"account", "amount", "currency"}:
-            raise JournalError("invalid_posting", "A posting accepts account, amount, and USD currency.")
+        if not isinstance(row, Mapping) or set(row) - {"account", "amount", "debit", "credit", "currency"}:
+            raise JournalError("invalid_posting", "A posting accepts account, signed amount or debit/credit, and USD currency.")
         account = _text(row.get("account"), "posting account")
         if account not in accounts:
             raise JournalError("unmapped_account", f"Posting account {account} is not in the chart.", "Map or add the account explicitly, then preview again.")
@@ -414,7 +438,7 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
             raise JournalError("unsupported_currency", f"Account {account} is not open for USD.")
         if row.get("currency", "USD") != "USD":
             raise JournalError("unsupported_currency", "Journal postings must use USD.")
-        amount = normalize_amount(row.get("amount"))
+        amount = _posting_amount(row)
         if Decimal(amount) == 0:
             raise JournalError("zero_posting", "Zero-value postings are not supported.")
         postings.append(Posting(account, Decimal(amount), "USD"))

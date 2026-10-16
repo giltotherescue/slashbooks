@@ -228,7 +228,7 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
     sums, mutations, ids, evidence = {}, [], set(), {}
     common_fields = {"id", "account", "currency", "evidence_refs", "evidence_ids", "counterparty", "reference", "description"}
     source_fields = {
-        "items": common_fields | {"kind", "original_amount", "remaining_amount", "settlement_strategy", "direction"},
+        "items": common_fields | {"kind", "original_amount", "remaining_amount", "settlement_strategy", "direction", "due_date"},
         "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "start_date", "end_date", "method", "recognition_account"},
         "external": common_fields | {"balance"},
     }
@@ -312,6 +312,10 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                 row["remaining_amount"] = format(remaining, ".2f")
                 row["base_remaining_amount"] = format(remaining, ".2f")
                 if collection == "items":
+                    from .items import validate_due_date
+                    due_date = validate_due_date(row)
+                    if due_date is not None:
+                        row["due_date"] = due_date
                     if row.get("kind") not in {"receivable", "payable", "accrual", "credit"}:
                         raise ValueError("Unsupported opening item kind.")
                     if _money(row.get("original_amount")) < remaining:

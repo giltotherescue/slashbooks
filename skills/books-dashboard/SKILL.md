@@ -50,7 +50,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
   names, database details, raw account codes, and accounting jargon unless they
   ask.
 - **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, cash basis, review queue, chart of accounts, and exports.
+  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
   Still keep product internals out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, SQLite, command
   wrappers, and validation details when they help.
@@ -112,6 +112,11 @@ scripts/books ask --entity <entity-path> "<question>"
 ```
 
 Do not compute financial totals yourself when Slashbooks can produce them.
+
+For accrual questions about unpaid balances, aging, prepayments, adjustments, or
+close blockers, use the task-specific report routes in `/books-ask`. Label earned
+income and incurred expenses separately from cash received and paid. Keep unknown
+due dates and unapplied credits visible; use engine-produced grouped summaries.
 
 ---
 

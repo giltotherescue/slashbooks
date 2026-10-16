@@ -59,7 +59,7 @@ role obvious, acknowledge it and keep going.
   "trial balance", "sanity check", "entity metadata", "seeded", "posted
   entries", or other implementation terms unless they ask.
 - **Accountant/bookkeeper** — use familiar accounting terms when helpful: P&L,
-  balance sheet, trial balance, chart of accounts, cash-basis assumptions,
+  balance sheet, trial balance, chart of accounts, selected accounting basis,
   review queue, opening balances, and accountant exports. Keep product internals
   out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, generated files,
@@ -456,6 +456,12 @@ prior-day TB and BS, fiscal YTD P&L, account types/mappings, and item/schedule o
 external support. Use the shared accrual reference and `accrual migration
 preview`/`apply`, retaining original evidence and explicit fiscal start. Missing
 support blocks activation. Do not use the cash opening/repair commands below.
+
+Explain the start date in ordinary terms: starting July 1 requires checked June
+30 balances, the year's income and expenses through June, and detail behind unpaid
+customer balances, bills, and prepayments. Earlier months are retained as a
+covered summary, not reconstructed monthly transactions. Build the technical
+support inputs from the supplied records rather than asking the owner for JSON.
 
 The rest of this opening subsection applies to **cash books only**.
 

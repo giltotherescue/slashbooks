@@ -298,6 +298,67 @@ def _adjustment_rows(store, conn, start, end):
     return rows
 
 
+AGING_BUCKETS = {
+    "current": "Current", "1_30": "1–30 days overdue", "31_60": "31–60 days overdue",
+    "61_90": "61–90 days overdue", "over_90": "Over 90 days overdue",
+    "unknown_due_date": "Due date not provided", "unapplied_credit": "Unapplied credit",
+}
+
+
+def aging(items, as_of):
+    """Age supported open balances by explicit due date, never the cutover date.
+
+    Credits remain separately identified and are not automatically allocated or
+    netted against another item. Group totals are separated by kind and account.
+    """
+    from .items import validate_due_date
+    rows, groups = [], {}
+    for item in items:
+        if item.get("kind") not in {"receivable", "payable", "credit"}:
+            continue
+        if item.get("currency") != "USD":
+            raise ValueError("Aging supports USD balances only; foreign currencies cannot be combined.")
+        remaining = Decimal(normalize_amount(item["remaining_amount"]))
+        if remaining < 0:
+            raise ValueError("Aging requires nonnegative remaining item balances.")
+        if remaining == 0:
+            continue
+        due = validate_due_date(item)
+        overdue = max(0, (as_of - date.fromisoformat(due)).days) if due else None
+        if item["kind"] == "credit":
+            bucket, overdue = "unapplied_credit", None
+        elif overdue is None:
+            bucket = "unknown_due_date"
+        elif overdue == 0:
+            bucket = "current"
+        else:
+            bucket = "1_30" if overdue <= 30 else "31_60" if overdue <= 60 else "61_90" if overdue <= 90 else "over_90"
+        # Receivables/payables display their positive normal-side balance. A
+        # credit displays its signed effect relative to that control's normal side.
+        amount = remaining
+        if item["kind"] == "credit":
+            amount = Decimal(item["signed_balance"]) * (1 if item["account"].startswith("Assets:") else -1)
+        counterparty = item.get("counterparty") or None
+        if counterparty is not None and not isinstance(counterparty, str):
+            raise ValueError("Aging counterparty must be text when provided.")
+        row = {**item, "due_date": due, "days_past_due": overdue, "bucket": bucket,
+               "bucket_label": AGING_BUCKETS[bucket], "aging_amount": f"{amount:.2f}"}
+        rows.append(row)
+        key = (item["kind"], item["account"], counterparty)
+        group = groups.setdefault(key, {"kind": item["kind"], "account": item["account"],
+            "counterparty": counterparty, "currency": "USD", "item_count": 0,
+            "buckets": {name: Decimal(0) for name in AGING_BUCKETS}, "total": Decimal(0)})
+        group["buckets"][bucket] += amount
+        group["total"] += amount
+        group["item_count"] += 1
+    summary = []
+    for key in sorted(groups, key=lambda k: (k[0], k[1], k[2] or "")):
+        group = groups[key]
+        summary.append({**group, "buckets": {name: f"{amount:.2f}" for name, amount in group["buckets"].items()},
+                        "total": f"{group['total']:.2f}"})
+    return sorted(rows, key=lambda r: (r["kind"], r["account"], r.get("counterparty") or "", r["id"])), summary
+
+
 def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
     entity = load_entity(entity.path) if isinstance(entity, Entity) else load_entity(entity)
     if resolve_basis(entity.entity_config) != "accrual":
@@ -309,16 +370,21 @@ def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
     with LedgerStore(entity.path / "ledger.sqlite").connection() as conn:
         meta = coverage_metadata(conn, kind, start, end)
         snapshot = support_snapshot(conn, end)
-        if kind in {"schedules", "outstanding", "support"}:
+        extra = {}
+        if kind == "aging":
+            rows, summary = aging(snapshot["items"], end)
+            extra = {"summary": summary, "bucket_labels": dict(AGING_BUCKETS),
+                     "aging_basis": "due_date", "credits_netted": False}
+        elif kind in {"schedules", "outstanding", "support"}:
             rows = snapshot[{"schedules": "schedules", "outstanding": "items", "support": "external"}[kind]]
         elif kind == "reconciliation":
             rows = reconciliation(conn, end)
         elif kind == "adjustments":
             rows = _adjustment_rows(LedgerStore(entity.path / "ledger.sqlite"), conn, start, end)
         else:
-            raise ValueError("Supported accrual report kinds: schedules, outstanding, adjustments, support, reconciliation.")
+            raise ValueError("Supported accrual report kinds: schedules, outstanding, aging, adjustments, support, reconciliation.")
         result = {"schema_version": 1, "kind": kind, "as_of": end.isoformat(), "from_date": start.isoformat() if start else None,
-                  **meta, "rows": rows, "issues": unresolved(conn, end), "canonical_digest": LedgerStore(entity.path / "ledger.sqlite").content_digest(conn)}
+                  **meta, **extra, "rows": rows, "issues": unresolved(conn, end), "canonical_digest": LedgerStore(entity.path / "ledger.sqlite").content_digest(conn)}
     result["fingerprint"] = canonical_hash(result)
     return result
 

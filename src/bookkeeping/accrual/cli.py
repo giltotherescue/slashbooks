@@ -48,10 +48,11 @@ def add_parser(subparsers: Any) -> None:
             due.add_argument("--operation-id", required=True)
     report = commands.add_parser("report")
     report.add_argument("--entity", required=True, type=Path)
-    report.add_argument("--kind", required=True, choices=("schedules", "outstanding", "adjustments", "support", "reconciliation"))
+    report.add_argument("--kind", required=True, choices=("schedules", "outstanding", "aging", "adjustments", "support", "reconciliation"))
     report.add_argument("--as-of")
     report.add_argument("--from", dest="from_date")
     report.add_argument("--to", dest="to_date")
+    report.add_argument("--format", choices=("json", "text"), default="json", help="JSON by default; text prints a readable accounting report")
     migration = commands.add_parser("migration")
     children = migration.add_subparsers(dest="accrual_migration_command", required=True)
     preview = children.add_parser("preview")
@@ -79,13 +80,13 @@ def contracts() -> dict[str, Any]:
                 "accrual support preview|apply --entity PATH --input FILE",
                 "accrual evidence-link preview|apply --entity PATH --input FILE",
                 "accrual period preview|apply --entity PATH --input FILE (local operator only; adjust authority does not cover close/reopen)",
-                "accrual report --entity PATH --kind schedules|outstanding|adjustments|support|reconciliation [--as-of DATE --from DATE --to DATE]",
+                "accrual report --entity PATH --kind schedules|outstanding|aging|adjustments|support|reconciliation [--as-of DATE --from DATE --to DATE --format json|text]",
                 "accrual migration preview --entity PATH --folder REPORTS --cutover YYYY-MM-DD --fiscal-start YYYY-MM-DD --supporting FILE [--closed-position]",
                 "accrual migration apply --entity PATH --input FILE"],
             "evidence": schema(), "journal": {
                 "required": ["id", "date", "description", "postings"],
                 "optional": ["evidence_ids", "estimate_basis", "reversal_date", "reversal_strategy", "origin", "obligation_ids"],
-                "posting": {"account": "mapped chart account", "amount": "exact USD decimal string or {minor_units:integer}", "currency": "USD"},
+                "posting": {"account": "mapped chart account", "amount": "signed exact USD amount, or use nonnegative debit/credit fields instead", "debit": "exact USD amount", "credit": "exact USD amount", "currency": "USD"},
                 "evidence_rule": "Stored evidence or an explicitly disclosed estimate basis is required.",
                 "authority": "Local operator or independently authenticated adjust context; JSON claims grant no permission.",
                 "correction": {"required": ["id", "original_id", "date", "description", "replacement"],
@@ -108,7 +109,10 @@ def request_schemas() -> dict[str, Any]:
         return {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object",
                 "required": required, "properties": properties, "additionalProperties": False, **extra}
 
-    posting = record(["account", "amount"], {"account": text, "amount": amount, "currency": {"const": "USD"}})
+    posting = record(["account"], {"account": text, "amount": amount, "debit": amount, "credit": amount, "currency": {"const": "USD"}},
+        oneOf=[{"required": ["amount"], "not": {"anyOf": [{"required": ["debit"]}, {"required": ["credit"]}]}},
+               {"not": {"required": ["amount"]}, "anyOf": [{"required": ["debit"]}, {"required": ["credit"]}]}],
+        description="Use signed amount or debit/credit. Sides must be nonnegative with exactly one nonzero side; the engine validates exact balance.")
     journal = record(["id", "date", "description", "postings"], {
         "id": text, "date": day, "description": text, "evidence_ids": ids, "estimate_basis": text,
         "postings": {"type": "array", "minItems": 2, "maxItems": 1000, "items": posting},
@@ -137,7 +141,7 @@ def request_schemas() -> dict[str, Any]:
         "operation_id": text, "id": text, "kind": {"enum": ["receivable", "payable", "accrual", "credit"]},
         "account": text, "currency": {"const": "USD"}, "original_amount": amount, "as_of": day, "origin": item_origin,
         "settlement_strategy": {"enum": ["direct", "reverse"]}, "direction": {"enum": ["debit", "credit"]},
-        "counterparty": text, "reference": text, "evidence_ids": ids, "reversal_date": day, "obligation_ids": ids, "remaining_amount": amount},
+        "counterparty": text, "reference": text, "due_date": {**day, "description": "Explicit payment due date; distinct from accounting as_of. Omit when unknown."}, "evidence_ids": ids, "reversal_date": day, "obligation_ids": ids, "remaining_amount": amount},
         examples=[{"operation_id": "synthetic-payable-create", "id": "synthetic-payable", "kind": "payable",
             "account": "Liabilities:AccountsPayable", "currency": "USD", "original_amount": "100.00", "as_of": "2026-01-31",
             "origin": {"mode": "new", "source_id": "synthetic-bill", "counter_account": "Expenses:Software"},
@@ -155,7 +159,7 @@ def request_schemas() -> dict[str, Any]:
     opening_item = opening_support(["kind", "original_amount", "remaining_amount"], {
         "kind": {"enum": ["receivable", "payable", "accrual", "credit"]}, "original_amount": amount,
         "remaining_amount": amount, "settlement_strategy": {"enum": ["direct", "reverse"]},
-        "direction": {"enum": ["debit", "credit"]}})
+        "direction": {"enum": ["debit", "credit"]}, "due_date": {**day, "description": "Original explicit due date; may precede cutover."}})
     opening_schedule = opening_support(["kind", "amount", "recognized_amount", "remaining_amount", "start_date", "end_date", "method", "recognition_account"], {
         "kind": {"enum": ["prepaid", "deferred"]}, "amount": amount, "recognized_amount": amount, "remaining_amount": amount,
         "start_date": day, "end_date": {**day, "description": "Exclusive service-period end."},
@@ -286,7 +290,11 @@ def run(args: argparse.Namespace) -> int:
                 result = reports.report(entity, args.kind, as_of=args.as_of, from_date=args.from_date, to_date=args.to_date)
             else:
                 raise journals.JournalError("unsupported_operation", "Unsupported accrual operation.")
-        print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
+        if command == "report" and args.format == "text":
+            from .render import render_report
+            print(render_report(result))
+        else:
+            print(json.dumps(result, sort_keys=True, indent=2, allow_nan=False))
         return 1 if isinstance(result, dict) and result.get("status") == "blocked" else 0
     except (ValueError, PermissionError, OSError, ImportError) as exc:
         if isinstance(exc, (IntakeValidationError, journals.JournalError)):

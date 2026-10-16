@@ -35,6 +35,15 @@ balances, use the shared accrual reference and `scripts/books accrual schema`;
 these generic operations do not depend on a provider-specific skill.
 The owner should not need to know file formats, ledger syntax, or database details.
 
+Route familiar tasks directly: an unpaid bill needs an expense and amount owed;
+an annual cost needs a prepaid-expense schedule; a customer payment for future
+services may need a deferred-revenue schedule. Match later receipts and payments
+to existing balances before recording income or expense again. Use `/books-ask`
+for unpaid balances, overdue amounts, remaining prepayments, and close blockers.
+Retain provider reports for payroll or other externally calculated adjustments.
+Explain the date, business effect, payment status, and remaining balance. Resolve
+technical references internally; ask the owner only for missing business facts.
+
 Internal tool use: run bundled `scripts/books` commands yourself when needed.
 Never show shell commands, `scripts/books`, `bin/books`, plugin cache paths, or
 developer command instructions to the owner unless they explicitly ask for them.
@@ -68,7 +77,7 @@ language:
   terms unless the owner asks for technical detail.
 - **Accountant/bookkeeper** — use professional accounting language when useful:
   P&L, balance sheet, trial balance, review queue, accountant export, opening
-  balances, and cash-basis assumptions. Still avoid developer details.
+  balances, and the selected accounting basis. Still avoid developer details.
 - **Developer/tester** — it is okay to mention local folders, generated files,
   SQLite, command wrappers, and validation checks when they help explain setup.
 

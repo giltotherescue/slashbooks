@@ -48,7 +48,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
   setup looks ready and what needs attention. Avoid internal file names, database
   details, raw account codes, and accounting jargon unless they ask.
 - **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, cash basis, review queue, chart of accounts, and exports.
+  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
   Still keep product internals out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, SQLite, command
   wrappers, and validation details when they help.
@@ -128,7 +128,8 @@ scripts/books qb inventory <entity-path>/ingestion/quickbooks
 ```
 
 For remote inventory run from the intended bound directory and select the actual
-input folder under the workspace rules. Do not use metadata file put for exports.
+input folder under the workspace rules. For accrual opening, follow the separate
+durable-source staging contract in the accrual intake guide.
 
 Use command output as evidence, but summarize it in owner-friendly terms.
 

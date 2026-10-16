@@ -203,10 +203,13 @@ results for financial calculations, not agent-computed totals.
 
 ## Shared files and handoff
 
-Use file list/get and private scratch files for context. File put is only for
-allowed metadata and must use the version obtained by get. Preserve that version
+Use file list/get and private scratch files for context. Metadata file put must
+use the version obtained by get. Preserve that version
 or its CLI-managed sidecar; reread and reconcile conflicts instead of overwriting.
-Never file-put ledgers, queues, learned transaction rules, source exports or secrets.
+Never file-put ledgers, queues, learned transaction rules or secrets. The documented
+accrual opening workflow separately permits immutable source reports and their
+supporting evidence under a durable company ingestion prefix; follow the accrual
+intake guide, preserve original bytes, and use a new export folder for revisions.
 
 Use available run/checkpoint/history operations for resumable work, with concise
 facts, evidence references, unresolved decisions and next action. Record only
