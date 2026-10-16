@@ -65,7 +65,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     if path[0] in {"entity", "demo"}:
         entity.append("path")
     inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json",
-                          "evidence", "cross_check")
+                          "evidence", "supporting", "cross_check")
               if hasattr(args, name)]
     outputs = [name for name in ("output", "output_dir") if hasattr(args, name)]
     if args.work_out is not None:
@@ -94,6 +94,15 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             or path in {("coverage", "check"), ("coverage", "statement-list"),
                         ("tax", "lines"), ("tax", "map"), ("tax", "export")})
     mutates = not read and not network
+    if path[0] == "accrual":
+        mutates = path[1:] not in {("schema",), ("capabilities",), ("journal", "preview"),
+            ("journal", "correct-preview"), ("journal", "reverse-preview"), ("schedule", "preview"),
+            ("schedule", "due-preview"), ("schedule", "change-preview"), ("schedule", "list"),
+            ("item", "preview"), ("item", "settle-preview"), ("item", "adjust-preview"), ("item", "offset-preview"), ("item", "list"),
+            ("migration", "preview"), ("support", "preview"), ("report",), ("evidence-link", "preview"),
+            ("accounts",), ("receipt",), ("opening", "preview"), ("opening", "draft")}
+        if path[1:] == ("journal", "due-reversals"):
+            mutates = args.apply
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False
     if path == ("qb", "sync-import"):

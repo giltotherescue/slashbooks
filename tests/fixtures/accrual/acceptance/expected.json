@@ -1,0 +1,17 @@
+{
+  "opening": {"assets":"13600.00","liabilities":"1400.00","retained_equity":"9000.00","ytd_profit":"3200.00"},
+  "july": {"income":"100.00","expense":"740.00","net_income":"-640.00","ytd_net_income":"2560.00","assets":"12660.00","liabilities_and_equity":"12660.00"},
+  "july_balances": {
+    "Assets:Bank:Checking":"9600.00",
+    "Assets:Receivable:Accounts-Receivable":"600.00",
+    "Assets:Other:Prepaid-Insurance":"500.00",
+    "Assets:Fixed:Equipment":"2400.00",
+    "Assets:Fixed:Accumulated-Depreciation":"-440.00",
+    "Liabilities:Payable:Accounts-Payable":"-300.00",
+    "Liabilities:Other:Deferred-Revenue":"-500.00",
+    "Liabilities:Other:Payroll-Payable":"-300.00",
+    "Equity:Retained-Earnings":"-9000.00",
+    "Income:Services":"-12100.00",
+    "Expenses:Operating-Costs":"9540.00"
+  }
+}

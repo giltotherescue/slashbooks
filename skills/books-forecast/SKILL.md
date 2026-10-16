@@ -6,6 +6,13 @@ allowed-tools: Bash(scripts/books:*) Read Edit
 
 # Schedule Cash
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 Follow [shared company workspace rules](../books/references/company-workspace.md)
 before discovery or file access. Read the selected company's saved facts and
 latest timing assumptions. A remote binding requires remote commands; do not

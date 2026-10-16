@@ -8,6 +8,13 @@ description: >
 
 # Slashbooks Cloud Books
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Follow [the shared local/remote workspace rules](../books/references/company-workspace.md)
@@ -113,6 +120,9 @@ disconnected. Do not confuse a connected bank with already-imported history.
 
 Use only the delegated authority needed. `books:read` permits inspection;
 `books:write` permits authorized normal bookkeeping writes, including confirmation.
+Accrual writes additionally require the explicit `adjustments:write` scope;
+legacy books-write permission alone does not grant it. Human staff keep their
+existing write roles and client-only users remain read-only.
 Existing hosted proposal/source/run operations use their documented scopes. A
 scope does not remove company policy, trust thresholds or the need for missing
 owner/accountant judgment. Review-only keys must not confirm.
@@ -199,10 +209,13 @@ results for financial calculations, not agent-computed totals.
 
 ## Shared files and handoff
 
-Use file list/get and private scratch files for context. File put is only for
-allowed metadata and must use the version obtained by get. Preserve that version
+Use file list/get and private scratch files for context. Metadata file put must
+use the version obtained by get. Preserve that version
 or its CLI-managed sidecar; reread and reconcile conflicts instead of overwriting.
-Never file-put ledgers, queues, learned transaction rules, source exports or secrets.
+Never file-put ledgers, queues, learned transaction rules or secrets. The documented
+accrual opening workflow separately permits immutable source reports and their
+supporting evidence under a durable company ingestion prefix; follow the accrual
+intake guide, preserve original bytes, and use a new export folder for revisions.
 
 Use available run/checkpoint/history operations for resumable work, with concise
 facts, evidence references, unresolved decisions and next action. Record only

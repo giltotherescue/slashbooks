@@ -1,0 +1,17 @@
+Synthetic Services
+Trial Balance
+"As of June 30, 2026"
+Account Name,Debit,Credit
+Checking,10000,
+Accounts Receivable,1000,
+Prepaid Insurance,600,
+Equipment,2400,
+Accumulated Depreciation,,400
+Accounts Payable,,700
+Deferred Revenue,,900
+Payroll Payable,,200
+Retained Earnings,,5000
+Services,,10000
+Operating Costs,3200,
+TOTAL,17200,17200
+Accrual Basis

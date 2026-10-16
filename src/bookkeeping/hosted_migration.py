@@ -16,7 +16,8 @@ import time
 
 from .ledger.projections import render_store_ledger
 from .ledger import importer
-from .ledger.store import LedgerStore, SCHEMA_VERSION, _DDL
+from .ledger.store import LedgerStore, SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, _DDL
+from .entity import resolve_basis
 from .ledger.validator import validate
 from .remote_contract import ContractError, relative_path
 
@@ -68,6 +69,8 @@ def _signature(info):
 
 def _excluded(name):
     parts = PurePosixPath(name).parts
+    if re.fullmatch(r"backups/ledger\.sqlite\.(?:schema-v1|schema-repair)\.[0-9a-f]{32}\.sqlite", name):
+        return "runtime_state"
     if name == ".books.lock":
         return "runtime_state"
     if name == ".gitignore" or parts[0] == ".git":
@@ -277,6 +280,12 @@ class _ReadOnlyStore(LedgerStore):
 def _schema(sql):
     with closing(sqlite3.connect(":memory:")) as expected:
         expected.executescript(_DDL)
+        version = sql.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        require(version is not None and version[0] in {str(SCHEMA_VERSION), str(ACCRUAL_SCHEMA_VERSION)}, "unsupported_schema")
+        if version[0] == str(ACCRUAL_SCHEMA_VERSION):
+            from .accrual.store import TABLES, table_ddl
+            for table in TABLES:
+                expected.execute(table_ddl(table))
         tables = {row[0] for row in expected.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         require({row[0] for row in sql.execute("SELECT name FROM sqlite_master WHERE type='table'")} == tables,
                 "unsupported_schema")
@@ -313,7 +322,20 @@ def _ledger(files, report, references, blockers):
             require([row[0] for row in sql.execute("PRAGMA integrity_check")] == ["ok"], "sqlite_integrity")
             require(sql.execute("PRAGMA foreign_key_check").fetchone() is None, "sqlite_foreign_keys")
             report["checks"]["sqlite_integrity"] = True
-            require(store.get_meta("schema_version") == str(SCHEMA_VERSION), "unsupported_schema")
+            version = store.schema_version(sql)
+            require(version in {SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION}, "unsupported_schema")
+            if "entity.json" in files:
+                config = _json(files["entity.json"])
+                try:
+                    basis = resolve_basis(config)
+                    if basis == "accrual":
+                        require(config.get("accrual_capability_version") in {0, 1}, "unsupported_capability")
+                        require(version == ACCRUAL_SCHEMA_VERSION, "unsupported_schema")
+                    recorded = dict(sql.execute("SELECT key,value FROM meta WHERE key IN ('basis','accounting_basis')"))
+                    if recorded:
+                        resolve_basis(config, authoritative_basis=resolve_basis(recorded))
+                except ValueError:
+                    raise Rejected("unsupported_basis") from None
             require(store.get_meta("canonical") == "true", "noncanonical_ledger")
             require(store.get_meta("account_catalog") == "sqlite", "external_catalog_requires_review")
             report["checks"]["canonical_schema"] = True
@@ -336,6 +358,26 @@ def _ledger(files, report, references, blockers):
                                   ("audit_events", "payload_json")):
                 for row in sql.execute(f"SELECT {column} FROM {table}"):
                     _inspect(_json(row[0]), references, local)
+            if version == ACCRUAL_SCHEMA_VERSION:
+                from .accrual.store import TABLES
+                for table in TABLES:
+                    for row in sql.execute(f"SELECT version,revision,payload_json FROM accrual_{table}"):
+                        require(row[0] == 1 and row[1] > 0, "unsupported_accrual_record")
+                        payload = _json(row[2])
+                        require(isinstance(payload, dict), "unsupported_accrual_record")
+                        _inspect(payload, references, local)
+                        if table == "evidence":
+                            for reference in payload.get("envelope", {}).get("references", []):
+                                uri, digest = reference.get("uri"), reference.get("content_hash")
+                                if uri in files and digest:
+                                    require(hashlib.sha256(files[uri]).hexdigest() == digest, "evidence_hash_mismatch")
+                        if table == "coverage" and payload.get("id") == "opening":
+                            paths, hashes = payload.get("source_paths", {}), payload.get("source_hashes", {})
+                            require(isinstance(paths, dict) and isinstance(hashes, dict) and set(paths) == set(hashes),
+                                    "opening_evidence_missing")
+                            for key, name in paths.items():
+                                require(name in files and hashlib.sha256(files[name]).hexdigest() == hashes[key],
+                                        "evidence_hash_mismatch")
             blockers.update(local)
             if local & {"embedded_credentials", "custom_configuration"}:
                 for item in report["inventory"]:
@@ -451,7 +493,12 @@ def _capture(entity_dir, *, for_export=False):
                             value = _json(data)
                             require(isinstance(value, dict), "invalid_context")
                         if name == "entity.json":
-                            require(value.get("basis", value.get("accounting_basis", "cash")) == "cash", "unsupported_basis")
+                            try:
+                                basis = resolve_basis(value)
+                                if basis == "accrual":
+                                    require(value.get("accrual_capability_version") in {0, 1}, "unsupported_basis")
+                            except ValueError:
+                                raise Rejected("unsupported_basis") from None
                             require(value.get("currency", "USD") == "USD", "unsupported_currency")
                             for key in ("bank_account_mappings", "csv_account_mappings", "source_coverage"):
                                 require(key not in value or isinstance(value[key], dict), "invalid_context")

@@ -54,7 +54,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..accrual.store import SupportingMutation
 
 from ..entity import Entity, load_entity
 from .migrate import migrate_beancount_to_store
@@ -167,6 +170,8 @@ def _atomic_ledger_write(
     intent_description: str,
     source_transactions: list[dict[str, Any]] | None = None,
     finalization_receipt: dict[str, Any] | None = None,
+    supporting_mutations: Sequence[SupportingMutation] = (),
+    expected_digest: str | None = None,
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -178,6 +183,8 @@ def _atomic_ledger_write(
             intent_description=intent_description,
             source_transactions=source_transactions,
             finalization_receipt=finalization_receipt,
+            supporting_mutations=supporting_mutations,
+            expected_digest=expected_digest,
         )
 
 
@@ -190,6 +197,8 @@ def _atomic_ledger_write_unlocked(
     intent_description: str,
     source_transactions: list[dict[str, Any]] | None = None,
     finalization_receipt: dict[str, Any] | None = None,
+    supporting_mutations: Sequence[SupportingMutation] = (),
+    expected_digest: str | None = None,
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
 
@@ -202,9 +211,26 @@ def _atomic_ledger_write_unlocked(
     Returns the store seal event hash.
     """
     store = _ensure_ledger_store(entity)
+    from ..entity import resolve_basis, require_accrual
+    resolve_basis(entity.entity_config, authoritative_basis=store.get_meta("basis"))
+    current_entity = load_entity(entity.path) if (entity.path / "entity.json").exists() else entity
+    resolve_basis(entity.entity_config, authoritative_basis=resolve_basis(current_entity.entity_config))
     source_transactions = source_transactions or []
     seal_hash = ""
-    with store.transaction() as conn:
+    if supporting_mutations:
+        require_accrual(entity)
+        require_accrual(current_entity)
+    if resolve_basis(entity.entity_config) == "accrual" and new_entries:
+        from ..accrual.journals import _check_dates
+        require_accrual(current_entity)
+        _check_dates(current_entity, store, [entry.date.isoformat() for entry in new_entries], "ordinary_write")
+    with store.transaction(immediate=bool(supporting_mutations) or expected_digest is not None) as conn:
+        if supporting_mutations or expected_digest is not None:
+            integrity = check_store_integrity(store)
+            if integrity.status != "ok":
+                raise ValueError(f"Cannot publish accrual state: {integrity.message}")
+        if expected_digest is not None and store.content_digest(conn) != expected_digest:
+            raise ValueError("Stale accounting preview: canonical ledger state changed.")
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
         if finalization_receipt is not None:
@@ -224,6 +250,14 @@ def _atomic_ledger_write_unlocked(
         store.insert_opens(new_opens, conn)
         store.insert_entries(new_entries, conn)
         store.insert_source_transactions(source_transactions, conn, imported_at=ts)
+        if supporting_mutations:
+            from ..accrual.store import apply_mutations
+            apply_mutations(store, supporting_mutations, conn)
+            store.append_audit_event("supporting-records-written", {
+                "session_id": session_id,
+                "records": [{"table": m.table, "id": m.record_id,
+                             "revision": m.expected_revision + 1} for m in supporting_mutations],
+            }, conn, ts=ts)
         store.set_meta("canonical", "true", conn)
         store.set_meta("title", entity.entity_config.get("name", "Books"), conn)
         for entry in new_entries:
@@ -401,6 +435,8 @@ def _import_transactions_unlocked(
     ImportResult
     """
     _validate_normalized_transactions(normalized_txns)
+    from ..entity import resolve_basis
+    accrual = resolve_basis(entity.entity_config) == "accrual"
     # Trusted hosted runners force this at the shared boundary so every
     # connector, including legacy paths, keeps approval separate from intake.
     if intake_only or os.environ.get("SLASHBOOKS_INTAKE_ONLY") == "1":
@@ -511,6 +547,17 @@ def _import_transactions_unlocked(
             result.superseded += 1
 
         # Categorize.
+        if accrual:
+            # A learned category describes a counterparty, not whether this
+            # payment settles an existing obligation or funds future service.
+            held = dict(txn)
+            held["accrual_review_required"] = True
+            held["accrual_review_action"] = "Link a settlement/schedule, or explicitly confirm new_cash_event."
+            if _add_pending_categorization(entity, held):
+                result.pending_categorization += 1
+            else:
+                result.skipped_duplicate += 1
+            continue
         account = ""
         if categorizer is not None:
             try:
@@ -952,6 +999,8 @@ def reverse_and_correct(
 
     Returns (reversing_entry, corrected_entry_with_meta).
     """
+    from .corrections import _require_unmanaged_entry
+    _require_unmanaged_entry(entity, original_source_id)
     staging = StagingStore(entity.staging_dir)
 
     store = _ensure_ledger_store(entity)
@@ -1045,6 +1094,8 @@ def reverse_entry(
     ts: str | None = None,
 ) -> Entry:
     """Write one traceable reversing entry without modifying the original."""
+    from .corrections import _require_unmanaged_entry
+    _require_unmanaged_entry(entity, original_source_id)
     store = _ensure_ledger_store(entity)
     original = _find_live_entry(store, original_source_id)
     reversing_entry = Entry(

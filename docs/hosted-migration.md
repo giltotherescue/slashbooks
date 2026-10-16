@@ -16,7 +16,7 @@ Use an authorized staff account to create a company through the hosted UI or
 create a company-scoped agent key with `books:read` and `books:write`.
 Do not borrow another company's key or a browser session to bypass a denial.
 
-The target must have `books_revision: 0`, cash-basis USD books, no closed period,
+The target must have `books_revision: 0`, matching cash- or accrual-basis USD books, no closed period,
 and no existing engine workspace or bookkeeping records. A starter account
 catalog from company creation is allowed. Do not run `books entity init`, demo
 seeding, opening imports, or other bookkeeping writes against this target first.
@@ -44,6 +44,11 @@ CONFIG="$VERIFY/.slashbooks-remote.json"
 
 books cloud migration export --entity-dir "$SOURCE" --output "$WORK/company.zip"
 ```
+
+Accrual bundles use the supported version-2 format and retain evidence, intents,
+schedules, items, allocations, coverage, and periods; legacy cash bundles remain
+supported. The destination must support the source capability and schema. Do not
+downgrade an accrual store to a cash-only writer. See [accrual scope](accrual.md).
 
 Export is offline: it captures a coherent SQLite snapshot, inventories supported
 files and references, checks ledger/audit integrity, and records financial-report
@@ -158,9 +163,9 @@ with private evidence instead of creating a replacement write.
 
 ## Current Boundaries
 
-- Migration requires the supported canonical SQLite schema, cash basis, USD,
-  a valid core audit chain, and an empty remote target. It is not an accrual,
-  currency, schema, or accounting-policy conversion.
+- Migration requires a supported canonical SQLite schema, matching basis, USD,
+  a valid core audit chain, and an empty remote target. It does not convert basis,
+  currency, unsupported schema, or accounting policy.
 - Current file limits are 32 MiB per file and 64 MiB for captured workspace bytes,
   with fewer than 4,096 bundle files and bounded inventory/transport metadata.
   Identity mapping is limited to 10,000 entries/proposals/sources combined.

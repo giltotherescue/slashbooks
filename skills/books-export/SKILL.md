@@ -14,6 +14,13 @@ allowed-tools: Bash(scripts/books:*) Read
 
 # Export Books
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Before company discovery or file access, follow
@@ -44,7 +51,7 @@ owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
   Avoid internal file names, database details, raw account codes, and accounting
   jargon unless they ask.
 - **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, cash basis, review queue, chart of accounts, and exports.
+  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
   Still keep product internals out unless they ask.
 - **Developer/tester** — it is okay to mention local paths, SQLite, command
   wrappers, and validation details when they help.
@@ -82,9 +89,9 @@ Walk through the checklist in plain English. For each check, explain what it mea
 
 - **Review queue empty** — "All transactions have been confirmed or corrected. If
   there are items still in the queue, use `/books-review` first."
-- **Reconciliation evidence** — "Every source account has a recorded balance
-  match, the source opening balance plus activity agrees with its ending balance,
-  and no changed evidence has reopened an earlier resolution."
+- **Reconciliation supporting documents** — "Every source account has a recorded
+  balance match, the source opening balance plus activity agrees with its ending
+  balance, and no changed supporting document has reopened an earlier resolution."
 - **Equity reconciliation** — "Assets minus liabilities equals owner equity — the
   books balance."
 - **Entity metadata** — "Country, tax jurisdiction, and operating currency are
@@ -96,7 +103,7 @@ Walk through the checklist in plain English. For each check, explain what it mea
   multi-currency reporting."
 - **Payroll reports** — "If payroll is enabled, provider reports should be present
   for the period. Draft payroll journal entries must come from provider reports
-  and be accountant-confirmed."
+  and be reviewed within established human or explicit delegated authority."
 - **Year-over-year variance** — "Large swings from last year are flagged for you to
   explain to their accountant."
 
@@ -177,6 +184,12 @@ scripts/books export --entity <entity-path> --from <start-date> --to <end-date> 
 ---
 
 ## Step 4 — Explain the outputs
+
+For accrual books, explain that the package also includes customer/supplier aging,
+prepaid and deferred-revenue schedules, unpaid balances, adjusting entries, and
+the detail reconciling supported accounts. State the accounting basis, dates,
+historical summary coverage, and unresolved issues. Missing due dates remain
+unknown; unapplied credits are shown separately rather than netted against bills.
 
 When generation completes, verify the files at usable local output paths, then
 tell the owner where they are and what each contains. For remote results, retrieve

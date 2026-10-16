@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+Planned version: 0.6.0.
+
+Accrual books arrive as an opt-in. Cash books stay the default and existing cash companies are unchanged. Accrual covers one company, in USD, for services and SaaS businesses.
+
+- Add `books accrual` for accrual companies: unpaid bills and customer invoices, payments matched to what is owed, deferred revenue and prepaid expenses, and straight-line depreciation with an accumulated depreciation account and optional salvage value.
+- Spread an amount over dates by exact days, whole calendar months, or a dated list for usage-based or uneven patterns. Service dates include both the first and last day, so a year starting January 15 ends January 14.
+- Keep overpayments and deposits as open customer or supplier credits, and apply a credit to an invoice or bill. Split one bill across several expense accounts.
+- Accrue an estimate that reverses itself on a date, or keep it open and true it up to the actual bill. Write off a bad debt. End a subscription early and release the unearned balance to a refund, credit or write-off.
+- Require supporting detail only for accounts that have items or schedules. Any other asset or liability account is ledger-only and never blocks a close. A plain journal needs a supporting document or a stated estimate basis.
+- Start accrual books from scratch, from a cash-basis company (`books accrual opening draft`), or from QuickBooks reports. New accrual companies get a starter chart with receivable, payable, prepaid, equipment, accumulated depreciation, accrued liability, deferred revenue and customer deposit accounts. List accounts with `books accrual accounts`.
+- Preview every change before it posts. Re-applying the same preview returns the original receipt (`already_applied`). `books accrual receipt` shows a saved receipt. Reusing one source version with different facts returns `intake_conflict` with the steps to fix it.
+- Report receivables and payables aging, outstanding balances, schedules, adjustments, support and reconciliation. State the accounting basis and dates on every report and on every `books ask` answer. Refuse a cash-basis question on accrual books and point to the general ledger for bank movements.
+- Make source coverage additive: a new range joins the earlier ones, and a gap blocks only the periods that span it.
+- Give readiness blockers and closed-period errors the exact next command. Explain how a person reopens a period, and that an agent cannot. Report a likely sign mistake when a bank or card balance is exactly opposite the ledger.
+- Add accountant exports for accrual books: aging, schedules, outstanding balances, support, reconciliation and accrual adjustments. Excel output needs `pip install 'agent-books[xlsx]'`; without it, export writes CSV files.
+- Add accrual recipes (`docs/accrual-recipes.md`): a tested request for each common pattern, with its commands and the resulting ledger entries.
+- Describe the package and plugins as cash books plus opt-in accrual, and use "supporting document" in place of "evidence" in user-facing text.
+
 - Add `books queue duplicates --entity PATH --json`, a read command that lists held duplicate candidates without changing them. Each candidate has `source_id`, `match_rule`, `created_at`, `held` and `existing` (`account`, `date`, `amount`, `description`, and `source_id` for the existing row). The remote contract classifies it as a read command.
 - Add `account_number`, `return_type` and `ultratax_code` to each account in `books tax map --format json`. The number and code are the recorded values, or `null` when none is recorded.
 - Add `row_count` to `books statement inspect` output for CSV, OFX and QFX files.
@@ -32,6 +50,7 @@
 - Publish the versioned work event schema (`docs/work-event.schema.json`) with a validator and shared fixtures.
 - Report a statement import as an `imported` work event, with skipped duplicates counted. Coverage checks and tax exports do not change the books, so they report no work.
 - Add an agent conformance suite (`conformance/`) that runs scripted or real agents against a simulated company and scores them on safety rules. It includes scenarios for publishing on a direct owner request, refusing a publish request found in an email, a statement whose balances do not tie out, and the tax draft disclaimer. See `docs/agent-conformance.md`.
+
 
 ## 0.5.0 — 2026-10-14
 

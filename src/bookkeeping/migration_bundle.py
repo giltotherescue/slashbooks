@@ -23,7 +23,8 @@ from .remote_contract import ContractError, relative_path
 from .reports import statements
 
 FORMAT = "slashbooks-company-snapshot"
-VERSION = 1
+VERSION = 2
+LEGACY_VERSION = 1
 MAX_MANIFEST = 2 * 1024 * 1024
 MAX_FRAME_HEADER = 1024 * 1024
 TABLES = ("meta", "accounts", "entries", "postings", "balance_assertions",
@@ -184,9 +185,17 @@ def _anchors(files, inventory=None):
     _file_checks(files, references)
     _require("entity.json" in files and "ledger.sqlite" in files, "required_state_missing")
     entity = capture._json(files["entity.json"])
-    _require(entity.get("basis", entity.get("accounting_basis", "cash")) == "cash", "unsupported_basis")
+    from .entity import resolve_basis
+    try:
+        basis = resolve_basis(entity)
+        if basis == "accrual":
+            _require(entity.get("accrual_capability_version") in {0, 1}, "unsupported_basis")
+    except ValueError:
+        raise BundleError("unsupported_basis") from None
     _require(entity.get("currency", "USD") == "USD", "unsupported_currency")
-    identity = {"entity_json_sha256": _sha(files["entity.json"]), "basis": "cash", "currency": "USD"}
+    identity = {"entity_json_sha256": _sha(files["entity.json"]), "basis": basis, "currency": "USD"}
+    if basis == "accrual":
+        identity["accrual_capability_version"] = entity["accrual_capability_version"]
     for field in ("id", "name", "legal_name", "business_type", "legal_structure", "cutover_date"):
         if field in entity:
             _require((field == "cutover_date" and entity[field] is None) or
@@ -201,11 +210,22 @@ def _anchors(files, inventory=None):
     _require("ledger" in report, "ledger_validation_failed")
     with tempfile.TemporaryDirectory(prefix="slashbooks-bundle-check-") as directory:
         path = Path(directory).resolve() / "ledger.sqlite"
-        path.write_bytes(files["ledger.sqlite"])
+        # Report provenance checks read retained company-relative evidence.
+        # Recreate only the already validated private bytes inside this fresh
+        # directory, so snapshot reports have the same facts as source reports.
+        for name, data in files.items():
+            copied = Path(directory).resolve() / name
+            copied.parent.mkdir(parents=True, exist_ok=True)
+            copied.write_bytes(data)
         store = capture._ReadOnlyStore(path)
         with store.connection() as sql:
+            version = store.schema_version(sql)
+            additional = ()
+            if version == capture.ACCRUAL_SCHEMA_VERSION:
+                from .accrual.store import TABLES as supporting_tables
+                additional = tuple("accrual_" + name for name in supporting_tables)
             tables = {}
-            for table in TABLES:
+            for table in TABLES + additional:
                 order = "key" if table == "meta" else "name" if table == "sqlite_sequence" else "id"
                 rows = [dict(row) for row in sql.execute(f'SELECT * FROM "{table}" ORDER BY "{order}"')]
                 tables[table] = {"rows": len(rows), "sha256": _sha(_json_bytes(rows))}
@@ -215,26 +235,37 @@ def _anchors(files, inventory=None):
                                   ("source_transactions", "payload_json"), ("import_sessions", "metadata_json"), ("audit_events", "payload_json")):
                 for row in sql.execute(f'SELECT "{column}" FROM "{table}"'):
                     _inspect(capture._json(row[0]), references)
+            for table in additional:
+                for row in sql.execute(f'SELECT payload_json FROM "{table}"'):
+                    _inspect(capture._json(row[0]), references)
             dates = [row[0] for row in sql.execute("SELECT date FROM entries UNION SELECT date FROM balance_assertions UNION SELECT open_date FROM accounts")]
             start, end = (min(dates), max(dates)) if dates else ("1970-01-01", "1970-01-01")
             first, last = date.fromisoformat(start), date.fromisoformat(end)
+            if identity["basis"] == "accrual":
+                from .accrual.reports import opening_coverage
+                coverage = opening_coverage(sql)
+                if coverage:
+                    first = date.fromisoformat(coverage.get("summary_from") or coverage["cutover_date"])
+                    last = max(last, first)
+                    start, end = first.isoformat(), last.isoformat()
             reports = [statements._compute_pnl(sql, first, last), statements._compute_balance_sheet(sql, last),
                        statements._compute_trial_balance(sql, last), statements._compute_general_ledger(sql, first, last)]
             fingerprints = {item.kind: _sha(_json_bytes(capture._json(item.to_json()))) for item in reports}
-            ledger = {"schema_version": capture.SCHEMA_VERSION, "content_sha256": store.content_digest(sql), "tables": tables}
+            ledger = {"schema_version": version, "content_sha256": store.content_digest(sql), "tables": tables}
     _references(files, references, inventory)
     return identity, ledger, {"from": start, "to": end, "fingerprints": fingerprints}
 
 
 def _manifest(files, excluded, inventory=None):
     identity, ledger, reports = _anchors(files, inventory)
-    return {"format": FORMAT, "version": VERSION,
+    version = VERSION if ledger["schema_version"] == capture.ACCRUAL_SCHEMA_VERSION else LEGACY_VERSION
+    return {"format": FORMAT, "version": version,
             "source_entity": identity, "ledger": ledger, "reports": reports, "excluded": excluded,
             "files": [{"path": name, "size": len(data), "sha256": _sha(data)} for name, data in sorted(files.items())]}
 
 
 def _summary(manifest):
-    return {"format": VERSION, "status": "validated", "import_ready": False,
+    return {"format": manifest["version"], "status": "validated", "import_ready": False,
             "file_count": len(manifest["files"]), "total_bytes": sum(item["size"] for item in manifest["files"]),
             "manifest_sha256": _sha(_json_bytes(manifest)), "ledger_content_sha256": manifest["ledger"]["content_sha256"],
             "report_fingerprints": manifest["reports"]["fingerprints"], "blockers": []}
@@ -250,7 +281,7 @@ def validate_files(manifest, files):
         _require(isinstance(manifest, dict) and isinstance(files, dict), "invalid_bundle")
         _limits(files)
         _require(set(manifest) == {"format", "version", "source_entity", "ledger", "reports", "excluded", "files"}, "invalid_manifest")
-        _require(manifest["format"] == FORMAT and type(manifest["version"]) is int and manifest["version"] == VERSION,
+        _require(manifest["format"] == FORMAT and type(manifest["version"]) is int and manifest["version"] in {LEGACY_VERSION, VERSION},
                  "unsupported_bundle_version")
         excluded = manifest["excluded"]
         _require(isinstance(excluded, dict) and all(key in SAFE_EXCLUSIONS and type(count) is int and 0 < count <= capture.MAX_ITEMS

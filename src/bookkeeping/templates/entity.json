@@ -1,5 +1,7 @@
 {
+  "accrual_capability_version": 0,
   "bank_account_mappings": {},
+  "basis": "cash",
   "business_type": "consulting",
   "csv_account_mappings": {},
   "cutover_date": null,

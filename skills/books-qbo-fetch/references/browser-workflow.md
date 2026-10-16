@@ -75,7 +75,7 @@ state rather than fixed sleeps. Export only when all available evidence agrees:
 
 - the requested report title is visible;
 - the period or **As of** date exactly matches the plan;
-- Cash is selected where offered;
+- The confirmed company basis (Cash or Accrual) is selected where offered;
 - loading, updating, or skeleton states have ended; and
 - report rows or a ready/status message are visible.
 

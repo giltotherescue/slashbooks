@@ -5,7 +5,7 @@
 **Website: [slashbooks.org](https://slashbooks.org/)**
 
 Bookkeeping for people who keep putting it off. Your AI agent keeps the
-books current and tax-ready, so you always know where you stand.
+books current and ready for review, so you can see where you stand.
 
 **Replace QuickBooks and your outsourced bookkeeper.** Slashbooks gives you
 faster, better, cheaper financials from an AI agent you control. It runs in
@@ -14,8 +14,8 @@ just ask in plain English.
 
 It does the tedious work: set up the books, pull in bank and card activity,
 categorize the repeat transactions, close the month, answer your questions, and
-export the files your accountant needs. You only step in to help clarify the
-occasional transaction.
+export the files your accountant needs. You help clarify unfamiliar transactions,
+missing documents, and accounting choices that need your judgment.
 
 No bloated accounting app. No spreadsheet wrangling. Nothing new to learn.
 
@@ -23,36 +23,62 @@ No bloated accounting app. No spreadsheet wrangling. Nothing new to learn.
 > bookkeeper for books that were always behind, so I built a bookkeeper my AI
 > agent runs and that I control.
 
-Your books also stay yours: they live in local files you own, not a vendor's
-cloud. Slashbooks works from QuickBooks exports and live bank/card feeds (via
+Your books are local: a folder of files on your own computer, with a SQLite ledger
+you own. Slashbooks works from QuickBooks exports and live bank/card feeds (via
 BankSync) and exports the Excel/CSV files your accountant needs; it does not sync
-back to QuickBooks or Google Sheets.
+back to QuickBooks or Google Sheets. Optionally, you and your accountant can share
+the same books in a Slashbooks Cloud workspace; see
+[Local books and Slashbooks Cloud](docs/cloud.md).
 
 **[Install for Claude Cowork, Claude Code, or Codex →](#install)**
 
 ## What You Can Do
 
-- Start books for a company in an empty directory.
+- Keep cash books (the default), or opt in to accrual books to separate income and expenses from their payments.
+- Record unpaid bills and customer invoices, then match payments without counting income or expenses twice. Keep overpayments and deposits as credits and apply them to invoices.
+- Spread annual software or insurance costs across their service months, record customer prepayments as income when earned, and depreciate equipment straight-line.
+- Accrue estimates that reverse themselves or are trued up to the actual bill, and write off uncollectable invoices.
+- Record adjustments from payroll or tax provider reports and retain the supporting documents.
+- Start accrual books from scratch, from a cash-basis company, or from QuickBooks.
 - Keep the ledger in a local SQLite store you own, with Beancount-style exports
   when you need plain text.
 - Connect Stripe, Mercury, and bank feeds, or have your agent build a connector for anything else.
-- Schedule the monthly close to run on its own, with current books waiting.
+- Schedule authorized bookkeeping preparation with current books ready for review; final close requires explicit authorization.
 - Review unfamiliar transactions before they become trusted rules.
-- Ask for an analysis of anything, anytime, with every figure at hand.
-- Get any report, chart, or export on demand, without clicking around an app.
+- Ask about recorded income, expenses, unpaid balances, overdue amounts, or what needs attention before close.
+- Get financial statements, supporting schedules, charts, and accountant exports without clicking through an accounting app.
 - Collect and validate the QuickBooks Online reports needed for a migration or backtest.
 - Backtest against QuickBooks exports (prove the numbers match) before trusting a migration.
-- Export the workbook and CSV files your accountant needs at tax time.
+- Export the workbook and CSV files your accountant needs at tax time. Reconcile each bank account first; export needs a saved reconciliation.
+
+For example, ask your agent:
+
+> Record this contractor bill for July; we have not paid it yet.
+>
+> Spread this annual software payment across the months it covers.
+>
+> Match this customer receipt to what they owe us.
+>
+> Prepare July and tell me what still needs attention before we close.
+
+The agent should explain the proposed result, the supporting document, whether a
+payment is already recorded, and what balance will remain. You do not need to
+choose internal record IDs or prepare accounting input files. See the
+[accrual task guide](docs/accrual.md) for examples and supported limits, and
+[accrual recipes](docs/accrual-recipes.md) for a tested request for each pattern.
 
 ## Status
 
-Slashbooks is beta software. Use it for cash-basis owner-operated businesses only,
-review its output, and keep an accountant or tax professional in the loop.
+Slashbooks is beta software. Cash basis is the default. Accrual is opt-in and covers
+one company, in USD, for services and SaaS businesses; see
+[accrual bookkeeping](docs/accrual.md). Accrual books do not produce a cash-basis
+profit and loss; read bank movements from the general ledger.
+Review its output and use professional judgment for accounting and tax decisions.
 
 Slashbooks is not tax, legal, accounting, payroll, inventory, or investment advice.
 It doesn't replace professional review, and it isn't designed for businesses
-that need payroll, inventory, multi-user accounting controls, or full accrual
-accounting (yet). We're open to expanding what it covers; if you'd like to help,
+that need payroll or tax calculations, inventory costing, complex revenue contracts,
+or enterprise accounting controls. We're open to expanding what it covers; if you'd like to help,
 see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Start Here
@@ -62,6 +88,9 @@ To use Slashbooks for a company, read:
 - [How to do your books with Slashbooks](docs/doing-your-books.md)
 - [Accounting philosophy](docs/philosophy.md)
 - [For accountants](docs/for-accountants.md)
+- [Accrual books, reports, and close](docs/accrual.md)
+- [Accrual recipes: a tested request for each pattern](docs/accrual-recipes.md)
+- [Supporting documents and request reference](docs/accrual-intake.md)
 - [Tax handoff: source coverage and tax-preparer export](docs/tax-handoff.md)
 - [Connectors](docs/connectors.md)
 - [BankSync setup](docs/banksync.md)
@@ -139,16 +168,33 @@ codex plugin marketplace add https://github.com/giltotherescue/slashbooks
 Then restart Codex if needed, open the plugin directory, choose the Slashbooks
 marketplace, and install the plugin.
 
-### Development
+### Command line and development
+
+`pip` installs the `books` command line. The plugin, installed above, gives your
+agent the workflows (`/books` and the skills) that call it. The command line has no
+runtime dependencies; the Excel workbook export needs the optional extra
+`pip install -e '.[xlsx]'` (or `pip install 'agent-books[xlsx]'`). Without it,
+export writes the same data as CSV files.
 
 ```sh
 git clone https://github.com/giltotherescue/slashbooks slashbooks
 cd slashbooks
-pip install -e .
+pip install -e '.[xlsx]'
 python3 -m unittest discover -s tests
 ```
 
 The public command is `books`.
+
+To try accrual books locally in a new company folder:
+
+```sh
+books entity init ~/Documents/books/acme --name "Acme" --basis accrual --business-type saas --cutover-date 2026-01-01
+books accrual accounts --entity ~/Documents/books/acme --format text
+books accrual schema
+```
+
+[Accrual recipes](docs/accrual-recipes.md) walks through a request for each pattern,
+from an unpaid bill to the month-end close.
 
 To try the current checkout without installing the plugin through an app
 marketplace:
@@ -220,7 +266,11 @@ the right workflow.
 ```
 
 The agent workflows call the `books` CLI and don't compute financial totals
-themselves.
+themselves. Any assistant with CLI/API access can discover `books accrual schema`
+and use the same contracts; plugin skills are optional guidance. Persistent or
+scheduled assistants need access to the selected books and explicit delegated
+authority. Scheduling does not authorize a close, publication, or money movement.
+See [source-neutral intake and authority](docs/accrual-intake.md).
 
 ## Company Data
 
@@ -239,10 +289,10 @@ acme-co/
 ```
 
 By default, Slashbooks stores company data locally in the company directory you
-choose, and the plugin does not host your books. During onboarding you can
-instead connect a folder to Slashbooks Cloud, a hosted service where you and
-your accountant share the same books. The plugin, commands and accounting rules
-are the same in both cases. See [Local books and Slashbooks Cloud](docs/cloud.md).
+choose, and the plugin does not host your books. Optionally, during onboarding you can
+connect a folder to Slashbooks Cloud, a hosted service where you and your
+accountant share the same books. The plugin, commands and accounting rules are the
+same in both cases. See [Local books and Slashbooks Cloud](docs/cloud.md).
 
 Context and preferences live there too:
 

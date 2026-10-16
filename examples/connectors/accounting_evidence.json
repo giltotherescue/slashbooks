@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "source": {
+    "namespace": "example.services",
+    "account_id": "synthetic-provider-account",
+    "object_id": "provider-bill-001",
+    "version": "1"
+  },
+  "currency": "USD",
+  "dates": {"issued": "2026-07-31"},
+  "amounts": {"gross": "1200.00"},
+  "service_period": {"start": "2026-07-01", "end": "2026-07-31", "end_inclusive": true},
+  "observed_facts": {"description": "Synthetic service provider statement for July"},
+  "proposed_treatment": {"kind": "payable", "requires_review": true},
+  "provenance": [{"transport": "synthetic-export", "description": "Illustrative source facts; replace with verified company evidence."}]
+}

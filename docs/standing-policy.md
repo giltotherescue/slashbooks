@@ -2,7 +2,7 @@
 
 `bookkeeping.automation_policy` provides a dependency-free preflight contract for
 trusted engine integrations. `bookkeeping.preparation_runtime` applies that
-contract to supported ordinary queue commands. Neither module authenticates an
+contract to supported ordinary queue commands and explicit accrual operations. Neither module authenticates an
 executor by itself. Ordinary interactive commands retain their existing behavior.
 
 A version-1 policy names its entity, bounded accounting periods, allowed
@@ -51,7 +51,12 @@ single-account `reconcile` arguments, plus `ledger correct`,
 `ledger reclassify-bank` and `ledger split-equity`. It calls the same dispatchers
 as the CLI, with authority supplied by the embedding host. It does not read
 `.env` or reroute to another remote workspace. Batch confirmations,
-related-entity treatments, standalone reversals and other commands fail closed.
+related-entity treatments and unlisted commands fail closed. The explicit
+`accrual` command family separately supports intake, preview/apply journals,
+corrections/reversals, schedules, items/settlements, support, and opening migration
+under `adjust` authority. Its period close/reopen commands remain local-operator
+only. Use `supported_preparation_command` to discover admission rather than
+assuming an ordinary command and its accrual counterpart share permission.
 
 Imports require a trusted fingerprint for every normalized source row and reuse
 that immutable input snapshot inside the ordinary ingest dispatcher. Proposals

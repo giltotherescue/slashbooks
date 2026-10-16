@@ -945,11 +945,14 @@ class TestAccountAddSealing(unittest.TestCase):
 
         for version in ("0", "999", None):
             with self.subTest(version=version):
-                with self.store.transaction() as conn:
+                # Simulate an external/newer writer. Compatible store APIs now
+                # reject these formats at connection admission.
+                import sqlite3
+                with sqlite3.connect(self.store.path) as conn:
                     if version is None:
                         conn.execute("DELETE FROM meta WHERE key='schema_version'")
                     else:
-                        self.store.set_meta("schema_version", version, conn)
+                        conn.execute("UPDATE meta SET value=? WHERE key='schema_version'", (version,))
                 image = self.store.path.read_bytes()
                 with unittest.mock.patch("bookkeeping.ledger.importer.check_integrity",
                                          side_effect=AssertionError("Schema must be checked first")):
@@ -1060,6 +1063,73 @@ class TestAccountAddSealing(unittest.TestCase):
         loaded = load_bundle(destination)
         self.assertEqual(validate_files(loaded["manifest"], loaded["files"])["status"], "validated")
         self.assertEqual(check_integrity(load_entity(root)).status, "ok")
+
+
+class TestAccountingBasis(unittest.TestCase):
+    def test_legacy_defaults_aliases_and_authoritative_mismatch(self) -> None:
+        from bookkeeping.entity import resolve_basis, require_accrual
+        self.assertEqual(resolve_basis({}), "cash")
+        self.assertEqual(resolve_basis({"accounting_basis": "accrual"}), "accrual")
+        self.assertEqual(resolve_basis({"basis": "accrual", "accounting_basis": "accrual"}), "accrual")
+        with self.assertRaisesRegex(ValueError, "Conflicting"):
+            resolve_basis({"basis": "cash", "accounting_basis": "accrual"})
+        with self.assertRaisesRegex(ValueError, "authoritative"):
+            resolve_basis({"basis": "accrual"}, authoritative_basis="cash")
+        for version in (True, "1", -1, 2):
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, "capability version"):
+                resolve_basis({"accrual_capability_version": version})
+        for config in ({}, {"basis": "accrual"}, {"basis": "cash", "accrual_capability_version": 1}):
+            with self.subTest(config=config), self.assertRaisesRegex(ValueError, "explicit accrual"):
+                require_accrual(config)
+        require_accrual({"basis": "accrual", "accrual_capability_version": 1})
+
+    def test_explicit_accrual_init_sets_supported_capability_and_schema(self) -> None:
+        from bookkeeping.entity import require_accrual
+        from bookkeeping.ledger.store import LedgerStore
+        from bookkeeping.ledger.importer import check_integrity
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "company"
+            init_entity(root, basis="accrual")
+            entity = load_entity(root)
+            self.assertEqual(entity.basis, "accrual")
+            require_accrual(entity)
+            self.assertEqual(LedgerStore(root / "ledger.sqlite").get_meta("schema_version"), "2")
+            self.assertEqual(check_integrity(entity).status, "ok")
+            before = (root / "entity.json").read_bytes()
+            init_entity(root)
+            self.assertEqual((root / "entity.json").read_bytes(), before)
+
+    def test_empty_company_selection_and_populated_relabel_rejection(self) -> None:
+        from bookkeeping.entity import configure_basis, require_accrual
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        from decimal import Decimal
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "company"
+            init_entity(root)
+            configure_basis(root, "accrual")
+            entity = load_entity(root)
+            require_accrual(entity)
+            _atomic_ledger_write(entity, [], [Entry(date(2026, 1, 1), "Synthetic", postings=(
+                Posting("Expenses:Software", Decimal("1.00")),
+                Posting("Assets:Bank:Checking", Decimal("-1.00")),
+            ))], "synthetic", None, "Synthetic")
+            before = (root / "entity.json").read_bytes()
+            with self.assertRaisesRegex(ValueError, "populated company"):
+                configure_basis(root, "cash")
+            self.assertEqual((root / "entity.json").read_bytes(), before)
+            with self.assertRaisesRegex(ValueError, "Re-init preserves"):
+                init_entity(root, basis="cash")
+
+    def test_configuration_edit_cannot_relabel_ledger_basis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "company"
+            init_entity(root)
+            config = json.loads((root / "entity.json").read_text())
+            config.update(basis="accrual", accrual_capability_version=1)
+            (root / "entity.json").write_text(json.dumps(config))
+            with self.assertRaisesRegex(ValueError, "authoritative"):
+                load_entity(root)
 
 
 if __name__ == "__main__":

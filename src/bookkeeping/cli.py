@@ -43,6 +43,7 @@ from bookkeeping import quickbooks as quickbooks_module
 from bookkeeping import readiness as readiness_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping import remote as remote_module
+from bookkeeping.accrual import cli as accrual_module
 from bookkeeping import statement_import as statement_import_module
 from bookkeeping import work as work_module
 from bookkeeping.connectors import csvsource as csvsource_module
@@ -126,6 +127,8 @@ def _dispatch(
             return demo_module.run(args)
         if args.command == "entity":
             return entity_module.run(args)
+        if args.command == "accrual":
+            return accrual_module.run(args)
         if args.command == "ingest":
             return ingest_module.run(args)
         if args.command == "statement":
@@ -324,6 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
     taxmap_module.add_parser(subcommands)
     work_module.add_parser(subcommands)
 
+    accrual_module.add_parser(subcommands)
     return parser
 
 

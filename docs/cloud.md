@@ -1,5 +1,11 @@
 # Local Books and Slashbooks Cloud
 
+Company creation explicitly selects cash (default) or supported accrual basis.
+The existing company basis is preserved. Accrual adjustments use the same engine
+plans as local books and require explicit `adjustments:write` delegation;
+client-only access stays read-only. Period publication/locking uses the existing
+separate authority boundary. See [accrual books](accrual.md).
+
 Slashbooks is one plugin and one `books` CLI. A company's books live in one of
 two places, chosen during onboarding:
 

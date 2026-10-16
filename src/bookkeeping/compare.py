@@ -743,13 +743,19 @@ def _compare_tb(
     except Exception as exc:
         raise ValueError(f"Could not parse QuickBooks Trial Balance export {tb_path}: {exc}") from exc
 
-    if qb_tb.basis != "cash":
+    from .entity import resolve_basis
+    basis = resolve_basis(entity.entity_config)
+    if qb_tb.basis != basis:
+        if basis == "accrual":
+            raise ValueError("Trial balance basis does not match accrual company policy.")
         # Cannot compare against accrual TB — this is a blocking condition
         return [], []
 
     try:
         our_tb = stmt_tb(entity.path, to_date)
     except Exception:
+        if basis == "accrual":
+            raise
         return [], []
 
     our_debits = our_tb.totals.get("total_debits", Decimal("0.00"))
@@ -760,6 +766,28 @@ def _compare_tb(
 
     material: list[DiffRecord] = []
     immaterial: list[DiffRecord] = []
+
+    if basis == "accrual":
+        from .accrual.migration import _mapping
+        from .quickbooks import parse_chart_of_accounts
+        coa_files = _find_report_file(qb_folder, "chart_of_accounts")
+        if len(coa_files) != 1:
+            raise ValueError("Accrual trial balance comparison requires an unambiguous chart of accounts.")
+        mapping = _mapping(entity, parse_chart_of_accounts(coa_files[0]))
+        reference = {}
+        for row in qb_tb.entries:
+            if row.full_name not in mapping or mapping[row.full_name] in reference:
+                raise ValueError(f"Missing or duplicate trial balance mapping: {row.full_name}")
+            reference[mapping[row.full_name]] = row.debit - row.credit
+        ours = {row["label"].replace(" › ", ":"): row["amount"]
+                for section in our_tb.sections for row in section["rows"]}
+        for account in sorted(set(reference) | set(ours)):
+            own, ref = ours.get(account, Decimal(0)), reference.get(account, Decimal(0))
+            if own != ref:
+                # Opening reconciliation is exact: materiality cannot silently
+                # dismiss an unsupported carried balance.
+                material.append(_diff_record("tb", account, own, ref))
+        return material, []
 
     for label, ours, ref in [
         ("total_debits", our_debits, qb_debits),
@@ -1256,7 +1284,9 @@ def compare_period(
     # Readiness check — inventory assigns files to slots by period semantics,
     # so every subsequent grain can use slot.file to get the period-correct CSV
     # rather than relying on alphabetical sort order (Bug 1 fix).
-    readiness = inventory(qb_folder, from_date=from_date, to_date=to_date)
+    from .entity import resolve_basis
+    readiness = inventory(qb_folder, from_date=from_date, to_date=to_date,
+                          expected_basis=resolve_basis(entity.entity_config))
     report.readiness = readiness
 
     abs_t, pct_t = _materiality_thresholds(entity)
@@ -1543,13 +1573,15 @@ def _source_coverage(entity: Entity, from_date: date, to_date: date) -> list[dic
             continue
 
         exceptions: list[dict[str, str]] = []
-        if available_from > from_date:
+        from .entity import coverage_spans
+        spanned = coverage_spans(src, from_date, to_date)
+        if not spanned and available_from > from_date:
             exceptions.append({
                 "kind": "missing-start-coverage",
                 "from": str(from_date),
                 "to": str(min(available_from - timedelta(days=1), to_date)),
             })
-        if available_to < to_date:
+        if not spanned and available_to < to_date:
             exceptions.append({
                 "kind": "missing-end-coverage",
                 "from": str(max(available_to + timedelta(days=1), from_date)),

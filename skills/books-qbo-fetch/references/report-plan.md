@@ -1,10 +1,15 @@
 # QuickBooks report plan
 
 Use this reference to turn the user's purpose and dates into exact QuickBooks
-exports. Slashbooks currently compares cash-basis books, so use Cash wherever QBO
-offers a basis selector.
+exports. Establish the company accounting policy first, then use the same Cash
+or Accrual basis wherever QBO offers a selector. A selector alone is not policy evidence.
 
-## Full comparison, migration, backfill validation, or backtest
+## Full comparison or backtest
+
+The table describes the default cash set. For an accrual company substitute
+Accrual consistently and pass `--basis accrual`; do not claim unavailable
+pre-cutover transaction history from an opening summary. Use the dedicated
+accrual opening branch below for a same-basis migration.
 
 Let `from` and `to` be the inclusive comparison period. Let `prior` be the calendar
 day immediately before `from`.
@@ -32,7 +37,26 @@ Display columns by to Months for the canonical comparison export. A monthly P&L 
 be collected as optional supporting evidence, but it does not replace the required
 single-total report.
 
-## Opening balances only
+## Accrual opening
+
+Collect Chart of Accounts, full mapped Trial Balance and Balance Sheet as of the
+day before cutover, and fiscal YTD P&L through that date, all on Accrual basis.
+Require an explicit fiscal start and detailed A/R, A/P, prepaid/deferred and
+other non-bank control support, or dated external support that reconciles exactly.
+The full TB includes source retained equity and YTD income/expense; do not add
+derived current earnings twice or create an unexplained equity plug.
+
+```sh
+scripts/books qb inventory <entity-path>/ingestion/quickbooks --company=<confirmed-qbo-company> --cutover <YYYY-MM-DD> --basis accrual --fiscal-start <YYYY-MM-DD>
+```
+
+Stage sources durably under the selected company and return to onboarding for
+`accrual migration preview`/`apply`; inventory alone does not validate item or
+schedule detail. See [accrual intake](../../../docs/accrual-intake.md#quickbooks-opening).
+Missing dates or detail block automatic schedules and remain visible in readiness.
+Full history reconstruction and basis conversion are outside this workflow.
+
+## Cash opening balances only
 
 Let `cutover` be the first day Slashbooks will keep books and `prior` the calendar
 day immediately before it. Collect:
@@ -79,7 +103,7 @@ Slashbooks entity name unless the owner confirmed they are the same name.
 For a full comparison:
 
 ```sh
-scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+scripts/books qb inventory <entity-path>/ingestion/quickbooks --company=<confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD> --basis <cash|accrual>
 ```
 
 For opening balances only:

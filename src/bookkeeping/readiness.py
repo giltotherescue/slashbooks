@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import calendar
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 import hashlib
 import json
@@ -125,7 +125,8 @@ def _account_from_mapping(value: Any) -> str:
     return ""
 
 
-def _source_rows(config: Mapping[str, Any], start: date, end: date) -> list[dict[str, Any]]:
+def _source_rows(config: Mapping[str, Any], start: date, end: date,
+                 required_accounts: tuple[str, ...] = ()) -> list[dict[str, Any]]:
     """Normalize affirmative expected-source coverage without inferring activity."""
     coverage = config.get("source_coverage")
     coverage = coverage if isinstance(coverage, Mapping) else {}
@@ -155,7 +156,12 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date) -> list[dict
     for source, account in mapped:
         if account not in represented:
             bounds = coverage.get(source) if isinstance(coverage.get(source), Mapping) else {}
-            candidates.append({"source": source, "account": account, **bounds})
+            candidates.append({**bounds, "source": source, "account": account})
+    represented = {str(item.get("account") or "") for item in candidates}
+    for account in required_accounts:
+        if account not in represented:
+            bounds = coverage.get(account) if isinstance(coverage.get(account), Mapping) else {}
+            candidates.append({**bounds, "source": account, "account": account})
 
     rows: list[dict[str, Any]] = []
     for candidate in candidates:
@@ -167,7 +173,8 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date) -> list[dict
         try:
             available_from = date.fromisoformat(raw_from)
             available_to = date.fromisoformat(raw_to)
-            if available_from > start or available_to < end:
+            from .entity import coverage_spans
+            if not coverage_spans(candidate, start, end) and (available_from > start or available_to < end):
                 status = "partial"
         except ValueError:
             status = "missing" if not raw_from and not raw_to else "invalid"
@@ -285,6 +292,46 @@ def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool
     return result
 
 
+def _annotate_blockers(blockers: list[dict[str, Any]], path: Path, period: str, start: date, end: date,
+                       sources: list[dict[str, Any]]) -> None:
+    """Give each blocker the account/period it concerns and the exact next command."""
+    by_source = {str(row["source"]): row for row in sources}
+    for item in blockers:
+        if item.get("action"):
+            continue
+        refs = item.get("refs") or []
+        ref = str(refs[0]) if refs else ""
+        code = item["code"]
+        if code == "source_coverage_incomplete":
+            row = by_source.get(ref, {})
+            have = f"{row.get('coverage_from') or 'no date'} through {row.get('coverage_to') or 'no date'}"
+            item["message"] = (f"Source {ref} (account {row.get('account') or 'unbound'}) has recorded coverage {have}, "
+                               f"but period {period} needs {start} through {end}.")
+            item["action"] = (f'After you confirm the source covers it, run: books entity source-coverage {path} --source "{ref}" '
+                              f"--from {start} --to {end}. Coverage is additive; earlier ranges stay.")
+        elif code == "source_account_missing":
+            item["message"] = f"Source {ref} is not bound to a ledger account for period {period}."
+            item["action"] = (f'Run: books entity source-coverage {path} --source "{ref}" --from {start} --to {end} '
+                              "--account <ledger account such as Assets:Bank:Checking>")
+        elif code in {"reconciliation_missing", "reconciliation_not_clean", "opening_evidence_missing",
+                      "source_statement_incomplete", "source_evidence_provenance_missing", "cutover_opening_mismatch"}:
+            item["message"] = f"{item['message']} Account {ref}, period {period}."
+            item["action"] = (f"Run: books reconcile --entity {path} --account {ref} --source-balance <statement ending balance> --as-of {end} "
+                              f"--source-opening-balance <statement opening balance> --source-transaction-total <signed activity {start} to {end}> "
+                              f"--source-snapshot-at <ISO time you read the statement> --source-through {end} --source-evidence-ref <statement id>")
+        elif code in {"period_current", "period_future"}:
+            item["action"] = f"Wait until {period} has ended, then run: books readiness --entity {path} --period {period} --as-of {end + timedelta(days=1)}"
+        elif code == "unresolved_period_work":
+            item["message"] = f"Period {period} still has staged transactions, proposals, or duplicate decisions: {', '.join(map(str, refs[:5]))}."
+            item["action"] = f"Run: books queue list --entity {path} and confirm, correct, or withdraw each item."
+        elif code == "unresolved_questions":
+            item["message"] = f"Period {period} has unanswered accounting questions: {', '.join(map(str, refs[:5]))}."
+            item["action"] = f"Run: books queue list --entity {path}; answer each question, then rerun books readiness --entity {path} --period {period} --as-of {end + timedelta(days=1)}."
+        elif code == "source_scope_missing":
+            item["action"] = (f'Run: books entity source-coverage {path} --source "<source name>" --from {start} --to {end} '
+                              "--account <ledger account>")
+
+
 def assess_review_readiness(entity_path: Path | str, period: str,
                             dependencies: DependencyVersions, *, as_of: date) -> ReadinessAssessment:
     """Assess one immutable period snapshot without writing company state."""
@@ -294,13 +341,49 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         raise TypeError("A deterministic as_of date is required.")
     start, end = _period_dates(period)
     entity = load_entity(entity_path)
+    if entity.basis == "accrual":
+        from .accrual.reports import is_credit_card_account
+    store_path = default_store_path(entity.path)
+    partial_opening = None
+    if entity.basis == "accrual" and store_path.is_file():
+        from .accrual.reports import opening_coverage
+        with LedgerStore(store_path).connection() as conn:
+            opening = opening_coverage(conn)
+        if opening and opening.get("verified") is True and opening.get("support_status") == "reconciled":
+            cutover = date.fromisoformat(opening["cutover_date"])
+            if start < cutover <= end and opening.get("source_as_of") == (cutover - timedelta(days=1)).isoformat():
+                start, partial_opening = cutover, opening
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
+    accrual_snapshot = None
     period_status = "completed" if end < as_of else ("current" if start <= as_of <= end else "future")
     if period_status != "completed":
         blockers.append({"code": f"period_{period_status}", "message": "Final review readiness requires a completed calendar period.", "refs": [period]})
 
-    sources = _source_rows(entity.entity_config, start, end)
+    work_blockers, open_work = _open_work(entity.path, start, end)
+    blockers.extend(work_blockers)
+    question_blockers, open_questions = _question_blockers(entity.path, start, end)
+    blockers.extend(question_blockers)
+
+    ledger_balances: dict[str, Decimal] = {}
+    opening_balances: dict[str, Decimal] = {}
+    card_activity: set[str] = set()
+    account_catalog: set[str] = set()
+    if store_path.is_file():
+        store = LedgerStore(store_path)
+        account_catalog = store.load_account_names()
+        for entry in store.load_entries(to_date=end):
+            for posting in entry.postings:
+                ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
+                if entity.basis == "accrual" and entry.date >= start:
+                    if is_credit_card_account(posting.account):
+                        card_activity.add(posting.account)
+                if partial_opening and entry.date < start:
+                    opening_balances[posting.account] = opening_balances.get(posting.account, Decimal("0")) + posting.amount
+
+    if entity.basis == "accrual":
+        card_activity.update(account for account, balance in ledger_balances.items() if balance and is_credit_card_account(account))
+    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)))
 
     # Source coverage per account and day of the month (statements, feed
     # windows, declared coverage, then transaction dates).
@@ -336,21 +419,6 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             blockers.append({"code": "source_coverage_incomplete", "message": "Affirmative source coverage does not span the full period.", "refs": [ref]})
     blockers.extend(coverage_items[0])
     warnings.extend(coverage_items[1])
-
-    work_blockers, open_work = _open_work(entity.path, start, end)
-    blockers.extend(work_blockers)
-    question_blockers, open_questions = _question_blockers(entity.path, start, end)
-    blockers.extend(question_blockers)
-
-    store_path = default_store_path(entity.path)
-    ledger_balances: dict[str, Decimal] = {}
-    account_catalog: set[str] = set()
-    if store_path.is_file():
-        store = LedgerStore(store_path)
-        account_catalog = store.load_account_names()
-        for entry in store.load_entries(to_date=end):
-            for posting in entry.postings:
-                ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
 
     source_accounts = sorted({str(source["account"]) for source in sources if source["account"]})
     for account in source_accounts:
@@ -410,6 +478,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             blockers.append({"code": "reconciliation_not_clean", "message": "A source account is not cleanly reconciled with source-period integrity.", "refs": [account]})
         if opening is None or activity is None:
             blockers.append({"code": "opening_evidence_missing", "message": "Reconciliation lacks affirmative opening balance and source activity evidence.", "refs": [account]})
+        if partial_opening and opening != opening_balances.get(account, Decimal("0")):
+            blockers.append({"code": "cutover_opening_mismatch", "message": "Partial-period source opening must equal the verified ledger balance immediately before cutover.", "refs": [account, partial_opening["source_as_of"]]})
         if not snapshot_coherent or not through_complete:
             blockers.append({"code": "source_statement_incomplete", "message": "Reconciliation lacks a dated source snapshot through period end.", "refs": [account]})
         evidence_refs = record.get("source_evidence_refs")
@@ -438,15 +508,26 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         store = LedgerStore(store_path)
         try:
             ledger_digest = store.content_digest()
+            from .ledger.importer import check_store_integrity
+            if check_store_integrity(store).status != "ok":
+                blockers.append({"code": "ledger_seal_invalid", "message": "Canonical state does not match its final audited seal.", "refs": []})
             audit_errors = store.verify_audit_chain()
             validation_errors = validate(render_store_ledger(store_path))
             if audit_errors or validation_errors:
                 refs = [str(item) for item in [*audit_errors, *validation_errors][:20]]
                 blockers.append({"code": "ledger_validation_failed", "message": "The ledger or its audit chain failed deterministic validation.", "refs": refs})
             reports = _report_refs(entity.path, start, end, provisional=True)
+            if entity.basis == "accrual":
+                from .accrual.reports import support_snapshot, unresolved, opening_coverage, coverage_metadata
+                with store.connection() as conn:
+                    coverage_metadata(conn, "pnl", start, end)
+                    blockers.extend(unresolved(conn, end))
+                    accrual_snapshot = {"coverage": opening_coverage(conn), "support": support_snapshot(conn, end),
+                                        "periods": [dict(row) for row in conn.execute("SELECT * FROM accrual_periods ORDER BY id")]}
         except Exception as exc:
             blockers.append({"code": "report_validation_failed", "message": "Draft financial reports could not be validated.", "refs": [type(exc).__name__]})
 
+    _annotate_blockers(blockers, entity.path, period, start, end, sources)
     blockers = sorted(blockers, key=lambda item: (item["code"], item["refs"], item["message"]))
     warnings = sorted(warnings, key=lambda item: (item["code"], item["refs"], item["message"]))
     state = "ready_for_review" if not blockers else "blocked"
@@ -460,10 +541,13 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         "coverage": coverage,
         "reconciliations": sorted(normalized_recs, key=lambda item: str(item.get("account"))),
         "reports": reports,
+        "configuration_fingerprint": _hash({"entity": entity.entity_config, "trust_policy": entity.trust_policy}),
+        "accrual_state": accrual_snapshot,
     }
     evidence_fingerprint = _hash(snapshot)
     document: dict[str, Any] = {
         "schema_version": 1,
+        "basis": entity.basis,
         "state": state,
         "period": period,
         "period_status": period_status,
@@ -476,6 +560,10 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         "reconciliations": sorted(normalized_recs, key=lambda item: str(item.get("account"))),
         "reports": reports,
     }
+    if entity.basis == "accrual":
+        document.update(activity_from=start.isoformat(), activity_to=end.isoformat(),
+                        partial_post_cutover=partial_opening is not None,
+                        imported_summary_through=partial_opening["source_as_of"] if partial_opening else None)
     document["package_id"] = _hash(document)
     return ReadinessAssessment(document)
 

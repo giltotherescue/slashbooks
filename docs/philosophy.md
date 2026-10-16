@@ -27,18 +27,27 @@ expenses without the constant questions. You can run the monthly close on a
 schedule and have current books waiting, and at any time you can ask for an
 analysis of anything in the business, with every figure already at hand.
 
-## Cash-basis first
+## Cash by default, accrual opt-in
 
-Slashbooks is intentionally scoped to cash-basis books for small owner-operated
-businesses. That keeps the system understandable and auditable:
+Cash is the default for small owner-operated businesses. Simple single-entity USD
+services and SaaS companies can explicitly choose [accrual books](accrual.md),
+with recognition, payment, and supporting detail kept separate. The basis is a
+company policy, not a report toggle. For the cash workflow:
 
 - Bank and card activity drive the books.
 - Owner review handles judgment calls.
 - Slashbooks generates reports from a local ledger store.
 - Accountants can still review the output before tax filing.
 
-It's not trying to be payroll, inventory, revenue recognition, enterprise
-controls, tax advice, or a full accrual accounting system.
+Accrual books are opt-in and limited to one company, in USD, for services and SaaS
+businesses. They produce accrual reports. They do not produce a cash-basis profit
+and loss; bank movements are in the general ledger.
+
+The engine spreads a cost or revenue you describe over time, including straight-line
+depreciation from the cost, salvage value, and dates you give. It does not calculate
+payroll, tax, tax depreciation methods, inventory costing, or complex revenue
+contracts. Externally determined journals and exact support remain available for
+those.
 
 ## Double-entry underneath
 
@@ -48,8 +57,9 @@ accounts: money moved from somewhere and went somewhere. That's what lets the
 system check whether the books balance instead of treating categories as loose
 tags on a spreadsheet.
 
-The ledger is kept in a plain-text, double-entry format, so the records are
-standard, inspectable, and not locked inside a proprietary database. The owner
+The ledger is kept in an inspectable SQLite store with double-entry postings,
+audit events, and supporting records. Plain-text snapshots and portable bundles
+provide inspection and transfer formats. The owner
 never has to read or write that format day to day.
 
 ## The agent is not the accounting engine
@@ -61,9 +71,12 @@ The numbers come from deterministic software, not the AI. The software imports
 transactions, writes the ledger entries, validates balances, reconciles accounts,
 and generates the reports. The AI never invents totals or does the math itself.
 
-## Plain text as the source of truth
+## Canonical books and portable records
 
-The canonical books live in local plain-text files, not a proprietary database.
+Local canonical books live in SQLite with retained supporting documents. Remote books
+use the selected server workspace as their authority. A plain-text snapshot
+contains journal entries; a complete portable bundle also preserves supporting
+records, supporting documents, coverage, and period state.
 You don't need to open them day to day, but they're there whenever you
 or an accountant need to audit exactly what happened, line by line.
 
@@ -72,7 +85,7 @@ or an accountant need to audit exactly what happened, line by line.
 Slashbooks starts conservative. Unknown counterparties and ambiguous transactions
 go to the review queue. The owner confirms or corrects them in plain English.
 
-Over time, repeated confirmations teach Slashbooks how you categorize a given
+For cash books, repeated confirmations teach Slashbooks how you categorize a given
 counterparty. Once a counterparty is trusted, similar future transactions can be
 posted with less interruption. A
 correction resets trust for that pattern, so the system becomes cautious again

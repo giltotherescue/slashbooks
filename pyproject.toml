@@ -1,8 +1,8 @@
 [project]
 name = "agent-books"
-version = "0.5.0"
+version = "0.6.0"
 license = "Apache-2.0"
-description = "Slashbooks — agent-native cash-basis bookkeeping tools."
+description = "Slashbooks — agent-native bookkeeping tools: cash books and opt-in accrual for single-company USD SaaS and services."
 authors = [{ name = "Gil Hildebrand" }]
 requires-python = ">=3.11"
 dependencies = []

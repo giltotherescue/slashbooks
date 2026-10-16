@@ -133,6 +133,25 @@ class StatementResult:
         _head = self._header()
         lines.append(_head)
         lines.append("=" * len(_head))
+        if self.meta.get("basis"):
+            lines.append(f"Accounting basis: {self.meta['basis']}")
+        coverage = self.meta.get("coverage")
+        if coverage:
+            lines.append(f"Activity cutover: {coverage['cutover_date']}, opening balances as of {coverage['source_as_of']}")
+            if coverage.get("summary_from") and coverage.get("summary_to"):
+                period = f"{coverage['summary_from']} through {coverage['summary_to']}"
+                if self.kind in {"pnl", "general_ledger"}:
+                    included = "included" if self.meta.get("summary_included") else "not included in this report"
+                    lines.append(f"Imported activity summary: {period} ({included})")
+                else:
+                    lines.append(f"Retained fiscal summary coverage: {period}")
+        issues = self.meta.get("unresolved_issues", [])
+        if issues:
+            lines.append("Unresolved accounting issues:")
+            for issue in issues:
+                message = issue.get("message") or issue.get("code", "Unresolved issue").replace("_", " ")
+                refs = ", ".join(str(ref) for ref in issue.get("refs", []))
+                lines.append(f"  - {message}" + (f" [{refs}]" if refs else ""))
         for section in self.sections:
             lines.append("")
             lines.append(section.get("label", ""))
@@ -221,6 +240,10 @@ def profit_and_loss(
 
 
 def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    if from_date > to_date:
+        raise ValueError("Report start date must be on or before end date.")
+    metadata = financial_metadata(conn, "pnl", from_date, to_date)
     balances = _account_balances_in_range(conn, from_date, to_date)
 
     # Income: credit-normal → positive balance means credit → income positive
@@ -246,13 +269,13 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
 
     sections = [
         {
-            "label": "Money In",
+            "label": "Revenue" if metadata["basis"] == "accrual" else "Money In",
             "rows": income_rows,
             "total": total_income,
             "total_label": "Total Revenue",
         },
         {
-            "label": "Money Out",
+            "label": "Expenses" if metadata["basis"] == "accrual" else "Money Out",
             "rows": expense_rows,
             "total": total_expenses,
             "total_label": "Total Expenses",
@@ -265,6 +288,7 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
         to_date=to_date,
         sections=sections,
         totals={"net_income": net_income},
+        meta=metadata,
     )
 
 
@@ -287,6 +311,8 @@ def balance_sheet(
 
 
 def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = financial_metadata(conn, "balance_sheet", None, as_of)
     balances = _account_balances_as_of(conn, as_of)
 
     # Also compute net income from inception through as_of for equity section
@@ -325,6 +351,23 @@ def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
             equity_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
             total_equity_base += display
 
+    if metadata["basis"] == "accrual":
+        opening = metadata.get("coverage")
+        anchor = date.fromisoformat(opening["fiscal_start"]) if opening else date(as_of.year, 1, 1)
+        import calendar
+        fiscal_start = date(as_of.year, anchor.month, min(anchor.day, calendar.monthrange(as_of.year, anchor.month)[1]))
+        if fiscal_start > as_of:
+            fiscal_start = fiscal_start.replace(year=fiscal_start.year - 1)
+        current = _account_balances_in_range(conn, fiscal_start, as_of)
+        current_income = -sum((n for a, n in current.items() if _is_income(a) or _is_expense(a)), Decimal(0))
+        prior_income = net_income_raw - current_income
+        if prior_income:
+            equity_rows.append({"label": "Retained earnings from prior fiscal activity", "amount": prior_income, "indent": 1})
+            total_equity_base += prior_income
+        net_income_raw = current_income
+        metadata["fiscal_start"] = fiscal_start.isoformat()
+        metadata["cumulative_net_income"] = str(prior_income + current_income)
+        metadata["current_fiscal_net_income"] = str(current_income)
     # Include current-period net income as a computed line in equity
     equity_rows.append({
         "label": "Net Income (current period)",
@@ -363,6 +406,7 @@ def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
             "total_assets": total_assets,
             "total_liabilities_and_equity": total_liabilities + total_equity,
         },
+        meta=metadata,
     )
 
 
@@ -385,6 +429,8 @@ def trial_balance(
 
 
 def _compute_trial_balance(conn: Any, as_of: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = financial_metadata(conn, "trial_balance", None, as_of)
     balances = _account_balances_as_of(conn, as_of)
 
     rows = []
@@ -428,7 +474,7 @@ def _compute_trial_balance(conn: Any, as_of: date) -> StatementResult:
             "total_credits": total_credits,
             "net": total_debits - total_credits,
         },
-        meta={"raw_rows": rows},
+        meta={**metadata, "raw_rows": rows},
     )
 
 
@@ -452,11 +498,17 @@ def general_ledger(
 
 
 def _compute_general_ledger(conn: Any, from_date: date, to_date: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = financial_metadata(conn, "general_ledger", from_date, to_date)
     rows_by_account: dict[str, list[dict]] = {}
 
-    for entry_date, narration, payee, account, amount, currency in iter_postings(
-        conn, from_date=from_date, to_date=to_date
+    from ..accrual.reports import settlement_details
+    details = settlement_details(conn)
+    for entry_date, narration, payee, account, amount, currency, source_id in iter_postings(
+        conn, from_date=from_date, to_date=to_date, include_source=True
     ):
+        if source_id in details and details[source_id] not in narration:
+            narration = f"{narration}: {details[source_id]}"
         d = entry_date if isinstance(entry_date, date) else date.fromisoformat(entry_date)
         label_parts = [str(d)]
         if payee:
@@ -483,6 +535,7 @@ def _compute_general_ledger(conn: Any, from_date: date, to_date: date) -> Statem
         to_date=to_date,
         sections=sections,
         totals={},
+        meta=metadata,
     )
 
 
@@ -561,6 +614,31 @@ def _parse_period(question: str, today: date) -> tuple[Optional[date], Optional[
     year_m = re.search(r"\b(20\d{2})\b", q)
     explicit_year = int(year_m.group(1)) if year_m else today.year
 
+    # Explicit ISO range: "2026-01-01 to 2026-05-31"
+    iso = re.findall(r"\b(\d{4}-\d{2}-\d{2})\b", q)
+    if len(iso) == 2:
+        try:
+            first, last = date.fromisoformat(iso[0]), date.fromisoformat(iso[1])
+            if first <= last:
+                return first, last
+        except ValueError:
+            pass
+
+    # Month range: "January through May", "jan to may 2026", "from March - June"
+    names = "|".join(sorted(_MONTH_NAMES, key=len, reverse=True))
+    span = re.search(rf"\b({names})(?:\s+(20\d{{2}}))?\s*(?:through|thru|to|until|-|–)\s*({names})(?:\s+(20\d{{2}}))?\b", q)
+    if span:
+        first_month, last_month = _MONTH_NAMES[span.group(1)], _MONTH_NAMES[span.group(3)]
+        first_year = int(span.group(2) or span.group(4) or explicit_year)
+        last_year = int(span.group(4) or span.group(2) or explicit_year)
+        if last_year == first_year and last_month < first_month:
+            last_year += 1
+        return date(first_year, first_month, 1), date(last_year, last_month, _days_in_month(last_year, last_month))
+
+    # "last year"
+    if "last year" in q:
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+
     # "last quarter"
     if "last quarter" in q:
         return _last_quarter_dates(today)
@@ -623,7 +701,84 @@ def _extract_vendor(question: str) -> Optional[str]:
     return None
 
 
+_CASH_VIEW = re.compile(r"\bcash[- ]?(?:basis|view|method|based|accounting)\b|\bon a cash\b|\bcash[- ]profit\b|\bcash[- ]income\b|\bcash[- ]p&l\b")
+_ACCRUAL_VIEW = re.compile(r"\baccrual[- ]?(?:basis|view|method|based|accounting)\b|\bon an accrual\b|\baccrual[- ](?:profit|income|p&l)\b")
+
+
+def _without_cash_wording(question: str) -> str:
+    """Remove the cash-basis wording so the question is grammatical on the kept basis."""
+    text = re.sub(r"(?i)\b(?:on|using|in|under|with|by)\s+(?:a|the)\s+cash[- ]?(?:basis|view|method|based|accounting)\b", "", question)
+    text = re.sub(r"(?i)\b(?:a\s+|the\s+)?cash[- ]?(?:basis|view|method|based|accounting)\b", "", text)
+    text = re.sub(r"(?i)\bcash[- ](profit|income|p&l)\b", r"\1", text)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s+([?.!,;])", r"\1", text)
+    return text.strip(" ,;") or "What is my profit?"
+
+
 def ask(
+    entity_path: Path | str,
+    question: str,
+    *,
+    today: Optional[date] = None,
+) -> AskResult:
+    """Answer a question and always say which basis and period the answer covers.
+
+    A question that asks for a basis the books do not keep is refused with the
+    nearest valid report, never answered on the other basis.
+    """
+    from ..entity import load_entity, resolve_basis
+    if today is None:
+        today = date.today()
+    entity_path = Path(entity_path)
+    try:
+        kept = resolve_basis(load_entity(entity_path).entity_config)
+    except Exception:
+        kept = None
+    q_lower = question.lower()
+    from .. import ask_intents
+    cash_flow = bool(ask_intents.CASH_FLOW.search(q_lower))
+    wanted = "cash" if _CASH_VIEW.search(q_lower) or cash_flow else "accrual" if _ACCRUAL_VIEW.search(q_lower) else None
+    from_date, to_date = _parse_period(question, today)
+    named = from_date is not None
+    if from_date is None:
+        from_date, to_date = date(today.year, 1, 1), today
+    span = f"from {from_date} to {to_date}"
+    if kept and wanted and wanted != kept:
+        options = [f"- Bank movements for the period: books report general-ledger --entity {entity_path} --from {from_date} --to {to_date} (read the Assets:Bank accounts)."]
+        if kept == "accrual":
+            options.append(f"- The same period on the accrual basis: books ask --entity {entity_path} \""
+                           + (f"What was our net income from {from_date} to {to_date}?" if cash_flow else _without_cash_wording(question)) + "\"")
+            options.append(f"- Future cash only: books forecast {entity_path}")
+        text = (f"Not available: you asked for the {wanted} basis, but these books are kept on the {kept} basis, "
+                f"so no {wanted}-basis figure is computed. Period asked: {span}.\n" + "\n".join(options))
+        return AskResult(question=question, intent="unavailable_basis", answer_text=text,
+                         data={"unavailable": "basis_not_kept", "requested_basis": wanted, "books_basis": kept,
+                               "from_date": str(from_date), "to_date": str(to_date)})
+    names = ask_intents.match(question)
+    routed = None
+    if names:
+        as_of = to_date if named else today
+        routed = ask_intents.answer(entity_path, question, names, kept, as_of)
+    if routed is not None:
+        result = AskResult(question=question, intent=routed.intent, answer_text=routed.text, data=routed.data)
+        note = "" if named else " No period was named in the question, so this uses today's date."
+        result.answer_text = f"Answer covers: {kept or 'unknown'} basis, from {routed.data['from_date']} to {routed.data['to_date']}.{note}\n\n" + result.answer_text
+        result.data.setdefault("basis", kept)
+        return result
+    result = _ask_core(entity_path, question, today=today)
+    if result.intent == "unknown":
+        return result
+    answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
+    note = "" if named else " No period was named in the question, so this covers the year to date."
+    result.answer_text = (f"Answer covers: {kept or 'unknown'} basis, from {answered_from} to {answered_to}.{note}\n\n"
+                          + result.answer_text)
+    result.data.setdefault("basis", kept)
+    result.data.setdefault("from_date", answered_from)
+    result.data.setdefault("to_date", answered_to)
+    return result
+
+
+def _ask_core(
     entity_path: Path | str,
     question: str,
     *,
@@ -649,7 +804,7 @@ def ask(
     q_lower = question.lower()
 
     # --- Determine intent ---------------------------------------------------
-    is_revenue = bool(re.search(r"\b(revenue|income|sales|earned|receipts)\b", q_lower))
+    is_revenue = bool(re.search(r"\b(revenue|income|sales|earn|earned|earnings|receipts)\b", q_lower))
     is_spend = bool(re.search(r"\b(spend|spent|expenses?|cost|costs|paid|pay)\b", q_lower))
     is_draws = bool(re.search(r"\b(draw|draws|owner pay|owner draws|distribution|distributions)\b", q_lower))
     is_vendor = bool(re.search(r"\b(?:how much did we pay|how much have we paid|paid to|payments? to)\b", q_lower))
@@ -678,6 +833,40 @@ def ask(
 
     conn = open_cache(entity_path)
     try:
+        from ..accrual.reports import CoverageError, basis, financial_metadata
+        if basis(conn) == "accrual" and intent != "unknown":
+            if is_net and not is_draws and not is_vendor:
+                intent = "net_income"
+            # Use the same coverage checks and recognition totals as statements.
+            # A summarized opening cannot answer an arbitrary historical period.
+            metadata = financial_metadata(conn, "pnl", from_date, to_date)
+            context = StatementResult("pnl", from_date, to_date, meta=metadata).to_text()
+            dates = {"from_date": str(from_date), "to_date": str(to_date), "meta": metadata}
+            if intent == "vendor" or (intent in {"revenue", "spend"} and re.search(r"\b(paid|pay|payments?|receipts)\b", q_lower)):
+                return AskResult(question=question, intent=intent,
+                    answer_text="Cash payments and receipts require linked bank movements and settlement evidence. Use the general ledger and settlement reports to inspect those movements.\n\n" + context,
+                    data={**dates, "unavailable": "cash_payment_linkage_required"})
+            if intent == "draws":
+                if metadata.get("summary_included"):
+                    raise CoverageError("Owner draw activity before cutover is unavailable from the imported fiscal summary; request a post-cutover period.")
+                balances = _account_balances_in_range(conn, from_date, to_date)
+                total = sum((n for a, n in balances.items() if _is_equity(a) and re.search(r"draw|distribution|owner", a.lower())), Decimal("0.00"))
+                return AskResult(question=question, intent=intent,
+                    answer_text=f"Recorded owner draws {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + context,
+                    data={**dates, "total_draws": str(total)})
+            pnl = _compute_pnl(conn, from_date, to_date)
+            if intent == "revenue":
+                total, key, label = pnl.sections[0]["total"], "total_revenue", "Recognized revenue"
+            elif intent == "spend":
+                category = _extract_category(question)
+                total = (sum((r["amount"] for r in pnl.sections[1]["rows"] if category.lower() in r["label"].lower()), Decimal("0.00"))
+                         if category else pnl.sections[1]["total"])
+                key, label = "total_expenses", "Recognized expenses" + (f" matching '{category}'" if category else "")
+            else:
+                total, key, label = pnl.totals["net_income"], "net_income", "Net income"
+            return AskResult(question=question, intent=intent,
+                answer_text=f"{label} {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + pnl.to_text(),
+                data={**dates, key: str(total)})
         if intent == "revenue":
             balances = _account_balances_in_range(conn, from_date, to_date)
             total = sum(
@@ -827,22 +1016,8 @@ def ask(
 
         else:
             # Unknown intent — helpful guidance
-            answer = (
-                "I didn't recognise the type of question. Here's what you can ask:\n\n"
-                "  Revenue/income:\n"
-                "    'What was Q1 revenue?'\n"
-                "    'How much did we earn in January?'\n\n"
-                "  Spending:\n"
-                "    'How much did we spend on software last quarter?'\n"
-                "    'What were our total expenses this year?'\n\n"
-                "  Owner draws:\n"
-                "    'What were owner draws this month?'\n\n"
-                "  Vendor payments:\n"
-                "    'How much did we pay Acme last quarter?'\n\n"
-                "  Overall performance:\n"
-                "    'How are we doing this year?'\n"
-                "    'What is our net income for Q2?'"
-            )
+            from .. import ask_intents
+            answer = ask_intents.SUPPORTED_TEXT
             return AskResult(question=question, intent="unknown", answer_text=answer)
     finally:
         conn.close()
@@ -937,7 +1112,45 @@ def add_parser(subparsers: Any) -> None:
     ask_p.add_argument("--today", default=None, help="Override today's date (YYYY-MM-DD) for deterministic tests")
 
 
+def _coverage_failure(args: Any, exc: Exception) -> int:
+    """Print a clean coverage error with the first available date and the corrected command."""
+    first, field = getattr(exc, "first_date", None), getattr(exc, "field", None)
+    command = getattr(args, "report_command", None)
+    lines = [f"Error: {exc}"]
+    if first and command:
+        parts = [f"books report {command} --entity {args.entity}"]
+        if command in {"pnl", "general-ledger"}:
+            from_date, to_date = args.from_date, args.to_date
+            if field == "from":
+                from_date = first
+                to_date = max(to_date, first)
+            else:
+                to_date = first
+                from_date = min(from_date, first)
+            parts.append(f"--from {from_date} --to {to_date}")
+        else:
+            parts.append(f"--as-of {first}")
+        if getattr(args, "output", None):
+            parts.append(f"--output {args.output}")
+        if getattr(args, "fmt", "text") != "text":
+            parts.append(f"--format {args.fmt}")
+        lines.append(f"The first available date is {first}. Run: {' '.join(parts)}")
+    print("\n".join(lines), file=sys.stderr)
+    return 1
+
+
 def run(args: Any) -> int:
+    """Dispatch report or ask command."""
+    from ..accrual.reports import CoverageError
+    if getattr(args, "command", None) == "report":
+        try:
+            return _run(args)
+        except CoverageError as exc:
+            return _coverage_failure(args, exc)
+    return _run(args)
+
+
+def _run(args: Any) -> int:
     """Dispatch report or ask command."""
     cmd = getattr(args, "command", None)
 

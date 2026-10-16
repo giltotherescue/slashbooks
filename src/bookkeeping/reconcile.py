@@ -141,9 +141,26 @@ def _detect_causes(
     account: str,
     as_of: date,
     discrepancy: Decimal,
+    source_balance: Decimal | None = None,
+    ledger_balance: Decimal | None = None,
 ) -> list[str]:
     """Return a list of plain-English suspected cause strings."""
     causes: list[str] = []
+
+    # A source balance that is the exact opposite of the ledger balance is a
+    # sign mistake: the difference is twice the balance. The shipped sign
+    # convention (liabilities negative) stays; say how to restate the figure.
+    if (source_balance is not None and ledger_balance is not None and ledger_balance != 0
+            and source_balance == -ledger_balance):
+        corrected = f"{ledger_balance:.2f}"
+        kind = "A liability" if account.startswith("Liabilities:") else "This account"
+        causes.append(
+            f"Likely sign mistake: the difference ({_fmt(abs(discrepancy))}) is twice the balance. "
+            f"{kind} balance in the ledger is {_fmt(ledger_balance)} "
+            f"({'liabilities and amounts you owe are negative' if account.startswith('Liabilities:') else 'the sign is the ledger sign'}). "
+            f"Run again with the sign flipped: books reconcile --entity {entity_path} --account {account} "
+            f"--source-balance {corrected} --as-of {as_of.isoformat()}"
+        )
 
     # Check for pending transactions in staging/pending.json
     pending_file = entity_path / "staging" / "pending.json"
@@ -286,6 +303,11 @@ def _reconcile_unlocked(
     conn = open_cache(entity_path)
     try:
         ledger_bal = get_account_balance(conn, account, as_of)
+        from .accrual.reports import basis, coverage_metadata, reconciliation as supporting_reconciliation
+        control_support = None
+        if basis(conn) == "accrual":
+            coverage_metadata(conn, "reconciliation", None, as_of)
+            control_support = next((row for row in supporting_reconciliation(conn, as_of) if row["account"] == account), None)
     finally:
         conn.close()
 
@@ -295,13 +317,17 @@ def _reconcile_unlocked(
     if source_opening_balance is not None and source_transaction_total is not None:
         source_residual = source_opening_balance + source_transaction_total - source_balance
         source_inconsistent = abs(source_residual) >= Decimal("0.01")
+    if control_support and control_support["status"] == "unreconciled":
+        source_inconsistent = True
     is_clean = abs(discrepancy) < Decimal("0.01")
 
     status = "source-inconsistent" if source_inconsistent else ("clean" if is_clean else "discrepancy")
     causes: list[str] = []
+    if control_support and control_support["status"] == "unreconciled":
+        causes.append(control_support.get("message") or f"Supporting register differs by {control_support['difference']} USD; journal balance alone is insufficient.")
 
     if not is_clean and not source_inconsistent:
-        causes = _detect_causes(entity_path, account, as_of, discrepancy)
+        causes = _detect_causes(entity_path, account, as_of, discrepancy, source_balance, ledger_bal)
 
     rec_id = _record_id(account, as_of.isoformat())
 
@@ -336,6 +362,8 @@ def _reconcile_unlocked(
         "resolved_at": None,
         "resolution_note": None,
     }
+    if control_support:
+        record["supporting_reconciliation"] = control_support
 
     if existing_idx is not None:
         existing = records[existing_idx]
