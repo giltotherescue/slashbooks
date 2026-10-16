@@ -147,3 +147,68 @@ def apply_mutations(store: LedgerStore, mutations: Sequence[SupportingMutation],
         else:
             conn.execute(f"UPDATE {name} SET payload_json=?,revision=revision+1 WHERE id=? AND revision=?",
                          (payload, mutation.record_id, mutation.expected_revision))
+
+
+def operation_receipt(store: LedgerStore, operation_id: str) -> dict[str, Any] | None:
+    """Return the committed intent record for an operation ID, or None. Read-only."""
+    return load_record(store, "intents", "operation:" + operation_id)
+
+
+def committed_replay(store: LedgerStore, plan: Any) -> dict[str, Any] | None:
+    """Resolve a repeated apply against the committed receipt, before domain rebuild.
+
+    An exact repeat of a committed request (same kind, ID and request hash)
+    returns the original receipt with status ``already_applied`` and no new
+    effect. A different request under a committed ID is a conflict. Returns
+    None when the plan is not a recognizable plan or nothing is committed.
+    """
+    from .intake import canonical_hash
+    if not isinstance(plan, dict) or not isinstance(plan.get("id"), str) or not isinstance(plan.get("request"), dict):
+        return None
+    record = operation_receipt(store, plan["id"])
+    if record is None:
+        return None
+    request_hash = canonical_hash({"kind": plan.get("kind"), "request": plan["request"]})
+    if record.get("request_hash") != request_hash or record.get("kind") != plan.get("kind"):
+        raise ReplayConflict(plan["id"])
+    return {**record["receipt"], "status": "already_applied"}
+
+
+class ReplayConflict(ValueError):
+    def __init__(self, operation_id: str) -> None:
+        self.operation_id = operation_id
+        super().__init__(f"Operation ID {operation_id} is already committed with different facts.")
+
+
+class IntakeConflict(ValueError):
+    """Same source revision stored earlier with different facts."""
+
+    def __init__(self, existing: dict[str, Any], incoming: dict[str, Any], existing_id: str) -> None:
+        self.existing_id = existing_id
+        self.existing, self.incoming = existing, incoming
+        source = incoming["source"]
+        super().__init__(
+            f"Source {source['namespace']}/{source['object_id']} version "
+            f"{source.get('version', source.get('content_hash', ''))} is already stored (id {existing_id}) with different facts.")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"status": "blocked", "errors": [{
+            "code": "intake_conflict", "message": str(self),
+            "action": ("If the source document changed, intake it again with a new source.version (or source.content_hash). "
+                       "If the earlier intake was wrong, stored supporting documents cannot be edited: intake the corrected facts under a new source.object_id, "
+                       "then use `books accrual evidence-link preview` to tie it to the original operation. "
+                       "Never reuse the same source revision with different facts."),
+            "stored_id": self.existing_id, "stored_version": self.existing, "submitted_version": self.incoming}]}
+
+
+def check_intake_conflict(store: LedgerStore, envelope: Any) -> None:
+    """Raise IntakeConflict if the same source identity and revision exists with different facts."""
+    from .intake import facts_hash, normalize_evidence, source_identity
+    incoming = normalize_evidence(envelope)
+    identity, facts = source_identity(incoming), facts_hash(incoming)
+    for record in list_records(store, "evidence"):
+        if record.get("source_identity") == identity and record.get("facts_hash") != facts:
+            stored = record["envelope"]
+            if stored["source"] == incoming["source"]:
+                view = lambda e: {k: e.get(k) for k in ("source", "dates", "amounts", "service_period", "observed_facts", "settlement_links") if k in e}
+                raise IntakeConflict(view(stored), view(incoming), record["id"])
