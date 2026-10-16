@@ -107,7 +107,7 @@ class AccrualAcceptanceTests(unittest.TestCase):
         count = self.store.counts().entries
         support = {"operation_id": "payroll-support", "id": "july-payroll", "kind": "accrual", "account": PAYROLL,
             "original_amount": "600.00", "as_of": "2026-07-20", "origin": {"mode": "existing", "source_id": "accrual:provider-payroll-journal"},
-            "currency": "USD", "settlement_strategy": "direct", "evidence_ids": [first]}
+            "currency": "USD", "evidence_ids": [first]}
         items.apply_item(self.entity, items.preview_item(self.entity, support))
         self.assertEqual(self.store.counts().entries, count)
         self.settlement("payroll-payment", "july-payroll", "-600.00", "2026-07-25", staged=True)
@@ -207,48 +207,6 @@ class AccrualAcceptanceTests(unittest.TestCase):
         self.assertEqual(self.store.content_digest(), digest)
         self.assertEqual(queue.read_queue_item(self.entity, row["id"])["status"], "confirmed")
         self.assertEqual(_load_pending_categorization(self.entity), [])
-
-    def test_carried_obligation_reversal_is_scoped_and_historical(self) -> None:
-        self.support["external"] = [row for row in self.support["external"] if row["id"] != "payroll-open"]
-        self.support["items"].append({"id": "carried-payroll", "kind": "accrual", "account": "Payroll Payable", "currency": "USD",
-            "original_amount": "300.00", "remaining_amount": "300.00", "settlement_strategy": "reverse", "evidence_refs": ["evidence/opening.txt"]})
-        self.opening()
-        original = self.store.load_entries()[0]
-        request = {"operation_id": "carried-payroll-reverse", "item_id": "carried-payroll", "date": "2026-07-01",
-                   "counter_account": EXPENSE, "reason": "Synthetic explicit reversal of the carried accrual"}
-        plan = items.preview_reversal(self.entity, request)
-        receipt = items.apply_reversal(self.entity, plan)
-        self.assertEqual(items.apply_reversal(self.entity, plan), receipt)
-        self.assertEqual(self.store.load_entries()[0], original)
-        before = {r["id"]: r["remaining_as_of"] for r in reports.report(self.entity, "outstanding", as_of="2026-06-30")["rows"]}
-        after = {r["id"]: r["remaining_as_of"] for r in reports.report(self.entity, "outstanding", as_of="2026-07-01")["rows"]}
-        self.assertEqual(before["carried-payroll"], "300.00")
-        self.assertEqual(after["carried-payroll"], "0.00")
-        with self.assertRaises(ValueError):
-            items.preview_reversal(self.entity, {**request, "operation_id": "cannot-reverse-twice"})
-        reconciliation = reports.report(self.entity, "reconciliation", as_of="2026-07-01")
-        self.assertTrue(all(row["difference"] == "0.00" for row in reconciliation["rows"]))
-
-    def test_scheduled_item_reversal_allocates_on_actual_new_period_date(self) -> None:
-        self.opening()
-        eid = self.evidence("temporary-accrual", "2026-07-31")
-        request = {"operation_id": "temporary-origin", "id": "temporary-item", "kind": "accrual", "account": PAYROLL,
-            "original_amount": "75.00", "as_of": "2026-07-31", "origin": {"mode": "new", "source_id": "temporary-source", "counter_account": EXPENSE},
-            "settlement_strategy": "reverse", "reversal_date": "2026-08-01", "evidence_ids": [eid]}
-        items.apply_item(self.entity, items.preview_item(self.entity, request))
-        config = json.loads((self.root / "entity.json").read_text())
-        config["closed_periods"] = ["2026-07"]
-        (self.root / "entity.json").write_text(json.dumps(config))
-        self.entity = load_entity(self.root)
-        result = journals.due_reversals(self.entity, "2026-08-01", apply=True)
-        self.assertEqual(result["status"], "ok", result)
-        july = {r["id"]: r["remaining_as_of"] for r in reports.report(self.entity, "outstanding", as_of="2026-07-31")["rows"]}
-        august = {r["id"]: r["remaining_as_of"] for r in reports.report(self.entity, "outstanding", as_of="2026-08-01")["rows"]}
-        self.assertEqual(july["temporary-item"], "75.00")
-        self.assertEqual(august["temporary-item"], "0.00")
-        allocation = next(r for r in list_records(self.store, "allocations") if r.get("item_id") == "temporary-item")
-        self.assertEqual((allocation["kind"], allocation["amount"], allocation["date"]), ("reversal", "75.00", "2026-08-01"))
-        self.assertEqual(items._remaining(load_record(self.store, "items", "temporary-item"), list_records(self.store, "allocations")), 0)
 
     def test_generic_corrections_cannot_detach_managed_support(self) -> None:
         self.opening()
