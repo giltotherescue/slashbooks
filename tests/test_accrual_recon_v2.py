@@ -30,7 +30,7 @@ class ReconV2Tests(AccrualFixture):
 
     def item(self, **changes):
         request = {"operation_id": "invoice-create", "id": "invoice-1", "kind": "receivable", "account": AR,
-                   "currency": "USD", "original_amount": "1000.00", "as_of": "2026-01-01", "settlement_strategy": "direct",
+                   "currency": "USD", "original_amount": "1000.00", "as_of": "2026-01-01",
                    "origin": {"mode": "new", "source_id": "provider-invoice-1", "counter_account": INCOME},
                    "evidence_ids": [self.eid]}
         request.update(changes)
