@@ -351,8 +351,8 @@ def taught_stamp(entity: Entity, key: str, category: str) -> Optional[dict]:
     """Return the compact taught stamp for an item whose category matches."""
     taught = taught_for(entity, key)
     if taught and taught["category"] == category:
-        return {"id": taught.get("id", ""), "category": category,
-                "at": taught.get("at", ""), "by_name": taught.get("by_name", "")}
+        return {"id": taught.get("id", ""), "category": category, "at": taught.get("at", ""),
+                "by": taught.get("by", ""), "by_name": taught.get("by_name", "")}
     return None
 
 

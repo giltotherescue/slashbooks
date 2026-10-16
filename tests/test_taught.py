@@ -98,7 +98,7 @@ class TaughtCategoryTests(unittest.TestCase):
         self.assertNotIn("taught", read_queue_item(self.entity, "t1"))
         item = propose(self.entity, "t2", SOFTWARE, "taught")
         self.assertEqual(item["taught"], {"id": taught["id"], "category": SOFTWARE,
-                                          "at": "2026-10-16T10:00:00Z", "by_name": "Gil"})
+                                          "at": "2026-10-16T10:00:00Z", "by": "u1", "by_name": "Gil"})
         check_taught(self.entity, ["t1"], SOFTWARE)
 
     def test_confirm_and_correct_keep_taught_and_ramp_is_unchanged(self) -> None:
