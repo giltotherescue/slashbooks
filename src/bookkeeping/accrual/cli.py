@@ -8,6 +8,7 @@ from typing import Any
 
 from ..entity import load_entity
 from . import CAPABILITY_VERSION, journals
+from .accounts import SUBTYPE_HELP
 from .intake import IntakeValidationError, schema
 
 
@@ -53,7 +54,7 @@ def add_parser(subparsers: Any) -> None:
     report.add_argument("--from", dest="from_date")
     report.add_argument("--to", dest="to_date")
     report.add_argument("--format", choices=("json", "text"), default="json", help="JSON by default; text prints a readable accounting report")
-    accounts = commands.add_parser("accounts", help="List the chart of accounts with open dates and roles (read-only)")
+    accounts = commands.add_parser("accounts", help="List the chart of accounts with open dates, roles and subtypes (read-only). " + SUBTYPE_HELP)
     accounts.add_argument("--entity", required=True, type=Path)
     accounts.add_argument("--format", choices=("json", "text"), default="json")
     receipt = commands.add_parser("receipt", help="Show the committed receipt for an operation ID (read-only)")
