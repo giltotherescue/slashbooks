@@ -222,7 +222,7 @@ def _unexplained_message(conn, account, as_of, financial, detail, managed_ids):
     request = {"operation_id": "<new-id>", "account": account, "as_of": as_of, "currency": "USD", "mode": "residual",
                "managed_support_ids": managed_ids,
                "details": [{"id": "<detail-id>", "balance": f"{unexplained:.2f}", "description": "<what the balance is>"}],
-               "evidence_ids": ["<supporting document id from books accrual evidence>"]}
+               "evidence_ids": ["<supporting document id returned by books accrual intake>"]}
     action = (f"Explain the amount with a supporting-detail snapshot: run books accrual support preview --entity {_entity_arg(conn)} --input <file>, then books accrual support apply with the saved preview, "
               "with this request in <file>: " + json.dumps(request, sort_keys=True) + f". Or register the amount as an item (books accrual item preview --entity {_entity_arg(conn)} --input <file>) or a schedule.")
     return message, action
@@ -295,7 +295,7 @@ def unresolved(conn, as_of):
                     and not any(root.joinpath(*path.parts[:i]).is_symlink() for i in range(1, len(path.parts) + 1)))
             if not safe or not digest or hashlib.sha256((root / path).read_bytes()).hexdigest() != digest:
                 issues.append({"code": "supporting_evidence_changed", "message": f"Retained supporting document {reference} is missing or differs from its recorded hash.", "refs": [reference],
-                               "action": f"Restore the original file at {reference} inside {root}, or record a corrected supporting document with books accrual evidence preview --entity {root} --input <file>."})
+                               "action": f"Restore the original file at {reference} inside {root}, or record a corrected supporting document with books accrual intake --entity {root} --input <file>."})
     for row in reconciliation(conn, as_of):
         if row["status"] == "unreconciled":
             issues.append({"code": "control_balance_unreconciled", "message": row["message"], "action": row["action"],

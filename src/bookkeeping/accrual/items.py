@@ -370,12 +370,12 @@ def _adjustment_effect(entity: Entity, payload: Mapping[str, Any]):
         if not actual or not item or actual["id"] == item["id"] or item.get("kind") != "accrual" or actual.get("kind") not in {"receivable", "payable"} or item_sign(actual) != item_sign(item):
             raise JournalError("invalid_true_up", "A true-up links an accrual item to an actual payable (or receivable) item on the same side.",
                                "Set item_id to a kind accrual item and actual_item_id to a kind payable or receivable item.")
-        request.setdefault("source_id", operation_id)
         if "amount" not in request and item.get("status", "open") not in {"settled", "closed"}:
             request["amount"] = f"{_remaining(item, list_records(store, 'allocations')):.2f}"
     elif "actual_item_id" in request:
         raise JournalError("invalid_adjustment", "actual_item_id applies only to action true_up.")
-    source_id = _id(request.get("source_id"))
+    request.setdefault("source_id", operation_id)
+    source_id = _id(request["source_id"])
     ids = _evidence_ids(request.get("evidence_ids", []))
     if not ids and action != "true_up":
         raise JournalError("evidence_required", "Credits and writeoffs require stored supporting documents.",

@@ -328,7 +328,7 @@ def request_schemas() -> dict[str, Any]:
             "action": {"enum": ["credit", "writeoff", "true_up"], "description": "credit = reduce the item and the income or expense (discount, credit memo). writeoff = remove an uncollectable or forgiven balance. true_up = settle an accrued estimate against the actual item and record the variance; needs actual_item_id."},
             "amount": {**amount, "description": "Amount to remove from the item. Required for credit and writeoff. For true_up it defaults to the whole remaining estimate."},
             "date": day, "counter_account": {**text, "description": "Income or expense account that absorbs the adjustment."},
-            "source_id": {**text, "description": "Unique ID of this adjustment source. For true_up it defaults to operation_id."},
+            "source_id": {**text, "description": "Unique ID of this adjustment source. It defaults to operation_id for credit, writeoff and true_up."},
             "reason": text, "evidence_ids": {**ids, "description": "Stored supporting documents. Required for credit and writeoff; optional for true_up, because the actual item already carries its own."},
             "actual_item_id": {**text, "description": "Only for true_up: the receivable or payable item that holds the real amount. Variance = actual amount minus the estimate removed; it is stored on the adjustment record."}},
             description="Adjust one open item. A true-up posts Dr accrued liability, Cr expense for the estimate; the actual bill keeps its own expense, so net expense equals the actual.",
@@ -405,7 +405,10 @@ def run(args: argparse.Namespace) -> int:
                 if verb == "draft":
                     result = opening.draft_from_cash_company(entity, args.cutover)
                 elif verb == "preview":
-                    result = opening.preview_opening(entity, _input(args.input))
+                    payload = _input(args.input)
+                    if isinstance(payload, dict) and payload.get("status") == "draft" and isinstance(payload.get("request"), dict):
+                        payload = payload["request"]  # accept the `opening draft` output unchanged
+                    result = opening.preview_opening(entity, payload)
                 else:
                     plan = _input(args.input)
                     result = opening.apply_opening(entity, plan)

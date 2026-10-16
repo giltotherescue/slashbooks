@@ -839,7 +839,7 @@ books accrual opening draft --entity CASH_DIR --cutover 2026-01-01 > draft.json
 ```
 
 The draft prints a wrapper with `status`, `next_steps`, `agent_must_add` and a
-`request` object. Copy the `request` object into `opening.json`. It holds the cash
+`request` object. Edit `draft.json` and use it as `opening.json`: `opening preview` reads its `request`. It holds the cash
 balances for 2025-12-31, with prior earnings in `Equity:Retained-Earnings`. A cash
 company has no receivables or payables, so add the open invoices and bills that the
 owner provides as `items`, add receivable and payable lines, and add one balancing

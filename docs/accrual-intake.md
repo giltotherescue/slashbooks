@@ -250,8 +250,8 @@ books entity init NEW_DIR --name NAME --basis accrual --cutover-date 2026-01-01
 books accrual opening draft --entity CASH_DIR --cutover 2026-01-01 > draft.json
 ```
 
-The draft prints a wrapper (`status`, `next_steps`, `agent_must_add`, `request`). Copy
-its `request` object into `opening.json`: it holds the cash company balances for
+The draft prints a wrapper (`status`, `next_steps`, `agent_must_add`, `request`). Edit
+`draft.json` and use it as `opening.json` (`opening preview` reads its `request`): it holds the cash company balances for
 2025-12-31, with prior earnings in `Equity:Retained-Earnings`. Add the open invoices
 and bills the owner provides as `items`, the receivable and payable lines, and a
 balancing equity line, then preview and apply as above

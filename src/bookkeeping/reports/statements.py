@@ -701,6 +701,16 @@ _CASH_VIEW = re.compile(r"\bcash[- ]?(?:basis|view|method|based|accounting)\b|\b
 _ACCRUAL_VIEW = re.compile(r"\baccrual[- ]?(?:basis|view|method|based|accounting)\b|\bon an accrual\b|\baccrual[- ](?:profit|income|p&l)\b")
 
 
+def _without_cash_wording(question: str) -> str:
+    """Remove the cash-basis wording so the question is grammatical on the kept basis."""
+    text = re.sub(r"(?i)\b(?:on|using|in|under|with|by)\s+(?:a|the)\s+cash[- ]?(?:basis|view|method|based|accounting)\b", "", question)
+    text = re.sub(r"(?i)\b(?:a\s+|the\s+)?cash[- ]?(?:basis|view|method|based|accounting)\b", "", text)
+    text = re.sub(r"(?i)\bcash[- ](profit|income|p&l)\b", r"\1", text)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s+([?.!,;])", r"\1", text)
+    return text.strip(" ,;") or "What is my profit?"
+
+
 def ask(
     entity_path: Path | str,
     question: str,
@@ -730,7 +740,7 @@ def ask(
     if kept and wanted and wanted != kept:
         options = [f"- Bank movements for the period: books report general-ledger --entity {entity_path} --from {from_date} --to {to_date} (read the Assets:Bank accounts)."]
         if kept == "accrual":
-            options.append(f"- The same period on the accrual basis: books ask --entity {entity_path} \"{re.sub(r'(?i)cash[- ]?(basis|view|method|based|accounting)', '', question).strip()}\"")
+            options.append(f"- The same period on the accrual basis: books ask --entity {entity_path} \"{_without_cash_wording(question)}\"")
             options.append(f"- Future cash only: books forecast {entity_path}")
         text = (f"Not available: you asked for the {wanted} basis, but these books are kept on the {kept} basis, "
                 f"so no {wanted}-basis figure is computed. Period asked: {span}.\n" + "\n".join(options))
