@@ -295,6 +295,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     entity = load_entity(entity_path)
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
+    accrual_snapshot = None
     period_status = "completed" if end < as_of else ("current" if start <= as_of <= end else "future")
     if period_status != "completed":
         blockers.append({"code": f"period_{period_status}", "message": "Final review readiness requires a completed calendar period.", "refs": [period]})
@@ -410,12 +411,22 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         store = LedgerStore(store_path)
         try:
             ledger_digest = store.content_digest()
+            from .ledger.importer import check_store_integrity
+            if check_store_integrity(store).status != "ok":
+                blockers.append({"code": "ledger_seal_invalid", "message": "Canonical state does not match its final audited seal.", "refs": []})
             audit_errors = store.verify_audit_chain()
             validation_errors = validate(render_store_ledger(store_path))
             if audit_errors or validation_errors:
                 refs = [str(item) for item in [*audit_errors, *validation_errors][:20]]
                 blockers.append({"code": "ledger_validation_failed", "message": "The ledger or its audit chain failed deterministic validation.", "refs": refs})
             reports = _report_refs(entity.path, start, end, provisional=True)
+            if entity.basis == "accrual":
+                from .accrual.reports import support_snapshot, unresolved, opening_coverage, coverage_metadata
+                with store.connection() as conn:
+                    coverage_metadata(conn, "pnl", start, end)
+                    blockers.extend(unresolved(conn, end))
+                    accrual_snapshot = {"coverage": opening_coverage(conn), "support": support_snapshot(conn, end),
+                                        "periods": [dict(row) for row in conn.execute("SELECT * FROM accrual_periods ORDER BY id")]}
         except Exception as exc:
             blockers.append({"code": "report_validation_failed", "message": "Draft financial reports could not be validated.", "refs": [type(exc).__name__]})
 
@@ -430,10 +441,13 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         "open_questions": open_questions,
         "reconciliations": sorted(normalized_recs, key=lambda item: str(item.get("account"))),
         "reports": reports,
+        "configuration_fingerprint": _hash({"entity": entity.entity_config, "trust_policy": entity.trust_policy}),
+        "accrual_state": accrual_snapshot,
     }
     evidence_fingerprint = _hash(snapshot)
     document: dict[str, Any] = {
         "schema_version": 1,
+        "basis": entity.basis,
         "state": state,
         "period": period,
         "period_status": period_status,

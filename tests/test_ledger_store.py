@@ -56,6 +56,42 @@ class LedgerStoreTests(unittest.TestCase):
                 row = conn.execute("SELECT amount FROM postings WHERE amount = ?", ("123.45",)).fetchone()
             self.assertIsNotNone(row)
 
+    def test_legacy_cash_columns_are_repaired_with_verified_backup_and_seal(self) -> None:
+        from src.bookkeeping.ledger.importer import check_store_integrity
+        with tempfile.TemporaryDirectory() as tmp:
+            store = LedgerStore(Path(tmp) / "ledger.sqlite")
+            store.initialize()
+            with store.transaction() as conn:
+                store.insert_entries([_entry()], conn)
+                conn.execute("ALTER TABLE entries DROP COLUMN session")
+                conn.execute("ALTER TABLE entries DROP COLUMN late_arrival")
+                store.append_audit_event("ledger-store-sealed", {"store_sha256": store.content_digest(conn)}, conn)
+            digest = store.content_digest()
+            self.assertEqual(check_store_integrity(store).status, "ok")
+            history = store.load_audit_events()
+            store.initialize()
+            self.assertEqual(store.get_meta("schema_version"), "1")
+            self.assertEqual(store.load_audit_events()[:len(history)], history)
+            self.assertEqual(store.load_entries()[0].postings[0].amount, Decimal("10.00"))
+            self.assertEqual(check_store_integrity(store).status, "ok")
+            backups = list((Path(tmp) / "backups").glob("*.sqlite"))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual(LedgerStore(backups[0]).content_digest(), digest)
+
+    def test_legacy_column_repair_rejects_bad_seal_before_schema_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = LedgerStore(Path(tmp) / "ledger.sqlite")
+            store.initialize()
+            with store.transaction() as conn:
+                conn.execute("ALTER TABLE entries DROP COLUMN session")
+                store.append_audit_event("ledger-store-sealed", {"store_sha256": "0" * 64}, conn)
+            with store.connection() as conn:
+                before = list(conn.iterdump())
+            with self.assertRaisesRegex(ValueError, "Cannot repair legacy ledger"):
+                store.initialize()
+            with store.connection() as conn:
+                self.assertEqual(list(conn.iterdump()), before)
+
     def test_default_and_immediate_transactions_commit_with_expected_reservation(self) -> None:
         for immediate in (False, True):
             with self.subTest(immediate=immediate), tempfile.TemporaryDirectory() as tmp:

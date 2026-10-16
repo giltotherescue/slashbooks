@@ -1362,6 +1362,8 @@ def inventory(
     to_date: Optional[date] = None,
     cutover: Optional[date] = None,
     company: Optional[str] = None,
+    expected_basis: str = "cash",
+    fiscal_start: Optional[date] = None,
 ) -> ReadinessReport:
     """Fingerprint all CSV/XLSX exports in *folder* and produce a readiness report.
 
@@ -1372,6 +1374,8 @@ def inventory(
 
     Returns a ReadinessReport with deterministic JSON output.
     """
+    if expected_basis not in {"cash", "accrual"}:
+        raise ValueError("Expected accounting basis must be cash or accrual.")
     if (from_date is None) != (to_date is None):
         raise ValueError("from_date and to_date must be supplied together")
     if cutover is not None and from_date is not None:
@@ -1393,6 +1397,11 @@ def inventory(
     expected_reports = (
         _EXPECTED_REPORTS[:3] if cutover is not None else _EXPECTED_REPORTS
     )
+    if cutover is not None and expected_basis == "accrual":
+        expected_reports = [*_EXPECTED_REPORTS[:3], "profit_and_loss"]
+        candidates = [fp for fp in fingerprints if fp.report_type == "profit_and_loss"]
+        if candidates:
+            slot_map["profit_and_loss"] = max(candidates, key=lambda fp: _fp_end_date(fp) or date.min)
     known_companies = [
         fp.company for fp in fingerprints
         if fp.report_type != "chart_of_accounts" and fp.company
@@ -1442,9 +1451,14 @@ def inventory(
             block_reason = (
                 f"The export is for {fp.company!r}, not {expected_company!r}."
             )
-        elif key != "chart_of_accounts" and fp.basis != "cash":
+        elif key != "chart_of_accounts" and fp.basis != expected_basis:
             detected = fp.basis.title() if fp.basis else "unknown"
-            if key == "trial_balance":
+            if expected_basis == "accrual":
+                block_reason = (
+                    f"The report basis is {detected}; the target policy requires Accrual. "
+                    "Resolve source policy before importing; changing a report toggle does not convert books."
+                )
+            elif key == "trial_balance":
                 block_reason = (
                     f"Trial Balance is {detected} Basis. Re-export it from QuickBooks "
                     "with 'Cash Basis' selected, or use the cash-basis Balance Sheet "
@@ -1479,6 +1493,10 @@ def inventory(
                     f"The report as-of date is {fp.date_range!r}; expected "
                     f"{prior_end.isoformat()}."
                 )
+        elif cutover is not None and expected_basis == "accrual" and key == "profit_and_loss":
+            actual_start, actual_end = parse_qb_date_range(fp.date_range)
+            if fiscal_start is None or actual_end != prior_end or (fiscal_start != cutover and actual_start != fiscal_start):
+                block_reason = "Accrual opening P&L requires explicit fiscal start and exact source coverage through the day before cutover."
 
         if block_reason:
             slots.append(ReadinessSlot(
@@ -1571,6 +1589,15 @@ def invalid_opening_entries(entity, *, cutover: date | None = None) -> list[str]
         metadata = dict(entry.meta)
         if metadata.get("import-source") != "quickbooks-opening":
             continue
+        if metadata.get("accrual-opening") == "true":
+            from .entity import resolve_basis
+            from .accrual.store import load_record
+            coverage = load_record(store, "coverage", metadata.get("coverage-id", ""))
+            if (resolve_basis(entity.entity_config) == "accrual" and coverage
+                    and coverage.get("verified") is True and coverage.get("support_status") == "reconciled"
+                    and coverage.get("opening_source_id") == entry.source_id
+                    and coverage.get("source_as_of") == entry.date.isoformat()):
+                continue
         if cutover is not None and entry.date != cutover:
             continue
         if (
@@ -1626,6 +1653,9 @@ def import_opening(
     *,
     _store=None,
     _conn=None,
+    fiscal_start=None,
+    supporting=None,
+    closed_position=False,
 ) -> ImportResult:
     """Post opening balances from a cash-basis trial balance.
 
@@ -1649,6 +1679,20 @@ def import_opening(
     from .ledger.store import LedgerStore, default_store_path
     from .ledger.writer import render_ledger
     from .ledger.validator import validate
+
+    from .entity import resolve_basis
+    if resolve_basis(entity.entity_config) == "accrual":
+        from .accrual import migration
+        try:
+            if source != "trial-balance" or _store is not None or _conn is not None:
+                raise ValueError("Accrual openings require the reconciled full trial-balance preview/apply path.")
+            plan = migration.preview(entity, folder, cutover, fiscal_start=fiscal_start, supporting=supporting,
+                                     closed_position=closed_position)
+            result = migration.apply(entity, plan)
+            return ImportResult(result["entries_written"], len(plan["balances"]),
+                                str(default_store_path(entity.path)), str(entity.coa_path))
+        except ValueError as exc:
+            return ImportResult(0, 0, str(default_store_path(entity.path)), str(entity.coa_path), [str(exc)], False)
 
     folder = Path(folder)
     report = inventory(folder)
@@ -2135,6 +2179,10 @@ def add_parser(subparsers) -> None:
         "--company",
         help="Expected QuickBooks company name",
     )
+    inv_parser.add_argument("--basis", choices=["cash", "accrual"], default="cash", dest="expected_basis",
+                            help="Expected established source/target basis; never changes company policy")
+    inv_parser.add_argument("--fiscal-start", type=date.fromisoformat,
+                            help="Evidenced fiscal start for accrual opening coverage")
 
     # import-opening <folder> --entity <path> --cutover YYYY-MM-DD
     imp_parser = qb_sub.add_parser(
@@ -2189,6 +2237,8 @@ def run(args) -> int:
             to_date=args.to_date,
             cutover=args.cutover,
             company=args.company,
+            expected_basis=getattr(args, "expected_basis", "cash"),
+            fiscal_start=getattr(args, "fiscal_start", None),
         )
         if args.as_json:
             print(json.dumps(report.to_dict(), indent=2))

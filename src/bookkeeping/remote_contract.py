@@ -55,7 +55,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     entity = [name for name in ("entity", "entity_path") if hasattr(args, name)]
     if path[0] in {"entity", "demo"}:
         entity.append("path")
-    inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json")
+    inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json", "supporting")
               if hasattr(args, name)]
     outputs = [name for name in ("output", "output_dir") if hasattr(args, name)]
     if path == ("ledger", "snapshot"):
@@ -76,6 +76,14 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                         ("queue", "split-template-list"), ("queue", "transfer-candidates"),
                         ("queue", "transfer-exceptions")})
     mutates = not read and not network
+    if path[0] == "accrual":
+        mutates = path[1:] not in {("schema",), ("capabilities",), ("journal", "preview"),
+            ("journal", "correct-preview"), ("journal", "reverse-preview"), ("schedule", "preview"),
+            ("schedule", "due-preview"), ("schedule", "change-preview"), ("schedule", "list"),
+            ("item", "preview"), ("item", "settle-preview"), ("item", "adjust-preview"), ("item", "reverse-preview"), ("item", "list"),
+            ("migration", "preview"), ("support", "preview"), ("report",), ("evidence-link", "preview")}
+        if path[1:] == ("journal", "due-reversals"):
+            mutates = args.apply
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False
     if path == ("qb", "repair-opening") and not args.apply:

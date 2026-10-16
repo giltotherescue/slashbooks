@@ -217,6 +217,9 @@ def eligible_for_autopost(entity: Entity, counterparty_key: str) -> bool:
     canonical_category auto-posts (count still acts as a ceiling — False means
     the owner has disabled the ramp entirely as a global kill-switch).
     """
+    from .entity import resolve_basis
+    if resolve_basis(entity.entity_config) == "accrual":
+        return False
     threshold = entity.auto_post_threshold
     queue_all = bool(entity.trust_policy.get("queue_all_until_confirmed", True))
 
@@ -1380,9 +1383,10 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
 
 
 @_locked_queue_mutation
-def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None) -> dict:
+def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None, *, accrual_treatment: str | None = None) -> dict:
     """Approve and post a prepared split without an interim single-category entry."""
     item = _load_item(entity, item_id)
+    _require_accrual_cash_treatment(entity, item, accrual_treatment)
     if item.get("proposal_type") != "split":
         raise ValueError(f"Queue item '{item_id}' is not a split proposal.")
     if item.get("status") not in {"open", "reopened"}:
@@ -1748,6 +1752,22 @@ def _validate_related_entity_proposal(entity: Entity, item: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _require_accrual_cash_treatment(entity: Entity, item: dict, treatment: str | None) -> None:
+    from .entity import resolve_basis
+    if resolve_basis(entity.entity_config) != "accrual":
+        return
+    if treatment != "new_cash_event":
+        raise ValueError("Accrual bank activity needs an explicit treatment: link an outstanding item/schedule, or confirm --accrual-treatment new_cash_event for a new current-period event.")
+    from .accrual.store import list_records
+    from .ledger.store import LedgerStore
+    store = LedgerStore(entity.path / "ledger.sqlite")
+    source_id = str(item.get("source_id") or "")
+    if any(row.get("origin", {}).get("source_id") == source_id for table in ("items", "schedules")
+           for row in list_records(store, table)):
+        raise ValueError("This source already owns an accrual item/schedule; link its existing financial effect instead of posting a new cash event.")
+    item["accrual_treatment"] = treatment
+
+
 def _write_confirmed_entry(
     entity: Entity,
     txn: dict,
@@ -1755,6 +1775,7 @@ def _write_confirmed_entry(
     session_id: str,
     ts: Optional[str] = None,
     finalization_receipt: dict[str, Any] | None = None,
+    accrual_treatment: str | None = None,
 ) -> None:
     """Build an Entry for a confirmed queue item and write it via the importer's atomic path.
 
@@ -1794,6 +1815,8 @@ def _write_confirmed_entry(
         ("source-id", source_id),
         ("import-session", session_id),
     ]
+    if accrual_treatment:
+        meta.append(("accrual-treatment", accrual_treatment))
 
     bank_posting = Posting(account=bank_account, amount=amount, currency="USD")
     category_posting = Posting(account=category, amount=-amount, currency="USD")
@@ -1899,6 +1922,7 @@ def confirm(
     ts: Optional[str] = None,
     *,
     learn: bool = True,
+    accrual_treatment: str | None = None,
 ) -> dict:
     """Confirm a queued item; learn from human reviews by default.
 
@@ -1910,9 +1934,11 @@ def confirm(
     item = _load_item(entity, item_id)
 
     if item.get("proposal_type") == "split":
-        return confirm_split(entity, item_id, session_id, ts=ts)
+        return confirm_split(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment)
     if item.get("proposal_type") == "transfer-pair":
         return confirm_transfer(entity, item_id, session_id, ts=ts)
+
+    _require_accrual_cash_treatment(entity, item, accrual_treatment)
 
     if item.get("status") not in ("open", "reopened"):
         raise ValueError(
@@ -1957,7 +1983,7 @@ def confirm(
         item, [txn], session_id, "confirmed", category, completed_at
     )
     _write_confirmed_entry(
-        entity, txn, category, session_id, ts=ts, finalization_receipt=receipt
+        entity, txn, category, session_id, ts=ts, finalization_receipt=receipt, accrual_treatment=accrual_treatment
     )
 
     # Remove from pending-categorization
@@ -2062,7 +2088,7 @@ def withdraw(entity: Entity, item_id: str, note: str = "", ts: Optional[str] = N
 
 
 @_locked_queue_mutation
-def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[str] = None) -> list[dict]:
+def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[str] = None, *, accrual_treatment: str | None = None) -> list[dict]:
     """Confirm all open proposals with one explicitly selected category.
 
     The caller must propose the group first, so the operation is auditable and
@@ -2075,7 +2101,7 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
     ]
     if not item_ids:
         raise ValueError(f"No open proposals found for category '{category}'.")
-    return [confirm(entity, item_id, session_id, ts=ts) for item_id in item_ids]
+    return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
 
 
 # ---------------------------------------------------------------------------
@@ -2489,16 +2515,20 @@ def add_parser(subparsers: Any) -> None:
     conf_p.add_argument("--entity", required=True, help="Path to entity directory")
     conf_p.add_argument("--item", required=True, dest="item_id", help="Queue item ID (source ID)")
     conf_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    conf_p.add_argument("--accrual-treatment", choices=["new_cash_event"], default=None,
+                        help="Explicitly classify this accrual-company payment as a new current-period cash event")
 
     confirm_group_p = queue_sub.add_parser("confirm-group", help="Confirm every open proposal for one category")
     confirm_group_p.add_argument("--entity", required=True, help="Path to entity directory")
     confirm_group_p.add_argument("--category", required=True, help="Proposed ledger account to confirm")
     confirm_group_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    confirm_group_p.add_argument("--accrual-treatment", choices=["new_cash_event"], default=None)
 
     confirm_split_p = queue_sub.add_parser("confirm-split", help="Confirm and post a proposed split")
     confirm_split_p.add_argument("--entity", required=True, help="Path to entity directory")
     confirm_split_p.add_argument("--item", required=True, dest="item_id", help="Split queue item ID")
     confirm_split_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    confirm_split_p.add_argument("--accrual-treatment", choices=["new_cash_event"], default=None)
     confirm_transfer_p = queue_sub.add_parser("confirm-transfer", help="Confirm and post a proposed transfer pair")
     confirm_transfer_p.add_argument("--entity", required=True, help="Path to entity directory")
     confirm_transfer_p.add_argument("--item", required=True, dest="item_id", help="Transfer-pair queue item ID")
@@ -2691,7 +2721,7 @@ def run(args: Any) -> int:
 
         elif qcmd == "confirm":
             try:
-                item = confirm(entity, args.item_id, args.session_id)
+                item = confirm(entity, args.item_id, args.session_id, accrual_treatment=getattr(args, "accrual_treatment", None))
                 print(f"Confirmed: {item['source_id']} → {item['confirmed_category']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
@@ -2700,7 +2730,7 @@ def run(args: Any) -> int:
 
         elif qcmd == "confirm-group":
             try:
-                items = confirm_group(entity, args.category, args.session_id)
+                items = confirm_group(entity, args.category, args.session_id, accrual_treatment=getattr(args, "accrual_treatment", None))
                 print(f"Confirmed {len(items)} item(s) → {args.category}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
@@ -2709,7 +2739,7 @@ def run(args: Any) -> int:
 
         elif qcmd == "confirm-split":
             try:
-                item = confirm_split(entity, args.item_id, args.session_id)
+                item = confirm_split(entity, args.item_id, args.session_id, accrual_treatment=getattr(args, "accrual_treatment", None))
                 print(f"Confirmed split: {item['source_id']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:

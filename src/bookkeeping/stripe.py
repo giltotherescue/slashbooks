@@ -413,6 +413,9 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
     arrays. Expanded BT source objects are also accepted. Invoice lines must be
     complete; partial payments, taxes, discounts and credits are held, not guessed.
     """
+    from .entity import resolve_basis
+    if resolve_basis(entity.entity_config) == 'accrual':
+        raise ValueError('Cash-only Stripe posting is unavailable for accrual companies. Capture provider evidence with books accrual intake, then preview a journal/schedule/settlement with the explicit accounting treatment.')
     pending, opens, posted, reversed_ids, owned = _state(entity)
     _policy(policy, opens)
     if type(limit) is not int or not 1 <= limit <= 500 or not isinstance(after_source_id, str):

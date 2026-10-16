@@ -59,7 +59,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Generator, Iterator, Optional
 
-from ..ledger.store import default_store_path
+from ..ledger.store import LedgerStore, default_store_path
 from ..ledger.validator import parse_ledger, validate
 
 
@@ -446,7 +446,10 @@ def open_cache(entity_path: Path | str, *, auto_regenerate: bool = True) -> sqli
 
     store_path = default_store_path(entity_path)
     if _store_is_current(entity_path):
-        conn = sqlite3.connect(str(store_path))
+        if (entity_path / "entity.json").is_file():
+            from ..entity import load_entity
+            load_entity(entity_path)
+        conn = LedgerStore(store_path).connect()
         conn.execute("PRAGMA query_only=ON")
         conn.row_factory = sqlite3.Row
         return conn

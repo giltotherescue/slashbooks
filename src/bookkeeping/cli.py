@@ -42,6 +42,7 @@ from bookkeeping import quickbooks as quickbooks_module
 from bookkeeping import readiness as readiness_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping import remote as remote_module
+from bookkeeping.accrual import cli as accrual_module
 from bookkeeping.connectors import csvsource as csvsource_module
 from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
@@ -94,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
             return demo_module.run(args)
         if args.command == "entity":
             return entity_module.run(args)
+        if args.command == "accrual":
+            return accrual_module.run(args)
         if args.command == "ingest":
             return ingest_module.run(args)
         if args.command == "forecast":
@@ -277,6 +280,7 @@ def build_parser() -> argparse.ArgumentParser:
     queue_module.add_parser(subcommands)
     workbook_module.add_parser(subcommands)
 
+    accrual_module.add_parser(subcommands)
     return parser
 
 

@@ -13,7 +13,8 @@ import hashlib
 import json
 import os
 import sqlite3
-from contextlib import contextmanager
+import uuid
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -23,6 +24,9 @@ from typing import Any, Iterator, Sequence
 from .model import Balance, Entry, Open, Posting
 
 SCHEMA_VERSION = 1
+# Cash stores retain their v1 digest until an explicit, backed-up upgrade.
+ACCRUAL_SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION})
 STORE_FILENAME = "ledger.sqlite"
 
 
@@ -169,7 +173,33 @@ class LedgerStore:
         conn = sqlite3.connect(str(self.path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
+        try:
+            self.schema_version(conn)
+        except Exception:
+            conn.close()
+            raise
         return conn
+
+    def schema_version(self, conn: sqlite3.Connection | None = None) -> int | None:
+        """Admit known formats before any read or write can reinterpret data."""
+        if conn is None:
+            with self.connection() as tx:
+                return self.schema_version(tx)
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").fetchone():
+            return None
+        row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        try:
+            version = int(row[0]) if row else None
+        except (TypeError, ValueError):
+            version = None
+        if version not in SUPPORTED_SCHEMA_VERSIONS:
+            raise ValueError("Unsupported ledger schema; use a compatible engine and do not downgrade.")
+        if version == ACCRUAL_SCHEMA_VERSION:
+            from ..accrual.store import RECORD_VERSION, TABLES
+            for table in TABLES:
+                if conn.execute(f"SELECT 1 FROM accrual_{table} WHERE version<>? LIMIT 1", (RECORD_VERSION,)).fetchone():
+                    raise ValueError("Unsupported accrual record version; use a compatible engine.")
+        return version
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -181,6 +211,11 @@ class LedgerStore:
 
     def initialize(self) -> None:
         with self.connection() as conn:
+            if self.schema_version(conn) is not None:
+                columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
+                if not {"session", "late_arrival"}.issubset(columns):
+                    self._repair_legacy_columns()
+                return
             conn.executescript(_DDL)
             for sql in (
                 "ALTER TABLE entries ADD COLUMN session TEXT",
@@ -195,6 +230,87 @@ class LedgerStore:
                 ("schema_version", str(SCHEMA_VERSION)),
             )
             conn.commit()
+
+    def _backup(self, suffix: str) -> Path:
+        backup_dir = self.path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup = backup_dir / f"{self.path.name}.{suffix}.{uuid.uuid4().hex}.sqlite"
+        fd = os.open(backup, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(fd)
+        # Another source connection reads the committed state while the caller
+        # holds a writer reservation. Both connections must close explicitly.
+        with closing(sqlite3.connect(self.path)) as source, closing(sqlite3.connect(backup)) as target:
+            source.backup(target)
+        return backup
+
+    def _repair_legacy_columns(self) -> None:
+        """Keep old cash layouts readable without silently discarding a seal."""
+        from .importer import _entity_write_lock, check_store_integrity
+        with _entity_write_lock(self.path.parent), self.transaction(immediate=True) as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
+            missing = {"session", "late_arrival"} - columns
+            if not missing:
+                return
+            integrity = check_store_integrity(self)
+            if integrity.status != "ok":
+                raise ValueError(f"Cannot repair legacy ledger: {integrity.message}")
+            if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
+                "SELECT 1 FROM audit_events LIMIT 1"
+            ).fetchone():
+                raise ValueError("Cannot repair populated legacy ledger without sealed audit history.")
+            old_digest = self.content_digest(conn)
+            backup = self._backup("legacy-v1")
+            if "session" in missing:
+                conn.execute("ALTER TABLE entries ADD COLUMN session TEXT")
+            if "late_arrival" in missing:
+                conn.execute("ALTER TABLE entries ADD COLUMN late_arrival INTEGER NOT NULL DEFAULT 0")
+            self.append_audit_event("schema-repaired", {
+                "schema_version": SCHEMA_VERSION, "columns": sorted(missing),
+                "prior_store_sha256": old_digest, "backup": backup.name,
+            }, conn)
+            self.append_audit_event("ledger-store-sealed", {
+                "session_id": "schema-repair", "entries": 0, "store_sha256": self.content_digest(conn),
+            }, conn)
+
+    def upgrade(self) -> Path | None:
+        """Explicitly upgrade v1 to v2, preserving the old sealed backup.
+
+        The caller must keep using a compatible reader/writer after upgrade.
+        All schema, audit and seal changes commit together; a failed upgrade
+        leaves the old database intact and the backup available for inspection.
+        """
+        from ..accrual.store import TABLES, table_ddl
+        from .importer import _entity_write_lock, check_store_integrity
+
+        with _entity_write_lock(self.path.parent):
+            self.initialize()
+            with self.transaction(immediate=True) as conn:
+                if self.schema_version(conn) == ACCRUAL_SCHEMA_VERSION:
+                    return None
+                integrity = check_store_integrity(self)
+                if integrity.status != "ok":
+                    raise ValueError(f"Cannot upgrade ledger: {integrity.message}")
+                if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
+                    "SELECT 1 FROM audit_events LIMIT 1"
+                ).fetchone():
+                    raise ValueError("Cannot upgrade populated ledger without sealed audit history.")
+                old_digest = self.content_digest(conn)
+                backup = self._backup("schema-v1")
+                for table in TABLES:
+                    conn.execute(table_ddl(table))
+                self.set_meta("schema_version", str(ACCRUAL_SCHEMA_VERSION), conn)
+                self.append_audit_event("schema-upgraded", {
+                    "from_version": SCHEMA_VERSION, "to_version": ACCRUAL_SCHEMA_VERSION,
+                    "prior_store_sha256": old_digest, "backup": backup.name,
+                }, conn)
+                self.append_audit_event("ledger-store-sealed", {
+                    "session_id": "schema-upgrade", "entries": 0,
+                    "store_sha256": self.content_digest(conn),
+                }, conn)
+            verified = check_store_integrity(self)
+            if verified.status != "ok":
+                raise ValueError(f"Upgraded ledger failed verification: {verified.message}")
+            return backup
 
     @contextmanager
     def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
@@ -380,8 +496,22 @@ class LedgerStore:
                 "SELECT id, payload_json, status, imported_at FROM source_transactions ORDER BY id"
             ),
         }
+        # The first v1 writer did not include these additive columns. Verify
+        # that exact historical shape before the backed-up repair transition.
+        entry_columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
+        optional_columns = ", ".join(c for c in ("session", "late_arrival") if c in entry_columns)
+        queries["entries"] = (
+            "SELECT id, date, flag, payee, narration, tags_json, links_json, metadata_json, source_id"
+            + (", " + optional_columns if optional_columns else "") + " FROM entries ORDER BY id"
+        )
         for table, sql in queries.items():
             payload[table] = [dict(row) for row in conn.execute(sql).fetchall()]
+        if self.schema_version(conn) == ACCRUAL_SCHEMA_VERSION:
+            from ..accrual.store import TABLES
+            for table in TABLES:
+                payload[f"accrual_{table}"] = [dict(row) for row in conn.execute(
+                    f"SELECT id, version, revision, payload_json FROM accrual_{table} ORDER BY id"
+                ).fetchall()]
         return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
 
     def append_audit_event(

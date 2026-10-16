@@ -231,6 +231,7 @@ class RemoteTests(unittest.TestCase):
         (folder / "sample.csv").write_text("date,amount\n")
         paths = {"entity": self.entity, "entity_path": self.entity, "path": self.entity,
                  "input": source, "file": source, "folder": folder, "qb_folder": folder,
+                 "supporting": source,
                  "output": self.directory / "snapshot.json"}
         cases = []
 

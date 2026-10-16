@@ -263,6 +263,8 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
     if closed_date and closed_date.isoformat() != closed_through:
         raise ValueError('closed_through must use YYYY-MM-DD.')
     pending, opens, posted, reversed_ids, owned = _state(entity)
+    from .entity import resolve_basis
+    accrual = resolve_basis(entity.entity_config) == 'accrual'
     rules, answers = _authority(policy, [] if decisions is None else decisions, pending, opens, posted)
     if source_ids is not None and (not isinstance(source_ids, list) or not all(isinstance(sid, str) and sid for sid in source_ids)
                                    or len(set(source_ids)) != len(source_ids)):
@@ -302,6 +304,8 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 raise ValueError('existing_review')
             if not policy['enabled']:
                 raise ValueError('policy_disabled')
+            if accrual:
+                raise ValueError('accrual_treatment_required')
             eligible = []
             if sid in answers:
                 decision, valid = answers[sid]
@@ -333,7 +337,8 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
             reason = str(exc) if str(exc) in {'pending', 'closed_period', 'unsupported_currency_or_zero_amount',
                 'mapping_required', 'mapping_conflict', 'source_account_type_unknown', 'source_account_role_conflict',
                 'source_catalog_conflict', 'category_catalog_conflict', 'existing_review', 'policy_disabled',
-                'stale_decision', 'mapping_changed', 'ambiguous_authority', 'human_hold', 'suspected_processor_payout'} else 'invalid_source'
+                'stale_decision', 'mapping_changed', 'ambiguous_authority', 'human_hold', 'suspected_processor_payout',
+                'accrual_treatment_required'} else 'invalid_source'
         detail['reason'] = reason
         result['unresolved'].append(detail)
     return result

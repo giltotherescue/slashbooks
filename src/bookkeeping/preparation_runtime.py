@@ -6,7 +6,7 @@ An embedding host must authenticate and fence the operation independently.
 from __future__ import annotations
 
 from contextvars import ContextVar
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 import hashlib
@@ -67,6 +67,21 @@ def supported_preparation_command(argv: list[str]) -> PreparationCommandSpec:
         raise PreparationDenied(0, "command_not_supported") from exc
     if path in _READ_PATHS:
         return PreparationCommandSpec(path, "read", None)
+    if path[0] == "accrual":
+        if path[1:] in {("schema",), ("capabilities",), ("schedule", "list"), ("item", "list"), ("report",)}:
+            return PreparationCommandSpec(path, "read", None)
+        if path[1:] in {("intake",), ("journal", "preview"), ("journal", "apply"),
+                        ("journal", "correct-preview"), ("journal", "correct-apply"),
+                        ("journal", "reverse-preview"), ("journal", "reverse-apply"),
+                        ("journal", "due-reversals"), ("schedule", "preview"), ("schedule", "apply"),
+                        ("schedule", "due-preview"), ("schedule", "due-apply"),
+                        ("schedule", "change-preview"), ("schedule", "change-apply"),
+                        ("item", "preview"), ("item", "apply"), ("item", "settle-preview"),
+                        ("item", "settle-apply"), ("item", "adjust-preview"), ("item", "adjust-apply"),
+                        ("item", "reverse-preview"), ("item", "reverse-apply"),
+                        ("migration", "preview"), ("migration", "apply"), ("support", "preview"), ("support", "apply"),
+                        ("evidence-link", "preview"), ("evidence-link", "apply")}:
+            return PreparationCommandSpec(path, "ledger", "adjust")
     if path == ("ingest",):
         return PreparationCommandSpec(path, "ledger", "import")
     if path in _PROPOSAL_ACTIONS:
@@ -107,6 +122,8 @@ class _Boundary:
     input_is_banksync: bool = False
     proposal_sources_json: str | None = None
     reconciliation_intent: PreparationIntent | None = None
+    accrual_intent: PreparationIntent | None = None
+    accrual_batch: bool = False
 
 
 _active: ContextVar[_Boundary | None] = ContextVar("books_preparation", default=None)
@@ -122,6 +139,58 @@ def active_preparation_identity() -> tuple[str, str, dict[str, str]] | None:
     if bound is None:
         return None
     return bound.context.entity_key, bound.context.execution_id, dict(bound.source_hashes)
+
+
+def authorize_accrual_operation(entity: Entity, dates: Any, records: Any, entries: Any) -> dict[str, Any]:
+    """Derive adjustment authority from validated dates and canonical evidence.
+
+    Called only by accounting domain code. Workspace policies and JSON authority
+    claims never establish the in-process host boundary.
+    """
+    bound = _active.get()
+    if bound is None:
+        return {"mode": "local_operator"}
+    if bound.action != "adjust" or entity.path.resolve() != bound.entity_path:
+        raise PreparationDenied(0, "adjustment_context_required")
+    expected = dict(bound.source_hashes)
+    actual = {row["id"]: row["evidence_hash"] for row in records}
+    if actual != expected and not (bound.accrual_batch and all(expected.get(key) == value for key, value in actual.items())):
+        raise PreparationDenied(0, "source_evidence_changed")
+    periods = tuple(sorted({date.fromisoformat(day).isoformat()[:7] for day in dates}))
+    if not periods:
+        raise PreparationDenied(0, "source_period_invalid")
+    source_ids = {value for row in records for value in (row["id"], "evidence:" + row["source_identity"])}
+    referenced_sources = {value for entry in entries for key, value in entry.meta
+                          if key in {"reverses", "correction-of", "origin-source-id"}}
+    source_ids.update(referenced_sources)
+    source_ids.update(entry.source_id for entry in entries if entry.source_id)
+    entry_ids = set()
+    if referenced_sources:
+        with LedgerStore(entity.path / "ledger.sqlite").connection() as conn:
+            entry_ids = {f"entry:{row['id']}" for row in conn.execute("SELECT id,source_id FROM entries")
+                         if row["source_id"] in referenced_sources}
+    ids = tuple(sorted(source_ids))
+    hashes = tuple(sorted({row["evidence_hash"] for row in records} | {evidence_hash([asdict(e) for e in entries])}))
+    intent = PreparationIntent("adjust", periods, ids, tuple(sorted(entry_ids)), hashes)
+    receipt, = authorize_batch(bound.context, [intent])
+    _active.set(replace(bound, accrual_intent=intent))
+    return {"mode": "standing_policy", "entity_key": bound.context.entity_key,
+            "policy_hash": receipt.policy_hash, "policy_version": receipt.policy_version,
+            "revision": bound.context.current_revision}
+
+
+def advance_accrual_batch(entity: Entity, previous_digest: str) -> None:
+    """Advance a fenced due-reversal batch only after its own committed write.
+
+    Domain code holds the company write lock across the complete batch. Single
+    operations keep their original fence and exact verified-evidence set.
+    """
+    bound = _active.get()
+    if bound is None or not bound.accrual_batch:
+        return
+    if entity.path.resolve() != bound.entity_path or bound.ledger_digest != previous_digest:
+        raise PreparationDenied(0, "ledger_changed")
+    _active.set(replace(bound, ledger_digest=LedgerStore(entity.path / "ledger.sqlite").content_digest()))
 
 
 def run_preparation_command(argv: list[str], context: ExecutionContext, *, entity_path: Path,
@@ -143,12 +212,13 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
         raise PreparationDenied(0, "read_command_requires_ordinary_dispatch")
     args, _, path = parse_command(argv)
     correction = path in _CORRECTION_PATHS
+    accrual = path[0] == "accrual"
     resolved = entity_path.resolve()
     if Path(args.entity).resolve() != resolved:
         raise PreparationDenied(0, "workspace_mismatch")
     if not re.fullmatch(r"[0-9a-f]{64}", expected_ledger_digest):
         raise PolicyError("Expected the trusted ledger fingerprint.")
-    if not isinstance(source_hashes, Mapping) or not (0 if correction else 1) <= len(source_hashes) <= 1000 or any(
+    if not isinstance(source_hashes, Mapping) or not (0 if correction or accrual else 1) <= len(source_hashes) <= 1000 or any(
         not isinstance(key, str) or not key or not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
         for key, value in source_hashes.items()
     ):
@@ -161,7 +231,10 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
         raise PreparationDenied(0, "canonical_ledger_required")
     if store.content_digest() != expected_ledger_digest:
         raise PreparationDenied(0, "ledger_changed")
-    if correction:
+    if accrual:
+        bound = _Boundary(context, resolved, expected_ledger_digest, tuple(sorted(source_hashes.items())), "", "", "adjust",
+                          accrual_batch=path == ("accrual", "journal", "due-reversals"))
+    elif correction:
         if not isinstance(entry_hashes, Mapping) or not 1 <= len(entry_hashes) <= 1000 or any(
             not isinstance(key, str) or not re.fullmatch(r"entry:[1-9][0-9]*", key)
             or not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
@@ -242,6 +315,9 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
     token = _active.set(bound)
     try:
         # Same dispatchers as the normal CLI; no .env loading or remote rerouting.
+        if accrual:
+            from .accrual.cli import run
+            return run(args)
         if correction:
             return corrections.run(args)
         if path == ("ingest",):
@@ -264,7 +340,18 @@ def record_preparation(entity: Entity, store: LedgerStore, conn: sqlite3.Connect
         raise PreparationDenied(0, "workspace_mismatch")
     if store.content_digest(conn) != bound.ledger_digest:
         raise PreparationDenied(0, "ledger_changed")
-    if bound.action == "correct":
+    if bound.action == "adjust":
+        if bound.accrual_intent is None:
+            raise PreparationDenied(0, "adjustment_intent_required")
+        # The financial writer receives the exact validated postings authorized
+        # by the domain preflight; no caller-supplied affected period is trusted.
+        actual_periods = {entry.date.isoformat()[:7] for entry in entries}
+        if not actual_periods <= set(bound.accrual_intent.periods):
+            raise PreparationDenied(0, "source_period_invalid")
+        if evidence_hash([asdict(e) for e in entries]) not in bound.accrual_intent.evidence_hashes:
+            raise PreparationDenied(0, "entry_evidence_changed")
+        intent = bound.accrual_intent
+    elif bound.action == "correct":
         intent = _correction_intent(bound, store, conn, entries, sources)
     elif bound.action == "import":
         intent = _import_intent(bound, entries, sources)

@@ -286,6 +286,11 @@ def _reconcile_unlocked(
     conn = open_cache(entity_path)
     try:
         ledger_bal = get_account_balance(conn, account, as_of)
+        from .accrual.reports import basis, coverage_metadata, reconciliation as supporting_reconciliation
+        control_support = None
+        if basis(conn) == "accrual":
+            coverage_metadata(conn, "reconciliation", None, as_of)
+            control_support = next((row for row in supporting_reconciliation(conn, as_of) if row["account"] == account), None)
     finally:
         conn.close()
 
@@ -295,10 +300,14 @@ def _reconcile_unlocked(
     if source_opening_balance is not None and source_transaction_total is not None:
         source_residual = source_opening_balance + source_transaction_total - source_balance
         source_inconsistent = abs(source_residual) >= Decimal("0.01")
+    if control_support and control_support["status"] != "reconciled":
+        source_inconsistent = True
     is_clean = abs(discrepancy) < Decimal("0.01")
 
     status = "source-inconsistent" if source_inconsistent else ("clean" if is_clean else "discrepancy")
     causes: list[str] = []
+    if control_support and control_support["status"] != "reconciled":
+        causes.append(f"Supporting register differs by {control_support['difference']} USD; journal balance alone is insufficient.")
 
     if not is_clean and not source_inconsistent:
         causes = _detect_causes(entity_path, account, as_of, discrepancy)
@@ -336,6 +345,8 @@ def _reconcile_unlocked(
         "resolved_at": None,
         "resolution_note": None,
     }
+    if control_support:
+        record["supporting_reconciliation"] = control_support
 
     if existing_idx is not None:
         existing = records[existing_idx]

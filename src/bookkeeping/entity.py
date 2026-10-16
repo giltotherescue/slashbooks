@@ -20,6 +20,35 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+ACCRUAL_CAPABILITY_VERSION = 1
+
+
+def resolve_basis(config: dict[str, Any], *, authoritative_basis: str | None = None) -> str:
+    """Resolve the canonical basis, rejecting conflicting legacy aliases."""
+    values = []
+    for key in ("basis", "accounting_basis"):
+        if key in config:
+            value = config[key]
+            if not isinstance(value, str) or value not in {"cash", "accrual"}:
+                raise ValueError(f"Unsupported accounting basis in {key}.")
+            values.append(value)
+    if len(set(values)) > 1:
+        raise ValueError("Conflicting accounting basis aliases.")
+    basis = values[0] if values else "cash"
+    if authoritative_basis is not None and basis != authoritative_basis:
+        raise ValueError("Company accounting basis does not match authoritative basis.")
+    version = config.get("accrual_capability_version", 0)
+    if type(version) is not int or version not in {0, ACCRUAL_CAPABILITY_VERSION}:
+        raise ValueError("Unsupported accrual capability version; use a compatible engine.")
+    return basis
+
+
+def require_accrual(entity_or_config: Any) -> None:
+    """Admit accrual writes only after explicit basis and version opt-in."""
+    config = getattr(entity_or_config, "entity_config", entity_or_config)
+    if resolve_basis(config) != "accrual" or config.get("accrual_capability_version") != ACCRUAL_CAPABILITY_VERSION:
+        raise ValueError("Accrual writes require explicit accrual basis and capability version 1.")
+
 # ---------------------------------------------------------------------------
 # Template resolution
 # ---------------------------------------------------------------------------
@@ -290,6 +319,7 @@ def init_entity(
     legal_structure: str = "",
     cutover_date: str = "",
     website_url: str = "",
+    basis: str | None = None,
 ) -> dict[str, list[str]]:
     """Initialise (or safely re-init) an entity directory at *target*.
 
@@ -297,6 +327,12 @@ def init_entity(
     list of relative path strings.
     """
     _refuse_if_inside_package_repo(target)
+    selected_basis = basis or "cash"
+    resolve_basis({"basis": selected_basis})
+    if (target / "entity.json").exists() and basis is not None:
+        existing_config = json.loads((target / "entity.json").read_text(encoding="utf-8"))
+        if resolve_basis(existing_config) != basis:
+            raise ValueError("Re-init preserves accounting basis; use configure_basis for an empty company.")
     website_url = normalize_website(website_url)
     normalized_cutover_date = _normalize_optional_date(cutover_date)
     starter_open_date = date.fromisoformat(normalized_cutover_date) if normalized_cutover_date else _DEFAULT_ACCOUNT_OPEN_DATE
@@ -335,10 +371,13 @@ def init_entity(
                 store.set_meta("canonical", "true", conn)
                 store.set_meta("account_catalog", "sqlite", conn)
                 store.set_meta("business_type", business_type, conn)
+                store.set_meta("basis", selected_basis, conn)
                 if name:
                     store.set_meta("title", name, conn)
                 store.insert_opens(_starter_account_opens(business_type, starter_open_date), conn)
             created.append("ledger.sqlite")
+            if selected_basis == "accrual":
+                store.upgrade()
         else:
             existed.append("ledger.sqlite")
 
@@ -367,6 +406,8 @@ def init_entity(
             )
             if website_url:
                 merged["website_url"] = website_url
+            merged["basis"] = selected_basis
+            merged["accrual_capability_version"] = ACCRUAL_CAPABILITY_VERSION if selected_basis == "accrual" else 0
             entity_json_dst.write_text(
                 json.dumps(merged, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
@@ -401,6 +442,47 @@ def init_entity(
     return {"created": created, "existed": existed}
 
 
+def configure_basis(entity_path: Path | str, basis: str) -> None:
+    """Select the basis for an empty company; conversion is not supported.
+
+    Publish the ledger authority first, then atomically replace configuration.
+    An interrupted publication fails closed on the basis mismatch when reopened.
+    """
+    from .ledger.importer import _entity_write_lock, check_integrity
+    from .ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore, default_store_path
+    from .accrual.store import list_records
+
+    resolve_basis({"basis": basis})
+    entity = load_entity(entity_path)
+    with _entity_write_lock(entity.path):
+        store = LedgerStore(default_store_path(entity.path))
+        if check_integrity(entity).status != "ok":
+            raise ValueError("Cannot change basis while ledger integrity is invalid.")
+        with store.connection() as conn:
+            populated = any(conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
+                            for table in ("entries", "balance_assertions", "source_transactions"))
+            if store.schema_version(conn) == ACCRUAL_SCHEMA_VERSION:
+                populated = populated or any(list_records(store, table, conn)
+                                             for table in ("intents", "schedules", "items", "allocations", "coverage"))
+        if populated:
+            raise ValueError("A populated company cannot change accounting basis; conversion requires a separate workflow.")
+        if basis == "accrual":
+            store.upgrade()
+        config = dict(entity.entity_config)
+        config.pop("accounting_basis", None)
+        config["basis"] = basis
+        config["accrual_capability_version"] = ACCRUAL_CAPABILITY_VERSION if basis == "accrual" else 0
+        with store.transaction(immediate=True) as conn:
+            store.set_meta("basis", basis, conn)
+            store.append_audit_event("basis-configured", {"basis": basis}, conn)
+            store.append_audit_event("ledger-store-sealed", {
+                "session_id": "entity-basis", "entries": 0, "store_sha256": store.content_digest(conn),
+            }, conn)
+        temp = entity.path / "entity.json.basis.tmp"
+        temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(temp, entity.path / "entity.json")
+
+
 def add_account(
     entity_path: Path,
     account: str,
@@ -413,7 +495,7 @@ def add_account(
 
     from .ledger.model import Open
     import sqlite3
-    from .ledger.store import LedgerStore, SCHEMA_VERSION, default_store_path
+    from .ledger.store import LedgerStore, SUPPORTED_SCHEMA_VERSIONS, default_store_path
     from .ledger.importer import _entity_write_lock, check_integrity
 
     opened = Open(
@@ -433,7 +515,7 @@ def add_account(
                 schema = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
             except sqlite3.DatabaseError:
                 raise ValueError("Account catalog requires an initialized supported-schema SQLite ledger.") from None
-            if schema is None or schema[0] != str(SCHEMA_VERSION):
+            if schema is None or schema[0] not in {str(v) for v in SUPPORTED_SCHEMA_VERSIONS}:
                 raise ValueError("Unsupported ledger schema; upgrade or migrate explicitly before changing the account catalog.")
             integrity = check_integrity(entity)
             if integrity.status != "ok":
@@ -726,6 +808,10 @@ class Entity:
         return str(self.entity_config.get("business_type", "consulting"))
 
     @property
+    def basis(self) -> str:
+        return resolve_basis(self.entity_config)
+
+    @property
     def auto_post_threshold(self) -> int:
         return int(self.trust_policy.get("auto_post_threshold", 3))
 
@@ -745,6 +831,19 @@ def load_entity(path: str | Path) -> Entity:
             "Run 'books entity init <path>' to initialise."
         )
     entity_config: dict[str, Any] = json.loads(entity_json_path.read_text(encoding="utf-8"))
+    resolve_basis(entity_config)
+    from .ledger.store import LedgerStore, default_store_path
+    store_path = default_store_path(p)
+    if store_path.exists():
+        store = LedgerStore(store_path)
+        with store.connection() as conn:
+            if store.schema_version(conn) is not None:
+                row = conn.execute("SELECT value FROM meta WHERE key='basis'").fetchone()
+                recorded_basis = row[0] if row else None
+                if recorded_basis is None and conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone():
+                    recorded_basis = "cash"
+                if recorded_basis is not None:
+                    resolve_basis(entity_config, authoritative_basis=recorded_basis)
 
     trust_path = p / "trust-policy.json"
     if trust_path.exists():
@@ -774,6 +873,8 @@ def add_parser(subparsers: Any) -> None:
     init_parser.add_argument("path", type=Path, help="Path to the entity directory")
     init_parser.add_argument("--website-url", default="", help="Optional public business website")
     init_parser.add_argument("--name", default="", help="Business name (stored in entity.json)")
+    init_parser.add_argument("--basis", choices=("cash", "accrual"), default=None,
+                             help="Accounting basis for a new company; defaults to cash")
     init_parser.add_argument(
         "--legal-structure",
         default="",
@@ -859,6 +960,7 @@ def run(args: Any) -> int:
                 legal_structure=args.legal_structure,
                 cutover_date=args.cutover_date,
                 website_url=getattr(args, "website_url", ""),
+                basis=getattr(args, "basis", None),
             )
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)

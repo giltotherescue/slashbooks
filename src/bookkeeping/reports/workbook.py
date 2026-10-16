@@ -112,7 +112,16 @@ _SHEET_NAMES: dict[str, str] = {
     "checks": "Checks",
     "source-index": "Source Index",
     "audit-log": "Audit Log",
+    "recognition-schedules": "Recognition Schedules",
+    "outstanding-balances": "Outstanding Balances",
+    "external-support": "External Support",
+    "control-reconciliation": "Control Reconciliation",
+    "accrual-adjustments": "Accrual Adjustments",
+    "accounting-coverage": "Accounting Coverage",
 }
+
+_ACCRUAL_SHEETS = ("recognition-schedules", "outstanding-balances", "external-support",
+                   "control-reconciliation", "accrual-adjustments", "accounting-coverage")
 
 _SHEET_ALIASES: dict[str, str] = {
     key: key for key in _SHEET_NAMES
@@ -673,6 +682,14 @@ def run_sanity_checks(
         _run_queue_empty_check(entity_path),
         _run_reconciliation_clean_check(entity_path),
     ]
+    if load_entity(entity_path).basis == "accrual":
+        from ..accrual.reports import report
+        try:
+            issues = report(load_entity(entity_path), "reconciliation", as_of=to_date)["issues"]
+            checks.append(SanityCheck("accrual_support", "fail" if issues else "pass",
+                                      "; ".join(i["message"] for i in issues) if issues else "Accrual control balances, recognition, and reversals reconcile exactly."))
+        except ValueError as exc:
+            checks.append(SanityCheck("accrual_support", "fail", str(exc)))
     return SanityResult(checks=checks)
 
 
@@ -697,6 +714,7 @@ def _build_cover_rows(
         ["Period end", str(to_date)],
         ["Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
         ["Source", str(entity_path)],
+        ["Accounting basis", load_entity(entity_path).basis.title() + " basis"],
         [],
         ["Sheet index", ""],
         ["1. Cover", "This sheet"],
@@ -742,7 +760,7 @@ def _statement_to_rows(result: StatementResult) -> list[list[str]]:
             str(result.totals.get("total_debits", "0.00")),
             str(result.totals.get("total_credits", "0.00")),
         ])
-        return rows
+        return _with_statement_metadata(rows, result)
 
     if result.kind in ("pnl", "balance_sheet"):
         rows.append(["Category", "Account", "Amount"])
@@ -760,7 +778,7 @@ def _statement_to_rows(result: StatementResult) -> list[list[str]]:
             rows.append(["Summary totals", "", ""])
             for k, v in result.totals.items():
                 rows.append(["", k.replace("_", " ").title(), str(v)])
-        return rows
+        return _with_statement_metadata(rows, result)
 
     if result.kind == "general_ledger":
         rows.append([
@@ -815,6 +833,14 @@ def _statement_to_rows(result: StatementResult) -> list[list[str]]:
         for row in section.get("rows", []):
             amt = row.get("amount")
             rows.append(["", row.get("label", ""), str(amt) if amt is not None else ""])
+    return rows
+
+
+def _with_statement_metadata(rows, result):
+    if result.meta.get("basis") == "accrual":
+        rows.extend([[], ["Report metadata", "Basis", "Accrual basis"],
+                     ["Report metadata", "Coverage", json.dumps(result.meta.get("coverage"), sort_keys=True)],
+                     ["Report metadata", "Unresolved issues", json.dumps(result.meta.get("unresolved_issues", []), sort_keys=True)]])
     return rows
 
 
@@ -1296,6 +1322,7 @@ def _build_summary_rows(
     vendor_rows: Optional[list[list[str]]] = None,
     open_question_rows: Optional[list[list[str]]] = None,
     formulas: bool = True,
+    closing_cumulative_net_income: Decimal | None = None,
 ) -> list[list[str]]:
     """Build accountant summary rows.
 
@@ -1344,8 +1371,8 @@ def _build_summary_rows(
         ["Business", entity_name],
         ["Produced by", "Slashbooks"],
         ["Project link", "https://github.com/giltotherescue/slashbooks"],
-        ["Accounting basis", "Cash basis"],
-        ["Bookkeeping scope", "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
+        ["Accounting basis", str(entity_config.get("basis", entity_config.get("accounting_basis", "cash"))).title() + " basis"],
+        ["Bookkeeping scope", "Accrual bookkeeping foundations export" if entity_config.get("basis", entity_config.get("accounting_basis")) == "accrual" else "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
         ["Tax prep scope", "Handoff support only; tax treatment and filing positions remain preparer-reviewed"],
         ["Legal structure", str(entity_config.get("legal_structure", ""))],
         ["Country", str(entity_config.get("country", ""))],
@@ -1387,6 +1414,8 @@ def _build_summary_rows(
             if formulas else str(vendor_candidate_count),
         ],
     ]
+    if closing_cumulative_net_income is not None:
+        rows.append(["Closing cumulative net income", str(closing_cumulative_net_income)])
     return rows
 
 
@@ -1407,6 +1436,7 @@ def _build_checks_rows(
     bs_net_row = _find_row(bs_rows, col=1, value="Net Income (current period)")
     pnl_net_row = _find_row(pnl_rows, col=1, value="Net Income")
     opening_net_row = _find_row(summary_rows, col=0, value="Opening cumulative net income")
+    closing_net_row = _find_row(summary_rows, col=0, value="Closing cumulative net income")
 
     if not formulas:
         tb_diff = _find_amount(tb_rows, label_col=0, amount_col=1, label="Totals") - _find_amount(
@@ -1421,8 +1451,10 @@ def _build_checks_rows(
             amount_col=2,
             label="Total Liabilities And Equity",
         )
+        closing_income = (_find_amount(summary_rows, label_col=0, amount_col=1, label="Closing cumulative net income") if closing_net_row else
+                          _find_amount(bs_rows, label_col=1, amount_col=2, label="Net Income (current period)"))
         pnl_bs_diff = _find_amount(pnl_rows, label_col=1, amount_col=2, label="Net Income") - (
-            _find_amount(bs_rows, label_col=1, amount_col=2, label="Net Income (current period)")
+            closing_income
             - _find_amount(summary_rows, label_col=0, amount_col=1, label="Opening cumulative net income")
         )
         open_questions = _find_amount(summary_rows, label_col=0, amount_col=1, label="Open questions")
@@ -1470,6 +1502,7 @@ def _build_checks_rows(
         [
             "P&L net income agrees to balance sheet net-income movement",
             (
+                f"='P&L'!C{pnl_net_row}-(Summary!B{closing_net_row}-Summary!B{opening_net_row})" if closing_net_row else
                 f"='P&L'!C{pnl_net_row}-('Balance Sheet'!C{bs_net_row}-Summary!B{opening_net_row})"
                 if pnl_net_row and bs_net_row and opening_net_row else ""
             ),
@@ -1747,6 +1780,9 @@ def generate_accountant_package(
             sanity=SanityResult(checks=[]),
             error=str(exc),
         )
+    if not sheets and load_entity(entity_path).basis == "accrual":
+        excluded = {_sheet_key(item) for item in _split_sheet_names(exclude_sheets)}
+        selected_sheet_keys.extend(key for key in _ACCRUAL_SHEETS if key not in excluded)
     selected_set = set(selected_sheet_keys)
     gl_from_date = gl_from_date or from_date
     gl_to_date = gl_to_date or to_date
@@ -1895,6 +1931,19 @@ def generate_accountant_package(
             rows_cache[key] = _build_source_index_rows(entity_path)
         elif key == "audit-log":
             rows_cache[key] = _build_audit_log_rows(entity_path)
+        elif key in _ACCRUAL_SHEETS:
+            from ..accrual.reports import report
+            if key == "accounting-coverage":
+                document = report(load_entity(entity_path), "reconciliation", as_of=to_date)
+                records = [{"basis": document["basis"], "as_of": document["as_of"], "coverage": document["coverage"], "issues": document["issues"]}]
+            else:
+                kind = {"recognition-schedules": "schedules", "outstanding-balances": "outstanding", "external-support": "support",
+                        "control-reconciliation": "reconciliation", "accrual-adjustments": "adjustments"}[key]
+                records = report(load_entity(entity_path), kind, as_of=to_date,
+                                 from_date=from_date if kind == "adjustments" else None)["rows"]
+            headers = sorted({field for record in records for field in record}) or ["id", "account", "balance"]
+            rows_cache[key] = [headers, *[[json.dumps(record.get(field), sort_keys=True) if isinstance(record.get(field), (list, dict))
+                                          else str(record.get(field, "")) for field in headers] for record in records]]
         elif key == "summary":
             return _summary_rows(formulas=False)
         elif key == "checks":
@@ -1906,10 +1955,17 @@ def generate_accountant_package(
     def _summary_rows(*, formulas: bool) -> list[list[str]]:
         cache_key = "summary:xlsx" if formulas else "summary:csv"
         if cache_key not in rows_cache:
-            prior_bs_rows = _statement_rows(
-                "prior-balance-sheet",
-                lambda: balance_sheet(entity_path, from_date - timedelta(days=1)),
-            )
+            from ..accrual.reports import CoverageError
+            closing_bs = balance_sheet(entity_path, to_date)
+            try:
+                prior_bs = balance_sheet(entity_path, from_date - timedelta(days=1))
+                prior_bs_rows = _statement_to_rows(prior_bs)
+                opening_income = Decimal(prior_bs.meta.get("cumulative_net_income", str(_find_amount(prior_bs_rows, label_col=1, amount_col=2, label="Net Income (current period)"))))
+            except CoverageError:
+                coverage = closing_bs.meta.get("coverage") or {}
+                if from_date.isoformat() != (coverage.get("summary_from") or coverage.get("fiscal_start")):
+                    raise
+                opening_income = Decimal(0)
             rows_cache[cache_key] = _build_summary_rows(
                 entity_name,
                 _entity_config(),
@@ -1919,17 +1975,13 @@ def generate_accountant_package(
                 override_used,
                 _rows("pnl"),
                 _rows("balance-sheet"),
-                _find_amount(
-                    prior_bs_rows,
-                    label_col=1,
-                    amount_col=2,
-                    label="Net Income (current period)",
-                ),
+                opening_income,
                 gl_rows=_rows("general-ledger") if "general-ledger" in selected_set else None,
                 recon_rows=_rows("reconciliations") if "reconciliations" in selected_set else None,
                 vendor_rows=_rows("vendor-1099") if "vendor-1099" in selected_set else None,
                 open_question_rows=_rows("open-questions") if "open-questions" in selected_set else None,
                 formulas=formulas,
+                closing_cumulative_net_income=Decimal(closing_bs.meta["cumulative_net_income"]) if closing_bs.meta.get("basis") == "accrual" else None,
             )
         return rows_cache[cache_key]
 
@@ -1994,6 +2046,8 @@ def generate_accountant_package(
             spec = XlsxSheet("Source Index", _rows(key), table=True, numeric_columns=frozenset({2, 3, 4}))
         elif key == "audit-log":
             spec = XlsxSheet("Audit Log", _rows(key), table=True)
+        elif key in _ACCRUAL_SHEETS:
+            spec = XlsxSheet(_SHEET_NAMES[key], _rows(key), table=True)
         else:
             raise KeyError(key)
         xlsx_cache[key] = spec
@@ -2014,6 +2068,7 @@ def generate_accountant_package(
         "source-index": "Source Index",
         "audit-log": "Audit Log",
     }
+    csv_names_by_key.update({key: _SHEET_NAMES[key] for key in _ACCRUAL_SHEETS})
 
     try:
         sheet_data: list[tuple[str, list[list[str]]]] = [

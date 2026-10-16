@@ -1,0 +1,17 @@
+Synthetic Acceptance Services
+Trial Balance
+"As of June 30, 2026"
+Account Name,Debit,Credit
+Checking,10000,
+Accounts Receivable,1000,
+Prepaid Insurance,600,
+Equipment,2400,
+Accumulated Depreciation,,400
+Accounts Payable,,500
+Deferred Revenue,,600
+Payroll Payable,,300
+Retained Earnings,,9000
+Services,,12000
+Operating Costs,8800,
+TOTAL,22800,22800
+Accrual Basis

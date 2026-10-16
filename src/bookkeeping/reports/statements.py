@@ -221,6 +221,10 @@ def profit_and_loss(
 
 
 def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    if from_date > to_date:
+        raise ValueError("Report start date must be on or before end date.")
+    metadata = financial_metadata(conn, "pnl", from_date, to_date)
     balances = _account_balances_in_range(conn, from_date, to_date)
 
     # Income: credit-normal → positive balance means credit → income positive
@@ -246,13 +250,13 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
 
     sections = [
         {
-            "label": "Money In",
+            "label": "Revenue" if metadata["basis"] == "accrual" else "Money In",
             "rows": income_rows,
             "total": total_income,
             "total_label": "Total Revenue",
         },
         {
-            "label": "Money Out",
+            "label": "Expenses" if metadata["basis"] == "accrual" else "Money Out",
             "rows": expense_rows,
             "total": total_expenses,
             "total_label": "Total Expenses",
@@ -265,6 +269,7 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
         to_date=to_date,
         sections=sections,
         totals={"net_income": net_income},
+        meta=metadata,
     )
 
 
@@ -287,6 +292,8 @@ def balance_sheet(
 
 
 def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = financial_metadata(conn, "balance_sheet", None, as_of)
     balances = _account_balances_as_of(conn, as_of)
 
     # Also compute net income from inception through as_of for equity section
@@ -325,6 +332,23 @@ def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
             equity_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
             total_equity_base += display
 
+    if metadata["basis"] == "accrual":
+        opening = metadata.get("coverage")
+        anchor = date.fromisoformat(opening["fiscal_start"]) if opening else date(as_of.year, 1, 1)
+        import calendar
+        fiscal_start = date(as_of.year, anchor.month, min(anchor.day, calendar.monthrange(as_of.year, anchor.month)[1]))
+        if fiscal_start > as_of:
+            fiscal_start = fiscal_start.replace(year=fiscal_start.year - 1)
+        current = _account_balances_in_range(conn, fiscal_start, as_of)
+        current_income = -sum((n for a, n in current.items() if _is_income(a) or _is_expense(a)), Decimal(0))
+        prior_income = net_income_raw - current_income
+        if prior_income:
+            equity_rows.append({"label": "Retained earnings from prior fiscal activity", "amount": prior_income, "indent": 1})
+            total_equity_base += prior_income
+        net_income_raw = current_income
+        metadata["fiscal_start"] = fiscal_start.isoformat()
+        metadata["cumulative_net_income"] = str(prior_income + current_income)
+        metadata["current_fiscal_net_income"] = str(current_income)
     # Include current-period net income as a computed line in equity
     equity_rows.append({
         "label": "Net Income (current period)",
@@ -363,6 +387,7 @@ def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
             "total_assets": total_assets,
             "total_liabilities_and_equity": total_liabilities + total_equity,
         },
+        meta=metadata,
     )
 
 
@@ -385,6 +410,8 @@ def trial_balance(
 
 
 def _compute_trial_balance(conn: Any, as_of: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = financial_metadata(conn, "trial_balance", None, as_of)
     balances = _account_balances_as_of(conn, as_of)
 
     rows = []
@@ -428,7 +455,7 @@ def _compute_trial_balance(conn: Any, as_of: date) -> StatementResult:
             "total_credits": total_credits,
             "net": total_debits - total_credits,
         },
-        meta={"raw_rows": rows},
+        meta={**metadata, "raw_rows": rows},
     )
 
 
@@ -452,6 +479,8 @@ def general_ledger(
 
 
 def _compute_general_ledger(conn: Any, from_date: date, to_date: date) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = financial_metadata(conn, "general_ledger", from_date, to_date)
     rows_by_account: dict[str, list[dict]] = {}
 
     for entry_date, narration, payee, account, amount, currency in iter_postings(
@@ -483,6 +512,7 @@ def _compute_general_ledger(conn: Any, from_date: date, to_date: date) -> Statem
         to_date=to_date,
         sections=sections,
         totals={},
+        meta=metadata,
     )
 
 
