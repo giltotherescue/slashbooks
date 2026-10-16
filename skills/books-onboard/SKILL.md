@@ -577,20 +577,36 @@ built-in one. Keep the helper, its outputs, and any credentials in the company
 books project, never the plugin repo, so upgrades do not overwrite them. See
 `docs/connectors.md` and `examples/connectors/custom_connector_template.py`.
 
-For each CSV fallback source (canceled card, unsupported account, disconnected
-account, or account the owner prefers not to connect):
+For each statement-file source (canceled card, unsupported account,
+disconnected account, account the owner prefers not to connect, or history
+before the bank feed starts), use the bank or card's CSV, OFX, QFX or QBO
+export:
 
 ```
-scripts/books connector csv inspect <file>
-scripts/books connector csv propose-mapping --entity <path> <file>
+scripts/books statement inspect <file> --entity <path> --ledger-account <account>
 ```
 
-Present the proposed mapping in plain English (e.g., "This looks like your Amex
-Business card ending in 1234"). Ask the owner to confirm or correct, then:
+Present the proposal and its `preview` rows in plain English (e.g., "This
+looks like your business checking account; deposits are positive"). If the
+status is `needs_mapping`, ask the owner about each field in `uncertain`,
+using `evidence` to explain why. Never pick a date format or sign for them.
+After they confirm, save the profile and pass each decided field explicitly:
 
 ```
-scripts/books connector csv confirm-mapping --entity <path> <file>
+scripts/books statement map <file> --entity <path> --profile <name> --ledger-account <account> [--sign ...] [--date-format ...]
+scripts/books statement import <file> --entity <path> --profile <name> --dry-run
+scripts/books statement import <file> --entity <path> --profile <name>
 ```
+
+Report the counts, any rows held as duplicate candidates, and the statement
+period and balances from the result. If a statement has
+`"coverage": "needs_period"`, ask the owner for the period printed on the
+statement and import the same file again with `--period-start` and
+`--period-end`. Older Amex activity CSV mappings made with
+`scripts/books connector csv` keep working.
+
+For a backlog of many statement files, follow
+[the catch-up flow](../books/references/catch-up.md).
 
 ---
 
@@ -621,3 +637,12 @@ tell the owner to close the current calendar month if it is still in progress.
 If today is mid-month, say that the next close should run through the last
 completed month, or use partial catch-up wording such as "categorize current
 month-to-date transactions" instead of "close [current month]."
+
+## Shared procedures
+
+These procedures are the single source for the rules they cover. Run each command
+and follow its output. Do not rely on memory of the text, and do not copy it here.
+
+- `scripts/books procedures show onboarding-profile` (version 1)
+- `scripts/books procedures show question-rules` (version 1)
+- `scripts/books procedures show hard-rules` (version 2)

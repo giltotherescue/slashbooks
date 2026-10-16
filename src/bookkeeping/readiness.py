@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 from typing import Any, Mapping
 
+from .coverage import check_coverage, readiness_items as coverage_readiness_items
 from .entity import load_entity
 from .ledger.projections import render_store_ledger
 from .ledger.store import LedgerStore, default_store_path
@@ -383,14 +384,42 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     if entity.basis == "accrual":
         card_activity.update(account for account, balance in ledger_balances.items() if balance and is_credit_card_account(account))
     sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)))
+
+    # Source coverage per account and day of the month (statements, feed
+    # windows, declared coverage, then transaction dates).
+    coverage_accounts = sorted({str(source["account"]) for source in sources
+                                if str(source["account"] or "").startswith(("Assets:", "Liabilities:"))})
+    coverage: list[dict[str, Any]] = []
+    coverage_items: tuple[list[dict[str, Any]], list[dict[str, Any]]] = ([], [])
+    verified_accounts: set[str] = set()
+    if coverage_accounts:
+        try:
+            coverage_document = check_coverage(entity.path, start, end, accounts=coverage_accounts)
+        except Exception as exc:  # noqa: BLE001 - any failure must block, not pass
+            coverage_items = ([{"code": "source_coverage_unverifiable",
+                                "message": "Source coverage could not be checked.", "refs": [type(exc).__name__]}], [])
+        else:
+            coverage_items = coverage_readiness_items(coverage_document)
+            coverage = [{
+                "account": row["account"], "label": row["label"], "status": row["status"],
+                "verified": row["verified"], "months": row["months"],
+            } for row in coverage_document["accounts"]]
+            # Statements or feed windows that cover every day of the period
+            # are affirmative coverage, the same as declared coverage dates.
+            verified_accounts = {row["account"] for row in coverage_document["accounts"]
+                                 if row["status"] == "complete" and row["verified"]}
+
     if not sources:
         blockers.append({"code": "source_scope_missing", "message": "No expected source accounts are declared for this period.", "refs": []})
     for source in sources:
         ref = str(source["source"] or "unknown")
         if not source["account"]:
             blockers.append({"code": "source_account_missing", "message": "An expected source is not bound to a ledger account.", "refs": [ref]})
-        if source["coverage_status"] != "complete":
+        if source["coverage_status"] != "complete" and source["account"] not in verified_accounts:
             blockers.append({"code": "source_coverage_incomplete", "message": "Affirmative source coverage does not span the full period.", "refs": [ref]})
+    blockers.extend(coverage_items[0])
+    warnings.extend(coverage_items[1])
+
     source_accounts = sorted({str(source["account"]) for source in sources if source["account"]})
     for account in source_accounts:
         if (not account.startswith(("Assets:", "Liabilities:"))
@@ -500,6 +529,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
 
     _annotate_blockers(blockers, entity.path, period, start, end, sources)
     blockers = sorted(blockers, key=lambda item: (item["code"], item["refs"], item["message"]))
+    warnings = sorted(warnings, key=lambda item: (item["code"], item["refs"], item["message"]))
     state = "ready_for_review" if not blockers else "blocked"
     for report in reports:
         report["provisional"] = state != "ready_for_review"
@@ -508,6 +538,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         "source_scope": sources,
         "open_work": open_work,
         "open_questions": open_questions,
+        "coverage": coverage,
         "reconciliations": sorted(normalized_recs, key=lambda item: str(item.get("account"))),
         "reports": reports,
         "configuration_fingerprint": _hash({"entity": entity.entity_config, "trust_policy": entity.trust_policy}),
@@ -525,6 +556,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         "blockers": blockers,
         "warnings": warnings,
         "sources": sources,
+        "coverage": coverage,
         "reconciliations": sorted(normalized_recs, key=lambda item: str(item.get("account"))),
         "reports": reports,
     }

@@ -191,5 +191,42 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(after, before)
 
 
+    def test_coverage_rows_are_published_for_the_web_and_month_gaps_block(self):
+        ready = self.assess()
+        self.assertEqual(ready["coverage"][0]["account"], "Assets:Bank:Checking")
+        self.assertEqual(ready["coverage"][0]["months"][0]["status"], "complete")
+        self.assertEqual(ready["warnings"], [])
+
+        config_path = self.entity.path / "entity.json"
+        config = json.loads(config_path.read_text())
+        config["declared_sources"][0]["coverage_from"] = "2026-09-03"
+        config_path.write_text(json.dumps(config) + "\n")
+        result = self.assess()
+        partial = [item for item in result["blockers"] if item["code"] == "source_month_partial"]
+        self.assertEqual(partial, [{
+            "code": "source_month_partial",
+            "message": "Synthetic checking has no statement, feed window, declared coverage or transactions for Sep 1–2.",
+            "refs": ["Assets:Bank:Checking"],
+        }])
+        self.assertEqual(result["state"], "blocked")
+
+    def test_statement_balance_discontinuity_blocks_readiness(self):
+        from bookkeeping.coverage import record_statement
+
+        for statement_id, start, end, opening, closing in (
+            ("chk-08", "2026-08-01", "2026-08-31", "0.00", "5.00"),
+            ("chk-09", "2026-09-01", "2026-09-30", "0.00", "100.00"),
+        ):
+            record_statement(self.entity.path, {
+                "statement_id": statement_id, "account": "Assets:Bank:Checking",
+                "period_start": start, "period_end": end,
+                "opening_balance": opening, "closing_balance": closing,
+            })
+        result = self.assess()
+        codes = {item["code"] for item in result["blockers"]}
+        self.assertIn("source_balance_discontinuity", codes)
+        self.assertEqual(result["state"], "blocked")
+
+
 if __name__ == "__main__":
     unittest.main()

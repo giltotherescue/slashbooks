@@ -103,6 +103,9 @@ Read its shared context before deciding whether onboarding is needed.
 - If the user asks a financial question, route to `books-ask`.
 - If the user asks about future cash timing or a cash forecast, route to `books-forecast`.
 - If the user needs exports, tax files, or files for an accountant, route to `books-export`.
+- If the user has months or a year of bank or card statement files to bring in
+  (a catch-up), follow [the catch-up flow](references/catch-up.md): inspect,
+  map, import, check coverage, resolve duplicates, review, tax map, export.
 - If the user wants to report feedback about Slashbooks or prepare a handoff for
   its developers, route to `books-feedback`.
 
@@ -136,3 +139,11 @@ Internal command for an existing company:
 ```sh
 scripts/books queue list --entity . --status open
 ```
+
+## Shared procedures
+
+These procedures are the single source for the rules they cover. Run each command
+and follow its output. Do not rely on memory of the text, and do not copy it here.
+
+- `scripts/books procedures show catch-up` (version 2)
+- `scripts/books procedures show hard-rules` (version 2)

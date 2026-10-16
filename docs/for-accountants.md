@@ -118,6 +118,27 @@ that let the owner and reviewer trace a reported transaction back to the
 underlying activity. The audit history is tamper-evident: each event is linked
 to the prior event, so manual edits or corruption can be detected.
 
+## Tax Handoff
+
+Before you prepare a return from Slashbooks books, ask for two outputs. See
+[Tax handoff](tax-handoff.md) for the details.
+
+- **Source coverage.** `books coverage check` reports each bank and card
+  account by month as complete, partial or missing, with the gap dates. It uses
+  statement dates and balances when the importer recorded them, then feed
+  windows and declared coverage, then transaction dates. It also reports
+  balance breaks between consecutive statements. Monthly readiness uses the
+  same check.
+- **Mapped trial balance.** `books tax export` writes a trial balance with each
+  account mapped to a Schedule C, Form 1065, Form 1120-S or Form 1120 line. It
+  also writes a line summary for manual entry, an unmapped-accounts report, and
+  layouts for the Lacerte Trial Balance Utility and the UltraTax CS Trial
+  Balance Excel Import. You can override any line. Slashbooks stores the
+  override with the company books.
+
+The mapping uses book amounts. It does not compute tax, depreciation, cost of
+goods sold or deduction limits.
+
 ## Limits
 
 The supported accrual scope is one company, in USD, for services and SaaS. It

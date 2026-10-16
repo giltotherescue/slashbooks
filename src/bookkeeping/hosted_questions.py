@@ -35,7 +35,10 @@ def add_parser(commands: Any) -> None:
         if action == "recover":
             sub.add_argument("--receipt", type=Path, required=True)
             continue
-        sub.add_argument("--request-id", required=action != "resolve", help="Stable ID for this intended message; reuse it after uncertainty, use a new ID only for a separate intended message")
+        # Required for ask, reply and resolve. The scoped answer flow of resolve
+        # (--reply-id, --command-id) uses --idempotency-key instead, so the
+        # requirement for resolve is enforced when the command runs.
+        sub.add_argument("--request-id", required=action in {"ask", "reply"}, help="Stable ID for this intended message; required; reuse it after uncertainty, use a new ID only for a separate intended message")
         if action in {"reply", "resolve"}:
             sub.add_argument("question_id", help="Question ID returned by cloud questions")
         if action == "ask":
@@ -72,15 +75,34 @@ def _text(value: Any, maximum: int) -> str:
 def _body(action: str, value: Any) -> dict[str, Any]:
     if not isinstance(action, str):
         raise hosted.HostedError("INVALID_QUESTION", "Unsupported question action.")
-    fields = {"ask": {"subject", "body"}, "reply": {"body"}, "resolve": set()}.get(action)
+    fields = {"ask": {"subject", "body"}, "reply": {"body"},
+              "resolve": {"reply_ids", "reply_watermark"}}.get(action)
     if not isinstance(value, dict) or fields is None or set(value) != fields:
         raise hosted.HostedError("INVALID_QUESTION", "Use only the fields supported by this question action.")
     if action == "resolve":
-        return {}
+        ids = value["reply_ids"]
+        if (not isinstance(ids, list) or len(ids) > 100
+                or len({hosted._segment(item) for item in ids}) != len(ids)):
+            raise hosted.HostedError("INVALID_QUESTION", "Reply IDs must be at most 100 unique stable IDs.")
+        mark = value["reply_watermark"]
+        if type(mark) is not int or mark < 0 or bool(ids) != (mark > 0):
+            raise hosted.HostedError("INVALID_QUESTION", "Use watermark 0 with no replies, or a positive watermark with replies.")
+        return {"reply_ids": list(ids), "reply_watermark": mark}
     result = {"body": _text(value["body"], 800 if action == "ask" else 10000)}
     if action == "ask":
         result["subject"] = _text(value["subject"], 120)
     return result
+
+
+def _resolve_fields(question: dict[str, Any]) -> dict[str, Any]:
+    """Take the complete reply set and watermark from the question that was read."""
+    ids = [reply["id"] for reply in question["replies"]]
+    mark = question.get("reply_watermark")
+    if not ids:
+        return {"reply_ids": [], "reply_watermark": 0}
+    if type(mark) is not int or mark <= 0:
+        raise hosted.HostedError("INVALID_RESPONSE", "The question has replies but no reply watermark. Read it again.")
+    return {"reply_ids": ids, "reply_watermark": mark}
 
 
 def _identity(config: dict[str, Any], client: hosted.HostedClient) -> dict[str, str]:
@@ -140,7 +162,9 @@ def _validate(record: dict[str, Any], identity: dict[str, str]) -> None:
             or record.get("status") not in ("pending", "received", "rejected", "uncertain")):
         raise hosted.HostedError("INVALID_RECEIPT", "Question receipt failed integrity validation.")
     hosted._key(record.get("request_id"))
-    _body(record.get("action"), record.get("body"))
+    # Receipts that an earlier version saved for resolve have an empty body; they stay readable.
+    if not (record.get("action") == "resolve" and record.get("body") == {}):
+        _body(record.get("action"), record.get("body"))
     if record.get("route") != _route(record.get("action"), record.get("question_id")):
         raise hosted.HostedError("INVALID_RECEIPT", "Question receipt route does not match its typed action.")
     if not isinstance(record.get("baseline_ids"), list):
@@ -215,15 +239,21 @@ def run(args: argparse.Namespace) -> int:
             _validate(record, identity)
             result = _recover(client, record, path)
         else:
-            value = {} if action == "resolve" else {"body": args.body if args.body is not None else remote._read_bytes(remote._absolute(args.body_file)).decode("utf-8")}
-            if action == "ask":
-                value["subject"] = args.subject
-            body = _body(action, value)
-            if hosted._redact(body, secrets) != body:
-                raise hosted.HostedError("SECRET_IN_INPUT", "Do not include credentials in question text.")
+            if args.request_id is None:
+                raise hosted.HostedError("REQUEST_ID_REQUIRED", "Give --request-id: a stable ID for this intended message.")
+            body = None  # A resolve takes its reply set from the question when it is first sent.
+            if action != "resolve":
+                value = {"body": args.body if args.body is not None else remote._read_bytes(remote._absolute(args.body_file)).decode("utf-8")}
+                if action == "ask":
+                    value["subject"] = args.subject
+                body = _body(action, value)
+                if hosted._redact(body, secrets) != body:
+                    raise hosted.HostedError("SECRET_IN_INPUT", "Do not include credentials in question text.")
             question_id = getattr(args, "question_id", None)
             route = _route(action, question_id)
-            intent = {**identity, "action": action, "question_id": question_id, "route": route, "body": body}
+            intent = {**identity, "action": action, "question_id": question_id, "route": route}
+            if body is not None:
+                intent["body"] = body
             request_id = hosted._key(args.request_id)
             if hosted._redact(request_id, secrets) != request_id:
                 raise hosted.HostedError("SECRET_IN_INPUT", "Do not include credentials in request IDs.")
@@ -247,6 +277,9 @@ def run(args: argparse.Namespace) -> int:
                     baseline = next((item for item in before if item["id"] == question_id), None)
                     if action != "ask" and baseline is None:
                         raise hosted.HostedError("NOT_FOUND", "Question is not visible in this company.")
+                    if action == "resolve":
+                        body = _body(action, _resolve_fields(baseline))
+                        intent["body"] = body
                     record = {**intent, "kind": "native-question", "schema": 1, "request_id": request_id,
                               "baseline_ids": [item["id"] for item in before], "baseline": baseline, "status": "pending"}
                     record["record_sha256"] = _digest(record)

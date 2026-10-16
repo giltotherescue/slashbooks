@@ -58,7 +58,7 @@ def _mutates(tail):
     from argparse import Namespace
     from unittest.mock import patch
     from bookkeeping import remote_contract as rc
-    with patch.object(rc, "parse_command", return_value=(Namespace(apply=False), [], ("accrual", *tail))):
+    with patch.object(rc, "parse_command", return_value=(Namespace(apply=False, work_out=None), [], ("accrual", *tail))):
         return rc.command_spec(_argv(tail))["mutates"]
 
 

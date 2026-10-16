@@ -22,4 +22,5 @@ bookkeeping = [
     "templates/business-profile.md",
     "templates/trust-policy.json",
     "templates/gitignore-template",
+    "procedures/*.md",
 ]

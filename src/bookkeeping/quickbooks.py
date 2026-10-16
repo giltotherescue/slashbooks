@@ -372,14 +372,14 @@ _XLSX_NS = {
     "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
     "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
 }
-_SUPPORTED_EXPORT_SUFFIXES = {".csv", ".xlsx"}
+_SUPPORTED_EXPORT_SUFFIXES = {".csv", ".xlsx"}  # API references use the distinct .qbo.json suffix.
 
 
 def iter_export_files(folder: Path) -> list[Path]:
     """Return supported QuickBooks export files in deterministic order."""
     return sorted(
         p for p in folder.iterdir()
-        if p.is_file() and p.suffix.lower() in _SUPPORTED_EXPORT_SUFFIXES
+        if p.is_file() and (p.suffix.lower() in _SUPPORTED_EXPORT_SUFFIXES or p.name.endswith(".qbo.json"))
     )
 
 
@@ -494,6 +494,9 @@ def parse_chart_of_accounts(path: Path) -> list[QBAccount]:
     Returns a list of QBAccount dataclasses.
     Raises ValueError if the file does not look like a CoA export.
     """
+    if Path(path).name.endswith(".qbo.json"):
+        from .quickbooks_sync import parse_reference
+        return parse_reference(Path(path), "chart_of_accounts")
     rows = _read_export_rows(path)
     if not rows:
         raise ValueError(f"Empty file: {path}")
@@ -557,6 +560,9 @@ def parse_trial_balance(path: Path) -> TrialBalance:
     Returns a TrialBalance with entries for each non-blank data row.
     Raises ValueError if the file is not a Trial Balance.
     """
+    if Path(path).name.endswith(".qbo.json"):
+        from .quickbooks_sync import parse_reference
+        return parse_reference(Path(path), "trial_balance")
     rows = _read_export_rows(path)
     rtype = detect_report_type(rows)
     if rtype != "trial_balance":
@@ -614,6 +620,9 @@ def parse_balance_sheet(path: Path) -> BalanceSheet:
     Returns a BalanceSheet with classified rows.
     Raises ValueError if the file is not a Balance Sheet.
     """
+    if Path(path).name.endswith(".qbo.json"):
+        from .quickbooks_sync import parse_reference
+        return parse_reference(Path(path), "balance_sheet")
     rows = _read_export_rows(path)
     rtype = detect_report_type(rows)
     if rtype != "balance_sheet":
@@ -670,6 +679,9 @@ def parse_profit_and_loss(path: Path) -> ProfitAndLoss:
     Returns a ProfitAndLoss with classified rows.
     Raises ValueError if the file is not a P&L.
     """
+    if Path(path).name.endswith(".qbo.json"):
+        from .quickbooks_sync import parse_reference
+        return parse_reference(Path(path), "profit_and_loss")
     rows = _read_export_rows(path)
     rtype = detect_report_type(rows)
     if rtype != "profit_and_loss":
@@ -725,6 +737,9 @@ def parse_general_ledger(path: Path) -> GeneralLedger:
     the detected header instead of fixed positions. Opening-balance and subtotal
     rows are skipped.
     """
+    if Path(path).name.endswith(".qbo.json"):
+        from .quickbooks_sync import parse_reference
+        return parse_reference(Path(path), "general_ledger")
     rows = _read_export_rows(path)
     rtype = detect_report_type(rows)
     if rtype not in ("general_ledger", "transaction_detail"):
@@ -1050,6 +1065,9 @@ class ReadinessReport:
 
 def _fingerprint_file(path: Path) -> FileFingerprint:
     """Read an export and return a FileFingerprint."""
+    if path.name.endswith(".qbo.json"):
+        from .quickbooks_sync import fingerprint
+        return fingerprint(path)
     try:
         rows = _read_export_rows(path)
     except Exception as exc:
@@ -1537,6 +1555,9 @@ class ImportResult:
     coa_path: str
     errors: list[str] = field(default_factory=list)
     success: bool = True
+    proposed_postings: list[dict] = field(default_factory=list)
+    proposed_entries: int = 0
+    proposed_accounts: int = 0
 
 
 @dataclass
@@ -1656,6 +1677,7 @@ def import_opening(
     fiscal_start=None,
     supporting=None,
     closed_position=False,
+    _preview: bool = False,
 ) -> ImportResult:
     """Post opening balances from a cash-basis trial balance.
 
@@ -1949,6 +1971,18 @@ def import_opening(
             success=False,
         )
 
+    if _preview:
+        return ImportResult(
+            entries_written=0, accounts_opened=0, ledger_path=str(store_path),
+            coa_path=str(entity.coa_path), errors=warnings, success=True,
+            proposed_entries=1, proposed_accounts=len(opens),
+            proposed_postings=[{"account": p.account, "amount": str(p.amount), "currency": p.currency,
+                                "date": cutover.isoformat(),
+                                "debit": str(max(p.amount, Decimal("0.00"))),
+                                "credit": str(max(-p.amount, Decimal("0.00")))}
+                               for p in opening_entry.postings],
+        )
+
     store = _store or LedgerStore(store_path)
     if _conn is None:
         store.initialize()
@@ -2142,6 +2176,9 @@ def add_parser(subparsers) -> None:
     )
     qb_sub = qb_parser.add_subparsers(dest="qb_command", required=True)
 
+    from .quickbooks_sync import add_parser as add_sync_parser
+    add_sync_parser(qb_sub)
+
     # inventory <folder>
     inv_parser = qb_sub.add_parser(
         "inventory",
@@ -2229,6 +2266,10 @@ def add_parser(subparsers) -> None:
 def run(args) -> int:
     """Execute the qb subcommand described by *args*."""
     from datetime import datetime
+
+    if args.qb_command in ("sync-import", "sync-opening", "sync-rules"):
+        from .quickbooks_sync import run as run_sync
+        return run_sync(args)
 
     if args.qb_command == "inventory":
         report = inventory(

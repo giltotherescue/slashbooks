@@ -23,6 +23,14 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
         raise ContractError("Expected a bounded, nonempty argv array of strings.")
     if any(v in {"-h", "--help"} for v in argv):
         raise ContractError("Help is handled locally, not by remote execution.")
+    # ``--work-out`` is a global option that the CLI reads before the subcommand parser,
+    # so the contract reads it the same way. A host classifies it as an output file.
+    work_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
+    work_parser.error = _error
+    work_parser.add_argument("--work-out", type=Path)
+    work_args, argv = work_parser.parse_known_args(argv)
+    if not argv:
+        raise ContractError("Expected a bounded, nonempty argv array of strings.")
     parser = build_parser()
 
     def prepare(p: argparse.ArgumentParser) -> None:
@@ -35,6 +43,7 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
 
     prepare(parser)
     args = parser.parse_args(argv)
+    args.work_out = work_args.work_out
     levels, path = [], []
     while True:
         levels.append(parser)
@@ -55,9 +64,12 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     entity = [name for name in ("entity", "entity_path") if hasattr(args, name)]
     if path[0] in {"entity", "demo"}:
         entity.append("path")
-    inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json", "supporting")
+    inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json",
+                          "evidence", "supporting", "cross_check")
               if hasattr(args, name)]
     outputs = [name for name in ("output", "output_dir") if hasattr(args, name)]
+    if args.work_out is not None:
+        outputs.append("work_out")
     if path == ("ledger", "snapshot"):
         inputs.append("store")
     elif path == ("ledger", "migrate"):
@@ -68,13 +80,19 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             if action.type is Path and action.dest not in classified:
                 raise ContractError(f"Path field {action.dest} has no transport classification.")
     network = path[0] == "connector" and path[1] != "csv"
-    read = (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast"}
+    statement_read = path in {("statement", "inspect"), ("statement", "list"), ("statement", "validate")} or (
+        path in {("statement", "import"), ("statement", "import-extracted")} and args.dry_run)
+    read = statement_read or (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast",
+                           "work"}
             or path in {("qb", "inventory"), ("entity", "related-entity", "list"),
                         ("connector", "csv", "inspect"), ("connector", "csv", "propose-mapping"),
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),
                         ("queue", "list"), ("queue", "show"), ("queue", "summary"),
                         ("queue", "split-template-list"), ("queue", "transfer-candidates"),
-                        ("queue", "transfer-exceptions")})
+                        ("queue", "transfer-exceptions"), ("queue", "duplicates")}
+            # Tax handoff: read-only checks and exports.
+            or path in {("coverage", "check"), ("coverage", "statement-list"),
+                        ("tax", "lines"), ("tax", "map"), ("tax", "export")})
     mutates = not read and not network
     if path[0] == "accrual":
         mutates = path[1:] not in {("schema",), ("capabilities",), ("journal", "preview"),
@@ -87,7 +105,9 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             mutates = args.apply
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False
-    if path == ("qb", "repair-opening") and not args.apply:
+    if path == ("qb", "sync-import"):
+        mutates = True  # Persists company source evidence and review proposals.
+    if path in {("qb", "repair-opening"), ("qb", "sync-rules")} and not args.apply:
         mutates = False
     # mutates is a business-write permission, not an artifact/cache-write flag.
     return dict(path=path, entity_fields=entity, input_fields=inputs,
@@ -108,6 +128,9 @@ def rewrite_paths(argv: list[str], replacements: dict[str, str]) -> list[str]:
     def render(value: Any, field: str) -> str:
         value = str(value)
         return replacements.get(value, value) if field in fields else value
+
+    if args.work_out is not None:
+        result.append("--work-out=" + render(args.work_out, "work_out"))
 
     for index, level in enumerate(levels):
         for action in level._actions:

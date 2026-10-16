@@ -61,7 +61,7 @@ class BankSyncClient:
             f"/v1/banks/{parse.quote(bank_id, safe='')}"
             f"/accounts/{parse.quote(account_id, safe='')}/transactions"
         )
-        all_transactions: list[JsonObject] = []
+        all_transactions = TransactionList()
         current_cursor: str | None = None
         seen_cursors: set[str] = set()
 
@@ -81,6 +81,8 @@ class BankSyncClient:
                 raise BankSyncError("BankSync transaction download exceeded its row limit")
 
             next_cursor = _extract_next_cursor(envelope)
+            if _marked_partial(envelope):
+                all_transactions.partial = True
             all_transactions.extend(page_data)
             if next_cursor is None:
                 return all_transactions
@@ -236,13 +238,16 @@ def collect_bank_data(
                 )
                 for txn in transactions
             ]
-            collected_accounts.append(
-                {
-                    "account": normalize_account(account),
-                    "transactions": normalized_transactions,
-                    "summary": summarize_transactions(normalized_transactions),
-                }
-            )
+            entry: JsonObject = {
+                "account": normalize_account(account),
+                "transactions": normalized_transactions,
+                "summary": summarize_transactions(normalized_transactions),
+            }
+            if getattr(transactions, "partial", False):
+                # BankSync marked the read incomplete (meta.partial). `books ingest`
+                # then writes no feed window for this account.
+                entry["partial"] = True
+            collected_accounts.append(entry)
         collected.append(
             {
                 "bank": normalize_bank(bank),
@@ -426,6 +431,19 @@ def _money_decimal(value: Any) -> Decimal:
         except (InvalidOperation, ValueError) as exc:
             raise BankSyncError(f"Invalid money value from BankSync: {value!r}") from exc
     return amount.quantize(MONEY_QUANT)
+
+
+class TransactionList(list):
+    """Transactions from one account read; ``partial`` is True when BankSync marked it incomplete."""
+
+    partial: bool = False
+
+
+def _marked_partial(envelope: JsonObject) -> bool:
+    for container in (envelope, envelope.get("meta"), envelope.get("pagination")):
+        if isinstance(container, dict) and container.get("partial") is True:
+            return True
+    return False
 
 
 def _extract_next_cursor(envelope: JsonObject) -> str | None:

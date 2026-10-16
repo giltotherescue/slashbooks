@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "source": "model",
+  "account_kind": "bank",
+  "period_start": "2026-03-01",
+  "period_end": "2026-03-31",
+  "opening_balance": "8412.37",
+  "closing_balance": "18464.22",
+  "transactions": [
+    {
+      "date": "2026-03-01",
+      "description": "ACH DEBIT FERNHILL PAYROLL NET PAY",
+      "amount": "-1810.63",
+      "running_balance": "6601.74"
+    },
+    {
+      "date": "2026-03-01",
+      "description": "ACH DEBIT FERNHILL PAYROLL NET PAY",
+      "amount": "-1715.82",
+      "running_balance": "4885.92"
+    },
+    {
+      "date": "2026-03-02",
+      "description": "ACH DEBIT PAYROLL SVC TAX COLL 26Q1",
+      "amount": "-2181.45",
+      "running_balance": "2704.47"
+    },
+    {
+      "date": "2026-03-07",
+      "description": "WIRE IN FROM BLUEJAY STUDIOS INC",
+      "amount": "759.03",
+      "running_balance": "3463.50"
+    },
+    {
+      "date": "2026-03-07",
+      "description": "DEBIT CARD TALLGRASS SOFTWARE SUBSCR",
+      "amount": "-475.78",
+      "running_balance": "2987.72"
+    },
+    {
+      "date": "2026-03-07",
+      "description": "DEPOSIT BRANCH 014",
+      "amount": "2993.52",
+      "running_balance": "5981.24"
+    },
+    {
+      "date": "2026-03-14",
+      "description": "DEPOSIT BRANCH 014",
+      "amount": "2644.71",
+      "running_balance": "8625.95"
+    },
+    {
+      "date": "2026-03-15",
+      "description": "WIRE IN FROM BLUEJAY STUDIOS INC",
+      "amount": "1997.11",
+      "running_balance": "10623.06"
+    },
+    {
+      "date": "2026-03-16",
+      "description": "POS PURCHASE COPPERLEAF CAFE #221 PORTLAND OR",
+      "amount": "-1806.50",
+      "running_balance": "8816.56"
+    },
+    {
+      "date": "2026-03-16",
+      "description": "OUTGOING WIRE TRANSFER FEE",
+      "amount": "-30.00",
+      "running_balance": "8786.56"
+    },
+    {
+      "date": "2026-03-17",
+      "description": "POS PURCHASE COPPERLEAF CAFE #221 PORTLAND OR",
+      "amount": "-1413.40",
+      "running_balance": "7373.16"
+    },
+    {
+      "date": "2026-03-20",
+      "description": "ACH DEBIT GRIDLINE ELECTRIC UTIL PAYMT",
+      "amount": "-2326.99",
+      "running_balance": "5046.17"
+    },
+    {
+      "date": "2026-03-27",
+      "description": "ONLINE TRANSFER FROM SAVINGS XXXXXX7710",
+      "amount": "4824.39",
+      "running_balance": "9870.56"
+    },
+    {
+      "date": "2026-03-27",
+      "description": "POS PURCHASE NORTHSIDE HARDWARE 0042",
+      "amount": "-1895.18",
+      "running_balance": "7975.38"
+    },
+    {
+      "date": "2026-03-27",
+      "description": "MOBILE DEPOSIT REF 55102",
+      "amount": "5744.25",
+      "running_balance": "13719.63"
+    },
+    {
+      "date": "2026-03-29",
+      "description": "WIRE IN FROM BLUEJAY STUDIOS INC",
+      "amount": "6004.50",
+      "running_balance": "19724.13"
+    },
+    {
+      "date": "2026-03-30",
+      "description": "ACH DEBIT LANTERN INSURANCE PREM",
+      "amount": "-1244.91",
+      "running_balance": "18479.22"
+    },
+    {
+      "date": "2026-03-31",
+      "description": "MONTHLY SERVICE FEE",
+      "amount": "-15.00",
+      "running_balance": "18464.22"
+    }
+  ],
+  "excluded": [
+    "Account summary: Beginning Balance on March 1, 2026 8,412.37",
+    "Account summary: Deposits and Additions 24,967.51",
+    "Account summary: Withdrawals and Subtractions -14,915.66",
+    "Account summary: Ending Balance on March 31, 2026 18,464.22"
+  ],
+  "extractor": {
+    "name": "synthetic-fixture",
+    "version": "1"
+  },
+  "row_order": "chronological",
+  "confidence": "high"
+}

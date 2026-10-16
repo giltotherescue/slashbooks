@@ -61,6 +61,11 @@ def _binding(directory: Path) -> Path | None:
     return None
 
 
+def is_bound(args: argparse.Namespace) -> bool:
+    """Return True when the command would run against a remote company binding."""
+    return _discover(args) is not None
+
+
 def _discover(args: argparse.Namespace) -> Path | None:
     entity = getattr(args, "entity", None) or getattr(args, "entity_path", None)
     if args.command in {"entity", "demo"}:
