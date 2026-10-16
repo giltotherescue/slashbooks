@@ -421,12 +421,9 @@ def preview_adjustment(entity: Entity, payload: Mapping[str, Any]) -> dict[str, 
         record = mutation.payload
         if mutation.table == "allocations" and "variance" in record:
             fields = {k: record[k] for k in ("actual_item_id", "estimate_amount", "actual_amount", "variance")}
-    # The committed receipt copies plan warnings, so an informational entry makes the variance visible there too.
-    notes = [{"code": "true_up_variance", "message": "Variance is the actual amount minus the estimate removed; a negative variance means the actual was lower.",
-              **fields}] if fields else []
     plan = _preview_operation(entity, operation_id=request["operation_id"], kind="item_adjustment", request=request,
                               entries=entries, mutations=mutations, evidence_ids=request["evidence_ids"],
-                              warnings=notes, details={"true_up": fields} if fields else None)
+                              details={"true_up": fields} if fields else None)
     if replay:
         plan["existing_receipt"] = replay
     return plan

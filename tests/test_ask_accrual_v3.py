@@ -142,11 +142,10 @@ class TrueUpVariancePreviewTests(AccrualFixture):
         plan = items.preview_adjustment(self.entity, adjust)
         fields = {"actual_item_id": "bonus-act", "estimate_amount": "3000.00", "actual_amount": "2700.00", "variance": "-300.00"}
         self.assertEqual(plan["details"]["true_up"], fields)
-        self.assertIn("true_up_variance", [w["code"] for w in plan["warnings"]])
+        self.assertNotIn("true_up_variance", [w["code"] for w in plan["warnings"]])
         receipt = items.apply_adjustment(self.entity, plan)
-        note = next(w for w in receipt["warnings"] if w["code"] == "true_up_variance")
-        for key, value in fields.items():
-            self.assertEqual(note[key], value)
+        self.assertEqual(receipt["details"]["true_up"], fields)
+        self.assertNotIn("true_up_variance", [w["code"] for w in receipt["warnings"]])
         stored = operation_receipt(self.store, "trueup")["receipt"]
         self.assertEqual(stored, receipt)
         json.dumps(receipt)
