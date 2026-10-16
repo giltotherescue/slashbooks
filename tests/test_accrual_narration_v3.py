@@ -137,7 +137,7 @@ class ItemNarrationTests(NarrationMixin, ItemsV2Tests):
         plan = preview_item(self.entity, {"operation_id": "op-7c1e44aa-acc", "id": "inv-7c1e44aa", "kind": "receivable", "account": AR,
             "currency": "USD", "original_amount": "10.00", "as_of": "2026-03-01", "counterparty": "Orbit", "reference": "INV-9",
             "origin": {"mode": "new", "source_id": "bank-7c1e44aa", "counter_account": INCOME}, "evidence_ids": [self.evidence("acc")]})
-        self.assertEqual(self.descriptions(plan), ["Record receivable: INV-9"])
+        self.assertEqual(self.descriptions(plan), ["Invoice: Orbit INV-9"])
 
 
 class ReversalNarrationTests(NarrationMixin, V2Fixture):

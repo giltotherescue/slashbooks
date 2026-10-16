@@ -38,22 +38,22 @@ class ItemTests(AccrualFixture):
             reference="Invoice #104", counterparty="Synthetic Vendor",
             origin={"mode": "new", "source_id": "vendor-invoice", "counter_account": EXPENSE})
         plan = preview_item(self.entity, request)
-        self.assertEqual(plan["entries"][0]["description"], "Record payable: Invoice #104")
+        self.assertEqual(plan["entries"][0]["description"], "Bill: Synthetic Vendor Invoice #104")
         self.assertEqual(dict(plan["entries"][0]["meta"])["item-id"], "item-machine-id")
         receipt = apply_item(self.entity, plan)
         before = self.store.content_digest()
         self.assertEqual(apply_item(self.entity, plan), {**receipt, "status": "already_applied"})
         self.assertEqual(self.store.content_digest(), before)
         for number, (labels, expected) in enumerate((
-                ({"counterparty": "Synthetic Customer"}, "Record receivable: Synthetic Customer"),
-                ({}, "Record receivable"))):
+                ({"counterparty": "Synthetic Customer"}, "Invoice: Synthetic Customer"),
+                ({}, "Invoice"))):
             with self.subTest(labels=labels):
                 preview = preview_item(self.entity, self.item(operation_id="other-create-" + str(number),
                     evidence_ids=[self.evidence("other-invoice")], **labels))
                 self.assertEqual(preview["entries"][0]["description"], expected)
 
     def test_committed_legacy_item_narration_replays_without_rewriting(self):
-        with patch("bookkeeping.accrual.items._narration", return_value="Record receivable invoice-1"):
+        with patch("bookkeeping.accrual.items._origin_narration", return_value="Record receivable invoice-1"):
             plan = preview_item(self.entity, self.item(reference="Invoice #104"))
             receipt = apply_item(self.entity, plan)
         before = self.store.content_digest()
