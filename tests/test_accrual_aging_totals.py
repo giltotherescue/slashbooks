@@ -56,5 +56,18 @@ class AgingTotalsTest(unittest.TestCase):
         self.assertIn("Total payable | 385.25 | Overdue 85.25 | Items 3 | Overdue items 2", text)
 
 
+class CreditSideTest(unittest.TestCase):
+    def test_credit_side_follows_direction_not_account(self):
+        deposit = item("d1", "credit", "Liabilities:Other:Customer-Deposits", "40.00", None, signed="-40.00")
+        deposit["direction"] = "credit"
+        prepay = item("v1", "credit", "Assets:Prepaid:Vendor", "15.00", None, signed="15.00")
+        prepay["direction"] = "debit"
+        rows, _ = reports.aging([deposit, prepay], date(2026, 6, 30))
+        totals = reports.aging_totals(rows)
+        self.assertEqual(totals["receivable"]["unapplied_credits"], {"total": "40.00", "count": 1})
+        self.assertEqual(totals["payable"]["unapplied_credits"], {"total": "15.00", "count": 1})
+        self.assertEqual(totals["receivable"]["total"], "0.00")
+
+
 if __name__ == "__main__":
     unittest.main()

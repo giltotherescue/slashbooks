@@ -445,7 +445,10 @@ def aging_totals(rows):
         kind = row["kind"]
         amount = Decimal(row["aging_amount"])
         if kind == "credit":
-            side = sides["receivable" if row["account"].startswith("Assets:") else "payable"]["unapplied_credits"]
+            # direction "credit": counterparty holds a credit with us (receivable side);
+            # "debit": we hold a prepayment/credit with them (payable side).
+            # Missing direction falls back to receivable, matching credit semantics in items.py.
+            side = sides["payable" if row.get("direction") == "debit" else "receivable"]["unapplied_credits"]
             side["total"] += amount
             side["count"] += 1
             continue
