@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import calendar
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 import hashlib
 import json
@@ -293,6 +293,16 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         raise TypeError("A deterministic as_of date is required.")
     start, end = _period_dates(period)
     entity = load_entity(entity_path)
+    store_path = default_store_path(entity.path)
+    partial_opening = None
+    if entity.basis == "accrual" and store_path.is_file():
+        from .accrual.reports import opening_coverage
+        with LedgerStore(store_path).connection() as conn:
+            opening = opening_coverage(conn)
+        if opening and opening.get("verified") is True and opening.get("support_status") == "reconciled":
+            cutover = date.fromisoformat(opening["cutover_date"])
+            if start < cutover <= end and opening.get("source_as_of") == (cutover - timedelta(days=1)).isoformat():
+                start, partial_opening = cutover, opening
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     accrual_snapshot = None
@@ -315,8 +325,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     question_blockers, open_questions = _question_blockers(entity.path, start, end)
     blockers.extend(question_blockers)
 
-    store_path = default_store_path(entity.path)
     ledger_balances: dict[str, Decimal] = {}
+    opening_balances: dict[str, Decimal] = {}
     account_catalog: set[str] = set()
     if store_path.is_file():
         store = LedgerStore(store_path)
@@ -324,6 +334,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         for entry in store.load_entries(to_date=end):
             for posting in entry.postings:
                 ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
+                if partial_opening and entry.date < start:
+                    opening_balances[posting.account] = opening_balances.get(posting.account, Decimal("0")) + posting.amount
 
     source_accounts = sorted({str(source["account"]) for source in sources if source["account"]})
     for account in source_accounts:
@@ -383,6 +395,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             blockers.append({"code": "reconciliation_not_clean", "message": "A source account is not cleanly reconciled with source-period integrity.", "refs": [account]})
         if opening is None or activity is None:
             blockers.append({"code": "opening_evidence_missing", "message": "Reconciliation lacks affirmative opening balance and source activity evidence.", "refs": [account]})
+        if partial_opening and opening != opening_balances.get(account, Decimal("0")):
+            blockers.append({"code": "cutover_opening_mismatch", "message": "Partial-period source opening must equal the verified ledger balance immediately before cutover.", "refs": [account, partial_opening["source_as_of"]]})
         if not snapshot_coherent or not through_complete:
             blockers.append({"code": "source_statement_incomplete", "message": "Reconciliation lacks a dated source snapshot through period end.", "refs": [account]})
         evidence_refs = record.get("source_evidence_refs")
@@ -459,6 +473,10 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         "reconciliations": sorted(normalized_recs, key=lambda item: str(item.get("account"))),
         "reports": reports,
     }
+    if entity.basis == "accrual":
+        document.update(activity_from=start.isoformat(), activity_to=end.isoformat(),
+                        partial_post_cutover=partial_opening is not None,
+                        imported_summary_through=partial_opening["source_as_of"] if partial_opening else None)
     document["package_id"] = _hash(document)
     return ReadinessAssessment(document)
 
