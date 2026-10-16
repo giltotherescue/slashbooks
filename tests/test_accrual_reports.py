@@ -14,6 +14,83 @@ from bookkeeping.entity import load_entity
 from bookkeeping.readiness import assess_review_readiness, local_dependency_versions
 from bookkeeping.reports import statements, workbook
 from tests import test_accrual_migration as fixtures
+from tests import test_accrual_items as item_fixtures
+from tests.test_accrual_schedules import AccrualFixture, AR, AP, BANK, EXPENSE, INCOME
+
+
+class AdjustmentRegisterTests(AccrualFixture):
+    item = item_fixtures.ItemTests.item
+    settlement = item_fixtures.ItemTests.settlement
+    create = item_fixtures.ItemTests.create
+
+    def register(self, start="2026-01-01", end="2026-01-31"):
+        return reports.report(self.entity, "adjustments", from_date=start, to_date=end)["rows"]
+
+    def test_credit_writeoff_and_arbitrary_bank_sources_have_complete_effects_and_trace(self):
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        self.create()
+        request = {"operation_id": "credit-1", "item_id": "invoice-1", "action": "credit", "amount": "200.00",
+                   "date": "2026-01-10", "counter_account": INCOME, "source_id": "credit-note-1",
+                   "reason": "Synthetic credit", "evidence_ids": [self.evidence("credit")]}
+        items.apply_adjustment(self.entity, items.preview_adjustment(self.entity, request))
+        writeoff = {**request, "operation_id": "writeoff-1", "action": "writeoff", "amount": "100.00",
+                    "counter_account": "Expenses:Bad-Debt", "source_id": "writeoff-source",
+                    "evidence_ids": [self.evidence("writeoff")]}
+        items.apply_adjustment(self.entity, items.preview_adjustment(self.entity, writeoff))
+        items.apply_settlement(self.entity, items.preview_settlement(self.entity, self.settlement()))
+        manual = Entry(date(2026, 1, 12), "Synthetic unmanaged posting",
+                       meta=(("source-id", "accrual:manual"), ("accrual-operation", "invoice-create")),
+                       postings=(Posting(EXPENSE, Decimal("1.00")), Posting(BANK, Decimal("-1.00"))))
+        _atomic_ledger_write(self.entity, [], [manual], "manual", None, "Synthetic unmanaged entry")
+        rows = self.register()
+        self.assertEqual([row["source_id"] for row in rows],
+                         ["accrual:invoice-create", "adjustment:credit-1", "adjustment:writeoff-1", "bank-payment-1"])
+        credit = rows[1]
+        self.assertEqual(credit["operations"][0]["id"], "credit-1")
+        self.assertEqual(credit["operations"][0]["evidence_ids"], request["evidence_ids"])
+        self.assertEqual(credit["operations"][0]["role"], "posted_effect")
+        self.assertEqual({p["account"]: Decimal(p["amount"]) for p in credit["postings"]},
+                         {AR: Decimal("-200.00"), INCOME: Decimal("200.00")})
+        self.assertEqual([row["source_id"] for row in self.register(end="2026-01-09")], ["accrual:invoice-create"])
+        self.assertEqual([row["source_id"] for row in self.register(start="2026-01-11")], ["bank-payment-1"])
+
+    def test_carried_item_reversal_appears_on_its_actual_date(self):
+        self.post("opening", "2025-12-31", [(AP, "-1000.00"), ("Equity:Opening-Balances", "1000.00")])
+        self.create(kind="accrual", account=AP, settlement_strategy="reverse",
+                    origin={"mode": "opening", "source_id": "opening"})
+        request = {"operation_id": "carried-reversal", "item_id": "invoice-1", "date": "2026-01-10",
+                   "counter_account": EXPENSE, "reason": "Synthetic carried reversal", "evidence_ids": [self.eid]}
+        items.apply_reversal(self.entity, items.preview_reversal(self.entity, request))
+        self.assertEqual(self.register(end="2026-01-09"), [])
+        row, = self.register()
+        self.assertEqual(row["source_id"], "item-reversal:carried-reversal")
+        self.assertEqual(row["metadata"]["reverses-obligation"], "invoice-1")
+        self.assertEqual(row["operations"][0]["kind"], "item_reversal")
+
+    def test_existing_control_payment_is_linked_once_across_multiple_nonposting_allocations(self):
+        self.create()
+        self.post("provider-bank-object", "2026-01-15", [(BANK, "1000.00"), (AR, "-1000.00")])
+        for identity, amount in (("allocate-first", "400.00"), ("allocate-rest", "600.00")):
+            request = self.settlement(operation_id=identity,
+                source={"mode": "existing", "source_id": "provider-bank-object", "bank_account": BANK, "amount": "1000.00"},
+                allocations=[{"item_id": "invoice-1", "amount": amount}])
+            receipt = items.apply_settlement(self.entity, items.preview_settlement(self.entity, request))
+            self.assertEqual(receipt["entry_source_ids"], [])
+        rows = self.register()
+        self.assertEqual([row["source_id"] for row in rows], ["accrual:invoice-create", "provider-bank-object"])
+        self.assertEqual([operation["id"] for operation in rows[1]["operations"]], ["allocate-first", "allocate-rest"])
+        self.assertEqual({operation["role"] for operation in rows[1]["operations"]}, {"linked_existing_source"})
+
+    def test_later_existing_origin_link_does_not_leak_into_earlier_register(self):
+        self.post("existing-provider-invoice", "2026-01-15", [(AR, "1000.00"), (INCOME, "-1000.00")])
+        self.assertEqual(self.register(), [])
+        self.create(as_of="2026-02-01", origin={"mode": "existing", "source_id": "existing-provider-invoice"})
+        self.assertEqual(self.register(), [])
+        row, = self.register(end="2026-02-28")
+        self.assertEqual(row["date"], "2026-01-15")
+        self.assertEqual(row["operations"][0]["id"], "invoice-create")
+        self.assertEqual(self.register(start="2026-02-01", end="2026-02-28"), [])
 
 
 class AccrualReportsTests(unittest.TestCase):

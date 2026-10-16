@@ -48,6 +48,12 @@ class AccrualCliTests(unittest.TestCase):
         self.assertEqual(result["evidence"]["properties"]["schema_version"]["const"], 1)
         self.assertTrue({"journal", "schedule", "item", "settlement", "item_adjustment", "support", "migration_supporting"} <= set(result["requests"]))
         self.assertTrue(result["requests"]["schedule"]["examples"])
+        opening = result["requests"]["migration_supporting"]["properties"]
+        for collection in ("items", "schedules", "external"):
+            row = opening[collection]["items"]
+            self.assertFalse(row["additionalProperties"])
+            self.assertTrue({"counterparty", "reference", "description"} <= set(row["properties"]))
+            self.assertFalse({"history", "status", "origin", "generation", "base_remaining_amount"} & set(row["properties"]))
         status, capabilities = self.cli(["accrual", "capabilities"])
         self.assertEqual(status, 0)
         self.assertEqual(capabilities["authority_action"], "adjust")

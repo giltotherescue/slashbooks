@@ -144,7 +144,8 @@ def request_schemas() -> dict[str, Any]:
             "settlement_strategy": "direct", "evidence_ids": ["synthetic-stored-evidence-id"]}])
     support_row = {"type": "object", "required": ["id", "account", "currency"],
         "properties": {"id": text, "account": text, "currency": {"const": "USD"},
-            "evidence_refs": ids, "evidence_ids": ids},
+            "evidence_refs": ids, "evidence_ids": ids, "counterparty": text, "reference": text, "description": text},
+        "additionalProperties": False,
         "description": "Opening item/schedule/external support; collection-specific facts and exact control tie-out are validated by migration."}
     def opening_support(required: list[str], properties: dict[str, Any]) -> dict[str, Any]:
         return {**support_row, "required": [*support_row["required"], *required],

@@ -61,6 +61,50 @@ class AccrualFixture(unittest.TestCase):
 
 
 class ScheduleTests(AccrualFixture):
+    def test_refund_evidence_cannot_post_cash_again_with_another_operation_id(self):
+        apply_schedule(self.entity, preview_schedule(self.entity, self.schedule()))
+        request = {"operation_id": "refund-one", "id": "annual", "action": "refund", "date": "2026-01-31",
+            "reason": "Same synthetic refund", "evidence_ids": [self.evidence("same-refund")], "amount": "100.00", "offset_account": BANK}
+        receipt = apply_change(self.entity, preview_change(self.entity, request))
+        repeated = {**request, "operation_id": "refund-another-transport"}
+        self.assertEqual(apply_change(self.entity, preview_change(self.entity, repeated)), receipt)
+        self.assertEqual(self.balances()[BANK], Decimal("-1100"))
+        self.assertEqual(self.balances()[PREPAID], Decimal("1100"))
+        self.assertEqual(self.store.counts().entries, 2)
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "different financial treatment"):
+            preview_change(self.entity, {**repeated, "operation_id": "different-refund", "amount": "200.00"})
+        self.assertEqual(self.store.content_digest(), before)
+
+    def test_cancel_and_split_refund_replay_before_inactive_schedule_checks(self):
+        for action in ("cancel", "refund"):
+            with self.subTest(action=action):
+                self.setUp()
+                apply_schedule(self.entity, preview_schedule(self.entity, self.schedule()))
+                apply_due(self.entity, preview_due(self.entity, "2026-01-31", operation_id="recognize-january"))
+                request = {"operation_id": "end-service", "id": "annual", "action": action, "date": "2026-01-31",
+                    "reason": "Synthetic complete service termination", "evidence_ids": [self.evidence("termination")], "offset_account": BANK}
+                if action == "refund":
+                    request.update(amount="1200.00", remaining_refund_amount="1100.00", recognized_refund_amount="100.00", recognized_refund_account=EXPENSE)
+                receipt = apply_change(self.entity, preview_change(self.entity, request))
+                before = self.balances()
+                self.assertEqual(apply_change(self.entity, preview_change(self.entity, {**request, "operation_id": "second-termination"})), receipt)
+                self.assertEqual(self.balances(), before)
+
+    def test_changes_cannot_precede_actual_funding_origin(self):
+        apply_schedule(self.entity, preview_schedule(self.entity, self.schedule()))
+        for action in ("refund", "cancel", "supersede"):
+            with self.subTest(action=action), self.assertRaisesRegex(ValueError, "cannot precede its financial origin"):
+                preview_change(self.entity, {"operation_id": "impossible-" + action, "id": "annual", "action": action,
+                    "date": "2025-12-31", "reason": "Synthetic pre-origin change", "evidence_ids": [self.evidence("pre-origin-" + action)],
+                    "amount": "100.00", "offset_account": BANK})
+        self.assertEqual(self.balances(), {PREPAID: Decimal("1200"), BANK: Decimal("-1200")})
+        from bookkeeping.ledger.importer import reverse_entry
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "managed accrual"):
+            reverse_entry(self.entity, "annual-payment", "legacy-funding-reversal")
+        self.assertEqual(self.store.content_digest(), before)
+
     def test_full_calendar_year_twelve_hundred_posts_twelve_hundreds_once(self):
         request = self.schedule()
         plan = preview_schedule(self.entity, request)

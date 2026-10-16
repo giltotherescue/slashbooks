@@ -257,6 +257,47 @@ def unresolved(conn, as_of):
     return sorted(issues, key=lambda i: (i["code"], i["refs"]))
 
 
+def _adjustment_rows(store, conn, start, end):
+    associations = {}
+    for operation in _records(conn, "intents"):
+        receipt = operation.get("receipt", {})
+        identity = receipt.get("id")
+        # Transport aliases replay another operation's receipt and create no
+        # financial effects of their own.
+        if (operation.get("status") != "applied" or not identity
+                or operation.get("id") != "operation:" + identity):
+            continue
+        affected = operation.get("plan", {}).get("affected_dates", [])
+        if affected and min(affected) > end.isoformat():
+            continue
+        trace = {"id": identity, "kind": receipt["kind"], "plan_hash": receipt["plan_hash"],
+                 "evidence_ids": receipt.get("evidence_ids", [])}
+        for source_id in receipt.get("entry_source_ids", []):
+            associations.setdefault(source_id, {})[identity] = {**trace, "role": "posted_effect"}
+        # Existing bank/control origins may need only supporting allocations,
+        # or a reclassification. Retain their original dated financial entry
+        # separately from any appended correction, without duplicating cash.
+        request = operation.get("request", {})
+        for name in ("origin", "source"):
+            source = request.get(name, {})
+            if source.get("mode") == "existing" and source.get("source_id"):
+                associations.setdefault(source["source_id"], {}).setdefault(
+                    identity, {**trace, "role": "linked_existing_source"})
+    opening = opening_coverage(conn)
+    opening_source = opening.get("opening_source_id") if opening else None
+    rows = []
+    for entry in store.load_entries(from_date=start, to_date=end):
+        linked = associations.get(entry.source_id, {})
+        if not linked and not (opening_source and entry.source_id == opening_source):
+            continue
+        rows.append({"date": entry.date.isoformat(), "source_id": entry.source_id,
+                     "description": entry.narration, "metadata": dict(entry.meta),
+                     "operations": [linked[key] for key in sorted(linked)],
+                     "postings": [{"account": p.account, "amount": str(p.amount), "currency": p.currency}
+                                  for p in entry.postings]})
+    return rows
+
+
 def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
     entity = load_entity(entity.path) if isinstance(entity, Entity) else load_entity(entity)
     if resolve_basis(entity.entity_config) != "accrual":
@@ -273,12 +314,7 @@ def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
         elif kind == "reconciliation":
             rows = reconciliation(conn, end)
         elif kind == "adjustments":
-            rows = []
-            for entry in LedgerStore(entity.path / "ledger.sqlite").load_entries(from_date=start, to_date=end):
-                metadata = dict(entry.meta)
-                if metadata.get("accrual-opening") or metadata.get("accrual-operation") or entry.source_id and entry.source_id.startswith(("accrual:", "schedule:", "item:", "settlement:")):
-                    rows.append({"date": entry.date.isoformat(), "source_id": entry.source_id, "description": entry.narration,
-                                 "metadata": metadata, "postings": [{"account": p.account, "amount": str(p.amount), "currency": p.currency} for p in entry.postings]})
+            rows = _adjustment_rows(LedgerStore(entity.path / "ledger.sqlite"), conn, start, end)
         else:
             raise ValueError("Supported accrual report kinds: schedules, outstanding, adjustments, support, reconciliation.")
         result = {"schema_version": 1, "kind": kind, "as_of": end.isoformat(), "from_date": start.isoformat() if start else None,

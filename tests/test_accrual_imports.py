@@ -1,5 +1,7 @@
 """Accrual import ownership, explicit treatment and unchanged cash regression."""
 from decimal import Decimal
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
 import unittest
 from unittest.mock import Mock
@@ -9,7 +11,7 @@ from bookkeeping.accrual.items import preview_item, apply_item, preview_settleme
 from bookkeeping.accrual.store import SupportingMutation
 from bookkeeping.entity import load_entity
 from bookkeeping.ledger.importer import import_transactions, _atomic_ledger_write, _load_pending_categorization
-from bookkeeping.queue import propose, confirm, eligible_for_autopost
+from bookkeeping.queue import propose, confirm, correct, eligible_for_autopost, _write_confirmed_entry
 from bookkeeping.routine import routine_plan
 from bookkeeping.stripe import stripe_plan, stripe_apply
 
@@ -22,6 +24,65 @@ def bank_row(source_id="bank-row", **changes):
 
 
 class AccrualImportTests(AccrualFixture):
+    def test_queue_correction_cannot_recognize_an_accrued_receipt_as_income_implicitly(self):
+        invoice = {"operation_id": "invoice", "id": "invoice", "kind": "receivable", "account": AR,
+            "original_amount": "1000.00", "as_of": "2026-01-01", "settlement_strategy": "direct",
+            "origin": {"mode": "new", "source_id": "provider-invoice", "counter_account": INCOME},
+            "evidence_ids": [self.eid]}
+        apply_item(self.entity, preview_item(self.entity, invoice))
+        row = bank_row(amount="400.00")
+        import_transactions(self.entity, [row], "intake")
+        propose(self.entity, row["id"], INCOME, "Synthetic receipt awaiting treatment")
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "explicit treatment"):
+            correct(self.entity, row["id"], INCOME, session_id="duplicate-revenue")
+        self.assertEqual(self.store.content_digest(), before)
+        self.assertEqual(self.balances()[INCOME], Decimal("-1000.00"))
+        self.assertEqual(len(_load_pending_categorization(self.entity)), 1)
+        settlement = {"operation_id": "link-correctly", "date": row["date"], "source": {
+            "mode": "new", "source_id": row["id"], "bank_account": BANK, "amount": row["amount"]},
+            "allocations": [{"item_id": "invoice", "amount": "400.00"}], "evidence_ids": [self.evidence("receipt")]}
+        apply_settlement(self.entity, preview_settlement(self.entity, settlement))
+        self.assertEqual(self.balances()[INCOME], Decimal("-1000.00"))
+        self.assertEqual(self.balances()[AR], Decimal("600.00"))
+        self.assertEqual(self.balances()[BANK], Decimal("400.00"))
+
+    def test_queue_correction_cli_requires_and_records_explicit_new_cash_event(self):
+        from bookkeeping.cli import main
+        from bookkeeping.remote_contract import parse_command, rewrite_paths
+        row = bank_row()
+        import_transactions(self.entity, [row], "intake")
+        propose(self.entity, row["id"], INCOME, "Synthetic category correction")
+        argv = ["queue", "correct", "--entity", str(self.root), "--item", row["id"], "--category", EXPENSE]
+        before = self.store.content_digest()
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) as error:
+            self.assertEqual(main(argv), 1)
+        self.assertIn("explicit treatment", error.getvalue())
+        self.assertEqual(self.store.content_digest(), before)
+        argv += ["--accrual-treatment", "new_cash_event"]
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            self.assertEqual(main(argv), 0)
+        self.assertEqual(self.balances()[EXPENSE], Decimal("100.00"))
+        self.assertEqual(dict(self.store.load_entries()[-1].meta)["accrual-treatment"], "new_cash_event")
+        parsed, _, _ = parse_command(argv)
+        self.assertEqual(parsed.accrual_treatment, "new_cash_event")
+        self.assertIn("--accrual-treatment=new_cash_event", rewrite_paths(argv, {}))
+
+    def test_generic_cash_writer_and_owned_origins_cannot_bypass_treatment_guard(self):
+        row = bank_row()
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "explicit treatment"):
+            _write_confirmed_entry(self.entity, row, EXPENSE, "private-writer")
+        self.assertEqual(self.store.content_digest(), before)
+        invoice = {"operation_id": "invoice", "id": "invoice", "kind": "receivable", "account": AR,
+            "original_amount": "100.00", "as_of": "2026-01-01", "settlement_strategy": "direct",
+            "origin": {"mode": "new", "source_id": row["id"], "counter_account": INCOME}, "evidence_ids": [self.eid]}
+        apply_item(self.entity, preview_item(self.entity, invoice))
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "already owns"):
+            _write_confirmed_entry(self.entity, row, EXPENSE, "owned-origin", accrual_treatment="new_cash_event")
+        self.assertEqual(self.store.content_digest(), before)
+
     def test_learned_categorizer_cannot_post_accrual_activity_or_trust_provider_treatment(self):
         categorizer = Mock(return_value=(EXPENSE, "high"))
         row = bank_row(accrual_treatment="new_cash_event", proposed_treatment="new income", authorized=True)

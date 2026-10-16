@@ -205,6 +205,12 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
     if set(supporting) - {"items", "schedules", "external"}:
         raise ValueError("Unsupported opening supporting collection.")
     sums, mutations, ids, evidence = {}, [], set(), {}
+    common_fields = {"id", "account", "currency", "evidence_refs", "evidence_ids", "counterparty", "reference", "description"}
+    source_fields = {
+        "items": common_fields | {"kind", "original_amount", "remaining_amount", "settlement_strategy", "direction"},
+        "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "start_date", "end_date", "method", "recognition_account"},
+        "external": common_fields | {"balance"},
+    }
     for collection in ("items", "schedules", "external"):
         rows = supporting.get(collection, [])
         if not isinstance(rows, list):
@@ -212,6 +218,10 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
         for source_row in rows:
             if not isinstance(source_row, dict):
                 raise ValueError("Opening support requires object rows.")
+            unsupported = set(source_row) - source_fields[collection]
+            if unsupported:
+                raise ValueError("Unsupported opening support source fields: " + ", ".join(sorted(unsupported)) +
+                                 ". Engine history and lifecycle state cannot be imported as source facts.")
             row = deepcopy(source_row)
             identity = row.get("id")
             if not isinstance(identity, str) or not identity or (collection, identity) in ids:
@@ -288,6 +298,7 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                     if row.get("settlement_strategy", "direct") not in {"direct", "reverse"}:
                         raise ValueError("Opening item requires an explicit settlement strategy.")
                     row["settlement_strategy"] = row.get("settlement_strategy", "direct")
+                    row["status"] = "open" if remaining else "settled"
                     if row["kind"] == "receivable" and not account.startswith("Assets:") or row["kind"] == "payable" and not account.startswith("Liabilities:"):
                         raise ValueError("Opening item kind conflicts with its control account.")
                     sign = 1 if account.startswith("Assets:") else -1

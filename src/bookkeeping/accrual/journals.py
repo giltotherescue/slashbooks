@@ -62,7 +62,13 @@ def _complete_linked_source_review(entity: Entity, source_id: str, receipt: Mapp
     if not owner or owner.get("receipt") != dict(receipt):
         raise JournalError("missing_committed_receipt", "Linked-source cleanup requires its exact canonical receipt.")
     if not _store(entity).source_exists(source_id):
-        raise JournalError("missing_linked_source", "The accounting source has no committed financial entry.")
+        # A second transport may be an explicit canonical alias of the same
+        # evidence-backed payment. Its immutable intent points to this receipt.
+        aliases = [record for record in list_records(_store(entity), "intents")
+            if record.get("kind") == "item_settlement" and record.get("receipt") == dict(receipt)
+            and record.get("request", {}).get("source", {}).get("source_id") == source_id]
+        if not aliases:
+            raise JournalError("missing_linked_source", "The accounting source has no committed financial entry or exact canonical payment alias.")
     for item in queue.list_queue_items(entity):
         ids = set(item.get("source_ids") or [item.get("source_id")])
         if source_id not in ids or item.get("status") not in queue.ACTIONABLE_QUEUE_STATUSES:
@@ -588,6 +594,8 @@ def _correction_effect(entity: Entity, request: Mapping[str, Any], kind: str) ->
         raise JournalError("managed_item_requires_change", "This financial origin carries outstanding-item support.",
                            "Use an item adjustment or explicit item reversal so financial and supporting balances remain consistent.")
     when = _day(request.get("date"), "date")
+    if when < original.date:
+        raise JournalError("reversal_precedes_origin", "A correction or reversal cannot precede its original financial entry.")
     description = _text(request.get("description"), "description")
     normalized = {"id": operation_id, "original_id": original_id, "date": when.isoformat(), "description": description}
     meta = (("source-id", "accrual:" + operation_id), ("reverses", original.source_id),
@@ -625,13 +633,21 @@ def _correction_effect(entity: Entity, request: Mapping[str, Any], kind: str) ->
             "request_hash": child_receipt["request_hash"], "plan": child_plan, "receipt": child_receipt}))
         # Preserve source ownership; new versions may replace the original only
         # through this correction, never through a second ordinary journal.
-        for record in _evidence(store, replacement["evidence_ids"]):
+        replacement_evidence = _evidence(store, replacement["evidence_ids"])
+        by_source = {}
+        for record in replacement_evidence:
+            earlier = by_source.get(record["source_identity"])
+            if earlier:
+                if earlier["facts_hash"] != record["facts_hash"]:
+                    raise JournalError("source_conflict", "Replacement contains conflicting observed facts for one source object.")
+                continue
+            by_source[record["source_identity"]] = record
             claim_id = "source:" + record["source_identity"]
             prior = load_record(store, "intents", claim_id)
             if prior and prior.get("operation_id") != original_id:
                 raise JournalError("source_conflict", "Replacement evidence belongs to another financial effect.")
             logical = {k: v for k, v in replacement.items() if k not in {"id", "evidence_ids"}}
-            logical["evidence_facts"] = sorted({r["facts_hash"] for r in _evidence(store, replacement["evidence_ids"])})
+            logical["evidence_facts"] = sorted({r["facts_hash"] for r in replacement_evidence})
             mutations.append(SupportingMutation("intents", claim_id, {"id": claim_id, "kind": "source_claim",
                 "source_identity": record["source_identity"], "facts_hash": record["facts_hash"],
                 "financial_hash": canonical_hash(logical), "operation_id": replacement["id"]}, record_revision(store, "intents", claim_id)))

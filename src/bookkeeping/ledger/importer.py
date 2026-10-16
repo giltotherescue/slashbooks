@@ -995,6 +995,8 @@ def reverse_and_correct(
 
     Returns (reversing_entry, corrected_entry_with_meta).
     """
+    from .corrections import _require_unmanaged_entry
+    _require_unmanaged_entry(entity, original_source_id)
     staging = StagingStore(entity.staging_dir)
 
     store = _ensure_ledger_store(entity)
@@ -1088,6 +1090,8 @@ def reverse_entry(
     ts: str | None = None,
 ) -> Entry:
     """Write one traceable reversing entry without modifying the original."""
+    from .corrections import _require_unmanaged_entry
+    _require_unmanaged_entry(entity, original_source_id)
     store = _ensure_ledger_store(entity)
     original = _find_live_entry(store, original_source_id)
     reversing_entry = Entry(

@@ -304,6 +304,14 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
     if not ids:
         raise JournalError("evidence_required", "Schedule changes require stored supporting evidence.")
     store = _store(entity)
+    request.update(operation_id=operation_id, id=schedule_id, date=when.isoformat(), reason=reason, evidence_ids=ids)
+    for field in ("amount", "remaining_refund_amount", "recognized_refund_amount"):
+        if field in request:
+            request[field] = f"{_money(request[field], field, positive=field == 'amount'):.2f}"
+    logical = {key: value for key, value in request.items() if key not in {"operation_id", "evidence_ids"}}
+    claims, replay = _source_claims(store, _evidence(store, ids), canonical_hash({"kind": "schedule_change", **logical}), operation_id)
+    if replay:
+        return request, [], [], replay
     record = load_record(store, "schedules", schedule_id)
     if not record or (record.get("status") != "active" and not (request.get("action") == "refund" and record.get("status") == "completed")):
         raise JournalError("inactive_schedule", "Only an active schedule can be changed.")
@@ -311,11 +319,15 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
     action = request.get("action")
     if action not in {"cancel", "supersede", "refund"}:
         raise JournalError("invalid_change", "Use cancel, supersede, or refund with explicit effects.")
+    original = _find_live_entry(store, record["origin"]["source_id"])
+    earliest = max(original.date, _day(record.get("effective_from", original.date.isoformat()), "effective_from"))
+    if when < earliest:
+        raise JournalError("change_precedes_origin", "A schedule change cannot precede its financial origin or effective support date.")
     posted_dates = [a["date"] for a in list_records(store, "allocations") if a.get("schedule_id") == schedule_id and a.get("kind") == "recognition"]
     if posted_dates and when.isoformat() < max(posted_dates):
         raise JournalError("change_precedes_recognition", "A change cannot rewrite already recognized service history.")
     request.update(operation_id=operation_id, id=schedule_id, evidence_ids=ids)
-    entries, mutations = [], []
+    entries, mutations = [], list(claims)
     changed = deepcopy(record)
     changed.setdefault("origin_reserved_amount", record.get("base_remaining_amount", record["remaining_amount"]))
     changed["history"] = [*changed.get("history", []), {
@@ -398,15 +410,18 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
             changed.update(recognition_start=new_start.isoformat(), base_remaining_amount=f"{remaining - remaining_refund:.2f}",
                            base_recognized_amount=record["recognized_amount"], generation=record.get("generation", 0) + 1)
     mutations.append(SupportingMutation("schedules", schedule_id, changed, record_revision(store, "schedules", schedule_id)))
-    return request, entries, mutations
+    return request, entries, mutations, None
 
 
 def preview_change(entity: Entity, payload: Mapping[str, Any]) -> dict[str, Any]:
-    request, entries, mutations = _change_effect(entity, payload)
+    request, entries, mutations, replay = _change_effect(entity, payload)
     details = {"schedules": [_schedule_details(m.payload) for m in mutations if m.table == "schedules"],
                "refund_split": next((m.payload for m in mutations if m.table == "allocations" and m.payload.get("kind") == "schedule_refund"), None)}
-    return _preview_operation(entity, operation_id=request["operation_id"], kind="schedule_change", request=request,
+    plan = _preview_operation(entity, operation_id=request["operation_id"], kind="schedule_change", request=request,
                               entries=entries, mutations=mutations, evidence_ids=request["evidence_ids"], affected_dates=[request["date"]], details=details)
+    if replay:
+        plan["existing_receipt"] = replay
+    return plan
 
 
 def apply_change(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:

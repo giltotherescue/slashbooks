@@ -7,7 +7,7 @@ import unittest
 from tests.test_accrual_schedules import AccrualFixture, BANK, AR, AP, EXPENSE, INCOME
 from bookkeeping.accrual.items import (apply_adjustment, apply_item, apply_settlement, list_items,
     preview_adjustment, preview_item, preview_settlement)
-from bookkeeping.accrual.journals import due_reversals
+from bookkeeping.accrual.journals import due_reversals, intake_evidence
 from bookkeeping.accrual.store import load_record
 from bookkeeping.entity import load_entity
 from bookkeeping.ledger.importer import check_integrity, import_transactions
@@ -57,6 +57,43 @@ class ItemTests(AccrualFixture):
         self.assertEqual(self.balances()[AR], Decimal(0))
         self.assertEqual(self.balances()[BANK], Decimal("1000"))
         self.assertEqual(self.balances()[INCOME], Decimal("-1000"))
+
+    def test_same_payment_evidence_through_another_transport_returns_original_receipt(self):
+        self.create()
+        request = self.settlement()
+        original = apply_settlement(self.entity, preview_settlement(self.entity, request))
+        alternate = intake_evidence(self.entity, {"schema_version": 1, "source": {
+            "namespace": "example.synthetic", "account_id": "example-account", "object_id": "payment", "version": "1"},
+            "currency": "USD", "observed_facts": {"description": "Synthetic evidence"}, "provenance": [{"transport": "mcp"}]})["id"]
+        second = {**request, "operation_id": "second-payment-transport", "evidence_ids": [alternate],
+                  "source": {**request["source"], "source_id": "second-api-payment"}}
+        receipt = apply_settlement(self.entity, preview_settlement(self.entity, second))
+        self.assertEqual(receipt, original)
+        self.assertEqual(self.store.counts().entries, 2)
+        self.assertEqual(self.balances()[BANK], Decimal("400"))
+        self.assertEqual(self.balances()[AR], Decimal("600"))
+        self.assertEqual(load_record(self.store, "items", "invoice-1")["remaining_amount"], "600.00")
+        changed = {**second, "operation_id": "changed-payment-treatment", "allocations": [{"item_id": "invoice-1", "amount": "300.00"}]}
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "different financial treatment"):
+            preview_settlement(self.entity, changed)
+        self.assertEqual(self.store.content_digest(), before)
+
+    def test_existing_payment_evidence_cannot_be_reassigned_to_another_bank_entry(self):
+        self.create()
+        self.post("first-bank", "2026-01-15", [(BANK, "400.00"), (INCOME, "-400.00")])
+        self.post("other-bank", "2026-01-15", [(BANK, "400.00"), (INCOME, "-400.00")])
+        request = self.settlement(source={"mode": "existing", "source_id": "first-bank", "bank_account": BANK, "amount": "400.00"})
+        apply_settlement(self.entity, preview_settlement(self.entity, request))
+        other = {**request, "operation_id": "other-bank-allocation", "source": {**request["source"], "source_id": "other-bank"}}
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "different payment"):
+            preview_settlement(self.entity, other)
+        self.assertEqual(self.store.content_digest(), before)
+        from bookkeeping.ledger.importer import reverse_entry
+        with self.assertRaisesRegex(ValueError, "managed accrual"):
+            reverse_entry(self.entity, "first-bank", "legacy-payment-reversal")
+        self.assertEqual(self.store.content_digest(), before)
 
     def test_payment_and_item_overallocations_fail_without_mutation(self):
         self.create(original_amount="300.00")

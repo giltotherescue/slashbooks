@@ -1791,6 +1791,7 @@ def _write_confirmed_entry(
     staging = StagingStore(entity.staging_dir)
 
     source_id = str(txn.get("id") or "")
+    _require_accrual_cash_treatment(entity, {"source_id": source_id}, accrual_treatment)
     raw_date = str(txn.get("date") or "")[:10]
     try:
         txn_date = _date.fromisoformat(raw_date)
@@ -2024,6 +2025,8 @@ def correct(
     note: str = "",
     session_id: str = "",
     ts: Optional[str] = None,
+    *,
+    accrual_treatment: str | None = None,
 ) -> dict:
     """Correct a queued item: write ledger entry with corrected category.
 
@@ -2042,6 +2045,8 @@ def correct(
     if item.get("proposal_type") in {"split", "transfer-pair", "related-entity", "intercompany"}:
         raise ValueError("Specialized proposals cannot use generic correction. Withdraw and repropose the item.")
 
+    _require_accrual_cash_treatment(entity, item, accrual_treatment)
+
     if item.get("status") not in ("open", "reopened"):
         raise ValueError(
             f"Queue item '{item_id}' has status '{item.get('status')}'; "
@@ -2051,7 +2056,7 @@ def correct(
     source_id = str(item["source_id"])
     txn, = _live_proposal_sources(entity, item, [source_id])
 
-    _write_confirmed_entry(entity, txn, category, session_id, ts=ts)
+    _write_confirmed_entry(entity, txn, category, session_id, ts=ts, accrual_treatment=accrual_treatment)
 
     _remove_from_pending_categorization(entity, source_id)
 
@@ -2541,6 +2546,8 @@ def add_parser(subparsers: Any) -> None:
     corr_p.add_argument("--category", required=True, help="Corrected ledger account")
     corr_p.add_argument("--note", default="", help="Optional note")
     corr_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    corr_p.add_argument("--accrual-treatment", choices=["new_cash_event"], default=None,
+                        help="Explicitly classify this accrual bank movement as a new current-period event")
     withdraw_p = queue_sub.add_parser("withdraw", help="Withdraw an open proposal without posting it")
     withdraw_p.add_argument("--entity", required=True, help="Path to entity directory")
     withdraw_p.add_argument("--item", required=True, dest="item_id", help="Queue item ID")
@@ -2757,7 +2764,8 @@ def run(args: Any) -> int:
 
         elif qcmd == "correct":
             try:
-                item = correct(entity, args.item_id, args.category, args.note, args.session_id)
+                item = correct(entity, args.item_id, args.category, args.note, args.session_id,
+                               accrual_treatment=getattr(args, "accrual_treatment", None))
                 print(f"Corrected: {item['source_id']} → {item['confirmed_category']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:

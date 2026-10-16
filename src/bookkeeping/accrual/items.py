@@ -160,13 +160,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
     rows = request.get("allocations")
     if not isinstance(rows, list) or not 1 <= len(rows) <= 1000:
         raise JournalError("invalid_allocations", "Supply 1 to 1000 exact item allocations.")
-    allocations = list_records(store, "allocations")
-    existing_sources = [a for a in allocations if a.get("kind") == "settlement" and a.get("source_id") == source_id]
-    if any(a.get("bank_account") != bank or a.get("bank_amount") != f"{cash:.2f}" for a in existing_sources):
-        raise JournalError("source_conflict", "The payment identity already has different bank facts.")
-    used = sum((Decimal(a["signed_amount"]) for a in existing_sources), Decimal(0))
-    entries, mutations, control_postings, normalized_rows, seen = [], [], [], [], set()
-    total = Decimal(0)
+    normalized_rows, seen = [], set()
     for row in rows:
         if not isinstance(row, Mapping) or set(row) != {"item_id", "amount"}:
             raise JournalError("invalid_allocation", "Each allocation contains only item_id and amount.")
@@ -174,6 +168,56 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         if item_id in seen:
             raise JournalError("duplicate_allocation", "Combine repeated item allocations into one exact amount.")
         seen.add(item_id)
+        normalized_rows.append({"item_id": item_id, "amount": f"{amount:.2f}"})
+    request.update(operation_id=operation_id, source={**source, "amount": f"{cash:.2f}"}, allocations=normalized_rows, evidence_ids=ids)
+    records = _evidence(store, ids)
+    claims = []
+    if source["mode"] == "new":
+        staged = next((t for t in _load_pending_categorization(entity) if t.get("id") == source_id), None)
+        if staged:
+            staged_amount = Decimal(normalize_amount(staged.get("amount")))
+            staged_bank = _ledger_account_for_txn(staged, entity.entity_config.get("bank_account_mappings"), entity.entity_config.get("csv_account_mappings"))
+            if staged_amount != cash or str(staged.get("date"))[:10] != when.isoformat() or staged_bank != bank:
+                raise JournalError("staged_payment_mismatch", "Selected bank facts differ from the staged source.")
+        # Provider/transport references cannot manufacture a second cash event.
+        financial = {"kind": "item_settlement", "date": when.isoformat(), "bank_account": bank,
+                     "amount": f"{cash:.2f}", "allocations": sorted(normalized_rows, key=lambda row: row["item_id"])}
+        claims, replay = _source_claims(store, records, canonical_hash(financial), operation_id)
+        if replay:
+            return request, [], [], replay
+    else:
+        # Several reviewed batches may allocate ONE independently posted bank
+        # movement. Bind evidence to that original, not to an individual batch.
+        financial_hash = canonical_hash({"kind": "existing_payment", "source_id": source_id,
+            "date": when.isoformat(), "bank_account": bank, "amount": f"{cash:.2f}"})
+        by_source = {}
+        for record in records:
+            identity = record["source_identity"]
+            if identity in by_source:
+                if by_source[identity] != record["facts_hash"]:
+                    raise JournalError("source_conflict", "Payment evidence contains conflicting facts for one source.")
+                continue
+            by_source[identity] = record["facts_hash"]
+            claim_id = "source:" + identity
+            prior = load_record(store, "intents", claim_id)
+            if prior:
+                owner = load_record(store, "intents", "operation:" + prior["operation_id"])
+                owned_sources = (owner or {}).get("receipt", {}).get("entry_source_ids", [])
+                if prior["facts_hash"] != record["facts_hash"] or (prior["financial_hash"] != financial_hash and source_id not in owned_sources):
+                    raise JournalError("source_conflict", "This evidence belongs to a different payment or financial treatment.")
+            else:
+                claims.append(SupportingMutation("intents", claim_id, {"id": claim_id, "kind": "source_claim",
+                    "source_identity": identity, "facts_hash": record["facts_hash"], "financial_hash": financial_hash,
+                    "operation_id": operation_id}))
+    allocations = list_records(store, "allocations")
+    existing_sources = [a for a in allocations if a.get("kind") == "settlement" and a.get("source_id") == source_id]
+    if any(a.get("bank_account") != bank or a.get("bank_amount") != f"{cash:.2f}" for a in existing_sources):
+        raise JournalError("source_conflict", "The payment identity already has different bank facts.")
+    used = sum((Decimal(a["signed_amount"]) for a in existing_sources), Decimal(0))
+    entries, mutations, control_postings = [], list(claims), []
+    total = Decimal(0)
+    for row in normalized_rows:
+        item_id, amount = _id(row["item_id"]), _money(row["amount"])
         item = load_record(store, "items", item_id)
         if not item or item.get("status", "open") in {"settled", "closed", "reversed"}:
             raise JournalError("inactive_item", "The selected item is absent or already extinguished.")
@@ -192,7 +236,6 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
             raise JournalError("wrong_payment_direction", "Allocation direction conflicts with the signed payment; apply credits separately.")
         total += signed
         control_postings.append((item["account"], -signed))
-        normalized_rows.append({"item_id": item_id, "amount": f"{amount:.2f}"})
         changed = {**item, "base_remaining_amount": item.get("base_remaining_amount", item["remaining_amount"]),
                    "remaining_amount": f"{remaining - amount:.2f}", "status": "settled" if remaining == amount else "open"}
         mutations.append(SupportingMutation("items", item_id, changed, record_revision(store, "items", item_id)))
@@ -208,12 +251,6 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
             raise JournalError("duplicate_payment", "The payment is already posted; select existing mode to allocate its remaining amount.")
         if total != cash:
             raise JournalError("unallocated_payment", "A new payment must be fully allocated; split/link any other treatment explicitly.")
-        staged = next((t for t in _load_pending_categorization(entity) if t.get("id") == source_id), None)
-        if staged:
-            staged_amount = Decimal(normalize_amount(staged.get("amount")))
-            staged_bank = _ledger_account_for_txn(staged, entity.entity_config.get("bank_account_mappings"), entity.entity_config.get("csv_account_mappings"))
-            if staged_amount != cash or str(staged.get("date"))[:10] != when.isoformat() or staged_bank != bank:
-                raise JournalError("staged_payment_mismatch", "Selected bank facts differ from the staged source.")
         entries.append(_entry(when, source_id, "Settle outstanding items", [(bank, cash), *control_postings], settlement_id=operation_id))
     else:
         original = _find_live_entry(store, source_id)
@@ -237,14 +274,16 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
                 raise JournalError("ambiguous_existing_treatment", "Existing payment is neither the exact control settlement nor a simple cash income/expense needing reclassification.")
             entries.append(_entry(when, "settlement:" + operation_id + ":reclass", "Link prior bank posting to outstanding items",
                                   [(other.account, total), *control_postings], origin_source_id=source_id, settlement_id=operation_id))
-    request.update(operation_id=operation_id, source={**source, "amount": f"{cash:.2f}"}, allocations=normalized_rows, evidence_ids=ids)
-    return request, entries, mutations
+    return request, entries, mutations, None
 
 
 def preview_settlement(entity: Entity, payload: Mapping[str, Any]) -> dict[str, Any]:
-    request, entries, mutations = _settlement_effect(entity, payload)
-    return _preview_operation(entity, operation_id=request["operation_id"], kind="item_settlement", request=request,
+    request, entries, mutations, replay = _settlement_effect(entity, payload)
+    plan = _preview_operation(entity, operation_id=request["operation_id"], kind="item_settlement", request=request,
                               entries=entries, mutations=mutations, evidence_ids=request["evidence_ids"], affected_dates=[request["date"]])
+    if replay:
+        plan["existing_receipt"] = replay
+    return plan
 
 
 def apply_settlement(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:

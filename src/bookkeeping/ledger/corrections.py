@@ -69,9 +69,27 @@ def _correct(entity: Any, source_id: str, new_source_id: str, corrected: Entry, 
     reverse_and_correct(entity, source_id, corrected, session)
 
 
+def _require_unmanaged_entry(entity: Any, source_id: str) -> None:
+    """Keep financial/supporting lineage on the reviewed accrual domain route."""
+    from ..accrual.store import list_records
+    store = _ensure_ledger_store(entity)
+    original = _find_live_entry(store, source_id)
+    metadata = dict(original.meta)
+    managed = bool(metadata.get("accrual-intent") or metadata.get("accrual-opening"))
+    managed |= any(source_id in record.get("receipt", {}).get("entry_source_ids", [])
+                   for record in list_records(store, "intents"))
+    managed |= any(record.get("origin", {}).get("source_id") == source_id
+                   for table in ("items", "schedules") for record in list_records(store, table))
+    managed |= any(record.get("source_id") == source_id for record in list_records(store, "allocations"))
+    managed |= any(record.get("opening_source_id") == source_id for record in list_records(store, "coverage"))
+    if managed:
+        raise ValueError("This entry has managed accrual accounting or supporting balances. Use the reviewed accrual journal correction/reversal, item adjustment/reversal, or schedule change route so financial and supporting lineage remain consistent.")
+
+
 def run(args: argparse.Namespace) -> int:
     entity = load_entity(args.entity)
     try:
+        _require_unmanaged_entry(entity, args.source_id)
         if args.ledger_command == "reverse":
             reverse_entry(entity, args.source_id, args.session)
             print(f"Reversed: {args.source_id}")

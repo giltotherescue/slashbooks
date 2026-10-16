@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import copy
+from contextlib import redirect_stdout
+import io
 import json
 from pathlib import Path
 import sys
@@ -268,6 +270,82 @@ class AccrualJournalTests(unittest.TestCase):
         self.assertEqual(dict(entries[1].meta)["reverses"], "accrual:journal-1")
         self.assertEqual(dict(entries[2].meta)["correction-of"], "accrual:journal-1")
         self.assertEqual(check_store_integrity(self.store).status, "ok")
+
+    def test_reversal_and_correction_cannot_precede_original_entry(self) -> None:
+        journals.apply_journal(self.entity, journals.preview_journal(self.entity, self.request))
+        before = self.store.content_digest()
+        for reverse_only in (True, False):
+            request = {"id": "pre-origin-" + str(reverse_only), "original_id": "journal-1", "date": "2026-01-01",
+                "description": "Synthetic impossible reversal"}
+            if not reverse_only:
+                request["replacement"] = {**self.request, "id": "replacement"}
+            with self.subTest(reverse_only=reverse_only), self.assertRaisesRegex(ValueError, "cannot precede"):
+                journals.preview_correction(self.entity, request, reverse_only=reverse_only)
+        self.assertEqual(self.store.content_digest(), before)
+
+    def test_correction_deduplicates_transport_sources_and_rejects_conflicting_versions(self) -> None:
+        first = journals.intake_evidence(self.entity, self.evidence())
+        second = journals.intake_evidence(self.entity, self.evidence("mcp"))
+        request = {**self.request, "evidence_ids": [first["id"]]}
+        request.pop("estimate_basis")
+        journals.apply_journal(self.entity, journals.preview_journal(self.entity, request))
+        replacement = {**request, "id": "corrected-transport", "date": "2026-02-01", "evidence_ids": [first["id"], second["id"]]}
+        correction = {"id": "transport-correction", "original_id": "journal-1", "date": "2026-02-01",
+            "description": "Correct once across both transports", "replacement": replacement}
+        plan = journals.preview_correction(self.entity, correction)
+        receipt = journals.apply_correction(self.entity, plan)
+        self.assertEqual(journals.apply_correction(self.entity, plan), receipt)
+        self.assertEqual(self.store.counts().entries, 3)
+        conflict = journals.intake_evidence(self.entity, self.evidence("api", version="2"))
+        changed = {**correction, "id": "conflicting-correction", "original_id": "corrected-transport",
+            "replacement": {**replacement, "id": "conflicting-replacement", "evidence_ids": [second["id"], conflict["id"]]}}
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "conflicting observed facts"):
+            journals.preview_correction(self.entity, changed)
+        self.assertEqual(self.store.content_digest(), before)
+
+    def test_legacy_correction_cli_and_direct_apis_cannot_bypass_managed_lineage(self) -> None:
+        from bookkeeping.cli import main
+        from bookkeeping.ledger.importer import reverse_entry, reverse_and_correct
+        journals.apply_journal(self.entity, journals.preview_journal(self.entity, self.request))
+        original = self.store.load_entries()[0]
+        corrected = replace(original, meta=(("source-id", "legacy-replacement"),))
+        before = self.store.content_digest()
+        for operation in (lambda: reverse_entry(self.entity, original.source_id, "legacy"),
+                lambda: reverse_and_correct(self.entity, original.source_id, corrected, "legacy")):
+            with self.assertRaisesRegex(ValueError, "managed accrual"):
+                operation()
+        common = ["--entity", str(self.root), "--source-id", original.source_id]
+        for arguments in (["ledger", "reverse", *common], ["ledger", "correct", *common, "--new-source-id", "legacy-replacement",
+                "--date", "2026-02-01", "--description", "Legacy", "--posting", "Expenses:Software=10", "--posting", "Assets:Bank:Checking=-10"],
+                ["ledger", "reclassify-bank", *common, "--new-source-id", "legacy-bank", "--from-account", "Assets:Bank:Checking", "--to-account", "Assets:Bank:Savings"],
+                ["ledger", "split-equity", *common, "--new-source-id", "legacy-equity", "--equity-posting", "Equity:Owner-Draws=10"]):
+            with self.subTest(command=arguments[1]), redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(main(arguments), 1)
+                self.assertIn("managed accrual", output.getvalue())
+        self.assertEqual(self.store.content_digest(), before)
+        request = {"id": "canonical-reversal", "original_id": "journal-1", "date": "2026-02-01", "description": "Reviewed reversal"}
+        journals.apply_correction(self.entity, journals.preview_correction(self.entity, request, reverse_only=True))
+        self.assertEqual(self.store.counts().entries, 2)
+
+    def test_legacy_reverse_cannot_mutate_opening_without_managed_items_or_schedules(self) -> None:
+        from datetime import date
+        from decimal import Decimal
+        from bookkeeping.ledger.importer import reverse_entry
+        from bookkeeping.ledger.model import Entry, Posting
+        opening = Entry(date(2026, 1, 1), "Synthetic bank-only opening", meta=(("source-id", "opening-only"),),
+            postings=(Posting("Assets:Bank:Checking", Decimal("100")), Posting("Equity:Opening-Balances", Decimal("-100"))))
+        coverage = {"id": "opening", "basis": "accrual", "currency": "USD", "cutover_date": "2026-01-02",
+            "source_as_of": "2026-01-01", "fiscal_start": "2026-01-01", "summary_from": None, "summary_to": None,
+            "opening_source_id": "opening-only", "verified": True, "support_status": "reconciled"}
+        _atomic_ledger_write(self.entity, [], [opening], "synthetic-opening", None, "Synthetic coverage fixture",
+            supporting_mutations=[SupportingMutation("coverage", "opening", coverage)])
+        self.assertEqual(list_records(self.store, "items"), [])
+        self.assertEqual(list_records(self.store, "schedules"), [])
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "managed accrual"):
+            reverse_entry(self.entity, "opening-only", "legacy-opening-reversal")
+        self.assertEqual(self.store.content_digest(), before)
 
     def test_successive_corrections_reverse_only_live_replacement(self) -> None:
         source = journals.intake_evidence(self.entity, self.evidence())

@@ -71,6 +71,45 @@ class AccrualMigrationTests(unittest.TestCase):
             migration.apply(self.entity, plan)
         self.assertEqual(self.store.content_digest(), before)
 
+    def test_source_support_cannot_inject_engine_history_or_lifecycle_state(self):
+        injected = deepcopy(self.support)
+        original = deepcopy(injected["schedules"][0])
+        injected["schedules"][0]["history"] = [{"effective_date": "2026-09-01",
+            "operation_id": "invented-history", "record": {**original, "status": "completed"}}]
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "Unsupported opening support source fields: history"):
+            self.preview(supporting=injected)
+        self.assertEqual(self.store.content_digest(), before)
+        for collection, field, value in (
+            ("schedules", "status", "completed"), ("schedules", "recognition_start", "2099-01-01"),
+            ("schedules", "base_remaining_amount", "0.00"), ("schedules", "generation", 99),
+            ("items", "history", []), ("items", "status", "settled"),
+            ("items", "origin", {"mode": "new", "source_id": "fake"}),
+            ("external", "history", []), ("external", "kind", "external_support_snapshot"),
+        ):
+            support = deepcopy(self.support)
+            support[collection][0][field] = value
+            with self.subTest(collection=collection, field=field), self.assertRaisesRegex(ValueError, "source fields"):
+                self.preview(supporting=support)
+            self.assertEqual(self.store.content_digest(), before)
+
+        # Valid source principal and prior recognition remain usable. Historical
+        # source status cannot suppress the engine's actual July obligation.
+        self.support["items"][0]["reference"] = "Synthetic source invoice"
+        migration.apply(self.entity, self.preview())
+        from bookkeeping.readiness import assess_review_readiness, local_dependency_versions
+        from bookkeeping.accrual.schedules import preview_due
+        assessment = assess_review_readiness(self.root, "2026-07", local_dependency_versions(self.root),
+                                             as_of=date(2026, 8, 2)).to_document()
+        due = [blocker for blocker in assessment["blockers"] if blocker["code"] == "recognition_due"]
+        self.assertEqual(len(due), 2)
+        self.assertEqual(len(preview_due(self.entity, "2026-07-31", operation_id="july-recognition")["entries"]), 2)
+        prepaid = load_record(self.store, "schedules", "prepaid-open")
+        self.assertNotIn("history", prepaid)
+        self.assertEqual((prepaid["status"], prepaid["recognized_amount"], prepaid["remaining_amount"]),
+                         ("active", "600.00", "600.00"))
+        self.assertEqual(load_record(self.store, "items", "customer-open")["reference"], "Synthetic source invoice")
+
     def test_missing_detail_and_missing_or_unsafe_evidence_never_claim_readiness(self):
         plan = self.preview(supporting={})
         self.assertEqual(plan["status"], "blocked")
