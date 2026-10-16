@@ -11,6 +11,13 @@ allowed-tools: Bash(scripts/books:*) Read
 
 # Backtest and Migration Confidence
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Before company discovery or file access, follow
@@ -108,7 +115,7 @@ collection. Resume the backtest only after the source reports are collected and 
 command succeeds:
 
 ```
-scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+scripts/books qb inventory <entity-path>/ingestion/quickbooks --company=<confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD> --basis <cash|accrual>
 ```
 
 If the owner already has exports outside the company folder, preserve those original

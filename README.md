@@ -32,7 +32,8 @@ back to QuickBooks or Google Sheets.
 
 ## What You Can Do
 
-- Start books for a company in an empty directory.
+- Start cash books by default, or explicitly choose supported accrual books in an empty directory.
+- Record evidenced adjustments, prepaid/deferred schedules, outstanding items, and settlements with reviewable engine previews.
 - Keep the ledger in a local SQLite store you own, with Beancount-style exports
   when you need plain text.
 - Connect Stripe, Mercury, and bank feeds, or have your agent build a connector for anything else.
@@ -46,13 +47,14 @@ back to QuickBooks or Google Sheets.
 
 ## Status
 
-Slashbooks is beta software. Use it for cash-basis owner-operated businesses only,
-review its output, and keep an accountant or tax professional in the loop.
+Slashbooks is beta software. Cash basis is the default; simple single-entity USD
+services and SaaS books can explicitly opt into [accrual bookkeeping](docs/accrual.md).
+Review its output and use professional judgment for accounting and tax decisions.
 
 Slashbooks is not tax, legal, accounting, payroll, inventory, or investment advice.
 It doesn't replace professional review, and it isn't designed for businesses
-that need payroll, inventory, multi-user accounting controls, or full accrual
-accounting (yet). We're open to expanding what it covers; if you'd like to help,
+that need payroll or tax calculations, inventory costing, complex revenue contracts,
+or enterprise accounting controls. We're open to expanding what it covers; if you'd like to help,
 see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Start Here
@@ -62,6 +64,8 @@ To use Slashbooks for a company, read:
 - [How to do your books with Slashbooks](docs/doing-your-books.md)
 - [Accounting philosophy](docs/philosophy.md)
 - [For accountants](docs/for-accountants.md)
+- [Accrual books, reports, and close](docs/accrual.md)
+- [Accounting evidence from any source](docs/accrual-intake.md)
 - [Connectors](docs/connectors.md)
 - [BankSync setup](docs/banksync.md)
 - [CSV, QuickBooks, and file imports](docs/imports.md)
@@ -217,7 +221,11 @@ the right workflow.
 ```
 
 The agent workflows call the `books` CLI and don't compute financial totals
-themselves.
+themselves. Any assistant with CLI/API access can discover `books accrual schema`
+and use the same contracts; plugin skills are optional guidance. Persistent or
+scheduled assistants need access to the selected books and explicit delegated
+authority. Scheduling does not authorize a close, publication, or money movement.
+See [source-neutral intake and authority](docs/accrual-intake.md).
 
 ## Company Data
 

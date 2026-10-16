@@ -1,5 +1,11 @@
 # Stripe accounting
 
+This packaged processor-accounting recipe is cash-basis only. It fails closed
+for accrual books. Stripe evidence can still feed the same generic
+[accounting intake](accrual-intake.md) as any provider: review journals,
+prepaid/deferred schedules, items, and settlements without treating a payout as
+another sale. A product or invoice label alone does not prove recognition policy.
+
 The Stripe accounting planner separates gross sales, refunds, processor fees,
 processor balance, payout transit and actual bank deposits. A payout is a transfer
 of funds, not another sale. The balance transaction plus Stripe account owns the

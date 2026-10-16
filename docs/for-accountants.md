@@ -1,7 +1,8 @@
 # For accountants
 
 Slashbooks is not trying to replace professional review. It's a local bookkeeping
-system for simple cash-basis businesses, with an automated workflow on top of
+system for cash-basis businesses and opt-in single-entity USD services/SaaS
+accrual books, with an automated workflow on top of
 fixed, auditable accounting logic.
 
 **The short version: the agent runs the process, but the AI does not make up
@@ -43,7 +44,9 @@ open questions, and audit history.
 Slashbooks starts conservative. Unknown counterparties and ambiguous transactions
 go to the review queue. The owner confirms or corrects them.
 
-Repeated confirmations build trust for similar future transactions. Corrections
+In cash books, repeated confirmations build trust for similar future transactions.
+Accrual bank movements require explicit linkage or new-event treatment even when
+the counterparty was previously trusted. Corrections
 reset trust for that pattern. The system becomes less interruptive only
 where the owner has already confirmed the treatment.
 
@@ -58,6 +61,23 @@ ongoing closes.
 
 Backtesting is evidence, not a guarantee. Material differences still need owner
 or professional judgment.
+
+## Accrual review
+
+Recognition and payment are separate. Item allocations and schedule installments
+support control balances; a balanced journal alone cannot clear missing detail.
+Review due recognition/reversals, settlement links, evidence, and exact control
+reconciliation. Corrections preserve originals and lineage. There is no new
+mandatory accountant approval role; authority comes from the operator or trusted
+delegation, and final publication/locking remains separately controlled.
+
+A reconciled midyear opening carries fiscal YTD income/expense once, alongside
+source retained equity. Post-cutover P&L excludes the opening summary; a full
+fiscal-prefix report includes it once. Partial historical overlap is unavailable.
+A verified fiscal closed position carries prior earnings only in retained equity.
+Midmonth readiness explicitly identifies only the supported post-cutover
+interval, with source opening tied to the verified opening ledger; it does not
+certify unavailable earlier monthly detail.
 
 ## Accountant Export
 
@@ -74,6 +94,10 @@ reconciliation/source index, plus native filtering on the ledger and review
 sheets. The CSV exports remain plain values for portability. If the Excel
 workbook is not available, the same data is provided as CSV files.
 
+Accrual exports also carry recognition schedules, outstanding balances, external
+support, control reconciliation, accrual adjustments, and accounting coverage.
+Read the reported basis and coverage before comparing periods.
+
 For larger books, the owner can provide only the schedules you request. For
 example, they can send just the P&L, balance sheet, and trial balance, or omit
 the General Ledger from an initial package. They can also limit the General
@@ -88,9 +112,12 @@ to the prior event, so manual edits or corruption can be detected.
 
 ## Limits
 
-Slashbooks is currently scoped to simple cash-basis bookkeeping. It is not designed
-for payroll, inventory, revenue recognition, multi-user accounting controls,
-complex accrual accounting, audit engagements, or tax advice.
+The supported accrual scope includes evidenced journals, prepaid/deferred
+recognition, outstanding balances and settlement, corrections, external support,
+and coverage-aware reporting. See [accrual books](accrual.md) for limits and
+[source-neutral intake](accrual-intake.md) for contracts. It does not calculate
+payroll, depreciation, tax, inventory costing, or complex revenue contracts,
+and does not provide audit certification or accounting advice.
 
 When an entity is marked as VAT/GST/HST/sales-tax applicable, Slashbooks preserves
 that context and warns during sanity checks. It doesn't calculate indirect tax,
@@ -100,7 +127,9 @@ on invoice requirements.
 When payroll is enabled, Slashbooks expects the payroll provider's reports and
 warns if they are missing for an accountant handoff.
 Any payroll journal entries should be draft entries derived from provider
-reports and confirmed by the accountant; Slashbooks doesn't calculate payroll.
+reports and reviewed by an authorized operator or explicitly delegated agent;
+Slashbooks doesn't calculate payroll. Generic journals and dated external support
+retain those provider calculations without adding a payroll engine.
 
 Treat Slashbooks output like any client-provided books: useful, structured, and
 reviewable, but still subject to professional judgment.

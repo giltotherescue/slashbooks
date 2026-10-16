@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Slashbooks | Replace QuickBooks with an AI agent you control</title>
-  <meta name="description" content="Replace QuickBooks and your outsourced bookkeeper with an AI agent you control. Free, open-source, local-first bookkeeping for simple cash-basis businesses.">
+  <meta name="description" content="Bookkeeping for an AI agent you control. Free, open-source cash books and opt-in accrual for straightforward USD SaaS and service businesses, locally or with Slashbooks Cloud.">
   <link rel="canonical" href="https://slashbooks.org/">
   <meta property="og:title" content="Slashbooks | Replace QuickBooks with an AI agent you control">
-  <meta property="og:description" content="Free, open-source, local-first bookkeeping for simple cash-basis businesses. The AI agent runs the workflow; deterministic software does the math.">
+  <meta property="og:description" content="Cash books and opt-in accrual for straightforward USD SaaS and service businesses. Your agent runs the workflow; deterministic software keeps the numbers.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://slashbooks.org/">
   <meta property="og:image" content="https://slashbooks.org/images/og.png">
@@ -38,7 +38,7 @@
     <div class="narrow">
       <section class="hero" aria-labelledby="hero-title">
         <h1 id="hero-title">Replace QuickBooks and your outsourced bookkeeper with an AI agent you control.</h1>
-        <p class="hero-tagline">Slashbooks gives your AI agent a reliable bookkeeping workflow. It imports activity, prepares the close, explains the numbers, and creates the files your accountant needs.</p>
+        <p class="hero-tagline">Cash books or scoped accrual for your SaaS or service business. Your agent brings in the evidence, prepares reviewable books, and creates the reports your accountant needs.</p>
         <div class="cta-row hero-actions">
           <a class="btn btn-primary" href="#install">Install Slashbooks</a>
           <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks">Read the source on GitHub</a>
@@ -58,9 +58,9 @@
         </a>
       </section>
 
-      <p class="lead">Slashbooks is an open-source, local-first AI bookkeeping agent for cash-basis, owner-operated businesses. It runs as a <code>/books</code> plugin in Claude Cowork, Claude Code, and Codex.</p>
+      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity USD SaaS or service business. Work in local files or connect to Slashbooks Cloud for shared books.</p>
 
-      <p>It does the tedious work: set up the books, pull in bank and card activity, categorize the repeat transactions, close the month, answer your questions, and export the files your accountant needs. You only step in to clarify the occasional transaction.</p>
+      <p>The <code>/books</code> plugin guides setup, imports, review, reconciliation, and export in Claude Cowork, Claude Code, and Codex. Other agents can use the same command-line interface or Cloud API. The accounting engine calculates the numbers; you decide what work the agent may do.</p>
 
       <blockquote>
         <p>I was tired of paying for QuickBooks and an outsourced bookkeeper for books that were always behind, so I built a bookkeeper my AI agent runs and that I control.</p>
@@ -73,25 +73,25 @@
           <article aria-labelledby="fit-yes">
             <h3 id="fit-yes">A good fit if&hellip;</h3>
             <ul class="fit-list fit-list-yes">
-              <li>You run an owner-operated, cash-basis business.</li>
-              <li>Bank and card activity drive your books.</li>
+              <li>You run a straightforward SaaS or service business in USD.</li>
+              <li>You need cash books or supported accrual entries, schedules, and outstanding balances.</li>
               <li>You want current books without living inside accounting software.</li>
-              <li>You want the books in local files you own, not a vendor cloud.</li>
+              <li>You want inspectable books, in your own files or a shared Cloud workspace.</li>
               <li>Your accountant reviews the output before tax filing.</li>
             </ul>
           </article>
           <article aria-labelledby="fit-no">
-            <h3 id="fit-no">Not a fit (yet) if&hellip;</h3>
+            <h3 id="fit-no">Outside the scope</h3>
             <ul class="fit-list fit-list-no">
-              <li>You need payroll or inventory accounting.</li>
-              <li>You need full accrual accounting.</li>
-              <li>You need multi-user accounting controls.</li>
-              <li>You want software to replace your accountant. Slashbooks prepares the books; a professional still reviews them.</li>
+              <li>Retail, ecommerce, wholesale, manufacturing, or construction accounting.</li>
+              <li>Inventory, job costing, multi-currency, consolidation, or complex revenue contracts.</li>
+              <li>Running payroll, filing taxes, sending invoices, or executing payments.</li>
+              <li>Professional judgment without an owner or accountant reviewing the books.</li>
             </ul>
           </article>
         </div>
         <div class="callout callout-warning">
-          <p>Slashbooks is beta software. It is not tax, legal, accounting, payroll, inventory, or investment advice, and it does not replace professional review.</p>
+          <p>Slashbooks is beta software. Start with the demo, review the output, and confirm that your business fits the supported scope.</p>
         </div>
       </section>
 
@@ -101,19 +101,32 @@
           <article>
             <span aria-hidden="true">01</span>
             <h3>Bring in activity</h3>
-            <p>Connect bank and card feeds, Stripe, Mercury, or import CSV files.</p>
+            <p>Use bank feeds, connectors, files, or an MCP connection your agent can access. Keep the source evidence with the books.</p>
           </article>
           <article>
             <span aria-hidden="true">02</span>
             <h3>Review the exceptions</h3>
-            <p>Trusted patterns move through. Unfamiliar transactions wait for your decision.</p>
+            <p>Review proposed treatments and their effects. Accrual payments link to the right balance or service schedule.</p>
           </article>
           <article>
             <span aria-hidden="true">03</span>
-            <h3>Close and hand off</h3>
-            <p>Get current reports and Excel or CSV exports for your accountant.</p>
+            <h3>Reconcile and hand off</h3>
+            <p>Resolve missing support, review period readiness, and export reports. Final close remains an explicit action.</p>
           </article>
         </div>
+      </section>
+
+      <section aria-labelledby="basis-title">
+        <h2 id="basis-title">Cash books or supported accrual</h2>
+        <p>Cash is the default. Accrual is an explicit company choice for straightforward SaaS and service businesses. Both use the same deterministic ledger, evidence trail, and reports.</p>
+        <ul class="capabilities">
+          <li><strong>Adjusting entries.</strong> Preview balanced journals from source evidence or a disclosed estimate, with linked corrections and reversals.</li>
+          <li><strong>Prepaid and deferred schedules.</strong> Allocate a fixed amount across a known service period, inspect what has been recognized, and review refunds or changes.</li>
+          <li><strong>Outstanding balances.</strong> Carry receivables, payables, and accrued obligations; apply partial settlements, credits, or write-offs with supporting detail.</li>
+          <li><strong>Reports that show their coverage.</strong> Review the P&amp;L, balance sheet, trial balance, and supporting registers. Unposted recognition and unreconciled control balances block readiness.</li>
+        </ul>
+        <p>Link payments to their existing accounting effect instead of booking income, expense, or cash a second time. In accrual books, a learned vendor category alone does not authorize that treatment.</p>
+        <p><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Read the supported accrual workflow</a></p>
       </section>
 
       <section class="difference" aria-labelledby="difference-title">
@@ -121,7 +134,7 @@
         <div class="difference-grid">
           <article>
             <h3>Your books stay with you</h3>
-            <p>Each company lives in a folder you choose, with the ledger, review queue, audit log, and reports together.</p>
+            <p>Each local company has its own folder, ledger, evidence, review queue, and reports. Cloud books offer a shared workspace with the same accounting engine.</p>
           </article>
           <article>
             <h3>The AI is the interface, not the accountant</h3>
@@ -136,7 +149,7 @@
 
       <section class="compare-teaser" aria-labelledby="compare-title">
         <h2 id="compare-title">Why not just QuickBooks?</h2>
-        <p>QuickBooks serves every kind of business at once: invoicing, payroll add-ons, inventory, accrual, multi-user roles. If yours is a simple cash-basis business, you pay for that breadth in subscription fees, clutter, and clicks. Slashbooks is deliberately narrow instead.</p>
+        <p>QuickBooks serves every kind of business at once: invoicing, payroll add-ons, inventory, accrual, multi-user roles. Slashbooks focuses on cash books and supported accrual for straightforward SaaS and service businesses, with your agent as the interface.</p>
         <table class="comparison">
           <thead>
             <tr>
@@ -149,7 +162,7 @@
             <tr>
               <td>Where your books live</td>
               <td data-label="QuickBooks">Intuit's cloud, reached through their app.</td>
-              <td data-label="Slashbooks">Local files in a folder you choose and back up yourself.</td>
+              <td data-label="Slashbooks">Local files you own, or a shared Slashbooks Cloud workspace.</td>
             </tr>
             <tr>
               <td>How you work</td>
@@ -159,12 +172,12 @@
             <tr>
               <td>Scope</td>
               <td data-label="QuickBooks">Broad platform for every kind of business.</td>
-              <td data-label="Slashbooks">Narrow on purpose: cash-basis books for owner-operators.</td>
+              <td data-label="Slashbooks">Cash books and opt-in accrual for single-entity USD SaaS and services.</td>
             </tr>
             <tr>
               <td>Cost</td>
               <td data-label="QuickBooks">Monthly subscription.</td>
-              <td data-label="Slashbooks">Free, Apache-2.0. Runs inside the Claude or Codex plan you already use.</td>
+              <td data-label="Slashbooks">Free local engine, Apache-2.0. Your AI tools, data providers, and optional hosted service have their own terms.</td>
             </tr>
           </tbody>
         </table>
@@ -178,18 +191,23 @@
       <ul class="capabilities">
         <li>Start books for a company in an empty directory.</li>
         <li>Keep the ledger in a local SQLite store you own, with Beancount-style exports when you need plain text.</li>
-        <li>Connect Stripe, Mercury, and bank feeds, or have your agent build a connector for anything else.</li>
-        <li>Schedule the monthly close to run on its own, with current books waiting.</li>
+        <li>Use Stripe, Mercury, bank feeds, CSV, or other evidence sources available to your agent.</li>
+        <li>Schedule preparation within the authority you delegate; review exceptions before final close.</li>
         <li>Review unfamiliar transactions before they become trusted rules.</li>
-        <li>Ask for an analysis of anything, anytime, with every figure at hand.</li>
-        <li>Get any report, chart, or export on demand, without clicking around an app.</li>
-        <li>Backtest against QuickBooks exports before trusting a migration.</li>
+        <li>Ask questions about the recorded books, with the report basis and coverage visible.</li>
+        <li>Generate financial reports and have your agent explain or visualize them.</li>
+        <li>Compare with QuickBooks exports and preserve the source accounting basis at cutover.</li>
         <li>Export the workbook and CSV files your accountant needs at tax time.</li>
       </ul>
 
-      <h2>Local-first by design</h2>
-      <p>Your books stay yours. Each company directory holds its own <code>ledger.sqlite</code>, review queue, audit log, and generated reports. The plugin does not host your books.</p>
-      <p>The agent is the interface — it asks questions, explains differences, and helps you work through the close. The numbers come from deterministic software, not the AI. The software imports transactions, writes ledger entries, validates balances, and generates reports. The AI never invents totals or does the math itself.</p>
+      <h2>Your books persist between conversations</h2>
+      <p>Each local company directory holds its own <code>ledger.sqlite</code>, evidence, review queue, schedules, and reports. Or link a folder to Slashbooks Cloud, where authorized people and agents share the company state. Switching conversations does not reset the books.</p>
+      <p>An always-on assistant can inspect activity, prepare changes, and bring back exceptions using the <code>books</code> CLI or Cloud API. Give it access to the company and explicitly delegate the actions it may perform. A recurring task supplies a schedule; it does not grant accounting authority. Source documents supply facts, not approval.</p>
+      <p>Start with a reviewed run, then schedule the supported preparation steps if your assistant provides scheduling. Final close and publication have their own authority. Slashbooks records accounting; it does not move money.</p>
+
+      <h2>A cutover you can trace</h2>
+      <p>Keep the established source basis when moving from QuickBooks. For accrual, a reconciled opening trial balance, matching financial reports, and supporting balances establish the cutover. Missing mappings, unsupported currency, or differences in the supporting detail block activation.</p>
+      <p>A midyear opening can carry fiscal totals as one summary. Reports show that boundary, and review covers the first partial period after cutover. Earlier monthly detail is available only when the evidence supports it.</p>
 
       <section class="faq" aria-labelledby="faq-title">
         <h2 id="faq-title">Common questions</h2>
@@ -201,12 +219,12 @@
 
         <details>
           <summary>What does it cost?</summary>
-          <p>Slashbooks is free and open source under the Apache-2.0 license. There is no subscription and no hosted service. It runs as a plugin inside Claude Cowork, Claude Code, or Codex, so your cost is the AI tool you already use.</p>
+          <p>The local engine and plugin are free and open source under Apache-2.0. Your AI assistant and any data providers have their own costs. Slashbooks Cloud is an optional hosted service with an account; access and capability enablement depend on that account.</p>
         </details>
 
         <details>
           <summary>Is my financial data private?</summary>
-          <p>The durable accounting system is local files on your machine — the plugin does not host your books. That said, Slashbooks is not an absolute privacy guarantee: the AI agent and the connectors you enable see the data they need to do the work. You choose which connections to make.</p>
+          <p>Local books stay in your company folder. If you choose Cloud, the shared books live in the hosted service. Your AI assistant and the connections you enable see the data needed for their work, so choose their access deliberately.</p>
         </details>
 
         <details>
@@ -216,17 +234,23 @@
 
         <details>
           <summary>I already use QuickBooks. How do I switch?</summary>
-          <p>Import your QuickBooks exports and backtest first: run Slashbooks over past months and compare its results with your QuickBooks history before you rely on it. The <a href="vs-quickbooks/">comparison page</a> covers the differences in detail.</p>
+          <p>Compare the source reports first, keep the same accounting basis, and reconcile the opening position and its support. An accrual cutover preserves covered fiscal totals without pretending to reconstruct unavailable historical months. The <a href="vs-quickbooks/">comparison page</a> explains the supported paths.</p>
         </details>
 
         <details>
           <summary>What if I stop using it?</summary>
-          <p>You keep everything. The books are ordinary local files — a SQLite ledger, plain-text exports, Excel and CSV reports. There is no account to cancel and no vendor to ask for your data.</p>
+          <p>Local books are ordinary files you keep: a SQLite ledger, supporting records, and plain-text, Excel, or CSV exports. Cloud books can be exported too. Keep the evidence and backups with the accounting state.</p>
         </details>
 
         <details>
           <summary>Do I need to be technical?</summary>
-          <p>No terminal is required. Claude Cowork gives you a guided workspace for setup, review, and the monthly close. If you already use Claude Code or Codex, the install is two commands. Either way, you talk to the agent in plain English.</p>
+          <p>The plugin guides you in plain English through Claude Cowork, Claude Code, or Codex. A different assistant needs access to the documented CLI or Cloud API and the company workspace. Start with the demo to check the setup.</p>
+        </details>
+
+        <details>
+          <summary>Can my Grok Bot, OpenAI dot, or Meta Muse use it?</summary>
+          <p><a href="https://docs.x.ai/grok-bot/get-started">Grok Bot</a>, an <a href="https://help.openai.com/en/articles/20001530-getting-started-with-your-dot">OpenAI dot</a>, and <a href="https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/">Meta Muse</a> are personal agents with their own tools and access controls. For Slashbooks, your assistant needs a working CLI or Cloud API connection, persistent company access, and permission for the intended operations.</p>
+          <p>The plugin installs below cover Claude and Codex. Other assistant setups use the documented interfaces and should be checked with a demo workflow. A product name alone does not establish compatibility or grant permission to post entries.</p>
         </details>
       </section>
 
@@ -266,7 +290,7 @@
 
       <section class="final-cta" aria-labelledby="final-cta-title">
         <h2 id="final-cta-title">Own your books again</h2>
-        <p>Install the plugin, start with the demo company, and see a month close itself. The source is open if you want to read it first.</p>
+        <p>Install the plugin, start with the demo company, and follow the evidence from transaction to report. The source is open if you want to read it first.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="https://github.com/giltotherescue/slashbooks">View Slashbooks on GitHub</a>
           <a class="btn btn-secondary" href="https://github.com/giltotherescue/slashbooks/blob/main/docs/doing-your-books.md">Read: doing your books</a>
@@ -279,6 +303,9 @@
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/philosophy.md">Accounting philosophy</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/for-accountants.md">For accountants</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/connectors.md">Connectors</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Supported accrual accounting and cutover</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-intake.md">Using evidence from any provider</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/cloud.md">Local books and Slashbooks Cloud</a></li>
       </ul>
 
       <h2>License</h2>

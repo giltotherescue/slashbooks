@@ -114,7 +114,12 @@ Place the exported Excel (`.xlsx`) or CSV files in the company folder under
 books qb inventory ~/Documents/books/acme-co/ingestion/quickbooks
 ```
 
-The inventory command recognizes the files Slashbooks needs for migration checks:
+The following default cash inventory recognizes the files needed for comparison.
+For accrual, explicitly pass `--basis accrual` and an opening `--fiscal-start`;
+collect full TB/BS/YTD P&L plus supporting detail using [accrual intake](accrual-intake.md#quickbooks-opening).
+Do not route accrual opening through the cash balance-sheet fallback.
+
+The cash reference set is:
 
 - Chart of Accounts
 - Trial Balance, cash basis, as of the day before the Slashbooks cutover/start date
@@ -149,9 +154,9 @@ If you're not sure what to export yet, decide the Slashbooks start date first.
 For migrations, that date is the opening-balance cutover date; the prior day is
 the as-of date for opening-balance reports.
 
-Because Slashbooks is building cash-basis books, QuickBooks reference reports
-should use cash basis where QBO offers it. If QBO cannot provide a cash-basis
-Trial Balance, inventory can still check whether the prior-period cash-basis
+Reference reports must match the company basis. For cash books, use cash basis
+where QBO offers it; for accrual books, use the explicit same-basis workflow above.
+For cash books only, if QBO cannot provide a cash-basis Trial Balance, inventory can still check whether the prior-period cash-basis
 Balance Sheet fallback is available.
 
 Use `/books-qbo-fetch` to collect the set through any browser integration available

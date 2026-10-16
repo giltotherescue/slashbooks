@@ -13,6 +13,13 @@ allowed-tools: Bash(scripts/books:*) Read
 
 # Export Books
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Before company discovery or file access, follow
@@ -95,7 +102,7 @@ Walk through the checklist in plain English. For each check, explain what it mea
   multi-currency reporting."
 - **Payroll reports** — "If payroll is enabled, provider reports should be present
   for the period. Draft payroll journal entries must come from provider reports
-  and be accountant-confirmed."
+  and be reviewed within established human or explicit delegated authority."
 - **Year-over-year variance** — "Large swings from last year are flagged for you to
   explain to their accountant."
 

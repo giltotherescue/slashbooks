@@ -8,6 +8,13 @@ description: >
 
 # Slashbooks Cloud Books
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Follow [the shared local/remote workspace rules](../books/references/company-workspace.md)
@@ -113,6 +120,9 @@ disconnected. Do not confuse a connected bank with already-imported history.
 
 Use only the delegated authority needed. `books:read` permits inspection;
 `books:write` permits authorized normal bookkeeping writes, including confirmation.
+Accrual writes additionally require the explicit `adjustments:write` scope;
+legacy books-write permission alone does not grant it. Human staff keep their
+existing write roles and client-only users remain read-only.
 Existing hosted proposal/source/run operations use their documented scopes. A
 scope does not remove company policy, trust thresholds or the need for missing
 owner/accountant judgment. Review-only keys must not confirm.

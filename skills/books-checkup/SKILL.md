@@ -10,6 +10,13 @@ allowed-tools: Bash(scripts/books:*) Read
 
 # Books Checkup
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Before company discovery or file access, follow
@@ -140,7 +147,7 @@ Check whether the setup has enough context:
 - country or jurisdiction context when known
 - fiscal year
 - books start or cutover date
-- cash-basis expectation
+- confirmed cash/accrual basis, supported capability, and source/target agreement
 - owner compensation wording that fits the entity type
 
 If something is unknown but not blocking, mark it as worth confirming.

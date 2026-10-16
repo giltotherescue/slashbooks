@@ -9,6 +9,13 @@ description: >
 
 # Collect QuickBooks Online Reports
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Before company discovery or file access, follow
@@ -92,8 +99,10 @@ QuickBooks defaults such as This month or This year.
 - For a full comparison, migration, backfill validation, or backtest, require an
   inclusive start and end date.
 - For opening balances only, require the Slashbooks cutover/start date.
-- Slashbooks is cash-basis first. Select **Cash** wherever QuickBooks offers an
-  accounting-method control. Do not silently substitute accrual reports.
+- Establish the company policy independently of the report toggle. Select the
+  matching **Cash** or **Accrual** basis wherever offered. For accrual opening,
+  require explicit fiscal start and full TB/BS/YTD P&L plus supporting detail;
+  use the accrual branch of the report-plan reference. Do not mix bases.
 
 Read [references/report-plan.md](references/report-plan.md) to calculate the exact
 report dates and choose the required set. The full set deliberately includes two
@@ -104,10 +113,10 @@ already contains exports. Use the confirmed QuickBooks company name, not an infe
 match. For a full comparison, migration, backfill validation, or backtest:
 
 ```sh
-scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
+scripts/books qb inventory <entity-path>/ingestion/quickbooks --company=<confirmed-qbo-company> --from <YYYY-MM-DD> --to <YYYY-MM-DD> --basis <cash|accrual>
 ```
 
-For opening balances only:
+For cash opening balances only (use the report-plan accrual branch for accrual):
 
 ```sh
 scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirmed-qbo-company> --cutover <YYYY-MM-DD>
@@ -148,7 +157,7 @@ For every report:
 
 1. Open the report by its visible name.
 2. Set every required date explicitly.
-3. Select Cash where the report offers an accounting-method control.
+3. Select the confirmed matching basis where the report offers an accounting-method control.
 4. Run or refresh the report and wait for a report-ready state.
 5. Verify the visible company, report title, period/as-of date, and basis before
    export.
@@ -175,7 +184,7 @@ complete from filenames, download notifications, or visual inspection alone.
   title, date, basis, company, or file format. Re-export only that report.
 - If a file is ambiguous, preserve it and report the detected title/header. Do not
   edit financial rows or guess a schema.
-- If the cash-basis Trial Balance is unavailable, inventory will keep the full set
+- For cash books only: if the cash-basis Trial Balance is unavailable, inventory will keep the full set
   incomplete. Opening-balance import may separately allow a prior-period cash-basis
   Balance Sheet fallback, but that does not make a backtest collection complete.
 - If inventory is not ready, name the exact missing or blocked report slots and stop

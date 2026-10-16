@@ -11,6 +11,13 @@ allowed-tools: Bash(scripts/books:*) Read
 
 # Monthly Close
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Before company discovery or file access, follow
@@ -127,7 +134,7 @@ A local key is not required when the company's server provider is configured.
 Custom helpers remain local. Missing provider setup is a concrete configuration
 gap; do not change execution mode to recover from a failed provider request.
 
-For managed Stripe accounting, follow [the Stripe accounting workflow](../../docs/stripe-accounting.md).
+For cash-basis managed Stripe accounting, follow [the Stripe accounting workflow](../../docs/stripe-accounting.md).
 Use its captured evidence and saved human-approved exact revenue mapping, not
 generic net-deposit categorization. Eligible rules need no repeated row approval;
 missing price/product/scoped metadata or unsupported allocations remain held.
@@ -145,7 +152,8 @@ JSON to the owner.
 
 ## Step 3 — Categorize pending items
 
-The system automatically posts trusted repeated patterns. The queue status also
+For cash books, the system automatically posts trusted repeated patterns.
+Accrual activity stays staged until its linkage or explicit new-event treatment is established. The queue status also
 includes uncategorised staged activity and likely duplicate candidates, so treat all
 of them as pending close work. A duplicate candidate is not posted: compare it to the
 named earlier transaction before deciding how to proceed.
@@ -237,6 +245,16 @@ Present any discrepancies in plain English: "Your checking balance in the
 books is $42,193.55, but the source shows $42,318.55 — a $125.00 difference. I've
 flagged this for follow-up." Do not show raw ledger syntax or SQL output.
 
+## Accrual recognition and support
+
+For accrual books, complete evidence-backed journal/schedule/item treatment before
+readiness. Preview/apply due schedule recognition through the period end; inspect
+due reversals and unresolved settlements. Reconcile each non-bank control to
+managed items/schedules plus exact dated external support. A balanced generic
+journal cannot clear missing detail. Use externally determined payroll or
+depreciation journals with retained provider support; do not calculate those
+amounts or send them through the cash-only Stripe recipe.
+
 ## Step 4a — Assess readiness
 
 After imports, proposals, review decisions, and reconciliations are current, run
@@ -271,7 +289,13 @@ When publication and locking are requested and the period is ready, use the
 existing authorized hosted workflow: Financials > Publish statement > Publish
 and lock. Its API is `POST /api/v1/companies/{id}/publications` with `from`, `to`,
 `summary`, and `expected_books_revision` from the reviewed current company state,
-plus an `Idempotency-Key`. This is the `period.publish` server operation, not a
+plus an `Idempotency-Key`. For accrual, include exact current
+`readiness_package_ids` for each affected supported period and one shared
+`readiness_as_of` matching those assessments. A verified fiscal opening prefix
+can be included without inventing pre-cutover monthly packages. A reviewed
+partial first month requires an explicitly labeled cutover-through-month-end
+package with verified source opening and exact activity coverage. The server recomputes readiness and rejects stale
+evidence even without a books-revision change. This is the `period.publish` server operation, not a
 generic command envelope. The current `books cloud command` does **not** support
 `period.publish`; do not invent a CLI subcommand or send it through `/commands`.
 If no authorized publication workflow is available, report that limitation and
@@ -318,7 +342,7 @@ If the close is complete, offer a simple next step: "If you want a visual summar
 or shareable report for this period, run `/books-dashboard`."
 
 
-For an OAuth-connected cloud Stripe account, use `scripts/books cloud stripe status`
+For a cash-basis OAuth-connected cloud Stripe account, use `scripts/books cloud stripe status`
 and `scripts/books cloud stripe sync --request-id <stable-period-id> --from YYYY-MM-DD --to YYYY-MM-DD`
 from the bound company directory. Continue eligible pages automatically under saved
 rules. After interruption, repeat the same request ID and dates. Inspect held items

@@ -1,10 +1,17 @@
 ---
 name: books
-description: Start here for company books. Use when the user wants to set up bookkeeping, collect QuickBooks reports, close books, review transactions, backtest against QuickBooks, ask financial questions, create dashboards or reports, or export files for an accountant.
+description: Start here for company books. Use when the user wants to set up bookkeeping, collect QuickBooks reports, close books, review transactions, backtest against QuickBooks, ask financial questions, create dashboards or reports, prepare accrual adjustments, recognition schedules or settlements, or export files for an accountant.
 allowed-tools: Bash(scripts/books:*) Read Edit
 ---
 
 # Books
+
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
 
 ## Company workspace
 
@@ -23,6 +30,9 @@ recovery rules before collecting another batch.
 
 You are helping the owner manage company books in the current directory. Start by
 deciding which workflow they need, then follow the relevant skill instructions.
+For adjustments, recognition schedules, outstanding items, settlement or supporting
+balances, use the shared accrual reference and `scripts/books accrual schema`;
+these generic operations do not depend on a provider-specific skill.
 The owner should not need to know file formats, ledger syntax, or database details.
 
 Internal tool use: run bundled `scripts/books` commands yourself when needed.

@@ -1,5 +1,12 @@
 # Connectors
 
+Bank-movement intake and accounting-evidence intake serve different purposes.
+For accrual books, use [the provider-neutral evidence contract](accrual-intake.md)
+for any connector, MCP response, export, or email attachment. Bank activity alone
+does not determine revenue, service periods, or settlement. Generic journals and
+external support cover evidenced accounting work beyond packaged recipes; the
+engine validates the effects and authority.
+
 A connector is how Slashbooks gets your financial data in. Connectors are
 read-only: they pull transactions from a source and hand them to Slashbooks in a
 normalized format. Nothing is ever sent back to the source.
@@ -29,10 +36,12 @@ itself, so it can reconstruct the detail the feed throws away.
 
 Stripe balance transactions retain gross, fees and net amounts. The raw local
 download preserves this evidence; it does not itself post separate revenue and
-fee journals. The [Stripe accounting workflow](stripe-accounting.md) uses complete
+fee journals. The cash-only [Stripe accounting workflow](stripe-accounting.md) uses complete
 linked evidence and explicitly approved revenue rules to post those components
 through processor clearing. Bank payout arrivals clear transit rather than
-counting as additional revenue.
+counting as additional revenue. For accrual books, retain the same source
+evidence and use generic accounting intake with explicit recognition/schedule
+and settlement treatment; the packaged cash recipe does not run on accrual books.
 
 So feeds give you breadth, and direct connectors give you fidelity for the
 platforms that matter most.
@@ -45,10 +54,13 @@ scoped to your company and stored under `ingestion/custom/` (preserved across
 plugin upgrades, never committed to the plugin repo).
 
 A connector only fetches data and writes it in the normalized format below. The
-same deterministic importer then does the accounting, so a custom connector
-behaves exactly like a built-in one:
+same deterministic importer normalizes, deduplicates, and routes it for review,
+so a custom connector follows the same basis-specific rules as a built-in one:
 
-- Trusted counterparties auto-post; unknown ones go to the review queue.
+- In cash books, trusted counterparties can auto-post; unknown ones go to review.
+- In accrual books, rows are staged for linking to items/schedules or explicitly
+  established `new_cash_event` treatment; trusted cash categories cannot choose
+  recognition or settlement.
 - Re-running is idempotent; duplicates are skipped by `id`.
 - Every change is recorded in the audit log.
 

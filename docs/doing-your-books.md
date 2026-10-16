@@ -1,7 +1,9 @@
 # How to do your books with Slashbooks
 
 This guide is for a founder, owner, or operator who wants to use Slashbooks for a
-simple cash-basis company. If that's you, read on.
+simple cash-basis company or opt-in single-entity USD services/SaaS accrual books.
+Cash is the default. For recognition, outstanding items, and same-basis migration,
+read [accrual books](accrual.md) and [accounting evidence](accrual-intake.md).
 
 Slashbooks works best when each company has its own directory, bank and card data
 comes from BankSync or known CSV exports, and you review unfamiliar transactions
@@ -90,7 +92,9 @@ do not need to configure a BankSync feed or destination; Slashbooks reads from
 the BankSync API. See [BankSync setup](banksync.md).
 
 If you use Stripe or Mercury, Slashbooks can also pull data directly with your
-API key, which is handy for Stripe revenue and Mercury banking. See the provider
+API key, which retains Stripe source evidence and Mercury bank activity.
+The packaged Stripe revenue recipe is cash-only; accrual uses generic evidence
+intake, recognition, and settlement treatment. See the provider
 download steps in [CSV, QuickBooks, and file imports](imports.md).
 
 For old, unsupported, disconnected, or intentionally unconnected accounts, keep
@@ -135,7 +139,8 @@ The close should get the month current:
 
 - Pull new BankSync transactions
 - Parse any CSVs you provide
-- Auto-post transactions from trusted counterparties
+- In cash books, auto-post transactions from trusted counterparties; in accrual
+  books, stage activity for explicit linkage or recognition treatment
 - Pause for review when unfamiliar transactions need owner judgment
 - Reconcile account balances
 - Save a session summary
@@ -209,6 +214,6 @@ them [For accountants](for-accountants.md).
 - Do not keep company books inside the `/books` plugin source directory.
 - Do not commit ledgers, bank exports, QuickBooks exports, generated reports, API
   keys, or entity directories to a public repo.
-- Do not treat Slashbooks as tax, legal, payroll, inventory, or accrual accounting
+- Do not treat Slashbooks as tax, legal, payroll-calculation, inventory-costing, or complex revenue-recognition
   advice.
 - Do not bypass the review queue for material or unfamiliar transactions.

@@ -10,6 +10,13 @@ allowed-tools: Bash(scripts/books:*) Read Edit WebFetch WebSearch
 
 # Onboard a Business
 
+## Accounting basis
+
+Read the selected company basis first. For accrual books, follow
+[the shared accrual workflow](../books/references/accrual-workflow.md) before ordinary cash
+categorization, QBO opening, reporting, or close steps below. Cash remains the
+default; existing basis and delegated authority are preserved.
+
 ## Company workspace
 
 Before company discovery or file access, follow
@@ -220,7 +227,11 @@ small related batch at a time, omitting facts already established:
    QuickBooks, this is usually the cutover date for opening balances and the first
    day after the prior period the owner trusts in QuickBooks. If starting fresh, use
    the first day the owner wants tracked in Slashbooks.
-9. **Fiscal year** — Does the business use a calendar year (Jan-Dec) or a different
+9. **Accounting basis and fiscal year** — Confirm cash (default) or supported
+   accrual from the existing books and owner policy; do not infer policy from a
+   QBO report toggle. New accrual books need explicit opt-in and source support.
+   Preserve the basis of initialized or remote books.
+   **Fiscal year** — Does the business use a calendar year (Jan-Dec) or a different
    fiscal year?
 10. **Data sources** — What banks, credit cards, payment processors, or commerce
    platforms does this business use? List each one. Then explain BankSync before
@@ -389,7 +400,7 @@ Only when the selected company's `entity.json` is confirmed absent, run this
 internal initialization command yourself:
 
 ```
-scripts/books entity init <path> --name "<business name>" --legal-structure "<structure>" --business-type <consulting|saas|services_and_subscriptions> --cutover-date <YYYY-MM-DD>
+scripts/books entity init <path> --name "<business name>" --legal-structure "<structure>" --business-type <consulting|saas|services_and_subscriptions> --cutover-date <YYYY-MM-DD> --basis <cash|accrual>
 ```
 
 Replace `<path>` with the confirmed directory, `<business name>` with the legal name,
@@ -440,6 +451,14 @@ Ask: "Are you migrating from QuickBooks, or starting fresh?"
 
 **If migrating from QuickBooks:**
 
+First branch on the confirmed company basis. For **accrual**, collect the full
+prior-day TB and BS, fiscal YTD P&L, account types/mappings, and item/schedule or
+external support. Use the shared accrual reference and `accrual migration
+preview`/`apply`, retaining original evidence and explicit fiscal start. Missing
+support blocks activation. Do not use the cash opening/repair commands below.
+
+The rest of this opening subsection applies to **cash books only**.
+
 Do not assume the owner already has the export files. If the required QuickBooks
 reports are missing or incomplete, offer `/books-qbo-fetch`. Ask whether the owner
 wants the agent to use the available browser with them, give manual export
@@ -460,11 +479,13 @@ scripts/books qb inventory <entity-path>/ingestion/quickbooks --company <confirm
 
 For remote inventory run from the bound directory and use the preserved local
 QBO input folder. Import/repair commands below use the same binding and inputs;
-do not upload QBO files through the metadata-only file API.
+for this cash workflow do not upload QBO files through the metadata-only file
+API. The accrual migration branch separately requires explicit durable ingestion
+uploads, as described in its intake guide.
 
 Present the readiness report in plain English: which files are ready, which are
 blocking, and which are optional. If the Trial Balance is accrual, simply ask for
-a cash-basis re-export or use the cash-basis Balance Sheet fallback if inventory
+a cash-basis re-export for this cash company or use its Balance Sheet fallback if inventory
 says that path is available. Wait for blocking items to be resolved before
 proceeding.
 
