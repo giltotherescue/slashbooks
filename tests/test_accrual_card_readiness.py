@@ -72,6 +72,28 @@ class CardReadinessTests(AccrualFixture):
         self.assertIn(self.card, {row['account'] for row in assessment['sources']})
         self.assertTrue(any(row['code'] == 'reconciliation_missing' and row['refs'] == [self.card] for row in assessment['blockers']))
 
+    def test_coverage_account_cannot_redirect_a_required_or_mapped_card_to_clean_bank(self):
+        self.configure_sources(include_card=False)
+        self.reconcile_source(BANK, '0.00', 'bank')
+        before = self.store.content_digest()
+        for mapped in (False, True):
+            with self.subTest(mapped=mapped):
+                path = self.root / 'entity.json'
+                config = json.loads(path.read_text())
+                source = 'synthetic-card-feed' if mapped else self.card
+                config['bank_account_mappings'] = {source: self.card} if mapped else {}
+                config['source_coverage'] = {source: {'coverage_from': '2026-01-01', 'coverage_to': '2026-01-31',
+                                                    'account': BANK, 'source': 'redirected-bank'}}
+                path.write_text(json.dumps(config))
+                assessment = self.assess()
+                self.assertEqual(assessment['state'], 'blocked')
+                card_sources = [row for row in assessment['sources'] if row['account'] == self.card]
+                self.assertEqual(len(card_sources), 1)
+                self.assertEqual(card_sources[0]['source'], source)
+                self.assertTrue(any(row['code'] == 'reconciliation_missing' and row['refs'] == [self.card]
+                                    for row in assessment['blockers']))
+                self.assertEqual(self.store.content_digest(), before)
+
     def test_general_payables_and_card_prefix_lookalikes_still_require_control_support(self):
         lookalike = 'Liabilities:CreditCardboard'
         add_account(self.root, lookalike, open_date='2000-01-01')

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from bookkeeping.accrual.journals import intake_evidence
 from bookkeeping.accrual.schedules import (apply_change, apply_due, apply_schedule, installments,
@@ -166,11 +167,15 @@ class ScheduleTests(AccrualFixture):
         plan = preview_schedule(self.entity, self.schedule(reference=reference))
         self.assertEqual(plan["request"]["reference"], reference)
         self.assertEqual(plan["request"]["id"], "annual")
+        self.assertEqual(plan["entries"][0]["description"], "Fund prepaid expense: " + reference)
+        self.assertEqual(dict(plan["entries"][0]["meta"])["schedule-id"], "annual")
         receipt = apply_schedule(self.entity, plan)
         before = self.store.content_digest()
         self.assertEqual(apply_schedule(self.entity, plan), receipt)
         self.assertEqual(self.store.content_digest(), before)
         self.assertEqual(list_schedules(self.entity)[0]["reference"], reference)
+        due = preview_due(self.entity, "2026-01-31", operation_id="recognize-reference")
+        self.assertEqual(due["entries"][0]["description"], "Recognize prepaid expense: " + reference)
         document = report(self.entity, "schedules", as_of="2026-01-31")
         self.assertEqual(document["rows"][0]["reference"], reference)
         self.assertIn(reference, render_report(document))
@@ -181,11 +186,26 @@ class ScheduleTests(AccrualFixture):
                 preview_schedule(self.entity, self.schedule(id="another", operation_id="another-create", reference=invalid))
             self.assertEqual(self.store.content_digest(), before)
 
+    def test_committed_legacy_schedule_narrations_replay_without_rewriting(self):
+        with patch("bookkeeping.accrual.schedules._narration", return_value="Fund prepaid schedule annual"):
+            plan = preview_schedule(self.entity, self.schedule(reference="Annual software subscription #104"))
+            receipt = apply_schedule(self.entity, plan)
+        with patch("bookkeeping.accrual.schedules._narration", return_value="Recognize prepaid schedule annual"):
+            due = preview_due(self.entity, "2026-01-31", operation_id="legacy-recognition")
+            due_receipt = apply_due(self.entity, due)
+        before = self.store.content_digest()
+        self.assertEqual(apply_schedule(self.entity, plan), receipt)
+        self.assertEqual(apply_due(self.entity, due), due_receipt)
+        self.assertEqual(self.store.content_digest(), before)
+        self.assertEqual([e.narration for e in self.store.load_entries()],
+                         ["Fund prepaid schedule annual", "Recognize prepaid schedule annual"])
+
     def test_full_calendar_year_twelve_hundred_posts_twelve_hundreds_once(self):
         request = self.schedule()
         plan = preview_schedule(self.entity, request)
         before = self.store.content_digest()
         self.assertEqual(len(plan["entries"]), 1)
+        self.assertEqual(plan["entries"][0]["description"], "Fund prepaid expense")
         self.assertEqual([row["amount"] for row in plan["details"]["installments"]], ["100.00"] * 12)
         self.assertEqual(plan["details"]["end_date_convention"], "exclusive")
         self.assertEqual(plan["details"]["remaining_amount"], "1200.00")
@@ -194,6 +214,7 @@ class ScheduleTests(AccrualFixture):
         self.assertEqual(apply_schedule(self.entity, plan), receipt)
         due = preview_due(self.entity, "2026-12-31", operation_id="recognize-year")
         self.assertEqual([p["postings"][0]["amount"] for p in due["entries"]], ["100.00"] * 12)
+        self.assertEqual({p["description"] for p in due["entries"]}, {"Recognize prepaid expense"})
         first = apply_due(self.entity, due)
         self.assertEqual(apply_due(self.entity, due), first)
         self.assertEqual(self.balances()[PREPAID], Decimal(0))
@@ -217,8 +238,11 @@ class ScheduleTests(AccrualFixture):
 
     def test_existing_expense_payment_is_reclassified_without_another_cash_effect(self):
         self.post("already-paid", "2026-01-01", [(BANK, "-1200"), (EXPENSE, "1200")])
-        request = self.schedule(origin={"mode": "existing", "source_id": "already-paid", "reclass_account": EXPENSE})
+        request = self.schedule(reference="Annual software subscription #104",
+            origin={"mode": "existing", "source_id": "already-paid", "reclass_account": EXPENSE})
         plan = preview_schedule(self.entity, request)
+        self.assertEqual(plan["entries"][0]["description"],
+                         "Reclassify funding for prepaid expense: Annual software subscription #104")
         self.assertFalse(any(p["account"] == BANK for p in plan["entries"][0]["postings"]))
         apply_schedule(self.entity, plan)
         self.assertEqual(self.balances()[BANK], Decimal("-1200"))
@@ -241,9 +265,13 @@ class ScheduleTests(AccrualFixture):
         self.post("customer-payment", "2026-01-01", [(BANK, "1200"), (INCOME, "-1200")])
         request = self.schedule(kind="deferred", account=DEFERRED, recognition_account=INCOME,
                                 origin={"mode": "existing", "source_id": "customer-payment", "reclass_account": INCOME})
-        apply_schedule(self.entity, preview_schedule(self.entity, request))
+        plan = preview_schedule(self.entity, request)
+        self.assertEqual(plan["entries"][0]["description"], "Reclassify funding for deferred revenue")
+        apply_schedule(self.entity, plan)
         self.assertEqual(self.balances()[INCOME], Decimal(0))
-        apply_due(self.entity, preview_due(self.entity, "2026-01-31", operation_id="jan"))
+        due = preview_due(self.entity, "2026-01-31", operation_id="jan")
+        self.assertEqual(due["entries"][0]["description"], "Recognize deferred revenue")
+        apply_due(self.entity, due)
         self.assertEqual(self.balances()[DEFERRED], Decimal("-1100"))
         self.assertEqual(self.balances()[INCOME], Decimal("-100"))
         self.assertEqual(self.balances()[BANK], Decimal("1200"))

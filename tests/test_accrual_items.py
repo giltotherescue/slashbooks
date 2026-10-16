@@ -3,6 +3,7 @@ from copy import deepcopy
 from decimal import Decimal
 import json
 import unittest
+from unittest.mock import patch
 
 from tests.test_accrual_schedules import AccrualFixture, BANK, AR, AP, EXPENSE, INCOME
 from bookkeeping.accrual.items import (apply_adjustment, apply_item, apply_settlement, list_items,
@@ -31,6 +32,34 @@ class ItemTests(AccrualFixture):
 
     def create(self, **changes):
         return apply_item(self.entity, preview_item(self.entity, self.item(**changes)))
+
+    def test_item_narration_uses_human_reference_then_counterparty(self):
+        request = self.item(kind="payable", account=AP, id="item-machine-id",
+            reference="Invoice #104", counterparty="Synthetic Vendor",
+            origin={"mode": "new", "source_id": "vendor-invoice", "counter_account": EXPENSE})
+        plan = preview_item(self.entity, request)
+        self.assertEqual(plan["entries"][0]["description"], "Record payable: Invoice #104")
+        self.assertEqual(dict(plan["entries"][0]["meta"])["item-id"], "item-machine-id")
+        receipt = apply_item(self.entity, plan)
+        before = self.store.content_digest()
+        self.assertEqual(apply_item(self.entity, plan), receipt)
+        self.assertEqual(self.store.content_digest(), before)
+        for number, (labels, expected) in enumerate((
+                ({"counterparty": "Synthetic Customer"}, "Record receivable: Synthetic Customer"),
+                ({}, "Record receivable"))):
+            with self.subTest(labels=labels):
+                preview = preview_item(self.entity, self.item(operation_id="other-create-" + str(number),
+                    evidence_ids=[self.evidence("other-invoice")], **labels))
+                self.assertEqual(preview["entries"][0]["description"], expected)
+
+    def test_committed_legacy_item_narration_replays_without_rewriting(self):
+        with patch("bookkeeping.accrual.items._narration", return_value="Record receivable invoice-1"):
+            plan = preview_item(self.entity, self.item(reference="Invoice #104"))
+            receipt = apply_item(self.entity, plan)
+        before = self.store.content_digest()
+        self.assertEqual(apply_item(self.entity, plan), receipt)
+        self.assertEqual(self.store.content_digest(), before)
+        self.assertEqual(self.store.load_entries()[0].narration, "Record receivable invoice-1")
 
     def test_partial_migrated_receivable_settlement_does_not_create_revenue(self):
         self.post("opening", "2025-12-31", [(AR, "1000.00"), ("Equity:Opening-Balances", "-1000.00")])

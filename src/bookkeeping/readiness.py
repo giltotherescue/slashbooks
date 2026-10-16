@@ -155,12 +155,12 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date,
     for source, account in mapped:
         if account not in represented:
             bounds = coverage.get(source) if isinstance(coverage.get(source), Mapping) else {}
-            candidates.append({"source": source, "account": account, **bounds})
+            candidates.append({**bounds, "source": source, "account": account})
     represented = {str(item.get("account") or "") for item in candidates}
     for account in required_accounts:
         if account not in represented:
             bounds = coverage.get(account) if isinstance(coverage.get(account), Mapping) else {}
-            candidates.append({"source": account, "account": account, **bounds})
+            candidates.append({**bounds, "source": account, "account": account})
 
     rows: list[dict[str, Any]] = []
     for candidate in candidates:

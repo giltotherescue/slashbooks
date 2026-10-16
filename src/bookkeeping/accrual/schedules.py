@@ -53,12 +53,22 @@ def _normal_sign(record: Mapping[str, Any]) -> Decimal:
     return Decimal(1 if record["kind"] == "prepaid" else -1)
 
 
+def _narration(action: str, record: Mapping[str, Any]) -> str:
+    """Use bounded human labels for display; canonical IDs remain in metadata."""
+    for field in ("reference", "counterparty"):
+        label = record.get(field)
+        if isinstance(label, str) and label.strip():
+            return action + ": " + " ".join(label.split())[:2000]
+    return action
+
+
 def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) -> list[Entry]:
     store, origin = _store(entity), record["origin"]
     mode, source_id = origin["mode"], origin["source_id"]
     amount = _money(record["amount"])
     remaining = _money(record["remaining_amount"], positive=False)
     sign, account = _normal_sign(record), record["account"]
+    label = "prepaid expense" if record["kind"] == "prepaid" else "deferred revenue"
     when = _day(origin.get("date", record["start_date"]), "origin.date")
     if mode == "new":
         if store.source_exists(source_id):
@@ -76,7 +86,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
             if (Decimal(normalize_amount(staged.get("amount"))) != -sign * amount
                     or str(staged.get("date"))[:10] != when.isoformat() or staged_bank != bank):
                 raise JournalError("staged_payment_mismatch", "Schedule funding differs from the exact staged bank source.")
-        return [_entry(when, source_id, "Fund " + record["kind"] + " schedule " + record["id"],
+        return [_entry(when, source_id, _narration("Fund " + label, record),
                        [(account, sign * amount), (bank, -sign * amount)], schedule_id=record["id"])]
     original = _find_live_entry(store, source_id)
     if original.date > when and mode == "existing":
@@ -102,7 +112,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
     matched = [p for p in original.postings if p.account == old_account and p.amount == sign * amount]
     if len(matched) != 1:
         raise JournalError("origin_amount_mismatch", "The existing payment's category amount does not match this schedule.")
-    return [_entry(when, "schedule:" + operation_id + ":reclass", "Reclassify funding for schedule " + record["id"],
+    return [_entry(when, "schedule:" + operation_id + ":reclass", _narration("Reclassify funding for " + label, record),
                    [(account, sign * amount), (old_account, -sign * amount)],
                    schedule_id=record["id"], origin_source_id=source_id)]
 
@@ -267,7 +277,7 @@ def _due_effect(entity: Entity, payload: Mapping[str, Any]):
             due_total += amount
             source_id = "schedule:" + allocation_id
             entries.append(_entry(_day(installment["date"], "recognition date"), source_id,
-                "Recognize " + record["kind"] + " schedule " + record["id"],
+                _narration("Recognize " + ("prepaid expense" if record["kind"] == "prepaid" else "deferred revenue"), record),
                 [(record["recognition_account"], sign * amount), (record["account"], -sign * amount)], schedule_id=record["id"]))
             allocation = {"id": allocation_id, "kind": "recognition", "schedule_id": record["id"],
                           **installment, "source_id": source_id, "generation": generation,

@@ -10,7 +10,7 @@ from ..entity import Entity
 from ..ledger.importer import _find_live_entry, _load_pending_categorization, _ledger_account_for_txn
 from .intake import canonical_hash, normalize_amount
 from .journals import JournalError, _day, _evidence, _id, _preview_operation, _source_claims, _store
-from .schedules import _account, _apply, _entry, _evidence_ids, _money, _request
+from .schedules import _account, _apply, _entry, _evidence_ids, _money, _request, _narration
 from .store import SupportingMutation, list_records, load_record, record_revision
 
 
@@ -93,7 +93,8 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
         counter = _account(store, origin.get("counter_account"), "origin.counter_account")
         if counter == account or counter.startswith(("Assets:Bank:", "Assets:Cash")):
             raise JournalError("invalid_counter_account", "An outstanding origin cannot create cash or use its control as its offset.")
-        entries.append(_entry(when, "accrual:" + operation_id, "Record " + kind + " " + item_id,
+        label = "accrued balance" if kind == "accrual" else kind
+        entries.append(_entry(when, "accrual:" + operation_id, _narration("Record " + label, record),
                               [(account, sign * amount), (counter, -sign * amount)], item_id=item_id,
                               origin_source_id=origin["source_id"]))
     else:
