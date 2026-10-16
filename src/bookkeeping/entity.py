@@ -247,15 +247,29 @@ _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
         "Expenses:Payment-Fees",
     ),
 }
+# Added to the starter chart of an accrual company only; cash companies are unchanged.
+_ACCRUAL_STARTER_ACCOUNTS: tuple[str, ...] = (
+    "Assets:Receivable:Accounts-Receivable",
+    "Assets:Other:Prepaid-Expenses",
+    "Assets:Fixed:Equipment",
+    "Assets:Fixed:Accumulated-Depreciation",
+    "Liabilities:Payable:Accounts-Payable",
+    "Liabilities:Other:Accrued-Liabilities",
+    "Liabilities:Other:Deferred-Revenue",
+    "Liabilities:Other:Customer-Deposits",
+)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DEFAULT_ACCOUNT_OPEN_DATE = date(2026, 1, 1)
 
 
-def _starter_account_opens(business_type: str, open_date: date = _DEFAULT_ACCOUNT_OPEN_DATE) -> list[Any]:
-    """Return starter SQLite account definitions for a business type."""
+def _starter_account_opens(business_type: str, open_date: date = _DEFAULT_ACCOUNT_OPEN_DATE,
+                           basis: str = "cash") -> list[Any]:
+    """Return starter SQLite account definitions for a business type and basis."""
     from .ledger.model import Open
 
     accounts = _STARTER_ACCOUNTS.get(business_type, _STARTER_ACCOUNTS["consulting"])
+    if basis == "accrual":
+        accounts = accounts + _ACCRUAL_STARTER_ACCOUNTS
     return [
         Open(
             date=open_date,
@@ -374,7 +388,7 @@ def init_entity(
                 store.set_meta("basis", selected_basis, conn)
                 if name:
                     store.set_meta("title", name, conn)
-                store.insert_opens(_starter_account_opens(business_type, starter_open_date), conn)
+                store.insert_opens(_starter_account_opens(business_type, starter_open_date, selected_basis), conn)
             created.append("ledger.sqlite")
             if selected_basis == "accrual":
                 store.upgrade()
@@ -465,7 +479,13 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
                 populated = populated or any(list_records(store, table, conn)
                                              for table in ("intents", "schedules", "items", "allocations", "coverage"))
         if populated:
-            raise ValueError("A populated company cannot change accounting basis; conversion requires a separate workflow.")
+            raise ValueError(
+                "A populated company (one that already has entries) cannot change accounting basis, and Slashbooks does not convert in place. "
+                "Prior periods stay in this company. Start a new accrual company at the cutover date and open it with balances: "
+                "1) books entity init NEW_DIR --name NAME --basis accrual --cutover-date YYYY-MM-DD; "
+                "2) books accrual opening draft --entity THIS_DIR --cutover YYYY-MM-DD > draft.json (then add open invoices and bills); "
+                "3) books accrual opening preview --entity NEW_DIR --input draft.json > plan.json; "
+                "4) books accrual opening apply --entity NEW_DIR --input plan.json.")
         if basis == "accrual":
             store.upgrade()
         config = dict(entity.entity_config)
@@ -474,6 +494,9 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
         config["accrual_capability_version"] = ACCRUAL_CAPABILITY_VERSION if basis == "accrual" else 0
         with store.transaction(immediate=True) as conn:
             store.set_meta("basis", basis, conn)
+            if basis == "accrual":
+                open_day = date.fromisoformat(_normalize_optional_date(str(config.get("cutover_date") or "")) or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat())
+                store.insert_opens(_starter_account_opens(entity.business_type, open_day, "accrual")[-len(_ACCRUAL_STARTER_ACCOUNTS):], conn)
             store.append_audit_event("basis-configured", {"basis": basis}, conn)
             store.append_audit_event("ledger-store-sealed", {
                 "session_id": "entity-basis", "entries": 0, "store_sha256": store.content_digest(conn),
