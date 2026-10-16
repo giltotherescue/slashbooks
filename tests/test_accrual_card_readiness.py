@@ -94,12 +94,12 @@ class CardReadinessTests(AccrualFixture):
                                     for row in assessment['blockers']))
                 self.assertEqual(self.store.content_digest(), before)
 
-    def test_general_payables_and_card_prefix_lookalikes_still_require_control_support(self):
+    def test_general_payables_and_card_prefix_lookalikes_are_ledger_only_not_cards(self):
         lookalike = 'Liabilities:CreditCardboard'
         add_account(self.root, lookalike, open_date='2000-01-01')
         self.post('other-liabilities', '2026-01-15', [(EXPENSE, '100.00'), (AP, '-50.00'), (lookalike, '-50.00')])
         rows = reports.report(self.entity, 'reconciliation', as_of='2026-01-31')['rows']
         by_account = {row['account']: row for row in rows}
-        self.assertEqual(by_account[AP]['status'], 'unreconciled')
-        self.assertEqual(by_account[lookalike]['status'], 'unreconciled')
+        self.assertEqual(by_account[AP]['status'], 'ledger_only')
+        self.assertEqual(by_account[lookalike]['status'], 'ledger_only')
         self.assertNotIn(self.card, by_account)
