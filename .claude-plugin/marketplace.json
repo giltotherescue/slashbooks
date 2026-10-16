@@ -1,6 +1,6 @@
 {
   "name": "slashbooks",
-  "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
+  "description": "Slashbooks — bookkeeping with cash books by default and opt-in accrual for single-company USD SaaS and services. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
   "owner": {
     "name": "Gil Hildebrand"
   },
@@ -8,8 +8,8 @@
     {
       "name": "slashbooks",
       "source": "./",
-      "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
-      "version": "0.5.0",
+      "description": "Slashbooks — bookkeeping with cash books by default and opt-in accrual for single-company USD SaaS and services. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
+      "version": "0.6.0",
       "license": "Apache-2.0",
       "homepage": "https://github.com/giltotherescue/slashbooks",
       "repository": "https://github.com/giltotherescue/slashbooks",
@@ -17,6 +17,7 @@
         "books",
         "accounting",
         "cash-basis",
+        "accrual",
         "banksync",
         "stripe",
         "mercury",

@@ -1,7 +1,7 @@
 {
   "name": "slashbooks",
-  "version": "0.5.0",
-  "description": "Slashbooks — bookkeeping for cash-basis businesses. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
+  "version": "0.6.0",
+  "description": "Slashbooks — bookkeeping with cash books by default and opt-in accrual for single-company USD SaaS and services. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
   "author": {
     "name": "Gil Hildebrand"
   },
@@ -12,6 +12,7 @@
     "books",
     "accounting",
     "cash-basis",
+    "accrual",
     "banksync",
     "stripe",
     "mercury",
@@ -25,8 +26,8 @@
     "logo": "./assets/icon.png",
     "brandColor": "#2d6b4d",
     "displayName": "Slashbooks",
-    "shortDescription": "Bookkeeping for cash-basis businesses.",
-    "longDescription": "Your AI agent keeps local books current, collects and validates QuickBooks Online evidence for migrations and backtests, helps review transactions, answers questions from deterministic reports, and prepares accountant-ready exports.",
+    "shortDescription": "Cash books and opt-in accrual for USD SaaS and services.",
+    "longDescription": "Your AI agent keeps local books current, collects and validates QuickBooks Online reports for migrations and backtests, helps review transactions, answers questions from deterministic reports, and prepares accountant-ready exports.",
     "developerName": "Gil Hildebrand",
     "category": "Productivity",
     "capabilities": [
@@ -34,6 +35,7 @@
       "Ledger validation",
       "Review queues",
       "Provider API downloads",
+      "Accrual books",
       "QuickBooks Online report collection",
       "QuickBooks backtesting",
       "Accountant exports"
