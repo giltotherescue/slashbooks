@@ -88,14 +88,24 @@ Deferred revenue is money received before the related service has been earned.
 Their schedules show the original amount, what belongs in each month, what has
 already been recorded, and what remains.
 
-Supply the first and last covered service days as written in the agreement. The
-agent handles the engine's date convention. Whole calendar months can use equal
-monthly amounts; partial months can use actual days. The engine allocates cents
-exactly and shows the complete schedule for review.
+Supply the first and last covered service days as written in the agreement; both
+days are included (a year starting January 15 ends January 14). Whole calendar
+months can use equal monthly amounts (`equal_month`); any other start or end uses
+actual days (`actual_day`, exact per day). Usage-based, milestone or uneven
+patterns use `custom` with a dated list of amounts that adds up exactly. The
+engine rounds each installment down to the cent and gives the last installment
+the leftover cents, then shows the complete schedule for review.
+
+A fixed asset uses a `depreciation` schedule: the asset keeps its full cost, each
+period debits the depreciation expense and credits an accumulated depreciation
+account (`contra_account`), and an optional `salvage_value` is not depreciated.
 
 For a cancellation, refund, or changed agreement, ask the agent to update the
-existing schedule. It should explain how much relates to future service and how
-much changes an expense or income already recorded. Previous months remain
+existing schedule. To end service early, the `terminate` change recognizes service
+through the last service day (a partial month is prorated by day) and releases the
+unearned balance to a refund, credit or write-off account. It should explain how
+much relates to future service and how much changes an expense or income already
+recorded. Previous months remain
 traceable. Missing service dates or earlier allocations need supporting detail
 before an automatic schedule can be used.
 

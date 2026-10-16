@@ -272,7 +272,7 @@ class AccrualReportsTests(unittest.TestCase):
         schedules.apply_change(self.entity, schedules.preview_change(self.entity, refund))
         supersede = {"operation_id": "deferred-supersession", "id": "deferred-open", "action": "supersede", "date": "2026-09-01", "reason": "Synthetic revised service",
                      "evidence_ids": [self.evidence_for("revised-service", "2026-09-01")],
-                     "replacement": {"id": "deferred-replacement", "start_date": "2026-09-01", "end_date": "2027-01-01", "method": "equal_month"}}
+                     "replacement": {"id": "deferred-replacement", "service_start": "2026-09-01", "service_end": "2026-12-31", "method": "equal_month"}}
         schedules.apply_change(self.entity, schedules.preview_change(self.entity, supersede))
         historical = {r["id"]: (r["remaining_amount"], r["recognized_amount"], r["status"]) for r in reports.report(self.entity, "schedules", as_of="2026-07-31")["rows"]}
         self.assertEqual(before, historical)

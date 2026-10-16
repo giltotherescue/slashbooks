@@ -31,8 +31,10 @@ not a filename or an AI summary. References carry their own content hashes.
 
 Optional `dates`, exact `amounts`, `service_period`, `settlement_links`,
 `observed_facts`, `proposed_treatment`, and `provenance` retain the source context.
-Evidence service periods declare whether their end is inclusive; normalization
-converts them to the engine's exclusive end convention. Monetary values are exact
+A supporting document's service period declares whether its end is inclusive
+(the default). Normalization keeps the stated convention and does not convert it.
+Schedules use inclusive `service_start` and `service_end`, and the engine rejects a
+schedule that falls outside the service period of a supporting document it links. Monetary values are exact
 strings or `{"minor_units": 120000}`. Floating-point values, unsupported currency,
 and invalid dates are rejected.
 

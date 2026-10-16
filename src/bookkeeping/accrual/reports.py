@@ -94,7 +94,8 @@ def _origin_date(record, opening):
         return record["effective_from"]
     if record.get("origin", {}).get("mode") == "opening" and opening:
         return opening["source_as_of"]
-    return record.get("as_of") or record.get("origin", {}).get("date") or record.get("start_date")
+    return (record.get("as_of") or record.get("origin_date") or record.get("origin", {}).get("date")
+            or record.get("service_start") or record.get("start_date"))
 
 
 def _signed(record):
@@ -142,8 +143,8 @@ def _managed_support(conn, as_of):
             base_remaining = Decimal(first.get("base_remaining_amount", first["remaining_amount"]))
         elif "base_remaining_amount" not in row and all_recognition:
             base_remaining = Decimal(row["remaining_amount"]) + sum((Decimal(a["amount"]) for a in all_recognition), Decimal(0))
-        remaining = base_remaining - sum((Decimal(a["remaining_refund_amount"] if a.get("kind") in {"schedule_refund", "schedule_cancel"} else a["amount"])
-                                         for a in relevant if a.get("kind") in {"recognition", "schedule_refund", "schedule_cancel", "schedule_transfer"}), Decimal(0))
+        remaining = base_remaining - sum((Decimal(a["remaining_refund_amount"] if a.get("kind") in {"schedule_refund", "schedule_cancel", "schedule_terminate"} else a["amount"])
+                                         for a in relevant if a.get("kind") in {"recognition", "schedule_refund", "schedule_cancel", "schedule_terminate", "schedule_transfer"}), Decimal(0))
         for change in current.get("changes", []):
             if change["action"] == "supersede" and change["date"] <= as_of:
                 remaining = Decimal(0)
@@ -152,11 +153,17 @@ def _managed_support(conn, as_of):
         initial_recognized = Decimal(initial.get("base_recognized_amount", initial.get("recognized_amount", "0")))
         row.update(remaining_amount=f"{remaining:.2f}", remaining_as_of=f"{remaining:.2f}", signed_balance=f"{_signed(row) * remaining:.2f}",
                    recognized_amount=f"{initial_recognized + recognized:.2f}",
-                   status=row.get("status") if row.get("status") in {"cancelled", "superseded"} and not remaining else "active" if remaining else "completed",
+                   status=row.get("status") if row.get("status") in {"cancelled", "superseded", "terminated"} and not remaining else "active" if remaining else "completed",
                    recognized_refund_amount=f"{sum((Decimal(a.get('recognized_refund_amount', '0')) for a in relevant if a.get('kind') == 'schedule_refund'), Decimal(0)):.2f}",
                    refunded_amount=f"{sum((Decimal(a.get('remaining_refund_amount', '0')) for a in relevant if a.get('kind') == 'schedule_refund'), Decimal(0)):.2f}",
                    recognized_in_ledger=f"{recognized:.2f}", allocations_as_of=[a["id"] for a in relevant])
         schedules.append(row)
+        if row.get("kind") == "depreciation":
+            # The asset keeps its full cost; accumulated depreciation is supported on the contra account.
+            contra = dict(row, id=row["id"] + ":accumulated", account=row["contra_account"], signed_balance=f"{-Decimal(row['recognized_amount']):.2f}",
+                          role="accumulated_depreciation")
+            row["signed_balance"] = f"{Decimal(row['amount']):.2f}"
+            schedules.append(contra)
     return items, schedules
 
 

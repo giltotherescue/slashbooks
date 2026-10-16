@@ -35,8 +35,8 @@
       "amount": "1200.00",
       "recognized_amount": "600.00",
       "remaining_amount": "600.00",
-      "start_date": "2026-01-01",
-      "end_date": "2027-01-01",
+      "service_start": "2026-01-01",
+      "service_end": "2026-12-31",
       "method": "equal_month",
       "evidence_refs": [
         "evidence/opening.pdf"
@@ -51,8 +51,8 @@
       "amount": "1800.00",
       "recognized_amount": "900.00",
       "remaining_amount": "900.00",
-      "start_date": "2026-01-01",
-      "end_date": "2027-01-01",
+      "service_start": "2026-01-01",
+      "service_end": "2026-12-31",
       "method": "equal_month",
       "evidence_refs": [
         "evidence/opening.pdf"

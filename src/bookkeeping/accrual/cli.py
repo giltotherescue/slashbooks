@@ -126,18 +126,49 @@ def request_schemas() -> dict[str, Any]:
     schedule_origin = record(["mode", "source_id"], {key: value for key, value in origin["properties"].items() if key != "counter_account"})
     schedule_origin["properties"]["funding_account"] = {**text, "description": "Existing USD asset account; prepaid schedules also allow Liabilities:CreditCard or its colon-separated subaccounts. Deferred revenue remains asset-funded."}
     item_origin = record(["mode", "source_id"], {key: value for key, value in origin["properties"].items() if key in {"mode", "source_id", "counter_account"}})
+    installments_schema = {"type": "array", "minItems": 1, "maxItems": 1200, "items": record(["date", "amount"], {"date": day, "amount": amount}),
+        "description": "Only for method custom: dated amounts to recognize, in strictly ascending date order, each inside service_start..service_end, "
+                       "each positive, adding up exactly to the amount to recognize (amount minus salvage_value). Use for usage-based, milestone or uneven patterns."}
     schedule = record(["operation_id", "id", "kind", "account", "recognition_account", "currency", "amount",
-                       "start_date", "end_date", "method", "origin"], {
-        "operation_id": text, "id": text, "kind": {"enum": ["prepaid", "deferred"]}, "account": text,
-        "recognition_account": text, "currency": {"const": "USD"}, "amount": amount,
-        "start_date": day, "end_date": {**day, "description": "Exclusive service-period end date."},
-        "method": {"enum": ["actual_day", "equal_month"]}, "origin": schedule_origin, "evidence_ids": ids,
-        "recognition_start": day, "recognized_amount": amount,
+                       "service_start", "service_end", "method", "origin"], {
+        "operation_id": text, "id": text,
+        "kind": {"enum": ["prepaid", "deferred", "depreciation"], "description":
+            "prepaid: asset (account) released to expense (recognition_account). deferred: liability (account) released to income. "
+            "depreciation: fixed asset cost (account) expensed to recognition_account with the credit going to contra_account."},
+        "account": {**text, "description": "Control account: Assets: for prepaid and depreciation (the asset cost), Liabilities: for deferred."},
+        "recognition_account": {**text, "description": "Expenses: for prepaid and depreciation, Income: for deferred."},
+        "contra_account": {**text, "description": "Required for kind depreciation only: accumulated depreciation account, for example Assets:Fixed:Accumulated-Depreciation. Recognition debits the expense and credits this account; the asset cost stays unchanged."},
+        "currency": {"const": "USD"},
+        "amount": {**amount, "description": "Total amount funded: the full cost for depreciation."},
+        "salvage_value": {**amount, "description": "Depreciation only: residual value that is not depreciated. The depreciable base is amount minus salvage_value."},
+        "service_start": {**day, "description": "First day of service, inclusive. Same convention as a supporting document's service_period.start."},
+        "service_end": {**day, "description": "Last day of service, inclusive: a one-year service from 2026-01-15 ends 2027-01-14. Same convention as service_period.end. Must lie inside any linked supporting document's service period."},
+        "method": {"enum": ["actual_day", "equal_month", "custom"], "description":
+            "actual_day: each month gets floor(amount x days in month / total days) cents. equal_month: each whole calendar month gets floor(amount / months) cents; "
+            "needs service_start on the 1st and service_end on a month end (otherwise use actual_day or custom). custom: use installments. "
+            "For the two computed methods the final installment receives the residual cents so the total is exact."},
+        "installments": installments_schema, "origin": schedule_origin, "evidence_ids": ids,
+        "recognition_start": {**day, "description": "Opening-balance carry-over only: first day not yet recognized."},
+        "recognized_amount": {**amount, "description": "Opening-balance carry-over only: amount already recognized (accumulated depreciation for depreciation)."},
         "reference": {**text, "maxLength": 2000, "description": "Human reference or description, separate from the stable machine ID."}},
         examples=[{"operation_id": "synthetic-prepaid-create", "id": "synthetic-prepaid", "reference": "Annual software subscription #104", "kind": "prepaid",
             "account": "Assets:PrepaidExpenses", "recognition_account": "Expenses:Software", "currency": "USD",
-            "amount": "1200.00", "start_date": "2026-01-01", "end_date": "2027-01-01", "method": "equal_month",
+            "amount": "1200.00", "service_start": "2026-01-01", "service_end": "2026-12-31", "method": "equal_month",
             "origin": {"mode": "new", "source_id": "synthetic-funding", "date": "2026-01-01", "funding_account": "Assets:Bank:Checking"},
+            "evidence_ids": ["synthetic-stored-evidence-id"]},
+            {"operation_id": "synthetic-deferred-create", "id": "synthetic-deferred", "kind": "deferred", "account": "Liabilities:DeferredRevenue",
+            "recognition_account": "Income:Services", "currency": "USD", "amount": "12000.00", "service_start": "2026-01-15", "service_end": "2027-01-14",
+            "method": "actual_day", "origin": {"mode": "new", "source_id": "synthetic-receipt", "date": "2026-01-15", "funding_account": "Assets:Bank:Checking"},
+            "evidence_ids": ["synthetic-stored-evidence-id"]},
+            {"operation_id": "synthetic-laptop-create", "id": "synthetic-laptop", "kind": "depreciation", "account": "Assets:Fixed:Equipment",
+            "contra_account": "Assets:Fixed:Accumulated-Depreciation", "recognition_account": "Expenses:Depreciation", "currency": "USD",
+            "amount": "2400.00", "salvage_value": "0.00", "service_start": "2026-01-01", "service_end": "2027-12-31", "method": "equal_month",
+            "origin": {"mode": "new", "source_id": "synthetic-laptop-purchase", "date": "2026-01-05", "funding_account": "Assets:Bank:Checking"},
+            "evidence_ids": ["synthetic-stored-evidence-id"]},
+            {"operation_id": "synthetic-usage-create", "id": "synthetic-usage", "kind": "prepaid", "account": "Assets:PrepaidExpenses",
+            "recognition_account": "Expenses:Software", "currency": "USD", "amount": "300.00", "service_start": "2026-01-01", "service_end": "2026-03-31",
+            "method": "custom", "installments": [{"date": "2026-01-31", "amount": "50.00"}, {"date": "2026-02-28", "amount": "100.00"}, {"date": "2026-03-31", "amount": "150.00"}],
+            "origin": {"mode": "new", "source_id": "synthetic-usage-payment", "date": "2026-01-01", "funding_account": "Assets:Bank:Checking"},
             "evidence_ids": ["synthetic-stored-evidence-id"]}])
     item = record(["operation_id", "id", "kind", "account", "currency", "original_amount", "as_of", "origin", "settlement_strategy"], {
         "operation_id": text, "id": text, "kind": {"enum": ["receivable", "payable", "accrual", "credit"]},
@@ -162,9 +193,10 @@ def request_schemas() -> dict[str, Any]:
         "kind": {"enum": ["receivable", "payable", "accrual", "credit"]}, "original_amount": amount,
         "remaining_amount": amount, "settlement_strategy": {"enum": ["direct", "reverse"]},
         "direction": {"enum": ["debit", "credit"]}, "due_date": {**day, "description": "Original explicit due date; may precede cutover."}})
-    opening_schedule = opening_support(["kind", "amount", "recognized_amount", "remaining_amount", "start_date", "end_date", "method", "recognition_account"], {
+    opening_schedule = opening_support(["kind", "amount", "recognized_amount", "remaining_amount", "service_start", "service_end", "method", "recognition_account"], {
         "kind": {"enum": ["prepaid", "deferred"]}, "amount": amount, "recognized_amount": amount, "remaining_amount": amount,
-        "start_date": day, "end_date": {**day, "description": "Exclusive service-period end."},
+        "service_start": {**day, "description": "First day of service, inclusive."},
+        "service_end": {**day, "description": "Last day of service, inclusive."},
         "method": {"enum": ["actual_day", "equal_month"]}, "recognition_account": text})
     opening_external = opening_support(["balance"], {"balance": amount})
     return {"journal": journal,
@@ -178,11 +210,26 @@ def request_schemas() -> dict[str, Any]:
         "schedule": schedule,
         "schedule_due": record(["operation_id", "through"], {"operation_id": text, "through": day}),
         "schedule_change": record(["operation_id", "id", "action", "date", "reason"], {
-            "operation_id": text, "id": text, "action": {"enum": ["cancel", "supersede", "refund"]}, "date": day,
-            "reason": text, "evidence_ids": ids, "amount": amount, "offset_account": text,
-            "recognized_refund_amount": amount, "remaining_refund_amount": amount, "recognized_refund_account": text,
-            "replacement": record(["id", "start_date", "end_date", "method"], {"id": text, "start_date": day,
-                "end_date": day, "method": {"enum": ["actual_day", "equal_month"]}, "recognition_account": text})}),
+            "operation_id": text, "id": text,
+            "action": {"enum": ["cancel", "supersede", "refund", "terminate"], "description":
+                "cancel: release the whole remaining balance to offset_account on date. refund: return part of the balance (see amount and the refund split fields). "
+                "supersede: replace the remaining balance with a new schedule. terminate: recognize service through effective_date (daily proration of a partial month "
+                "for any method), then release the unearned balance to offset_account as a refund, credit or write-off; for depreciation it only stops depreciation."},
+            "date": {**day, "description": "Posting date of the change entry. For terminate it must be on or after effective_date. It cannot precede recognition already posted."},
+            "effective_date": {**day, "description": "terminate only: last day of service, inclusive. Service through this day is recognized; the rest is released."},
+            "reason": text, "evidence_ids": ids,
+            "amount": {**amount, "description": "refund only: total amount returned, equal to remaining_refund_amount plus recognized_refund_amount when both are given."},
+            "offset_account": {**text, "description": "Account that receives or gives the released value: the bank for a cash refund, a receivable/payable for a credit, or an income/expense account for a write-off."},
+            "recognized_refund_amount": {**amount, "description": "refund only: part of the refund that reverses service already recognized (posted to recognized_refund_account). Give together with remaining_refund_amount."},
+            "remaining_refund_amount": {**amount, "description": "refund only: part of the refund that comes out of the unrecognized balance still held in the schedule account."},
+            "recognized_refund_account": {**text, "description": "Expense (prepaid) or income (deferred) account credited or debited for recognized_refund_amount. Required when it is nonzero."},
+            "replacement": record(["id", "service_start", "service_end", "method"], {"id": text,
+                "service_start": {**day, "description": "First day of the replacement service, inclusive; on or after the change date."},
+                "service_end": {**day, "description": "Last day of the replacement service, inclusive."},
+                "method": {"enum": ["actual_day", "equal_month", "custom"]}, "installments": installments_schema, "recognition_account": text})},
+            examples=[{"operation_id": "synthetic-terminate", "id": "synthetic-prepaid", "action": "terminate", "date": "2026-05-10",
+                       "effective_date": "2026-04-30", "reason": "Subscription cancelled; vendor refunded the unused months",
+                       "offset_account": "Assets:Bank:Checking", "evidence_ids": ["synthetic-stored-evidence-id"]}]),
         "item": item,
         "settlement": record(["operation_id", "date", "source", "allocations"], {
             "operation_id": text, "date": day, "evidence_ids": ids,

@@ -392,7 +392,7 @@ class AccrualMigrationTests(unittest.TestCase):
         self.change("balance_sheet.csv", "Retained Earnings,5000", "Retained Earnings,11800")
         self.change("balance_sheet.csv", "Net Income,6800", "Net Income,0")
         for row in self.support["schedules"]:
-            row["start_date"], row["end_date"] = "2026-07-01", "2027-07-01"
+            row["service_start"], row["service_end"] = "2026-07-01", "2027-06-30"
         # New-year policy is explicit and the completed prior-year P&L remains
         # evidence, without becoming a new-year opening revenue balance.
         self.entity.entity_config["cutover_date"] = "2027-01-01"
