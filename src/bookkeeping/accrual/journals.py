@@ -169,20 +169,20 @@ def _check_dates(entity: Entity, store: LedgerStore, dates: Sequence[str], kind:
 
 def _evidence(store: LedgerStore, ids: Iterable[str], pending: Sequence[SupportingMutation] = ()) -> list[dict[str, Any]]:
     if not isinstance(ids, (list, tuple)) or len(ids) > 1000 or any(not isinstance(i, str) for i in ids):
-        raise JournalError("invalid_evidence", "evidence_ids must be a bounded array of stored evidence IDs.")
+        raise JournalError("invalid_evidence", "`evidence_ids` must be a bounded array of stored supporting document IDs.")
     if len(set(ids)) != len(ids):
-        raise JournalError("invalid_evidence", "Evidence IDs must be unique.")
+        raise JournalError("invalid_evidence", "Supporting document IDs must be unique.")
     result = []
     for record_id in sorted(ids):
         record = load_record(store, "evidence", record_id)
         if record is None:
             record = next((m.payload for m in pending if m.table == "evidence" and m.record_id == record_id), None)
         if not record or record.get("id") != record_id:
-            raise JournalError("missing_evidence", f"Stored evidence {record_id} is missing.")
+            raise JournalError("missing_evidence", f"Stored supporting document {record_id} is missing.")
         envelope = normalize_evidence(record["envelope"])
         if (canonical_hash(envelope) != record_id or source_identity(envelope) != record.get("source_identity")
                 or evidence_hash(envelope) != record.get("evidence_hash") or facts_hash(envelope) != record.get("facts_hash")):
-            raise JournalError("evidence_changed", f"Stored evidence {record_id} no longer matches its content hash.")
+            raise JournalError("evidence_changed", f"Stored supporting document {record_id} no longer matches its content hash.")
         result.append(record)
     return result
 
@@ -338,7 +338,7 @@ def _check_intake_conflict(store: LedgerStore, incoming: Mapping[str, Any]) -> N
 
 
 def intake_evidence(entity: Entity, envelope: Mapping[str, Any]) -> dict[str, Any]:
-    """Persist immutable evidence, retaining every distinct transport provenance."""
+    """Persist immutable supporting documents, retaining every distinct transport provenance."""
     normalized = normalize_evidence(envelope)
     record_id = canonical_hash(normalized)
     store = _store(entity)
@@ -359,7 +359,7 @@ def intake_evidence(entity: Entity, envelope: Mapping[str, Any]) -> dict[str, An
 
 def _link_effect(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any], list[SupportingMutation], list[str]]:
     if not isinstance(request, Mapping) or set(request) - {"operation_id", "target_operation_id", "evidence_ids", "reason"}:
-        raise JournalError("invalid_request", "Evidence links require explicit identities, stored evidence and a reason.")
+        raise JournalError("invalid_request", "Supporting document links require explicit identities, a stored supporting document and a reason.")
     operation_id, target_id = _id(request.get("operation_id")), _id(request.get("target_operation_id"))
     reason = _text(request.get("reason"), "reason")
     store = _store(entity)
@@ -368,7 +368,7 @@ def _link_effect(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, 
         raise JournalError("missing_financial_origin", "The target must be a committed financial operation.")
     records = _evidence(store, request.get("evidence_ids", []))
     if not records:
-        raise JournalError("evidence_required", "Supply stored evidence for the explicit duplicate link.")
+        raise JournalError("evidence_required", "Supply a stored supporting document for the explicit duplicate link.")
     normalized = {"operation_id": operation_id, "target_operation_id": target_id,
                   "evidence_ids": [r["id"] for r in records], "reason": reason}
     mutations, seen = [], {}
@@ -377,7 +377,7 @@ def _link_effect(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, 
         identity = record["source_identity"]
         if identity in seen:
             if seen[identity] != record["facts_hash"]:
-                raise JournalError("source_conflict", "Alias evidence contains conflicting versions of one source.")
+                raise JournalError("source_conflict", "Alias supporting documents contain conflicting versions of one source.")
             continue
         seen[identity] = record["facts_hash"]
         claim_id = "source:" + identity
@@ -385,7 +385,7 @@ def _link_effect(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, 
         if prior:
             if prior.get("operation_id") not in {target_id, target_owner} or prior.get("facts_hash") != record["facts_hash"]:
                 raise JournalError("source_already_owned", "This source is already owned by another financial operation or revision.",
-                                   "Inspect and correct its current owner; an evidence link cannot reassign it.")
+                                   "Inspect and correct its current owner; a supporting document link cannot reassign it.")
             continue
         mutations.append(SupportingMutation("intents", claim_id, {"id": claim_id, "kind": "source_claim",
             "source_identity": identity, "facts_hash": record["facts_hash"],
@@ -399,7 +399,7 @@ def _link_effect(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, 
 
 
 def preview_evidence_link(entity: Entity, request: Mapping[str, Any]) -> dict[str, Any]:
-    """Explicitly identify evidence for an existing effect, without a matcher."""
+    """Explicitly identify a supporting document for an existing effect, without a matcher."""
     normalized, mutations, dates = _link_effect(entity, request)
     prior = load_record(_store(entity), "intents", "operation:" + normalized["operation_id"])
     if prior:
@@ -412,13 +412,13 @@ def preview_evidence_link(entity: Entity, request: Mapping[str, Any]) -> dict[st
 
 def apply_evidence_link(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(plan, Mapping) or plan.get("kind") != "evidence_link":
-        raise JournalError("invalid_plan", "Expected an explicit evidence-link preview.")
+        raise JournalError("invalid_plan", "Expected an explicit `evidence-link` preview.")
     receipt = _replay_operation(entity, plan)
     if receipt is not None:
         return receipt
     current = preview_evidence_link(entity, plan["request"])
     if current["plan_hash"] != plan.get("plan_hash"):
-        raise JournalError("stale_preview", "The evidence-link preview changed.")
+        raise JournalError("stale_preview", "The `evidence-link` preview changed.")
     _, mutations, _ = _link_effect(entity, current["request"])
     return _apply_operation(entity, current, entries=[], mutations=mutations)
 
@@ -439,7 +439,7 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
     normalized["evidence_ids"] = [r["id"] for r in records]
     estimate = request.get("estimate_basis")
     if not records and not estimate:
-        raise JournalError("evidence_required", "A journal requires stored evidence or a disclosed estimate basis.")
+        raise JournalError("evidence_required", "A journal requires a stored supporting document or a disclosed estimate basis.")
     if estimate is not None:
         normalized["estimate_basis"] = _text(estimate, "estimate_basis")
     raw = request.get("postings")
@@ -537,7 +537,7 @@ def _source_claims(store: LedgerStore, records: Sequence[dict[str, Any]], financ
                 "financial_hash": financial_hash, "operation_id": operation_id}))
     if previous_ids:
         if len(previous_ids) != 1 or mutations:
-            raise JournalError("ambiguous_source_overlap", "Only part of the evidence has an existing financial effect.")
+            raise JournalError("ambiguous_source_overlap", "Only part of the supporting document has an existing financial effect.")
         prior = load_record(store, "intents", "operation:" + next(iter(previous_ids)))
         return [], prior["receipt"]
     return mutations, None
@@ -684,7 +684,7 @@ def _correction_effect(entity: Entity, request: Mapping[str, Any], kind: str) ->
             claim_id = "source:" + record["source_identity"]
             prior = load_record(store, "intents", claim_id)
             if prior and prior.get("operation_id") != original_id:
-                raise JournalError("source_conflict", "Replacement evidence belongs to another financial effect.")
+                raise JournalError("source_conflict", "Replacement supporting document belongs to another financial effect.")
             logical = {k: v for k, v in replacement.items() if k not in {"id", "evidence_ids"}}
             logical["evidence_facts"] = sorted({r["facts_hash"] for r in replacement_evidence})
             mutations.append(SupportingMutation("intents", claim_id, {"id": claim_id, "kind": "source_claim",

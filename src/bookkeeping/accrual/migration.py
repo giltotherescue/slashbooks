@@ -259,23 +259,23 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
             if (not isinstance(refs, list) or not isinstance(canonical_ids, list)
                     or not (refs or canonical_ids)
                     or any(not isinstance(r, str) or not r for r in refs + canonical_ids)):
-                raise ValueError(f"Opening support needs inspectable evidence references: {identity}")
+                raise ValueError(f"Opening support needs inspectable supporting document references: {identity}")
             row["evidence_ids"] = []
             for evidence_id in canonical_ids:
                 existing_evidence = load_record(store, "evidence", evidence_id)
                 if not existing_evidence:
-                    raise ValueError(f"Opening support references missing canonical evidence: {evidence_id}")
+                    raise ValueError(f"Opening support references missing canonical supporting document: {evidence_id}")
                 row["evidence_ids"].append(evidence_id)
                 evidence[evidence_id] = {"existing": True, "payload": existing_evidence}
             for reference in refs:
                 relative = Path(reference)
                 root = entity.path.resolve()
                 if relative.is_absolute() or ".." in relative.parts or not relative.parts:
-                    raise ValueError("Opening support evidence must be a company-relative file or canonical evidence ID.")
+                    raise ValueError("Opening support must be a company-relative file or a canonical supporting document ID.")
                 target = root / relative
                 if (any((root.joinpath(*relative.parts[:i])).is_symlink() for i in range(1, len(relative.parts) + 1))
                         or not target.is_file() or target.stat().st_nlink != 1 or target.stat().st_size > 32 * 1024 * 1024):
-                    raise ValueError(f"Opening supporting evidence file is missing or unsafe: {reference}")
+                    raise ValueError(f"Opening supporting document file is missing or unsafe: {reference}")
                 raw = target.read_bytes()
                 digest = hashlib.sha256(raw).hexdigest()
                 envelope = normalize_evidence({"schema_version": 1, "currency": "USD",
@@ -289,7 +289,7 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                            "facts_hash": facts_hash(envelope), "evidence_hash": evidence_hash(envelope)}
                 existing_evidence = load_record(store, "evidence", evidence_id)
                 if existing_evidence and existing_evidence != payload:
-                    raise ValueError("Opening evidence identity conflicts with an existing immutable record.")
+                    raise ValueError("Opening supporting document identity conflicts with an existing immutable record.")
                 evidence[evidence_id] = {"existing": bool(existing_evidence), "payload": payload}
                 if evidence_id not in row["evidence_ids"]:
                     row["evidence_ids"].append(evidence_id)
@@ -484,7 +484,7 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
             raise ValueError("Opening accrual import requires an explicit schema upgrade.")
         existing = load_record(store, "coverage", "opening", conn)
         if existing and existing.get("intent_hash") != coverage["intent_hash"]:
-            raise ValueError("Opening evidence conflicts with the already applied cutover.")
+            raise ValueError("Opening supporting document conflicts with the already applied cutover.")
         if not existing and (conn.execute("SELECT 1 FROM entries UNION ALL SELECT 1 FROM balance_assertions UNION ALL SELECT 1 FROM source_transactions LIMIT 1").fetchone()
                              or any(list_records(store, table, conn) for table in TABLES if table not in {"evidence", "periods", "intents"})):
             raise ValueError("Opening cutover requires an empty target. A company that already has entries cannot take an opening; start a new accrual company at the cutover date.")
@@ -548,7 +548,7 @@ def apply(entity, plan):
                             fiscal_start=plan["fiscal_start"], supporting=plan["supporting"],
                             closed_position=plan.get("closed_position", False))
         if fresh["preview_hash"] != plan.get("preview_hash") or fresh["config_hash"] != plan.get("config_hash"):
-            raise ValueError("Stale opening preview: source evidence or account mapping changed.")
+            raise ValueError("Stale opening preview: source supporting document or account mapping changed.")
         if fresh["status"] != "ready":
             raise ValueError("Opening supporting balances do not reconcile; inspect support_differences.")
         displayed = {"coverage": plan.get("coverage"), "balances": plan.get("balances"),

@@ -135,7 +135,7 @@ def apply_mutations(store: LedgerStore, mutations: Sequence[SupportingMutation],
         if len(payload.encode("utf-8")) > MAX_PAYLOAD_BYTES:
             raise ValueError("Supporting record payload is too large.")
         if mutation.table == "evidence" and mutation.expected_revision:
-            raise ValueError("Evidence records are immutable; add a new identity.")
+            raise ValueError("Supporting document records are immutable; add a new identity.")
         if record_revision(store, mutation.table, mutation.record_id, conn) != mutation.expected_revision:
             raise ValueError(f"Stale supporting record revision: {mutation.table}/{mutation.record_id}")
         prepared.append((mutation, payload))

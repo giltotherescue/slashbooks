@@ -259,7 +259,7 @@ def _supporting_period_check(records: list[dict[str, Any]], start: date, end: da
         if start < first or end > last:
             raise JournalError("service_outside_supporting_document",
                 f"Schedule service {start} to {end} is not inside the supporting document's service period {first} to {last} (both inclusive).",
-                f"Set service_start and service_end inside {first} to {last}, or link the supporting document that covers the schedule (evidence {record['id']}).")
+                f"Set service_start and service_end inside {first} to {last}, or link the supporting document that covers the schedule (supporting document {record['id']}).")
 
 
 def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
@@ -319,7 +319,7 @@ def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("invalid_initial_recognition", "Prior recognition is only carried from an evidenced opening balance.")
     ids = _evidence_ids(request.get("evidence_ids", []))
     if not ids and origin["mode"] == "new":
-        raise JournalError("evidence_required", "New schedule funding requires stored evidence.")
+        raise JournalError("evidence_required", "New schedule funding requires a stored supporting document.")
     _supporting_period_check(_evidence(store, ids), start, end)
     request.update(operation_id=operation_id, id=schedule_id, kind=kind, account=account,
                    recognition_account=recognition_account, currency="USD", amount=f"{amount:.2f}",
@@ -562,7 +562,7 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
     when, reason = _day(request.get("date"), "date"), _text(request.get("reason"), "reason")
     ids = _evidence_ids(request.get("evidence_ids", []))
     if not ids:
-        raise JournalError("evidence_required", "Schedule changes require stored supporting evidence.")
+        raise JournalError("evidence_required", "Schedule changes require a stored supporting document.")
     store = _store(entity)
     request.update(operation_id=operation_id, id=schedule_id, date=when.isoformat(), reason=reason, evidence_ids=ids)
     for field in ("amount", "remaining_refund_amount", "recognized_refund_amount"):
@@ -695,7 +695,7 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
                                    "To end service mid-month with daily proration, use action terminate with effective_date set to the last service day; "
                                    "date is the posting date of the refund and may differ. Example: {\"operation_id\": \"end-service\", \"id\": \"" + record["id"]
                                    + "\", \"action\": \"terminate\", \"effective_date\": \"2026-03-14\", \"date\": \"2026-03-15\", "
-                                   "\"offset_account\": \"Assets:Bank:Checking\", \"reason\": \"Customer refund\", \"evidence_ids\": [\"<evidence-id>\"]}. "
+                                   "\"offset_account\": \"Assets:Bank:Checking\", \"reason\": \"Customer refund\", \"evidence_ids\": [\"<supporting-document-id>\"]}. "
                                    "Or use action supersede with new terms (for example method actual_day) for the remaining service.")
             changed.update(recognition_start=new_start.isoformat(), base_remaining_amount=f"{remaining - remaining_refund:.2f}",
                            base_recognized_amount=record["recognized_amount"], generation=record.get("generation", 0) + 1)

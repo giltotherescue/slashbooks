@@ -13,11 +13,11 @@ from .intake import IntakeValidationError, schema
 
 
 def add_parser(subparsers: Any) -> None:
-    root = subparsers.add_parser("accrual", help="Inspect evidence schemas and maintain reviewable accrual records")
+    root = subparsers.add_parser("accrual", help="Inspect supporting document schemas and maintain reviewable accrual records")
     commands = root.add_subparsers(dest="accrual_command", required=True)
-    commands.add_parser("schema", help="Print the provider-neutral evidence and journal contracts")
+    commands.add_parser("schema", help="Print the provider-neutral supporting document and journal contracts")
     commands.add_parser("capabilities", help="Print available accrual operations")
-    intake = commands.add_parser("intake", help="Retain immutable source evidence")
+    intake = commands.add_parser("intake", help="Retain immutable source supporting documents")
     intake.add_argument("--entity", required=True, type=Path)
     intake.add_argument("--input", required=True, type=Path)
     for domain, selector, verbs in (
@@ -153,7 +153,7 @@ def request_schemas() -> dict[str, Any]:
         "origin": record(["mode", "source_id"], {"mode": {"const": "existing"}, "source_id": text})},
         anyOf=[{"required": ["evidence_ids"], "properties": {"evidence_ids": {"minItems": 1}}},
                {"required": ["estimate_basis"]}],
-        description="Exact balance, account opening/currency, evidence, locks and authority are checked by the engine.")
+        description="Exact balance, account opening/currency, supporting documents, locks and authority are checked by the engine.")
     origin = record(["mode", "source_id"], {"mode": {"enum": ["new", "existing", "opening"]},
         "source_id": text, "date": day, "funding_account": text, "reclass_account": text, "counter_account": text})
     schedule_origin = record(["mode", "source_id"], {key: value for key, value in origin["properties"].items() if key != "counter_account"})
@@ -281,7 +281,7 @@ def request_schemas() -> dict[str, Any]:
     return {"opening": opening, "journal": journal,
         "evidence_link": record(["operation_id", "target_operation_id", "evidence_ids", "reason"], {
             "operation_id": text, "target_operation_id": text, "evidence_ids": ids, "reason": text},
-            description="Explicitly identify another source as evidence of a committed effect; no matching heuristic or financial posting."),
+            description="Explicitly identify another source as a supporting document of a committed effect; no matching heuristic or financial posting."),
         "correction": record(["id", "original_id", "date", "description", "replacement"],
             {"id": text, "original_id": text, "date": day, "description": text, "replacement": journal}),
         "reversal": record(["id", "original_id", "date", "description"],

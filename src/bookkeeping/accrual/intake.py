@@ -1,6 +1,6 @@
-"""Pure, provider-neutral accounting evidence validation and normalization.
+"""Pure, provider-neutral supporting document validation and normalization.
 
-Evidence and proposed treatments are untrusted data. This module neither grants
+Supporting documents and proposed treatments are untrusted data. This module neither grants
 permission nor writes journals. Identities describe source objects, not the MCP,
 API, export, or document transport used to obtain them.
 """
@@ -48,7 +48,7 @@ def _json_value(value: Any, path: str = "$") -> Any:
         for key, item in value.items():
             if not isinstance(key, str):
                 _error(path, "invalid_key", "Object keys must be strings.",
-                       "Use string keys in the evidence JSON.")
+                       "Use string keys in the supporting document JSON.")
             result[key] = _json_value(item, f"{path}.{key}")
         return result
     if isinstance(value, list):
@@ -172,7 +172,7 @@ def _date(value: Any, path: str) -> str:
 
 
 def normalize_evidence(envelope: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate and return a detached normalized evidence envelope.
+    """Validate and return a detached normalized supporting document envelope.
 
     Absent service dates/amounts remain absent; operation previews decide which
     facts are required. No provider allowlist, account mapping, or permission
@@ -183,9 +183,9 @@ def normalize_evidence(envelope: Mapping[str, Any]) -> dict[str, Any]:
                     "settlement_links", "observed_facts", "proposed_treatment", "references", "provenance"}, "$")
     if type(value.get("schema_version")) is not int or value["schema_version"] != SCHEMA_VERSION:
         _error("$.schema_version", "unsupported_schema_version", "Supported schema_version is 1.",
-               "Translate the evidence to the published version 1 schema.")
+               "Translate the supporting document to the published version 1 schema.")
     if value.get("currency") != "USD":
-        _error("$.currency", "unsupported_currency", "Only USD evidence is supported.",
+        _error("$.currency", "unsupported_currency", "Only USD supporting documents are supported.",
                "Resolve unsupported currency before proposing a financial operation.")
     result: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "source": _source(value.get("source")),
                               "currency": "USD"}
@@ -234,7 +234,7 @@ def normalize_evidence(envelope: Mapping[str, Any]) -> dict[str, Any]:
                 if "amount" in item:
                     item["amount"] = normalize_amount(item["amount"], f"{path}.amount")
             result[name][index] = item
-    # Validate UTF-8 before a caller persists or hashes the evidence.
+    # Validate UTF-8 before a caller persists or hashes the supporting document.
     canonical_hash(result)
     return result
 
@@ -255,7 +255,7 @@ def evidence_hash(envelope: Mapping[str, Any]) -> str:
 
 
 def schema() -> dict[str, Any]:
-    """Return the public JSON Schema for raw version 1 evidence input."""
+    """Return the public JSON Schema for raw version 1 supporting document input."""
     text = {"type": "string", "minLength": 1, "pattern": r"^\S(?:[\s\S]*\S)?$"}
     digest = {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"}
     source = {"type": "object", "additionalProperties": False,
@@ -270,7 +270,7 @@ def schema() -> dict[str, Any]:
                                                           "maximum": _MAX_MINOR}}}]}
     day = {"type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}
     return copy.deepcopy({
-        "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Accounting evidence v1",
+        "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Accounting supporting document v1",
         "type": "object", "additionalProperties": False,
         "required": ["schema_version", "source", "currency"],
         "$comment": "Source text and proposed treatment confer no financial-write authority. Runtime validation also rejects floats recursively and invalid calendar/service dates.",

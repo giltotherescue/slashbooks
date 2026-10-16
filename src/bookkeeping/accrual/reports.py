@@ -21,7 +21,7 @@ from .store import SupportingMutation, TABLES, list_records, load_record, record
 
 
 class CoverageError(ValueError):
-    """A requested subperiod cannot be reconstructed from summary evidence.
+    """A requested subperiod cannot be reconstructed from summary supporting documents.
 
     `first_date` is the first date a report can start from, when it is known.
     """
@@ -615,7 +615,7 @@ def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
 def _support_effect(entity, payload):
     from .journals import _store, _id, _day, _evidence
     if not isinstance(payload, Mapping) or set(payload) - {"operation_id", "account", "as_of", "currency", "details", "evidence_ids", "supersedes", "mode", "managed_support_ids"}:
-        raise ValueError("External support requires an explicit bounded account, date, detail rows, and evidence IDs.")
+        raise ValueError("External support requires an explicit bounded account, date, detail rows, and supporting document IDs (`evidence_ids`).")
     request = deepcopy(dict(payload))
     operation_id, when = _id(request.get("operation_id")), _day(request.get("as_of"), "as_of")
     store = _store(entity)
@@ -626,7 +626,7 @@ def _support_effect(entity, payload):
         raise ValueError("External support currency must be USD.")
     ids = request.get("evidence_ids")
     if not isinstance(ids, list) or not ids:
-        raise ValueError("External support requires canonical source evidence.")
+        raise ValueError("External support requires a canonical source supporting document.")
     _evidence(store, ids)
     details = request.get("details")
     if not isinstance(details, list) or not details or len(details) > 1000:

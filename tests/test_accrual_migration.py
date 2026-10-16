@@ -219,7 +219,7 @@ class AccrualMigrationTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 support = deepcopy(self.support)
                 support["items"][0]["evidence_refs"] = [bad]
-                with self.assertRaisesRegex(ValueError, "evidence"):
+                with self.assertRaisesRegex(ValueError, "supporting document"):
                     self.preview(supporting=support)
 
     def test_unknown_mixed_basis_wrong_currency_and_dates_fail_closed(self):

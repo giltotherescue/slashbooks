@@ -122,7 +122,7 @@ def normalize_request(request: Any) -> dict[str, Any]:
             if not any(row.get(k) for k in ("evidence_refs", "evidence_ids")):
                 if not any(default_refs.values()):
                     raise _err("missing_evidence", f"{where} has no supporting document.",
-                               f"Set {where}.evidence_refs to a company-relative file path (or evidence_ids to a stored evidence ID), or set request-level evidence_refs.")
+                               f"Set `{where}.evidence_refs` to a company-relative file path (or `evidence_ids` to a stored supporting document ID), or set request-level `evidence_refs`.")
                 row.update({k: v for k, v in default_refs.items() if v})
             row.setdefault("currency", "USD")
             if name == "items":

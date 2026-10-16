@@ -62,7 +62,7 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
     ids = _evidence_ids(request.get("evidence_ids", []))
     if not ids and origin["mode"] == "new" and "estimate_basis" not in request:
         raise JournalError("evidence_required", "A new outstanding balance requires stored supporting documents or an estimate basis.",
-                           "Set evidence_ids to stored evidence IDs, or set estimate_basis to a short text that explains the estimate.")
+                           "Set `evidence_ids` to stored supporting document IDs, or set `estimate_basis` to a short text that explains the estimate.")
     request.update(operation_id=operation_id, id=item_id, account=account, original_amount=f"{amount:.2f}",
                    currency="USD", evidence_ids=ids)
     lines = None
@@ -174,7 +174,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("invalid_amount", "Settlement cash movement must be nonzero.")
     ids = _evidence_ids(request.get("evidence_ids", []))
     if source["mode"] == "new" and not ids:
-        raise JournalError("evidence_required", "A new payment requires stored evidence.")
+        raise JournalError("evidence_required", "A new payment requires a stored supporting document.")
     excess = request.get("excess")
     if excess is not None:
         if not isinstance(excess, Mapping) or set(excess) - {"id", "account", "counterparty", "reference"} or not {"id", "account"} <= set(excess):
@@ -227,7 +227,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
             identity = record["source_identity"]
             if identity in by_source:
                 if by_source[identity] != record["facts_hash"]:
-                    raise JournalError("source_conflict", "Payment evidence contains conflicting facts for one source.")
+                    raise JournalError("source_conflict", "Payment supporting documents contain conflicting facts for one source.")
                 continue
             by_source[identity] = record["facts_hash"]
             claim_id = "source:" + identity
@@ -236,7 +236,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
                 owner = load_record(store, "intents", "operation:" + prior["operation_id"])
                 owned_sources = (owner or {}).get("receipt", {}).get("entry_source_ids", [])
                 if prior["facts_hash"] != record["facts_hash"] or (prior["financial_hash"] != financial_hash and source_id not in owned_sources):
-                    raise JournalError("source_conflict", "This evidence belongs to a different payment or financial treatment.")
+                    raise JournalError("source_conflict", "This supporting document belongs to a different payment or financial treatment.")
             else:
                 claims.append(SupportingMutation("intents", claim_id, {"id": claim_id, "kind": "source_claim",
                     "source_identity": identity, "facts_hash": record["facts_hash"], "financial_hash": financial_hash,
@@ -389,7 +389,7 @@ def _adjustment_effect(entity: Entity, payload: Mapping[str, Any]):
     ids = _evidence_ids(request.get("evidence_ids", []))
     if not ids and action != "true_up":
         raise JournalError("evidence_required", "Credits and writeoffs require stored supporting documents.",
-                           "Set evidence_ids to stored evidence IDs.")
+                           "Set `evidence_ids` to stored supporting document IDs.")
     amount = _money(request.get("amount"))
     counter = _account(store, request.get("counter_account"), "counter_account", ("Income:", "Expenses:"))
     request.update(operation_id=operation_id, item_id=item_id, amount=f"{amount:.2f}", evidence_ids=ids, counter_account=counter)
