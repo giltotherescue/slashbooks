@@ -1,10 +1,10 @@
 # Connectors
 
-Bank-movement intake and accounting-evidence intake serve different purposes.
-For accrual books, use [the provider-neutral evidence contract](accrual-intake.md)
+Bank-movement intake and supporting-document intake serve different purposes.
+For accrual books, use [the provider-neutral supporting document contract](accrual-intake.md)
 for any connector, MCP response, export, or email attachment. Bank activity alone
 does not determine revenue, service periods, or settlement. Generic journals and
-external support cover evidenced accounting work beyond packaged recipes; the
+external support cover documented accounting work beyond packaged recipes; the
 engine validates the effects and authority.
 
 A connector is how Slashbooks gets your financial data in. Connectors are
@@ -40,7 +40,7 @@ fee journals. The cash-only [Stripe accounting workflow](stripe-accounting.md) u
 linked evidence and explicitly approved revenue rules to post those components
 through processor clearing. Bank payout arrivals clear transit rather than
 counting as additional revenue. For accrual books, retain the same source
-evidence and use generic accounting intake with explicit recognition/schedule
+documents and use generic accounting intake with explicit recognition/schedule
 and settlement treatment; the packaged cash recipe does not run on accrual books.
 
 So feeds give you breadth, and direct connectors give you fidelity for the

@@ -454,8 +454,18 @@ Ask: "Are you migrating from QuickBooks, or starting fresh?"
 First branch on the confirmed company basis. For **accrual**, collect the full
 prior-day TB and BS, fiscal YTD P&L, account types/mappings, and item/schedule or
 external support. Use the shared accrual reference and `accrual migration
-preview`/`apply`, retaining original evidence and explicit fiscal start. Missing
-support blocks activation. Do not use the cash opening/repair commands below.
+preview`/`apply`, retaining the original supporting documents and explicit fiscal
+start. Missing support blocks activation. Do not use the cash opening/repair commands
+below.
+
+For **accrual books that do not come from QuickBooks** (a spreadsheet, another system,
+or a cash-basis Slashbooks company), use `scripts/books accrual opening preview` and
+`apply` with balanced lines plus the open invoices and bills. Start a cash company's
+conversion with `scripts/books accrual opening draft`, and add the receivables and
+payables. A new accrual company starts with a chart that includes receivable, payable,
+prepaid, equipment, accumulated depreciation, accrued liability, deferred revenue and
+customer deposit accounts; add others with `scripts/books entity account-add`. See
+[accrual recipes](../../docs/accrual-recipes.md), recipes 14 and 15.
 
 Explain the start date in ordinary terms: starting July 1 requires checked June
 30 balances, the year's income and expenses through June, and detail behind unpaid

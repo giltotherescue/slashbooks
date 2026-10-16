@@ -96,6 +96,12 @@ owner rephrase them for `ask`:
 | What adjustments were recorded this month? | `accrual report --entity <entity-path> --kind adjustments --from <date> --to <date> --format json` |
 | What is blocking month end? | `readiness --entity <entity-path> --period <YYYY-MM> --as-of <evaluation-date>` |
 
+Every `books ask` answer begins with a line that names the basis and the dates it
+covers; repeat it to the owner. Accrual books do not compute a cash-basis profit
+and loss. A question that asks for one is refused with the nearest valid report; for
+bank movements, read the bank accounts in `report general-ledger`. Never answer a cash-basis
+question from accrual numbers.
+
 Use the requested date or period. If none was given, state the current date used;
 ask only when choosing a date would materially change the answer. Use recorded
 customer/vendor names and references when present. Aging uses actual due dates;

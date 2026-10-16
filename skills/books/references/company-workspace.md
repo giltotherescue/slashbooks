@@ -272,7 +272,7 @@ replies, pass `--answer-question-id`, every
 scope which that mutation intends to apply. Grouped questions can use multiple
 committed commands with different subsets. The remote request and receipt bind
 that declared metadata outside the engine argv; it is provenance, not proof of
-the engine's actual affected sources, accounting evidence, or authority. The
+the engine's actual affected sources, supporting documents, or authority. The
 host verifies actual affected source scope independently. Resolve only after all
 scoped sources have verified committed applications, using `cloud question
 resolve <question-id> --reply-id <reply-id> --reply-watermark <watermark>

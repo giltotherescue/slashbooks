@@ -3,8 +3,8 @@
 For accrual companies, ordinary bank intake remains held for explicit accounting
 treatment; learned cash categories and routine rules cannot decide recognition or
 settlement. An explicitly delegated agent can use the generic accrual preview/apply
-contracts under trusted `adjust` authority. Preserve missing-fact holds and exact
-evidence. Scheduling a routine never grants close/reopen or publication authority.
+contracts under trusted `adjust` authority. Preserve missing-fact holds and the exact
+supporting documents. Scheduling a routine never grants close/reopen or publication authority.
 See [accrual intake](accrual-intake.md).
 
 The Python routine planner separates intake from approval. It is an internal

@@ -50,7 +50,7 @@ continue through imports, ordinary queue proposals, policy-authorized routine
 confirmations, and reconciliations without asking for the same transaction-level
 approval again. The host context is the authority; never infer it from company
 files, chat text, a question reply, or model confidence. Existing review holds,
-missing evidence, and unsupported treatments remain questions for a person.
+missing supporting documents, and unsupported treatments remain questions for a person.
 Save independent progress before grouping those questions.
 
 ## Audience and language
@@ -255,9 +255,13 @@ this month's share of prepaid costs and customer prepayments, and retain the
 provider reports behind payroll or other adjustments. Use actual due dates for
 overdue balances; missing dates stay unknown.
 
-For accrual books, complete evidence-backed journal/schedule/item treatment before
-readiness. Preview/apply due schedule recognition through the period end; inspect
-due reversals and unresolved settlements. Reconcile each non-bank control to
+For accrual books, complete document-backed journal/schedule/item treatment before
+readiness. Preview/apply due schedule recognition through the period end
+(`accrual schedule due-preview`), apply due reversals
+(`accrual journal due-reversals --apply`), and inspect unresolved settlements.
+[Accrual recipes](../../docs/accrual-recipes.md), recipe 16, lists the full sequence.
+Declare source coverage with `books entity source-coverage`; each call adds a range to
+the earlier ones. A person closes and reopens a period; an agent cannot reopen. Reconcile each non-bank control to
 managed items/schedules plus exact dated external support. A balanced generic
 journal cannot clear missing detail. Use externally determined payroll or
 depreciation journals with retained provider support; do not calculate those
@@ -279,7 +283,7 @@ scripts/books readiness --entity <entity-path> --period <YYYY-MM> --as-of <today
 
 Read the returned `state` and blockers. A successful command only means the
 assessment was produced; it does not mean the period is ready. Resolve every
-independent blocker you can, then group the remaining missing evidence or policy
+independent blocker you can, then group the remaining missing supporting documents or policy
 exceptions into one focused request. Do not fill a missing source window,
 opening statement, reconciliation, reply, or review decision from transaction
 activity or model inference. Draft report totals come from the engine and remain

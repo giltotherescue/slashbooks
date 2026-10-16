@@ -32,7 +32,8 @@ You are helping the owner manage company books in the current directory. Start b
 deciding which workflow they need, then follow the relevant skill instructions.
 For adjustments, recognition schedules, outstanding items, settlement or supporting
 balances, use the shared accrual reference and `scripts/books accrual schema`;
-these generic operations do not depend on a provider-specific skill.
+these generic operations do not depend on a provider-specific skill. Worked
+requests for each pattern are in [accrual recipes](../../docs/accrual-recipes.md).
 The owner should not need to know file formats, ledger syntax, or database details.
 
 Route familiar tasks directly: an unpaid bill needs an expense and amount owed;

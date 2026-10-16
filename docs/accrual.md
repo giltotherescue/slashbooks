@@ -4,11 +4,16 @@ Accrual bookkeeping records income when you earn it and expenses when you incur
 them. Receiving or paying the money is a separate step. That helps you see both
 how the business performed and what customers still owe or you still need to pay.
 
-Slashbooks supports straightforward, single-company USD services and SaaS books.
-An owner, bookkeeper, accountant, or authorized agent can do the work. There is no
-separate mandatory accountant approval role. The accounting engine calculates
-the amounts; the agent collects the facts, explains the choices, and runs the
-work you have authorized.
+Accrual is opt-in. Slashbooks supports straightforward accrual books for one
+company, in USD, for services and SaaS businesses. An owner, bookkeeper,
+accountant, or authorized agent can do the work. There is no separate mandatory
+accountant approval role. The accounting engine calculates the amounts; the agent
+collects the facts, explains the choices, and runs the work you have authorized.
+
+Worked, tested examples of every pattern below are in
+[accrual recipes](accrual-recipes.md). Read them to see the exact request for an
+unpaid bill, a customer deposit, deferred revenue, equipment, an accrued estimate,
+a write-off, an early cancellation, opening balances, and the month-end close.
 
 ## Ask for the task you need
 
@@ -20,6 +25,10 @@ You can use `/books` or ask in ordinary language:
 | “We paid $1,200 for software covering January 1 through December 31. Spread the cost across those months.” | A prepaid expense schedule: $100 expense each month and $1,100 still prepaid after January. |
 | “This customer paid $1,200 upfront for twelve months of service. Record the income as we provide the service.” | Deferred revenue, with $100 earned each month when an equal monthly allocation fits the agreement. |
 | “Match this $400 customer payment to the amount they owe us.” | The customer balance falls by $400. Income already earned is counted once. |
+| “This customer paid $500 before we invoiced them. Apply it to the invoice.” | The deposit is held as a customer credit, then applied to the invoice. The invoice balance falls by $500. |
+| “We bought a $2,400 laptop. Depreciate it over 24 months.” | The laptop stays at cost. Each month adds depreciation expense and builds accumulated depreciation. |
+| “Accrue $450 for January utilities; the bill has not come yet.” | A January expense that reverses itself when the real bill arrives. |
+| “We will not collect this $300 invoice.” | A bad-debt expense and a receivable of zero. |
 | “Record this payroll provider's July adjustment and keep its supporting report.” | The provider's accounting amounts and supporting detail, without recalculating payroll. |
 | “Prepare July's books and tell me what needs attention before we close.” | Current adjustments, payments, schedules, reconciliations, and a concrete list of anything still missing. |
 
@@ -54,7 +63,7 @@ A useful review answers:
 
 - Which date and reporting period does this affect?
 - What happens to income, expenses, money owed, or a prepaid balance?
-- Is the payment already in the books, or is this a newly evidenced payment?
+- Is the payment already in the books, or is this a new payment with its own supporting document?
 - What amount will remain after the action?
 - Which document supports it, and is anything still uncertain?
 
@@ -71,6 +80,12 @@ Accounts payable and accrued liabilities are costs recorded but still unpaid.
 Slashbooks can track their original amounts, partial payments, credits,
 write-offs, and remaining balances. Supply the actual due date when known; the
 accounting date does not establish when payment is due.
+
+An overpayment or a deposit that arrives before the invoice is recorded as an open
+customer credit, not as income. Applying that credit to an invoice (an offset) is
+a separate step that reduces the invoice balance. A vendor prepayment works the
+same way in the other direction. A bill that covers several expense categories can
+be split across them while it stays one amount owed.
 
 Ask the agent to match a receipt or payment to the relevant balance. One payment
 can cover several balances, and one balance can have several payments. If the
@@ -100,6 +115,10 @@ A fixed asset uses a `depreciation` schedule: the asset keeps its full cost, eac
 period debits the depreciation expense and credits an accumulated depreciation
 account (`contra_account`), and an optional `salvage_value` is not depreciated.
 
+Slashbooks calculates a straight-line schedule from the cost, salvage value, and
+service dates you give it. It does not decide a useful life or a tax depreciation
+method; those come from you or your preparer.
+
 For a cancellation, refund, or changed agreement, ask the agent to update the
 existing schedule. To end service early, the `terminate` change recognizes service
 through the last service day (a partial month is prorated by day) and releases the
@@ -108,6 +127,28 @@ much relates to future service and how much changes an expense or income already
 recorded. Previous months remain
 traceable. Missing service dates or earlier allocations need supporting detail
 before an automatic schedule can be used.
+
+## Estimates and adjustments
+
+An accrued cost with no bill yet can be recorded as a journal with a plain-text
+estimate basis and a reversal date. It reverses itself on that date, and the real
+bill is then recorded as an ordinary unpaid bill. To keep an estimate visible until
+the real amount is known, record it as an accrued balance and later true it up
+against the actual bill; the variance stays in expense. An invoice you will not
+collect is written off to a bad-debt expense.
+
+## Entries that need no supporting detail
+
+Items and schedules are optional. A balanced journal with a supporting document or
+an estimate basis is enough for any adjustment you can state in debits and credits.
+An asset or liability account with no registered items or schedules is
+`ledger_only`: the reports show its balance and it never blocks a close.
+
+Once an account does have items or schedules, its ledger balance must equal that
+detail. If a plain journal later posts to it, the reconciliation shows the
+difference and an exact next step: register the amount as an item or schedule, or
+explain it with a support snapshot in `residual` mode. See
+[recipe 0](accrual-recipes.md#recipe-0-plain-journal-no-supporting-detail-needed).
 
 ## Reports, coverage, and close
 
@@ -121,7 +162,12 @@ Ask `/books-ask` questions such as:
 - “What is stopping July from being ready to close?”
 
 Income and expense reports describe business performance. Bank movements describe
-cash received and paid. The agent should say which one it is answering. A missing
+cash received and paid. The agent should say which one it is answering. Every
+`/books-ask` answer starts with a line that names the basis and the dates it
+covers. Accrual books do not produce a cash-basis profit and loss: a question that
+asks for one is refused, with the nearest valid answer. For cash received and paid,
+read the bank accounts in the general ledger
+(`books report general-ledger --entity . --from DATE --to DATE`). A missing
 historical period is unavailable, rather than a zero amount. Aging reports use
 actual due dates; balances with unknown due dates and unapplied credits are shown
 separately rather than guessed or automatically netted.
@@ -134,10 +180,24 @@ balances. It should explain unresolved work with a next step:
 > July expense recorded, and the payroll balance needs the provider's supporting
 > report. The other completed work is saved.
 
+Declare which dates each source covers with `books entity source-coverage`. Coverage
+is additive: each new range joins the ranges already recorded, so a later import
+never erases an earlier one, and a gap between ranges blocks any month that spans
+it. The saved coverage lists its `ranges`.
+
 Preparing the month and locking or publishing it are separate actions. The agent
-can complete preparation within its existing authority; final close and reopen
-use the company's established permissions. A report being generated successfully
-does not by itself mean the month is ready.
+can complete preparation within its existing authority. A person closes the period
+and a person reopens it; an agent cannot reopen a period. To reopen, write a
+`reopen` request and run `books accrual period preview` and `period apply` with it;
+the closed-period error prints the exact request. Then post the correction and close
+again with a fresh readiness package. A report being generated successfully does not
+by itself mean the month is ready. The month-end steps, with commands, are in
+[recipe 16](accrual-recipes.md#recipe-16-month-end-close).
+
+When a bank or card balance does not match, `books reconcile` reports the
+difference and a likely cause. If the difference is exactly twice the balance, it
+reports a sign mistake and the corrected command. The ledger shows liabilities,
+including a credit card balance, as negative.
 
 Accountant exports include the P&L, balance sheet, trial balance, adjusting
 entries, receivables and payables, prepaid and deferred schedules, supporting
@@ -145,11 +205,35 @@ detail, and account reconciliations. The reports state the accounting basis,
 dates covered, and unresolved issues. Historical balances remain available after
 later payments or schedule changes.
 
+Export needs a saved bank reconciliation for each period, so run `books reconcile`
+for each bank account first (see recipe 16, step 4). The Excel workbook needs the
+optional extra, `pip install 'agent-books[xlsx]'`; without it, export writes the
+same data as CSV files.
+
+## Starting accrual books
+
+Every accrual company begins with one opening step. The start date (the cutover) is
+the first day of the accrual books. The opening entry is dated the day before and
+shows balances as of that day: a company that starts January 1 opens with
+December 31 balances. Slashbooks gives a new accrual company a starter chart with
+receivable, payable, prepaid, fixed asset, accumulated depreciation, accrued
+liability, deferred revenue, and customer deposit accounts.
+
+- **From scratch or a spreadsheet:** one `opening` request carries the balances, the
+  open invoices and bills, and any remaining prepaid or deferred amounts
+  ([recipe 14](accrual-recipes.md#recipe-14-opening-balances-from-scratch)).
+- **From a cash-basis Slashbooks company:** `opening draft` fills in the cash
+  balances, and you add the receivables and payables
+  ([recipe 15](accrual-recipes.md#recipe-15-opening-balances-from-a-cash-company)).
+  The cash company is kept for earlier periods; Slashbooks does not convert it in
+  place.
+- **From QuickBooks:** the next section.
+
 ## Moving existing accrual books from QuickBooks
 
 Ask the agent to bring over the opening balances and start recording new activity
-on an agreed date. For a July 1 start, the opening balances are as of June 30.
-The agent needs a full trial balance, matching balance sheet and fiscal
+on an agreed date. For a July 1 start, the opening entry is dated June 30 and
+carries the balances as of that day. The agent needs a full trial balance, matching balance sheet and fiscal
 year-to-date P&L, the chart of accounts, and the detail behind amounts still owed,
 prepaid, deferred, or otherwise carried forward. Differences must be resolved
 before the opening is accepted.
@@ -173,13 +257,15 @@ exports, emails, or uploaded documents. A special provider integration is not
 required for a supported accounting entry. Keep the original records so the
 reported amounts can be traced back to them.
 
-Payroll, depreciation, and tax adjustments can use calculations supplied by the
-provider or preparer, with a dated schedule explaining the related balance.
-Slashbooks does not calculate payroll, depreciation, taxes, inventory costs, or
-complex revenue contracts. It does not provide audit certification. Source text
+Payroll and tax adjustments use calculations supplied by the provider or preparer,
+with a dated schedule or supporting document explaining the related balance. The
+engine does spread a cost you give it over time, including straight-line
+depreciation, but it does not calculate payroll, taxes, inventory costs, tax
+depreciation methods, or complex revenue contracts. It does not provide audit
+certification. Source text
 supplies facts and does not grant permission to record them.
 
 For developers and agents implementing an integration, the
-[accounting evidence and request reference](accrual-intake.md) describes exact
+[supporting document and request reference](accrual-intake.md) describes exact
 amounts, dates, identity, preview/apply, and authority requirements. Those
 contracts remain the source of truth for machine inputs.

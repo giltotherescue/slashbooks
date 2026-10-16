@@ -66,14 +66,16 @@ or professional judgment.
 
 Recognition and payment are separate. Item allocations and schedule installments
 support control balances; a balanced journal alone cannot clear missing detail.
-Review due recognition/reversals, settlement links, evidence, and exact control
-reconciliation. Corrections preserve originals and lineage. There is no new
+Review due recognition/reversals, settlement links, supporting documents, and exact
+control reconciliation where an account has items or schedules. An asset or liability
+account without them is shown as ledger-only. Corrections preserve originals and lineage. There is no new
 mandatory accountant approval role; authority comes from the operator or trusted
 delegation, and final publication/locking remains separately controlled.
 
 Receivables/payables aging uses recorded due dates: current, 1–30, 31–60, 61–90,
 and over 90 days past due. Missing due dates are identified separately, and
-unapplied credits are not automatically netted against invoices. The accounting
+unapplied credits (deposits, overpayments, credit memos) are not netted automatically.
+Apply one to an invoice or bill with an explicit offset. The accounting
 date is not a substitute for the due date. Generic accrual estimates are outside
 the customer/supplier aging report.
 
@@ -118,12 +120,16 @@ to the prior event, so manual edits or corruption can be detected.
 
 ## Limits
 
-The supported accrual scope includes evidenced journals, prepaid/deferred
-recognition, outstanding balances and settlement, corrections, external support,
-and coverage-aware reporting. See [accrual books](accrual.md) for limits and
-[source-neutral intake](accrual-intake.md) for contracts. It does not calculate
-payroll, depreciation, tax, inventory costing, or complex revenue contracts,
-and does not provide audit certification or accounting advice.
+The supported accrual scope is one company, in USD, for services and SaaS. It
+includes journals backed by a supporting document or an estimate, prepaid, deferred
+and straight-line depreciation schedules, outstanding balances and settlement,
+deposits and credits applied to invoices, accrued estimates that reverse or are
+trued up, write-offs, corrections, external support, opening balances, and
+coverage-aware reporting. Accrual books do not produce a cash-basis profit and loss.
+See [accrual books](accrual.md) for limits, [accrual recipes](accrual-recipes.md) for
+worked requests, and [source-neutral intake](accrual-intake.md) for contracts. It does
+not calculate payroll, tax, tax depreciation methods, inventory costing, or complex
+revenue contracts, and does not provide audit certification or accounting advice.
 
 When an entity is marked as VAT/GST/HST/sales-tax applicable, Slashbooks preserves
 that context and warns during sanity checks. It doesn't calculate indirect tax,

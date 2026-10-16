@@ -27,7 +27,7 @@ expenses without the constant questions. You can run the monthly close on a
 schedule and have current books waiting, and at any time you can ask for an
 analysis of anything in the business, with every figure already at hand.
 
-## Cash-basis first
+## Cash by default, accrual opt-in
 
 Cash is the default for small owner-operated businesses. Simple single-entity USD
 services and SaaS companies can explicitly choose [accrual books](accrual.md),
@@ -39,9 +39,15 @@ company policy, not a report toggle. For the cash workflow:
 - Slashbooks generates reports from a local ledger store.
 - Accountants can still review the output before tax filing.
 
-The supported foundation does not calculate payroll, depreciation, tax, inventory
-costing, or complex revenue contracts. Externally determined journals and exact
-support remain available without expanding those calculations.
+Accrual books are opt-in and limited to one company, in USD, for services and SaaS
+businesses. They produce accrual reports. They do not produce a cash-basis profit
+and loss; bank movements are in the general ledger.
+
+The engine spreads a cost or revenue you describe over time, including straight-line
+depreciation from the cost, salvage value, and dates you give. It does not calculate
+payroll, tax, tax depreciation methods, inventory costing, or complex revenue
+contracts. Externally determined journals and exact support remain available for
+those.
 
 ## Double-entry underneath
 
@@ -67,10 +73,10 @@ and generates the reports. The AI never invents totals or does the math itself.
 
 ## Canonical books and portable records
 
-Local canonical books live in SQLite with retained source evidence. Remote books
+Local canonical books live in SQLite with retained supporting documents. Remote books
 use the selected server workspace as their authority. A plain-text snapshot
 contains journal entries; a complete portable bundle also preserves supporting
-records, evidence, coverage, and period state.
+records, supporting documents, coverage, and period state.
 You don't need to open them day to day, but they're there whenever you
 or an accountant need to audit exactly what happened, line by line.
 

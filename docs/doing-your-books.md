@@ -5,7 +5,8 @@ simple cash-basis company or opt-in single-entity USD services/SaaS accrual book
 Cash is the default. Accrual separates income and expenses from their payments;
 it also tracks what customers owe, unpaid costs, and amounts paid in advance.
 The [accrual task guide](accrual.md) explains what to ask your agent and what the
-result should show. Developers can use the [accounting evidence reference](accrual-intake.md).
+result should show. Developers can use the [supporting document reference](accrual-intake.md), and
+[accrual recipes](accrual-recipes.md) has a tested request for each pattern.
 
 Slashbooks works best when each company has its own directory, bank and card data
 comes from BankSync or known CSV exports, and you review unfamiliar transactions
@@ -96,9 +97,9 @@ do not need to configure a BankSync feed or destination; Slashbooks reads from
 the BankSync API. See [BankSync setup](banksync.md).
 
 If you use Stripe or Mercury, Slashbooks can also pull data directly with your
-API key, which retains Stripe source evidence and Mercury bank activity.
-The packaged Stripe revenue recipe is cash-only; accrual uses generic evidence
-intake, recognition, and settlement treatment. See the provider
+API key, which retains Stripe source records and Mercury bank activity.
+The packaged Stripe revenue recipe is cash-only; accrual uses generic supporting
+document intake, recognition, and settlement treatment. See the provider
 download steps in [CSV, QuickBooks, and file imports](imports.md).
 
 For old, unsupported, disconnected, or intentionally unconnected accounts, keep
