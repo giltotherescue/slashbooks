@@ -60,7 +60,8 @@ Queue item schema
   "corrected_at":       ISO | null,
   "created_at":         ISO,
   "updated_at":         ISO,
-  "session_summary_id": str | null
+  "session_summary_id": str | null,
+  "accrual_rule":       {scope, treatment, ...} | absent  # saved accrual rule that matched; a suggestion only
 }
 
 Learned-context schema (learned-context/counterparties.json)
@@ -1388,6 +1389,9 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
     counterparty = _counterparty_key(description, str(txn.get("counterparty") or ""))
     raw_date = str(txn.get("date") or "")[:10] or _today_iso()
     now = _now_iso()
+    # A saved accrual rule only shapes the explanation of a proposal. It never records or confirms.
+    from .accrual.rules import proposal_stamp
+    rule_stamp = proposal_stamp(entity, txn, category)
     existing_path = _item_path(entity, source_id)
     existing_item: dict = {}
     if existing_path.exists():
@@ -1404,7 +1408,7 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
         "counterparty": counterparty,
         "proposed_category": category,
         "reasoning": clean_reasoning,
-        "context": _sanitize_reasoning(context),
+        "context": _sanitize_reasoning(" ".join(part for part in (rule_stamp["explanation"] if rule_stamp else "", context) if part)),
         "status": "open",
         "confirmed_category": None,
         "original_amount": existing_item.get("original_amount", amount_str),
@@ -1418,6 +1422,7 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
         # preparation authority may not silently absorb the changed evidence.
         "requires_human_review": bool(existing_item.get("requires_human_review", False)),
         **({"taught": stamp} if (stamp := taught_stamp(entity, counterparty, category)) else {}),
+        **({"accrual_rule": rule_stamp} if rule_stamp else {}),
     }
 
 

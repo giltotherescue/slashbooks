@@ -209,6 +209,11 @@ again. Ask for missing business facts, not internal identifiers or amount signs.
 The ordinary queue commands below are appropriate only for an established new
 current-period cash event and then require `--accrual-treatment new_cash_event`.
 Corrections to tracked accrual entries use their dedicated correction workflow.
+Before you propose a treatment for an accrual payment or bill, run
+`scripts/books accrual rules match` and name any saved rule in your explanation.
+A saved rule is a suggestion that a person still approves. When the owner decides how
+to treat a supplier that will bill again, offer to remember it with
+`accrual rules set-preview` and `set-apply` (see the shared accrual workflow).
 
 **If the owner confirms:**
 

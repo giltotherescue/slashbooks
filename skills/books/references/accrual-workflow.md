@@ -24,6 +24,7 @@ with an accountant. Keep request fields and transport details in the working rec
 | Stop collecting an invoice | `item adjust` with `writeoff` |
 | End a subscription early | `schedule change` with `terminate` |
 | Check the detail behind an account | Reconcile item/schedule detail and external supporting balances to the ledger |
+| Treat a supplier's bills the same way every time | Saved accrual rule (`accrual rules set-preview`), applied as a proposal by `accrual rules match` |
 | Prepare month end | Record due recognition and adjustments, match payments, reconcile, then assess readiness |
 
 ## Compose from the primitives
@@ -72,6 +73,47 @@ service from 2026-01-15 for one year ends 2027-01-14), preserving a source's
 explicitly stated date convention; clarify ambiguous dates before posting. Determine funding
 linkage and supporting-balance mode from current books and the schema, rather
 than asking owners for internal IDs, amount signs, or full/residual field names.
+
+## Saved accrual rules
+
+A saved rule is how a person's decision about a recurring supplier, customer or kind
+of cost survives to the next run. It changes only what you **propose**. It records
+nothing, confirms nothing, and gives no posting authority. A person still approves,
+inside the authority the company already granted. Treat a rule as a strong default,
+not as a command, and never as a reason to skip the preview.
+
+1. **Match before you propose.** For a bill, invoice, payment or supporting
+   document on accrual books, run `scripts/books accrual rules match --entity PATH
+   --input facts.json` first. The facts are the counterparty, amount, the account
+   or category, the description, and the dates and ids you know (`books accrual
+   schema` lists them). The result names the matching rule, why it won, and a
+   DRAFT request. A supplier or customer rule wins over a company rule. Among company rules the most
+   specific wins. `status: no_match` with `reason: below_supplier_threshold` means
+   the person's rule says to treat that amount as an ordinary expense or income.
+2. **Use the draft, then the normal preview.** Fill in each field listed in
+   `draft.missing` from the supporting document or by asking the person. Run the
+   command in `draft.command` (a schedule or item preview) and show the exact
+   preview to the person. Apply it only under the approval or delegated authority
+   you already have. The facts in the document win over the rule: if the document's
+   service dates differ from the saved term, use the document's dates and say so.
+3. **Say which rule you used.** Put `explanation` from the match in your summary,
+   for example: "Saved rule for Northwind Hosting, set by Gil on 2026-10-16:
+   prepaid over 12 months." In the review queue, `queue propose` adds the same text
+   to the item's `context` and an `accrual_rule` stamp for accrual companies.
+4. **Offer to remember a decision.** When a person decides the treatment for a
+   supplier or customer that will bill again, ask once: "Remember this for
+   Northwind Hosting, so I propose the same next time?" If they agree, save it with
+   `scripts/books accrual rules set-preview` then `set-apply` and `source: person`.
+   For a kind of cost, such as "software over 1,000 is prepaid", use a company rule (`match` instead of
+   `counterparty`). To change a rule, save it again. To remove one, use
+   `rules clear-preview` and `clear-apply`. `rules list` shows every rule.
+5. **An agent may propose a rule, with the person told.** Save it with
+   `source: agent`, and say so in the same reply: what the rule is, why, and how to
+   undo it. An agent cannot replace or clear a rule a person set. A person confirms
+   an agent rule by saving it again with `source: person`.
+6. Write only through these commands. Never edit `learned-context/counterparties.json` or
+   `learned-context/accrual-rules.json` yourself. Unattended runs may read and match
+   rules but cannot save one: ask the person instead.
 
 ## Apply the accounting contracts
 

@@ -100,7 +100,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             ("schedule", "due-preview"), ("schedule", "change-preview"), ("schedule", "list"),
             ("item", "preview"), ("item", "settle-preview"), ("item", "adjust-preview"), ("item", "offset-preview"), ("item", "list"),
             ("migration", "preview"), ("support", "preview"), ("report",), ("evidence-link", "preview"),
-            ("accounts",), ("receipt",), ("opening", "preview"), ("opening", "draft")}
+            ("accounts",), ("receipt",), ("opening", "preview"), ("opening", "draft"),
+            ("rules", "list"), ("rules", "match"), ("rules", "set-preview"), ("rules", "clear-preview")}
         if path[1:] == ("journal", "due-reversals"):
             mutates = args.apply
     if path == ("ledger", "migrate") and args.dry_run:
