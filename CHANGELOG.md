@@ -3,6 +3,15 @@
 ## Unreleased
 
 - Add `books qb agreement run --entity PATH [--holdout 3|0.2] [--as-of DATE] [--json]`. It scores Slashbooks's suggested category against the QuickBooks category on a held-out slice of QuickBooks history (the latest three months by default, or a fraction). Counterparty precedents come from the training slice only, so a counterparty seen only in the held-out slice gets no suggestion. The result gives agreement by count and by amount, agreement per account, disagreements by counterparty (`judgment-mapping` or `category_disagreement`), and no-suggestion items counted apart. It posts nothing, never writes learned context, and saves one result file under `reports/quickbooks-agreement/`. The remote contract classifies it as a read command. See `docs/quickbooks-sync.md`.
+- Add tie-out proof. Every `books statement import` entry now has a `tieout` (opening balance plus the rows
+  against the closing balance, in statement presentation) and `counts.to_import`. `--require-tieout` stops a
+  mismatch before any write with `needs_review` and exit code 4. The default stays a warning.
+- `books coverage check` adds a `tieout` to each statement and each month: the books against the statement
+  closing balance, with `waiting_rows` for staged rows. A month is checked only when one statement is exactly that
+  month, otherwise `not_aligned`. Readiness adds the warning `statement_tieout_differs`. It is a warning, not a blocker.
+- Add the read-only command `books balance check`. It compares a bank-reported balance with the books balance for
+  the mapped account on the same day, and reports `matches`, `waiting_in_review`, `differs`, `bank_newer`,
+  `unmapped` or `no_bank_balance`. See `docs/imports.md`.
 - A person can teach a category for a payee. The counterparty record keeps a `taught` instruction
   (`set_taught`, `clear_taught`, `taught_for`). A taught category changes what agents suggest. It never
   records, confirms, or changes the trust ramp.

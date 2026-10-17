@@ -41,7 +41,11 @@ scripts/books statement import <file> --entity <entity-path> --profile <name>
 ```
 
 An OFX import does not need `--profile`. Report the counts, the rows held as
-duplicate candidates, and the statement period and balances.
+duplicate candidates, and the statement period and balances. Report each
+statement's `tieout`: `matches` is proof that the rows add up to the printed
+balances. If it is `differs`, tell the owner, and do not call the import
+verified. If it is `no_balances`, ask for the printed balances. Add
+`--require-tieout` to stop a mismatch before any write (exit code 4).
 
 If a statement result has `"coverage": "needs_period"`, the file does not show
 its statement dates. Ask the owner for the period printed on the statement,

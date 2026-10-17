@@ -160,6 +160,35 @@ the balances from the printed statement, pass `--opening-balance` and
 account and money owed for a card. If the balances do not agree with the
 transactions in the file, the result has a warning.
 
+### Tie-out
+
+Each statement in the result has a `tieout` that checks the file alone: the
+opening balance plus the rows equals the closing balance. All sums are in
+Python, in the statement presentation (money owed is positive for a card).
+
+```json
+{"status": "matches", "opening": "1000.00", "rows_total": "2142.26",
+ "expected_closing": "3142.26", "closing": "3142.26", "difference": "0.00", "row_count": 6}
+```
+
+`status` is `matches`, `differs` or `no_balances` (a balance is missing, so
+nothing can be proved; most CSV files). `counts.to_import` is the number of
+rows that the import would add. By default a `differs` result is a warning and
+the rows import. With `--require-tieout` a `differs` result stops before any
+write: the status is `needs_review`, the error code is `tieout_differs`, and
+the exit code is 4. A dry run reports the same.
+
+`books coverage check --format json` adds a `tieout` to each statement and to
+each month. It compares the books with the statement: the statement opening
+balance plus the books movement in the period, against the statement closing
+balance. `status` is `matches`, `differs`, `no_balances`, or `not_aligned`. A
+month gets a status only when one statement is exactly that month. A statement
+that spans months is checked on its own period and its months are
+`not_aligned`. `waiting_rows` counts staged rows in the period that are not in
+the books yet, so a difference can be read with the review backlog. A
+`differs` result adds the readiness warning `statement_tieout_differs`. It is a
+warning, not a blocker.
+
 ```sh
 books statement list --entity ~/Documents/books/acme-co
 ```
@@ -171,6 +200,29 @@ full account number), `period_start`, `period_end`, `period_source`
 the balances with their dates and `balance_source`, and the net transaction
 total. Records are in `ingestion/statements/<statement_id>.json`, and a copy of
 each imported file is kept under `ingestion/statements/files/`.
+
+### Bank balance against the books
+
+`books balance check` compares a balance that a bank feed reported with the
+books balance for the mapped ledger account on the same day. It is read-only.
+The host supplies the bank facts:
+
+```sh
+books balance check --entity ~/Documents/books/acme-co --input balances.json
+```
+
+The input is a JSON list of `{"account_id", "balance", "as_of", "data_through"}`.
+`retrieved_at` is a fallback date when `as_of` is null. `balance` uses the
+statement presentation (money held; money owed, positive, for a card). Set
+`"sign": "ledger"` for a card balance that is negative when money is owed.
+`account_id` is looked up in `bank_account_mappings`. Feeds that map to one
+ledger account are added together into one row. Each row has `status`,
+`account_ids`, `ledger_account`, `bank_balance`, `books_balance`, `difference`,
+`waiting_rows`, `waiting_total`, `compared_through` and `compared_basis`
+(`as_of`, `retrieved_at`, `data_through` or `latest`). `status` is `matches`,
+`waiting_in_review` (the difference equals the staged rows), `differs`,
+`bank_newer` (the bank date is after `data_through`), `unmapped` or
+`no_bank_balance`.
 
 ## PDF and image statements
 
