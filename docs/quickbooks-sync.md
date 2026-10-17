@@ -82,6 +82,49 @@ fidelity. Independent categorization backtesting requires separate transaction
 inputs and a held-out period. Never score historical rule-training examples as
 independent predictions.
 
+## Category agreement on held-out history
+
+```sh
+books qb agreement run --entity /path/to/company [--holdout 3|0.2] [--as-of 2026-06-30] [--json]
+```
+
+This answers: "Slashbooks agrees with QuickBooks on X percent of transactions."
+It is a separate command, not part of `backtest run`. `backtest run` compares
+statements for a period. This command scores one category per transaction.
+
+QuickBooks history stays reference evidence. The command reads the saved sync
+snapshot, never posts to the ledger, and never writes `learned-context`. It
+writes one result file under `reports/quickbooks-agreement/<snapshot>/` and
+prints it.
+
+- Scored: purchases and bills with one account-based line account. Splits,
+  item-based lines and other transaction types are listed in
+  `excluded_from_scoring`.
+- Holdout: `--holdout 3` (default) holds out the as-of month and the two months
+  before it, by date. `--holdout 0.2` or `20%` holds out a stable sample chosen
+  by a hash of the transaction reference, so a repeat run holds out the same
+  transactions. `--as-of` defaults to the latest QuickBooks transaction date and
+  drops later transactions. An empty held-out slice, or no history, is refused.
+- Leak guard: counterparty precedents come from the training slice only, and the
+  two slices never share a transaction. A counterparty seen only in the held-out
+  slice gets no suggestion.
+- Suggestion: the same order a real suggestion uses. A taught category wins,
+  then a learned-context category that is not reset, then the training
+  precedent (the most common category; a tie gives none). `suggestion_sources`
+  counts each. A taught or learned category is the company's own work, not
+  QuickBooks history.
+- Comparison: the QuickBooks category is the snapshot account mapping, or an
+  approved `compare account-crosswalk` entry. No suggestion is counted apart and
+  is never a disagreement. `agreement_rate` is agree over suggested. The amount
+  rate weights each transaction by its absolute amount.
+- Disagreements are grouped by counterparty and category pair, with `count`,
+  `total` and `sample_ids`. A group is `judgment-mapping` when the QuickBooks
+  account has no counterpart in the local chart, or Slashbooks suggested an
+  account QuickBooks never used. Any other group is `category_disagreement`.
+
+The result is deterministic for the same snapshot, holdout, crosswalk and
+learned context.
+
 ## Review opening balances
 
 ```sh

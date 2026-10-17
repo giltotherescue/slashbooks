@@ -2205,6 +2205,8 @@ def add_parser(subparsers) -> None:
 
     from .quickbooks_sync import add_parser as add_sync_parser
     add_sync_parser(qb_sub)
+    from .quickbooks_agreement import add_parser as add_agreement_parser
+    add_agreement_parser(qb_sub)
 
     # inventory <folder>
     inv_parser = qb_sub.add_parser(
@@ -2302,6 +2304,10 @@ def run(args) -> int:
     if args.qb_command in ("sync-import", "sync-opening", "sync-rules"):
         from .quickbooks_sync import run as run_sync
         return run_sync(args)
+
+    if args.qb_command == "agreement":
+        from .quickbooks_agreement import run as run_agreement
+        return run_agreement(args)
 
     if args.qb_command == "inventory":
         report = inventory(
