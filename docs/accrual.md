@@ -150,6 +150,39 @@ difference and an exact next step: register the amount as an item or schedule, o
 explain it with a support snapshot in `residual` mode. See
 [recipe 0](accrual-recipes.md#recipe-0-plain-journal-no-supporting-detail-needed).
 
+## Saved accrual rules
+
+Some bills repeat. A person decides once how to treat Northwind Hosting's annual
+plan, and every later run should propose the same treatment. A saved accrual rule
+keeps that decision.
+
+- **What a rule is.** It is a preference about what to propose: prepaid, deferred
+  revenue, depreciation, an unpaid bill, an invoice or an accrued estimate, with the
+  term, method, accounts and an optional amount threshold. The person's note is shown
+  with every proposal that uses it.
+- **What a rule is not.** A rule never records anything, never approves, and never
+  grants authority. A person still approves each preview, or the trusted delegate that
+  already has authority does. Unattended runs may read and match rules but cannot
+  save one.
+- **Two kinds.** A supplier or customer rule belongs to one counterparty and is kept
+  on its record in `learned-context/counterparties.json`. A company rule describes a
+  kind of cost, such as "software at 1,000 or more is prepaid" or "equipment at 2,500
+  or more is depreciated over 36 months". It lives in
+  `learned-context/accrual-rules.json`. Both are written only by Slashbooks commands.
+- **Which rule wins.** A supplier or customer rule wins over a company rule. Among
+  company rules, the most specific wins. The match result explains why.
+- **Who set it.** Each rule keeps who set it, when, and whether a person or an agent
+  decided. An agent may propose a rule and must tell the person. An agent cannot
+  replace or clear a rule a person set.
+
+Ask your agent: "Remember this for Northwind Hosting" or "From now on, treat software
+over $1,000 as a prepaid expense over its service period." The commands are
+`books accrual rules list`, `set-preview` and `set-apply`, `clear-preview` and
+`clear-apply`, and the read-only `match`. `match` takes the facts of a bill, invoice,
+payment or supporting document and returns the matching rule and a draft request for
+the ordinary preview. The draft lists any fact still missing. See
+[recipe 17](accrual-recipes.md#recipe-17-remember-a-treatment-for-a-supplier-or-for-a-kind-of-cost).
+
 ## Reports, coverage, and close
 
 Ask `/books-ask` questions such as:

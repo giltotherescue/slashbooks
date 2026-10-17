@@ -47,6 +47,15 @@ def add_parser(subparsers: Any) -> None:
             due.add_argument("--entity", required=True, type=Path)
             due.add_argument("--through", required=True)
             due.add_argument("--operation-id", required=True)
+    rules = commands.add_parser("rules", help="Saved accrual rules: what to propose for a supplier, customer or kind of cost. A rule never records anything.")
+    children = rules.add_subparsers(dest="rules_command", required=True)
+    for verb in ("set-preview", "set-apply", "clear-preview", "clear-apply", "match"):
+        child = children.add_parser(verb)
+        child.add_argument("--entity", required=True, type=Path)
+        child.add_argument("--input", required=True, type=Path)
+    listing = children.add_parser("list", help="List saved accrual rules (read-only)")
+    listing.add_argument("--entity", required=True, type=Path)
+    listing.add_argument("--format", choices=("json", "text"), default="json")
     report = commands.add_parser("report")
     report.add_argument("--entity", required=True, type=Path)
     report.add_argument("--kind", required=True, choices=("schedules", "outstanding", "aging", "adjustments", "support", "reconciliation"))
@@ -343,6 +352,45 @@ def request_schemas() -> dict[str, Any]:
             description="Apply a credit to an invoice or bill. If the two items sit in different accounts, posts Dr customer deposits (or Dr payable), Cr receivable (or Cr prepayment). If both sit in one account, links only. Aging shows the lower balances.",
             examples=[{"operation_id": "synthetic-apply-deposit", "date": "2026-03-01", "credit_item_id": "synthetic-deposit-credit",
                 "target_item_id": "synthetic-invoice", "amount": "500.00", "reason": "Apply customer deposit to invoice"}]),
+        "rule_set": record(["operation_id", "treatment", "note", "set_by", "source"], {
+            "operation_id": text,
+            "counterparty": {**text, "description": "Supplier or customer name or key. Makes a supplier or customer rule. Give this or match, not both."},
+            "id": {**text, "description": "Company rule only: a stable id of letters, digits, dots, dashes and underscores. Defaults to a hash of match and threshold, so the same match is one rule. A rule with this id is replaced."},
+            "match": record([], {"accounts": {"type": "array", "minItems": 1, "maxItems": 20, "items": text,
+                                              "description": "Expense, income or non-cash asset accounts. An account also covers the accounts under it; a deeper account is more specific."},
+                                 "keywords": {"type": "array", "minItems": 1, "maxItems": 10, "items": text,
+                                              "description": "Words that must appear in the description or counterparty. Any one is enough. Not case sensitive."}},
+                            description="Company rule only. Needs accounts or keywords."),
+            "treatment": {"enum": ["prepaid", "deferred", "depreciation", "bill", "invoice", "estimate"]},
+            "term_months": {"type": "integer", "minimum": 1, "maximum": 600, "description": "prepaid, deferred and depreciation only. Required for depreciation. Slashbooks does not choose a useful life."},
+            "method": {"enum": ["actual_day", "equal_month"], "description": "prepaid, deferred and depreciation only. Use custom installments in the request itself, not in a rule."},
+            "accounts": record(["account", "recognition_account"], {"account": text, "recognition_account": text, "contra_account": {**text, "description": "depreciation only, and required there."}},
+                               description="The balance sheet account and the income or expense account. Checked against the chart, account roots and subtypes. Leave out to let the proposal choose from the chart."),
+            "threshold": {**amount, "description": "Apply the rule only to amounts at or above this exact decimal string. Use 1000.01 for \"over 1,000\"."},
+            "note": {"type": "string", "minLength": 1, "maxLength": 500, "description": "Why, in plain words. Shown with every proposal that uses the rule."},
+            "set_by": {**text, "description": "Who decided: the person's name or id, or the agent's name."},
+            "set_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "UTC time. Defaults to the preview time."},
+            "source": {"enum": ["person", "agent"], "description": "person when a person decided. agent when an agent proposes: tell the person. An agent cannot replace or clear a rule a person set."}},
+            description="Save what to PROPOSE. A rule never records anything: a person still approves. Preview with `rules set-preview`, then apply the unchanged preview with `rules set-apply`.",
+            examples=[{"operation_id": "synthetic-rule-supplier", "counterparty": "Synthetic Hosting", "treatment": "prepaid", "term_months": 12,
+                       "method": "equal_month", "note": "Annual plan, paid up front", "set_by": "synthetic-person", "source": "person"},
+                      {"operation_id": "synthetic-rule-software", "id": "software-prepaid", "match": {"accounts": ["Expenses:Software"]},
+                       "treatment": "prepaid", "threshold": "1000.00", "note": "Software at 1,000 or more is prepaid over its service period",
+                       "set_by": "synthetic-person", "source": "person"}]),
+        "rule_clear": record(["operation_id", "cleared_by", "source"], {
+            "operation_id": text, "counterparty": text, "id": {**text, "description": "A company rule id."},
+            "cleared_by": text, "cleared_at": {"type": "string"}, "reason": text, "source": {"enum": ["person", "agent"]}},
+            description="Remove a saved rule. Give counterparty or id. Nothing in the books changes. Preview with `rules clear-preview`, then `rules clear-apply`.",
+            examples=[{"operation_id": "synthetic-rule-clear", "counterparty": "Synthetic Hosting", "cleared_by": "synthetic-person", "source": "person"}]),
+        "rule_match": record(["amount"], {
+            "amount": {**amount, "description": "Size of the bill, invoice or payment. The sign is ignored."},
+            "counterparty": text, "account": {**text, "description": "The expense or income account the item is, or would be, categorized to. `category` is accepted as the same fact."},
+            "category": text, "description": text, "date": day, "service_start": day, "service_end": day,
+            "source_id": {**text, "description": "The document's or bank transaction's source id; used to name the draft and its origin."},
+            "funding_account": text, "evidence_ids": ids, "reference": text, "due_date": day, "estimate_basis": text},
+            description="Facts of a bill, invoice, payment or supporting document. `rules match` reads the saved rules and returns the matching rule, why, and a DRAFT request for the ordinary preview. Needs a counterparty, description or account.",
+            examples=[{"counterparty": "Synthetic Hosting", "amount": "1200.00", "account": "Expenses:Software", "date": "2026-02-01",
+                       "service_start": "2026-02-01", "source_id": "synthetic-bank-payment", "funding_account": "Assets:Bank:Checking"}]),
         "support": record(["operation_id", "account", "as_of", "currency", "details", "evidence_ids"], {
             "operation_id": text, "account": text, "as_of": day, "currency": {"const": "USD"}, "evidence_ids": ids,
             "mode": {"enum": ["full", "residual"], "default": "full"}, "managed_support_ids": ids,
@@ -383,6 +431,7 @@ def run(args: argparse.Namespace) -> int:
             _, verbs = _command_lines()
             result = {"capability_version": CAPABILITY_VERSION, "currency": "USD", "basis": "accrual",
                       "operations": ["intake", *verbs, "report", "accounts", "receipt"],
+                      "rules_effect": "proposals_only",
                       "verbs": verbs, "authority_action": "adjust", "posting_requires_opt_in": True,
                       "operator_only": ["period"], "request_schemas": sorted(request_schemas())}
         else:
@@ -395,6 +444,9 @@ def run(args: argparse.Namespace) -> int:
             elif command == "receipt":
                 from .store import operation_receipt
                 record = operation_receipt(_read_only_store(entity), args.id)
+                if record is None:
+                    from .rules import stored_receipt
+                    record = stored_receipt(entity, args.id)
                 if record is None:
                     raise journals.JournalError("receipt_not_found", f"No committed operation has ID {args.id}.",
                                                 "Check operation_id, or `books accrual report --kind adjustments`. The operation was not applied.")
@@ -413,6 +465,15 @@ def run(args: argparse.Namespace) -> int:
                 else:
                     plan = _input(args.input)
                     result = opening.apply_opening(entity, plan)
+            elif command == "rules":
+                from . import rules
+                verb = args.rules_command
+                if verb == "list":
+                    result = rules.list_rules(entity)
+                else:
+                    function = {"set-preview": rules.set_preview, "set-apply": rules.set_apply, "clear-preview": rules.clear_preview,
+                                "clear-apply": rules.clear_apply, "match": rules.match}[verb]
+                    result = function(entity, _input(args.input))
             elif command == "evidence-link":
                 function = journals.preview_evidence_link if args.evidence_link_command == "preview" else journals.apply_evidence_link
                 result = function(entity, _input(args.input))
@@ -474,6 +535,9 @@ def run(args: argparse.Namespace) -> int:
         if command == "report" and args.format == "text":
             from .render import render_report
             print(render_report(result))
+        elif command == "rules" and args.rules_command == "list" and args.format == "text":
+            from .rules import render_rules
+            print(render_rules(result))
         elif command == "accounts" and args.format == "text":
             from .accounts import render_accounts
             print(render_accounts(result))

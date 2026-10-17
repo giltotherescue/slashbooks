@@ -9,6 +9,18 @@
   category for a taught payee. A standing routine rule that disagrees with a taught category is held for a person.
 - `categorize-record` procedure is version 2. New work event kind `taught`.
 - Reserved: an optional `accrual` object on a counterparty record. Only its shape is checked (migration import). It is never written here.
+- Save accrual rules. A person's decision about a recurring supplier or customer, or about a kind of cost,
+  now lasts. A rule only changes what is proposed: it never records, approves or grants authority. New
+  commands: `books accrual rules list`, `set-preview`/`set-apply`, `clear-preview`/`clear-apply` and the
+  read-only `match`. A supplier or customer rule is the `accrual` object on its counterparty record (the
+  `taught` category is not changed). A company rule, such as "software at 1,000 or more is prepaid",
+  is stored in `learned-context/accrual-rules.json`. A supplier rule wins over a company rule, and the most
+  specific company rule wins. `match` explains why and returns a draft schedule or item request for the
+  normal preview. Rules use the preview, plan hash, receipt and `already_applied` replay of other accrual
+  commands. An agent may propose a rule (`source: agent`) but cannot replace or clear one a person set.
+  Accrual companies' `queue propose` adds the matching rule to the item's `context` and an `accrual_rule` stamp.
+  Remote contract: `rules list`, `match`, `set-preview` and `clear-preview` are reads; `set-apply` and
+  `clear-apply` are writes and are not available to unattended preparation. See `docs/accrual.md` and recipe 17.
 
 ## 0.6.0 — 2026-10-16
 

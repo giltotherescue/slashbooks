@@ -34,6 +34,8 @@ For adjustments, recognition schedules, outstanding items, settlement or support
 balances, use the shared accrual reference and `scripts/books accrual schema`;
 these generic operations do not depend on a provider-specific skill. Worked
 requests for each pattern are in [accrual recipes](../../docs/accrual-recipes.md).
+Check `accrual rules match` for a saved treatment before you propose one, and offer to
+save a person's decision for a recurring supplier (see the shared accrual reference).
 The owner should not need to know file formats, ledger syntax, or database details.
 
 Route familiar tasks directly: an unpaid bill needs an expense and amount owed;

@@ -275,6 +275,8 @@ readiness. Preview/apply due schedule recognition through the period end
 (`accrual schedule due-preview`), apply due reversals
 (`accrual journal due-reversals --apply`), and inspect unresolved settlements.
 [Accrual recipes](../../docs/accrual-recipes.md), recipe 16, lists the full sequence.
+When a bill or payment needs a treatment, use `accrual rules match` first: a saved
+rule gives the treatment to propose and a draft request. It never approves or records.
 Declare source coverage with `books entity source-coverage`; each call adds a range to
 the earlier ones. A person closes and reopens a period; an agent cannot reopen. Reconcile each non-bank control to
 managed items/schedules plus exact dated external support. A balanced generic

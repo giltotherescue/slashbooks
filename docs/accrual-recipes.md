@@ -957,6 +957,134 @@ books accrual period apply --entity . --input preview.json
 Post the correction, then close the period again with a fresh readiness package.
 Or choose a correction date in an open period.
 
+## Saved rules
+
+### Recipe 17: remember a treatment for a supplier or for a kind of cost
+
+A saved rule keeps a person's decision so that every later run proposes the same
+treatment. A rule changes only what is proposed. It records nothing, and a person
+still approves the preview. Run `books accrual schema` for the rule fields.
+
+**1. Save a supplier rule.** Northwind Hosting bills a yearly plan. A person decides
+that its bills are prepaid over 12 months, spread by whole calendar months.
+
+```json
+{
+  "operation_id": "rule-northwind",
+  "counterparty": "Northwind Hosting",
+  "treatment": "prepaid",
+  "term_months": 12,
+  "method": "equal_month",
+  "note": "Annual hosting plan, paid up front",
+  "set_by": "Gil",
+  "source": "person"
+}
+```
+
+```sh
+books accrual rules set-preview --entity . --input rule.json > rule.preview.json
+books accrual rules set-apply --entity . --input rule.preview.json
+```
+
+The preview says what will be saved and `action` is `create` (or `replace`, or
+`unchanged`). Applying the same preview again returns the receipt with
+`status: already_applied`. Nothing is added to the ledger.
+
+**2. Match a new bill.** The next payment arrives. Give `rules match` the facts you
+have: the counterparty, the amount, the account it was categorized to, the dates,
+the payment's source id and the stored supporting document.
+
+```json
+{
+  "counterparty": "Northwind Hosting",
+  "amount": "1200.00",
+  "account": "Expenses:Hosting",
+  "date": "2026-02-01",
+  "service_start": "2026-02-01",
+  "source_id": "bank-northwind-0201",
+  "funding_account": "Assets:Bank:Checking",
+  "evidence_ids": ["<evidence-id>"]
+}
+```
+
+```sh
+books accrual rules match --entity . --input facts.json > match.json
+```
+
+`match.json` has `status: matched`, the `rule`, a plain `why`, an `explanation` for
+the proposal, and a `draft` request. Here the draft is a complete prepaid schedule:
+the prepaid account is the chart's only prepaid account, `service_end` is
+`2027-01-31` (12 months after the start, minus one day), and `draft.missing` is
+empty. A fact that is not known, such as the payment's source id, appears in
+`draft.missing` with what to supply.
+
+**3. Preview and apply the draft in the usual way.** Copy `draft.request` to a file.
+
+```sh
+books accrual schedule preview --entity . --input schedule.json > schedule.preview.json
+books accrual schedule apply --entity . --input schedule.preview.json
+```
+
+This is recipe 6. The rule saved the work of choosing the treatment, accounts and
+dates; the preview still shows every entry, and the person or delegate who approves
+the preview is the same as without a rule.
+
+**4. Save a company rule with a threshold.** A rule about a kind of cost has a
+`match` instead of a `counterparty`. A threshold applies the rule to amounts at or
+above it, so use `1000.01` to mean "over 1,000".
+
+```json
+{
+  "operation_id": "rule-software-prepaid",
+  "id": "software-prepaid",
+  "match": {"accounts": ["Expenses:Software"]},
+  "treatment": "prepaid",
+  "threshold": "1000.00",
+  "note": "Software at 1,000 or more is a prepaid expense over its service period",
+  "set_by": "Gil",
+  "source": "person"
+}
+```
+
+```sh
+books accrual rules set-preview --entity . --input company-rule.json > company-rule.preview.json
+books accrual rules set-apply --entity . --input company-rule.preview.json
+```
+
+A $2,400 Figma payment categorized to `Expenses:Software` now matches
+`software-prepaid`; its draft still needs the stored supporting document.
+A $90 payment returns `status: no_match`, and `considered` shows that its amount is
+below the threshold. For equipment, a depreciation rule needs `term_months` (the
+useful life, which you or your preparer choose), for example
+`{"match": {"accounts": ["Assets:Fixed:Equipment"]}, "treatment": "depreciation",
+"term_months": 36, "threshold": "2500.00"}`.
+
+**5. Which rule wins.** A supplier rule beats every company rule. A supplier rule
+with a threshold that the amount does not reach ends the search: the amount is an
+ordinary expense. Among company rules the most specific wins: more criteria
+(account, keywords, threshold) first, then the deeper account, then more keywords,
+then the higher threshold, then the smaller id.
+
+**6. See and clear rules.**
+
+```sh
+books accrual rules list --entity . --format text
+```
+
+```json
+{"operation_id": "clear-northwind", "counterparty": "Northwind Hosting", "cleared_by": "Gil", "source": "person", "reason": "Moved to monthly billing"}
+```
+
+```sh
+books accrual rules clear-preview --entity . --input clear.json > clear.preview.json
+books accrual rules clear-apply --entity . --input clear.preview.json
+```
+
+Clearing removes only the rule. The supplier's taught category and its history stay.
+Schedules and items already created from the rule stay too. A request that names an
+unknown field, a bad account, a term outside 1 to 600 months or an inexact threshold
+fails with the field and the next step.
+
 ## Export for the accountant
 
 Export reads the saved reconciliation, so run the reconcile step (recipe 16, step 4)
