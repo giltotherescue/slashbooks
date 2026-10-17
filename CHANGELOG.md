@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- A person can teach a category for a payee. The counterparty record keeps a `taught` instruction
+  (`set_taught`, `clear_taught`, `taught_for`). A taught category changes what agents suggest. It never
+  records, confirms, or changes the trust ramp.
+- New read command `queue taught`. `queue propose` and `queue propose-group` refuse a different
+  category for a taught payee. A standing routine rule that disagrees with a taught category is held for a person.
+- `categorize-record` procedure is version 2. New work event kind `taught`.
+- Reserved: an optional `accrual` object on a counterparty record. Only its shape is checked (migration import). It is never written here.
+
 ## 0.6.0 — 2026-10-16
 
 Accrual books arrive as an opt-in. Cash books stay the default and existing cash companies are unchanged. Accrual covers one company, in USD, for services and SaaS businesses.

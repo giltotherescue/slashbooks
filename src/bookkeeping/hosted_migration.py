@@ -206,6 +206,11 @@ def _inspection_items(name, data, names):
             require(isinstance(item, dict) if name.startswith("learned-context/") else
                     isinstance(item, list) and all(isinstance(posting, dict) for posting in item),
                     "unsupported_state_shape")
+        if name.startswith("learned-context/"):
+            from .queue import validate_accrual_hint
+            for item in value.values():
+                require("accrual" not in item or not validate_accrual_hint(item["accrual"]),
+                        "unsupported_state_shape")
         return [("", item) for item in value.values()]
     return [("", value)]
 

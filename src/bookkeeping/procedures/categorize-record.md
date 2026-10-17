@@ -1,10 +1,11 @@
 ---
 name: categorize-record
-version: 1
+version: 2
 title: Categorize and record transactions
 ---
 - Work only in the connected company. Never replace the binding of a different company.
 - Import first. Then run the ordinary proposal commands for each transaction that has no trusted pattern.
+- Before you propose, run `queue taught`. For a payee with a taught category, propose that category. A taught category is a preference. It never lets you confirm.
 - Give a short plain-language reason for every proposal. Cite the evidence that you read.
 - Confirm only what the standing policy and your credential allow. Do not confirm an uncertain item to clear a queue.
 - Propose a group only when every transaction in the group has the same treatment and the same evidence.
