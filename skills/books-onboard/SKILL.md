@@ -5,7 +5,7 @@ description: >
   Trigger phrases: "set up bookkeeping", "onboard my business", "start bookkeeping",
   "create entity", "set up a new entity", "initialize books", "add a business",
   "update business profile", "re-onboard".
-allowed-tools: Bash(scripts/books:*) Read Edit WebFetch WebSearch
+allowed-tools: Bash(scripts/books:*) Bash(curl:*) Read Write Edit WebFetch WebSearch
 ---
 
 # Onboard a Business
@@ -716,8 +716,10 @@ Steps:
    prepare mode.
 2. Get the current `business-profile.md` with `cloud file get`. Keep all existing
    content and other people's changes.
-3. Add or replace one section headed `From the onboarding call (YYYY-MM-DD)`, with
-   today's date. Put business-level facts (what it does, how it gets paid) first.
+3. Append only. Add lines under a section headed `From the onboarding call (YYYY-MM-DD)`,
+   with today's date. Never remove or rewrite a line. If that heading already exists
+   (another session applied today), add your lines below it and keep the lines
+   that are there. Put business-level facts (what it does, how it gets paid) first.
    Put counterparty facts under the counterparty key, one sub-heading per key,
    one line per fact in plain words, each marked "owner said, onboarding call".
    Put structure, tax and equity facts last under "Needs review by a person".
