@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add `books qb agreement run --entity PATH [--holdout 3|0.2] [--as-of DATE] [--json]`. It scores Slashbooks's suggested category against the QuickBooks category on a held-out slice of QuickBooks history (the latest three months by default, or a fraction). Counterparty precedents come from the training slice only, so a counterparty seen only in the held-out slice gets no suggestion. The result gives agreement by count and by amount, agreement per account, disagreements by counterparty (`judgment-mapping` or `category_disagreement`), and no-suggestion items counted apart. It posts nothing, never writes learned context, and saves one result file under `reports/quickbooks-agreement/`. The remote contract classifies it as a read command. See `docs/quickbooks-sync.md`.
 - A person can teach a category for a payee. The counterparty record keeps a `taught` instruction
   (`set_taught`, `clear_taught`, `taught_for`). A taught category changes what agents suggest. It never
   records, confirms, or changes the trust ramp.

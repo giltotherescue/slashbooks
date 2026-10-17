@@ -184,6 +184,22 @@ scripts/books entity source-coverage <entity-path> --source "<source name>" --fr
 
 ---
 
+### Category agreement (optional)
+
+To tell the owner how often Slashbooks picks the same category as QuickBooks on
+transactions it never learned from, use the saved QuickBooks sync snapshot:
+
+```
+scripts/books qb agreement run --entity <entity-path> --json
+```
+
+Report the agreement rate (by count and by amount) and the disagreements by
+vendor, in plain English. Say that "no suggestion" items are not disagreements.
+The command posts nothing and teaches nothing. See
+`docs/quickbooks-sync.md` for the holdout options.
+
+---
+
 ## Step 5 — Categorize differences
 
 For each material difference the owner wants to resolve:
