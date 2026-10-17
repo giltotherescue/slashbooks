@@ -2063,6 +2063,33 @@ def import_opening(
     )
 
 
+def preview_opening(entity, folder: str | Path, cutover: date, source: str = "trial-balance") -> dict:
+    """Return the proposed opening entry for QuickBooks export files; write nothing.
+
+    Uses the same builder as ``import_opening`` and the QuickBooks sync opening
+    preview (``_preview=True``), so the proposed postings are the postings that
+    ``import_opening`` would write.
+    """
+    from .entity import resolve_basis
+
+    if resolve_basis(entity.entity_config) == "accrual":
+        result = ImportResult(0, 0, "", str(entity.coa_path),
+                              ["Accrual openings use the accrual opening preview, not this command."], False)
+    else:
+        result = import_opening(entity, folder, cutover, source=source, _preview=True)
+    postings = list(result.proposed_postings)
+    debits = sum((Decimal(p["debit"]) for p in postings), Decimal("0.00"))
+    credits = sum((Decimal(p["credit"]) for p in postings), Decimal("0.00"))
+    needs_review = [{"kind": "error" if not result.success else "warning", "message": message}
+                    for message in result.errors]
+    return {"status": "preview", "applied": False, "success": result.success, "source": source,
+            "as_of": cutover.isoformat(), "errors": [] if result.success else list(result.errors),
+            "proposed_postings": postings, "proposed_entries": result.proposed_entries,
+            "proposed_accounts": result.proposed_accounts,
+            "totals": {"debits": str(debits), "credits": str(credits)},
+            "balanced": bool(postings) and debits == credits, "needs_review": needs_review}
+
+
 def repair_opening(entity, folder: str | Path, cutover: date, *, apply: bool = False) -> OpeningRepairResult:
     """Replace an invalid legacy opening with balance-sheet-only opening balances.
 
@@ -2246,6 +2273,11 @@ def add_parser(subparsers) -> None:
         help="Cutover date YYYY-MM-DD (opening entries will be dated this day)",
     )
     imp_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the proposed opening postings as JSON and write nothing",
+    )
+    imp_parser.add_argument(
         "--source",
         choices=["trial-balance", "balance-sheet"],
         default="trial-balance",
@@ -2333,6 +2365,11 @@ def run(args) -> int:
         except ValueError:
             print(f"Error: --cutover must be YYYY-MM-DD, got {args.cutover!r}", file=sys.stderr)
             return 1
+
+        if args.dry_run:
+            preview = preview_opening(entity, args.folder, cutover, source=args.source)
+            print(json.dumps(preview, indent=2))
+            return 0 if preview["success"] else 1
 
         result = import_opening(entity, args.folder, cutover, source=args.source)
         if result.success:

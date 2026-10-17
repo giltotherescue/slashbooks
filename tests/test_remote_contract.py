@@ -11,6 +11,11 @@ from bookkeeping.remote_contract import ContractError, command_spec, parse_comma
 
 
 class RemoteContractTests(unittest.TestCase):
+    def test_qb_import_opening_dry_run_is_a_read(self):
+        base = ["qb", "import-opening", "folder", "--entity", "ent", "--cutover", "2026-01-01"]
+        self.assertTrue(command_spec(base)["mutates"])
+        self.assertFalse(command_spec(base + ["--dry-run"])["mutates"])
+
     def test_every_ordinary_parser_leaf_has_complete_metadata(self):
         seen = set()
 
