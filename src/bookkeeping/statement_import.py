@@ -83,6 +83,7 @@ from typing import Any
 from .connectors import bankcsv, ofx
 from .connectors.bankcsv import StatementFileError
 from .ledger.normalize import normalize_description
+from .tieout import presentation_sign, statement_tieout
 from .work import observe_import
 
 JsonObject = dict[str, Any]
@@ -832,19 +833,6 @@ def _archive_source(entity_path: Path, path: Path, file_sha: str) -> str:
     return relative.as_posix()
 
 
-def presentation_sign(ledger_account: str) -> int:
-    """The one place that relates the two sign conventions.
-
-    Transactions and ledger balances use the ledger sign: a charge on a card
-    is negative, because it lowers the account. A statement record and a
-    printed statement use the statement presentation: money held for a bank
-    account, money owed for a card or loan, so a charge is positive. The
-    sign is ``-1`` for a liability account and ``1`` for an asset account.
-    Multiply by it to convert in either direction.
-    """
-    return -1 if ledger_account.startswith("Liabilities:") else 1
-
-
 def _presented(ledger_sign: str | None, ledger_account: str) -> str | None:
     """Ledger-sign balance (card debt negative) to statement presentation (debt positive)."""
     if ledger_sign is None:
@@ -916,12 +904,12 @@ def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, la
     if any(b is not None for b in balances):
         meta["balance_source"] = "person" if all(b is not None for b in balances) else "person_and_file"
     total = sum((Decimal(t["amount"]) for t in statement["transactions"]), Decimal("0.00"))
-    if opening is not None and closing is not None:
-        change = Decimal(closing) - Decimal(opening)
-        expected = total * presentation_sign(ledger_account)
-        if change != expected:
-            warnings.append(f"The balances change by {change} but the transactions in the file total "
-                            f"{expected}; check for missing or extra rows.")
+    tie = statement_tieout(
+        {"opening_balance": opening, "closing_balance": closing, "transactions_total": format(total, "f"),
+         "transaction_count": len(statement["transactions"])}, presentation_sign(ledger_account))
+    if tie["status"] == "differs":
+        warnings.append(f"The balances change by {Decimal(closing) - Decimal(opening)} but the transactions "
+                        f"in the file total {tie['rows_total']}; check for missing or extra rows.")
     if not period_start or not period_end:
         confirmed = False
     record: JsonObject = {
@@ -949,6 +937,7 @@ def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, la
         "transactions_total": format(total, "f"),
         "transaction_count": len(statement["transactions"]),
         "currency": "USD",
+        "tieout": tie,
     }
     if fmt == "ofx":
         record["ledger_balance"] = _presented(meta.get("ledger_balance"), ledger_account)
@@ -973,17 +962,47 @@ def _apply_boundary(txns: list[JsonObject], profile: JsonObject) -> tuple[list[J
     return kept, len(txns) - len(kept)
 
 
+def _tieout_blocked(path: Path, fmt: str, selected: list[JsonObject], profiles: JsonObject,
+                    confirmed_period: tuple[str, str] | None,
+                    balances: tuple[str | None, str | None]) -> JsonObject | None:
+    """Return a ``needs_review`` result when any statement fails its tie-out, else None."""
+    entries = []
+    for statement in selected:
+        prof = profiles[statement["profile"]]
+        record, warnings = _contract_record(
+            statement, fmt=fmt, ledger_account=prof["ledger_account"],
+            label=prof.get("account_name") or statement["profile"], confirmed_period=confirmed_period,
+            balances=balances)
+        entries.append({"profile": statement["profile"], "statement_id": record["statement_id"],
+                        "tieout": record["tieout"], "warnings": warnings})
+    differing = [e for e in entries if e["tieout"]["status"] == "differs"]
+    if not differing:
+        return None
+    names = ", ".join(e["profile"] for e in differing)
+    return {"status": "needs_review", "file": path.name, "format": fmt, "session_id": None,
+            "error": {"code": "tieout_differs",
+                      "message": f"Opening balance plus the rows does not equal the closing balance for {names}. "
+                                 "Nothing was imported. Check for missing or extra rows, or the balances."},
+            "statements": entries}
+
+
 def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dry_run: bool = False,
                 intake_only: bool = False, session_id: str | None = None,
                 ts: str | None = None, output: Path | None = None,
                 period_start: str | None = None, period_end: str | None = None,
-                opening_balance: str | None = None, closing_balance: str | None = None) -> JsonObject:
+                opening_balance: str | None = None, closing_balance: str | None = None,
+                require_tieout: bool = False) -> JsonObject:
     """Import one statement file. Returns a JSON-ready result with ``status``.
 
     ``period_start``/``period_end`` are the statement dates a person confirmed
     from the printed statement; both are needed. ``opening_balance`` and
     ``closing_balance`` use the statement presentation (money owed is positive
     for a card). They apply only when the file holds one account.
+
+    Each statement entry carries a ``tieout`` (opening balance plus the file's
+    rows against the closing balance). A mismatch is a warning by default.
+    With ``require_tieout`` a mismatch returns ``needs_review`` before any
+    write, and a dry run reports the same.
     """
     from .entity import load_entity
     from .ledger.importer import _entity_write_lock, import_transactions
@@ -1045,6 +1064,11 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             "choose_one_account",
             "The period and balance options apply to one account; pass --profile for that account.")
 
+    if require_tieout:
+        blocked = _tieout_blocked(path, fmt, selected, profiles, confirmed_period, balances)
+        if blocked is not None:
+            return blocked
+
     ts = ts or _now()
     session_id = session_id or f"statement-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     results = []
@@ -1075,7 +1099,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                           evidence_sha256=file_sha)
             if not record["period_confirmed"]:
                 _keep_confirmed_period(entity.path, record)
-            entry: JsonObject = {"statement": record, "counts": counts,
+            entry: JsonObject = {"statement": record, "counts": counts, "tieout": record["tieout"],
                                  "warnings": statement["warnings"] + record_warnings,
                                  "held": [{k: v for k, v in h.items() if k != "transaction"} for h in plan["held"]],
                                  "coverage": "recorded" if record["period_confirmed"] else "needs_period"}
@@ -1169,6 +1193,9 @@ def add_parser(subparsers: Any) -> None:
                           help="Opening balance as printed (money owed is positive for a card)")
     import_p.add_argument("--closing-balance", default=None,
                           help="Closing balance as printed (money owed is positive for a card)")
+    import_p.add_argument("--require-tieout", action="store_true",
+                          help="Exit 4 and import nothing when opening balance plus the rows "
+                               "does not equal the closing balance")
 
     from . import statement_extract
     statement_extract.add_parsers(sub)
@@ -1198,7 +1225,8 @@ def run(args: argparse.Namespace) -> int:
                                  intake_only=args.intake_only, session_id=args.session_id,
                                  output=args.output, period_start=args.period_start,
                                  period_end=args.period_end, opening_balance=args.opening_balance,
-                                 closing_balance=args.closing_balance)
+                                 closing_balance=args.closing_balance,
+                                 require_tieout=args.require_tieout)
         elif command in {"validate", "map-extracted", "import-extracted"}:
             from . import statement_extract
             result = statement_extract.run(args)
