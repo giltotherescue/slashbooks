@@ -108,6 +108,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
         mutates = False
     if path == ("qb", "sync-import"):
         mutates = True  # Persists company source evidence and review proposals.
+    if path == ("qb", "import-opening") and args.dry_run:
+        mutates = False
     if path in {("qb", "repair-opening"), ("qb", "sync-rules")} and not args.apply:
         mutates = False
     # mutates is a business-write permission, not an artifact/cache-write flag.

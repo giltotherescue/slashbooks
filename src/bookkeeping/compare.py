@@ -253,6 +253,8 @@ class ComparisonReport:
     readiness: Optional[ReadinessReport] = None
     errors: list[str] = field(default_factory=list)
     pending_categorization_count: int = 0  # Bug 5: number of items still pending categorization
+    matched_rows: list[dict] = field(default_factory=list)  # rows compared with no difference
+    tb_totals: Optional[dict] = None  # parsed reference trial-balance totals
 
     def total_material(self) -> int:
         return len(self.material_diffs)
@@ -279,8 +281,45 @@ class ComparisonReport:
             "matched_count": self.matched_count,
             "pending_categorization_count": self.pending_categorization_count,
             "errors": self.errors,
+            "summary": _comparison_summary(self),
+            "matched": list(self.matched_rows),
         }
 
+
+
+_PROOF_GRAINS = ("pnl", "bs", "tb")
+
+
+def _matched_row(grain: str, account: str, ours: Decimal, reference: Decimal) -> dict:
+    return {"key": _diff_key(grain, account), "name": account, "grain": grain,
+            "ours": str(ours), "reference": str(reference)}
+
+
+def _comparison_summary(report: "ComparisonReport") -> dict:
+    """Counts of rows compared, matched and different, overall and per grain.
+
+    Top-level counts cover account-level rows only. The cash-basis trial
+    balance compares two totals, not accounts, so it appears only under
+    ``grains.tb``.
+    """
+    grains = {g: {"compared": 0, "matched": 0, "differs": 0} for g in _PROOF_GRAINS}
+    for row in report.matched_rows:
+        if row["grain"] in grains:
+            grains[row["grain"]]["matched"] += 1
+    for diff in report.material_diffs + report.immaterial_diffs:
+        if diff.grain in grains:
+            grains[diff.grain]["differs"] += 1
+    for counts in grains.values():
+        counts["compared"] = counts["matched"] + counts["differs"]
+    if report.tb_totals is not None:
+        grains["tb"].update(report.tb_totals)
+    account_grains = [g for g in _PROOF_GRAINS if not (g == "tb" and report.tb_totals is not None
+                                                       and not report.tb_totals.get("per_account"))]
+    summary_grains = {g: {k: v for k, v in grains[g].items() if k != "per_account"} for g in grains}
+    matched = sum(grains[g]["matched"] for g in account_grains)
+    differs = sum(grains[g]["differs"] for g in account_grains)
+    return {"accounts_compared": matched + differs, "matched": matched, "differs": differs,
+            "grains": summary_grains}
 
 # ---------------------------------------------------------------------------
 # Persistence helpers
@@ -518,6 +557,7 @@ def _compare_pnl(
     pct_t: Decimal,
     readiness: Optional[ReadinessReport] = None,
     pending_count: int = 0,
+    matched: Optional[list] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare P&L category totals.
 
@@ -600,6 +640,8 @@ def _compare_pnl(
         ref = qb_totals.get(account, Decimal("0.00"))
         delta = ours - ref
         if delta == Decimal("0.00"):
+            if matched is not None:
+                matched.append(_matched_row("pnl", account, ours, ref))
             continue
 
         # Categorization heuristic (Bug 5 fix: annotate pending when ours=0)
@@ -634,6 +676,7 @@ def _compare_bs(
     abs_t: Decimal,
     pct_t: Decimal,
     readiness: Optional[ReadinessReport] = None,
+    matched: Optional[list] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare balance sheet account balances as of period end.
 
@@ -701,6 +744,8 @@ def _compare_bs(
         ref = qb_balances.get(account, Decimal("0.00"))
         delta = ours - ref
         if delta == Decimal("0.00"):
+            if matched is not None:
+                matched.append(_matched_row("bs", account, ours, ref))
             continue
 
         category = "uncategorized"
@@ -724,6 +769,8 @@ def _compare_tb(
     abs_t: Decimal,
     pct_t: Decimal,
     readiness: Optional[ReadinessReport] = None,
+    matched: Optional[list] = None,
+    totals: Optional[dict] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare trial balance totals (debit/credit sums)."""
     # Only compare if QB has a cash-basis TB
@@ -764,6 +811,10 @@ def _compare_tb(
     qb_debits = sum(e.debit for e in qb_tb.entries)
     qb_credits = sum(e.credit for e in qb_tb.entries)
 
+    if totals is not None:
+        totals.update({"total_debits": str(qb_debits), "total_credits": str(qb_credits),
+                       "balanced": qb_debits == qb_credits, "per_account": basis == "accrual"})
+
     material: list[DiffRecord] = []
     immaterial: list[DiffRecord] = []
 
@@ -783,7 +834,10 @@ def _compare_tb(
                 for section in our_tb.sections for row in section["rows"]}
         for account in sorted(set(reference) | set(ours)):
             own, ref = ours.get(account, Decimal(0)), reference.get(account, Decimal(0))
-            if own != ref:
+            if own == ref:
+                if matched is not None:
+                    matched.append(_matched_row("tb", account, own, ref))
+            else:
                 # Opening reconciliation is exact: materiality cannot silently
                 # dismiss an unsupported carried balance.
                 material.append(_diff_record("tb", account, own, ref))
@@ -795,6 +849,8 @@ def _compare_tb(
     ]:
         delta = ours - ref
         if delta == Decimal("0.00"):
+            if matched is not None:
+                matched.append(_matched_row("tb", label, ours, ref))
             continue
         d = _diff_record("tb", label, ours, ref)
         if _is_material(delta, ours, ref, abs_t, pct_t):
@@ -1327,7 +1383,7 @@ def compare_period(
     try:
         pm, pi = _compare_pnl(
             entity, qb_folder, from_date, to_date, qb_type_map, abs_t, pct_t,
-            readiness=readiness, pending_count=pending_count,
+            readiness=readiness, pending_count=pending_count, matched=report.matched_rows,
         )
         report.material_diffs.extend(pm)
         report.immaterial_diffs.extend(pi)
@@ -1338,7 +1394,7 @@ def compare_period(
     try:
         bm, bi = _compare_bs(
             entity, qb_folder, to_date, qb_type_map, abs_t, pct_t,
-            readiness=readiness,
+            readiness=readiness, matched=report.matched_rows,
         )
         report.material_diffs.extend(bm)
         report.immaterial_diffs.extend(bi)
@@ -1347,7 +1403,10 @@ def compare_period(
 
     # (c) Trial balance
     try:
-        tm, ti = _compare_tb(entity, qb_folder, to_date, abs_t, pct_t, readiness=readiness)
+        tb_totals: dict = {}
+        tm, ti = _compare_tb(entity, qb_folder, to_date, abs_t, pct_t, readiness=readiness,
+                             matched=report.matched_rows, totals=tb_totals)
+        report.tb_totals = tb_totals or None
         report.material_diffs.extend(tm)
         report.immaterial_diffs.extend(ti)
     except Exception as e:

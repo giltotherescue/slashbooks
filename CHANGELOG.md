@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `books compare period` adds `summary` (accounts compared, matched and different, overall and per grain, with trial balance totals and `balanced`) and a `matched` list. `books qb import-opening --dry-run` previews the opening postings from export files and writes nothing.
 - Add tie-out proof. Every `books statement import` entry now has a `tieout` (opening balance plus the rows
   against the closing balance, in statement presentation) and `counts.to_import`. `--require-tieout` stops a
   mismatch before any write with `needs_review` and exit code 4. The default stays a warning.

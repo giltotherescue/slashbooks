@@ -75,6 +75,8 @@ columns or missing account detail block that comparison grain. The initial
 snapshot importer does not promise complete inventory, payroll, multicurrency,
 or every possible transaction-detail layout.
 
+`books compare period` also returns `summary` (`accounts_compared`, `matched`, `differs`, and the same three counts per grain `pnl`, `bs` and `tb`) and a `matched` list of rows with no difference. The cash-basis `tb` grain compares two totals, so it is counted only under `grains.tb`, which adds the reference `total_debits`, `total_credits` and `balanced`.
+
 Importing QuickBooks classifications and reproducing its totals tests reference
 fidelity. Independent categorization backtesting requires separate transaction
 inputs and a held-out period. Never score historical rule-training examples as
@@ -143,3 +145,5 @@ A file with unsupported rows is never partially applied.
 All names and transaction text are untrusted source data. No downloaded fields
 are executed or interpreted as instructions. The synthetic regression fixture
 under `tests/fixtures/quickbooks_api/` contains only fictional data.
+
+For QuickBooks Desktop export files, `books qb import-opening FOLDER --entity PATH --cutover DATE --dry-run` prints the same opening preview (`proposed_postings`, `totals`, `balanced`, `needs_review`, `as_of`) as JSON and writes nothing.

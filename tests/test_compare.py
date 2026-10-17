@@ -492,6 +492,37 @@ class TestZeroMaterialDiffs(unittest.TestCase):
             f"Expected zero non-mapping material diffs, got: {non_mapping}"
         )
 
+    def test_summary_counts_and_matched_rows(self):
+        from src.bookkeeping.compare import compare_period
+        report = compare_period(self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31))
+        data = report.to_dict()
+        summary = data["summary"]
+        self.assertEqual(summary["accounts_compared"], summary["matched"] + summary["differs"])
+        for grain, counts in summary["grains"].items():
+            self.assertEqual(counts["compared"], counts["matched"] + counts["differs"], grain)
+        by_grain = {g: sum(1 for m in data["matched"] if m["grain"] == g) for g in summary["grains"]}
+        for grain, counts in summary["grains"].items():
+            self.assertEqual(counts["matched"], by_grain[grain], grain)
+        for row in data["matched"]:
+            self.assertEqual(set(row), {"key", "name", "grain", "ours", "reference"})
+            self.assertEqual(row["ours"], row["reference"])
+        differing = [d for d in data["material_diffs"] + data["immaterial_diffs"] if d["grain"] in summary["grains"]]
+        self.assertEqual(sum(c["differs"] for c in summary["grains"].values()), len(differing))
+        # Existing fields are unchanged.
+        self.assertIn("material_diffs", data)
+        self.assertIn("matched_count", data)
+
+    def test_summary_trial_balance_totals(self):
+        from src.bookkeeping.compare import compare_period
+        report = compare_period(self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31))
+        tb = report.to_dict()["summary"]["grains"]["tb"]
+        if report.tb_totals is None:
+            self.skipTest("fixture has no cash trial balance")
+        self.assertEqual(Decimal(tb["total_debits"]), Decimal(tb["total_debits"]).quantize(Decimal("0.01")))
+        self.assertEqual(tb["balanced"], Decimal(tb["total_debits"]) == Decimal(tb["total_credits"]))
+        self.assertNotIn("per_account", tb)
+        self.assertEqual(tb["compared"], 2)
+
     def test_report_has_readiness(self):
         from src.bookkeeping.compare import compare_period
         report = compare_period(self._entity, _QB_MATCH, date(2026, 1, 1), date(2026, 3, 31))

@@ -1143,6 +1143,62 @@ class TestImportOpening(unittest.TestCase):
         init_entity(p, name="Acme Consulting LLC", business_type="consulting")
         return load_entity(p)
 
+    def _snapshot(self, root: Path) -> dict:
+        import hashlib
+        return {str(f.relative_to(root)): hashlib.sha256(f.read_bytes()).hexdigest()
+                for f in sorted(root.rglob("*")) if f.is_file()}
+
+    def test_preview_opening_writes_nothing_and_matches_apply(self):
+        import shutil
+        from src.bookkeeping.quickbooks import preview_opening
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = Path(tmpdir) / "qb"
+            qb_dir.mkdir()
+            shutil.copy(_FIXTURES / "chart_of_accounts.csv", qb_dir / "chart_of_accounts.csv")
+            shutil.copy(_FIXTURES / "trial_balance_cash_basis.csv", qb_dir / "trial_balance_cash_basis.csv")
+            entity = self._make_entity(tmpdir)
+            cutover = date(2026, 1, 1)
+            before = self._snapshot(Path(entity.path))
+
+            preview = preview_opening(entity, qb_dir, cutover)
+
+            self.assertEqual(before, self._snapshot(Path(entity.path)))
+            self.assertTrue((Path(entity.path) / "learned-context").exists())
+            self.assertTrue(preview["success"], preview["errors"])
+            self.assertFalse(preview["applied"])
+            self.assertEqual(preview["as_of"], "2026-01-01")
+            self.assertTrue(preview["balanced"])
+            self.assertEqual(preview["totals"]["debits"], preview["totals"]["credits"])
+            self.assertIsInstance(preview["needs_review"], list)
+
+            result = self.import_opening(entity, qb_dir, cutover)
+            self.assertTrue(result.success, result.errors)
+            store = LedgerStore(default_store_path(entity.path))
+            written = sorted((p.account, str(p.amount)) for e in store.load_entries() for p in e.postings)
+            proposed = sorted((p["account"], p["amount"]) for p in preview["proposed_postings"])
+            self.assertEqual(written, proposed)
+
+    def test_import_opening_dry_run_flag_prints_preview_and_writes_nothing(self):
+        import contextlib, io, json, shutil
+        from src.bookkeeping.cli import main
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = Path(tmpdir) / "qb"
+            qb_dir.mkdir()
+            shutil.copy(_FIXTURES / "chart_of_accounts.csv", qb_dir / "chart_of_accounts.csv")
+            shutil.copy(_FIXTURES / "trial_balance_cash_basis.csv", qb_dir / "trial_balance_cash_basis.csv")
+            entity = self._make_entity(tmpdir)
+            before = self._snapshot(Path(entity.path))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["qb", "import-opening", str(qb_dir), "--entity", str(entity.path),
+                             "--cutover", "2026-01-01", "--dry-run"])
+            self.assertEqual(code, 0)
+            self.assertTrue(json.loads(out.getvalue())["balanced"])
+            self.assertEqual(before, self._snapshot(Path(entity.path)))
+
     def test_happy_path_cash_basis(self):
         """AE1: cash-basis folder -> import succeeds, entries dated cutover."""
         with tempfile.TemporaryDirectory() as tmpdir:
