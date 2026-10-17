@@ -71,6 +71,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .entity import load_entity
 from .ledger.store import LedgerStore, default_store_path
+from . import tieout as tieout_module
 
 
 SCHEMA_VERSION = 1
@@ -543,6 +544,23 @@ def _continuity(account: str, label: str, statements: Sequence[StatementRecord],
 # ---------------------------------------------------------------------------
 
 
+def _month_tieout(records: Sequence[StatementRecord], ties: Mapping[str, dict[str, Any]],
+                  first: date, last: date) -> dict[str, Any] | None:
+    """The statement tie-out for one month, only when one statement is exactly that month.
+
+    A statement that spans several months (or covers part of a month, or
+    shares the month with another statement) cannot prove a month boundary, so
+    the month is ``not_aligned``. A month with no statement has no tie-out.
+    """
+    overlapping = [r for r in records if r.kind == "statement" and r.period_start <= last
+                   and r.period_end >= first]
+    if not overlapping:
+        return None
+    if len(overlapping) == 1 and (overlapping[0].period_start, overlapping[0].period_end) == (first, last):
+        return dict(ties[overlapping[0].statement_id])
+    return tieout_module.not_aligned(overlapping[0].statement_id if len(overlapping) == 1 else None)
+
+
 def check_coverage(
     entity_path: Path | str,
     from_date: date,
@@ -570,6 +588,8 @@ def check_coverage(
         })
     tx_dates = _transaction_dates(entity.path, expected)
     months = _months(from_date, to_date)
+    books_postings = tieout_module.load_postings(entity.path, expected)
+    books_waiting = tieout_module.load_waiting(entity, expected)
 
     account_rows = []
     totals = {"complete": 0, "partial": 0, "missing": 0}
@@ -590,6 +610,13 @@ def check_coverage(
         merged = {basis: _merge(intervals) for basis, intervals in evidence.items()}
         strong = _merge(i for basis in _STRONG_BASES for i in merged[basis])
         everything = _merge(i for intervals in merged.values() for i in intervals)
+
+        statement_ties = {
+            r.statement_id: tieout_module.period_tieout(
+                account=account, statement_id=r.statement_id, start=r.period_start, end=r.period_end,
+                opening=r.opening_balance, closing=r.closing_balance,
+                postings=books_postings[account], waiting=books_waiting[account])
+            for r in account_records if r.kind == "statement"}
 
         month_rows = []
         for month, first, last in months:
@@ -626,6 +653,7 @@ def check_coverage(
                 "gaps": [{"from": a.isoformat(), "to": b.isoformat(), "days": (b - a).days + 1} for a, b in gaps],
                 "reasons": reasons,
                 "notes": notes,
+                "tieout": _month_tieout(account_records, statement_ties, first, last),
             })
         continuity = _continuity(account, label, account_records, from_date, to_date)
         findings.extend(continuity)
@@ -641,7 +669,8 @@ def check_coverage(
                 ({"statement_id": r.statement_id, "kind": r.kind, "from": r.period_start.isoformat(),
                   "to": r.period_end.isoformat(),
                   "opening_balance": None if r.opening_balance is None else str(r.opening_balance),
-                  "closing_balance": None if r.closing_balance is None else str(r.closing_balance)}
+                  "closing_balance": None if r.closing_balance is None else str(r.closing_balance),
+                  "tieout": statement_ties.get(r.statement_id)}
                  for r in account_records if r.period_end >= from_date and r.period_start <= to_date),
                 key=lambda item: (item["from"], item["to"], item["statement_id"]),
             ),
@@ -693,6 +722,18 @@ def readiness_items(document: Mapping[str, Any]) -> tuple[list[dict[str, Any]], 
                     "message": " ".join(month["notes"]),
                     "refs": [account["account"]],
                 })
+        for statement in account.get("statements", []):
+            tie = statement.get("tieout") or {}
+            if tie.get("status") == "differs":
+                waiting = (f" {tie['waiting_rows']} row(s) are staged for review in this period."
+                           if tie.get("waiting_rows") else "")
+                warnings.append({
+                    "code": "statement_tieout_differs",
+                    "message": (f"{account['label']} statement {statement['statement_id']} closes at "
+                                f"{tie['statement_balance']}, but the books imply {tie['books_balance_through']} "
+                                f"(difference {tie['difference']}).{waiting}"),
+                    "refs": [account["account"], statement["statement_id"]],
+                })
     for finding in document.get("findings", []):
         if finding["code"] == "source_scope_missing":
             continue  # readiness already reports its own source_scope_missing blocker
@@ -727,6 +768,12 @@ def render_text(document: Mapping[str, Any]) -> str:
             lines.append(f"  {month['month']}  {mark:<20} basis: {basis}")
             for reason in [*month["reasons"], *month["notes"]]:
                 lines.append(f"      - {reason}")
+            tie = month.get("tieout") or {}
+            if tie.get("status") == "matches":
+                lines.append(f"      - Books tie out to statement {tie['statement_id']}.")
+            elif tie.get("status") == "differs":
+                lines.append(f"      - Books differ from statement {tie['statement_id']} by "
+                             f"{tie['difference']} ({tie['waiting_rows']} row(s) waiting in review).")
     if document["findings"]:
         lines.append("")
         lines.append("Findings:")

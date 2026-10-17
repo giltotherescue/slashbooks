@@ -53,6 +53,7 @@ from bookkeeping.reports import workbook as workbook_module
 
 # Tax handoff: source coverage and tax-preparer export.
 from bookkeeping import coverage as coverage_module
+from bookkeeping import tieout as tieout_module
 from bookkeeping import taxmap as taxmap_module
 
 
@@ -154,6 +155,8 @@ def _dispatch(
         # Tax handoff commands.
         if args.command == "coverage":
             return coverage_module.run(args)
+        if args.command == "balance":
+            return tieout_module.run(args)
         if args.command == "tax":
             return taxmap_module.run(args)
         if args.command == "work":
@@ -324,6 +327,7 @@ def build_parser() -> argparse.ArgumentParser:
     workbook_module.add_parser(subcommands)
     # Tax handoff commands.
     coverage_module.add_parser(subcommands)
+    tieout_module.add_parser(subcommands)
     taxmap_module.add_parser(subcommands)
     work_module.add_parser(subcommands)
 
