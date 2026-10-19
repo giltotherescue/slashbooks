@@ -36,6 +36,7 @@ from bookkeeping import cashflow as cashflow_module
 from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
 from bookkeeping import hosted as hosted_module
+from bookkeeping import import_check as import_check_module
 from bookkeeping import ingest as ingest_module
 from bookkeeping import procedures as procedures_module
 from bookkeeping import queue as queue_module
@@ -157,6 +158,8 @@ def _dispatch(
             return coverage_module.run(args)
         if args.command == "balance":
             return tieout_module.run(args)
+        if args.command == "import":
+            return import_check_module.run(args)
         if args.command == "tax":
             return taxmap_module.run(args)
         if args.command == "work":
@@ -328,6 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
     # Tax handoff commands.
     coverage_module.add_parser(subcommands)
     tieout_module.add_parser(subcommands)
+    import_check_module.add_parser(subcommands)
     taxmap_module.add_parser(subcommands)
     work_module.add_parser(subcommands)
 

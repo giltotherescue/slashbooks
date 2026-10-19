@@ -215,6 +215,14 @@ class CoverageTieoutTests(unittest.TestCase):
         self.assertEqual((tie["status"], tie["difference"], tie["books_balance_through"]),
                          ("differs", "150.00", "1250.00"))
 
+    def test_posting_on_the_period_start_day_counts(self):
+        post(self.company, CHECKING, "2026-01-01", "-10.00")
+        post(self.company, CHECKING, "2026-01-15", "100.00")
+        statement(self.company, "jan", "2026-01-01", "2026-01-31", "500.00", "590.00")
+        tie = self.months(self.check())["2026-01"]["tieout"]
+        self.assertEqual((tie["status"], tie["books_balance_through"], tie["difference"]),
+                         ("matches", "590.00", "0.00"))
+
     def test_two_statements_chain_each_month_ties(self):
         post(self.company, CHECKING, "2026-01-10", "100.00")
         post(self.company, CHECKING, "2026-02-10", "-40.00")

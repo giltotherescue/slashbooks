@@ -136,7 +136,7 @@ class Series:
         return self._cumulative[index - 1] if index else _ZERO
 
     def between(self, start: date, end: date) -> Decimal:
-        before = bisect_right(self._days, start)
+        before = bisect_left(self._days, start)
         before_sum = self._cumulative[before - 1] if before else _ZERO
         return self.through(end) - before_sum
 
