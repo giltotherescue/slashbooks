@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import re
@@ -61,6 +62,21 @@ def _identifiers(value: Any, limit: int = 1000) -> tuple[str, ...]:
     return result
 
 
+def _ask_first_amount(value: Any) -> Decimal | None:
+    """Parse the optional ask-first amount: a non-negative money amount with at most two decimals."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or isinstance(value, float) or not isinstance(value, (str, int, Decimal)):
+        raise PolicyError("ask_first_above must be a decimal amount.")
+    try:
+        amount = Decimal(value if isinstance(value, Decimal) else str(value).strip())
+    except InvalidOperation:
+        raise PolicyError("ask_first_above must be a decimal amount.") from None
+    if not amount.is_finite() or amount < 0 or amount != amount.quantize(Decimal("0.01")) or amount > Decimal("1000000000000"):
+        raise PolicyError("ask_first_above must be a non-negative amount with at most two decimal places.")
+    return amount.quantize(Decimal("0.01"))
+
+
 def _fingerprint(value: Any) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -76,12 +92,15 @@ class StandingPolicy:
     actions: tuple[str, ...]
     held_source_ids: tuple[str, ...]
     held_entry_ids: tuple[str, ...]
+    # Optional. A transaction whose absolute amount is above this amount waits
+    # for a person: the engine does not suggest or approve it under this policy.
+    ask_first_above: Decimal | None = None
 
     @classmethod
     def from_document(cls, document: Mapping[str, Any]) -> StandingPolicy:
         fields = {"schema_version", "policy_id", "version", "entity_key", "start_period", "end_period",
                   "actions", "held_source_ids", "held_entry_ids"}
-        if not isinstance(document, Mapping) or set(document) != fields or type(document["schema_version"]) is not int or document["schema_version"] != 1:
+        if not isinstance(document, Mapping) or set(document) - {"ask_first_above"} != fields or type(document["schema_version"]) is not int or document["schema_version"] != 1:
             raise PolicyError("Expected the complete version-1 standing-policy contract.")
         if type(document["version"]) is not int or not 1 <= document["version"] <= 2**53 - 1:
             raise PolicyError("Expected a positive policy version.")
@@ -92,11 +111,18 @@ class StandingPolicy:
         if start > end:
             raise PolicyError("Policy period bounds are reversed.")
         return cls(_identifier(document["policy_id"]), document["version"], _identifier(document["entity_key"]),
-                   start, end, actions, _identifiers(document["held_source_ids"]), _identifiers(document["held_entry_ids"]))
+                   start, end, actions, _identifiers(document["held_source_ids"]), _identifiers(document["held_entry_ids"]),
+                   _ask_first_amount(document.get("ask_first_above")))
 
     @property
     def fingerprint(self) -> str:
-        return _fingerprint({"schema_version": 1, **asdict(self)})
+        body = asdict(self)
+        # A policy without the field keeps the fingerprint it always had.
+        if self.ask_first_above is None:
+            del body["ask_first_above"]
+        else:
+            body["ask_first_above"] = str(self.ask_first_above)
+        return _fingerprint({"schema_version": 1, **body})
 
 
 @dataclass(frozen=True)

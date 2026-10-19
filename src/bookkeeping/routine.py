@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 
 from .ledger.importer import _ledger_account_for_txn, _load_pending_categorization, _validate_normalized_transactions
 from .ledger.store import LedgerStore, default_store_path
-from .queue import _counterparty_key, taught_for
+from .queue import _counterparty_key, taught_for, txn_is_above_ask_first
 
 
 def _text(value, field):
@@ -317,6 +317,8 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                     raise ValueError('human_hold')
                 eligible.append((decision['category'], decision['id']))
             else:
+                if txn_is_above_ask_first(entity, txn):
+                    raise ValueError('above_ask_first_amount')
                 for rule in rules:
                     if rule['source_account_id'] != source['accountId'] or rule['counterparty_key'] != source['counterparty_key']:
                         continue
@@ -341,7 +343,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 'mapping_required', 'mapping_conflict', 'source_account_type_unknown', 'source_account_role_conflict',
                 'source_catalog_conflict', 'category_catalog_conflict', 'existing_review', 'policy_disabled',
                 'stale_decision', 'mapping_changed', 'ambiguous_authority', 'human_hold', 'suspected_processor_payout',
-                'accrual_treatment_required', 'taught_conflict'} else 'invalid_source'
+                'accrual_treatment_required', 'taught_conflict', 'above_ask_first_amount'} else 'invalid_source'
         detail['reason'] = reason
         result['unresolved'].append(detail)
     return result

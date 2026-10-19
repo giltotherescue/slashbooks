@@ -437,7 +437,12 @@ def _import_transactions_unlocked(
     """
     _validate_normalized_transactions(normalized_txns)
     from ..accrual.treatment import treatment_checker
+    from ..queue import txn_is_above_ask_first
     needs_treatment = treatment_checker(entity)
+
+    def holds_for_amount(row: dict[str, Any]) -> bool:
+        return txn_is_above_ask_first(entity, row)
+
     # Trusted hosted runners force this at the shared boundary so every
     # connector, including legacy paths, keeps approval separate from intake.
     if intake_only or os.environ.get("SLASHBOOKS_INTAKE_ONLY") == "1":
@@ -569,7 +574,12 @@ def _import_transactions_unlocked(
         if not account:
             # Route to pending-categorization list. A repeat of an already
             # queued id is a duplicate, not a new pending item.
-            if _add_pending_categorization(entity, txn):
+            held = txn
+            if holds_for_amount(txn):
+                # Tell Review why this row waits: its amount is above the ask-first limit.
+                held = dict(txn)
+                held["review_hold_reason"] = "above_ask_first_amount"
+            if _add_pending_categorization(entity, held):
                 result.pending_categorization += 1
             else:
                 result.skipped_duplicate += 1
