@@ -892,8 +892,10 @@ def _ask_core(
     conn = open_cache(entity_path)
     try:
         from ..accrual.reports import CoverageError, financial_metadata
-        from ..accrual.scope import accrual_active
-        if accrual_active(conn) and intent != "unknown":
+        from ..accrual.scope import default_view
+        # The answer's shape follows the default view, not the capability: a cash-view company that turned accrual on
+        # later answers exactly as before.
+        if default_view(conn) == "accrual" and intent != "unknown":
             if is_net and not is_draws and not is_vendor:
                 intent = "net_income"
             # Use the same coverage checks and recognition totals as statements.
