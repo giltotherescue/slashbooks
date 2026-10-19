@@ -36,9 +36,11 @@ income and an increase in the card balance, so it appears as an operating line.
 Ledger integrity check
 ----------------------
 Net income comes from the same postings as the balances, so the check is not an
-outside proof.  It catches an unbalanced ledger and a mistake in the grouping:
-beginning cash + net change in cash must equal the bank and cash accounts at the end
-date, and that total is read again straight from the postings.  Both comparisons use
+outside proof.  It catches an unbalanced or damaged ledger.  It cannot catch an
+account in the wrong group, because a wrong group moves an amount between two groups
+and leaves the net change the same.  Beginning cash + net change in cash must equal
+the bank and cash accounts at the end date, and that total is read again straight
+from the postings.  Both comparisons use
 cents.  When one differs, ``reconciliation.ties`` is ``false``, the differences are
 shown, and the command exits with code 1.  An asset account named like cash (for
 example ``Assets:Checking``) that is not a bank or cash account gives a warning.
@@ -70,6 +72,9 @@ _OPERATING_SUBTYPES = ("receivable", "prepaid", "payable", "accrued_liabilities"
                        "customer_deposits", "credit_card")
 _FINANCING_NAME = re.compile(
     r"(?<![A-Za-z])(loans?|notes?|mortgages?|debt|line[-_ ]?of[-_ ]?credit|loc)(?![A-Za-z])", re.IGNORECASE)
+# Names that contain a debt word but are working capital: vendor credit notes, interest
+# and collection fees.
+_NOT_DEBT_NAME = re.compile(r"(credit|debit)[-_ ]?notes?|interest|collection", re.IGNORECASE)
 _CASH_LIKE_NAME = re.compile(r"(?<![A-Za-z])(cash|checking|savings|bank|petty)(?![A-Za-z])", re.IGNORECASE)
 _OPENING_NAME = re.compile(r"opening", re.IGNORECASE)
 _RETAINED_NAME = re.compile(r"retained|prior[-_ ]?year|prior[-_ ]?period", re.IGNORECASE)
@@ -103,12 +108,17 @@ def classify_accounts(conn: Any, names: set[str]) -> dict[str, str]:
     return subtypes
 
 
+def _is_debt_name(account: str) -> bool:
+    """True when the account name says loan, note, mortgage, debt or line of credit."""
+    leaf = account.split(":", 1)[-1]
+    return bool(_FINANCING_NAME.search(leaf)) and not _NOT_DEBT_NAME.search(leaf)
+
+
 def classify(account: str, subtype: str) -> tuple[str, str]:
     """Return ``(group, reason)`` for one balance sheet account."""
     if subtype in _CASH_SUBTYPES:
         return "cash", f"{subtype} account"
-    if subtype in {"payable", "other_liability", "accrued_liabilities"} and _FINANCING_NAME.search(
-            account.split(":", 1)[-1]):
+    if subtype in {"payable", "other_liability"} and _is_debt_name(account):
         return "financing", "debt account (the debt name wins over the payable prefix)"
     if subtype == "accumulated_depreciation":
         return "operating", "depreciation add-back"
@@ -122,8 +132,6 @@ def classify(account: str, subtype: str) -> tuple[str, str]:
         if _RETAINED_NAME.search(account.split(":", 1)[-1]):
             return "needs_classification", "retained earnings or prior-period equity moves for a reason the engine cannot see"
         return "financing", "equity account"
-    if subtype == "other_liability" and _FINANCING_NAME.search(account.split(":", 1)[-1]):
-        return "financing", "debt account"
     if subtype == "other_liability":
         return "needs_classification", "other liability: operating or financing is not known"
     if subtype == "other_asset":

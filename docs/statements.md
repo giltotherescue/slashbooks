@@ -68,8 +68,9 @@ The JSON has this text in `cash_definition`, and the text report prints it.
 
 Ledger integrity check (`reconciliation`): beginning cash plus the net change must equal the bank and cash accounts at
 the end date, and the engine reads that total again straight from the postings. Both comparisons use cents. This is
-not an outside proof: net income comes from the same postings, so the check catches an unbalanced ledger and a mistake
-in grouping, not a missing transaction. If it fails, `reconciliation.ties` is `false`, `difference` and
+not an outside proof: net income comes from the same postings, so the check catches an unbalanced or damaged ledger.
+It does not catch a missing transaction or an account in the wrong group, because a wrong group moves an amount between
+two groups and leaves the net change the same. If it fails, `reconciliation.ties` is `false`, `difference` and
 `cash_accounts_difference` show the amounts, and the command exits with code 1. An asset account that is named like cash
 (for example `Assets:Checking`) but is not a bank or cash account is listed in `warnings` with code
 `possible_cash_account`.

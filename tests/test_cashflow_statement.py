@@ -233,6 +233,14 @@ class ClassificationTests(unittest.TestCase):
             self.assertEqual(classify(name, "payable")[0], "financing", name)
         self.assertEqual(classify("Liabilities:Payable:Accounts-Payable", "payable")[0], "operating")
 
+    def test_credit_notes_interest_and_accruals_stay_in_working_capital(self):
+        for name in ("Liabilities:Payable:Credit-Notes", "Liabilities:Payable:Vendor-Credit-Note"):
+            self.assertEqual(classify(name, "payable")[0], "operating", name)
+        for name in ("Liabilities:Accrued:Loan-Interest", "Liabilities:Other:Accrued-Interest-Note"):
+            self.assertEqual(classify(name, "accrued_liabilities")[0], "operating", name)
+        self.assertEqual(classify("Liabilities:Other:Debt-Collection-Fees", "other_liability")[0],
+                         "needs_classification")
+
     def test_debt_name_uses_word_boundaries(self):
         for name in ("Liabilities:Other:Notebook-Supplier", "Liabilities:Other:Loanable-Credits", "Liabilities:Other:Allocation"):
             self.assertEqual(classify(name, "other_liability")[0], "needs_classification", name)
