@@ -82,6 +82,9 @@ fidelity. Independent categorization backtesting requires separate transaction
 inputs and a held-out period. Never score historical rule-training examples as
 independent predictions.
 
+To score categories in a backtest against a ground-truth file, and to write a
+report that others can re-run, see [accuracy-report.md](accuracy-report.md).
+
 ## Category agreement on held-out history
 
 ```sh

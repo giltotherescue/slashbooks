@@ -12,6 +12,11 @@ confidence_package(entity, qb_folder, from_date, to_date) -> dict
     spot-audit sample, and plain-English Markdown summary.
     Writes to <entity>/reports/migration-confidence/.
 
+compare_categories(entity, truth_csv, from_date=None, to_date=None) -> dict
+    Score categories against a ground-truth file (columns source_id,account):
+    per-transaction agreement, a confusion table, and the auto-posted versus
+    pending split. See accuracy_report.py for the published report.
+
 load_differences(entity) -> list[dict]
     Read the persisted differences.json (returns [] when absent).
 
@@ -26,6 +31,7 @@ run(args)
 Subcommands:
   backtest run  --entity PATH --qb-folder PATH --from DATE --to DATE
                 [--skip-fetch] [--banksync-json FILE ...]  [--partial]
+                [--truth CSV [--report DIR] [--seed N] [--json]]
   compare period --entity PATH --qb-folder PATH --from DATE --to DATE
   compare categorize-diff --key K --category C --note N --entity PATH
   compare accept-diff --key K --note N --entity PATH
@@ -1004,8 +1010,13 @@ def _effective_source_postings(
     entity: Entity,
     from_date: date,
     to_date: date,
+    alias_out: Optional[dict[str, str]] = None,
 ) -> list[tuple[date, str, Optional[str], str, Decimal, str, str]]:
     """Return postings for the latest non-empty entry per logical source ID.
+
+    When *alias_out* is given, it is filled with every source ID in a
+    correction chain mapped to the source ID of the effective entry, so a
+    caller that holds the original bank ID can find the corrected entry.
 
     Empty-source reversal rows are accounting mechanics, so they cannot be
     matched to an imported bank/card transaction. A corrected entry identifies
@@ -1051,6 +1062,10 @@ def _effective_source_postings(
             root = root_source_id(row[4])
             if root not in effective_entries or row[0] > effective_entries[root][0]:
                 effective_entries[root] = row
+
+        if alias_out is not None:
+            for row in rows:
+                alias_out[row[4]] = effective_entries[root_source_id(row[4])][4]
 
         entry_ids = [
             row[0]
@@ -1469,6 +1484,165 @@ def compare_period(
 
 
 # ---------------------------------------------------------------------------
+# Category accuracy against a ground-truth file
+# ---------------------------------------------------------------------------
+
+def _rate(numerator: int, denominator: int) -> Optional[float]:
+    """Return numerator/denominator rounded to 4 places, or None for 0."""
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
+def load_truth_categories(truth_csv: Path) -> list[tuple[str, str]]:
+    """Read a ground-truth file with the columns ``source_id,account``.
+
+    Extra columns are ignored. Blank lines are skipped. A repeated source_id
+    is an error because it makes the truth ambiguous.
+    """
+    import csv
+
+    with Path(truth_csv).open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = [(name or "").strip().lower() for name in (reader.fieldnames or [])]
+        if "source_id" not in fields or "account" not in fields:
+            raise ValueError(
+                f"Truth file {Path(truth_csv).name} needs the columns source_id and account."
+            )
+        rows: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for raw in reader:
+            row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+            source_id, account = row.get("source_id", ""), row.get("account", "")
+            if not source_id and not account:
+                continue
+            if not source_id or not account:
+                raise ValueError(
+                    f"Truth file row {reader.line_num} needs both source_id and account."
+                )
+            if source_id in seen:
+                raise ValueError(f"Truth file repeats source_id {source_id!r}.")
+            seen.add(source_id)
+            rows.append((source_id, account))
+    return rows
+
+
+def compare_categories(
+    entity: Entity,
+    truth_csv: Path,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+) -> dict:
+    """Score the books' categories against a ground-truth file.
+
+    The truth file maps ``source_id`` to the correct category account. Each
+    truth row is joined on source_id to the effective ledger postings (the
+    latest entry in any correction chain). The category side of a transaction
+    is the posting that is not on a bank or card account.
+
+    Every truth row gets one status:
+
+    - ``agree`` / ``disagree``: auto-posted, so the category can be compared.
+    - ``pending``: the transaction waits in the review list, so it has no
+      category yet. This is a coverage gap, not an error.
+    - ``missing``: the transaction is neither posted nor waiting.
+    - ``not_comparable``: the posted entry has no single category posting
+      (for example a split or a transfer between two bank accounts).
+
+    Agreement is computed only over compared rows. ``coverage`` states how many
+    truth rows were compared at all, so a rate is never read without its n.
+    """
+    truth = load_truth_categories(truth_csv)
+    aliases: dict[str, str] = {}
+    postings = _effective_source_postings(
+        entity, from_date or date.min, to_date or date.max, alias_out=aliases,
+    )
+
+    category_by_source: dict[str, list[str]] = {}
+    seen_source: set[str] = set()
+    for _d, _narr, _payee, account, _amount, _cur, source_id in postings:
+        seen_source.add(source_id)
+        if not _is_our_bank_card_account(account):
+            category_by_source.setdefault(source_id, []).append(account)
+
+    pending_ids = {
+        str(item.get("id")) for item in _load_staging_pending(entity)
+        if isinstance(item, dict) and item.get("id")
+    }
+
+    per_transaction: list[dict] = []
+    confusion: dict[tuple[str, str], int] = {}
+    per_account: dict[str, dict] = {}
+    counts = {"agree": 0, "disagree": 0, "pending": 0, "missing": 0, "not_comparable": 0}
+
+    for source_id, truth_account in truth:
+        ours: Optional[str] = None
+        effective_id = aliases.get(source_id, source_id)
+        if effective_id in seen_source:
+            accounts = category_by_source.get(effective_id, [])
+            if len(set(accounts)) == 1:
+                ours = accounts[0]
+                status = "agree" if ours == truth_account else "disagree"
+            else:
+                status = "not_comparable"
+        elif source_id in pending_ids:
+            status = "pending"
+        else:
+            status = "missing"
+        counts[status] += 1
+        per_transaction.append(
+            {"source_id": source_id, "truth": truth_account, "ours": ours, "status": status}
+        )
+        row = per_account.setdefault(
+            truth_account,
+            {"account": truth_account, "truth_rows": 0, "compared": 0, "agree": 0,
+             "pending": 0, "missing": 0, "not_comparable": 0},
+        )
+        row["truth_rows"] += 1
+        if status in ("agree", "disagree"):
+            row["compared"] += 1
+            confusion[(truth_account, ours or "")] = confusion.get((truth_account, ours or ""), 0) + 1
+        if status == "agree":
+            row["agree"] += 1
+        elif status in ("pending", "missing", "not_comparable"):
+            row[status] += 1
+
+    truth_rows = len(truth)
+    compared = counts["agree"] + counts["disagree"]
+    per_account_rows = []
+    for name in sorted(per_account):
+        row = per_account[name]
+        row["agreement_rate"] = _rate(row["agree"], row["compared"])
+        per_account_rows.append(row)
+
+    return {
+        "truth_rows": truth_rows,
+        "coverage": {
+            "truth_rows": truth_rows,
+            "auto_posted": compared + counts["not_comparable"],
+            "compared": compared,
+            "pending": counts["pending"],
+            "missing": counts["missing"],
+            "not_comparable": counts["not_comparable"],
+            "compared_rate": _rate(compared, truth_rows),
+        },
+        "agreement": {
+            "compared": compared,
+            "agree": counts["agree"],
+            "disagree": counts["disagree"],
+            "rate": _rate(counts["agree"], compared),
+            "end_to_end_rate": _rate(counts["agree"], truth_rows),
+        },
+        "per_account": per_account_rows,
+        "confusion": [
+            {"truth": t, "ours": o, "count": n, "agree": t == o}
+            for (t, o), n in sorted(confusion.items(), key=lambda kv: (kv[0][0], -kv[1], kv[0][1]))
+        ],
+        "per_transaction": per_transaction,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Spot-audit sample
 # ---------------------------------------------------------------------------
 
@@ -1857,6 +2031,9 @@ def _render_confidence_markdown(package: dict) -> str:
     if package.get("blocking_items"):
         lines.append("## Blocking Issues (must resolve before certifying)")
         lines.append("")
+        for b in package["blocking_items"]:
+            lines.append(f"- **{b['label']}**: {b['reason']}")
+        lines.append("")
 
     coverage_exceptions = package.get("coverage_exceptions", [])
     if coverage_exceptions:
@@ -1868,9 +2045,6 @@ def _render_confidence_markdown(package: dict) -> str:
                 f"- **{exception['source']}**: {label} from "
                 f"{exception['from']} through {exception['to']}."
             )
-        lines.append("")
-        for b in package["blocking_items"]:
-            lines.append(f"- **{b['label']}**: {b['reason']}")
         lines.append("")
 
     if package.get("fatal_migration_issues"):
@@ -1985,6 +2159,10 @@ def backtest_run(
     skip_fetch: bool = False,
     banksync_json_files: Optional[list[Path]] = None,
     partial: bool = False,
+    truth_csv: Optional[Path] = None,
+    report_dir: Optional[Path] = None,
+    seed: Optional[int] = None,
+    json_out: Optional[list] = None,
     print_fn=print,
 ) -> int:
     """Orchestrate the full backtest chain.
@@ -1995,6 +2173,12 @@ def backtest_run(
     3. Generate statements
     4. compare_period
     5. confidence_package
+    6. accuracy report (only with *truth_csv*)
+
+    With *truth_csv*, step 6 writes ``accuracy-report.json`` and
+    ``accuracy-report.md`` into *report_dir* (default: the migration-confidence
+    folder of the entity). *seed* is recorded in the report. When *json_out* is
+    a list, the report dict is appended to it.
 
     Returns 0 on success, non-zero when there are blocking items (unless --partial).
     """
@@ -2127,6 +2311,26 @@ def backtest_run(
         blocking = []
         fatal_issues = []
         package = {}
+
+    # --- Step 6: Accuracy report ---
+    if truth_csv is not None:
+        print_fn("")
+        print_fn("Step 6: Writing accuracy report...")
+        try:
+            from .accuracy_report import build_accuracy_report, write_accuracy_report
+            report = build_accuracy_report(
+                entity, truth_csv, comparison, from_date, to_date, seed=seed,
+            )
+            out_dir = Path(report_dir) if report_dir else _confidence_dir(entity)
+            json_path, md_path = write_accuracy_report(report, out_dir)
+            print_fn(f"  {report['headline']}")
+            print_fn(f"  Accuracy report written to: {json_path}")
+            print_fn(f"  Readable copy:              {md_path}")
+            if json_out is not None:
+                json_out.append(report)
+        except (ValueError, OSError) as exc:
+            print_fn(f"ERROR: Accuracy report failed: {exc}")
+            return 1
 
     # --- Summary ---
     print_fn("")
@@ -2263,6 +2467,17 @@ def add_parser(subparsers: Any) -> None:
                         help="Pre-saved BankSync JSON files (collect_bank_data output shape)")
     bt_run.add_argument("--partial", action="store_true",
                         help="Continue and produce what it can even if blocking items exist")
+    bt_run.add_argument("--truth", type=Path, dest="truth", default=None,
+                        help="Ground-truth CSV with columns source_id,account. Scores categories "
+                             "and writes the accuracy report")
+    bt_run.add_argument("--report", type=Path, dest="report_dir", default=None,
+                        help="Folder for accuracy-report.json and accuracy-report.md "
+                             "(needs --truth; default: the entity migration-confidence folder)")
+    bt_run.add_argument("--seed", type=int, dest="seed", default=None,
+                        help="Seed of the synthetic data, recorded in the accuracy report")
+    bt_run.add_argument("--json", action="store_true", dest="as_json",
+                        help="Print the accuracy report as JSON on stdout "
+                             "(needs --truth; progress goes to stderr)")
 
     # ---- compare ------------------------------------------------------------
     cmp_parser = subparsers.add_parser("compare", help="QuickBooks comparison tools")
@@ -2331,6 +2546,37 @@ def run(args: Any) -> int:
                 return 1
 
             banksync_files = [Path(f) for f in (args.banksync_json or [])]
+
+            truth = getattr(args, "truth", None)
+            as_json = getattr(args, "as_json", False)
+            report_dir = getattr(args, "report_dir", None)
+            seed = getattr(args, "seed", None)
+            if truth is None and (as_json or report_dir is not None or seed is not None):
+                print("Error: --report, --seed and --json need --truth.", file=sys.stderr)
+                return 1
+            if truth is not None and not Path(truth).is_file():
+                print(f"Error: truth file not found: {truth}", file=sys.stderr)
+                return 1
+
+            if truth is not None:
+                collected: list[dict] = []
+                rc = backtest_run(
+                    entity_path=entity_path,
+                    qb_folder=qb_folder,
+                    from_date=from_date,
+                    to_date=to_date,
+                    skip_fetch=getattr(args, "skip_fetch", False),
+                    banksync_json_files=banksync_files or None,
+                    partial=getattr(args, "partial", False),
+                    truth_csv=Path(truth).resolve(),
+                    report_dir=Path(report_dir).resolve() if report_dir else None,
+                    seed=seed,
+                    json_out=collected,
+                    print_fn=(lambda msg="": print(msg, file=sys.stderr)) if as_json else print,
+                )
+                if as_json and collected:
+                    print(json.dumps(collected[0], indent=2, sort_keys=True))
+                return rc
 
             return backtest_run(
                 entity_path=entity_path,

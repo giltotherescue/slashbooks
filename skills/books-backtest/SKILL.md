@@ -200,6 +200,23 @@ The command posts nothing and teaches nothing. See
 
 ---
 
+### Accuracy report (developer or tester)
+
+When a ground-truth file with the columns `source_id,account` exists, add
+`--truth <file>` to the Step 3 command. It writes `accuracy-report.json` and
+`accuracy-report.md` (use `--report <folder>` to choose the folder, `--seed <n>`
+to record a synthetic seed, and `--json` to print the report). The command does
+the scoring. Read its result; never compute rates yourself.
+
+Always give a percentage together with its n and the coverage split (compared,
+pending review, missing, not comparable). Pending rows are not errors and are not
+scored. Quote the "What this does not measure" block with the result. With fewer
+than 30 compared rows, say the rate is only indicative. Do not call a result
+"accuracy" for a company unless the truth file is independent of the rules that
+were tested. See `docs/accuracy-report.md`.
+
+---
+
 ## Step 5 — Categorize differences
 
 For each material difference the owner wants to resolve:
