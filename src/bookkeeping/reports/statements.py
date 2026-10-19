@@ -1175,6 +1175,9 @@ def add_parser(subparsers: Any) -> None:
     gl_p.add_argument("--to", dest="to_date", required=True, help="End date (YYYY-MM-DD)")
     _common_args(gl_p)
 
+    from .report_cli import extend_parser
+    extend_parser(report_sub, _common_args, pnl_p, bs_p)
+
     # ---- ask ----------------------------------------------------------------
     ask_p = subparsers.add_parser("ask", help="Ask a plain-English question about the books")
     ask_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -1245,6 +1248,11 @@ def _run(args: Any) -> int:
         output = Path(args.output) if args.output else None
         fmt = getattr(args, "fmt", "text")
         rc = getattr(args, "report_command", None)
+
+        from .report_cli import run_extended
+        handled = run_extended(args, entity, output, fmt)
+        if handled is not None:
+            return handled
 
         if rc == "pnl":
             from_date = date.fromisoformat(args.from_date)
