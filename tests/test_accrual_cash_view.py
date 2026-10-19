@@ -333,6 +333,10 @@ class EstimateTests(CashViewFixture):
         # Mar accrual: reversal +450, bill -460 = -10; cash 0; payable -460, accrued +450.
         self.assertEqual(self.groups(mar), {"payables": D("-460.00"), "accrued": D("450.00")})
         self.assertEqual(self.groups(apr), {"payables": D("460.00")})
+        # Estimate journals are excluded by the cash view, so nothing is flagged as possibly non-cash.
+        for result in (jan, feb, mar, apr):
+            self.assertEqual([i for i in result.meta["unresolved_issues"] if i["code"] == "cash_view_noncash_entry"], [])
+            self.assertNotIn("may not be cash", result.to_text())
 
     def test_hand_built_accrual_in_a_ledger_only_account_is_shown_as_recorded(self):
         # Loan 50,000 at 6%: interest 250 a month into Accrued-Interest (no item, schedule or estimate journal), paid in March.
@@ -345,6 +349,22 @@ class EstimateTests(CashViewFixture):
         self.assertEqual(self.expenses(result), {label(INTEREST): D("750.00")})
         self.assertEqual(self.revenue(result), {})
         self.assertEqual(self.groups(result), {})
+        # Each of the three accrual entries is flagged: 3 issues of 250.00, 750.00 in all. The payment entry has no income or expense.
+        flagged = [i for i in result.meta["unresolved_issues"] if i["code"] == "cash_view_noncash_entry"]
+        self.assertEqual([(i["date"], i["amount"]) for i in flagged],
+                         [("2026-01-31", "250.00"), ("2026-02-28", "250.00"), ("2026-03-31", "250.00")])
+        self.assertEqual(flagged[0]["accounts"], [INTEREST, ACCRUED_INTEREST])
+        self.assertNotIn("refs", flagged[0])
+        self.assertEqual(result.meta["noncash_entries_total"], "750.00")
+        text = result.to_text()
+        self.assertIn("Includes $750.00 of entries that may not be cash - see the list", text)
+        self.assertIn("Entries that may not be cash", text)
+        # Books ask mentions it.
+        answer = statements.ask(self.root, "What was our cash-basis profit for Q1 2026?", today=date(2026, 3, 31))
+        self.assertIn("includes $750.00 of entries that may not be cash", answer.answer_text)
+        # A period with no such entry has no note.
+        quiet = statements.ask(self.root, "What was our cash-basis profit for April 2026?", today=date(2026, 4, 30))
+        self.assertNotIn("may not be cash", quiet.answer_text)
 
     def test_security_deposit_asset_never_reaches_the_profit_and_loss(self):
         self.journal("sec", "2026-01-15", [(SECURITY, "3000.00"), (BANK, "-3000.00")])

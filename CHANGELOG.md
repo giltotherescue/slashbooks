@@ -14,7 +14,8 @@
   payables show on their own lines. Every cash view ends with a tie-out (accrual net income minus cash net income
   equals the reconciling items, to the cent); if it does not tie, the report fails and shows no figures. The text,
   JSON and file output say "Cash basis (derived from accrual books)", and the JSON `meta.method` lists the rules.
-  The view starts at the cutover. It writes nothing and never changes a statement or a lock.
+  Entries that may be non-cash (a hand-built accrual in an unregistered account) are included as recorded and listed
+  under "Entries that may not be cash". The view starts at the cutover. It writes nothing and never changes a statement or a lock.
   `--basis accrual` is the default on accrual books and fails clearly on cash books. `books ask` answers a cash-basis
   question on accrual books from this view instead of refusing it. See `docs/accrual.md` ("Cash view").
 

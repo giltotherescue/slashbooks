@@ -54,6 +54,9 @@ _SPECIAL_LABELS = {_K_OPENING_IN: OPENING_RECEIVABLES, _K_OPENING_OUT: OPENING_P
                    _K_UNAPPLIED_IN: UNAPPLIED_CUSTOMER, _K_UNAPPLIED_OUT: UNAPPLIED_SUPPLIER,
                    _K_UNCLASSIFIED: UNCLASSIFIED}
 
+_TIMING_SUBTYPES = {"accrued_liabilities", "prepaid", "deferred_revenue", "receivable", "payable", "customer_deposits"}
+NONCASH_HEADING = "Entries that may not be cash"
+
 _CASH_LIKE = ("Assets:Bank:", "Assets:Cash", "Assets:Processors:", "Liabilities:CreditCard")
 
 _GROUP_LABELS = {
@@ -363,6 +366,15 @@ def derive(conn: Any, through: date) -> CashLedger:
             for account, amount in entry_postings:
                 if _is_ie(account):
                     emit(day, account, amount, "as_recorded", source)
+            timing = [a for a, _ in entry_postings if not _is_ie(a) and not a.startswith(_CASH_LIKE)
+                      and (_subtype(a, usage) in _TIMING_SUBTYPES or "accrued" in a.lower())]
+            effect = -sum((n for a, n in entry_postings if _is_ie(a)), Decimal(0))
+            if timing and effect:
+                issues.append({"code": "cash_view_noncash_entry", "date": day, "amount": f"{abs(effect):.2f}",
+                               "accounts": sorted({a for a, _ in entry_postings if a in timing or _is_ie(a)}),
+                               "description": entry["narration"],
+                               "message": f"{day} {entry['narration'] or 'entry'}: {abs(effect):.2f} of {'income' if effect > 0 else 'expense'} "
+                                          f"is included as recorded but may not be cash ({', '.join(sorted(set(timing)))} has no registered item, schedule or estimate journal)."})
             continue
         for account, amount in touched:
             if source.startswith("adjustment:"):
@@ -467,8 +479,27 @@ def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
     metadata = {**metadata, "basis": "cash", "books_basis": "accrual", "derived_from": "accrual", "view": "cash",
                 "view_label": CASH_VIEW_LABEL, "method": METHOD, "tie_out": result["tie_out"]}
     metadata["unresolved_issues"] = [*metadata.get("unresolved_issues", []), *result["issues"]]
+    noncash_total, noncash_rows = noncash_summary(result["issues"])
+    metadata["noncash_entries_total"] = f"{noncash_total:.2f}"
+    metadata["noncash_entries_count"] = len(noncash_rows)
     return StatementResult(kind="pnl", from_date=from_date, to_date=to_date, sections=sections,
                            totals={"net_income": result["cash_net_income"]}, meta=metadata)
+
+
+def noncash_summary(issues: list[dict[str, Any]]) -> tuple[Decimal, list[dict[str, Any]]]:
+    rows = [i for i in issues if i.get("code") == "cash_view_noncash_entry"]
+    return sum((Decimal(i["amount"]) for i in rows), Decimal("0.00")), rows
+
+
+def noncash_lines(issues: list[dict[str, Any]]) -> list[str]:
+    total, rows = noncash_summary(issues)
+    if not rows:
+        return []
+    lines = ["", NONCASH_HEADING, "-" * 40]
+    for row in rows:
+        lines.append(f"  {row['date']}  {row['amount']:>12}  {row['description'] or 'entry'}  ({', '.join(row['accounts'])})")
+    lines.append("  Remedy: record such an accrual as an estimate journal (reversal_date or estimate_basis) or an accrual item, so the cash view excludes it.")
+    return lines
 
 
 def tie_out_lines(tie_out: dict[str, Any]) -> list[str]:

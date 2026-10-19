@@ -281,7 +281,7 @@ the same view. The cash view covers profit and loss only; it is not a balance sh
 | Terminate, cancel or refund of a schedule | Cash refunded or paid back reverses the expense or income on that date. A release to a write-off account moves no cash and has no effect. |
 | Depreciation | Shown as recorded, as in QuickBooks cash reports. The equipment purchase stays an asset and is not expense. |
 | Accrued estimate (journal with `estimate_basis` or `reversal_date`, accrual item), its reversal and its true-up | Excluded. The actual bill follows the invoice and bill rule. |
-| Journal or bank transaction that touches no registered control account | Included as recorded. Card charges are expense when charged. |
+| Journal or bank transaction that touches no registered control account | Included as recorded. Card charges are expense when charged. A journal that moves income or expense against an accrued, prepaid, deferred, receivable, payable or deposit account that has no registered detail is also included, and is flagged under "Entries that may not be cash". |
 | Opening receivable or payable | It has no income or expense account. Its collection or payment shows on the lines "Collected from opening receivables" and "Paid on opening payables", with no category. Net income includes them. |
 | Cash that moves through a registered control account with nothing to explain it | Shown on the line "Unclassified cash movements (review needed)" and listed in the report issues. It is never dropped. |
 
@@ -314,9 +314,13 @@ no figures.
 - It does not change the books. To have a company on a cash basis, keep cash books.
   Moving between bases needs a separate conversion.
 - Hand-built accruals in an account with no registered item, schedule or estimate
-  journal (for example loan interest in a plain `Accrued-Interest` account) are shown as
-  recorded. Register the amount as an accrual item or an estimate journal to have it
-  follow the cash rules.
+  journal (for example loan interest in a plain `Accrued-Interest` account) are not
+  guessed at. They are included as recorded, so the cash view can show a non-cash
+  expense or income. Each such entry is listed under "Entries that may not be cash"
+  (JSON issue `cash_view_noncash_entry`, with date, amount, accounts and description),
+  the header says "Includes $X of entries that may not be cash", and `books ask`
+  mentions it. To have the cash view exclude such an accrual, record it as an estimate
+  journal (with `reversal_date` or `estimate_basis`) or as an accrual item.
 - The balance sheet, tax mapping and accountant workbook sheets stay on the accrual basis in this release.
 - Per-vendor and per-customer cash totals need linked bank movements. Use the general
   ledger for them.
