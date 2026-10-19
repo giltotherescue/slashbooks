@@ -215,7 +215,9 @@ books import check st-69ff55d30830086e --entity ~/Documents/books/acme-co --form
 
 The import ID is the `statement_id` from `books statement list`. The command
 reads the archived copy of the file again and compares it with the books as
-they are now. A file that is not a `books statement import` record, and a
+they are now. A recompute uses the profile as it is saved now, not as it was at import time;
+if the profile changed, the rows can differ from the stored result. Use `--stored` to see the result of the
+original import. A file that is not a `books statement import` record, and a
 statement from `import-extracted`, cannot be checked (`unsupported_import`).
 `--stored` prints the result saved when the file was imported and does not
 recompute it. The exit code is 0 for every result and 1 for an error.
