@@ -76,6 +76,10 @@ _ZERO = Decimal("0.00")
 JsonObject = dict[str, Any]
 
 
+class _Unreadable(Exception):
+    """The ledger or a review file cannot be read, so the books side is unknown."""
+
+
 class ImportCheckError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -153,8 +157,8 @@ def _ledger_rows(entity: Any, account: str) -> tuple[dict[str, Decimal], set[str
                 if amount is not None:
                     sums[str(source_id)] = sums.get(str(source_id), _ZERO) + amount
             known = {str(row[0]) for row in conn.execute("SELECT id FROM source_transactions")}
-    except sqlite3.DatabaseError:
-        pass
+    except sqlite3.DatabaseError as exc:
+        raise _Unreadable from exc
     return sums, known
 
 
@@ -164,8 +168,12 @@ def _queued_rows(entity: Any) -> dict[str, Decimal]:
     path = Path(entity.staging_dir) / "pending-categorization.json"
     try:
         staged = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {}
+    except (OSError, ValueError) as exc:
+        raise _Unreadable from exc
+    if not isinstance(staged, list):
+        raise _Unreadable
     rows: dict[str, Decimal] = {}
     for txn in staged if isinstance(staged, list) else []:
         if isinstance(txn, dict) and txn.get("id"):
@@ -179,9 +187,13 @@ def _queued_rows(entity: Any) -> dict[str, Decimal]:
 def _list(entity: Any, name: str) -> list[JsonObject]:
     try:
         data = json.loads((Path(entity.staging_dir) / name).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return []
-    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+    except (OSError, ValueError) as exc:
+        raise _Unreadable from exc
+    if not isinstance(data, list):
+        raise _Unreadable
+    return [item for item in data if isinstance(item, dict)]
 
 
 # ---------------------------------------------------------------------------
@@ -230,13 +242,26 @@ def check_statement(entity: Any, record: Mapping[str, Any], rows: Sequence[Mappi
 
     account = str(record["account"])
     statement_id = str(record["statement_id"])
-    ledger_sums, ledger_known = _ledger_rows(entity, account)
-    queued = _queued_rows(entity)
-    held = {str(c.get("source_id")) for c in _list(entity, "duplicate-candidates.json")
-            if c.get("status") == "duplicate-candidate"}
-    confirmed_duplicate = {str(a.get("source_id")) for a in _list(entity, "source-id-aliases.json")
-                           if a.get("status") == "confirmed-duplicate"}
-    confirmed_duplicate |= {str(c.get("source_id")) for c in _list(entity, "duplicate-candidates.json")
+    try:
+        ledger_sums, ledger_known = _ledger_rows(entity, account)
+        queued = _queued_rows(entity)
+        candidates = _list(entity, "duplicate-candidates.json")
+        aliases = _list(entity, "source-id-aliases.json")
+    except _Unreadable:
+        # The books side is unknown. Say so for every check instead of reporting a false difference.
+        checks = [_unchecked(c, "books_unreadable") for c in CHECK_IDS]
+        return {
+            "schema_version": SCHEMA_VERSION, "import_id": statement_id, "kind": "statement",
+            "status": "not_checkable", "account": account,
+            "period": {"from": record.get("period_start"), "to": record.get("period_end")},
+            "checks": checks,
+            "counts": {"in_source": len(rows) + len(outside_boundary) + pending_skipped + in_file_duplicates,
+                       "recorded": 0, "queued": 0, "duplicate": 0, "pending_skipped": pending_skipped},
+            "waiting_rows": 0, "computed_at": ts or _now(), "books_revision": books_revision(entity),
+        }
+    held = {str(c.get("source_id")) for c in candidates if c.get("status") == "duplicate-candidate"}
+    confirmed_duplicate = {str(a.get("source_id")) for a in aliases if a.get("status") == "confirmed-duplicate"}
+    confirmed_duplicate |= {str(c.get("source_id")) for c in candidates
                             if c.get("status") == "confirmed-duplicate"}
 
     counts = {"in_source": len(rows) + len(outside_boundary) + pending_skipped + in_file_duplicates,
@@ -463,7 +488,7 @@ def run(args: Any) -> int:
     except ImportCheckError as exc:
         print(json.dumps({"status": "error", "error": exc.as_dict()}, indent=2, sort_keys=True))
         return 1
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, sqlite3.Error) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     if args.fmt == "json":

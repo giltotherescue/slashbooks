@@ -188,6 +188,24 @@ class ImportCheckTests(unittest.TestCase):
         self.assertTrue(first["counts"]["queued_for_review"] > 0 and second["counts"]["queued_for_review"] > 0)
         self.assertFalse(import_check.stored_path(self.entity, first["statement"]["statement_id"]).exists())
 
+    def test_unreadable_books_are_not_checkable_not_a_false_difference(self):
+        entry = self.import_chase()
+        sid = entry["import_check"]["import_id"]
+        queue = self.queue_path()
+        good = queue.read_text()
+        queue.write_text("{not json")
+        result = import_check.check_import(self.entity, sid, ts=TS)
+        self.assertEqual(result["status"], "not_checkable")
+        self.assertEqual({c["detail_code"] for c in result["checks"]}, {"books_unreadable"})
+        queue.write_text(good)
+        loaded = load_entity(self.entity)
+        (self.entity / "ledger.sqlite").write_bytes(b"this is not a database" * 100)
+        record = {"statement_id": sid, "account": CHECKING, "period_start": "2026-01-01",
+                  "period_end": "2026-01-31", "period_confirmed": True}
+        result = import_check.check_statement(loaded, record, [{"id": "x", "amount": "-1.00"}], ts=TS)
+        self.assertEqual((result["status"], result["checks"][0]["detail_code"]),
+                         ("not_checkable", "books_unreadable"))
+
     def test_row_on_the_period_start_day_is_in_the_books_movement(self):
         path = self.csv("jan.csv", "01/01/2026,TEST A,-10.00", "01/15/2026,TEST B,100.00")
         entry = self.import_csv(path, "jan", period_start="2026-01-01", period_end="2026-01-31",

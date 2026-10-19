@@ -295,6 +295,8 @@ A check is `not_checkable` with a `detail_code`, and never a guess:
   before this one begins. `first_statement`: there is no earlier statement,
   so the opening has nothing to compare with. It does not lower `status`.
 - `no_prior_balance`: the prior statement has no closing balance.
+- `books_unreadable`: the ledger or a review file cannot be read, so every check
+  is `not_checkable` instead of reporting a false difference.
 
 Balances are in the statement presentation (money owed is positive for a card),
 so a card with `opening` 1000.00 and a 130.01 difference reads the same as in
