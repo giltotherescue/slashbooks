@@ -458,7 +458,7 @@ def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
         if cutover and from_date.isoformat() < cutover:
             raise CoverageError(f"A cash-basis view is not available before the accrual cutover. The books hold no cash-basis detail before {cutover}.",
                                 cutover, "from")
-        metadata = financial_metadata(conn, "pnl", from_date, to_date)
+        metadata = financial_metadata(conn, "pnl", from_date, to_date, view="cash")
         result = compute(conn, from_date, to_date)
     finally:
         conn.close()

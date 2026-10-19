@@ -51,12 +51,18 @@ def opening_coverage(conn):
     return next((r for r in _records(conn, "coverage") if r.get("id") == "opening"), None)
 
 
-def coverage_metadata(conn, kind, start, end):
-    """Validate coverage without pretending a partial imported period is known."""
+def coverage_metadata(conn, kind, start, end, view=None):
+    """Validate coverage without pretending a partial imported period is known.
+
+    ``view`` is the view being rendered when it is not the default ("cash" never refuses on tracking start).
+    """
     result = {"basis": default_view(conn), "currency": "USD", "coverage": None,
               "requested_from": start.isoformat() if start else None, "requested_to": end.isoformat(),
               "unresolved_issues": []}
     opening = opening_coverage(conn)
+    if accrual_active(conn):
+        from .enable import require_tracking_coverage
+        require_tracking_coverage(conn, view or result["basis"], start, end)
     if not accrual_active(conn) or not opening:
         return result
     result["coverage"] = deepcopy(opening)
@@ -78,8 +84,8 @@ def coverage_metadata(conn, kind, start, end):
     return result
 
 
-def financial_metadata(conn, kind, start, end):
-    result = coverage_metadata(conn, kind, start, end)
+def financial_metadata(conn, kind, start, end, view=None):
+    result = coverage_metadata(conn, kind, start, end, view)
     if accrual_active(conn):
         result["unresolved_issues"].extend(unresolved(conn, end))
     return result

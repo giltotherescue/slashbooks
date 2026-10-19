@@ -46,10 +46,12 @@ income and expenses when money moves; accrual books separate earning or incurrin
 an amount from its payment.
 
 For an existing company, preserve the basis already used for its books. Changing
-a report setting does not convert cash books into accrual books. Moving between
-the two requires a separate accounting conversion. Local and Cloud books use the
-same accounting rules, and an imported set of books must use the destination's
-selected basis.
+a report setting does not convert cash books into accrual books, and Slashbooks
+does not rewrite earlier periods. A cash company can add accrual records from a
+date forward and keep its cash history: see
+[Turn on accrual for an existing company](#turn-on-accrual-for-an-existing-company).
+Local and Cloud books use the same accounting rules, and an imported set of books
+must use the destination's selected basis.
 
 ## Review the result before recording it
 
@@ -344,6 +346,69 @@ liability, deferred revenue, and customer deposit accounts.
   The cash company is kept for earlier periods; Slashbooks does not convert it in
   place.
 - **From QuickBooks:** the next section.
+
+## Turn on accrual for an existing company
+
+A cash company that already has activity can start keeping invoices, bills and
+prepaid or deferred balances from a date, without a new company. Choose the
+**tracking start**: the first day accrual records are kept, usually the first day of
+the next open month. Everything before it stays the cash books you already have.
+
+```sh
+books accrual enable preview --entity PATH --tracking-start 2026-04-01 > enable.json
+books accrual enable apply --entity PATH --input enable.json
+```
+
+The preview lists what will change and writes nothing. Applying it:
+
+- upgrades the ledger to hold accrual records, and keeps a sealed backup of the old ledger;
+- records the tracking start in the company file and the ledger, and writes an audit event;
+- changes **no** entry, report, export, answer, period lock or published statement, and does not change the default view.
+
+A person runs both commands. A delegated agent can run the preview, never the apply.
+The same preview applied again returns `already_applied`. The tracking start cannot be
+changed later. The command is refused when the date is inside a closed period, or when
+the company was created on accrual (it already keeps accrual books from its first day).
+
+One thing does change: the ledger fingerprint. A readiness package made before this step
+carries the old fingerprint, so run `books readiness` again before closing a month.
+
+### Opening items on the tracking start
+
+If invoices or bills are still open on the tracking start, list them once. One `opening`
+request carries the open invoices and bills, and any remaining prepaid or deferred
+balances. Leave out `lines` and `cutover`: the engine works the balances out from the
+rows, dates the one entry on the tracking start, and puts the balancing amount in
+`Equity:Opening-Balance-Adjustments` (created if missing). The same tie-out applies: each
+control account must equal its rows to the cent. A closed period refuses the entry.
+
+```sh
+books accrual opening draft --entity PATH --cutover 2026-04-01 > request.json
+books accrual opening preview --entity PATH --input request.json > plan.json
+books accrual opening apply --entity PATH --input plan.json
+```
+
+An invoice that was open on the start and is collected later is revenue in the cash view
+on the day it is collected, and the cash view shows it on its own line. New bills and
+invoices dated on or after the start are ordinary records
+([recipe 1](accrual-recipes.md#recipe-1-unpaid-bill-including-a-bill-split-across-accounts)).
+Do not also list as open an amount that an existing entry already paid; the preview warns
+when entries exist on or after the start.
+
+### Choose the default view
+
+The default view decides what `books report`, `books ask` and exports show when you do not
+say. After the step above the default stays **cash**, so nothing a person sees changes.
+
+```sh
+books entity set-view PATH --view accrual          # preview
+books entity set-view PATH --view accrual --apply  # change it
+```
+
+- `accrual` is refused while accrual is off for the company.
+- It changes only the default. No entry, lock, report file or published statement changes, and an audit event records the change.
+- Pass `--basis cash` or `--basis accrual` to a report to pick the other view for one command.
+- **The accrual view starts on the tracking start.** A report or answer for a period that starts earlier is refused and names the first available date. The cash view is available for every period.
 
 ## Moving existing accrual books from QuickBooks
 
