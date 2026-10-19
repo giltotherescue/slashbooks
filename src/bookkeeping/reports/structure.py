@@ -75,7 +75,7 @@ def _total(kind: str, key: str, label: str, amount: Decimal, section: str | None
     return line
 
 
-def pnl_structure(result: StatementResult) -> dict:
+def pnl_structure(result: StatementResult, force_cost_of_sales: bool = False) -> dict:
     revenue, expenses = result.sections[0], result.sections[1]
     lines: list[dict] = [_section("revenue", revenue["label"])]
     lines += [_account("revenue", r) for r in revenue["rows"]]
@@ -84,7 +84,7 @@ def pnl_structure(result: StatementResult) -> dict:
     cost_rows = [r for r in expenses["rows"] if is_cost_of_sales(_account_from_label(r["label"]))]
     other_rows = [r for r in expenses["rows"] if r not in cost_rows]
     gross_profit = None
-    if cost_rows:
+    if cost_rows or force_cost_of_sales:
         cost_total = sum((r["amount"] for r in cost_rows), Decimal("0.00"))
         lines.append(_section("cost_of_sales", "Cost of Sales"))
         lines += [_account("cost_of_sales", r) for r in cost_rows]

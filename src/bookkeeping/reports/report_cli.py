@@ -23,6 +23,12 @@ def extend_parser(report_sub: Any, common_args: Any, pnl_p: Any, bs_p: Any) -> N
     cf_p.add_argument("--from", dest="from_date", required=True, help="Start date (YYYY-MM-DD)")
     cf_p.add_argument("--to", dest="to_date", required=True, help="End date (YYYY-MM-DD)")
     common_args(cf_p)
+    for parser in (pnl_p, bs_p, cf_p):
+        parser.add_argument(
+            "--compare", choices=["previous", "prior_year"], default=None,
+            help="Add prior-period amounts, the change, and (P&L) each line as a percent of total revenue. "
+                 "JSON output carries schema_version 2 and a comparison object",
+        )
 
 
 def _emit(content: str, output: Optional[Path]) -> None:
@@ -37,6 +43,9 @@ def _emit(content: str, output: Optional[Path]) -> None:
 def run_extended(args: Any, entity: Path, output: Optional[Path], fmt: str) -> Optional[int]:
     rc = getattr(args, "report_command", None)
     structure = getattr(args, "structure", False)
+    compare = getattr(args, "compare", None)
+    if compare and rc in {"pnl", "balance-sheet", "cashflow"}:
+        return _run_compare(args, entity, output, fmt, rc, compare)
     if rc == "pnl" and structure and fmt == "json":
         from .statements import profit_and_loss
         from .structure import structured_json
@@ -51,6 +60,30 @@ def run_extended(args: Any, entity: Path, output: Optional[Path], fmt: str) -> O
     if rc == "cashflow":
         return _run_cashflow(args, entity, output, fmt)
     return None
+
+
+def _run_compare(args: Any, entity: Path, output: Optional[Path], fmt: str, rc: str, mode: str) -> int:
+    import sys
+    from ..accrual.reports import CoverageError
+    from . import comparative
+
+    try:
+        if rc == "pnl":
+            result = comparative.compare_pnl(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), mode)
+        elif rc == "balance-sheet":
+            result = comparative.compare_balance_sheet(entity, date.fromisoformat(args.as_of), mode)
+        else:
+            result = comparative.compare_cashflow(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), mode)
+    except CoverageError as exc:
+        first = f" The first available date is {exc.first_date}." if exc.first_date else ""
+        print(f"Error: {exc}{first}", file=sys.stderr)
+        return 1
+    _emit(result.to_json() if fmt == "json" else result.to_text(), output)
+    if not result.ties:
+        print(f"Error: the cash flow statement does not tie to the balance sheet cash accounts. "
+              f"Difference: {result.tie_difference}.", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _run_cashflow(args: Any, entity: Path, output: Optional[Path], fmt: str) -> int:
