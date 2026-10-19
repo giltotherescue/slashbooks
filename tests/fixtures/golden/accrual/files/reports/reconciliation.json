@@ -1,0 +1,27 @@
+[
+  {
+    "record_id": "Assets:Bank:Checking@2026-01-31",
+    "account": "Assets:Bank:Checking",
+    "as_of": "2026-01-31",
+    "ledger_balance": "31000.00",
+    "source_balance": "31000.00",
+    "discrepancy": "0.00",
+    "status": "clean",
+    "causes": [],
+    "source_integrity_residual": "0.00",
+    "source_opening_balance": "30000.00",
+    "source_transaction_total": "1000.00",
+    "source_snapshot_at": "2026-02-02T12:00:00+00:00",
+    "source_through": "2026-01-31",
+    "source_evidence_refs": [
+      "evidence/bank-2026-01.json"
+    ],
+    "source_evidence_hashes": {
+      "evidence/bank-2026-01.json": "e850e44bfe81586ff2f84c4f740075c5ca9f839812b8d071c3ab856f8f862ef0"
+    },
+    "created_at": "2026-08-05T12:00:00+00:00",
+    "updated_at": "2026-08-05T12:00:00+00:00",
+    "resolved_at": null,
+    "resolution_note": null
+  }
+]

@@ -1,0 +1,184 @@
+{
+  "categories": [
+    {
+      "label": "Equity:Opening-Balances",
+      "name": "Equity:Opening-Balances"
+    },
+    {
+      "label": "Equity:Owner-Contributions",
+      "name": "Equity:Owner-Contributions"
+    },
+    {
+      "label": "Equity:Owner-Draws",
+      "name": "Equity:Owner-Draws"
+    },
+    {
+      "label": "Expenses:Fees",
+      "name": "Expenses:Fees"
+    },
+    {
+      "label": "Expenses:Insurance",
+      "name": "Expenses:Insurance"
+    },
+    {
+      "label": "Expenses:Marketing",
+      "name": "Expenses:Marketing"
+    },
+    {
+      "label": "Expenses:Meals",
+      "name": "Expenses:Meals"
+    },
+    {
+      "label": "Expenses:Office",
+      "name": "Expenses:Office"
+    },
+    {
+      "label": "Expenses:Rent",
+      "name": "Expenses:Rent"
+    },
+    {
+      "label": "Expenses:Software",
+      "name": "Expenses:Software"
+    },
+    {
+      "label": "Expenses:Subcontractors",
+      "name": "Expenses:Subcontractors"
+    },
+    {
+      "label": "Expenses:Taxes",
+      "name": "Expenses:Taxes"
+    },
+    {
+      "label": "Expenses:Travel",
+      "name": "Expenses:Travel"
+    },
+    {
+      "label": "Income:Consulting",
+      "name": "Income:Consulting"
+    }
+  ],
+  "counterparties": [
+    {
+      "key": "ACH DEBIT REF",
+      "label": "ACH DEBIT REF"
+    },
+    {
+      "key": "BANK MONTHLY SERVICE FEE",
+      "label": "BANK MONTHLY SERVICE FEE"
+    },
+    {
+      "key": "CLOUDNOTES SOFTWARE SUBSCRIPTION",
+      "label": "CLOUDNOTES SOFTWARE SUBSCRIPTION"
+    },
+    {
+      "key": "COMPANY CARD PAYMENT THANK YOU",
+      "label": "COMPANY CARD PAYMENT THANK YOU"
+    },
+    {
+      "key": "DELTA DESIGN SUBCONTRACTOR",
+      "label": "DELTA DESIGN SUBCONTRACTOR"
+    },
+    {
+      "key": "GRANITE INSURANCE PREMIUM",
+      "label": "GRANITE INSURANCE PREMIUM"
+    },
+    {
+      "key": "HARBOR CAFE INVOICE 1004 PAYMENT",
+      "label": "HARBOR CAFE INVOICE 1004 PAYMENT"
+    },
+    {
+      "key": "HOSTLY WEB HOSTING",
+      "label": "HOSTLY WEB HOSTING"
+    },
+    {
+      "key": "JUNIPER BISTRO CLIENT LUNCH",
+      "label": "JUNIPER BISTRO CLIENT LUNCH"
+    },
+    {
+      "key": "JUNIPER BISTRO TEAM LUNCH",
+      "label": "JUNIPER BISTRO TEAM LUNCH"
+    },
+    {
+      "key": "KESTREL FOODS INVOICE 1002 PAYMENT",
+      "label": "KESTREL FOODS INVOICE 1002 PAYMENT"
+    },
+    {
+      "key": "KESTREL FOODS INVOICE 1006 PAYMENT",
+      "label": "KESTREL FOODS INVOICE 1006 PAYMENT"
+    },
+    {
+      "key": "MAPLE STREET PROPERTIES RENT",
+      "label": "MAPLE STREET PROPERTIES RENT"
+    },
+    {
+      "key": "MOBILE DEPOSIT",
+      "label": "MOBILE DEPOSIT"
+    },
+    {
+      "key": "ORBIT LABS INVOICE 1001 PAYMENT",
+      "label": "ORBIT LABS INVOICE 1001 PAYMENT"
+    },
+    {
+      "key": "ORBIT LABS INVOICE 1003 PAYMENT",
+      "label": "ORBIT LABS INVOICE 1003 PAYMENT"
+    },
+    {
+      "key": "ORBIT LABS INVOICE 1005 PAYMENT",
+      "label": "ORBIT LABS INVOICE 1005 PAYMENT"
+    },
+    {
+      "key": "OWNER CONTRIBUTION WIRE",
+      "label": "OWNER CONTRIBUTION WIRE"
+    },
+    {
+      "key": "OWNER DRAW TRANSFER",
+      "label": "OWNER DRAW TRANSFER"
+    },
+    {
+      "key": "PAPER PINE OFFICE SUPPLIES",
+      "label": "PAPER PINE OFFICE SUPPLIES"
+    },
+    {
+      "key": "PAYMENT THANK YOU",
+      "label": "PAYMENT THANK YOU"
+    },
+    {
+      "key": "QX SUPPLIES ORDER",
+      "label": "QX SUPPLIES ORDER"
+    },
+    {
+      "key": "RAIL EXPRESS TICKETS",
+      "label": "RAIL EXPRESS TICKETS"
+    },
+    {
+      "key": "SKYWAY AIRLINES TICKET",
+      "label": "SKYWAY AIRLINES TICKET"
+    },
+    {
+      "key": "SPARK ADS CAMPAIGN",
+      "label": "SPARK ADS CAMPAIGN"
+    },
+    {
+      "key": "STATE FRANCHISE TAX PAYMENT",
+      "label": "STATE FRANCHISE TAX PAYMENT"
+    }
+  ],
+  "counts": {
+    "held": 3,
+    "posted": 38
+  },
+  "source_accounts": [
+    {
+      "account_type": "credit_card",
+      "id": "card",
+      "ledger_account": "Liabilities:CreditCard:Company",
+      "name": "Company Card"
+    },
+    {
+      "account_type": "checking",
+      "id": "checking",
+      "ledger_account": "Assets:Bank:Checking",
+      "name": "Operating Checking"
+    }
+  ]
+}

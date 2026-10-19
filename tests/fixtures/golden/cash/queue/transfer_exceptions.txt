@@ -1,0 +1,1 @@
+chk-0326-mystery: 2026-03-26 -249.99 Assets:Bank:Checking — timing-or-missing-source (counterpart window ±3 days)

@@ -1,0 +1,160 @@
+{
+  "kind": "trial_balance",
+  "from_date": null,
+  "to_date": "2026-01-31",
+  "sections": [
+    {
+      "label": "All Accounts",
+      "rows": [
+        {
+          "label": "Assets › Bank › Checking",
+          "amount": "25782.42",
+          "indent": 0
+        },
+        {
+          "label": "Equity › Owner-Contributions",
+          "amount": "-20000.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Fees",
+          "amount": "15.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Insurance",
+          "amount": "210.40",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Marketing",
+          "amount": "120.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Meals",
+          "amount": "199.15",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Rent",
+          "amount": "1800.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Software",
+          "amount": "103.03",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Subcontractors",
+          "amount": "1250.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Travel",
+          "amount": "300.00",
+          "indent": 0
+        },
+        {
+          "label": "Income › Consulting",
+          "amount": "-9700.00",
+          "indent": 0
+        },
+        {
+          "label": "Liabilities › CreditCard › Company",
+          "amount": "-80.00",
+          "indent": 0
+        }
+      ],
+      "total": null
+    }
+  ],
+  "totals": {
+    "total_debits": "29780.00",
+    "total_credits": "29780.00",
+    "net": "0.00"
+  },
+  "meta": {
+    "basis": "cash",
+    "currency": "USD",
+    "coverage": null,
+    "requested_from": null,
+    "requested_to": "2026-01-31",
+    "unresolved_issues": [],
+    "raw_rows": [
+      {
+        "label": "Assets › Bank › Checking",
+        "debit": "25782.42",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Equity › Owner-Contributions",
+        "debit": "0.00",
+        "credit": "20000.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Fees",
+        "debit": "15.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Insurance",
+        "debit": "210.40",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Marketing",
+        "debit": "120.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Meals",
+        "debit": "199.15",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Rent",
+        "debit": "1800.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Software",
+        "debit": "103.03",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Subcontractors",
+        "debit": "1250.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Travel",
+        "debit": "300.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Income › Consulting",
+        "debit": "0.00",
+        "credit": "9700.00",
+        "indent": 0
+      },
+      {
+        "label": "Liabilities › CreditCard › Company",
+        "debit": "0.00",
+        "credit": "80.00",
+        "indent": 0
+      }
+    ]
+  }
+}

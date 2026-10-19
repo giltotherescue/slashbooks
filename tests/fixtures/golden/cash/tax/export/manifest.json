@@ -1,0 +1,65 @@
+{
+  "accounts": 15,
+  "disclaimer": "Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.",
+  "files": {
+    "README.txt": {
+      "sha256": "1aeef6f6dd3ded066b6831463565fe5494e54856d130e0fe27cb152902344c9e",
+      "sheet": "Read Me"
+    },
+    "lacerte-tbu-schc-2026-01-01_2026-03-31.csv": {
+      "sha256": "1a23bcaa208a84b235a757d2b8eda692957c365ebb4a9dc2024e73a6dbc89c47",
+      "sheet": "Lacerte TBU"
+    },
+    "tax-handoff-schc-2026-01-01_2026-03-31.xlsx": {
+      "sha256": "0fc8b16d67d407d7be9b327875dcf7c0966280e655b4e9a66f6d033453aa0a9a",
+      "sheet": "Workbook"
+    },
+    "tax-line-summary-schc-2026-01-01_2026-03-31.csv": {
+      "sha256": "6e9804b1c903a4f830b360c424623fd0c3db64ac650dfc6858f4445e21bb90bd",
+      "sheet": "Tax Line Summary"
+    },
+    "tax-trial-balance-schc-2026-01-01_2026-03-31.csv": {
+      "sha256": "dc878acd3f7618cd15831988a2b5bbb7a4a3f671a3769cc9b84524696dbb7c1c",
+      "sheet": "Trial Balance"
+    },
+    "ultratax-tb-import-schc-2026-01-01_2026-03-31.csv": {
+      "sha256": "f4aef361a23ed61d64d49698fa912ae53c04a0dcf559426750fbe3316b267165",
+      "sheet": "UltraTax CS Import"
+    },
+    "unmapped-accounts-schc-2026-01-01_2026-03-31.csv": {
+      "sha256": "158a830c471b795cffb5590f98c36a947e7e281f6e6573ea93cb3ea75770f83f",
+      "sheet": "Unmapped Accounts"
+    }
+  },
+  "form": "schc",
+  "form_basis": "workspace",
+  "form_name": "Schedule C (Form 1040)",
+  "from": "2026-01-01",
+  "kind": "tax_handoff",
+  "line_numbers": "Tax year 2025 federal forms",
+  "needs_review": [
+    "Equity:Owner-Contributions",
+    "Equity:Owner-Draws",
+    "Expenses:Fees",
+    "Expenses:Insurance",
+    "Expenses:Marketing",
+    "Expenses:Meals",
+    "Expenses:Office",
+    "Expenses:Rent",
+    "Expenses:Software",
+    "Expenses:Subcontractors",
+    "Expenses:Taxes",
+    "Expenses:Travel",
+    "Income:Consulting"
+  ],
+  "output_dir": "<WORK>/tax-cash",
+  "schema_version": 1,
+  "to": "2026-03-31",
+  "totals": {
+    "credit": "46849.53",
+    "debit": "46849.53",
+    "difference": "0.00"
+  },
+  "unmapped": [],
+  "xlsx_note": null
+}

@@ -1,0 +1,22 @@
+Answer covers: accrual basis, from 2026-07-01 to 2026-07-31.
+
+Recognized revenue from 2026-07-01 to 2026-07-31: 100.00
+
+Profit and Loss  2026-07-01  through  2026-07-31
+================================================
+Accounting basis: accrual
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Imported activity summary: 2026-01-01 through 2026-06-30 (not included in this report)
+
+Revenue
+----------------------------------------
+  Income › Services                                100.00
+  Total Revenue                                    100.00
+
+Expenses
+----------------------------------------
+  Expenses › Operating-Costs                       740.00
+  Total Expenses                                   740.00
+
+--------------------------------------------------------
+Net Income                                        -640.00

@@ -1,0 +1,64 @@
+{
+  "accounts": 11,
+  "disclaimer": "Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.",
+  "files": {
+    "README.txt": {
+      "sha256": "8a2fc847510e1727a8c9691d2de1bc92d573f4975a031ac9aa10b6a59c1f8d95",
+      "sheet": "Read Me"
+    },
+    "lacerte-tbu-1065-2026-01-01_2026-07-31.csv": {
+      "sha256": "1e1f1fe16a7ef641c13a4189042fb59e45b958148e2ab2676dd1fcf1daa5ed93",
+      "sheet": "Lacerte TBU"
+    },
+    "tax-handoff-1065-2026-01-01_2026-07-31.xlsx": {
+      "sha256": "aea4f6592ff39744b1c69c5c773cc42d6d68ad9885bf29d9c9de52ee4e9b10d5",
+      "sheet": "Workbook"
+    },
+    "tax-line-summary-1065-2026-01-01_2026-07-31.csv": {
+      "sha256": "0ac6e3ccef1fbd7648df18d001e352c631efe9f39a890adc4f5bd7e248ad4a6b",
+      "sheet": "Tax Line Summary"
+    },
+    "tax-trial-balance-1065-2026-01-01_2026-07-31.csv": {
+      "sha256": "888163d90307824cf072591b1ee09378e744665c764eb0c8a2eb81a3d9169ffb",
+      "sheet": "Trial Balance"
+    },
+    "ultratax-tb-import-1065-2026-01-01_2026-07-31.csv": {
+      "sha256": "7ff3c35804ddc28cb53aff7443ead07e9ad53bc4bb115a9379ab15d97e868898",
+      "sheet": "UltraTax CS Import"
+    },
+    "unmapped-accounts-1065-2026-01-01_2026-07-31.csv": {
+      "sha256": "2903fd5767a007fb05821aeb757b1cb244b8f35cd85d796ed0bc415ddc97ffb3",
+      "sheet": "Unmapped Accounts"
+    }
+  },
+  "form": "1065",
+  "form_basis": "workspace",
+  "form_name": "Form 1065",
+  "from": "2026-01-01",
+  "kind": "tax_handoff",
+  "line_numbers": "Tax year 2025 federal forms",
+  "needs_review": [
+    "Assets:Bank:Checking",
+    "Assets:Fixed:Accumulated-Depreciation",
+    "Assets:Fixed:Equipment",
+    "Assets:Other:Prepaid-Insurance",
+    "Assets:Receivable:Accounts-Receivable",
+    "Equity:Retained-Earnings",
+    "Income:Services",
+    "Liabilities:Other:Deferred-Revenue",
+    "Liabilities:Other:Payroll-Payable",
+    "Liabilities:Payable:Accounts-Payable"
+  ],
+  "output_dir": "<WORK>/tax-quickbooks",
+  "schema_version": 1,
+  "to": "2026-07-31",
+  "totals": {
+    "credit": "22640.00",
+    "debit": "22640.00",
+    "difference": "0.00"
+  },
+  "unmapped": [
+    "Expenses:Operating-Costs"
+  ],
+  "xlsx_note": null
+}

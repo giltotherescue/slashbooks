@@ -1,0 +1,2385 @@
+[
+  {
+    "id": 1,
+    "payload": {
+      "description": "Add account Liabilities:CreditCard:Company: open 2025-01-01, currency USD",
+      "entries": 0,
+      "session_id": "entity-account-add"
+    },
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "record_hash": "220d92164cc0df9d2f9a23b587a18b0232a8a08c394a28985d353ae74d539bda",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 2,
+    "payload": {
+      "entries": 0,
+      "session_id": "entity-account-add",
+      "source_ids": [],
+      "store_sha256": "286cc9311ec2b07a291bf9391aca7f5b57c09b9d31b8352fe6c82b46392ffdd0"
+    },
+    "prev_hash": "220d92164cc0df9d2f9a23b587a18b0232a8a08c394a28985d353ae74d539bda",
+    "record_hash": "b8cf53a5d94708ae832f53e0d4e426ee486628647bab108fb29da99e02d168f6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 3,
+    "payload": {
+      "description": "Add account Expenses:Rent: open 2025-01-01, currency USD",
+      "entries": 0,
+      "session_id": "entity-account-add"
+    },
+    "prev_hash": "b8cf53a5d94708ae832f53e0d4e426ee486628647bab108fb29da99e02d168f6",
+    "record_hash": "577f046ec15ef97359bdfb52630cfbf520163a56c3cb8f1e346addf132f2c45c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 4,
+    "payload": {
+      "entries": 0,
+      "session_id": "entity-account-add",
+      "source_ids": [],
+      "store_sha256": "9e5186f46f44360283798852c14cf74a61473063a755429ef6e3daea902b4560"
+    },
+    "prev_hash": "577f046ec15ef97359bdfb52630cfbf520163a56c3cb8f1e346addf132f2c45c",
+    "record_hash": "a48bae3c9bf13e8b7e5b08b38b6ef3dfc873b20d33a39120287634820e964d05",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 5,
+    "payload": {
+      "description": "Add account Expenses:Insurance: open 2025-01-01, currency USD",
+      "entries": 0,
+      "session_id": "entity-account-add"
+    },
+    "prev_hash": "a48bae3c9bf13e8b7e5b08b38b6ef3dfc873b20d33a39120287634820e964d05",
+    "record_hash": "c64df4e5098c14becfa979ab4c7544ab216f727b6bf3a6b3df06558b9c681559",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 6,
+    "payload": {
+      "entries": 0,
+      "session_id": "entity-account-add",
+      "source_ids": [],
+      "store_sha256": "677dcea709e6cb336ad9db6e095b89df797639a1f69989e30acb798646cab984"
+    },
+    "prev_hash": "c64df4e5098c14becfa979ab4c7544ab216f727b6bf3a6b3df06558b9c681559",
+    "record_hash": "c8a91cc5cf006ca563229ef76c7dbf5efa07a55f8dec87f0487482b8c82ba3f6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 7,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Equity:Owner-Contributions",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "6fe1ec8c2cba4d3178b0dc7fd1cf0b527e3adbc7adebd820e6b4ef3ece1babe6",
+      "item_id": "chk-0102-owner",
+      "operation_hash": "0eb535f0efff40db30f404bc70a926b1c21837c42673787f184359ad5fb5b983",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0102-owner": "29b02ca5ae14f11fadf917685057760c1c4925c03a73d4deabc4397d72087040"
+      },
+      "source_ids": [
+        "chk-0102-owner"
+      ]
+    },
+    "prev_hash": "c8a91cc5cf006ca563229ef76c7dbf5efa07a55f8dec87f0487482b8c82ba3f6",
+    "record_hash": "1b6b5d95450328e11a57c499af72327b45b52c473851a18cdb9695c77a10f904",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 8,
+    "payload": {
+      "description": "queue confirm source_id='chk-0102-owner' category='Equity:Owner-Contributions'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "1b6b5d95450328e11a57c499af72327b45b52c473851a18cdb9695c77a10f904",
+    "record_hash": "929e437d75ce1c376f0f5d0430d34a689241d4a9a9ee88351ca3bfcd9d671c18",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 9,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0102-owner"
+    },
+    "prev_hash": "929e437d75ce1c376f0f5d0430d34a689241d4a9a9ee88351ca3bfcd9d671c18",
+    "record_hash": "45119d9bf1109692b52280c324ab8d0f65496e9afca1f85c41ac4c21aecf2e45",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 10,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0102-owner"
+      ],
+      "store_sha256": "387851c5d31da59207e85f76c858dde1964451e4e893fd726bdacf627e6767ea"
+    },
+    "prev_hash": "45119d9bf1109692b52280c324ab8d0f65496e9afca1f85c41ac4c21aecf2e45",
+    "record_hash": "34c11c92ee99adabb0a0eb3082540675304fa9051b9b95a1852bcde96a0c2164",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 11,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Rent",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "df6720b11d34fdffcefcefd996adff2c4a9da7810404554bde70810925d794cd",
+      "item_id": "chk-0105-rent",
+      "operation_hash": "b7a465462794ac1df8ea42c8f6510859822d6e6c791eb02ae8f9a1a52b61e80e",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0105-rent": "dc2f842ccc1e01c00fe2297cef3b9dcca8b69b36d21fd0b755c5bf0f633e232c"
+      },
+      "source_ids": [
+        "chk-0105-rent"
+      ]
+    },
+    "prev_hash": "34c11c92ee99adabb0a0eb3082540675304fa9051b9b95a1852bcde96a0c2164",
+    "record_hash": "388e6c182f799e96d37c0dc66e505ef6f685caa90ce8d03a3f0be798a2cd8442",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 12,
+    "payload": {
+      "description": "queue confirm source_id='chk-0105-rent' category='Expenses:Rent'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "388e6c182f799e96d37c0dc66e505ef6f685caa90ce8d03a3f0be798a2cd8442",
+    "record_hash": "4f1609b2f6e492ba2681ffd5b79ce5f2b22d20609da0d31ad17c7c18a3e55bb9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 13,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0105-rent"
+    },
+    "prev_hash": "4f1609b2f6e492ba2681ffd5b79ce5f2b22d20609da0d31ad17c7c18a3e55bb9",
+    "record_hash": "bdf02af68d97e0412b89f21415634d8c1c6831444dce71aba9ec0348e4f65a38",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 14,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0105-rent"
+      ],
+      "store_sha256": "ecb135c9be002196054e418044a0e9a872b7f7cb90855006307afbdc4aea919b"
+    },
+    "prev_hash": "bdf02af68d97e0412b89f21415634d8c1c6831444dce71aba9ec0348e4f65a38",
+    "record_hash": "c54db32bf95d0630180ec0dafa4282610d8492b9ebd02bcaba7bf4bba4601c28",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 15,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Income:Consulting",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "bd5a6fe9aba599f4f20292efcffa5698be7133d84710b3c1ba51a4403e098953",
+      "item_id": "chk-0108-client",
+      "operation_hash": "c87b09537856c26b0e723323cb3889d26bc2b86673ea3d365eda6cc64b5f5b21",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0108-client": "30842e9fb4d2346b0f5e2296638e6d7d0572632f35ae08ad0d9b7ddc7acb02b0"
+      },
+      "source_ids": [
+        "chk-0108-client"
+      ]
+    },
+    "prev_hash": "c54db32bf95d0630180ec0dafa4282610d8492b9ebd02bcaba7bf4bba4601c28",
+    "record_hash": "e6ad31616029c113f4a6eb4306ef331a21f02529f002f4dd6343c453aa5e7a52",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 16,
+    "payload": {
+      "description": "queue confirm source_id='chk-0108-client' category='Income:Consulting'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "e6ad31616029c113f4a6eb4306ef331a21f02529f002f4dd6343c453aa5e7a52",
+    "record_hash": "81f9470eeb000a924c443b1eadb6153ece420400342190dfaf744936f067855a",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 17,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0108-client"
+    },
+    "prev_hash": "81f9470eeb000a924c443b1eadb6153ece420400342190dfaf744936f067855a",
+    "record_hash": "587ad3c9657d9cdd567bd41186b45f5184e79f191d48a0a6ec035a9520250515",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 18,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0108-client"
+      ],
+      "store_sha256": "66615615ad63a2e108b91ed073fb968e4d10ffaae13bb41af6cefd96802138d5"
+    },
+    "prev_hash": "587ad3c9657d9cdd567bd41186b45f5184e79f191d48a0a6ec035a9520250515",
+    "record_hash": "7fb2fcb21db05a951c5a250a9c7177ed2a6c847cf1250695a1f4a37c4065cf03",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 19,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Subcontractors",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "d67c3045f9ab81e36ac914eeaf5fa45c5c731e4a4835f2600c41144ad45f29ea",
+      "item_id": "chk-0112-sub",
+      "operation_hash": "2eee57c7a2a4d99321219c41f23400a14240ae2348242f8de53d4dbec643102b",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0112-sub": "64f37176b2cae5843a8efc3e13384f36e8751b09c6573f7ab547dd515ceff2d6"
+      },
+      "source_ids": [
+        "chk-0112-sub"
+      ]
+    },
+    "prev_hash": "7fb2fcb21db05a951c5a250a9c7177ed2a6c847cf1250695a1f4a37c4065cf03",
+    "record_hash": "5e52940b4d85efd61f9e351f2e19f070cb0c1a1bf1ff7b099a5191cff41c8fe7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 20,
+    "payload": {
+      "description": "queue confirm source_id='chk-0112-sub' category='Expenses:Subcontractors'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "5e52940b4d85efd61f9e351f2e19f070cb0c1a1bf1ff7b099a5191cff41c8fe7",
+    "record_hash": "fc6cfad81635217334ff69f3a57531751bbe2ecba47500c3ed1172aeab950cba",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 21,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0112-sub"
+    },
+    "prev_hash": "fc6cfad81635217334ff69f3a57531751bbe2ecba47500c3ed1172aeab950cba",
+    "record_hash": "2ec7763b08cb9430b0e1122bb99b637489ec3737d91317ad86d4894990062918",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 22,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0112-sub"
+      ],
+      "store_sha256": "b4fe45b0f17917d75c5bd1befdd569b556dfc6d903a5a4fcd32855523d66de94"
+    },
+    "prev_hash": "2ec7763b08cb9430b0e1122bb99b637489ec3737d91317ad86d4894990062918",
+    "record_hash": "3be45b870e36d719889150f4e7c03761e747c8910cd111c768c82b0546a35a1e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 23,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Insurance",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "bcbe19c25089cdec922193922c29ca97ef8e5274dcec92389aff0df6944d0bec",
+      "item_id": "chk-0115-ins",
+      "operation_hash": "441e152df7eb9b6946c035795dcaa5e9a63aadb7b6037741ea4a455e0c784fa6",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0115-ins": "c468d01a57627b8566dadccd200a43cfa58f8ca878eb5e928fefc5656ab6c515"
+      },
+      "source_ids": [
+        "chk-0115-ins"
+      ]
+    },
+    "prev_hash": "3be45b870e36d719889150f4e7c03761e747c8910cd111c768c82b0546a35a1e",
+    "record_hash": "f9963d8b72421b5fd9bbebfb8d2d9c2521d885c3b9e5a466fce158da5a2c97ef",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 24,
+    "payload": {
+      "description": "queue confirm source_id='chk-0115-ins' category='Expenses:Insurance'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "f9963d8b72421b5fd9bbebfb8d2d9c2521d885c3b9e5a466fce158da5a2c97ef",
+    "record_hash": "4de6f410fbe3458d86e2ef406e8159c7247f8772eaa1446764237213921f666e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 25,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0115-ins"
+    },
+    "prev_hash": "4de6f410fbe3458d86e2ef406e8159c7247f8772eaa1446764237213921f666e",
+    "record_hash": "384ed27b7d7fc56dfe6a6f3efa0fd2940e059e104efaa170237b69be0b90071e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 26,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0115-ins"
+      ],
+      "store_sha256": "6a0b5b539e47de36422bb706b04ceab58754b43011ca602be06a74c8459ffa46"
+    },
+    "prev_hash": "384ed27b7d7fc56dfe6a6f3efa0fd2940e059e104efaa170237b69be0b90071e",
+    "record_hash": "0e3277c08526b565f860a6d95ac334c7a53d84e86b7ccc957f5b8efafc289918",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 27,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Income:Consulting",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "72cdf01d6fb66b204dfd4e4c0fea9ba2b5edc0e5d318bdd9f9ee19cf8845e1ed",
+      "item_id": "chk-0120-client",
+      "operation_hash": "8fa060474fed08040ecf525caa4bd2d56f6c5122ce0cf5ff41061d546e5bd9a0",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0120-client": "aa2c26d7b4191bfa6f53d2f661203d3250c4cd0a07ab250fa5ac5a709920b461"
+      },
+      "source_ids": [
+        "chk-0120-client"
+      ]
+    },
+    "prev_hash": "0e3277c08526b565f860a6d95ac334c7a53d84e86b7ccc957f5b8efafc289918",
+    "record_hash": "836f5c903291631d5dd318bdcec77c01ba6d729c220fe4d1407edcd935c15af1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 28,
+    "payload": {
+      "description": "queue confirm source_id='chk-0120-client' category='Income:Consulting'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "836f5c903291631d5dd318bdcec77c01ba6d729c220fe4d1407edcd935c15af1",
+    "record_hash": "ae20a61610e104cc209b970f65ecbe0bfdc67938c2bc49c551eaada08c8554ec",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 29,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0120-client"
+    },
+    "prev_hash": "ae20a61610e104cc209b970f65ecbe0bfdc67938c2bc49c551eaada08c8554ec",
+    "record_hash": "9bbe6e337eeeb996903ee0df05114af8197cb7ed4fd85737618296db2aed21fc",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 30,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0120-client"
+      ],
+      "store_sha256": "bb638c65118f9b1eb7593fa3ff25d42d21ea468e30eb64eabef116c437a0bb03"
+    },
+    "prev_hash": "9bbe6e337eeeb996903ee0df05114af8197cb7ed4fd85737618296db2aed21fc",
+    "record_hash": "682546d812f109383387617a9b0dbab4186b3584d4e193746f352163ac099fb2",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 31,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Fees",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "c3334f6e3319a2eab1c43e3891c6ba97aca0938b8b3aef2a532a0b3dd26e2e4c",
+      "item_id": "chk-0125-fee",
+      "operation_hash": "b99c5884042bf63c6af688803715c71e7f40eabe0e01bf80fdc30dc615586cca",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0125-fee": "20346abdaa07ca4efaf305cbb14092a7ce8869e139ed9292b9990e7480fbeb76"
+      },
+      "source_ids": [
+        "chk-0125-fee"
+      ]
+    },
+    "prev_hash": "682546d812f109383387617a9b0dbab4186b3584d4e193746f352163ac099fb2",
+    "record_hash": "11a591e804c47e4570361b26714f4a56c42f3c55f72635afda09df0d05d810f3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 32,
+    "payload": {
+      "description": "queue confirm source_id='chk-0125-fee' category='Expenses:Fees'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "11a591e804c47e4570361b26714f4a56c42f3c55f72635afda09df0d05d810f3",
+    "record_hash": "08daf1221dff7fde592dd51669334bd77fe53f75c3029953139f0561a9a0a102",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 33,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0125-fee"
+    },
+    "prev_hash": "08daf1221dff7fde592dd51669334bd77fe53f75c3029953139f0561a9a0a102",
+    "record_hash": "c408c7cc813a77c7da113ead4ebc5f4fa01b59acd895f578c03aa560fbe9bea7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 34,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0125-fee"
+      ],
+      "store_sha256": "d3f71d7a2023f7037d6c2aae8ecb451eeb99af8c0e5cae66839690da76f1bce7"
+    },
+    "prev_hash": "c408c7cc813a77c7da113ead4ebc5f4fa01b59acd895f578c03aa560fbe9bea7",
+    "record_hash": "6a68dcd2bc53dbbc83e2afd6929eb5fe6f21f452f5eac18e1c7b685c46f188d1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 35,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Software",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "05457b13fa62b212e13c4596152fe2accee1bfb6ec7da6b70a108f0ebbbb8fa9",
+      "item_id": "crd-0103-sw",
+      "operation_hash": "f53e9be52956792333d3d076b651aed41ec16152af5a624ddf64f608448d45a1",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0103-sw": "c567db23588f1e5fbf64b01d3454e24190b9abdfe7abefe4c03aa38668324b5b"
+      },
+      "source_ids": [
+        "crd-0103-sw"
+      ]
+    },
+    "prev_hash": "6a68dcd2bc53dbbc83e2afd6929eb5fe6f21f452f5eac18e1c7b685c46f188d1",
+    "record_hash": "132cd52c260a3fe9dba4ea1c446158d462b8444c60f3ddf9581ce59201aa56da",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 36,
+    "payload": {
+      "description": "queue confirm source_id='crd-0103-sw' category='Expenses:Software'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "132cd52c260a3fe9dba4ea1c446158d462b8444c60f3ddf9581ce59201aa56da",
+    "record_hash": "3cca16cbfd929ebc077ce321d5f314a867ea8b61166ccb2a57a723bfcefde312",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 37,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0103-sw"
+    },
+    "prev_hash": "3cca16cbfd929ebc077ce321d5f314a867ea8b61166ccb2a57a723bfcefde312",
+    "record_hash": "641e1c2efe85c6e211f5037e86be09aed74affbbd40d6d85e11d8b3164462c4a",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 38,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0103-sw"
+      ],
+      "store_sha256": "3fff2a478aa5db31e7a823ba940df058eaba704ffc9a3cd870354b96ef4f7d21"
+    },
+    "prev_hash": "641e1c2efe85c6e211f5037e86be09aed74affbbd40d6d85e11d8b3164462c4a",
+    "record_hash": "cfdc26bce09e30b4ba2bb8b2b20ca7e87632b8562bf1ede52bed2b47766f9783",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 39,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Meals",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "22a353043e3f8c51c2c8669da41651ab65b6f62fe05727bfa3af0ba754907e7d",
+      "item_id": "crd-0110-meal",
+      "operation_hash": "4fb3785011f36c470e17f5d8ff45a9f127e19996d42952bb17f1b0539a46d977",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0110-meal": "f36ae86e59310ae313f5023b7bf4d4cc9ffa20afe6336594cbc3dd99fa338d95"
+      },
+      "source_ids": [
+        "crd-0110-meal"
+      ]
+    },
+    "prev_hash": "cfdc26bce09e30b4ba2bb8b2b20ca7e87632b8562bf1ede52bed2b47766f9783",
+    "record_hash": "b213f52521dde7b5cfdd843ba87bcc0c17d1b46d58d31324f06ff3f1c4f80c0f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 40,
+    "payload": {
+      "description": "queue confirm source_id='crd-0110-meal' category='Expenses:Meals'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "b213f52521dde7b5cfdd843ba87bcc0c17d1b46d58d31324f06ff3f1c4f80c0f",
+    "record_hash": "dfd969cf9d94b1f5eb16dc2123ce2c3e5dc126c9e93155ec08c15b835bc79e53",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 41,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0110-meal"
+    },
+    "prev_hash": "dfd969cf9d94b1f5eb16dc2123ce2c3e5dc126c9e93155ec08c15b835bc79e53",
+    "record_hash": "ba83e64220fb7727aecadb634f46a3b951d05b462e6e041b11edfe22fb173360",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 42,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0110-meal"
+      ],
+      "store_sha256": "781f274e779a7999237507f920ada04bc4c843bf530e2df0ea2e57d33c7210e1"
+    },
+    "prev_hash": "ba83e64220fb7727aecadb634f46a3b951d05b462e6e041b11edfe22fb173360",
+    "record_hash": "2c70d967a8ab323484bb42f82ca58706e351270c5ac2f04e8974ac4a7bb6c44c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 43,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Marketing",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "8dedb1f14364c37ac1e8e53504cd37744a0e91f8ebda77c870f8f394cd304a34",
+      "item_id": "crd-0122-mkt",
+      "operation_hash": "fd5aef875d963ac109939f48b75e78f9e77fb44de6f8b7e0984e0784e8a2c887",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0122-mkt": "33b5f42ec897ac9290d40f0e5d631689eb7aa1b65a428401f32f3be4f4c6fd9a"
+      },
+      "source_ids": [
+        "crd-0122-mkt"
+      ]
+    },
+    "prev_hash": "2c70d967a8ab323484bb42f82ca58706e351270c5ac2f04e8974ac4a7bb6c44c",
+    "record_hash": "d65a962be5f2286b6e7ea5f22ce9cfb0575d701dc1b4d9f7fa5fdd907f45e7da",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 44,
+    "payload": {
+      "description": "queue confirm source_id='crd-0122-mkt' category='Expenses:Marketing'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "d65a962be5f2286b6e7ea5f22ce9cfb0575d701dc1b4d9f7fa5fdd907f45e7da",
+    "record_hash": "a4c292f674eaf00efefbf125d9e8fb774c8220315b5228f99a35d925b90ce279",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 45,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0122-mkt"
+    },
+    "prev_hash": "a4c292f674eaf00efefbf125d9e8fb774c8220315b5228f99a35d925b90ce279",
+    "record_hash": "2203aec6de7282ccc8661f8be6cd1523d6147329da67d7d9f7961e650a329a96",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 46,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0122-mkt"
+      ],
+      "store_sha256": "96a3d09241f23721250a5d8b96b2b1b609783133f43585fcfcc389913771032c"
+    },
+    "prev_hash": "2203aec6de7282ccc8661f8be6cd1523d6147329da67d7d9f7961e650a329a96",
+    "record_hash": "b44284d4a9733a07abc7dc19646374b9183117de3fc9bb44714478a52785203e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 47,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Software",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "01e866604d16571910a0aeac6ed315972cf995feb0e2775c033dfbdb378e261d",
+      "item_id": "crd-0127-sw",
+      "operation_hash": "6fef844097dffd5b5b77c0aecc4579c27693501c36436483bc8ee86aedd9aff4",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0127-sw": "69858980c7a8332038ef5088652a0f42815d7ada21ddd61dbb7dfd287521cf28"
+      },
+      "source_ids": [
+        "crd-0127-sw"
+      ]
+    },
+    "prev_hash": "b44284d4a9733a07abc7dc19646374b9183117de3fc9bb44714478a52785203e",
+    "record_hash": "937e51761c6c31719dc0e9a91c9da25de6ad847b30f3678a42ecec739df87749",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 48,
+    "payload": {
+      "description": "queue confirm source_id='crd-0127-sw' category='Expenses:Software'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "937e51761c6c31719dc0e9a91c9da25de6ad847b30f3678a42ecec739df87749",
+    "record_hash": "7ecb543ec6438835d0019da5de2cbd0de8fab8947fb308209361fdf1282ece95",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 49,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0127-sw"
+    },
+    "prev_hash": "7ecb543ec6438835d0019da5de2cbd0de8fab8947fb308209361fdf1282ece95",
+    "record_hash": "b023e9d4dc5e0cde1963797cf2085f5b2733e7b214540fa4b67063ba9c216d9e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 50,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0127-sw"
+      ],
+      "store_sha256": "b79e9f54cb7c64866cd3d42a6ff7a4ef6def10d3fe28d1188bf525310de53106"
+    },
+    "prev_hash": "b023e9d4dc5e0cde1963797cf2085f5b2733e7b214540fa4b67063ba9c216d9e",
+    "record_hash": "d7eb1cfe720c953352618ed74d2e05f86172130a359574800b261326aa57dd60",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 51,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Rent",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "6fe9f03311e39f3b68104159904631fbea7224c836ab4040bfc3d7595c915be5",
+      "item_id": "chk-0203-rent",
+      "operation_hash": "2eac9ec77e33eb4d0d0af3f1cc82d41b314683ac7df457bd884bbfa1c2797e91",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0203-rent": "3bbfc2c0668c1213dc3e26aa26d00c74bf99b159278d3c728c72ce971147b0c3"
+      },
+      "source_ids": [
+        "chk-0203-rent"
+      ]
+    },
+    "prev_hash": "d7eb1cfe720c953352618ed74d2e05f86172130a359574800b261326aa57dd60",
+    "record_hash": "566f2606704e6098f8ecd45234a42343c6581442a4fbc43d208212cf230c60eb",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 52,
+    "payload": {
+      "description": "queue confirm source_id='chk-0203-rent' category='Expenses:Rent'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "566f2606704e6098f8ecd45234a42343c6581442a4fbc43d208212cf230c60eb",
+    "record_hash": "ccba5a6f4636ecbc2c5c9925514a7edf8fecce10f4156f076b06f85fccbace99",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 53,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0203-rent"
+    },
+    "prev_hash": "ccba5a6f4636ecbc2c5c9925514a7edf8fecce10f4156f076b06f85fccbace99",
+    "record_hash": "c3fee345244da5c6b3ea65d462e66683112d2c2902815ce849f0f46a6b288a2e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 54,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0203-rent"
+      ],
+      "store_sha256": "30ad83da42edc89297db96487738e1487065b34e79bd563b2200245176c5acfc"
+    },
+    "prev_hash": "c3fee345244da5c6b3ea65d462e66683112d2c2902815ce849f0f46a6b288a2e",
+    "record_hash": "175261d9df00b91c4ceaf0e556a8ca642643dad044abc923030c9d341c18caaf",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 55,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Income:Consulting",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "1eda362dfd0c7d9383cb3d62901a13b520147bb5d151c7997348cf5c5b1b9fee",
+      "item_id": "chk-0206-client",
+      "operation_hash": "8b09fc3c21445e043352e8d0119ae77f596aa579ebba12537acf6f13674ce824",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0206-client": "b110963bd26134113031e45f779fcd312d1c3910f3a7fb4bdb14141b11a8c73c"
+      },
+      "source_ids": [
+        "chk-0206-client"
+      ]
+    },
+    "prev_hash": "175261d9df00b91c4ceaf0e556a8ca642643dad044abc923030c9d341c18caaf",
+    "record_hash": "155c5ac75eed1173059cf683f968ef2182c6cecd6c73f9f86450f6f78d2b908f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 56,
+    "payload": {
+      "description": "queue confirm source_id='chk-0206-client' category='Income:Consulting'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "155c5ac75eed1173059cf683f968ef2182c6cecd6c73f9f86450f6f78d2b908f",
+    "record_hash": "753d7f90d2776d3d3cc3257c7b0347635ae428f7fe31092bb3daad2ea2feac83",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 57,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0206-client"
+    },
+    "prev_hash": "753d7f90d2776d3d3cc3257c7b0347635ae428f7fe31092bb3daad2ea2feac83",
+    "record_hash": "045510dd416598495dee8d622ef5fa57b11a60c2bffa63ab5f8dd0347b3b00a3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 58,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0206-client"
+      ],
+      "store_sha256": "788cd1f7c28e33c0aa862634611e14b3a8e97ad7c07fac09182012af9b1e0390"
+    },
+    "prev_hash": "045510dd416598495dee8d622ef5fa57b11a60c2bffa63ab5f8dd0347b3b00a3",
+    "record_hash": "ec3e7c68a5b513efc6d5f2e79b22c984c027295ea9201dcc7c5fc285f65019af",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 59,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Subcontractors",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "2b0d3413ef67efef958bc5efa44650e8b9022530db0335b5808edbfd83981b1d",
+      "item_id": "chk-0210-sub",
+      "operation_hash": "835973b260aaf5b4b9ab0e7c0562ce93ea6750fb3ed5376e4c82ae5ce9405469",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0210-sub": "8679c9452e09ec10a56ab5b13ab119be43ddab3362cfc4c87bb6c50a78b01684"
+      },
+      "source_ids": [
+        "chk-0210-sub"
+      ]
+    },
+    "prev_hash": "ec3e7c68a5b513efc6d5f2e79b22c984c027295ea9201dcc7c5fc285f65019af",
+    "record_hash": "48e8e8a6e83515dee8898849f71f2683a17a0c1d8e2b0964ccfd17223aa3c9d4",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 60,
+    "payload": {
+      "description": "queue confirm source_id='chk-0210-sub' category='Expenses:Subcontractors'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "48e8e8a6e83515dee8898849f71f2683a17a0c1d8e2b0964ccfd17223aa3c9d4",
+    "record_hash": "617d0e3b6705fa670d5e27af1a193a0e9bf6d826b9ab6fb415f1da9ab10cd7b8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 61,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0210-sub"
+    },
+    "prev_hash": "617d0e3b6705fa670d5e27af1a193a0e9bf6d826b9ab6fb415f1da9ab10cd7b8",
+    "record_hash": "ff01e6e8ce089347373c081d7b8084ae719c2fcb9f68fcd4cd2c36019ff8736c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 62,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0210-sub"
+      ],
+      "store_sha256": "a03c80bb9d2b6c284f6d8a6527c07207a26c544508166851f423a3bd23bda65b"
+    },
+    "prev_hash": "ff01e6e8ce089347373c081d7b8084ae719c2fcb9f68fcd4cd2c36019ff8736c",
+    "record_hash": "b8836b353a03cdcfb3072e3cf4c2c30b05dadfd0d13bbb50ebc93dab1de638f6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 63,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Income:Consulting",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "7ae1384bbabe67cd4714828e38e69cbfbd5fe5deeb0fb83a3752763f3c7982ed",
+      "item_id": "chk-0213-client",
+      "operation_hash": "00f2991f9887fa4460d9e413a4460b6a09a7e1b77344e388b8d0f81361589e53",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0213-client": "bbdba1cb8b5d05fc0b4805aaa1583fe38da039ff7b60343ee8f0d29a3b620a5f"
+      },
+      "source_ids": [
+        "chk-0213-client"
+      ]
+    },
+    "prev_hash": "b8836b353a03cdcfb3072e3cf4c2c30b05dadfd0d13bbb50ebc93dab1de638f6",
+    "record_hash": "20ea6a3255bef0a8c1c59911f2edd8090a7b9b9ae1c979e9283554489e451312",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 64,
+    "payload": {
+      "description": "queue confirm source_id='chk-0213-client' category='Income:Consulting'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "20ea6a3255bef0a8c1c59911f2edd8090a7b9b9ae1c979e9283554489e451312",
+    "record_hash": "57de5a43bdb1dd2f0e83e5a8631e9862ef6c8b2ac79a51662ab05e5d22858984",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 65,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0213-client"
+    },
+    "prev_hash": "57de5a43bdb1dd2f0e83e5a8631e9862ef6c8b2ac79a51662ab05e5d22858984",
+    "record_hash": "93e401ffbfcd248636e814c6378c36e1353885d7491d98841101f0b0a7e5be06",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 66,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0213-client"
+      ],
+      "store_sha256": "0dd298191217100610f2916b851f4a9def37269b68059818ada55ef89354dd80"
+    },
+    "prev_hash": "93e401ffbfcd248636e814c6378c36e1353885d7491d98841101f0b0a7e5be06",
+    "record_hash": "95d51ca4a71544f2da8ab5b7f5b1e8a8b2ce30d5f7e93e9594cd8245eae425df",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 67,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Equity:Owner-Draws",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "3b583e492d15b48cf8c6487d14156f534507e19479bb502ecdd50d2d862ef6a4",
+      "item_id": "chk-0217-draw",
+      "operation_hash": "a8de80493ba696ddcd53b3a64bee710485b96300c58ff1fcd0711f1c4a72b1ed",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0217-draw": "c23fd7b8935c75a1ee05d58b2b1ebb163726f4ee62dbaef5757efe922fa80522"
+      },
+      "source_ids": [
+        "chk-0217-draw"
+      ]
+    },
+    "prev_hash": "95d51ca4a71544f2da8ab5b7f5b1e8a8b2ce30d5f7e93e9594cd8245eae425df",
+    "record_hash": "70b465fcdfbb1a5c6ade4b8e081210b518c4d1347e6919296424cadd5b133dc9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 68,
+    "payload": {
+      "description": "queue confirm source_id='chk-0217-draw' category='Equity:Owner-Draws'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "70b465fcdfbb1a5c6ade4b8e081210b518c4d1347e6919296424cadd5b133dc9",
+    "record_hash": "62dbe7b7e4f421943ba2a3cb69166e930e667fb138c9cd4b36ed486ff52052aa",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 69,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0217-draw"
+    },
+    "prev_hash": "62dbe7b7e4f421943ba2a3cb69166e930e667fb138c9cd4b36ed486ff52052aa",
+    "record_hash": "90148faae12bcd58140f8d2638f3f871d4de232b64796d084ea419f132ec999c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 70,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0217-draw"
+      ],
+      "store_sha256": "9b5a0e68f943d67918916d92f484933b301562b0ac2060566d24481acfe1cd25"
+    },
+    "prev_hash": "90148faae12bcd58140f8d2638f3f871d4de232b64796d084ea419f132ec999c",
+    "record_hash": "7c474c0be7ac5de40c9c8a9cf575f668dd4ae756d7ac83639226d0c54fed7c58",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 71,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Taxes",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "8587a7ca637837b4eb493e0f0ec882231e24ea8de0b03dadf77c5ebd0022a5a2",
+      "item_id": "chk-0224-tax",
+      "operation_hash": "c270ae6f6c448005a1ab4cd80fb6bc72ab0bc288bd292f8e2c894b6ce1ccb1fa",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0224-tax": "86a3c031dc07501a738d2c9671cb57cc64921df05e44ac5f668c00796f787964"
+      },
+      "source_ids": [
+        "chk-0224-tax"
+      ]
+    },
+    "prev_hash": "7c474c0be7ac5de40c9c8a9cf575f668dd4ae756d7ac83639226d0c54fed7c58",
+    "record_hash": "4f1641c0150cb6f865c47045e765ebbc81b4078a57807c36b91842d1772a43ce",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 72,
+    "payload": {
+      "description": "queue confirm source_id='chk-0224-tax' category='Expenses:Taxes'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "4f1641c0150cb6f865c47045e765ebbc81b4078a57807c36b91842d1772a43ce",
+    "record_hash": "b3f3edf2a443e833e9ca7b753c7969a3446420e2b83ce87611f35ed969c928a9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 73,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0224-tax"
+    },
+    "prev_hash": "b3f3edf2a443e833e9ca7b753c7969a3446420e2b83ce87611f35ed969c928a9",
+    "record_hash": "0988998cceb69c37d49f98a92287601f8d57716de92904f979d6ee4a7cd4a1dd",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 74,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0224-tax"
+      ],
+      "store_sha256": "7f5891286caff6889c096a9c2669fd10d857d86c03348a524264faf283581049"
+    },
+    "prev_hash": "0988998cceb69c37d49f98a92287601f8d57716de92904f979d6ee4a7cd4a1dd",
+    "record_hash": "e25fbe5e23a3d4477bddb638564c565506ca5585b32b225625652e5c65527433",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 75,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Fees",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "411b051913dca6bacc6d720b04021c4824479532bf9316fadccc55754e0c6a92",
+      "item_id": "chk-0225-fee",
+      "operation_hash": "daab960a54bbd08546162fcb3b3cd5cdac034012492085d890e4dc97a0dd222d",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0225-fee": "d3495b5019b6da52b1f4aa1df98d9b35c555535824db3ff77506ef62b0054355"
+      },
+      "source_ids": [
+        "chk-0225-fee"
+      ]
+    },
+    "prev_hash": "e25fbe5e23a3d4477bddb638564c565506ca5585b32b225625652e5c65527433",
+    "record_hash": "0c8dc87cc4a6e8dd696c60bc2b8b7ebab91bf01a65ff98a369d0df152ad7b7b9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 76,
+    "payload": {
+      "description": "queue confirm source_id='chk-0225-fee' category='Expenses:Fees'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "0c8dc87cc4a6e8dd696c60bc2b8b7ebab91bf01a65ff98a369d0df152ad7b7b9",
+    "record_hash": "c99669e9fc5ce73776567c66088a58ab8dd57eefa9c621f500b9d9b9c90bc518",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 77,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0225-fee"
+    },
+    "prev_hash": "c99669e9fc5ce73776567c66088a58ab8dd57eefa9c621f500b9d9b9c90bc518",
+    "record_hash": "05dd313253ce761a963a9aa5431e6b867bc73c481ea97bbcec158b52482c3603",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 78,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0225-fee"
+      ],
+      "store_sha256": "65f35b1628886ff8ebac57785ebd99e1243c8e31ab12923571edb758d7e5629a"
+    },
+    "prev_hash": "05dd313253ce761a963a9aa5431e6b867bc73c481ea97bbcec158b52482c3603",
+    "record_hash": "2c8816c4136247887e67c8865d4b0e3ff56b0051d27dd639562bae320bdaafda",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 79,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Software",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "c65de17caf44d5925b24a3eaee7fd8a030b0b7daa66174a517dfe20cbe93e497",
+      "item_id": "crd-0204-sw",
+      "operation_hash": "0549601ed08b0c9234e2bfa83406e92842a64cfa8a304f049bdebc42ff427d18",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0204-sw": "abd5411f7503bbfe274bf98f77e26191765c5434973254c37c7b2c85ed410472"
+      },
+      "source_ids": [
+        "crd-0204-sw"
+      ]
+    },
+    "prev_hash": "2c8816c4136247887e67c8865d4b0e3ff56b0051d27dd639562bae320bdaafda",
+    "record_hash": "d7afdcb5cd770cf10c139fd317f77f4867b8c01047fa86e93c5f474b5e355963",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 80,
+    "payload": {
+      "description": "queue confirm source_id='crd-0204-sw' category='Expenses:Software'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "d7afdcb5cd770cf10c139fd317f77f4867b8c01047fa86e93c5f474b5e355963",
+    "record_hash": "b4c42430375dedf56c3044d278a5a6724810b720f1ee3740f8c127efce604d45",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 81,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0204-sw"
+    },
+    "prev_hash": "b4c42430375dedf56c3044d278a5a6724810b720f1ee3740f8c127efce604d45",
+    "record_hash": "d9956f0fb1ea6dbef8b55ffc3e52ff7f7c018e4950058dc9bf84f80d554ab78f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 82,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0204-sw"
+      ],
+      "store_sha256": "466454b680e5edebe1becfda3da9b8f39b080f302d7be2e7af01127709f1dfff"
+    },
+    "prev_hash": "d9956f0fb1ea6dbef8b55ffc3e52ff7f7c018e4950058dc9bf84f80d554ab78f",
+    "record_hash": "7731453cb690c10e730e2e77ae10c6c34919829432d2a451d95d86d00d3888d0",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 83,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Meals",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "859f45237a675958fcfe7a3cd46057c1ce83e53974aaf4a2be6e86ef943a51ed",
+      "item_id": "crd-0209-meal",
+      "operation_hash": "dc8eb3d5d459a5bdce638ce69cd7ebeb18db0d0dbaf6c3d8d6f05ed4753ebdb5",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0209-meal": "f4e357f51b73a44bc4b12e52f7860c6ff68291e8e17f5533e854308f8e86921e"
+      },
+      "source_ids": [
+        "crd-0209-meal"
+      ]
+    },
+    "prev_hash": "7731453cb690c10e730e2e77ae10c6c34919829432d2a451d95d86d00d3888d0",
+    "record_hash": "1230cef8a1c489eb53e19cb9acac0c7c43f44a6ee8111d60aef59fe6790301ee",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 84,
+    "payload": {
+      "description": "queue confirm source_id='crd-0209-meal' category='Expenses:Meals'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "1230cef8a1c489eb53e19cb9acac0c7c43f44a6ee8111d60aef59fe6790301ee",
+    "record_hash": "a77ce25385f8afb339805517f5a2e7e690040d210b02ae6bab6bedb108b9af92",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 85,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0209-meal"
+    },
+    "prev_hash": "a77ce25385f8afb339805517f5a2e7e690040d210b02ae6bab6bedb108b9af92",
+    "record_hash": "b2c985b1612c6b21016a74471812292ce321c94887a94137871fe78f6def3b41",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 86,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0209-meal"
+      ],
+      "store_sha256": "4f95dd5962edb1cc2bee3ac306e539b1a6c33e30c8e08f1a12bc75725bf53560"
+    },
+    "prev_hash": "b2c985b1612c6b21016a74471812292ce321c94887a94137871fe78f6def3b41",
+    "record_hash": "ac9f8bcf94df7b780bdc24c79413aac3175e7403a9c1c6712b15e11fc02d1323",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 87,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Office",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "418c5aadf5af743e5cd33972b3d40a0c79d8c70e01fd961e66ab8186c7b0bc16",
+      "item_id": "crd-0215-office",
+      "operation_hash": "f9051ea3e6aee2e9ddbe080fb5243067a8ff9eab55085c0a0b0c7c16713d3861",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0215-office": "3a7c687811a5a2b2161bca7c52d6ba160a065fcfcef79ff5531e2ca8080ceba2"
+      },
+      "source_ids": [
+        "crd-0215-office"
+      ]
+    },
+    "prev_hash": "ac9f8bcf94df7b780bdc24c79413aac3175e7403a9c1c6712b15e11fc02d1323",
+    "record_hash": "ddfc93956e44dbf01d97b189deb49d8d4aece5902eae19611c17bfa8083b3311",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 88,
+    "payload": {
+      "description": "queue confirm source_id='crd-0215-office' category='Expenses:Office'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "ddfc93956e44dbf01d97b189deb49d8d4aece5902eae19611c17bfa8083b3311",
+    "record_hash": "7de75b3615b25a913f76580773c3218dca6fe23aa6f4173d4ea167dbc8796e6b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 89,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0215-office"
+    },
+    "prev_hash": "7de75b3615b25a913f76580773c3218dca6fe23aa6f4173d4ea167dbc8796e6b",
+    "record_hash": "e5ac9e491a7a601a0d0b4e01018671efa371c95446364376d32abf4d4e701ce5",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 90,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0215-office"
+      ],
+      "store_sha256": "e0d27e5d0b7f7a67f6c733a2ac6fe02889a490efa7d25cc58b6cc880762a7e9d"
+    },
+    "prev_hash": "e5ac9e491a7a601a0d0b4e01018671efa371c95446364376d32abf4d4e701ce5",
+    "record_hash": "07200b7c699195710bd461fa3a7d6ba45cc709edc473fabb39542f53d197b882",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 91,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Software",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "1790b413e4f405f71a51e1dad1c0422839bbe18edf1decf2b8d523611fb20b2b",
+      "item_id": "crd-0219-sw",
+      "operation_hash": "c87de828bce53eafacdea48c8f6461fd5cf88d506615664016d4d2fc286d4193",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0219-sw": "a6c7ea591c486c9d482a7f8c45467f3ca3b6458651bb813ee30c097d1ebb6e46"
+      },
+      "source_ids": [
+        "crd-0219-sw"
+      ]
+    },
+    "prev_hash": "07200b7c699195710bd461fa3a7d6ba45cc709edc473fabb39542f53d197b882",
+    "record_hash": "1489cfc37b0a9480d8cded91502f581b3da4598dc42abf7102c384ca314b5bbb",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 92,
+    "payload": {
+      "description": "queue confirm source_id='crd-0219-sw' category='Expenses:Software'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "1489cfc37b0a9480d8cded91502f581b3da4598dc42abf7102c384ca314b5bbb",
+    "record_hash": "5325e765aa5afefbb96226e71a38a713a1f0fe5457cbd98b25ca541688bb67be",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 93,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0219-sw"
+    },
+    "prev_hash": "5325e765aa5afefbb96226e71a38a713a1f0fe5457cbd98b25ca541688bb67be",
+    "record_hash": "b58e115fb1688184800d2bbfb3fe5ed16b28aedcce2ec5106ccd78e6b2335854",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 94,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0219-sw"
+      ],
+      "store_sha256": "973d8706b6a71ab6573077c6d5cec0afef0a1772a77387cfb1403f112dd3863d"
+    },
+    "prev_hash": "b58e115fb1688184800d2bbfb3fe5ed16b28aedcce2ec5106ccd78e6b2335854",
+    "record_hash": "8d290cd4ba63d55acc58d8f728402a181a873d25a594602231ad1d7df2f3e59c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 95,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Marketing",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "1fe7d88542496ebce824e853b65973e7c54fff3e383142a38c183ec8e1561e0f",
+      "item_id": "crd-0221-mkt",
+      "operation_hash": "0fa02ed544f097fe1f601a927859818e2f4fc772691a31bbddf0bd42e406965c",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0221-mkt": "3bcf7ee8394cbbc2efadf0580802120b82e0f0dcc16e5e130237006e02f52046"
+      },
+      "source_ids": [
+        "crd-0221-mkt"
+      ]
+    },
+    "prev_hash": "8d290cd4ba63d55acc58d8f728402a181a873d25a594602231ad1d7df2f3e59c",
+    "record_hash": "602047cdfe6bf65d25c4e874645016560650bbea13a432a1eec1ddbd1fc46d44",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 96,
+    "payload": {
+      "description": "queue confirm source_id='crd-0221-mkt' category='Expenses:Marketing'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "602047cdfe6bf65d25c4e874645016560650bbea13a432a1eec1ddbd1fc46d44",
+    "record_hash": "8b014c78e03fa640164d05bc4a624c57ad7ca7b0743f57ce63004f0fa20aafab",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 97,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0221-mkt"
+    },
+    "prev_hash": "8b014c78e03fa640164d05bc4a624c57ad7ca7b0743f57ce63004f0fa20aafab",
+    "record_hash": "816ade525d669c2d95a8e468f8820133e1dd0e886db7ab4bc4b81862c4b3301f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 98,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0221-mkt"
+      ],
+      "store_sha256": "028df524479ab26020e4fc273cb4f89ae63ca3011ef101f3a5793ab432ecae81"
+    },
+    "prev_hash": "816ade525d669c2d95a8e468f8820133e1dd0e886db7ab4bc4b81862c4b3301f",
+    "record_hash": "a07a706e6b30f8fb8b9b95684b8188edaa463681f17b65ba5759ca546c85fe7d",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 99,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Rent",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "58656fdb4c93fc0aac9e64f214163ac9df981c343783348d61c42a368b413b96",
+      "item_id": "chk-0303-rent",
+      "operation_hash": "21e7fd061732b16f947cbb4c6a6a127d52725440381b2819c0dbe43f5ed2d1a5",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0303-rent": "42616838601c019394403558d10e6f1c2175c652ee517003acc1f085bb13a23a"
+      },
+      "source_ids": [
+        "chk-0303-rent"
+      ]
+    },
+    "prev_hash": "a07a706e6b30f8fb8b9b95684b8188edaa463681f17b65ba5759ca546c85fe7d",
+    "record_hash": "9ae11d69c90662c1ffd8ea2236b2d40c7cae05e6105a96098829fe8f18bb128a",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 100,
+    "payload": {
+      "description": "queue confirm source_id='chk-0303-rent' category='Expenses:Rent'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "9ae11d69c90662c1ffd8ea2236b2d40c7cae05e6105a96098829fe8f18bb128a",
+    "record_hash": "4e515cfe7e848301f924481e8eb6181a3ed3144fba0eda0a2a20dd55a5dc3aa1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 101,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0303-rent"
+    },
+    "prev_hash": "4e515cfe7e848301f924481e8eb6181a3ed3144fba0eda0a2a20dd55a5dc3aa1",
+    "record_hash": "114d6a87d58f546b222d4330b5667410808b211798364c1e7ae577ce443e485b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 102,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0303-rent"
+      ],
+      "store_sha256": "1e4552e7160f5754b81b0aad6f593564392963f60736e162e9489d3cf5f94423"
+    },
+    "prev_hash": "114d6a87d58f546b222d4330b5667410808b211798364c1e7ae577ce443e485b",
+    "record_hash": "616985a02c47f6acd57aca9c9f84dc47a5d65d738a6457048d5b765a5ab508d1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 103,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Income:Consulting",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "8a0efe094a9081e98da7d89d160a2575a45c22ca92ea398c0689a41e0dd07d8f",
+      "item_id": "chk-0305-client",
+      "operation_hash": "6581eb8fcaec2678b9add2db12f60d7f57fdc97547878e32059ed860de2c043a",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0305-client": "8e800d9fabb1d3fe887867a193d27d66672029b7f2cd68735ffda275213b1e7f"
+      },
+      "source_ids": [
+        "chk-0305-client"
+      ]
+    },
+    "prev_hash": "616985a02c47f6acd57aca9c9f84dc47a5d65d738a6457048d5b765a5ab508d1",
+    "record_hash": "61070685edd80d7630920d7d822192b79d03c07e3c7146514beea1ed18e390b4",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 104,
+    "payload": {
+      "description": "queue confirm source_id='chk-0305-client' category='Income:Consulting'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "61070685edd80d7630920d7d822192b79d03c07e3c7146514beea1ed18e390b4",
+    "record_hash": "d2c9b4d1183f1f36f4c46507424708ab36e6afa25d6228ce893be5cd634f5f63",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 105,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0305-client"
+    },
+    "prev_hash": "d2c9b4d1183f1f36f4c46507424708ab36e6afa25d6228ce893be5cd634f5f63",
+    "record_hash": "e67aeb4f2e2d073760f1c3579c95b41514bebf323d68c4fdc1af5217d2fed799",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 106,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0305-client"
+      ],
+      "store_sha256": "7bbf27daf648c00b5aec4b0cabfce45c1fc4d4961a3c5ca6e92532594c9eef92"
+    },
+    "prev_hash": "e67aeb4f2e2d073760f1c3579c95b41514bebf323d68c4fdc1af5217d2fed799",
+    "record_hash": "3db960f0d10bcfa145e833b54be67971fe3a80299325154a2b505863182cfedc",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 107,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Subcontractors",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "fdbfb00c1421d0c251b143f409dc5ef8e51045e1af463258b9aaab4db987e790",
+      "item_id": "chk-0311-sub",
+      "operation_hash": "c4a183e79b70b5ae4c342c79e12374ab986901ac4e7a2092566d2868d6835720",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0311-sub": "811a8b4eff3c9f8538e33bd68426e1bedb1a4ecbcb2d449828e7451e75f754d0"
+      },
+      "source_ids": [
+        "chk-0311-sub"
+      ]
+    },
+    "prev_hash": "3db960f0d10bcfa145e833b54be67971fe3a80299325154a2b505863182cfedc",
+    "record_hash": "3867d0cd488ce68896875f1f8eb7c88e8a06da67cf3d705c4de3213bf484e28d",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 108,
+    "payload": {
+      "description": "queue confirm source_id='chk-0311-sub' category='Expenses:Subcontractors'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "3867d0cd488ce68896875f1f8eb7c88e8a06da67cf3d705c4de3213bf484e28d",
+    "record_hash": "e1cd8fa5d60a0cbd7f176359f8af936fb569b11c554cf369a70b8c4aafb643e2",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 109,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0311-sub"
+    },
+    "prev_hash": "e1cd8fa5d60a0cbd7f176359f8af936fb569b11c554cf369a70b8c4aafb643e2",
+    "record_hash": "3c7d28ad85c7a89de420927799bf841e1a44ee4bd72ad9a5756fbf69888a6171",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 110,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0311-sub"
+      ],
+      "store_sha256": "15773d9c4864e4eb3ad50f216cef009bb3ea940283ab27b188aee6111d5ddba4"
+    },
+    "prev_hash": "3c7d28ad85c7a89de420927799bf841e1a44ee4bd72ad9a5756fbf69888a6171",
+    "record_hash": "4967132047c3199645417b8acd18812fd14e75edb419fd1728acfe99416d73b9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 111,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Income:Consulting",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "6b0f7ffa585d6fb8d36a0057841858ad8a794355ae41b65d7586b5818e6e08ef",
+      "item_id": "chk-0316-client",
+      "operation_hash": "9117151328adcaa47507625e49b3559f2957c6ecf510b48cca32b81e6924a095",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0316-client": "62150369aef94920aae65856e819b79c1cdd633fab9c188609641c0c4e593008"
+      },
+      "source_ids": [
+        "chk-0316-client"
+      ]
+    },
+    "prev_hash": "4967132047c3199645417b8acd18812fd14e75edb419fd1728acfe99416d73b9",
+    "record_hash": "a2cca186ac91eae4c1b61cd09854c7bb0ba3afa7ca17a3332255a01d3bb88ceb",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 112,
+    "payload": {
+      "description": "queue confirm source_id='chk-0316-client' category='Income:Consulting'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "a2cca186ac91eae4c1b61cd09854c7bb0ba3afa7ca17a3332255a01d3bb88ceb",
+    "record_hash": "41443d0b6c2c49382c26fdd0aa11b375d62e8a43fa156f1099d990b3e1c237dc",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 113,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0316-client"
+    },
+    "prev_hash": "41443d0b6c2c49382c26fdd0aa11b375d62e8a43fa156f1099d990b3e1c237dc",
+    "record_hash": "f7a80dea2a660eb01f50f53e54fae9adebdfa35fb4a182900f75a8c70e012f17",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 114,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0316-client"
+      ],
+      "store_sha256": "6f8bd4ea8cdf461eed391d651419bc29f11551cbdd9e03b021d1d83287de2feb"
+    },
+    "prev_hash": "f7a80dea2a660eb01f50f53e54fae9adebdfa35fb4a182900f75a8c70e012f17",
+    "record_hash": "7a8faca231f89f241772dbb4de064d2afc673454977fd039e2d3e25a60b50ca3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 115,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Insurance",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "916a68131620c34de47338877b725e68fc84cd89b7ac48f523d995115bf68cb0",
+      "item_id": "chk-0320-ins",
+      "operation_hash": "b957f7c6e70d216218a0a3dc379ce0c1c09ff2be2849eee893058169d8440ac1",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0320-ins": "b28d33ae239ff97829608116dd116e0672e7a1df6a397f639d159528e87dadf1"
+      },
+      "source_ids": [
+        "chk-0320-ins"
+      ]
+    },
+    "prev_hash": "7a8faca231f89f241772dbb4de064d2afc673454977fd039e2d3e25a60b50ca3",
+    "record_hash": "18e6e48892fd85be17c49abab78eb38e3bc769da6b3e3e29b46dba01e3ca2e43",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 116,
+    "payload": {
+      "description": "queue confirm source_id='chk-0320-ins' category='Expenses:Insurance'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "18e6e48892fd85be17c49abab78eb38e3bc769da6b3e3e29b46dba01e3ca2e43",
+    "record_hash": "e94a771c8b7851be39330d82176d967c35136fc96ea72b6ea9231b89e6007359",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 117,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0320-ins"
+    },
+    "prev_hash": "e94a771c8b7851be39330d82176d967c35136fc96ea72b6ea9231b89e6007359",
+    "record_hash": "4c075e60ac56e2f361afc70e03f271fdc6e678244b8b1d1ac11b685838888a40",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 118,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0320-ins"
+      ],
+      "store_sha256": "8abdeac3f306537ef21536c619847273103804458e60140cbaf382c80c5b1696"
+    },
+    "prev_hash": "4c075e60ac56e2f361afc70e03f271fdc6e678244b8b1d1ac11b685838888a40",
+    "record_hash": "ecb37c9cdb341c9916897e07a67bb656f1986a89cbdc5206d972fde35cc202cd",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 119,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Fees",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "33df42ab5bebf80a8486cb1639f0ee7058ed3350e7734a2dd4baa03d9532ddca",
+      "item_id": "chk-0325-fee",
+      "operation_hash": "b78737cb3bb0914175bc21405944158f440037394775e4d72197e2b71fc7b58e",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0325-fee": "2ed6bdaefed9413fc451deceb313e9e4ce62922b7741f3f488fe6b3465b78b50"
+      },
+      "source_ids": [
+        "chk-0325-fee"
+      ]
+    },
+    "prev_hash": "ecb37c9cdb341c9916897e07a67bb656f1986a89cbdc5206d972fde35cc202cd",
+    "record_hash": "4b72c7dd2ad6a099e8d2058fefdc8f8971ef6f60c62f37b56dc7855d40288706",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 120,
+    "payload": {
+      "description": "queue confirm source_id='chk-0325-fee' category='Expenses:Fees'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "4b72c7dd2ad6a099e8d2058fefdc8f8971ef6f60c62f37b56dc7855d40288706",
+    "record_hash": "13daaa504267e96d7a6b9e64272989053d8630802502315e38b09e1eb7b0defa",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 121,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0325-fee"
+    },
+    "prev_hash": "13daaa504267e96d7a6b9e64272989053d8630802502315e38b09e1eb7b0defa",
+    "record_hash": "a064ac37778b07d42c3b691c44918aee5aedea72a1ff65ff819792f9030cd7f9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 122,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0325-fee"
+      ],
+      "store_sha256": "adceda362675af28a01030af279c1ddb5101577aa3bc41f1988852ea1ccbeeb4"
+    },
+    "prev_hash": "a064ac37778b07d42c3b691c44918aee5aedea72a1ff65ff819792f9030cd7f9",
+    "record_hash": "a725a00ef87648c863366c2b16e3c08efea97f54fbdc66e7b3a8e77ceeb43c93",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 123,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Software",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "ca930f8440eaa192792735c337a2b388eaa96c5dffece436deed583f2772aa9c",
+      "item_id": "crd-0304-sw",
+      "operation_hash": "b03aac431b65cc83e28b5d5307715918c1eaca33a7bf0d986816bae9420a9129",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0304-sw": "2e723331ee881cdd351447523a82cdc1b50a2ccf4191b39949bca10be2ad3116"
+      },
+      "source_ids": [
+        "crd-0304-sw"
+      ]
+    },
+    "prev_hash": "a725a00ef87648c863366c2b16e3c08efea97f54fbdc66e7b3a8e77ceeb43c93",
+    "record_hash": "5e3aa6f9de7e2be7de581237ee7fca086ee48d3ea72b357f63619ca958f6cad0",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 124,
+    "payload": {
+      "description": "queue confirm source_id='crd-0304-sw' category='Expenses:Software'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "5e3aa6f9de7e2be7de581237ee7fca086ee48d3ea72b357f63619ca958f6cad0",
+    "record_hash": "956d13c4333818840c93313e6996211c49bf27e0094eb354f8ce3280c52e7351",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 125,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0304-sw"
+    },
+    "prev_hash": "956d13c4333818840c93313e6996211c49bf27e0094eb354f8ce3280c52e7351",
+    "record_hash": "aaf511e4df71e96d2697eab77e376efc74cbb1b55625721c096bdc91f7c4cbf0",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 126,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0304-sw"
+      ],
+      "store_sha256": "a76517da3cd8a603044780fe5d334027d4ff174219630a94860576905d5c221c"
+    },
+    "prev_hash": "aaf511e4df71e96d2697eab77e376efc74cbb1b55625721c096bdc91f7c4cbf0",
+    "record_hash": "8ca24b60d197e81150f1cca9388a5a07e4a1c3d97855486bd1046fa78d15cc2e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 127,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Travel",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "d3e4aee89b50e5677ce4d3290ca2baa08196f7fed6492d07100c1604a2a27a76",
+      "item_id": "crd-0312-travel",
+      "operation_hash": "8f21bab0423db695936cbc72be54aa908bae7fa3505f6abe33aea65a9e1e7a16",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0312-travel": "b905c5e4c17f98bea44877a512d12a30f15c23c06794355d82608c797e60f3c7"
+      },
+      "source_ids": [
+        "crd-0312-travel"
+      ]
+    },
+    "prev_hash": "8ca24b60d197e81150f1cca9388a5a07e4a1c3d97855486bd1046fa78d15cc2e",
+    "record_hash": "f9fb81530d6de6262695666aef7fcbaa2f53079d6efb0dcaa86d9bf4ee3e1cd6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 128,
+    "payload": {
+      "description": "queue confirm source_id='crd-0312-travel' category='Expenses:Travel'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "f9fb81530d6de6262695666aef7fcbaa2f53079d6efb0dcaa86d9bf4ee3e1cd6",
+    "record_hash": "84b473a8176b1a8fdfa1fc83b47b02d212198016464b315484fe2725110403c3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 129,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0312-travel"
+    },
+    "prev_hash": "84b473a8176b1a8fdfa1fc83b47b02d212198016464b315484fe2725110403c3",
+    "record_hash": "e6f06d6922d4fca1fe235dbda6ebb38102c4243e2da3408b2fd24b3712de13c8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 130,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0312-travel"
+      ],
+      "store_sha256": "5241e49865c9e65b830d01415d04c73ae8c58ca9ea1768befd04eb02f3700865"
+    },
+    "prev_hash": "e6f06d6922d4fca1fe235dbda6ebb38102c4243e2da3408b2fd24b3712de13c8",
+    "record_hash": "94e9abfd8dabfa9f4060036b5d4c3e7d5177d499d4b861d2c390b275a47dc9bc",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 131,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Meals",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "7a7ec0f231e3a13789edb0ea16005b7454fc8ae805db47c01bc5a6df3a516e95",
+      "item_id": "crd-0319-meal",
+      "operation_hash": "dba4ee0af705dd0d915d252fdf9ffdf8e5aff00d3a7c6a03f24b1b49c0fe1597",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0319-meal": "f8c044fb96bda082ff6f999cb56de7c5e067a71c15225b163208d29bbe961479"
+      },
+      "source_ids": [
+        "crd-0319-meal"
+      ]
+    },
+    "prev_hash": "94e9abfd8dabfa9f4060036b5d4c3e7d5177d499d4b861d2c390b275a47dc9bc",
+    "record_hash": "be149d7bf43c04780560c54d170ee4af16450857818c19ccdec2a817d2aa7a5f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 132,
+    "payload": {
+      "description": "queue confirm source_id='crd-0319-meal' category='Expenses:Meals'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "be149d7bf43c04780560c54d170ee4af16450857818c19ccdec2a817d2aa7a5f",
+    "record_hash": "fabf49f45f5b3ae55c5bbf9ffa388e992fa2a399939935132a5e75992b4d4018",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 133,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0319-meal"
+    },
+    "prev_hash": "fabf49f45f5b3ae55c5bbf9ffa388e992fa2a399939935132a5e75992b4d4018",
+    "record_hash": "f94aba7f66b0977520226681e8aa961dab6a9bb84aa3e77c30133582917e9f33",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 134,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0319-meal"
+      ],
+      "store_sha256": "47534d2fec52d181b6560449fc3f1941d68506803d48a5e62652bd30a80d6c12"
+    },
+    "prev_hash": "f94aba7f66b0977520226681e8aa961dab6a9bb84aa3e77c30133582917e9f33",
+    "record_hash": "06cf6f617f562281a21e9df97de13cfb75f52955790d8bc43185121a1066ac9e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 135,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Expenses:Software",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "37f9d49fcb3f4f6ecc68a041ccc42f937bb40279e302f0fd0c797b39ba27c67e",
+      "item_id": "crd-0324-sw",
+      "operation_hash": "322bdde45d1b9c7e4fd34ed329e6ac2df690c0f67447fb091e1be4e051d7bdd9",
+      "proposal_type": "category",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0324-sw": "b24a8aa819522841aefe8b746b1bf80e12271e8adbd642a47c12e7ae08c89e5f"
+      },
+      "source_ids": [
+        "crd-0324-sw"
+      ]
+    },
+    "prev_hash": "06cf6f617f562281a21e9df97de13cfb75f52955790d8bc43185121a1066ac9e",
+    "record_hash": "f006c81b0f91b943be7196c57bfccd0d97a85002a378462ad3e5bf4928575755",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 136,
+    "payload": {
+      "description": "queue confirm source_id='crd-0324-sw' category='Expenses:Software'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "f006c81b0f91b943be7196c57bfccd0d97a85002a378462ad3e5bf4928575755",
+    "record_hash": "e6a0da24574d6b3eeb0e5c58c792e7f66940d31ce071d836d91e2c9c7813c107",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 137,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0324-sw"
+    },
+    "prev_hash": "e6a0da24574d6b3eeb0e5c58c792e7f66940d31ce071d836d91e2c9c7813c107",
+    "record_hash": "7696b035194fee69b8798c80146a2bba3bc53dd9e34cc388138e6c19d0ef7c92",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 138,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0324-sw"
+      ],
+      "store_sha256": "ccec5314fcd45300452a741f92eb00169771709f132d654ef3da7feb92e39096"
+    },
+    "prev_hash": "7696b035194fee69b8798c80146a2bba3bc53dd9e34cc388138e6c19d0ef7c92",
+    "record_hash": "b89b1330560b3696e5e82b194039594578a8e87fb6b3e5bcb8e48d315ebd3117",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 139,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Split transaction",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "bdebce852c901fbde103e4cb6814868cea1e6348efe5ede77dba8a085c7bab11",
+      "item_id": "crd-0118-travel",
+      "operation_hash": "acac1884e3ef46b99d841f4c51962061c1fdacb48772606a0d10f97e1ffe2d6d",
+      "proposal_type": "split",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "crd-0118-travel": "c920a5b356bc0b79240d124cbfed66d4297253a7687461d187c47a57df9e6854"
+      },
+      "source_ids": [
+        "crd-0118-travel"
+      ]
+    },
+    "prev_hash": "b89b1330560b3696e5e82b194039594578a8e87fb6b3e5bcb8e48d315ebd3117",
+    "record_hash": "1a8eca108e3bf8b4a9bb1b409a745a63a858fe36f481e3f464ec6f54bf128cfb",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 140,
+    "payload": {
+      "description": "queue confirm split source_id='crd-0118-travel'",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "1a8eca108e3bf8b4a9bb1b409a745a63a858fe36f481e3f464ec6f54bf128cfb",
+    "record_hash": "0f199fc86084972e54a589389ae76c9af13c7a9fa96dcc83dca00d713c9a1e3f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 141,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "crd-0118-travel"
+    },
+    "prev_hash": "0f199fc86084972e54a589389ae76c9af13c7a9fa96dcc83dca00d713c9a1e3f",
+    "record_hash": "54bced3b0551f1a52a0505f72259a8f4b9cc841c43d1454212501f2814a4c1d1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 142,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "crd-0118-travel"
+      ],
+      "store_sha256": "b6d0c7003656a6edad1e619c3ec3fb6656102957c66ffd1f6204b9f0ee14a1e2"
+    },
+    "prev_hash": "54bced3b0551f1a52a0505f72259a8f4b9cc841c43d1454212501f2814a4c1d1",
+    "record_hash": "e085bc4c0031cecf50ab3ccbb162a280df1f7369197dd6286d7ffc7c205e0cc2",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 143,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Internal transfer",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "ec2791397d2f9a93460cca7227792e668e7cad13e645cf67e6e77b590f97c8db",
+      "item_id": "transfer-pair-8c268e5b7b6e3bc4df4a",
+      "operation_hash": "83419c024ff306a07e1e1d20135fa162a86da85c8afe4f427e8772a7efac2373",
+      "proposal_type": "transfer-pair",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0131-cardpay": "304ea35d4abfe5cafd802b28f1f324bb2fcc7d26c1fbb2af32339897a297049c",
+        "crd-0131-payment": "221ecf52bc4a1d7aa55aed5c24dbdff71c2159ef79c668403a462ac7294f4005"
+      },
+      "source_ids": [
+        "chk-0131-cardpay",
+        "crd-0131-payment"
+      ]
+    },
+    "prev_hash": "e085bc4c0031cecf50ab3ccbb162a280df1f7369197dd6286d7ffc7c205e0cc2",
+    "record_hash": "367052b6ab0d69301f4f771fad2fdcba802d40c73d3c723a869f1c2c1c306b57",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 144,
+    "payload": {
+      "description": "queue confirm transfer source_ids=['chk-0131-cardpay', 'crd-0131-payment']",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "367052b6ab0d69301f4f771fad2fdcba802d40c73d3c723a869f1c2c1c306b57",
+    "record_hash": "1d5bd60ea6d37e43b69427d6b901ddda54f88a34b789f6760489b77199fe92f9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 145,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0131-cardpay"
+    },
+    "prev_hash": "1d5bd60ea6d37e43b69427d6b901ddda54f88a34b789f6760489b77199fe92f9",
+    "record_hash": "c8f784fc6336b5598b994a1ad14d86a3d4642ec1b8b6f5209b55eb2bacafc770",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 146,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0131-cardpay"
+      ],
+      "store_sha256": "b847eb03513311a0ba48137b06d24854b0ec8712aa7ee91cbf702c911dac2d85"
+    },
+    "prev_hash": "c8f784fc6336b5598b994a1ad14d86a3d4642ec1b8b6f5209b55eb2bacafc770",
+    "record_hash": "fce7f43e862441efb1027ccf7e3f9d7196af39e9e384eebf6d5adf99719907c6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 147,
+    "payload": {
+      "completed_at": "2026-08-05T12:00:00Z",
+      "confirmed_category": "Internal transfer",
+      "entity_key": null,
+      "execution_id": null,
+      "final_status": "confirmed",
+      "item_hash": "3c39077cf163748d0202fc8225678270d225eee6d4c3bf9c3199f327886b1e01",
+      "item_id": "transfer-pair-6169014b0b35c579cc89",
+      "operation_hash": "b1ffcf3ac97e9ff1f63433bd1532a273eba53a70a9e9a79512c8e6d42e5c0849",
+      "proposal_type": "transfer-pair",
+      "schema_version": 1,
+      "session_id": "golden-cash-review",
+      "source_hashes": {
+        "chk-0228-cardpay": "8e437ac2f21ccfe32de8d58cb8e20e93b53e5ce12769a6456511fea8eeced363",
+        "crd-0228-payment": "bd49615c1847a7638d81f1f4eb3157d3c5e50e0c0f9041a2fb0e2869edde929c"
+      },
+      "source_ids": [
+        "chk-0228-cardpay",
+        "crd-0228-payment"
+      ]
+    },
+    "prev_hash": "fce7f43e862441efb1027ccf7e3f9d7196af39e9e384eebf6d5adf99719907c6",
+    "record_hash": "362f13ff7fd90fb7ef0e15c986a8010a84c3c33deec1fe63bb32ea71060b6a0b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "queue-finalization-intent"
+  },
+  {
+    "id": 148,
+    "payload": {
+      "description": "queue confirm transfer source_ids=['chk-0228-cardpay', 'crd-0228-payment']",
+      "entries": 1,
+      "session_id": "golden-cash-review"
+    },
+    "prev_hash": "362f13ff7fd90fb7ef0e15c986a8010a84c3c33deec1fe63bb32ea71060b6a0b",
+    "record_hash": "4f3831e445a36dfd793a81597a712476f737a6ba368f1b2099b6f90670c24d95",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 149,
+    "payload": {
+      "session_id": "golden-cash-review",
+      "source_id": "chk-0228-cardpay"
+    },
+    "prev_hash": "4f3831e445a36dfd793a81597a712476f737a6ba368f1b2099b6f90670c24d95",
+    "record_hash": "fe4087331782cb0343f2dedd37bea5afd65a2013930f00bade8891bf2f664be1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 150,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-cash-review",
+      "source_ids": [
+        "chk-0228-cardpay"
+      ],
+      "store_sha256": "cfa880893c2dc64e8187b8a82124450fb63dd8a926b113a7ad1212391eea13bd"
+    },
+    "prev_hash": "fe4087331782cb0343f2dedd37bea5afd65a2013930f00bade8891bf2f664be1",
+    "record_hash": "e6fca2157f088efe2e24d72bea0ad4cd2b48ad6e49e974d747ecaa30e0b210e3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  }
+]

@@ -1,0 +1,11 @@
+[
+  {
+    "as_of": "2026-08-05",
+    "history": [],
+    "id": "2026-07",
+    "operation_id": "close-july",
+    "readiness_package_id": "82f37fc8357ad47c31f322071ec486ffdab6034f3d1a8f6f4d9f908312885f2b",
+    "reason": "Synthetic owner reviewed exact reconciliation package",
+    "status": "closed"
+  }
+]

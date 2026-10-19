@@ -1,0 +1,65 @@
+{
+  "kind": "balance_sheet",
+  "from_date": null,
+  "to_date": "2026-03-31",
+  "sections": [
+    {
+      "label": "Assets",
+      "rows": [
+        {
+          "label": "Assets › Bank › Checking",
+          "amount": "33043.47",
+          "indent": 1
+        }
+      ],
+      "total": "33043.47",
+      "total_label": "Total Assets"
+    },
+    {
+      "label": "Liabilities",
+      "rows": [
+        {
+          "label": "Liabilities › CreditCard › Company",
+          "amount": "499.53",
+          "indent": 1
+        }
+      ],
+      "total": "499.53",
+      "total_label": "Total Liabilities"
+    },
+    {
+      "label": "Equity",
+      "rows": [
+        {
+          "label": "Equity › Owner-Contributions",
+          "amount": "20000.00",
+          "indent": 1
+        },
+        {
+          "label": "Equity › Owner-Draws",
+          "amount": "-2000.00",
+          "indent": 1
+        },
+        {
+          "label": "Net Income (current period)",
+          "amount": "14543.94",
+          "indent": 1
+        }
+      ],
+      "total": "32543.94",
+      "total_label": "Total Equity"
+    }
+  ],
+  "totals": {
+    "total_assets": "33043.47",
+    "total_liabilities_and_equity": "33043.47"
+  },
+  "meta": {
+    "basis": "cash",
+    "currency": "USD",
+    "coverage": null,
+    "requested_from": null,
+    "requested_to": "2026-03-31",
+    "unresolved_issues": []
+  }
+}

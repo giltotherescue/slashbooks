@@ -1,0 +1,23 @@
+Receivables and payables aging
+Report as of,2026-07-31
+Accounting basis,accrual
+Currency,USD
+Aging basis,Explicit due dates; unapplied credits remain separate
+Detailed activity begins,2026-07-01
+Imported opening as of,2026-06-30
+Opening verified,True
+Opening supporting status,reconciled
+Imported fiscal summary,2026-01-01,2026-06-30
+Historical coverage,Earlier monthly detail is unavailable
+
+Type,Customer / vendor,Reference,Accounting date,Due date,Aging,Balance,Account,Currency,Item ID
+payable,Not provided,,2026-06-30,Not provided,Due date not provided,300.00,Liabilities:Payable:Accounts-Payable,USD,vendor-open
+receivable,Not provided,,2026-06-30,Not provided,Due date not provided,600.00,Assets:Receivable:Accounts-Receivable,USD,customer-open
+
+Summary by type/account/customer; unapplied credits are separate
+Type,Account,Customer / vendor,Currency,Current,1–30 days overdue,31–60 days overdue,61–90 days overdue,Over 90 days overdue,Due date not provided,Unapplied credit,Total
+payable,Liabilities:Payable:Accounts-Payable,Not provided,USD,0.00,0.00,0.00,0.00,0.00,300.00,0.00,300.00
+receivable,Assets:Receivable:Accounts-Receivable,Not provided,USD,0.00,0.00,0.00,0.00,0.00,600.00,0.00,600.00
+
+Review items
+No outstanding review items

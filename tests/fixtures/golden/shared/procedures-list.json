@@ -1,0 +1,83 @@
+{
+  "bundle_sha256": "9b5514055304add0419b83192c185639047be335755ea3393d4c983153e1a2cc",
+  "procedures": [
+    {
+      "name": "catch-up",
+      "version": 2,
+      "title": "Catch up from statement files",
+      "sha256": "e53930180331bb675ae1b991e60023f6ad35235f7ad964122e182456aec51e1c"
+    },
+    {
+      "name": "categorize-record",
+      "version": 2,
+      "title": "Categorize and record transactions",
+      "sha256": "83e770636a4f9fdcae01abb764387fe37a978193a12c90a8d328324288add047"
+    },
+    {
+      "name": "document-intake",
+      "version": 1,
+      "title": "Document intake",
+      "sha256": "364b53e363d3ec1eaab3d36188a0207d64f0497895424e5169a1bf782b3f026a"
+    },
+    {
+      "name": "draft-insights",
+      "version": 1,
+      "title": "Draft insights",
+      "sha256": "e8bdf25402db6b0cbc855d7f290317f74c44231371e76f744abb00d82e6d6767"
+    },
+    {
+      "name": "emailed-answers",
+      "version": 2,
+      "title": "Emailed answers",
+      "sha256": "952a69f25783b61ccd153047a56d15cb0f4d898d37ef1e7f80b8e76ebe0053cb"
+    },
+    {
+      "name": "grouped-replies",
+      "version": 1,
+      "title": "Grouped replies",
+      "sha256": "8e57bc419afa54c0b62de8e314645a0f8cbc342bcc3f623e0f42bc1f7ba93f6e"
+    },
+    {
+      "name": "hard-rules",
+      "version": 2,
+      "title": "Hard rules for every agent",
+      "sha256": "b2de4419cf47b48f99d1d031f8136b3ede0fc786f39adf579ee0a560b1c8a0e0"
+    },
+    {
+      "name": "mail-triage",
+      "version": 2,
+      "title": "Mail triage",
+      "sha256": "8098f5ec0e017400e05c9076100acc28bdffb6e40aa221ab40c5f8bc1abad4de"
+    },
+    {
+      "name": "month-end-check",
+      "version": 1,
+      "title": "Month-end check",
+      "sha256": "425fb8a3924002568a1e7b6462634ceb37782556b73da0bc0c4470a655c98ecb"
+    },
+    {
+      "name": "non-blocking",
+      "version": 1,
+      "title": "Do not block unrelated work",
+      "sha256": "167025bb5eedcc72d22250fb58cfd77863c97ea7dd455bd05645aa0ec0453474"
+    },
+    {
+      "name": "onboarding-profile",
+      "version": 1,
+      "title": "Onboarding and business profile",
+      "sha256": "a6444b4a5e33348626b55ff48c7138f9b4d8013e5653996d0923e71b6f93d55d"
+    },
+    {
+      "name": "question-rules",
+      "version": 1,
+      "title": "Asking and answering questions",
+      "sha256": "0a11e42a056a05ed02927e58e35714c4afa2a6ab2cf9858fbd27a24ad6ac4d4b"
+    },
+    {
+      "name": "reconcile",
+      "version": 1,
+      "title": "Reconcile balances",
+      "sha256": "a7856c163dd24c7b11898ae80c6fa7c3295c4441aee2cef9f18525b5f9110209"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+Answer covers: accrual basis, from 2026-08-05 to 2026-08-05. No period was named in the question, so this uses today's date.
+
+Open balances by due date as of 2026-08-05.
+What is owed to us (receivables): 2,100.00 across 2 open item(s); overdue 2,100.00.
+  Over 90 days overdue: 2,100.00

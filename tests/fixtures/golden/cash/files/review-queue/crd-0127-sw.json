@@ -1,0 +1,22 @@
+{
+  "amount": "-24.03",
+  "confirmed_category": "Expenses:Software",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "HOSTLY WEB HOSTING",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-27",
+  "delta": null,
+  "description": "Hostly web hosting",
+  "original_amount": "-24.03",
+  "proposed_category": "Expenses:Software",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "crd-0127-sw": "69858980c7a8332038ef5088652a0f42815d7ada21ddd61dbb7dfd287521cf28"
+  },
+  "source_id": "crd-0127-sw",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

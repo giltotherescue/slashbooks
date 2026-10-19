@@ -1,0 +1,169 @@
+{
+  "BANK MONTHLY SERVICE FEE": {
+    "canonical_category": "Expenses:Fees",
+    "confirmed_count": 3,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "b78737cb3bb0914175bc21405944158f440037394775e4d72197e2b71fc7b58e",
+    "notes": "",
+    "reset": false
+  },
+  "CLOUDNOTES SOFTWARE SUBSCRIPTION": {
+    "canonical_category": "Expenses:Software",
+    "confirmed_count": 3,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "b03aac431b65cc83e28b5d5307715918c1eaca33a7bf0d986816bae9420a9129",
+    "notes": "",
+    "reset": false
+  },
+  "DELTA DESIGN SUBCONTRACTOR": {
+    "canonical_category": "Expenses:Subcontractors",
+    "confirmed_count": 3,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "c4a183e79b70b5ae4c342c79e12374ab986901ac4e7a2092566d2868d6835720",
+    "notes": "",
+    "reset": false
+  },
+  "GRANITE INSURANCE PREMIUM": {
+    "canonical_category": "Expenses:Insurance",
+    "confirmed_count": 2,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "b957f7c6e70d216218a0a3dc379ce0c1c09ff2be2849eee893058169d8440ac1",
+    "notes": "",
+    "reset": false
+  },
+  "HARBOR CAFE INVOICE 1004 PAYMENT": {
+    "canonical_category": "Income:Consulting",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "00f2991f9887fa4460d9e413a4460b6a09a7e1b77344e388b8d0f81361589e53",
+    "notes": "",
+    "reset": false
+  },
+  "HOSTLY WEB HOSTING": {
+    "canonical_category": "Expenses:Software",
+    "confirmed_count": 3,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "322bdde45d1b9c7e4fd34ed329e6ac2df690c0f67447fb091e1be4e051d7bdd9",
+    "notes": "",
+    "reset": false
+  },
+  "JUNIPER BISTRO CLIENT LUNCH": {
+    "canonical_category": "Expenses:Meals",
+    "confirmed_count": 2,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "dba4ee0af705dd0d915d252fdf9ffdf8e5aff00d3a7c6a03f24b1b49c0fe1597",
+    "notes": "",
+    "reset": false
+  },
+  "JUNIPER BISTRO TEAM LUNCH": {
+    "canonical_category": "Expenses:Meals",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "dc8eb3d5d459a5bdce638ce69cd7ebeb18db0d0dbaf6c3d8d6f05ed4753ebdb5",
+    "notes": "",
+    "reset": false
+  },
+  "KESTREL FOODS INVOICE 1002 PAYMENT": {
+    "canonical_category": "Income:Consulting",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "8fa060474fed08040ecf525caa4bd2d56f6c5122ce0cf5ff41061d546e5bd9a0",
+    "notes": "",
+    "reset": false
+  },
+  "KESTREL FOODS INVOICE 1006 PAYMENT": {
+    "canonical_category": "Income:Consulting",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "9117151328adcaa47507625e49b3559f2957c6ecf510b48cca32b81e6924a095",
+    "notes": "",
+    "reset": false
+  },
+  "MAPLE STREET PROPERTIES RENT": {
+    "canonical_category": "Expenses:Rent",
+    "confirmed_count": 3,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "21e7fd061732b16f947cbb4c6a6a127d52725440381b2819c0dbe43f5ed2d1a5",
+    "notes": "",
+    "reset": false,
+    "taught": {
+      "at": "2026-08-05T12:00:00Z",
+      "by": "owner",
+      "by_name": "Owner",
+      "category": "Expenses:Rent",
+      "id": "ac6e132a123c9ebe"
+    }
+  },
+  "ORBIT LABS INVOICE 1001 PAYMENT": {
+    "canonical_category": "Income:Consulting",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "c87b09537856c26b0e723323cb3889d26bc2b86673ea3d365eda6cc64b5f5b21",
+    "notes": "",
+    "reset": false
+  },
+  "ORBIT LABS INVOICE 1003 PAYMENT": {
+    "canonical_category": "Income:Consulting",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "8b09fc3c21445e043352e8d0119ae77f596aa579ebba12537acf6f13674ce824",
+    "notes": "",
+    "reset": false
+  },
+  "ORBIT LABS INVOICE 1005 PAYMENT": {
+    "canonical_category": "Income:Consulting",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "6581eb8fcaec2678b9add2db12f60d7f57fdc97547878e32059ed860de2c043a",
+    "notes": "",
+    "reset": false
+  },
+  "OWNER CONTRIBUTION WIRE": {
+    "canonical_category": "Equity:Owner-Contributions",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "0eb535f0efff40db30f404bc70a926b1c21837c42673787f184359ad5fb5b983",
+    "notes": "",
+    "reset": false
+  },
+  "OWNER DRAW TRANSFER": {
+    "canonical_category": "Equity:Owner-Draws",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "a8de80493ba696ddcd53b3a64bee710485b96300c58ff1fcd0711f1c4a72b1ed",
+    "notes": "",
+    "reset": false
+  },
+  "PAPER PINE OFFICE SUPPLIES": {
+    "canonical_category": "Expenses:Office",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "f9051ea3e6aee2e9ddbe080fb5243067a8ff9eab55085c0a0b0c7c16713d3861",
+    "notes": "",
+    "reset": false
+  },
+  "RAIL EXPRESS TICKETS": {
+    "canonical_category": "Expenses:Travel",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "8f21bab0423db695936cbc72be54aa908bae7fa3505f6abe33aea65a9e1e7a16",
+    "notes": "",
+    "reset": false
+  },
+  "SPARK ADS CAMPAIGN": {
+    "canonical_category": "Expenses:Marketing",
+    "confirmed_count": 2,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "0fa02ed544f097fe1f601a927859818e2f4fc772691a31bbddf0bd42e406965c",
+    "notes": "",
+    "reset": false
+  },
+  "STATE FRANCHISE TAX PAYMENT": {
+    "canonical_category": "Expenses:Taxes",
+    "confirmed_count": 1,
+    "last_confirmed_date": "2026-08-05",
+    "last_operation_hash": "c270ae6f6c448005a1ab4cd80fb6bc72ab0bc288bd292f8e2c894b6ce1ccb1fa",
+    "notes": "",
+    "reset": false
+  }
+}

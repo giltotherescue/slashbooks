@@ -1,0 +1,224 @@
+{
+  "quarter": 1,
+  "year": 2026,
+  "period": {
+    "start": "2026-01-01",
+    "end": "2026-03-31"
+  },
+  "pnl": {
+    "kind": "pnl",
+    "from_date": "2026-01-01",
+    "to_date": "2026-03-31",
+    "sections": [
+      {
+        "label": "Money In",
+        "rows": [
+          {
+            "label": "Income › Consulting",
+            "amount": "26350.00",
+            "indent": 1
+          }
+        ],
+        "total": "26350.00",
+        "total_label": "Total Revenue"
+      },
+      {
+        "label": "Money Out",
+        "rows": [
+          {
+            "label": "Expenses › Fees",
+            "amount": "45.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Insurance",
+            "amount": "420.80",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Marketing",
+            "amount": "150.57",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Meals",
+            "amount": "300.45",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Office",
+            "amount": "131.75",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Rent",
+            "amount": "5400.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Software",
+            "amount": "309.09",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Subcontractors",
+            "amount": "4000.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Taxes",
+            "amount": "480.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Travel",
+            "amount": "568.40",
+            "indent": 1
+          }
+        ],
+        "total": "11806.06",
+        "total_label": "Total Expenses"
+      }
+    ],
+    "totals": {
+      "net_income": "14543.94"
+    },
+    "meta": {
+      "basis": "cash",
+      "currency": "USD",
+      "coverage": null,
+      "requested_from": "2026-01-01",
+      "requested_to": "2026-03-31",
+      "unresolved_issues": []
+    }
+  },
+  "balance_sheet": {
+    "kind": "balance_sheet",
+    "from_date": null,
+    "to_date": "2026-03-31",
+    "sections": [
+      {
+        "label": "Assets",
+        "rows": [
+          {
+            "label": "Assets › Bank › Checking",
+            "amount": "33043.47",
+            "indent": 1
+          }
+        ],
+        "total": "33043.47",
+        "total_label": "Total Assets"
+      },
+      {
+        "label": "Liabilities",
+        "rows": [
+          {
+            "label": "Liabilities › CreditCard › Company",
+            "amount": "499.53",
+            "indent": 1
+          }
+        ],
+        "total": "499.53",
+        "total_label": "Total Liabilities"
+      },
+      {
+        "label": "Equity",
+        "rows": [
+          {
+            "label": "Equity › Owner-Contributions",
+            "amount": "20000.00",
+            "indent": 1
+          },
+          {
+            "label": "Equity › Owner-Draws",
+            "amount": "-2000.00",
+            "indent": 1
+          },
+          {
+            "label": "Net Income (current period)",
+            "amount": "14543.94",
+            "indent": 1
+          }
+        ],
+        "total": "32543.94",
+        "total_label": "Total Equity"
+      }
+    ],
+    "totals": {
+      "total_assets": "33043.47",
+      "total_liabilities_and_equity": "33043.47"
+    },
+    "meta": {
+      "basis": "cash",
+      "currency": "USD",
+      "coverage": null,
+      "requested_from": null,
+      "requested_to": "2026-03-31",
+      "unresolved_issues": []
+    }
+  },
+  "variance_flags": [],
+  "auto_posted_sample": [
+    {
+      "date": "2026-01-03",
+      "description": "CloudNotes software subscription",
+      "account": "Expenses › Software",
+      "amount": "79.00"
+    },
+    {
+      "date": "2026-01-05",
+      "description": "Maple Street Properties rent",
+      "account": "Expenses › Rent",
+      "amount": "1800.00"
+    },
+    {
+      "date": "2026-01-08",
+      "description": "Orbit Labs invoice 1001 payment",
+      "account": "Income › Consulting",
+      "amount": "-6500.00"
+    },
+    {
+      "date": "2026-01-10",
+      "description": "Juniper Bistro client lunch",
+      "account": "Expenses › Meals",
+      "amount": "86.35"
+    },
+    {
+      "date": "2026-01-12",
+      "description": "Delta Design subcontractor",
+      "account": "Expenses › Subcontractors",
+      "amount": "1250.00"
+    },
+    {
+      "date": "2026-01-15",
+      "description": "Granite Insurance premium",
+      "account": "Expenses › Insurance",
+      "amount": "210.40"
+    },
+    {
+      "date": "2026-01-18",
+      "description": "Skyway Airlines ticket",
+      "account": "Expenses › Travel",
+      "amount": "300.00"
+    },
+    {
+      "date": "2026-01-18",
+      "description": "Skyway Airlines ticket",
+      "account": "Expenses › Meals",
+      "amount": "112.80"
+    },
+    {
+      "date": "2026-01-20",
+      "description": "Kestrel Foods invoice 1002 payment",
+      "account": "Income › Consulting",
+      "amount": "-3200.00"
+    },
+    {
+      "date": "2026-01-22",
+      "description": "Spark Ads campaign",
+      "account": "Expenses › Marketing",
+      "amount": "120.00"
+    }
+  ],
+  "has_prior_quarter": false
+}

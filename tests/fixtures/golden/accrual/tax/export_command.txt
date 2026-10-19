@@ -1,0 +1,11 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+Tax handoff for Form 1120-S written to: <WORK>/tax-accrual
+  README.txt
+  lacerte-tbu-1120s-2026-01-01_2026-03-31.csv
+  tax-handoff-1120s-2026-01-01_2026-03-31.xlsx
+  tax-line-summary-1120s-2026-01-01_2026-03-31.csv
+  tax-trial-balance-1120s-2026-01-01_2026-03-31.csv
+  ultratax-tb-import-1120s-2026-01-01_2026-03-31.csv
+  unmapped-accounts-1120s-2026-01-01_2026-03-31.csv
+  Debits 49970.00, credits 49970.00
+  1 unmapped account(s): Expenses:Bonus

@@ -1,0 +1,6 @@
+Answer covers: cash basis, from 2026-01-01 to 2026-08-05.
+
+Net profit from 2026-01-01 to 2026-08-05: 14,543.94
+  Revenue:  26,350.00
+  Expenses: 11,806.06
+  Net:      14,543.94

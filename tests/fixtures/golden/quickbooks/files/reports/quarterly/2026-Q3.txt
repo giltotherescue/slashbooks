@@ -1,0 +1,71 @@
+Quarterly Review: Q3 2026
+Period: 2026-07-01 through 2026-09-30
+==================================================
+
+Profit and Loss  2026-07-01  through  2026-09-30
+================================================
+Accounting basis: accrual
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Imported activity summary: 2026-01-01 through 2026-06-30 (not included in this report)
+Unresolved accounting issues:
+  - Schedule deferred-open has unposted recognition on 2026-08-31 (100.00 USD). [deferred-open, recognition:deferred-open:0:2026-08-31]
+  - Schedule deferred-open has unposted recognition on 2026-09-30 (100.00 USD). [deferred-open, recognition:deferred-open:0:2026-09-30]
+  - Schedule prepaid-open has unposted recognition on 2026-08-31 (100.00 USD). [prepaid-open, recognition:prepaid-open:0:2026-08-31]
+  - Schedule prepaid-open has unposted recognition on 2026-09-30 (100.00 USD). [prepaid-open, recognition:prepaid-open:0:2026-09-30]
+
+Revenue
+----------------------------------------
+  Income › Services                                100.00
+  Total Revenue                                    100.00
+
+Expenses
+----------------------------------------
+  Expenses › Operating-Costs                       740.00
+  Total Expenses                                   740.00
+
+--------------------------------------------------------
+Net Income                                        -640.00
+
+Balance Sheet  as of  2026-09-30
+================================
+Accounting basis: accrual
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Retained fiscal summary coverage: 2026-01-01 through 2026-06-30
+Unresolved accounting issues:
+  - Schedule deferred-open has unposted recognition on 2026-08-31 (100.00 USD). [deferred-open, recognition:deferred-open:0:2026-08-31]
+  - Schedule deferred-open has unposted recognition on 2026-09-30 (100.00 USD). [deferred-open, recognition:deferred-open:0:2026-09-30]
+  - Schedule prepaid-open has unposted recognition on 2026-08-31 (100.00 USD). [prepaid-open, recognition:prepaid-open:0:2026-08-31]
+  - Schedule prepaid-open has unposted recognition on 2026-09-30 (100.00 USD). [prepaid-open, recognition:prepaid-open:0:2026-09-30]
+
+Assets
+----------------------------------------
+  Assets › Bank › Checking                       9,600.00
+  Assets › Fixed › Accumulated-Depreciation        -440.00
+  Assets › Fixed › Equipment                     2,400.00
+  Assets › Other › Prepaid-Insurance               500.00
+  Assets › Receivable › Accounts-Receivable         600.00
+  Total Assets                                  12,660.00
+
+Liabilities
+----------------------------------------
+  Liabilities › Other › Deferred-Revenue           500.00
+  Liabilities › Other › Payroll-Payable            300.00
+  Liabilities › Payable › Accounts-Payable         300.00
+  Total Liabilities                              1,100.00
+
+Equity
+----------------------------------------
+  Equity › Retained-Earnings                     9,000.00
+  Net Income (current period)                    2,560.00
+  Total Equity                                  11,560.00
+
+--------------------------------------------------------
+Total Assets                                    12,660.00
+Total Liabilities And Equity                    12,660.00
+
+Auto-posted entries sample (spot-check)
+----------------------------------------
+  2026-07-20  Synthetic provider payroll                Expenses › Operating-Costs  600.00
+  2026-07-31  Deferred revenue earned: dated 2026-01-0  Income › Services  -100.00
+  2026-07-31  Prepaid expense used: dated 2026-01-01 (  Expenses › Operating-Costs  100.00
+  2026-07-31  Synthetic asset roll-forward              Expenses › Operating-Costs  40.00

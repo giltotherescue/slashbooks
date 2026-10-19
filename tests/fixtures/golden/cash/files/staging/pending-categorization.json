@@ -1,0 +1,29 @@
+[
+  {
+    "accountId": "checking",
+    "accountName": "Operating Checking",
+    "accountType": "checking",
+    "amount": "-249.99",
+    "date": "2026-03-26",
+    "description": "ACH debit REF 88213",
+    "id": "chk-0326-mystery"
+  },
+  {
+    "accountId": "checking",
+    "accountName": "Operating Checking",
+    "accountType": "checking",
+    "amount": "875.00",
+    "date": "2026-03-30",
+    "description": "Mobile deposit",
+    "id": "chk-0330-deposit"
+  },
+  {
+    "accountId": "card",
+    "accountName": "Company Card",
+    "accountType": "credit_card",
+    "amount": "-96.00",
+    "date": "2026-03-27",
+    "description": "QX Supplies order 7741",
+    "id": "crd-0327-unknown"
+  }
+]

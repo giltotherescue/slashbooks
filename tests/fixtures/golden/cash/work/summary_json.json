@@ -1,0 +1,612 @@
+{
+  "derived": true,
+  "period": {
+    "from": null,
+    "to": null
+  },
+  "schema_version": 1,
+  "summary": [
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Liabilities:CreditCard:Company"
+      ],
+      "breakdown": [
+        {
+          "count": 26,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 15,
+          "label": "Liabilities:CreditCard:Company"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 0,
+        "transactions": 41
+      },
+      "kind": "imported",
+      "period": {
+        "from": "2026-01-02",
+        "to": "2026-03-30"
+      },
+      "text": "Imported 41 transactions."
+    },
+    {
+      "accounts": [],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Income:Consulting"
+        }
+      ],
+      "counts": {
+        "suggestions": 1
+      },
+      "kind": "categorized",
+      "period": {
+        "from": "2026-03-30",
+        "to": "2026-03-30"
+      },
+      "text": "Suggested categories for 1 transaction."
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Liabilities:CreditCard:Company"
+      ],
+      "breakdown": [
+        {
+          "count": 6,
+          "label": "Expenses:Software"
+        },
+        {
+          "count": 6,
+          "label": "Income:Consulting"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Fees"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Meals"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Rent"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 36,
+        "from_suggestions": 36
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-01-02",
+        "to": "2026-03-25"
+      },
+      "text": "Recorded 36 entries. 36 came from approved suggestions."
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Liabilities:CreditCard:Company"
+      ],
+      "breakdown": [
+        {
+          "count": 2,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 2,
+          "label": "Liabilities:CreditCard:Company"
+        }
+      ],
+      "counts": {
+        "accounts": 2,
+        "clean": 4,
+        "open": 0
+      },
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-01-31",
+        "to": "2026-02-28"
+      },
+      "text": "Reconciled 2 accounts through 2026-02-28."
+    }
+  ],
+  "work": [
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Liabilities:CreditCard:Company"
+      ],
+      "breakdown": [
+        {
+          "count": 26,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 15,
+          "label": "Liabilities:CreditCard:Company"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 0,
+        "transactions": 41
+      },
+      "derived": true,
+      "fingerprint": "aecd38c064c117fb0f7f10f8f19a358f3e788f412d2927cf6335048ab982ddbc",
+      "kind": "imported",
+      "period": {
+        "from": "2026-01-02",
+        "to": "2026-03-30"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "chk-0102-owner",
+          "type": "source"
+        },
+        {
+          "id": "chk-0105-rent",
+          "type": "source"
+        },
+        {
+          "id": "chk-0108-client",
+          "type": "source"
+        },
+        {
+          "id": "chk-0112-sub",
+          "type": "source"
+        },
+        {
+          "id": "chk-0115-ins",
+          "type": "source"
+        },
+        {
+          "id": "chk-0120-client",
+          "type": "source"
+        },
+        {
+          "id": "chk-0125-fee",
+          "type": "source"
+        },
+        {
+          "id": "chk-0131-cardpay",
+          "type": "source"
+        },
+        {
+          "id": "chk-0203-rent",
+          "type": "source"
+        },
+        {
+          "id": "chk-0206-client",
+          "type": "source"
+        },
+        {
+          "id": "chk-0210-sub",
+          "type": "source"
+        },
+        {
+          "id": "chk-0213-client",
+          "type": "source"
+        },
+        {
+          "id": "chk-0217-draw",
+          "type": "source"
+        },
+        {
+          "id": "chk-0224-tax",
+          "type": "source"
+        },
+        {
+          "id": "chk-0225-fee",
+          "type": "source"
+        },
+        {
+          "id": "chk-0228-cardpay",
+          "type": "source"
+        },
+        {
+          "id": "chk-0303-rent",
+          "type": "source"
+        },
+        {
+          "id": "chk-0305-client",
+          "type": "source"
+        },
+        {
+          "id": "chk-0311-sub",
+          "type": "source"
+        },
+        {
+          "id": "chk-0316-client",
+          "type": "source"
+        },
+        {
+          "id": "chk-0320-ins",
+          "type": "source"
+        },
+        {
+          "id": "chk-0325-fee",
+          "type": "source"
+        },
+        {
+          "id": "chk-0326-mystery",
+          "type": "source"
+        },
+        {
+          "id": "chk-0330-deposit",
+          "type": "source"
+        },
+        {
+          "id": "crd-0103-sw",
+          "type": "source"
+        },
+        {
+          "id": "crd-0110-meal",
+          "type": "source"
+        },
+        {
+          "id": "crd-0118-travel",
+          "type": "source"
+        },
+        {
+          "id": "crd-0122-mkt",
+          "type": "source"
+        },
+        {
+          "id": "crd-0127-sw",
+          "type": "source"
+        },
+        {
+          "id": "crd-0131-payment",
+          "type": "source"
+        },
+        {
+          "id": "crd-0204-sw",
+          "type": "source"
+        },
+        {
+          "id": "crd-0209-meal",
+          "type": "source"
+        },
+        {
+          "id": "crd-0215-office",
+          "type": "source"
+        },
+        {
+          "id": "crd-0219-sw",
+          "type": "source"
+        },
+        {
+          "id": "crd-0221-mkt",
+          "type": "source"
+        },
+        {
+          "id": "crd-0228-payment",
+          "type": "source"
+        },
+        {
+          "id": "crd-0304-sw",
+          "type": "source"
+        },
+        {
+          "id": "crd-0312-travel",
+          "type": "source"
+        },
+        {
+          "id": "crd-0319-meal",
+          "type": "source"
+        },
+        {
+          "id": "crd-0324-sw",
+          "type": "source"
+        },
+        {
+          "id": "crd-0327-unknown",
+          "type": "source"
+        }
+      ]
+    },
+    {
+      "accounts": [],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Income:Consulting"
+        }
+      ],
+      "counts": {
+        "suggestions": 1
+      },
+      "derived": true,
+      "fingerprint": "e6ab67937c85b2324f58fd9dbcd078b3c369d4e2d50382e2cd3a1f17388e22eb",
+      "kind": "categorized",
+      "period": {
+        "from": "2026-03-30",
+        "to": "2026-03-30"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "chk-0330-deposit",
+          "type": "suggestion"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Liabilities:CreditCard:Company"
+      ],
+      "breakdown": [
+        {
+          "count": 6,
+          "label": "Expenses:Software"
+        },
+        {
+          "count": 6,
+          "label": "Income:Consulting"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Fees"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Meals"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Rent"
+        }
+      ],
+      "counts": {
+        "direct": 0,
+        "entries": 36,
+        "from_suggestions": 36
+      },
+      "derived": true,
+      "fingerprint": "335634013ff795edfe7fd59df49345efae059cbba5e046f4e0a809d117e70f33",
+      "kind": "recorded",
+      "period": {
+        "from": "2026-01-02",
+        "to": "2026-03-25"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "chk-0102-owner",
+          "type": "entry"
+        },
+        {
+          "id": "10",
+          "source_id": "crd-0122-mkt",
+          "type": "entry"
+        },
+        {
+          "id": "11",
+          "source_id": "crd-0127-sw",
+          "type": "entry"
+        },
+        {
+          "id": "12",
+          "source_id": "chk-0203-rent",
+          "type": "entry"
+        },
+        {
+          "id": "13",
+          "source_id": "chk-0206-client",
+          "type": "entry"
+        },
+        {
+          "id": "14",
+          "source_id": "chk-0210-sub",
+          "type": "entry"
+        },
+        {
+          "id": "15",
+          "source_id": "chk-0213-client",
+          "type": "entry"
+        },
+        {
+          "id": "16",
+          "source_id": "chk-0217-draw",
+          "type": "entry"
+        },
+        {
+          "id": "17",
+          "source_id": "chk-0224-tax",
+          "type": "entry"
+        },
+        {
+          "id": "18",
+          "source_id": "chk-0225-fee",
+          "type": "entry"
+        },
+        {
+          "id": "19",
+          "source_id": "crd-0204-sw",
+          "type": "entry"
+        },
+        {
+          "id": "2",
+          "source_id": "chk-0105-rent",
+          "type": "entry"
+        },
+        {
+          "id": "20",
+          "source_id": "crd-0209-meal",
+          "type": "entry"
+        },
+        {
+          "id": "21",
+          "source_id": "crd-0215-office",
+          "type": "entry"
+        },
+        {
+          "id": "22",
+          "source_id": "crd-0219-sw",
+          "type": "entry"
+        },
+        {
+          "id": "23",
+          "source_id": "crd-0221-mkt",
+          "type": "entry"
+        },
+        {
+          "id": "24",
+          "source_id": "chk-0303-rent",
+          "type": "entry"
+        },
+        {
+          "id": "25",
+          "source_id": "chk-0305-client",
+          "type": "entry"
+        },
+        {
+          "id": "26",
+          "source_id": "chk-0311-sub",
+          "type": "entry"
+        },
+        {
+          "id": "27",
+          "source_id": "chk-0316-client",
+          "type": "entry"
+        },
+        {
+          "id": "28",
+          "source_id": "chk-0320-ins",
+          "type": "entry"
+        },
+        {
+          "id": "29",
+          "source_id": "chk-0325-fee",
+          "type": "entry"
+        },
+        {
+          "id": "3",
+          "source_id": "chk-0108-client",
+          "type": "entry"
+        },
+        {
+          "id": "30",
+          "source_id": "crd-0304-sw",
+          "type": "entry"
+        },
+        {
+          "id": "31",
+          "source_id": "crd-0312-travel",
+          "type": "entry"
+        },
+        {
+          "id": "32",
+          "source_id": "crd-0319-meal",
+          "type": "entry"
+        },
+        {
+          "id": "33",
+          "source_id": "crd-0324-sw",
+          "type": "entry"
+        },
+        {
+          "id": "34",
+          "source_id": "crd-0118-travel",
+          "type": "entry"
+        },
+        {
+          "id": "35",
+          "source_id": "chk-0131-cardpay",
+          "type": "entry"
+        },
+        {
+          "id": "36",
+          "source_id": "chk-0228-cardpay",
+          "type": "entry"
+        },
+        {
+          "id": "4",
+          "source_id": "chk-0112-sub",
+          "type": "entry"
+        },
+        {
+          "id": "5",
+          "source_id": "chk-0115-ins",
+          "type": "entry"
+        },
+        {
+          "id": "6",
+          "source_id": "chk-0120-client",
+          "type": "entry"
+        },
+        {
+          "id": "7",
+          "source_id": "chk-0125-fee",
+          "type": "entry"
+        },
+        {
+          "id": "8",
+          "source_id": "crd-0103-sw",
+          "type": "entry"
+        },
+        {
+          "id": "9",
+          "source_id": "crd-0110-meal",
+          "type": "entry"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Liabilities:CreditCard:Company"
+      ],
+      "breakdown": [
+        {
+          "count": 2,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 2,
+          "label": "Liabilities:CreditCard:Company"
+        }
+      ],
+      "counts": {
+        "accounts": 2,
+        "clean": 4,
+        "open": 0
+      },
+      "derived": true,
+      "fingerprint": "a2dcff85a60c363f8aefc2968083e7d558f64c80c75072189c874433b1ee2e4c",
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-01-31",
+        "to": "2026-02-28"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "Assets:Bank:Checking@2026-01-31",
+          "type": "reconciliation"
+        },
+        {
+          "id": "Assets:Bank:Checking@2026-02-28",
+          "type": "reconciliation"
+        },
+        {
+          "id": "Liabilities:CreditCard:Company@2026-01-31",
+          "type": "reconciliation"
+        },
+        {
+          "id": "Liabilities:CreditCard:Company@2026-02-28",
+          "type": "reconciliation"
+        }
+      ]
+    }
+  ]
+}

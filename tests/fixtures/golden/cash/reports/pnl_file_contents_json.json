@@ -1,0 +1,87 @@
+{
+  "kind": "pnl",
+  "from_date": "2026-01-01",
+  "to_date": "2026-03-31",
+  "sections": [
+    {
+      "label": "Money In",
+      "rows": [
+        {
+          "label": "Income \u203a Consulting",
+          "amount": "26350.00",
+          "indent": 1
+        }
+      ],
+      "total": "26350.00",
+      "total_label": "Total Revenue"
+    },
+    {
+      "label": "Money Out",
+      "rows": [
+        {
+          "label": "Expenses \u203a Fees",
+          "amount": "45.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Insurance",
+          "amount": "420.80",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Marketing",
+          "amount": "150.57",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Meals",
+          "amount": "300.45",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Office",
+          "amount": "131.75",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Rent",
+          "amount": "5400.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Software",
+          "amount": "309.09",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Subcontractors",
+          "amount": "4000.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Taxes",
+          "amount": "480.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses \u203a Travel",
+          "amount": "568.40",
+          "indent": 1
+        }
+      ],
+      "total": "11806.06",
+      "total_label": "Total Expenses"
+    }
+  ],
+  "totals": {
+    "net_income": "14543.94"
+  },
+  "meta": {
+    "basis": "cash",
+    "currency": "USD",
+    "coverage": null,
+    "requested_from": "2026-01-01",
+    "requested_to": "2026-03-31",
+    "unresolved_issues": []
+  }
+}

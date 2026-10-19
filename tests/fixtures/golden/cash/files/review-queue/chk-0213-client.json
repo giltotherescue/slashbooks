@@ -1,0 +1,22 @@
+{
+  "amount": "2750.00",
+  "confirmed_category": "Income:Consulting",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "HARBOR CAFE INVOICE 1004 PAYMENT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-13",
+  "delta": null,
+  "description": "Harbor Cafe invoice 1004 payment",
+  "original_amount": "2750.00",
+  "proposed_category": "Income:Consulting",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0213-client": "bbdba1cb8b5d05fc0b4805aaa1583fe38da039ff7b60343ee8f0d29a3b620a5f"
+  },
+  "source_id": "chk-0213-client",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

@@ -1,0 +1,48 @@
+{
+  "accrual-capabilities.json": {
+    "argv": [
+      "accrual",
+      "capabilities"
+    ],
+    "exit": 0,
+    "stdout_sha256": "21d3d61225baf27ebe19419e657aef24887af030600f8fae0587fc9d176d584d"
+  },
+  "accrual-schema.json": {
+    "argv": [
+      "accrual",
+      "schema"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3e2a206880ef6f83576026a3b0d6cf97790cbb3d3f430368e2d36d994dd7f1e7"
+  },
+  "procedures-list.json": {
+    "argv": [
+      "procedures",
+      "list"
+    ],
+    "exit": 0,
+    "stdout_sha256": "2d1b81caac0a27259c2ae231ea8560dd17c360f4b438fafa3b06dde230db037b"
+  },
+  "tax-lines-1120s.txt": {
+    "argv": [
+      "tax",
+      "lines",
+      "--form",
+      "1120s"
+    ],
+    "exit": 0,
+    "stdout_sha256": "07e07130fc69ad5652231b0d48ae20b5732c5e8563133dea03a50dc10510ae8f"
+  },
+  "tax-lines-schc.json": {
+    "argv": [
+      "tax",
+      "lines",
+      "--form",
+      "schc",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c244f2bf859c8408976c7c2cca919a17a133ab1569e47ddafdb777131d15dca4"
+  }
+}

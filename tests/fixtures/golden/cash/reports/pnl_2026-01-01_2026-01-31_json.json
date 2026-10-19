@@ -1,0 +1,77 @@
+{
+  "kind": "pnl",
+  "from_date": "2026-01-01",
+  "to_date": "2026-01-31",
+  "sections": [
+    {
+      "label": "Money In",
+      "rows": [
+        {
+          "label": "Income › Consulting",
+          "amount": "9700.00",
+          "indent": 1
+        }
+      ],
+      "total": "9700.00",
+      "total_label": "Total Revenue"
+    },
+    {
+      "label": "Money Out",
+      "rows": [
+        {
+          "label": "Expenses › Fees",
+          "amount": "15.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses › Insurance",
+          "amount": "210.40",
+          "indent": 1
+        },
+        {
+          "label": "Expenses › Marketing",
+          "amount": "120.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses › Meals",
+          "amount": "199.15",
+          "indent": 1
+        },
+        {
+          "label": "Expenses › Rent",
+          "amount": "1800.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses › Software",
+          "amount": "103.03",
+          "indent": 1
+        },
+        {
+          "label": "Expenses › Subcontractors",
+          "amount": "1250.00",
+          "indent": 1
+        },
+        {
+          "label": "Expenses › Travel",
+          "amount": "300.00",
+          "indent": 1
+        }
+      ],
+      "total": "3997.58",
+      "total_label": "Total Expenses"
+    }
+  ],
+  "totals": {
+    "net_income": "5702.42"
+  },
+  "meta": {
+    "basis": "cash",
+    "currency": "USD",
+    "coverage": null,
+    "requested_from": "2026-01-01",
+    "requested_to": "2026-01-31",
+    "unresolved_issues": []
+  }
+}

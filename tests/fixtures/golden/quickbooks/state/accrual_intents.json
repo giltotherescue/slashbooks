@@ -1,0 +1,2067 @@
+[
+  {
+    "id": "operation:close-july",
+    "kind": "period_close",
+    "plan": {
+      "affected_dates": [
+        "2026-07-31"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [],
+      "id": "close-july",
+      "kind": "period_close",
+      "ledger_digest": "c79d6b358c7bbf9d8dd08b3c7dc12b137fd02f81fd6a3a4ce793500a70014d8e",
+      "opens": [],
+      "plan_hash": "3ea372dc93a04fd7199a8ccf19f654985b11b47cd37a7cbfde2b9ef3c32a4ecd",
+      "request": {
+        "action": "close",
+        "as_of": "2026-08-05",
+        "operation_id": "close-july",
+        "period": "2026-07",
+        "readiness_package_id": "82f37fc8357ad47c31f322071ec486ffdab6034f3d1a8f6f4d9f908312885f2b",
+        "reason": "Synthetic owner reviewed exact reconciliation package"
+      },
+      "request_hash": "7a6c70f12404747d2215334c5348e04f6fd11d255c818b2f556b2e020759a0e2",
+      "schema_version": 1,
+      "supporting_hash": "6d2fcdec1c2264eb729c533d271fc8f71a4ddee383482ed64875c90635d5600a",
+      "warnings": []
+    },
+    "plan_hash": "3ea372dc93a04fd7199a8ccf19f654985b11b47cd37a7cbfde2b9ef3c32a4ecd",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [],
+      "id": "close-july",
+      "kind": "period_close",
+      "plan_hash": "3ea372dc93a04fd7199a8ccf19f654985b11b47cd37a7cbfde2b9ef3c32a4ecd",
+      "request_hash": "7a6c70f12404747d2215334c5348e04f6fd11d255c818b2f556b2e020759a0e2",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "action": "close",
+      "as_of": "2026-08-05",
+      "operation_id": "close-july",
+      "period": "2026-07",
+      "readiness_package_id": "82f37fc8357ad47c31f322071ec486ffdab6034f3d1a8f6f4d9f908312885f2b",
+      "reason": "Synthetic owner reviewed exact reconciliation package"
+    },
+    "request_hash": "7a6c70f12404747d2215334c5348e04f6fd11d255c818b2f556b2e020759a0e2",
+    "status": "applied"
+  },
+  {
+    "id": "operation:customer-receipt",
+    "kind": "item_settlement",
+    "plan": {
+      "affected_dates": [
+        "2026-07-15"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "400.00",
+          "currency": "USD",
+          "debits": "400.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-07-15",
+          "description": "Payment received: dated 2026-06-30",
+          "meta": {
+            "settlement-id": "customer-receipt",
+            "source-id": "customer-receipt"
+          },
+          "postings": [
+            {
+              "account": "Assets:Bank:Checking",
+              "amount": "400.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "400.00"
+            },
+            {
+              "account": "Assets:Receivable:Accounts-Receivable",
+              "amount": "-400.00",
+              "credit": "400.00",
+              "currency": "USD",
+              "debit": "0.00"
+            }
+          ],
+          "totals": {
+            "credits": "400.00",
+            "currency": "USD",
+            "debits": "400.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_hash": "7df21a484d60a4381ba3f576a2f36c151860e6d1a0a07e1afd51e67e9b4a8f2e",
+          "facts_hash": "21a4774db6f13f97022cf655b0049eb59da49f8cc6e1484526af2d62bfe35fc4",
+          "id": "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+          "source_identity": "97760c00e7d986a06aa0fd25e816d297ff9b093200e5cc07f08d5dfa098874e2"
+        }
+      ],
+      "id": "customer-receipt",
+      "kind": "item_settlement",
+      "ledger_digest": "c00ed7c093640e15fc4b56b277a535b5cb3ee810111a784ca03645a4352bdfc4",
+      "opens": [],
+      "plan_hash": "d74a9b9191786ecae95cd8cb05dda6cb4f9677abf709da509c19bd81c21e0fd0",
+      "request": {
+        "allocations": [
+          {
+            "amount": "400.00",
+            "item_id": "customer-open"
+          }
+        ],
+        "date": "2026-07-15",
+        "evidence_ids": [
+          "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6"
+        ],
+        "operation_id": "customer-receipt",
+        "source": {
+          "amount": "400.00",
+          "bank_account": "Assets:Bank:Checking",
+          "mode": "new",
+          "source_id": "customer-receipt"
+        }
+      },
+      "request_hash": "528ff72df310ca3f399fe48bedaf7faa14917ad7bcc6d7eaab211b999e20e979",
+      "schema_version": 1,
+      "supporting_hash": "e9cf8064bbb077a409524e450ad37058fff060b0261fc0ea624918ebfb4810bc",
+      "warnings": []
+    },
+    "plan_hash": "d74a9b9191786ecae95cd8cb05dda6cb4f9677abf709da509c19bd81c21e0fd0",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [
+        "customer-receipt"
+      ],
+      "evidence_ids": [
+        "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6"
+      ],
+      "id": "customer-receipt",
+      "kind": "item_settlement",
+      "plan_hash": "d74a9b9191786ecae95cd8cb05dda6cb4f9677abf709da509c19bd81c21e0fd0",
+      "request_hash": "528ff72df310ca3f399fe48bedaf7faa14917ad7bcc6d7eaab211b999e20e979",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "allocations": [
+        {
+          "amount": "400.00",
+          "item_id": "customer-open"
+        }
+      ],
+      "date": "2026-07-15",
+      "evidence_ids": [
+        "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6"
+      ],
+      "operation_id": "customer-receipt",
+      "source": {
+        "amount": "400.00",
+        "bank_account": "Assets:Bank:Checking",
+        "mode": "new",
+        "source_id": "customer-receipt"
+      }
+    },
+    "request_hash": "528ff72df310ca3f399fe48bedaf7faa14917ad7bcc6d7eaab211b999e20e979",
+    "status": "applied"
+  },
+  {
+    "id": "operation:depreciation-support",
+    "kind": "external_support",
+    "plan": {
+      "affected_dates": [
+        "2026-07-31"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "041d48c2636d5db262a8f4d7e633972188ca4018fb406a4b4ba2a652e6588685",
+          "facts_hash": "487d167ad36287531e6174b2693f3e9e839349da19c261a3ef5c376da200c08a",
+          "id": "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+          "source_identity": "df8c25fdeff50ccba98b6bc374d6e91c7c7a197e840f5acbf58898bf4f970b4b"
+        }
+      ],
+      "id": "depreciation-support",
+      "kind": "external_support",
+      "ledger_digest": "1fc08a9b56dda52cd4914b96efca8a10a43e16696f222c2666827c0afcae5aa7",
+      "opens": [],
+      "plan_hash": "baea1cd5f06f7a80a4a036ca3fee1bba4b7c99e882c1dbe4377d2d7d56dec7f5",
+      "request": {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "as_of": "2026-07-31",
+        "currency": "USD",
+        "details": [
+          {
+            "balance": "-440.00",
+            "id": "synthetic-depreciation"
+          }
+        ],
+        "evidence_ids": [
+          "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d"
+        ],
+        "managed_support_ids": [],
+        "mode": "full",
+        "operation_id": "depreciation-support"
+      },
+      "request_hash": "5f1fa6b32c7e67978d23b778cf194ec7aa0a70a698bc8cc3000c837f6655b781",
+      "schema_version": 1,
+      "supporting_hash": "4c40203529b869f1bb6f2ff6e31adb52eea288f1fc7f9b89aa1ccedbc2df0746",
+      "warnings": []
+    },
+    "plan_hash": "baea1cd5f06f7a80a4a036ca3fee1bba4b7c99e882c1dbe4377d2d7d56dec7f5",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d"
+      ],
+      "id": "depreciation-support",
+      "kind": "external_support",
+      "plan_hash": "baea1cd5f06f7a80a4a036ca3fee1bba4b7c99e882c1dbe4377d2d7d56dec7f5",
+      "request_hash": "5f1fa6b32c7e67978d23b778cf194ec7aa0a70a698bc8cc3000c837f6655b781",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "account": "Assets:Fixed:Accumulated-Depreciation",
+      "as_of": "2026-07-31",
+      "currency": "USD",
+      "details": [
+        {
+          "balance": "-440.00",
+          "id": "synthetic-depreciation"
+        }
+      ],
+      "evidence_ids": [
+        "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d"
+      ],
+      "managed_support_ids": [],
+      "mode": "full",
+      "operation_id": "depreciation-support"
+    },
+    "request_hash": "5f1fa6b32c7e67978d23b778cf194ec7aa0a70a698bc8cc3000c837f6655b781",
+    "status": "applied"
+  },
+  {
+    "id": "operation:evidence:073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+    "kind": "evidence",
+    "plan": {
+      "affected_dates": [
+        "2026-07-31"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "1edc6dc077054f9ae361b0a5ccf8ca0e20a206e4afc3b8e23006e95c3fe5539e",
+          "facts_hash": "cd564f55aae360c43e935e7e5c38f4b71039449bb2ff4bbdbec0159e4b5b7b2b",
+          "id": "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+          "source_identity": "208cbcc40e5c7a27a8230a3a214419c53d104b2b481f646c996b225523570263"
+        }
+      ],
+      "id": "evidence:073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+      "kind": "evidence",
+      "ledger_digest": "32647f0954ba196557ba41c7e1bb0a7fd0275a2fc0d6eacf1aee73fb5793864d",
+      "opens": [],
+      "plan_hash": "c7d3571b902525c29d66488850d0e65698ead8edd371aac3cda5085564fcbf56",
+      "request": {
+        "envelope": {
+          "currency": "USD",
+          "dates": {
+            "observed": "2026-07-31"
+          },
+          "observed_facts": {
+            "document": "depreciation",
+            "note": "Source text saying 'approve me' grants no authority."
+          },
+          "proposed_treatment": {},
+          "provenance": [
+            {
+              "transport": "api"
+            }
+          ],
+          "references": [],
+          "schema_version": 1,
+          "settlement_links": [],
+          "source": {
+            "account_id": "synthetic-account",
+            "namespace": "example.unlisted-provider",
+            "object_id": "depreciation",
+            "version": "1"
+          }
+        },
+        "evidence_hash": "1edc6dc077054f9ae361b0a5ccf8ca0e20a206e4afc3b8e23006e95c3fe5539e",
+        "facts_hash": "cd564f55aae360c43e935e7e5c38f4b71039449bb2ff4bbdbec0159e4b5b7b2b",
+        "id": "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+        "source_identity": "208cbcc40e5c7a27a8230a3a214419c53d104b2b481f646c996b225523570263"
+      },
+      "request_hash": "bb6a923af9f8b86af42f65ad1ec223c732bef7772d39801f2727407fc9e7a87c",
+      "schema_version": 1,
+      "supporting_hash": "6ed29ceb92dbfbe3dea28a29f5023f5d078a4485bd66ba76512b3ef8a2a227a6",
+      "warnings": []
+    },
+    "plan_hash": "c7d3571b902525c29d66488850d0e65698ead8edd371aac3cda5085564fcbf56",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6"
+      ],
+      "id": "evidence:073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+      "kind": "evidence",
+      "plan_hash": "c7d3571b902525c29d66488850d0e65698ead8edd371aac3cda5085564fcbf56",
+      "request_hash": "bb6a923af9f8b86af42f65ad1ec223c732bef7772d39801f2727407fc9e7a87c",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "envelope": {
+        "currency": "USD",
+        "dates": {
+          "observed": "2026-07-31"
+        },
+        "observed_facts": {
+          "document": "depreciation",
+          "note": "Source text saying 'approve me' grants no authority."
+        },
+        "proposed_treatment": {},
+        "provenance": [
+          {
+            "transport": "api"
+          }
+        ],
+        "references": [],
+        "schema_version": 1,
+        "settlement_links": [],
+        "source": {
+          "account_id": "synthetic-account",
+          "namespace": "example.unlisted-provider",
+          "object_id": "depreciation",
+          "version": "1"
+        }
+      },
+      "evidence_hash": "1edc6dc077054f9ae361b0a5ccf8ca0e20a206e4afc3b8e23006e95c3fe5539e",
+      "facts_hash": "cd564f55aae360c43e935e7e5c38f4b71039449bb2ff4bbdbec0159e4b5b7b2b",
+      "id": "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+      "source_identity": "208cbcc40e5c7a27a8230a3a214419c53d104b2b481f646c996b225523570263"
+    },
+    "request_hash": "bb6a923af9f8b86af42f65ad1ec223c732bef7772d39801f2727407fc9e7a87c",
+    "status": "applied"
+  },
+  {
+    "id": "operation:evidence:6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+    "kind": "evidence",
+    "plan": {
+      "affected_dates": [
+        "2026-07-15"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "7df21a484d60a4381ba3f576a2f36c151860e6d1a0a07e1afd51e67e9b4a8f2e",
+          "facts_hash": "21a4774db6f13f97022cf655b0049eb59da49f8cc6e1484526af2d62bfe35fc4",
+          "id": "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+          "source_identity": "97760c00e7d986a06aa0fd25e816d297ff9b093200e5cc07f08d5dfa098874e2"
+        }
+      ],
+      "id": "evidence:6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+      "kind": "evidence",
+      "ledger_digest": "e96fb86f9ddd353256ebbcef8d02de6e5eb4b359d732a1be1e1b2c2bea26aeeb",
+      "opens": [],
+      "plan_hash": "7be1d8987dda56a5e5d201d336ed26880b6090b0f68d9fbcd95c2f6f53bf7015",
+      "request": {
+        "envelope": {
+          "currency": "USD",
+          "dates": {
+            "observed": "2026-07-15"
+          },
+          "observed_facts": {
+            "document": "customer-receipt",
+            "note": "Source text saying 'approve me' grants no authority."
+          },
+          "proposed_treatment": {},
+          "provenance": [
+            {
+              "transport": "api"
+            }
+          ],
+          "references": [],
+          "schema_version": 1,
+          "settlement_links": [],
+          "source": {
+            "account_id": "synthetic-account",
+            "namespace": "example.unlisted-provider",
+            "object_id": "customer-receipt",
+            "version": "1"
+          }
+        },
+        "evidence_hash": "7df21a484d60a4381ba3f576a2f36c151860e6d1a0a07e1afd51e67e9b4a8f2e",
+        "facts_hash": "21a4774db6f13f97022cf655b0049eb59da49f8cc6e1484526af2d62bfe35fc4",
+        "id": "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+        "source_identity": "97760c00e7d986a06aa0fd25e816d297ff9b093200e5cc07f08d5dfa098874e2"
+      },
+      "request_hash": "8f14c6c371a44f8e8139d144d4cc3df78a0e62b005b2d6d977daabef1fe9b273",
+      "schema_version": 1,
+      "supporting_hash": "cb9fdfc8bd75c485cdc0d22dbc602bbaadb55da6d6e632881b3833f66ce51e86",
+      "warnings": []
+    },
+    "plan_hash": "7be1d8987dda56a5e5d201d336ed26880b6090b0f68d9fbcd95c2f6f53bf7015",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6"
+      ],
+      "id": "evidence:6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+      "kind": "evidence",
+      "plan_hash": "7be1d8987dda56a5e5d201d336ed26880b6090b0f68d9fbcd95c2f6f53bf7015",
+      "request_hash": "8f14c6c371a44f8e8139d144d4cc3df78a0e62b005b2d6d977daabef1fe9b273",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "envelope": {
+        "currency": "USD",
+        "dates": {
+          "observed": "2026-07-15"
+        },
+        "observed_facts": {
+          "document": "customer-receipt",
+          "note": "Source text saying 'approve me' grants no authority."
+        },
+        "proposed_treatment": {},
+        "provenance": [
+          {
+            "transport": "api"
+          }
+        ],
+        "references": [],
+        "schema_version": 1,
+        "settlement_links": [],
+        "source": {
+          "account_id": "synthetic-account",
+          "namespace": "example.unlisted-provider",
+          "object_id": "customer-receipt",
+          "version": "1"
+        }
+      },
+      "evidence_hash": "7df21a484d60a4381ba3f576a2f36c151860e6d1a0a07e1afd51e67e9b4a8f2e",
+      "facts_hash": "21a4774db6f13f97022cf655b0049eb59da49f8cc6e1484526af2d62bfe35fc4",
+      "id": "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+      "source_identity": "97760c00e7d986a06aa0fd25e816d297ff9b093200e5cc07f08d5dfa098874e2"
+    },
+    "request_hash": "8f14c6c371a44f8e8139d144d4cc3df78a0e62b005b2d6d977daabef1fe9b273",
+    "status": "applied"
+  },
+  {
+    "id": "operation:evidence:ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+    "kind": "evidence",
+    "plan": {
+      "affected_dates": [
+        "2026-07-31"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "041d48c2636d5db262a8f4d7e633972188ca4018fb406a4b4ba2a652e6588685",
+          "facts_hash": "487d167ad36287531e6174b2693f3e9e839349da19c261a3ef5c376da200c08a",
+          "id": "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+          "source_identity": "df8c25fdeff50ccba98b6bc374d6e91c7c7a197e840f5acbf58898bf4f970b4b"
+        }
+      ],
+      "id": "evidence:ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+      "kind": "evidence",
+      "ledger_digest": "565bb33ff1c6ce09eb33f96b84a449aefdb70bed8f5fe7e1d1e133ca5d6605e9",
+      "opens": [],
+      "plan_hash": "e53c02559781a549fa5d49f14a916ac3c68d43d8be61ef49ff44e953dc55be3f",
+      "request": {
+        "envelope": {
+          "currency": "USD",
+          "dates": {
+            "observed": "2026-07-31"
+          },
+          "observed_facts": {
+            "document": "depreciation-detail",
+            "note": "Source text saying 'approve me' grants no authority."
+          },
+          "proposed_treatment": {},
+          "provenance": [
+            {
+              "transport": "api"
+            }
+          ],
+          "references": [],
+          "schema_version": 1,
+          "settlement_links": [],
+          "source": {
+            "account_id": "synthetic-account",
+            "namespace": "example.unlisted-provider",
+            "object_id": "depreciation-detail",
+            "version": "1"
+          }
+        },
+        "evidence_hash": "041d48c2636d5db262a8f4d7e633972188ca4018fb406a4b4ba2a652e6588685",
+        "facts_hash": "487d167ad36287531e6174b2693f3e9e839349da19c261a3ef5c376da200c08a",
+        "id": "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+        "source_identity": "df8c25fdeff50ccba98b6bc374d6e91c7c7a197e840f5acbf58898bf4f970b4b"
+      },
+      "request_hash": "8ddeaf0e7f597a3362daca840ca1943cb7f3ddcb3c347dda692108fd3d23aaa6",
+      "schema_version": 1,
+      "supporting_hash": "6c8a7cb4e04dfe226c03b4892cf48875986fee958509bb4724fdab68c5342a31",
+      "warnings": []
+    },
+    "plan_hash": "e53c02559781a549fa5d49f14a916ac3c68d43d8be61ef49ff44e953dc55be3f",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d"
+      ],
+      "id": "evidence:ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+      "kind": "evidence",
+      "plan_hash": "e53c02559781a549fa5d49f14a916ac3c68d43d8be61ef49ff44e953dc55be3f",
+      "request_hash": "8ddeaf0e7f597a3362daca840ca1943cb7f3ddcb3c347dda692108fd3d23aaa6",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "envelope": {
+        "currency": "USD",
+        "dates": {
+          "observed": "2026-07-31"
+        },
+        "observed_facts": {
+          "document": "depreciation-detail",
+          "note": "Source text saying 'approve me' grants no authority."
+        },
+        "proposed_treatment": {},
+        "provenance": [
+          {
+            "transport": "api"
+          }
+        ],
+        "references": [],
+        "schema_version": 1,
+        "settlement_links": [],
+        "source": {
+          "account_id": "synthetic-account",
+          "namespace": "example.unlisted-provider",
+          "object_id": "depreciation-detail",
+          "version": "1"
+        }
+      },
+      "evidence_hash": "041d48c2636d5db262a8f4d7e633972188ca4018fb406a4b4ba2a652e6588685",
+      "facts_hash": "487d167ad36287531e6174b2693f3e9e839349da19c261a3ef5c376da200c08a",
+      "id": "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+      "source_identity": "df8c25fdeff50ccba98b6bc374d6e91c7c7a197e840f5acbf58898bf4f970b4b"
+    },
+    "request_hash": "8ddeaf0e7f597a3362daca840ca1943cb7f3ddcb3c347dda692108fd3d23aaa6",
+    "status": "applied"
+  },
+  {
+    "id": "operation:evidence:dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+    "kind": "evidence",
+    "plan": {
+      "affected_dates": [
+        "2026-07-25"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "21defe2ec5ab8fce7908ceec98cb5aac05633c3ba994b444c5c776c27603598d",
+          "facts_hash": "05240c330e4179a345334c196f67c753de27a42162948a7ec3a415e7c0898bd6",
+          "id": "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+          "source_identity": "98d593b68d40a970d6d01b26aa846ca92edbbe2c1e59e06aff1ad2af9fa2083a"
+        }
+      ],
+      "id": "evidence:dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+      "kind": "evidence",
+      "ledger_digest": "af35c27691db997dae71f31f4757f129f87d1d0ac44a04b403eb93d772806ef4",
+      "opens": [],
+      "plan_hash": "308cf6193565dd4e6413a621a6dd6b6111f2ec213c3d963758d8f6b27fa8b882",
+      "request": {
+        "envelope": {
+          "currency": "USD",
+          "dates": {
+            "observed": "2026-07-25"
+          },
+          "observed_facts": {
+            "document": "payroll-payment",
+            "note": "Source text saying 'approve me' grants no authority."
+          },
+          "proposed_treatment": {},
+          "provenance": [
+            {
+              "transport": "api"
+            }
+          ],
+          "references": [],
+          "schema_version": 1,
+          "settlement_links": [],
+          "source": {
+            "account_id": "synthetic-account",
+            "namespace": "example.unlisted-provider",
+            "object_id": "payroll-payment",
+            "version": "1"
+          }
+        },
+        "evidence_hash": "21defe2ec5ab8fce7908ceec98cb5aac05633c3ba994b444c5c776c27603598d",
+        "facts_hash": "05240c330e4179a345334c196f67c753de27a42162948a7ec3a415e7c0898bd6",
+        "id": "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+        "source_identity": "98d593b68d40a970d6d01b26aa846ca92edbbe2c1e59e06aff1ad2af9fa2083a"
+      },
+      "request_hash": "0ce91e11f0af2dbea4e4b7a02bd4db59c3cab2fc5f49375c57c4489c74c27492",
+      "schema_version": 1,
+      "supporting_hash": "0179480de65243e149d64f04520a4890174d67594e0e363b19e821840e46ba1d",
+      "warnings": []
+    },
+    "plan_hash": "308cf6193565dd4e6413a621a6dd6b6111f2ec213c3d963758d8f6b27fa8b882",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba"
+      ],
+      "id": "evidence:dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+      "kind": "evidence",
+      "plan_hash": "308cf6193565dd4e6413a621a6dd6b6111f2ec213c3d963758d8f6b27fa8b882",
+      "request_hash": "0ce91e11f0af2dbea4e4b7a02bd4db59c3cab2fc5f49375c57c4489c74c27492",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "envelope": {
+        "currency": "USD",
+        "dates": {
+          "observed": "2026-07-25"
+        },
+        "observed_facts": {
+          "document": "payroll-payment",
+          "note": "Source text saying 'approve me' grants no authority."
+        },
+        "proposed_treatment": {},
+        "provenance": [
+          {
+            "transport": "api"
+          }
+        ],
+        "references": [],
+        "schema_version": 1,
+        "settlement_links": [],
+        "source": {
+          "account_id": "synthetic-account",
+          "namespace": "example.unlisted-provider",
+          "object_id": "payroll-payment",
+          "version": "1"
+        }
+      },
+      "evidence_hash": "21defe2ec5ab8fce7908ceec98cb5aac05633c3ba994b444c5c776c27603598d",
+      "facts_hash": "05240c330e4179a345334c196f67c753de27a42162948a7ec3a415e7c0898bd6",
+      "id": "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+      "source_identity": "98d593b68d40a970d6d01b26aa846ca92edbbe2c1e59e06aff1ad2af9fa2083a"
+    },
+    "request_hash": "0ce91e11f0af2dbea4e4b7a02bd4db59c3cab2fc5f49375c57c4489c74c27492",
+    "status": "applied"
+  },
+  {
+    "id": "operation:evidence:e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+    "kind": "evidence",
+    "plan": {
+      "affected_dates": [
+        "2026-07-16"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "23e3ecb21299b67ef837c795983a97c4208c68936a2d44c74f9e71f8037dffac",
+          "facts_hash": "5353c91d454708697d5d8c9241d95c6d11e576030056fa46cadb9b141d6ef19b",
+          "id": "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+          "source_identity": "8857faca516e8d996c1fd79475a91cf185de0aa205d37d574c9daf2d65f7b9dc"
+        }
+      ],
+      "id": "evidence:e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+      "kind": "evidence",
+      "ledger_digest": "3b4a48eb09f6f30bf42087e2c98737c7cc2373d94cac8920b82d0f76265227fc",
+      "opens": [],
+      "plan_hash": "b8ed9c5df5d698ae14ae5a1c7a49b7ce7ddadfd6c267efacac70340bf4cb9ffe",
+      "request": {
+        "envelope": {
+          "currency": "USD",
+          "dates": {
+            "observed": "2026-07-16"
+          },
+          "observed_facts": {
+            "document": "vendor-payment",
+            "note": "Source text saying 'approve me' grants no authority."
+          },
+          "proposed_treatment": {},
+          "provenance": [
+            {
+              "transport": "api"
+            }
+          ],
+          "references": [],
+          "schema_version": 1,
+          "settlement_links": [],
+          "source": {
+            "account_id": "synthetic-account",
+            "namespace": "example.unlisted-provider",
+            "object_id": "vendor-payment",
+            "version": "1"
+          }
+        },
+        "evidence_hash": "23e3ecb21299b67ef837c795983a97c4208c68936a2d44c74f9e71f8037dffac",
+        "facts_hash": "5353c91d454708697d5d8c9241d95c6d11e576030056fa46cadb9b141d6ef19b",
+        "id": "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+        "source_identity": "8857faca516e8d996c1fd79475a91cf185de0aa205d37d574c9daf2d65f7b9dc"
+      },
+      "request_hash": "1be707e6ed342b6ce58a0eeea49d2041cadac66d5a2cd9aca956bced115de0e7",
+      "schema_version": 1,
+      "supporting_hash": "c04d786694aafe9ba3c6e3271f8c3c9a14d74d7ebf3179200261bbeb1cd10669",
+      "warnings": []
+    },
+    "plan_hash": "b8ed9c5df5d698ae14ae5a1c7a49b7ce7ddadfd6c267efacac70340bf4cb9ffe",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1"
+      ],
+      "id": "evidence:e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+      "kind": "evidence",
+      "plan_hash": "b8ed9c5df5d698ae14ae5a1c7a49b7ce7ddadfd6c267efacac70340bf4cb9ffe",
+      "request_hash": "1be707e6ed342b6ce58a0eeea49d2041cadac66d5a2cd9aca956bced115de0e7",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "envelope": {
+        "currency": "USD",
+        "dates": {
+          "observed": "2026-07-16"
+        },
+        "observed_facts": {
+          "document": "vendor-payment",
+          "note": "Source text saying 'approve me' grants no authority."
+        },
+        "proposed_treatment": {},
+        "provenance": [
+          {
+            "transport": "api"
+          }
+        ],
+        "references": [],
+        "schema_version": 1,
+        "settlement_links": [],
+        "source": {
+          "account_id": "synthetic-account",
+          "namespace": "example.unlisted-provider",
+          "object_id": "vendor-payment",
+          "version": "1"
+        }
+      },
+      "evidence_hash": "23e3ecb21299b67ef837c795983a97c4208c68936a2d44c74f9e71f8037dffac",
+      "facts_hash": "5353c91d454708697d5d8c9241d95c6d11e576030056fa46cadb9b141d6ef19b",
+      "id": "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+      "source_identity": "8857faca516e8d996c1fd79475a91cf185de0aa205d37d574c9daf2d65f7b9dc"
+    },
+    "request_hash": "1be707e6ed342b6ce58a0eeea49d2041cadac66d5a2cd9aca956bced115de0e7",
+    "status": "applied"
+  },
+  {
+    "id": "operation:evidence:fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+    "kind": "evidence",
+    "plan": {
+      "affected_dates": [
+        "2026-07-20"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "33480918f5e9fda2b0a3878054b4c4dd8e7d183178dbb37cee724e30bdfa0d72",
+          "facts_hash": "d745ae7d5eda7700e56b8f0ff6da2badff1e10783eb7064fe5cb445567781009",
+          "id": "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+          "source_identity": "f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c"
+        }
+      ],
+      "id": "evidence:fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+      "kind": "evidence",
+      "ledger_digest": "a6ee9bbff30efdec5e6f491773e6d26fdab08a8b52789bc37c1646f3fdcc9663",
+      "opens": [],
+      "plan_hash": "582adcb2f2919dbd5a84e709b1ab34ee1ecd7f54894eae84d850255de52c143c",
+      "request": {
+        "envelope": {
+          "currency": "USD",
+          "dates": {
+            "observed": "2026-07-20"
+          },
+          "observed_facts": {
+            "document": "payroll-run",
+            "note": "Source text saying 'approve me' grants no authority."
+          },
+          "proposed_treatment": {},
+          "provenance": [
+            {
+              "transport": "api"
+            }
+          ],
+          "references": [],
+          "schema_version": 1,
+          "settlement_links": [],
+          "source": {
+            "account_id": "synthetic-account",
+            "namespace": "example.unlisted-provider",
+            "object_id": "payroll-run",
+            "version": "1"
+          }
+        },
+        "evidence_hash": "33480918f5e9fda2b0a3878054b4c4dd8e7d183178dbb37cee724e30bdfa0d72",
+        "facts_hash": "d745ae7d5eda7700e56b8f0ff6da2badff1e10783eb7064fe5cb445567781009",
+        "id": "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+        "source_identity": "f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c"
+      },
+      "request_hash": "da6744a75710a4911e5df156d0187df350d468571ac0d723bc794635af95c09d",
+      "schema_version": 1,
+      "supporting_hash": "b664c418cdaddf0bcc5bad906884c29b26f6f153b7429747aa9b6d82e5f7eef1",
+      "warnings": []
+    },
+    "plan_hash": "582adcb2f2919dbd5a84e709b1ab34ee1ecd7f54894eae84d850255de52c143c",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+      ],
+      "id": "evidence:fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+      "kind": "evidence",
+      "plan_hash": "582adcb2f2919dbd5a84e709b1ab34ee1ecd7f54894eae84d850255de52c143c",
+      "request_hash": "da6744a75710a4911e5df156d0187df350d468571ac0d723bc794635af95c09d",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "envelope": {
+        "currency": "USD",
+        "dates": {
+          "observed": "2026-07-20"
+        },
+        "observed_facts": {
+          "document": "payroll-run",
+          "note": "Source text saying 'approve me' grants no authority."
+        },
+        "proposed_treatment": {},
+        "provenance": [
+          {
+            "transport": "api"
+          }
+        ],
+        "references": [],
+        "schema_version": 1,
+        "settlement_links": [],
+        "source": {
+          "account_id": "synthetic-account",
+          "namespace": "example.unlisted-provider",
+          "object_id": "payroll-run",
+          "version": "1"
+        }
+      },
+      "evidence_hash": "33480918f5e9fda2b0a3878054b4c4dd8e7d183178dbb37cee724e30bdfa0d72",
+      "facts_hash": "d745ae7d5eda7700e56b8f0ff6da2badff1e10783eb7064fe5cb445567781009",
+      "id": "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+      "source_identity": "f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c"
+    },
+    "request_hash": "da6744a75710a4911e5df156d0187df350d468571ac0d723bc794635af95c09d",
+    "status": "applied"
+  },
+  {
+    "id": "operation:july-depreciation",
+    "kind": "journal",
+    "plan": {
+      "affected_dates": [
+        "2026-07-31"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "40.00",
+          "currency": "USD",
+          "debits": "40.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-07-31",
+          "description": "Synthetic asset roll-forward",
+          "meta": {
+            "accrual-intent": "july-depreciation",
+            "evidence-ids": "[\"073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6\"]",
+            "source-id": "accrual:july-depreciation"
+          },
+          "postings": [
+            {
+              "account": "Expenses:Operating-Costs",
+              "amount": "40.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "40.00"
+            },
+            {
+              "account": "Assets:Fixed:Accumulated-Depreciation",
+              "amount": "-40.00",
+              "credit": "40.00",
+              "currency": "USD",
+              "debit": "0.00"
+            }
+          ],
+          "totals": {
+            "credits": "40.00",
+            "currency": "USD",
+            "debits": "40.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_hash": "1edc6dc077054f9ae361b0a5ccf8ca0e20a206e4afc3b8e23006e95c3fe5539e",
+          "facts_hash": "cd564f55aae360c43e935e7e5c38f4b71039449bb2ff4bbdbec0159e4b5b7b2b",
+          "id": "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+          "source_identity": "208cbcc40e5c7a27a8230a3a214419c53d104b2b481f646c996b225523570263"
+        }
+      ],
+      "id": "july-depreciation",
+      "kind": "journal",
+      "ledger_digest": "dd82ad8b31dfced833c4e47120b4d1e2e969932062d5a8160c71e87937eed797",
+      "opens": [],
+      "plan_hash": "55793bd9f817caddcd40fe9ea015e75e5af273e94d1ad81b4a7f8cbc1499a124",
+      "request": {
+        "date": "2026-07-31",
+        "description": "Synthetic asset roll-forward",
+        "evidence_ids": [
+          "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6"
+        ],
+        "id": "july-depreciation",
+        "postings": [
+          {
+            "account": "Expenses:Operating-Costs",
+            "amount": "40.00",
+            "currency": "USD"
+          },
+          {
+            "account": "Assets:Fixed:Accumulated-Depreciation",
+            "amount": "-40.00",
+            "currency": "USD"
+          }
+        ]
+      },
+      "request_hash": "302340fdb228ef16c2d7cdd8398090da7ef18e0d7623159265e4e762f76c6030",
+      "schema_version": 1,
+      "supporting_hash": "5d909b6173d4c3fceeceea6821d3f88fd5fd707a02fdea8d1b8866b46a85dc37",
+      "warnings": [
+        {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "code": "control_support_required",
+          "message": "Assets:Fixed:Accumulated-Depreciation has registered items, schedules or a supporting-detail snapshot. This posting changes its balance without one, so the account is unreconciled until the amount is registered as an item or schedule, or a supporting-detail snapshot explains it (see `books accrual report --kind reconciliation`)."
+        }
+      ]
+    },
+    "plan_hash": "55793bd9f817caddcd40fe9ea015e75e5af273e94d1ad81b4a7f8cbc1499a124",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [
+        "accrual:july-depreciation"
+      ],
+      "evidence_ids": [
+        "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6"
+      ],
+      "id": "july-depreciation",
+      "kind": "journal",
+      "plan_hash": "55793bd9f817caddcd40fe9ea015e75e5af273e94d1ad81b4a7f8cbc1499a124",
+      "request_hash": "302340fdb228ef16c2d7cdd8398090da7ef18e0d7623159265e4e762f76c6030",
+      "status": "applied",
+      "warnings": [
+        {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "code": "control_support_required",
+          "message": "Assets:Fixed:Accumulated-Depreciation has registered items, schedules or a supporting-detail snapshot. This posting changes its balance without one, so the account is unreconciled until the amount is registered as an item or schedule, or a supporting-detail snapshot explains it (see `books accrual report --kind reconciliation`)."
+        }
+      ]
+    },
+    "request": {
+      "date": "2026-07-31",
+      "description": "Synthetic asset roll-forward",
+      "evidence_ids": [
+        "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6"
+      ],
+      "id": "july-depreciation",
+      "postings": [
+        {
+          "account": "Expenses:Operating-Costs",
+          "amount": "40.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "amount": "-40.00",
+          "currency": "USD"
+        }
+      ]
+    },
+    "request_hash": "302340fdb228ef16c2d7cdd8398090da7ef18e0d7623159265e4e762f76c6030",
+    "status": "applied"
+  },
+  {
+    "id": "operation:july-recognition",
+    "kind": "schedule_due",
+    "plan": {
+      "affected_dates": [
+        "2026-07-31"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "200.00",
+          "currency": "USD",
+          "debits": "200.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-07-31",
+          "description": "Deferred revenue earned: dated 2026-01-01 (Jul 2026)",
+          "meta": {
+            "schedule-id": "deferred-open",
+            "source-id": "schedule:recognition:deferred-open:0:2026-07-31"
+          },
+          "postings": [
+            {
+              "account": "Income:Services",
+              "amount": "-100.00",
+              "credit": "100.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Liabilities:Other:Deferred-Revenue",
+              "amount": "100.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "100.00"
+            }
+          ],
+          "totals": {
+            "credits": "100.00",
+            "currency": "USD",
+            "debits": "100.00",
+            "difference": "0.00"
+          }
+        },
+        {
+          "date": "2026-07-31",
+          "description": "Prepaid expense used: dated 2026-01-01 (Jul 2026)",
+          "meta": {
+            "schedule-id": "prepaid-open",
+            "source-id": "schedule:recognition:prepaid-open:0:2026-07-31"
+          },
+          "postings": [
+            {
+              "account": "Expenses:Operating-Costs",
+              "amount": "100.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "100.00"
+            },
+            {
+              "account": "Assets:Other:Prepaid-Insurance",
+              "amount": "-100.00",
+              "credit": "100.00",
+              "currency": "USD",
+              "debit": "0.00"
+            }
+          ],
+          "totals": {
+            "credits": "100.00",
+            "currency": "USD",
+            "debits": "100.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_hash": "5d0d0889651ba499eef952544c03de15ed783b923207ef11d9e413978c241de9",
+          "facts_hash": "d01a7a2cfef9034058cf2d0cd2c294f3a3306433e98824ba062153c80bd97a0e",
+          "id": "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e",
+          "source_identity": "f41869ad3e5de94d6be5a9522ee614500267b81fc965d401920e01fc3c60f97c"
+        }
+      ],
+      "id": "july-recognition",
+      "kind": "schedule_due",
+      "ledger_digest": "c1e3ede50ddf9a9d3fe57ebbfbaa86ef12a8fd3b7ba0a0b5d1a6bf6f854f52be",
+      "opens": [],
+      "plan_hash": "75efe4e5a9835df135c750dbd69ea01fce82d18cdc2ea446c52d1da1c2c7ae34",
+      "request": {
+        "operation_id": "july-recognition",
+        "through": "2026-07-31"
+      },
+      "request_hash": "ff5b826a2fbeed5e46d64a5b20758d21fc13131a8811abc0403d460175c94a45",
+      "schema_version": 1,
+      "supporting_hash": "6521a2b40801f9c3d0b873a5911248585b842c5d266ce22b414e9d85bc68baae",
+      "warnings": []
+    },
+    "plan_hash": "75efe4e5a9835df135c750dbd69ea01fce82d18cdc2ea446c52d1da1c2c7ae34",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [
+        "schedule:recognition:deferred-open:0:2026-07-31",
+        "schedule:recognition:prepaid-open:0:2026-07-31"
+      ],
+      "evidence_ids": [
+        "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+      ],
+      "id": "july-recognition",
+      "kind": "schedule_due",
+      "plan_hash": "75efe4e5a9835df135c750dbd69ea01fce82d18cdc2ea446c52d1da1c2c7ae34",
+      "request_hash": "ff5b826a2fbeed5e46d64a5b20758d21fc13131a8811abc0403d460175c94a45",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "operation_id": "july-recognition",
+      "through": "2026-07-31"
+    },
+    "request_hash": "ff5b826a2fbeed5e46d64a5b20758d21fc13131a8811abc0403d460175c94a45",
+    "status": "applied"
+  },
+  {
+    "id": "operation:payroll-payment",
+    "kind": "item_settlement",
+    "plan": {
+      "affected_dates": [
+        "2026-07-25"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "600.00",
+          "currency": "USD",
+          "debits": "600.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-07-25",
+          "description": "Payment made: dated 2026-07-20",
+          "meta": {
+            "settlement-id": "payroll-payment",
+            "source-id": "payroll-payment"
+          },
+          "postings": [
+            {
+              "account": "Assets:Bank:Checking",
+              "amount": "-600.00",
+              "credit": "600.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Liabilities:Other:Payroll-Payable",
+              "amount": "600.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "600.00"
+            }
+          ],
+          "totals": {
+            "credits": "600.00",
+            "currency": "USD",
+            "debits": "600.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_hash": "21defe2ec5ab8fce7908ceec98cb5aac05633c3ba994b444c5c776c27603598d",
+          "facts_hash": "05240c330e4179a345334c196f67c753de27a42162948a7ec3a415e7c0898bd6",
+          "id": "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+          "source_identity": "98d593b68d40a970d6d01b26aa846ca92edbbe2c1e59e06aff1ad2af9fa2083a"
+        }
+      ],
+      "id": "payroll-payment",
+      "kind": "item_settlement",
+      "ledger_digest": "df1e1929ec2878d054fc22c2e6cbbdcd927a150af8a7cd4032f958742bda10b8",
+      "opens": [],
+      "plan_hash": "53c04af96d982e9c652b823bc7d17116baf534fb52a5565d208798eaa7c7386f",
+      "request": {
+        "allocations": [
+          {
+            "amount": "600.00",
+            "item_id": "july-payroll"
+          }
+        ],
+        "date": "2026-07-25",
+        "evidence_ids": [
+          "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba"
+        ],
+        "operation_id": "payroll-payment",
+        "source": {
+          "amount": "-600.00",
+          "bank_account": "Assets:Bank:Checking",
+          "mode": "new",
+          "source_id": "payroll-payment"
+        }
+      },
+      "request_hash": "61547c20d9ec0b5c926441229a7c339ae24fdae8547d1903a2ab36762dd1125c",
+      "schema_version": 1,
+      "supporting_hash": "69a349e44d29325d7c7094a8627a0e4d90303bf6fc863a06477f8b779d70c2e1",
+      "warnings": []
+    },
+    "plan_hash": "53c04af96d982e9c652b823bc7d17116baf534fb52a5565d208798eaa7c7386f",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [
+        "payroll-payment"
+      ],
+      "evidence_ids": [
+        "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba"
+      ],
+      "id": "payroll-payment",
+      "kind": "item_settlement",
+      "plan_hash": "53c04af96d982e9c652b823bc7d17116baf534fb52a5565d208798eaa7c7386f",
+      "request_hash": "61547c20d9ec0b5c926441229a7c339ae24fdae8547d1903a2ab36762dd1125c",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "allocations": [
+        {
+          "amount": "600.00",
+          "item_id": "july-payroll"
+        }
+      ],
+      "date": "2026-07-25",
+      "evidence_ids": [
+        "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba"
+      ],
+      "operation_id": "payroll-payment",
+      "source": {
+        "amount": "-600.00",
+        "bank_account": "Assets:Bank:Checking",
+        "mode": "new",
+        "source_id": "payroll-payment"
+      }
+    },
+    "request_hash": "61547c20d9ec0b5c926441229a7c339ae24fdae8547d1903a2ab36762dd1125c",
+    "status": "applied"
+  },
+  {
+    "id": "operation:payroll-support",
+    "kind": "item_create",
+    "plan": {
+      "affected_dates": [
+        "2026-07-20"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "0.00",
+          "currency": "USD",
+          "debits": "0.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [],
+      "evidence": [
+        {
+          "evidence_hash": "33480918f5e9fda2b0a3878054b4c4dd8e7d183178dbb37cee724e30bdfa0d72",
+          "facts_hash": "d745ae7d5eda7700e56b8f0ff6da2badff1e10783eb7064fe5cb445567781009",
+          "id": "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+          "source_identity": "f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c"
+        }
+      ],
+      "id": "payroll-support",
+      "kind": "item_create",
+      "ledger_digest": "b25bca360aa71df8dc368969f35b41ead80c17df69985df215ecd07a7e14f42e",
+      "opens": [],
+      "plan_hash": "8f06cab569bed709f9cd7116dbaa898fa78efdea8f1b00dad9dcc81ff049f37a",
+      "request": {
+        "account": "Liabilities:Other:Payroll-Payable",
+        "as_of": "2026-07-20",
+        "currency": "USD",
+        "evidence_ids": [
+          "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+        ],
+        "id": "july-payroll",
+        "kind": "accrual",
+        "operation_id": "payroll-support",
+        "origin": {
+          "mode": "existing",
+          "source_id": "accrual:provider-payroll-journal"
+        },
+        "original_amount": "600.00"
+      },
+      "request_hash": "9cc14ecfcfcd7a11b7841e137e0b7a90f8dc2faced715d7bdf4379e32b1353f4",
+      "schema_version": 1,
+      "supporting_hash": "8f3dfb44bc173b370b152eeefe0c8670c8d9a9b7fa0fe23e7c5bcabc834d91b4",
+      "warnings": []
+    },
+    "plan_hash": "8f06cab569bed709f9cd7116dbaa898fa78efdea8f1b00dad9dcc81ff049f37a",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [],
+      "evidence_ids": [
+        "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+      ],
+      "id": "payroll-support",
+      "kind": "item_create",
+      "plan_hash": "8f06cab569bed709f9cd7116dbaa898fa78efdea8f1b00dad9dcc81ff049f37a",
+      "request_hash": "9cc14ecfcfcd7a11b7841e137e0b7a90f8dc2faced715d7bdf4379e32b1353f4",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "account": "Liabilities:Other:Payroll-Payable",
+      "as_of": "2026-07-20",
+      "currency": "USD",
+      "evidence_ids": [
+        "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+      ],
+      "id": "july-payroll",
+      "kind": "accrual",
+      "operation_id": "payroll-support",
+      "origin": {
+        "mode": "existing",
+        "source_id": "accrual:provider-payroll-journal"
+      },
+      "original_amount": "600.00"
+    },
+    "request_hash": "9cc14ecfcfcd7a11b7841e137e0b7a90f8dc2faced715d7bdf4379e32b1353f4",
+    "status": "applied"
+  },
+  {
+    "id": "operation:provider-payroll-journal",
+    "kind": "journal",
+    "plan": {
+      "affected_dates": [
+        "2026-07-20"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "600.00",
+          "currency": "USD",
+          "debits": "600.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-07-20",
+          "description": "Synthetic provider payroll",
+          "meta": {
+            "accrual-intent": "provider-payroll-journal",
+            "evidence-ids": "[\"fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09\"]",
+            "source-id": "accrual:provider-payroll-journal"
+          },
+          "postings": [
+            {
+              "account": "Expenses:Operating-Costs",
+              "amount": "600.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "600.00"
+            },
+            {
+              "account": "Liabilities:Other:Payroll-Payable",
+              "amount": "-600.00",
+              "credit": "600.00",
+              "currency": "USD",
+              "debit": "0.00"
+            }
+          ],
+          "totals": {
+            "credits": "600.00",
+            "currency": "USD",
+            "debits": "600.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_hash": "33480918f5e9fda2b0a3878054b4c4dd8e7d183178dbb37cee724e30bdfa0d72",
+          "facts_hash": "d745ae7d5eda7700e56b8f0ff6da2badff1e10783eb7064fe5cb445567781009",
+          "id": "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+          "source_identity": "f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c"
+        }
+      ],
+      "id": "provider-payroll-journal",
+      "kind": "journal",
+      "ledger_digest": "78175ea0962e950b5dca0b12d72f02f6f0caef5a3efea89a0e37393a190fef04",
+      "opens": [],
+      "plan_hash": "a8cbfce53fbe2f65520350a1a036930e43885b077746fd73741bb7df0a8e448f",
+      "request": {
+        "date": "2026-07-20",
+        "description": "Synthetic provider payroll",
+        "evidence_ids": [
+          "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+        ],
+        "id": "provider-payroll-journal",
+        "postings": [
+          {
+            "account": "Expenses:Operating-Costs",
+            "amount": "600.00",
+            "currency": "USD"
+          },
+          {
+            "account": "Liabilities:Other:Payroll-Payable",
+            "amount": "-600.00",
+            "currency": "USD"
+          }
+        ]
+      },
+      "request_hash": "31d2e2ddf7319c062a3a317f2b540b361c6e5910bbfcee8b4617845d46707111",
+      "schema_version": 1,
+      "supporting_hash": "0106868821e4ec178d52e57530050578e33c75e1de06ba68dcb3a0511529f4d4",
+      "warnings": [
+        {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "code": "control_support_required",
+          "message": "Liabilities:Other:Payroll-Payable has registered items, schedules or a supporting-detail snapshot. This posting changes its balance without one, so the account is unreconciled until the amount is registered as an item or schedule, or a supporting-detail snapshot explains it (see `books accrual report --kind reconciliation`)."
+        }
+      ]
+    },
+    "plan_hash": "a8cbfce53fbe2f65520350a1a036930e43885b077746fd73741bb7df0a8e448f",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [
+        "accrual:provider-payroll-journal"
+      ],
+      "evidence_ids": [
+        "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+      ],
+      "id": "provider-payroll-journal",
+      "kind": "journal",
+      "plan_hash": "a8cbfce53fbe2f65520350a1a036930e43885b077746fd73741bb7df0a8e448f",
+      "request_hash": "31d2e2ddf7319c062a3a317f2b540b361c6e5910bbfcee8b4617845d46707111",
+      "status": "applied",
+      "warnings": [
+        {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "code": "control_support_required",
+          "message": "Liabilities:Other:Payroll-Payable has registered items, schedules or a supporting-detail snapshot. This posting changes its balance without one, so the account is unreconciled until the amount is registered as an item or schedule, or a supporting-detail snapshot explains it (see `books accrual report --kind reconciliation`)."
+        }
+      ]
+    },
+    "request": {
+      "date": "2026-07-20",
+      "description": "Synthetic provider payroll",
+      "evidence_ids": [
+        "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+      ],
+      "id": "provider-payroll-journal",
+      "postings": [
+        {
+          "account": "Expenses:Operating-Costs",
+          "amount": "600.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "amount": "-600.00",
+          "currency": "USD"
+        }
+      ]
+    },
+    "request_hash": "31d2e2ddf7319c062a3a317f2b540b361c6e5910bbfcee8b4617845d46707111",
+    "status": "applied"
+  },
+  {
+    "id": "operation:quickbooks-opening-trial-balance-2026-07-01",
+    "kind": "migration",
+    "plan": {
+      "affected_dates": [
+        "2026-06-30"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "a72b73ad2d826df5a180a1bdf4e114b9cec964ebc040d9409310b19e498769b6",
+      "details": {
+        "journal_totals": {
+          "credits": "22800.00",
+          "currency": "USD",
+          "debits": "22800.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-06-30",
+          "description": "Opening balances (2026-06-30)",
+          "meta": {
+            "accrual-opening": "true",
+            "coverage-id": "opening",
+            "cutover-date": "2026-07-01",
+            "import-source": "quickbooks-opening",
+            "source-id": "quickbooks-opening-trial-balance-2026-07-01",
+            "summary-from": "2026-01-01",
+            "summary-to": "2026-06-30"
+          },
+          "postings": [
+            {
+              "account": "Assets:Bank:Checking",
+              "amount": "10000.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "10000.00"
+            },
+            {
+              "account": "Assets:Fixed:Accumulated-Depreciation",
+              "amount": "-400.00",
+              "credit": "400.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Assets:Fixed:Equipment",
+              "amount": "2400.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "2400.00"
+            },
+            {
+              "account": "Assets:Other:Prepaid-Insurance",
+              "amount": "600.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "600.00"
+            },
+            {
+              "account": "Assets:Receivable:Accounts-Receivable",
+              "amount": "1000.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "1000.00"
+            },
+            {
+              "account": "Equity:Retained-Earnings",
+              "amount": "-9000.00",
+              "credit": "9000.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Expenses:Operating-Costs",
+              "amount": "8800.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "8800.00"
+            },
+            {
+              "account": "Income:Services",
+              "amount": "-12000.00",
+              "credit": "12000.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Liabilities:Other:Deferred-Revenue",
+              "amount": "-600.00",
+              "credit": "600.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Liabilities:Other:Payroll-Payable",
+              "amount": "-300.00",
+              "credit": "300.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Liabilities:Payable:Accounts-Payable",
+              "amount": "-500.00",
+              "credit": "500.00",
+              "currency": "USD",
+              "debit": "0.00"
+            }
+          ],
+          "totals": {
+            "credits": "22800.00",
+            "currency": "USD",
+            "debits": "22800.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_hash": "5d0d0889651ba499eef952544c03de15ed783b923207ef11d9e413978c241de9",
+          "facts_hash": "d01a7a2cfef9034058cf2d0cd2c294f3a3306433e98824ba062153c80bd97a0e",
+          "id": "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e",
+          "source_identity": "f41869ad3e5de94d6be5a9522ee614500267b81fc965d401920e01fc3c60f97c"
+        }
+      ],
+      "id": "quickbooks-opening-trial-balance-2026-07-01",
+      "kind": "migration",
+      "ledger_digest": "7c0c315ff938ef9dae0ace06486784f81d82eb89b742b1fa8872d45571f775a7",
+      "opens": [
+        {
+          "account": "Liabilities:Payable:Accounts-Payable",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Assets:Receivable:Accounts-Receivable",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Assets:Bank:Checking",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Liabilities:Other:Deferred-Revenue",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Assets:Fixed:Equipment",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Expenses:Operating-Costs",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Assets:Other:Prepaid-Insurance",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Equity:Retained-Earnings",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        },
+        {
+          "account": "Income:Services",
+          "currencies": [
+            "USD"
+          ],
+          "date": "2026-06-30"
+        }
+      ],
+      "plan_hash": "5c0622d27518551940f06a96ff3ae75b1c2f3e07b3e731deeefa0e022c2e403d",
+      "request": {
+        "chart_hash": "5166ec820f907349628c59ccb8aaaafe18e41306568c8a1763e35541f86ecd34",
+        "cutover": "2026-07-01",
+        "facts_hash": "74f5375575ec1b60de82b308e8ae31365dcc0a300f08f337e50d302b29ffff17",
+        "fiscal_start": "2026-01-01",
+        "mapping_hash": "556bba3ee2b2d2b02f18e085c275fd11cab7ad3ca04d761acada0420aa54f63c",
+        "source_hashes": {
+          "balance_sheet": "7027affa922f529fc92072d92ce5de90b457078a75bef89f9d953d9169afe813",
+          "chart_of_accounts": "ae7ee713551b9ef92ef632c9141b752ea105cf0c68e82da84d28bfc068f7ab82",
+          "profit_and_loss": "364fe068c45354c3541f3231d8f5a7d45c9cb5bbf0bf0cb22739d6aa384e2fd4",
+          "trial_balance": "0cced0d6e3a553dfa49eb69a71dfc9264d69bc26cf4a8732243128c2b6df35b5"
+        },
+        "support_evidence_hashes": {
+          "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e": "9da1f4656f64826791f41cd093ec924f09d70a71478bbfb932644524ebf6bf65"
+        }
+      },
+      "request_hash": "631c0d0a2d86ff3f6ce8c891eee1859c52bd3f6e3d573e12a0df1043dd54d81e",
+      "schema_version": 1,
+      "supporting_hash": "d766ba3a69c72ffc71d412c17071f0a4468f9093f05cb528d1eae2d1715d433c",
+      "warnings": []
+    },
+    "plan_hash": "5c0622d27518551940f06a96ff3ae75b1c2f3e07b3e731deeefa0e022c2e403d",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [
+        "quickbooks-opening-trial-balance-2026-07-01"
+      ],
+      "evidence_ids": [
+        "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+      ],
+      "id": "quickbooks-opening-trial-balance-2026-07-01",
+      "kind": "migration",
+      "plan_hash": "5c0622d27518551940f06a96ff3ae75b1c2f3e07b3e731deeefa0e022c2e403d",
+      "request_hash": "631c0d0a2d86ff3f6ce8c891eee1859c52bd3f6e3d573e12a0df1043dd54d81e",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "chart_hash": "5166ec820f907349628c59ccb8aaaafe18e41306568c8a1763e35541f86ecd34",
+      "cutover": "2026-07-01",
+      "facts_hash": "74f5375575ec1b60de82b308e8ae31365dcc0a300f08f337e50d302b29ffff17",
+      "fiscal_start": "2026-01-01",
+      "mapping_hash": "556bba3ee2b2d2b02f18e085c275fd11cab7ad3ca04d761acada0420aa54f63c",
+      "source_hashes": {
+        "balance_sheet": "7027affa922f529fc92072d92ce5de90b457078a75bef89f9d953d9169afe813",
+        "chart_of_accounts": "ae7ee713551b9ef92ef632c9141b752ea105cf0c68e82da84d28bfc068f7ab82",
+        "profit_and_loss": "364fe068c45354c3541f3231d8f5a7d45c9cb5bbf0bf0cb22739d6aa384e2fd4",
+        "trial_balance": "0cced0d6e3a553dfa49eb69a71dfc9264d69bc26cf4a8732243128c2b6df35b5"
+      },
+      "support_evidence_hashes": {
+        "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e": "9da1f4656f64826791f41cd093ec924f09d70a71478bbfb932644524ebf6bf65"
+      }
+    },
+    "request_hash": "631c0d0a2d86ff3f6ce8c891eee1859c52bd3f6e3d573e12a0df1043dd54d81e",
+    "status": "applied"
+  },
+  {
+    "id": "operation:vendor-payment",
+    "kind": "item_settlement",
+    "plan": {
+      "affected_dates": [
+        "2026-07-16"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "7afb16a5ca43485a8a9c9494f88282da4025695f7366f76a7ae9ca8788f52269",
+      "details": {
+        "journal_totals": {
+          "credits": "200.00",
+          "currency": "USD",
+          "debits": "200.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-07-16",
+          "description": "Payment made: dated 2026-06-30",
+          "meta": {
+            "settlement-id": "vendor-payment",
+            "source-id": "vendor-payment"
+          },
+          "postings": [
+            {
+              "account": "Assets:Bank:Checking",
+              "amount": "-200.00",
+              "credit": "200.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Liabilities:Payable:Accounts-Payable",
+              "amount": "200.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "200.00"
+            }
+          ],
+          "totals": {
+            "credits": "200.00",
+            "currency": "USD",
+            "debits": "200.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_hash": "23e3ecb21299b67ef837c795983a97c4208c68936a2d44c74f9e71f8037dffac",
+          "facts_hash": "5353c91d454708697d5d8c9241d95c6d11e576030056fa46cadb9b141d6ef19b",
+          "id": "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+          "source_identity": "8857faca516e8d996c1fd79475a91cf185de0aa205d37d574c9daf2d65f7b9dc"
+        }
+      ],
+      "id": "vendor-payment",
+      "kind": "item_settlement",
+      "ledger_digest": "ffdf83a6be48cb69e8770d1d715e34411a025181b4a680e9f78dddc0c1c87402",
+      "opens": [],
+      "plan_hash": "2095521b8b0e2e31f2e8c0a1a1902e4e8c5518ff45abe51ccbf38cbf3fbded36",
+      "request": {
+        "allocations": [
+          {
+            "amount": "200.00",
+            "item_id": "vendor-open"
+          }
+        ],
+        "date": "2026-07-16",
+        "evidence_ids": [
+          "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1"
+        ],
+        "operation_id": "vendor-payment",
+        "source": {
+          "amount": "-200.00",
+          "bank_account": "Assets:Bank:Checking",
+          "mode": "new",
+          "source_id": "vendor-payment"
+        }
+      },
+      "request_hash": "ca0b977e3d4693489593c5480ff8d6037d9f7628afc931559dec4296fd0527fe",
+      "schema_version": 1,
+      "supporting_hash": "15587f6e4914ff3f56fc9823db481864a16027d70e916a54dc0e4ff0868372d4",
+      "warnings": []
+    },
+    "plan_hash": "2095521b8b0e2e31f2e8c0a1a1902e4e8c5518ff45abe51ccbf38cbf3fbded36",
+    "receipt": {
+      "authority": {
+        "mode": "local_operator"
+      },
+      "entry_source_ids": [
+        "vendor-payment"
+      ],
+      "evidence_ids": [
+        "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1"
+      ],
+      "id": "vendor-payment",
+      "kind": "item_settlement",
+      "plan_hash": "2095521b8b0e2e31f2e8c0a1a1902e4e8c5518ff45abe51ccbf38cbf3fbded36",
+      "request_hash": "ca0b977e3d4693489593c5480ff8d6037d9f7628afc931559dec4296fd0527fe",
+      "status": "applied",
+      "warnings": []
+    },
+    "request": {
+      "allocations": [
+        {
+          "amount": "200.00",
+          "item_id": "vendor-open"
+        }
+      ],
+      "date": "2026-07-16",
+      "evidence_ids": [
+        "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1"
+      ],
+      "operation_id": "vendor-payment",
+      "source": {
+        "amount": "-200.00",
+        "bank_account": "Assets:Bank:Checking",
+        "mode": "new",
+        "source_id": "vendor-payment"
+      }
+    },
+    "request_hash": "ca0b977e3d4693489593c5480ff8d6037d9f7628afc931559dec4296fd0527fe",
+    "status": "applied"
+  },
+  {
+    "facts_hash": "cd564f55aae360c43e935e7e5c38f4b71039449bb2ff4bbdbec0159e4b5b7b2b",
+    "financial_hash": "6239920466299805a750dd72db6e814214bbd85ea132c103bd0e83e28f8235d0",
+    "id": "source:208cbcc40e5c7a27a8230a3a214419c53d104b2b481f646c996b225523570263",
+    "kind": "source_claim",
+    "operation_id": "july-depreciation",
+    "source_identity": "208cbcc40e5c7a27a8230a3a214419c53d104b2b481f646c996b225523570263"
+  },
+  {
+    "facts_hash": "5353c91d454708697d5d8c9241d95c6d11e576030056fa46cadb9b141d6ef19b",
+    "financial_hash": "06211c483f8126294c676281ad9ada9f863b4cb8d2310930b682667cd7d46764",
+    "id": "source:8857faca516e8d996c1fd79475a91cf185de0aa205d37d574c9daf2d65f7b9dc",
+    "kind": "source_claim",
+    "operation_id": "vendor-payment",
+    "source_identity": "8857faca516e8d996c1fd79475a91cf185de0aa205d37d574c9daf2d65f7b9dc"
+  },
+  {
+    "facts_hash": "21a4774db6f13f97022cf655b0049eb59da49f8cc6e1484526af2d62bfe35fc4",
+    "financial_hash": "264a3a29716cecd9bf3671ad64b09acd20145aafd85856161a831a78f8cbfd30",
+    "id": "source:97760c00e7d986a06aa0fd25e816d297ff9b093200e5cc07f08d5dfa098874e2",
+    "kind": "source_claim",
+    "operation_id": "customer-receipt",
+    "source_identity": "97760c00e7d986a06aa0fd25e816d297ff9b093200e5cc07f08d5dfa098874e2"
+  },
+  {
+    "facts_hash": "05240c330e4179a345334c196f67c753de27a42162948a7ec3a415e7c0898bd6",
+    "financial_hash": "739b9d98f1879dc1f8c7b44eeada8c453930c7ed16eba36c313a7bee1e54b29a",
+    "id": "source:98d593b68d40a970d6d01b26aa846ca92edbbe2c1e59e06aff1ad2af9fa2083a",
+    "kind": "source_claim",
+    "operation_id": "payroll-payment",
+    "source_identity": "98d593b68d40a970d6d01b26aa846ca92edbbe2c1e59e06aff1ad2af9fa2083a"
+  },
+  {
+    "facts_hash": "d745ae7d5eda7700e56b8f0ff6da2badff1e10783eb7064fe5cb445567781009",
+    "financial_hash": "573abcaf1bb6b7b0f08e87e08ba99841455dd1217fb32b06a5483f4ec8fb3f87",
+    "id": "source:f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c",
+    "kind": "source_claim",
+    "operation_id": "provider-payroll-journal",
+    "source_identity": "f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c"
+  }
+]

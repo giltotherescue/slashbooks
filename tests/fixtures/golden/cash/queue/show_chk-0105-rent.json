@@ -1,0 +1,29 @@
+{
+  "amount": "-1800.00",
+  "confirmed_category": "Expenses:Rent",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "MAPLE STREET PROPERTIES RENT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-05",
+  "delta": null,
+  "description": "Maple Street Properties rent",
+  "original_amount": "-1800.00",
+  "proposed_category": "Expenses:Rent",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0105-rent": "dc2f842ccc1e01c00fe2297cef3b9dcca8b69b36d21fd0b755c5bf0f633e232c"
+  },
+  "source_id": "chk-0105-rent",
+  "status": "confirmed",
+  "taught": {
+    "at": "2026-08-05T12:00:00Z",
+    "by": "owner",
+    "by_name": "Owner",
+    "category": "Expenses:Rent",
+    "id": "ac6e132a123c9ebe"
+  },
+  "updated_at": "2026-08-05T12:00:00Z"
+}

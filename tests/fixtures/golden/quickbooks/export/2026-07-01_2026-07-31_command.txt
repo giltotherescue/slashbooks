@@ -1,0 +1,3 @@
+Accountant export written to: <WORK>/export-quickbooks-2026-07-01-2026-07-31
+  CSV exports: 19 files in <WORK>/export-quickbooks-2026-07-01-2026-07-31/csv
+  XLSX workbook: <WORK>/export-quickbooks-2026-07-01-2026-07-31/accountant-export-2026-07-01_2026-07-31.xlsx

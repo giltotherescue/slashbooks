@@ -1,0 +1,29 @@
+Balance Sheet  as of  2025-12-31
+================================
+Accounting basis: accrual
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+
+Assets
+----------------------------------------
+  Assets › Bank › Checking                      30,000.00
+  Assets › Fixed › Accumulated-Depreciation      -1,000.00
+  Assets › Fixed › Equipment                     2,400.00
+  Assets › Other › Prepaid-Expenses                600.00
+  Assets › Receivable › Accounts-Receivable       4,000.00
+  Total Assets                                  36,000.00
+
+Liabilities
+----------------------------------------
+  Liabilities › Other › Deferred-Revenue           600.00
+  Liabilities › Payable › Accounts-Payable       1,500.00
+  Total Liabilities                              2,100.00
+
+Equity
+----------------------------------------
+  Equity › Opening-Balances                     33,900.00
+  Net Income (current period)                        0.00
+  Total Equity                                  33,900.00
+
+--------------------------------------------------------
+Total Assets                                    36,000.00
+Total Liabilities And Equity                    36,000.00

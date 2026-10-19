@@ -1,0 +1,34 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+
+Tax line mapping for Form 1065 (form from workspace)
+  Assets:Bank:Checking  9600.00 -> 1065/L/1  Cash (name) [review]
+  Assets:Fixed:Accumulated-Depreciation  -440.00 -> 1065/L/9b  Less accumulated depreciation (name) [review]
+  Assets:Fixed:Equipment  2400.00 -> 1065/L/9a  Buildings and other depreciable assets (name) [review]
+  Assets:Other:Prepaid-Expenses  0.00 -> 1065/L/6  Other current assets (name) [review]
+  Assets:Other:Prepaid-Insurance  500.00 -> 1065/L/6  Other current assets (name) [review]
+  Assets:Receivable:Accounts-Receivable  600.00 -> 1065/L/2a  Trade notes and accounts receivable (name) [review]
+  Equity:Opening-Balances  0.00 -> 1065/L/21  Partners' capital accounts (name) [review]
+  Equity:Owner-Contributions  0.00 -> 1065/L/21  Partners' capital accounts (name) [review]
+  Equity:Owner-Draws  0.00 -> 1065/M-2/6a  Distributions: cash (name) [review]
+  Equity:Retained-Earnings  -9000.00 -> 1065/L/21  Partners' capital accounts (name) [review]
+  Expenses:Depreciation  0.00 -> 1065/p1/16a  Depreciation (name) [review]
+  Expenses:Fees  0.00 -> 1065/p1/21  Other deductions — Fees (name) [review]
+  Expenses:Marketing  0.00 -> 1065/p1/21  Other deductions — Advertising (name) [review]
+  Expenses:Meals  0.00 -> 1065/p1/21  Other deductions — Meals (full book amount) (name) [review]
+  Expenses:Office  0.00 -> 1065/p1/21  Other deductions — Office expense (name) [review]
+  Expenses:Operating-Costs  9540.00 -> UNMAPPED (unmapped)
+  Expenses:Software  0.00 -> 1065/p1/21  Other deductions — Software (name) [review]
+  Expenses:Subcontractors  0.00 -> 1065/p1/21  Other deductions — Contract labor (name) [review]
+  Expenses:Taxes  0.00 -> 1065/p1/14  Taxes and licenses (name) [review]
+  Expenses:Travel  0.00 -> 1065/p1/21  Other deductions — Travel (name) [review]
+  Income:Consulting  0.00 -> 1065/p1/1a  Gross receipts or sales (account_type) [review]
+  Income:Services  -12100.00 -> 1065/p1/1a  Gross receipts or sales (account_type) [review]
+  Liabilities:CreditCard  0.00 -> 1065/L/17  Other current liabilities (name) [review]
+  Liabilities:Other:Accrued-Liabilities  0.00 -> 1065/L/17  Other current liabilities (name) [review]
+  Liabilities:Other:Customer-Deposits  0.00 -> UNMAPPED (unmapped)
+  Liabilities:Other:Deferred-Revenue  -500.00 -> 1065/L/17  Other current liabilities (name) [review]
+  Liabilities:Other:Payroll-Payable  -300.00 -> 1065/L/15  Accounts payable (name) [review]
+  Liabilities:Payable:Accounts-Payable  -300.00 -> 1065/L/15  Accounts payable (name) [review]
+
+Unmapped: 2: Expenses:Operating-Costs, Liabilities:Other:Customer-Deposits
+Needs review: 26

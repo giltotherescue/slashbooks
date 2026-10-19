@@ -1,0 +1,22 @@
+{
+  "amount": "-79.00",
+  "confirmed_category": "Expenses:Software",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "CLOUDNOTES SOFTWARE SUBSCRIPTION",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-04",
+  "delta": null,
+  "description": "CloudNotes software subscription",
+  "original_amount": "-79.00",
+  "proposed_category": "Expenses:Software",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "crd-0204-sw": "abd5411f7503bbfe274bf98f77e26191765c5434973254c37c7b2c85ed410472"
+  },
+  "source_id": "crd-0204-sw",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

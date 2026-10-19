@@ -1,0 +1,3671 @@
+{
+  "capability_version": 1,
+  "commands": [
+    "accrual schema",
+    "accrual capabilities",
+    "accrual intake --entity PATH --input FILE",
+    "accrual journal preview|apply|correct-preview|correct-apply|reverse-preview|reverse-apply --entity PATH --input FILE",
+    "accrual journal due-reversals --entity PATH --as-of YYYY-MM-DD [--apply]",
+    "accrual schedule preview|apply|due-apply|change-preview|change-apply --entity PATH --input FILE",
+    "accrual schedule list --entity PATH",
+    "accrual schedule due-preview --entity PATH --through YYYY-MM-DD --operation-id ID",
+    "accrual item preview|apply|settle-preview|settle-apply|adjust-preview|adjust-apply|offset-preview|offset-apply --entity PATH --input FILE",
+    "accrual item list --entity PATH",
+    "accrual support preview|apply --entity PATH --input FILE",
+    "accrual evidence-link preview|apply --entity PATH --input FILE",
+    "accrual period preview|apply --entity PATH --input FILE",
+    "accrual rules set-preview|set-apply|clear-preview|clear-apply|match --entity PATH --input FILE",
+    "accrual rules list --entity PATH [--format json|text]",
+    "accrual report --entity PATH --kind schedules|outstanding|aging|adjustments|support|reconciliation [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--format json|text]",
+    "accrual accounts --entity PATH [--format json|text]",
+    "accrual receipt --entity PATH --id ID",
+    "accrual opening preview|apply --entity PATH --input FILE",
+    "accrual opening draft --entity PATH --cutover YYYY-MM-DD",
+    "accrual migration preview --entity PATH --folder REPORTS --cutover YYYY-MM-DD --fiscal-start YYYY-MM-DD --supporting FILE [--closed-position]",
+    "accrual migration apply --entity PATH --input FILE"
+  ],
+  "evidence": {
+    "$comment": "Source text and proposed treatment confer no financial-write authority. Runtime validation also rejects floats recursively and invalid calendar/service dates.",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "examples": [
+      {
+        "amounts": {
+          "gross": "1200.00"
+        },
+        "currency": "USD",
+        "dates": {
+          "issued": "2026-01-01"
+        },
+        "observed_facts": {
+          "description": "Synthetic annual service invoice"
+        },
+        "proposed_treatment": {
+          "kind": "deferred_revenue"
+        },
+        "schema_version": 1,
+        "service_period": {
+          "end": "2026-12-31",
+          "end_inclusive": true,
+          "start": "2026-01-01"
+        },
+        "source": {
+          "account_id": "demo-account",
+          "namespace": "example.provider",
+          "object_id": "invoice-001",
+          "version": "1"
+        }
+      }
+    ],
+    "properties": {
+      "amounts": {
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "type": "object"
+      },
+      "currency": {
+        "const": "USD"
+      },
+      "dates": {
+        "additionalProperties": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "type": "object"
+      },
+      "observed_facts": {
+        "type": "object"
+      },
+      "proposed_treatment": {
+        "type": "object"
+      },
+      "provenance": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "references": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "content_hash": {
+              "pattern": "^[0-9a-fA-F]{64}$",
+              "type": "string"
+            },
+            "description": {
+              "minLength": 1,
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+              "type": "string"
+            },
+            "media_type": {
+              "minLength": 1,
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+              "type": "string"
+            },
+            "uri": {
+              "minLength": 1,
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content_hash"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "schema_version": {
+        "const": 1,
+        "type": "integer"
+      },
+      "service_period": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "type": "string"
+          },
+          "end_inclusive": {
+            "default": true,
+            "type": "boolean"
+          },
+          "start": {
+            "format": "date",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "type": "object"
+      },
+      "settlement_links": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "amount": {
+              "oneOf": [
+                {
+                  "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "minor_units": {
+                      "maximum": 99999999999999999999,
+                      "minimum": -99999999999999999999,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "minor_units"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "relationship": {
+              "minLength": 1,
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+              "type": "string"
+            },
+            "source": {
+              "additionalProperties": false,
+              "properties": {
+                "account_id": {
+                  "minLength": 1,
+                  "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+                  "type": "string"
+                },
+                "content_hash": {
+                  "pattern": "^[0-9a-fA-F]{64}$",
+                  "type": "string"
+                },
+                "line_id": {
+                  "minLength": 1,
+                  "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+                  "type": "string"
+                },
+                "namespace": {
+                  "minLength": 1,
+                  "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+                  "type": "string"
+                },
+                "object_id": {
+                  "minLength": 1,
+                  "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+                  "type": "string"
+                },
+                "version": {
+                  "minLength": 1,
+                  "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "namespace",
+                "account_id",
+                "object_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "source",
+            "relationship"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "source": {
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "version"
+            ]
+          },
+          {
+            "required": [
+              "content_hash"
+            ]
+          }
+        ],
+        "properties": {
+          "account_id": {
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "content_hash": {
+            "pattern": "^[0-9a-fA-F]{64}$",
+            "type": "string"
+          },
+          "line_id": {
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "namespace": {
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "object_id": {
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "account_id",
+          "object_id"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "schema_version",
+      "source",
+      "currency"
+    ],
+    "title": "Accounting supporting document v1",
+    "type": "object"
+  },
+  "requests": {
+    "apply": {
+      "description": "Pass the complete unchanged engine preview; do not construct or edit an apply payload.",
+      "required": [
+        "schema_version",
+        "id",
+        "kind",
+        "request",
+        "request_hash",
+        "plan_hash"
+      ],
+      "type": "object"
+    },
+    "correction": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "original_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "replacement": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "evidence_ids": {
+                  "minItems": 1
+                }
+              },
+              "required": [
+                "evidence_ids"
+              ]
+            },
+            {
+              "required": [
+                "estimate_basis"
+              ]
+            }
+          ],
+          "description": "Exact balance, account opening/currency, supporting documents, locks and authority are checked by the engine.",
+          "properties": {
+            "date": {
+              "format": "date",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            },
+            "description": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "estimate_basis": {
+              "description": "Plain-text basis of an estimate. Replaces stored supporting documents.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "evidence_ids": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 1000,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "origin": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "const": "existing"
+                },
+                "source_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode",
+                "source_id"
+              ],
+              "type": "object"
+            },
+            "postings": {
+              "items": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "description": "Use signed amount or debit/credit. Sides must be nonnegative with exactly one nonzero side; the engine validates exact balance.",
+                "oneOf": [
+                  {
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "debit"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "credit"
+                          ]
+                        }
+                      ]
+                    },
+                    "required": [
+                      "amount"
+                    ]
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "debit"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "credit"
+                        ]
+                      }
+                    ],
+                    "not": {
+                      "required": [
+                        "amount"
+                      ]
+                    }
+                  }
+                ],
+                "properties": {
+                  "account": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "amount": {
+                    "oneOf": [
+                      {
+                        "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "minor_units": {
+                            "maximum": 99999999999999999999,
+                            "minimum": -99999999999999999999,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "minor_units"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "credit": {
+                    "oneOf": [
+                      {
+                        "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "minor_units": {
+                            "maximum": 99999999999999999999,
+                            "minimum": -99999999999999999999,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "minor_units"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "currency": {
+                    "const": "USD"
+                  },
+                  "debit": {
+                    "oneOf": [
+                      {
+                        "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "minor_units": {
+                            "maximum": 99999999999999999999,
+                            "minimum": -99999999999999999999,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "minor_units"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "account"
+                ],
+                "type": "object"
+              },
+              "maxItems": 1000,
+              "minItems": 2,
+              "type": "array"
+            },
+            "reversal_date": {
+              "description": "Posts the exact reversal of this journal on this later date when `books accrual journal due-reversals --as-of DATE --apply` runs. This is the one path for an accrued estimate that reverses when the real bill arrives.",
+              "format": "date",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "date",
+            "description",
+            "postings"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "original_id",
+        "date",
+        "description",
+        "replacement"
+      ],
+      "type": "object"
+    },
+    "evidence_link": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Explicitly identify another source as a supporting document of a committed effect; no matching heuristic or financial posting.",
+      "properties": {
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "target_operation_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "target_operation_id",
+        "evidence_ids",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "item": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "kind receivable/payable = invoice or bill; accrual = estimated liability to settle or true up later; credit = deposit, credit memo or prepayment that `item offset-preview` applies to an invoice or bill.",
+      "examples": [
+        {
+          "account": "Liabilities:Payable:Accounts-Payable",
+          "as_of": "2026-01-31",
+          "currency": "USD",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-payable",
+          "kind": "payable",
+          "operation_id": "synthetic-payable-create",
+          "origin": {
+            "counter_account": "Expenses:Software",
+            "mode": "new",
+            "source_id": "synthetic-bill"
+          },
+          "original_amount": "100.00"
+        },
+        {
+          "account": "Liabilities:AccountsPayable",
+          "as_of": "2026-01-31",
+          "counterparty": "Synthetic Vendor",
+          "currency": "USD",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-split",
+          "kind": "payable",
+          "operation_id": "synthetic-split-bill",
+          "origin": {
+            "lines": [
+              {
+                "account": "Expenses:Software",
+                "amount": "60.00"
+              },
+              {
+                "account": "Expenses:Utilities",
+                "amount": "40.00"
+              }
+            ],
+            "mode": "new",
+            "source_id": "synthetic-split-bill-doc"
+          },
+          "original_amount": "100.00"
+        },
+        {
+          "account": "Liabilities:CustomerDeposits",
+          "as_of": "2026-02-01",
+          "counterparty": "Synthetic Customer",
+          "currency": "USD",
+          "direction": "credit",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-deposit-credit",
+          "kind": "credit",
+          "operation_id": "synthetic-deposit",
+          "origin": {
+            "mode": "existing",
+            "source_id": "synthetic-deposit-journal"
+          },
+          "original_amount": "500.00"
+        },
+        {
+          "account": "Liabilities:AccruedBonus",
+          "as_of": "2026-01-31",
+          "currency": "USD",
+          "estimate_basis": "Synthetic target bonus pool",
+          "id": "synthetic-bonus",
+          "kind": "accrual",
+          "operation_id": "synthetic-bonus-estimate",
+          "origin": {
+            "counter_account": "Expenses:Bonuses",
+            "mode": "new",
+            "source_id": "synthetic-bonus-estimate-src"
+          },
+          "original_amount": "1000.00"
+        }
+      ],
+      "properties": {
+        "account": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "counterparty": {
+          "description": "Name of the customer or supplier. A credit and the invoice or bill it is applied to must share one exact counterparty.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "direction": {
+          "description": "Only for kind credit. credit = the counterparty holds a credit with you (customer deposit, credit memo, overpayment). debit = you hold a prepayment or credit with the counterparty (vendor prepayment).",
+          "enum": [
+            "debit",
+            "credit"
+          ]
+        },
+        "due_date": {
+          "description": "Explicit payment due date; distinct from accounting as_of. Omit when unknown.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "estimate_basis": {
+          "description": "Plain-text basis of an estimate (for kind accrual). A new origin then needs no stored supporting document.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "receivable",
+            "payable",
+            "accrual",
+            "credit"
+          ]
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "origin": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "properties": {
+            "counter_account": {
+              "description": "Income or expense account for a new origin. Use origin.lines instead to split one bill across several accounts.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "lines": {
+              "description": "Split a new origin across several income or expense accounts. Amounts must add up exactly to original_amount. One control-account balance is posted. Do not combine with counter_account.",
+              "items": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "properties": {
+                  "account": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "amount": {
+                    "oneOf": [
+                      {
+                        "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "minor_units": {
+                            "maximum": 99999999999999999999,
+                            "minimum": -99999999999999999999,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "minor_units"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "account",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "type": "array"
+            },
+            "mode": {
+              "enum": [
+                "new",
+                "existing",
+                "opening"
+              ]
+            },
+            "source_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        "original_amount": {
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "reference": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "remaining_amount": {
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "id",
+        "kind",
+        "account",
+        "currency",
+        "original_amount",
+        "as_of",
+        "origin"
+      ],
+      "type": "object"
+    },
+    "item_adjustment": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Adjust one open item. A true-up posts Dr accrued liability, Cr expense for the estimate; the actual bill keeps its own expense, so net expense equals the actual.",
+      "examples": [
+        {
+          "action": "true_up",
+          "actual_item_id": "synthetic-bonus-actual",
+          "counter_account": "Expenses:Bonuses",
+          "date": "2026-03-31",
+          "item_id": "synthetic-bonus",
+          "operation_id": "synthetic-true-up",
+          "reason": "Synthetic bonus paid at actual"
+        }
+      ],
+      "properties": {
+        "action": {
+          "description": "credit = reduce the item and the income or expense (discount, credit memo). writeoff = remove an uncollectable or forgiven balance. true_up = settle an accrued estimate against the actual item and record the variance; needs actual_item_id.",
+          "enum": [
+            "credit",
+            "writeoff",
+            "true_up"
+          ]
+        },
+        "actual_item_id": {
+          "description": "Only for true_up: the receivable or payable item that holds the real amount. Variance = actual amount minus the estimate removed; it is stored on the adjustment record.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "amount": {
+          "description": "Amount to remove from the item. Required for credit and writeoff. For true_up it defaults to the whole remaining estimate.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "counter_account": {
+          "description": "Income or expense account that absorbs the adjustment.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "description": "Stored supporting documents. Required for credit and writeoff; optional for true_up, because the actual item already carries its own.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "item_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_id": {
+          "description": "Unique ID of this adjustment source. It defaults to operation_id for credit, writeoff and true_up.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "item_id",
+        "action",
+        "date",
+        "counter_account",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "item_offset": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Apply a credit to an invoice or bill. If the two items sit in different accounts, posts Dr customer deposits (or Dr payable), Cr receivable (or Cr prepayment). If both sit in one account, links only. Aging shows the lower balances.",
+      "examples": [
+        {
+          "amount": "500.00",
+          "credit_item_id": "synthetic-deposit-credit",
+          "date": "2026-03-01",
+          "operation_id": "synthetic-apply-deposit",
+          "reason": "Apply customer deposit to invoice",
+          "target_item_id": "synthetic-invoice"
+        }
+      ],
+      "properties": {
+        "amount": {
+          "description": "At most the open balance of both items.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "credit_item_id": {
+          "description": "Open item of kind credit: customer deposit, credit memo, overpayment, or vendor prepayment.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "target_item_id": {
+          "description": "Open receivable (for a customer credit) or payable (for a vendor prepayment) with the same counterparty.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "date",
+        "credit_item_id",
+        "target_item_id",
+        "amount",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "journal": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "properties": {
+            "evidence_ids": {
+              "minItems": 1
+            }
+          },
+          "required": [
+            "evidence_ids"
+          ]
+        },
+        {
+          "required": [
+            "estimate_basis"
+          ]
+        }
+      ],
+      "description": "Exact balance, account opening/currency, supporting documents, locks and authority are checked by the engine.",
+      "properties": {
+        "date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "estimate_basis": {
+          "description": "Plain-text basis of an estimate. Replaces stored supporting documents.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "origin": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "existing"
+            },
+            "source_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        "postings": {
+          "items": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "description": "Use signed amount or debit/credit. Sides must be nonnegative with exactly one nonzero side; the engine validates exact balance.",
+            "oneOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "debit"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "credit"
+                      ]
+                    }
+                  ]
+                },
+                "required": [
+                  "amount"
+                ]
+              },
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "debit"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "credit"
+                    ]
+                  }
+                ],
+                "not": {
+                  "required": [
+                    "amount"
+                  ]
+                }
+              }
+            ],
+            "properties": {
+              "account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "credit": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "currency": {
+                "const": "USD"
+              },
+              "debit": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "account"
+            ],
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 2,
+          "type": "array"
+        },
+        "reversal_date": {
+          "description": "Posts the exact reversal of this journal on this later date when `books accrual journal due-reversals --as-of DATE --apply` runs. This is the one path for an accrued estimate that reverses when the real bill arrives.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "description",
+        "postings"
+      ],
+      "type": "object"
+    },
+    "migration_preview": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Python API keyword inputs; CLI takes --folder/--cutover/--fiscal-start/--supporting FILE and --closed-position.",
+      "properties": {
+        "closed_position": {
+          "default": false,
+          "type": "boolean"
+        },
+        "cutover": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "fiscal_start": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "folder": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "supporting": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "folder",
+        "cutover",
+        "fiscal_start",
+        "supporting"
+      ],
+      "type": "object"
+    },
+    "migration_supporting": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "external": {
+          "items": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "properties": {
+                  "evidence_refs": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_refs"
+                ]
+              },
+              {
+                "properties": {
+                  "evidence_ids": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_ids"
+                ]
+              }
+            ],
+            "description": "Opening item/schedule/external support; collection-specific facts and exact control tie-out are validated by migration.",
+            "properties": {
+              "account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "balance": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "counterparty": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "currency": {
+                "const": "USD"
+              },
+              "description": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "evidence_ids": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "evidence_refs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "reference": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "account",
+              "currency",
+              "balance"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "properties": {
+                  "evidence_refs": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_refs"
+                ]
+              },
+              {
+                "properties": {
+                  "evidence_ids": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_ids"
+                ]
+              }
+            ],
+            "description": "Opening item/schedule/external support; collection-specific facts and exact control tie-out are validated by migration.",
+            "properties": {
+              "account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "counterparty": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "currency": {
+                "const": "USD"
+              },
+              "description": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "direction": {
+                "enum": [
+                  "debit",
+                  "credit"
+                ]
+              },
+              "due_date": {
+                "description": "Original explicit due date; may precede cutover.",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "type": "string"
+              },
+              "evidence_ids": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "evidence_refs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "receivable",
+                  "payable",
+                  "accrual",
+                  "credit"
+                ]
+              },
+              "original_amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "reference": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "remaining_amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "account",
+              "currency",
+              "kind",
+              "original_amount",
+              "remaining_amount"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "schedules": {
+          "items": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "properties": {
+                  "evidence_refs": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_refs"
+                ]
+              },
+              {
+                "properties": {
+                  "evidence_ids": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_ids"
+                ]
+              }
+            ],
+            "description": "Opening item/schedule/external support; collection-specific facts and exact control tie-out are validated by migration.",
+            "properties": {
+              "account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "contra_account": {
+                "description": "depreciation only: accumulated depreciation account (Assets:). Carry its balance in lines; recognized_amount is the accumulated depreciation.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "counterparty": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "currency": {
+                "const": "USD"
+              },
+              "description": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "evidence_ids": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "evidence_refs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "prepaid",
+                  "deferred",
+                  "depreciation"
+                ]
+              },
+              "method": {
+                "enum": [
+                  "actual_day",
+                  "equal_month"
+                ]
+              },
+              "recognition_account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "recognized_amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "reference": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "remaining_amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "salvage_value": {
+                "description": "depreciation only: residual value that is not depreciated. remaining_amount is amount minus salvage_value minus recognized_amount.",
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "service_end": {
+                "description": "Last day of service, inclusive.",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "type": "string"
+              },
+              "service_start": {
+                "description": "First day of service, inclusive.",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "account",
+              "currency",
+              "kind",
+              "amount",
+              "recognized_amount",
+              "remaining_amount",
+              "service_start",
+              "service_end",
+              "method",
+              "recognition_account"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "opening": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Source-neutral opening balances. Use `books accrual opening draft` to start from an existing company; apply the unchanged preview.",
+      "examples": [
+        {
+          "cutover": "2026-01-01",
+          "evidence_refs": [
+            "evidence/opening-ar-list.pdf"
+          ],
+          "items": [
+            {
+              "account": "Assets:Receivable:Accounts-Receivable",
+              "counterparty": "Synthetic Customer",
+              "due_date": "2025-12-15",
+              "id": "synthetic-inv-1",
+              "kind": "receivable",
+              "open_amount": "300.00",
+              "reference": "INV-1"
+            },
+            {
+              "account": "Liabilities:Payable:Accounts-Payable",
+              "counterparty": "Synthetic Supplier",
+              "due_date": "2026-01-10",
+              "id": "synthetic-bill-1",
+              "kind": "payable",
+              "open_amount": "100.00",
+              "reference": "BILL-9"
+            }
+          ],
+          "lines": [
+            {
+              "account": "Assets:Bank:Checking",
+              "amount": "30000.00"
+            },
+            {
+              "account": "Assets:Receivable:Accounts-Receivable",
+              "amount": "300.00"
+            },
+            {
+              "account": "Liabilities:Payable:Accounts-Payable",
+              "amount": "-100.00"
+            },
+            {
+              "account": "Equity:Opening-Balances",
+              "amount": "-30200.00"
+            }
+          ],
+          "operation_id": "synthetic-opening"
+        }
+      ],
+      "properties": {
+        "cutover": {
+          "description": "First day of the accrual books. The opening entry is dated the day before; accounts it uses are opened as of that date.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "evidence_refs": {
+          "description": "Company-relative supporting document paths.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "external": {
+          "description": "Support for other control accounts (fixed assets, loans, accruals).",
+          "items": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "properties": {
+                  "evidence_refs": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_refs"
+                ]
+              },
+              {
+                "properties": {
+                  "evidence_ids": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_ids"
+                ]
+              }
+            ],
+            "description": "Opening item/schedule/external support; collection-specific facts and exact control tie-out are validated by migration.",
+            "properties": {
+              "account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "balance": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "counterparty": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "currency": {
+                "const": "USD"
+              },
+              "description": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "evidence_ids": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "evidence_refs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "reference": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "account",
+              "currency",
+              "balance"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "items": {
+          "description": "Open customer invoices and supplier bills. Their open amounts must equal the control account balance.",
+          "items": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "account": {
+                "description": "Control account that carries the balance, for example Assets:Receivable:Accounts-Receivable.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "counterparty": {
+                "description": "Customer or supplier name.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "description": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "direction": {
+                "enum": [
+                  "debit",
+                  "credit"
+                ]
+              },
+              "due_date": {
+                "description": "Original due date; may precede the cutover.",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "type": "string"
+              },
+              "evidence_ids": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "evidence_refs": {
+                "description": "Company-relative supporting document paths.",
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "receivable",
+                  "payable",
+                  "accrual",
+                  "credit"
+                ]
+              },
+              "open_amount": {
+                "description": "Unpaid amount at the cutover.",
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "original_amount": {
+                "description": "Original invoice or bill amount. Defaults to open_amount.",
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "reference": {
+                "description": "Invoice or bill number.",
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "account",
+              "open_amount"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "lines": {
+          "description": "Opening balance lines. Debits must equal credits; balance sheet accounts only.",
+          "items": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "account": {
+                "description": "Balance sheet account (Assets, Liabilities or Equity). Opened as of the opening date if not yet open.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "amount": {
+                "description": "Signed exact USD amount: debit positive, credit negative. Or use debit/credit instead.",
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "credit": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "debit": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "account"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "operation_id": {
+          "description": "Stable ID. Defaults to opening-<cutover>.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "schedules": {
+          "description": "Remaining prepaid, deferred or depreciation (fixed asset) balances.",
+          "items": {
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "properties": {
+                  "evidence_refs": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_refs"
+                ]
+              },
+              {
+                "properties": {
+                  "evidence_ids": {
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "evidence_ids"
+                ]
+              }
+            ],
+            "description": "Opening item/schedule/external support; collection-specific facts and exact control tie-out are validated by migration.",
+            "properties": {
+              "account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "contra_account": {
+                "description": "depreciation only: accumulated depreciation account (Assets:). Carry its balance in lines; recognized_amount is the accumulated depreciation.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "counterparty": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "currency": {
+                "const": "USD"
+              },
+              "description": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "evidence_ids": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "evidence_refs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "prepaid",
+                  "deferred",
+                  "depreciation"
+                ]
+              },
+              "method": {
+                "enum": [
+                  "actual_day",
+                  "equal_month"
+                ]
+              },
+              "recognition_account": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "recognized_amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "reference": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "remaining_amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "salvage_value": {
+                "description": "depreciation only: residual value that is not depreciated. remaining_amount is amount minus salvage_value minus recognized_amount.",
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "service_end": {
+                "description": "Last day of service, inclusive.",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "type": "string"
+              },
+              "service_start": {
+                "description": "First day of service, inclusive.",
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "account",
+              "currency",
+              "kind",
+              "amount",
+              "recognized_amount",
+              "remaining_amount",
+              "service_start",
+              "service_end",
+              "method",
+              "recognition_account"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "cutover",
+        "lines"
+      ],
+      "type": "object"
+    },
+    "period": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Local operator only; close additionally requires exact ready package ID. Standing adjust authority cannot close or reopen.",
+      "properties": {
+        "action": {
+          "enum": [
+            "close",
+            "reopen"
+          ]
+        },
+        "as_of": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "period": {
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+          "type": "string"
+        },
+        "readiness_package_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "period",
+        "action",
+        "as_of",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "reversal": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "original_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "original_id",
+        "date",
+        "description"
+      ],
+      "type": "object"
+    },
+    "rule_clear": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Remove a saved rule. Give counterparty or id. Nothing in the books changes. Preview with `rules clear-preview`, then `rules clear-apply`.",
+      "examples": [
+        {
+          "cleared_by": "synthetic-person",
+          "counterparty": "Synthetic Hosting",
+          "operation_id": "synthetic-rule-clear",
+          "source": "person"
+        }
+      ],
+      "properties": {
+        "cleared_at": {
+          "type": "string"
+        },
+        "cleared_by": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "counterparty": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "description": "A company rule id.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "person",
+            "agent"
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "cleared_by",
+        "source"
+      ],
+      "type": "object"
+    },
+    "rule_match": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Facts of a bill, invoice, payment or supporting document. `rules match` reads the saved rules and returns the matching rule, why, and a DRAFT request for the ordinary preview. Needs a counterparty, description or account.",
+      "examples": [
+        {
+          "account": "Expenses:Software",
+          "amount": "1200.00",
+          "counterparty": "Synthetic Hosting",
+          "date": "2026-02-01",
+          "funding_account": "Assets:Bank:Checking",
+          "service_start": "2026-02-01",
+          "source_id": "synthetic-bank-payment"
+        }
+      ],
+      "properties": {
+        "account": {
+          "description": "The expense or income account the item is, or would be, categorized to. `category` is accepted as the same fact.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "amount": {
+          "description": "Size of the bill, invoice or payment. The sign is ignored.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "category": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "counterparty": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "due_date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "estimate_basis": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "funding_account": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reference": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "service_end": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "service_start": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "source_id": {
+          "description": "The document's or bank transaction's source id; used to name the draft and its origin.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount"
+      ],
+      "type": "object"
+    },
+    "rule_set": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Save what to PROPOSE. A rule never records anything: a person still approves. Preview with `rules set-preview`, then apply the unchanged preview with `rules set-apply`.",
+      "examples": [
+        {
+          "counterparty": "Synthetic Hosting",
+          "method": "equal_month",
+          "note": "Annual plan, paid up front",
+          "operation_id": "synthetic-rule-supplier",
+          "set_by": "synthetic-person",
+          "source": "person",
+          "term_months": 12,
+          "treatment": "prepaid"
+        },
+        {
+          "id": "software-prepaid",
+          "match": {
+            "accounts": [
+              "Expenses:Software"
+            ]
+          },
+          "note": "Software at 1,000 or more is prepaid over its service period",
+          "operation_id": "synthetic-rule-software",
+          "set_by": "synthetic-person",
+          "source": "person",
+          "threshold": "1000.00",
+          "treatment": "prepaid"
+        }
+      ],
+      "properties": {
+        "accounts": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "description": "The balance sheet account and the income or expense account. Checked against the chart, account roots and subtypes. Leave out to let the proposal choose from the chart.",
+          "properties": {
+            "account": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "contra_account": {
+              "description": "depreciation only, and required there.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "recognition_account": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "account",
+            "recognition_account"
+          ],
+          "type": "object"
+        },
+        "counterparty": {
+          "description": "Supplier or customer name or key. Makes a supplier or customer rule. Give this or match, not both.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "description": "Company rule only: a stable id of letters, digits, dots, dashes and underscores. Defaults to a hash of match and threshold, so the same match is one rule. A rule with this id is replaced.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "match": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "description": "Company rule only. Needs accounts or keywords.",
+          "properties": {
+            "accounts": {
+              "description": "Expense, income or non-cash asset accounts. An account also covers the accounts under it; a deeper account is more specific.",
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "type": "array"
+            },
+            "keywords": {
+              "description": "Words that must appear in the description or counterparty. Any one is enough. Not case sensitive.",
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 10,
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "method": {
+          "description": "prepaid, deferred and depreciation only. Use custom installments in the request itself, not in a rule.",
+          "enum": [
+            "actual_day",
+            "equal_month"
+          ]
+        },
+        "note": {
+          "description": "Why, in plain words. Shown with every proposal that uses the rule.",
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "set_at": {
+          "description": "UTC time. Defaults to the preview time.",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+          "type": "string"
+        },
+        "set_by": {
+          "description": "Who decided: the person's name or id, or the agent's name.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "description": "person when a person decided. agent when an agent proposes: tell the person. An agent cannot replace or clear a rule a person set.",
+          "enum": [
+            "person",
+            "agent"
+          ]
+        },
+        "term_months": {
+          "description": "prepaid, deferred and depreciation only. Required for depreciation. Slashbooks does not choose a useful life.",
+          "maximum": 600,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "threshold": {
+          "description": "Apply the rule only to amounts at or above this exact decimal string. Use 1000.01 for \"over 1,000\".",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "treatment": {
+          "enum": [
+            "prepaid",
+            "deferred",
+            "depreciation",
+            "bill",
+            "invoice",
+            "estimate"
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "treatment",
+        "note",
+        "set_by",
+        "source"
+      ],
+      "type": "object"
+    },
+    "schedule": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "examples": [
+        {
+          "account": "Assets:Other:Prepaid-Expenses",
+          "amount": "1200.00",
+          "currency": "USD",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-prepaid",
+          "kind": "prepaid",
+          "method": "equal_month",
+          "operation_id": "synthetic-prepaid-create",
+          "origin": {
+            "date": "2026-01-01",
+            "funding_account": "Assets:Bank:Checking",
+            "mode": "new",
+            "source_id": "synthetic-funding"
+          },
+          "recognition_account": "Expenses:Software",
+          "reference": "Annual software subscription #104",
+          "service_end": "2026-12-31",
+          "service_start": "2026-01-01"
+        },
+        {
+          "account": "Liabilities:DeferredRevenue",
+          "amount": "12000.00",
+          "currency": "USD",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-deferred",
+          "kind": "deferred",
+          "method": "actual_day",
+          "operation_id": "synthetic-deferred-create",
+          "origin": {
+            "date": "2026-01-15",
+            "funding_account": "Assets:Bank:Checking",
+            "mode": "new",
+            "source_id": "synthetic-receipt"
+          },
+          "recognition_account": "Income:Services",
+          "service_end": "2027-01-14",
+          "service_start": "2026-01-15"
+        },
+        {
+          "account": "Assets:Fixed:Equipment",
+          "amount": "2400.00",
+          "contra_account": "Assets:Fixed:Accumulated-Depreciation",
+          "currency": "USD",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-laptop",
+          "kind": "depreciation",
+          "method": "equal_month",
+          "operation_id": "synthetic-laptop-create",
+          "origin": {
+            "date": "2026-01-05",
+            "funding_account": "Assets:Bank:Checking",
+            "mode": "new",
+            "source_id": "synthetic-laptop-purchase"
+          },
+          "recognition_account": "Expenses:Depreciation",
+          "salvage_value": "0.00",
+          "service_end": "2027-12-31",
+          "service_start": "2026-01-01"
+        },
+        {
+          "account": "Assets:PrepaidExpenses",
+          "amount": "300.00",
+          "currency": "USD",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-usage",
+          "installments": [
+            {
+              "amount": "50.00",
+              "date": "2026-01-31"
+            },
+            {
+              "amount": "100.00",
+              "date": "2026-02-28"
+            },
+            {
+              "amount": "150.00",
+              "date": "2026-03-31"
+            }
+          ],
+          "kind": "prepaid",
+          "method": "custom",
+          "operation_id": "synthetic-usage-create",
+          "origin": {
+            "date": "2026-01-01",
+            "funding_account": "Assets:Bank:Checking",
+            "mode": "new",
+            "source_id": "synthetic-usage-payment"
+          },
+          "recognition_account": "Expenses:Software",
+          "service_end": "2026-03-31",
+          "service_start": "2026-01-01"
+        }
+      ],
+      "properties": {
+        "account": {
+          "description": "Control account: Assets: for prepaid and depreciation (the asset cost), Liabilities: for deferred.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "amount": {
+          "description": "Total amount funded: the full cost for depreciation.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "contra_account": {
+          "description": "Required for kind depreciation only: accumulated depreciation account, for example Assets:Fixed:Accumulated-Depreciation. Recognition debits the expense and credits this account; the asset cost stays unchanged.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "installments": {
+          "description": "Only for method custom: dated amounts to recognize, in strictly ascending date order, each inside service_start..service_end, each positive, adding up exactly to the amount to recognize (amount minus salvage_value). Use for usage-based, milestone or uneven patterns.",
+          "items": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "date": {
+                "format": "date",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "date",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "maxItems": 1200,
+          "minItems": 1,
+          "type": "array"
+        },
+        "kind": {
+          "description": "prepaid: asset (account) released to expense (recognition_account). deferred: liability (account) released to income. depreciation: fixed asset cost (account) expensed to recognition_account with the credit going to contra_account.",
+          "enum": [
+            "prepaid",
+            "deferred",
+            "depreciation"
+          ]
+        },
+        "method": {
+          "description": "actual_day: each month gets floor(amount x days in month / total days) cents. equal_month: each whole calendar month gets floor(amount / months) cents; needs service_start on the 1st and service_end on a month end (otherwise use actual_day or custom). custom: use installments. For the two computed methods the final installment receives the residual cents so the total is exact.",
+          "enum": [
+            "actual_day",
+            "equal_month",
+            "custom"
+          ]
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "origin": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "properties": {
+            "date": {
+              "format": "date",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            },
+            "funding_account": {
+              "description": "Existing USD asset account; prepaid schedules also allow Liabilities:CreditCard or its colon-separated subaccounts. Deferred revenue remains asset-funded.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "new",
+                "existing",
+                "opening"
+              ]
+            },
+            "reclass_account": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "source_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "source_id"
+          ],
+          "type": "object"
+        },
+        "recognition_account": {
+          "description": "Expenses: for prepaid and depreciation, Income: for deferred.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "recognition_start": {
+          "description": "Opening-balance carry-over only: first day not yet recognized.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "recognized_amount": {
+          "description": "Opening-balance carry-over only: amount already recognized (accumulated depreciation for depreciation).",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "reference": {
+          "description": "Human reference or description, separate from the stable machine ID.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+        },
+        "salvage_value": {
+          "description": "Depreciation only: residual value that is not depreciated. The depreciable base is amount minus salvage_value.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "service_end": {
+          "description": "Last day of service, inclusive: a one-year service from 2026-01-15 ends 2027-01-14. Same convention as service_period.end. Must lie inside any linked supporting document's service period.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "service_start": {
+          "description": "First day of service, inclusive. Same convention as a supporting document's service_period.start.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "id",
+        "kind",
+        "account",
+        "recognition_account",
+        "currency",
+        "amount",
+        "service_start",
+        "service_end",
+        "method",
+        "origin"
+      ],
+      "type": "object"
+    },
+    "schedule_change": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "examples": [
+        {
+          "action": "terminate",
+          "date": "2026-05-10",
+          "effective_date": "2026-04-30",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "id": "synthetic-prepaid",
+          "offset_account": "Assets:Bank:Checking",
+          "operation_id": "synthetic-terminate",
+          "reason": "Subscription cancelled; vendor refunded the unused months"
+        }
+      ],
+      "properties": {
+        "action": {
+          "description": "cancel: release the whole remaining balance to offset_account on date. refund: return part of the balance (see amount and the refund split fields). supersede: replace the remaining balance with a new schedule. terminate: recognize service through effective_date (daily proration of a partial month for any method), then release the unearned balance to offset_account as a refund, credit or write-off; for depreciation it only stops depreciation.",
+          "enum": [
+            "cancel",
+            "supersede",
+            "refund",
+            "terminate"
+          ]
+        },
+        "amount": {
+          "description": "refund only: total amount returned, equal to remaining_refund_amount plus recognized_refund_amount when both are given.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "date": {
+          "description": "Posting date of the change entry. For terminate it must be on or after effective_date. It cannot precede recognition already posted.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "effective_date": {
+          "description": "terminate only: last day of service, inclusive. Service through this day is recognized; the rest is released.",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "offset_account": {
+          "description": "Account that receives or gives the released value: the bank for a cash refund, a receivable/payable for a credit, or an income/expense account for a write-off.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "recognized_refund_account": {
+          "description": "Expense (prepaid) or income (deferred) account credited or debited for recognized_refund_amount. Required when it is nonzero.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "recognized_refund_amount": {
+          "description": "refund only: part of the refund that reverses service already recognized (posted to recognized_refund_account). Give together with remaining_refund_amount.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "remaining_refund_amount": {
+          "description": "refund only: part of the refund that comes out of the unrecognized balance still held in the schedule account.",
+          "oneOf": [
+            {
+              "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "minor_units": {
+                  "maximum": 99999999999999999999,
+                  "minimum": -99999999999999999999,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minor_units"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "replacement": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "installments": {
+              "description": "Only for method custom: dated amounts to recognize, in strictly ascending date order, each inside service_start..service_end, each positive, adding up exactly to the amount to recognize (amount minus salvage_value). Use for usage-based, milestone or uneven patterns.",
+              "items": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "oneOf": [
+                      {
+                        "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "minor_units": {
+                            "maximum": 99999999999999999999,
+                            "minimum": -99999999999999999999,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "minor_units"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "date": {
+                    "format": "date",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "maxItems": 1200,
+              "minItems": 1,
+              "type": "array"
+            },
+            "method": {
+              "enum": [
+                "actual_day",
+                "equal_month",
+                "custom"
+              ]
+            },
+            "recognition_account": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "service_end": {
+              "description": "Last day of the replacement service, inclusive.",
+              "format": "date",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            },
+            "service_start": {
+              "description": "First day of the replacement service, inclusive; on or after the change date.",
+              "format": "date",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "service_start",
+            "service_end",
+            "method"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "id",
+        "action",
+        "date",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "schedule_due": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "through": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "through"
+      ],
+      "type": "object"
+    },
+    "settlement": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Settle open invoices or bills with one bank movement. A receipt carries excess as a customer credit; a payment carries excess as a supplier credit.",
+      "examples": [
+        {
+          "allocations": [
+            {
+              "amount": "1000.00",
+              "item_id": "synthetic-invoice"
+            }
+          ],
+          "date": "2026-02-10",
+          "evidence_ids": [
+            "synthetic-stored-evidence-id"
+          ],
+          "excess": {
+            "account": "Liabilities:CustomerDeposits",
+            "counterparty": "Synthetic Customer",
+            "id": "synthetic-overpayment-credit"
+          },
+          "operation_id": "synthetic-overpayment",
+          "source": {
+            "amount": "1200.00",
+            "bank_account": "Assets:Bank:Checking",
+            "mode": "new",
+            "source_id": "synthetic-bank-receipt"
+          }
+        }
+      ],
+      "properties": {
+        "allocations": {
+          "description": "Items this payment settles. Empty is allowed only when excess records the whole payment, for example a customer deposit.",
+          "items": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "item_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "item_id",
+              "amount"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "type": "array"
+        },
+        "date": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "excess": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "description": "Records the part of the payment not allocated to items (overpayment or unapplied cash) as a new open credit item. Apply it later with `item offset-preview`.",
+          "properties": {
+            "account": {
+              "description": "Control account that holds the credit: a receivable, payable, customer deposit or vendor prepayment account (never cash).",
+              "minLength": 1,
+              "type": "string"
+            },
+            "counterparty": {
+              "description": "Customer or supplier name. Defaults to the shared counterparty of the allocated items.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "reference": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "account"
+          ],
+          "type": "object"
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source": {
+          "$schema": "https://json-schema.org/draft/2020-12/schema",
+          "additionalProperties": false,
+          "properties": {
+            "amount": {
+              "oneOf": [
+                {
+                  "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "minor_units": {
+                      "maximum": 99999999999999999999,
+                      "minimum": -99999999999999999999,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "minor_units"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "bank_account": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "new",
+                "existing"
+              ]
+            },
+            "source_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "source_id",
+            "bank_account",
+            "amount"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id",
+        "date",
+        "source",
+        "allocations"
+      ],
+      "type": "object"
+    },
+    "support": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "details": {
+          "items": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "additionalProperties": false,
+            "properties": {
+              "balance": {
+                "oneOf": [
+                  {
+                    "pattern": "^-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,2})?$",
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "minor_units": {
+                        "maximum": 99999999999999999999,
+                        "minimum": -99999999999999999999,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "minor_units"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "description": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "balance"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "evidence_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "managed_support_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "mode": {
+          "default": "full",
+          "enum": [
+            "full",
+            "residual"
+          ]
+        },
+        "operation_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "supersedes": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "account",
+        "as_of",
+        "currency",
+        "details",
+        "evidence_ids"
+      ],
+      "type": "object"
+    }
+  },
+  "schema_version": 1
+}

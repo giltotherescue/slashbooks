@@ -1,0 +1,69 @@
+{
+  "accounts": 16,
+  "disclaimer": "Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.",
+  "files": {
+    "README.txt": {
+      "sha256": "b48ad078ec9d897cb66d0458562d1e2a1f96bff6e221d255647e07cdc64ae7f2",
+      "sheet": "Read Me"
+    },
+    "lacerte-tbu-1120s-2026-01-01_2026-03-31.csv": {
+      "sha256": "9706a74e5086a0fbd1ea594bb949ea9fc17df20508b8b5308d7d87c805eb8163",
+      "sheet": "Lacerte TBU"
+    },
+    "tax-handoff-1120s-2026-01-01_2026-03-31.xlsx": {
+      "sha256": "789e2b942c0228afaaaae93d8b7d3265cbae20535dd0324f18fdf4cdd1eea301",
+      "sheet": "Workbook"
+    },
+    "tax-line-summary-1120s-2026-01-01_2026-03-31.csv": {
+      "sha256": "675728a22d47e882d45e2088e845551bc30fc83955851a0481c23e4a6f486c12",
+      "sheet": "Tax Line Summary"
+    },
+    "tax-trial-balance-1120s-2026-01-01_2026-03-31.csv": {
+      "sha256": "c6aa1b6ee789d40522c7403c63af2afdae9c07b02015c8d6e0d1b0388a8a755e",
+      "sheet": "Trial Balance"
+    },
+    "ultratax-tb-import-1120s-2026-01-01_2026-03-31.csv": {
+      "sha256": "660f332605354c1a376cd2195dabd97adb50f252d8acdf151a83a4edc34322c0",
+      "sheet": "UltraTax CS Import"
+    },
+    "unmapped-accounts-1120s-2026-01-01_2026-03-31.csv": {
+      "sha256": "589541deb5f35236b96ea503be5888e92a2abeec70ac06f2f1e110cd61c02e26",
+      "sheet": "Unmapped Accounts"
+    }
+  },
+  "form": "1120s",
+  "form_basis": "workspace",
+  "form_name": "Form 1120-S",
+  "from": "2026-01-01",
+  "kind": "tax_handoff",
+  "line_numbers": "Tax year 2025 federal forms",
+  "needs_review": [
+    "Assets:Bank:Checking",
+    "Assets:Fixed:Accumulated-Depreciation",
+    "Assets:Fixed:Equipment",
+    "Assets:Other:Prepaid-Expenses",
+    "Assets:Receivable:Accounts-Receivable",
+    "Equity:Opening-Balances",
+    "Expenses:Bad-Debt",
+    "Expenses:Depreciation",
+    "Expenses:Insurance",
+    "Expenses:Software",
+    "Expenses:Utilities",
+    "Income:Consulting",
+    "Liabilities:Other:Accrued-Liabilities",
+    "Liabilities:Other:Deferred-Revenue",
+    "Liabilities:Payable:Accounts-Payable"
+  ],
+  "output_dir": "<WORK>/tax-accrual",
+  "schema_version": 1,
+  "to": "2026-03-31",
+  "totals": {
+    "credit": "49970.00",
+    "debit": "49970.00",
+    "difference": "0.00"
+  },
+  "unmapped": [
+    "Expenses:Bonus"
+  ],
+  "xlsx_note": null
+}

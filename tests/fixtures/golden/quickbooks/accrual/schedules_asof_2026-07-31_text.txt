@@ -1,0 +1,12 @@
+Prepaid expenses and deferred revenue
+As of 2026-07-31 | Accrual basis | USD
+Detailed activity begins 2026-07-01; imported opening as of 2026-06-30.
+Imported fiscal summary: 2026-01-01 through 2026-06-30; earlier monthly detail is unavailable.
+
+Schedule      | Type             | Account                            | Recognized | Remaining | Asset cost | Accumulated depreciation | Net book value | Status
+--------------+------------------+------------------------------------+------------+-----------+------------+--------------------------+----------------+-------
+deferred-open | Deferred revenue | Liabilities:Other:Deferred-Revenue | 700.00     | 500.00    | -          | -                        | -              | active
+prepaid-open  | Prepaid expense  | Assets:Other:Prepaid-Insurance     | 700.00     | 500.00    | -          | -                        | -              | active
+
+Review issues:
+No outstanding review items.

@@ -1,0 +1,182 @@
+{
+  "as_of": "2026-03-31",
+  "basis": "accrual",
+  "canonical_digest": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097",
+  "coverage": {
+    "basis": "accrual",
+    "chart": [
+      {
+        "account": "Assets:Bank:Checking",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Bank:Checking"
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Accumulated-Depreciation"
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Equipment"
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Other:Prepaid-Expenses"
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Receivable:Accounts-Receivable"
+      },
+      {
+        "account": "Equity:Opening-Balances",
+        "account_type": "Equity",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Equity:Opening-Balances"
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Other:Deferred-Revenue"
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Payable:Accounts-Payable"
+      }
+    ],
+    "closed_position": true,
+    "currency": "USD",
+    "cutover_date": "2026-01-01",
+    "fiscal_start": "2026-01-01",
+    "id": "opening",
+    "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
+    "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+    "opening_source_id": "golden-opening",
+    "source_as_of": "2025-12-31",
+    "source_hashes": {},
+    "summary_from": null,
+    "summary_to": null,
+    "support_evidence_hashes": {
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
+    },
+    "support_status": "reconciled",
+    "verified": true
+  },
+  "currency": "USD",
+  "fingerprint": "dc8e6412c80b07dea2843a23fe22ed0f6eeb151d31678d048918938780878e7a",
+  "from_date": null,
+  "issues": [],
+  "kind": "reconciliation",
+  "requested_from": null,
+  "requested_to": "2026-03-31",
+  "rows": [
+    {
+      "account": "Assets:Fixed:Accumulated-Depreciation",
+      "currency": "USD",
+      "difference": "0.00",
+      "ledger_balance": "-1500.00",
+      "status": "reconciled",
+      "support_balance": "-1500.00",
+      "support_ids": [
+        "laptop-new:accumulated",
+        "laptop-old:accumulated"
+      ],
+      "support_required": true
+    },
+    {
+      "account": "Assets:Fixed:Equipment",
+      "currency": "USD",
+      "difference": "0.00",
+      "ledger_balance": "6000.00",
+      "status": "reconciled",
+      "support_balance": "6000.00",
+      "support_ids": [
+        "laptop-new",
+        "laptop-old"
+      ],
+      "support_required": true
+    },
+    {
+      "account": "Assets:Other:Prepaid-Expenses",
+      "currency": "USD",
+      "difference": "0.00",
+      "ledger_balance": "1300.00",
+      "status": "reconciled",
+      "support_balance": "1300.00",
+      "support_ids": [
+        "insurance-h2",
+        "sw-annual"
+      ],
+      "support_required": true
+    },
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "currency": "USD",
+      "difference": "0.00",
+      "ledger_balance": "2100.00",
+      "status": "reconciled",
+      "support_balance": "2100.00",
+      "support_ids": [
+        "inv-1001",
+        "inv-1002",
+        "inv-1003",
+        "inv-open-1",
+        "orbit-credit"
+      ],
+      "support_required": true
+    },
+    {
+      "account": "Liabilities:Other:Accrued-Liabilities",
+      "currency": "USD",
+      "difference": null,
+      "ledger_balance": "-470.00",
+      "note": "Ledger balance, no supporting detail required.",
+      "status": "ledger_only",
+      "support_balance": null,
+      "support_ids": [],
+      "support_required": false
+    },
+    {
+      "account": "Liabilities:Other:Deferred-Revenue",
+      "currency": "USD",
+      "difference": "0.00",
+      "ledger_balance": "-2700.00",
+      "status": "reconciled",
+      "support_balance": "-2700.00",
+      "support_ids": [
+        "retainer-h2",
+        "retainer-new"
+      ],
+      "support_required": true
+    }
+  ],
+  "schema_version": 1,
+  "summary_included": false,
+  "unresolved_issues": []
+}

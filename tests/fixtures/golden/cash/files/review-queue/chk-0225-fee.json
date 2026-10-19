@@ -1,0 +1,22 @@
+{
+  "amount": "-15.00",
+  "confirmed_category": "Expenses:Fees",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "BANK MONTHLY SERVICE FEE",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-25",
+  "delta": null,
+  "description": "Bank monthly service fee",
+  "original_amount": "-15.00",
+  "proposed_category": "Expenses:Fees",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0225-fee": "d3495b5019b6da52b1f4aa1df98d9b35c555535824db3ff77506ef62b0054355"
+  },
+  "source_id": "chk-0225-fee",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

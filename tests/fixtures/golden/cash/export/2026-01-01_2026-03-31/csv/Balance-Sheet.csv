@@ -1,0 +1,18 @@
+Category,Account,Amount
+Assets,,
+,Assets › Bank › Checking,33043.47
+,Total Assets,33043.47
+
+Liabilities,,
+,Liabilities › CreditCard › Company,499.53
+,Total Liabilities,499.53
+
+Equity,,
+,Equity › Owner-Contributions,20000.00
+,Equity › Owner-Draws,-2000.00
+,Net Income (current period),14543.94
+,Total Equity,32543.94
+
+Summary totals,,
+,Total Assets,33043.47
+,Total Liabilities And Equity,33043.47

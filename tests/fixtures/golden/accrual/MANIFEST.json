@@ -1,0 +1,1682 @@
+{
+  "accrual/accounts_json.json": {
+    "argv": [
+      "accrual",
+      "accounts",
+      "--entity",
+      "<COMPANY>",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "fb8ea488c3f09ff93f978229441f982253f3a20b45a8709e85ef8ac69c8a255c"
+  },
+  "accrual/accounts_text.txt": {
+    "argv": [
+      "accrual",
+      "accounts",
+      "--entity",
+      "<COMPANY>",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "1b1d53166b33c56565f07314bdc44844a47745f1eb2b77cea1b96e7ee00b6eab"
+  },
+  "accrual/adjustments_asof_2026-01-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "90454bb9fbed423236b591a69a1e9db87cd366da36e5c527a47f6042d3bd6026"
+  },
+  "accrual/adjustments_asof_2026-01-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "6f566416185281d3146ca80726142761e54f87a8fddbc46d3922733ca89ab62d"
+  },
+  "accrual/adjustments_asof_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "113dc5c0c48970e2f5fefd6888405b6cc5a28b6d107995160717e3581c2db44a"
+  },
+  "accrual/adjustments_asof_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "184b80560a9cf5e17a3092c99c03c95dd52f4167d6caed0cf19dcd24ad9687e1"
+  },
+  "accrual/adjustments_range_2026-01-01_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "9f5afbbda16ec57fc304aaf06c90e0d246c91f61665b4d649710ae75b1c7a07c"
+  },
+  "accrual/adjustments_range_2026-01-01_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a828ee686467173cf956563372e158f48f21e58a222c3ac89bbb3bd4d1a43457"
+  },
+  "accrual/adjustments_range_2026-03-01_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "276dcd6bbc465984153e4b3d6c31b9db11df9b9a86b6c1f7caecdb43077cfd62"
+  },
+  "accrual/adjustments_range_2026-03-01_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "adjustments",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "d0524ab08425fda82135b74e3ffeb6be212928ff596251171bbb9bcf6e253fd5"
+  },
+  "accrual/aging_asof_2026-01-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "aging",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "f5ae74f22ae3b94c1195c75b9b6f3168ac1f75ef66ad8ae0c9705e2453f269d6"
+  },
+  "accrual/aging_asof_2026-01-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "aging",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "9b675f76621e5b130bbf9a39c8ae53238b2f9f44e49b52c73e68287a3946d86f"
+  },
+  "accrual/aging_asof_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "aging",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "91d5686d7a0a3339768b07636643f3236caa9087399d99af3816ead68038eb29"
+  },
+  "accrual/aging_asof_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "aging",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "f1c1000cd92740cc96f25d6a63dcd99ddaf545d992e22860811cca740694e57a"
+  },
+  "accrual/due_reversals_preview.json": {
+    "argv": [
+      "accrual",
+      "journal",
+      "due-reversals",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-12-31"
+    ],
+    "exit": 0,
+    "stdout_sha256": "dfd4c9f4ec03e5f3f09aa532f7b6819b584a29f2ea983af15221ac9add4bd2ce"
+  },
+  "accrual/item_list.json": {
+    "argv": [
+      "accrual",
+      "item",
+      "list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "8e137a0a4f117bc7d683d6c4af52e0c8fc16c8ee72a85d9f8561927f98442c76"
+  },
+  "accrual/outstanding_asof_2026-01-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "outstanding",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "0e1f7be616209ac8209f5b60072c7cd38f294ab2e40dbd04cd5e5c0bec051f5d"
+  },
+  "accrual/outstanding_asof_2026-01-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "outstanding",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "6aaf60f0df71211e536c273f896c73d9de43f24077d640ad0e9315f009836dba"
+  },
+  "accrual/outstanding_asof_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "outstanding",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "0b40071bd69c3ef1909a2619c758407cdfa0857545f37da2c8dd5fd97a6fbffd"
+  },
+  "accrual/outstanding_asof_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "outstanding",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "d347c453390b6ed067a49d691cd4f99b5d17b2154f2cdd287667390d6e7b0a99"
+  },
+  "accrual/receipt_close_2026-01.json": {
+    "argv": [
+      "accrual",
+      "receipt",
+      "--entity",
+      "<COMPANY>",
+      "--id",
+      "close-2026-01"
+    ],
+    "exit": 0,
+    "stdout_sha256": "e9850d2942fe98347b6004dfb3fb027226d6d76202cf3caca5b7ea021cf5b221"
+  },
+  "accrual/reconciliation_asof_2026-01-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "reconciliation",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "93911aaf5218c0785129d3bd4fab5b694a2c4334197ce064ab5297e4e79b5a77"
+  },
+  "accrual/reconciliation_asof_2026-01-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "reconciliation",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "03fce56e1e857a0c2e84ed2510e2a919535da2ab966f873e330f677a5cf0e636"
+  },
+  "accrual/reconciliation_asof_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "reconciliation",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "abd0fc05cd9d83b70a78a56b4267fdcb7ade90f248ea917dd87cbb548ff9086a"
+  },
+  "accrual/reconciliation_asof_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "reconciliation",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "5ab51b05992943850975ed01bd3b48edd37e096a4dc32b32d4b25feb9e2c4009"
+  },
+  "accrual/rules_list_json.json": {
+    "argv": [
+      "accrual",
+      "rules",
+      "list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "84a6fb54fdab59ca1c0762556ff31464c5e39e9b36875c0a6015e0d698b101de"
+  },
+  "accrual/rules_list_text.txt": {
+    "argv": [
+      "accrual",
+      "rules",
+      "list",
+      "--entity",
+      "<COMPANY>",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "e1381b9586bbc2149b011dea3341167cbb1d11d607df040f281a6855291be7ea"
+  },
+  "accrual/rules_match.json": {
+    "argv": [
+      "accrual",
+      "rules",
+      "match",
+      "--entity",
+      "<COMPANY>",
+      "--input",
+      "<WORK>/rule-facts.json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c4a11ad2aeefa7a3ae79c22c28916f74b8b72f946c21a1bcbda8771f886f3102"
+  },
+  "accrual/schedule_list.json": {
+    "argv": [
+      "accrual",
+      "schedule",
+      "list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "6ac0f8f27bd369744f94efe6d4e588403a89df4329e6628a56dd1efd4d262115"
+  },
+  "accrual/schedules_asof_2026-01-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "61e4932ca7a075a901f49d545eecd87e60cb9336878e0681544438704e0a004e"
+  },
+  "accrual/schedules_asof_2026-01-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "cf4181db57d74a76117cc730b60a43252f9ecace903054087ffb22719086f291"
+  },
+  "accrual/schedules_asof_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3daa32dc5a789f007fdd37acaf4f8d554792e1da54daedfa89187a2d53ec1c99"
+  },
+  "accrual/schedules_asof_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "88dfd65c6c2a7c1c65bcf4cd26ef93c9bfbd15ccc1f49b02e6a79f81e5c59701"
+  },
+  "accrual/schedules_range_2026-01-01_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "d5a55af09e8e450564b510f278976755f432347ed0e35046d4391edca89870f7"
+  },
+  "accrual/schedules_range_2026-01-01_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "2d8fba7aef79e0faded08e3589d1dec5de45bd22572e81f2e18de356e8c61758"
+  },
+  "accrual/schedules_range_2026-03-01_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b105b072cbdea43ead9253370b06053c007c939d3ac5344f72593a9c0b466869"
+  },
+  "accrual/schedules_range_2026-03-01_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "schedules",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "7f4ce1d72f0a10391c57953f097ace223c5c8bcd15e12889ab0c278ab0339a72"
+  },
+  "accrual/support_asof_2026-01-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "113a54445ef87e0b9a2828fa2d60c72ffb4ba3df1f2d92289f8d5a1748bb268e"
+  },
+  "accrual/support_asof_2026-01-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3466db1601a62266abe3d2a4df0ae0c61afa3296116dacaccb655ef7da44204a"
+  },
+  "accrual/support_asof_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "9bbafa130024c94a64ee2b3b665229214d7ede8a5b1c0536fa498a9b1dbb2535"
+  },
+  "accrual/support_asof_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a356a3e9f64f5ae1b70f743a87ea132f76e4a372989a83b96fbba40f4031380e"
+  },
+  "accrual/support_range_2026-01-01_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "ac240f896cb3d9e0f0c6adf4510287d8523af0d1f924f4baafd56a5c55c6b076"
+  },
+  "accrual/support_range_2026-01-01_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3b87e10e7890a4aaaae8581e994593acead2bd152fd5a672e2315c28757376ae"
+  },
+  "accrual/support_range_2026-03-01_2026-03-31_json.json": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b76abe86b23419981c4df078832033d3d99bf23d6a9b09f610d95fdadbee71e1"
+  },
+  "accrual/support_range_2026-03-01_2026-03-31_text.txt": {
+    "argv": [
+      "accrual",
+      "report",
+      "--entity",
+      "<COMPANY>",
+      "--kind",
+      "support",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "67dbd144b74f6ebee75c7dab26c597452665bc076bef33bcd9625c20d43c7ac3"
+  },
+  "ask/q01.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much did we earn in January?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much did we earn in January?",
+    "stdout_sha256": "a28e2642f4478ff2dd25bdad2bc958ad73f56661194291ff6521201cbf0833c8"
+  },
+  "ask/q02.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What were our total expenses this year?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What were our total expenses this year?",
+    "stdout_sha256": "82728e5bcdb69f76ea068ee2dd2df0d24850593d490ebaba7257db38ff259c58"
+  },
+  "ask/q03.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much did we spend on software in March?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much did we spend on software in March?",
+    "stdout_sha256": "753961a97990e078d9b4b6db0627473b07050fa37460708af4f2c21b7f1bb825"
+  },
+  "ask/q04.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How are we doing this year?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How are we doing this year?",
+    "stdout_sha256": "ee1514b8f6ffcc9247f1413bc99b242018961c4e362735357bbf24bec118b9f4"
+  },
+  "ask/q05.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What do we owe?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What do we owe?",
+    "stdout_sha256": "05721cd3dd24b69f64bfe40c7829776f99d3cb5ab4c31e01466b0bae91400306"
+  },
+  "ask/q06.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "Who owes us money?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "Who owes us money?",
+    "stdout_sha256": "87551d9557507e921380de3c77bc57bd93781419ec7ab61ee7ca4c090366550b"
+  },
+  "ask/q07.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "Show receivables aging",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "Show receivables aging",
+    "stdout_sha256": "87551d9557507e921380de3c77bc57bd93781419ec7ab61ee7ca4c090366550b"
+  },
+  "ask/q08.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much is prepaid?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much is prepaid?",
+    "stdout_sha256": "6e22aee8476acc46a496b6f0a08dbf19aa24385aaf6d4fc5d15cd1e32253b1ab"
+  },
+  "ask/q09.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What is our deferred revenue?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What is our deferred revenue?",
+    "stdout_sha256": "54a1699315f7dd290aa1b04a9aad2d219ca841fbc2c2f795cc877004eafe0958"
+  },
+  "ask/q10.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What is the balance sheet?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What is the balance sheet?",
+    "stdout_sha256": "021008304ca2cc4ed410b801d150535f34a8370ae5f5bf449e6dcd60b7553d66"
+  },
+  "ask/q11.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much cash did we spend on software in March?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much cash did we spend on software in March?",
+    "stdout_sha256": "5e67a32be3553c4caa8fcfc377b73bf6c6458ad98ed908432c5800007aab1f65"
+  },
+  "ask/q12.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What was our cash net income in March?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What was our cash net income in March?",
+    "stdout_sha256": "8075e6be774f87b2e2e417e548661c068f1cb6b5f3209e85299f9c1d81b6a9e6"
+  },
+  "coverage/check_json.json": {
+    "argv": [
+      "coverage",
+      "check",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "be49a35723ed26298ef758fcf427b197962bce04939a7abaed53e9b3c354582c"
+  },
+  "coverage/check_text.txt": {
+    "argv": [
+      "coverage",
+      "check",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "e02af1fa2e0ef06bcd17f2e2a9cde1bcdcc1c764407c4e93854a2902382f4f81"
+  },
+  "coverage/statement_list.json": {
+    "argv": [
+      "coverage",
+      "statement-list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "5ec38122677ae0f46edefed7463343cd1ed5ef2fae5a8783bacfd8d451dab135"
+  },
+  "entity/related_entities.txt": {
+    "argv": [
+      "entity",
+      "related-entity",
+      "list",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3368f9aea72326242f5681688aa4fd7f2d4b95c45479973b73181a78cec5b36e"
+  },
+  "export/2026-01-01_2026-01-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--output-dir",
+      "<WORK>/export-accrual-2026-01-01-2026-01-31"
+    ],
+    "exit": 0,
+    "stdout_sha256": "99256755302785ea437a5394c5cccdeb2255ea34f42bab1a7281497124b27378"
+  },
+  "export/2026-01-01_2026-03-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/export-accrual-2026-01-01-2026-03-31"
+    ],
+    "exit": 0,
+    "stdout_sha256": "13be49d46e8e3e6fea63c2ec702fce76924f575a56cf10e64990269ae2c0dbc2"
+  },
+  "export/sanity_check.json": {
+    "argv": [
+      "sanity-check",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31"
+    ],
+    "exit": 0,
+    "stdout_sha256": "75219878dc8377f0d9dd3c5e9c24418509fc232f5220033d31b766c2ad59c910"
+  },
+  "queue/duplicates.json": {
+    "argv": [
+      "queue",
+      "duplicates",
+      "--entity",
+      "<COMPANY>",
+      "--json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "54494bab0eb5f6f68730a01a920e0b203bc7706c9017041de68d798bc618cc64"
+  },
+  "queue/list.txt": {
+    "argv": [
+      "queue",
+      "list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c38566c8ecbb3543743f06dbe0b1c6e91bd6a4e450ce70e230032100e801a5c2"
+  },
+  "queue/list_open.txt": {
+    "argv": [
+      "queue",
+      "list",
+      "--entity",
+      "<COMPANY>",
+      "--status",
+      "open"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c38566c8ecbb3543743f06dbe0b1c6e91bd6a4e450ce70e230032100e801a5c2"
+  },
+  "queue/split_templates.txt": {
+    "argv": [
+      "queue",
+      "split-template-list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "e58bad4dcd137b7c3b20ae766e039c6fc0cf8b2a086aa233c85530c63cd54fcb"
+  },
+  "queue/summary.txt": {
+    "argv": [
+      "queue",
+      "summary",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "de436303ace6fa6944419b1f88ddaf74e07cdf7984f201957dc1e98116c67605"
+  },
+  "queue/taught.json": {
+    "argv": [
+      "queue",
+      "taught",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b71edbd20dc439e0ea6daa4976e4d27dfada67fd79d99153f664424d6cbf2156"
+  },
+  "queue/transfer_candidates.txt": {
+    "argv": [
+      "queue",
+      "transfer-candidates",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c736e3e2124caeb2816e3ebd7d88872cdc9565c74bc45cafd1f55924665581d2"
+  },
+  "queue/transfer_exceptions.txt": {
+    "argv": [
+      "queue",
+      "transfer-exceptions",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "ad701ec265f860ca3afa52b958b57c38ce80ad71e783b48e8e15d00df9a85095"
+  },
+  "readiness/2026-01.json": {
+    "argv": [
+      "readiness",
+      "--entity",
+      "<COMPANY>",
+      "--period",
+      "2026-01",
+      "--as-of",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "stdout_sha256": "437e9d58c1a3906ca70b5126002b7dceac9a6819ae4b2dec4810b84f3c5ac0e2"
+  },
+  "readiness/2026-02.json": {
+    "argv": [
+      "readiness",
+      "--entity",
+      "<COMPANY>",
+      "--period",
+      "2026-02",
+      "--as-of",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "stdout_sha256": "e0612b3c240949e60d0846cac6894d12eafe335f1719e4c4ea31d37fef82c3f8"
+  },
+  "readiness/2026-03.json": {
+    "argv": [
+      "readiness",
+      "--entity",
+      "<COMPANY>",
+      "--period",
+      "2026-03",
+      "--as-of",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b1511a9cd6682b3f84ddcd135fd4a60c554707439410ac5719bd9452fe9b38ca"
+  },
+  "reports/balance-sheet_2025-12-31_json.json": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2025-12-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b060500c0a6190433e3b7f468f52cca9a057f622403e47e9bf10deddbc2c882a"
+  },
+  "reports/balance-sheet_2025-12-31_text.txt": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2025-12-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "d43cf2d9d6d13d1299fcbc6d44e90163eb21a95f70d1ef6983afdddbbf433f26"
+  },
+  "reports/balance-sheet_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b40548430920d52d7d47df4a09a005c86df16504c3c07c32429f69fc17671c03"
+  },
+  "reports/balance-sheet_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "aa5fd84b9c4b4f094ae3cc1e69a39704165ccd1fc3dec43b9be376ee0d16f068"
+  },
+  "reports/balance-sheet_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "0303c637f0b3b5365e27b9b6cda0a15735340cc5e5ca81bf43642efcd9126e6c"
+  },
+  "reports/balance-sheet_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "df20c773efcc2cad85e3cfb6bb2db3fa8d9d2dab7c19732a9ab2a064da50703b"
+  },
+  "reports/balance-sheet_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "779b646fab2043a9c97503dd476f34c9be53f65a9f4a67b863cb51962bd4612a"
+  },
+  "reports/balance-sheet_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a14a2ff70061187e24355e0a80ab4d04dbe31e8c6a32c05ef4727837dbd42993"
+  },
+  "reports/general-ledger_2026-01-01_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b0e90abade84352317b09ba2993b3e7f4d055d5eb9cb98cd4fd463279c78e12d"
+  },
+  "reports/general-ledger_2026-01-01_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "511872e4f0f1f90a849113488bd543aaac4cb8b9c398e51cc7bbb7ce0f60188d"
+  },
+  "reports/general-ledger_2026-01-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "8bc95ce0467349be42314a47904dec14ed0d39773b8748f22d0d74d98b388a57"
+  },
+  "reports/general-ledger_2026-01-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "7b96e3f6d582a33ba37b6ee1b4671a73f0148932729bb55adefdaeb4f478f407"
+  },
+  "reports/general-ledger_2026-02-01_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "8fea8298a68e1c87eea6b81cb1c3eea8e27e21b10e5548bf886a9d6764f88ee4"
+  },
+  "reports/general-ledger_2026-02-01_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "15a856870701c3bd780b16c59c2447afc013e4dcd686a285d4924e3af08a3157"
+  },
+  "reports/general-ledger_2026-03-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "97e8df6d4a15d662045103a2ac90d2d60249b478a493fd08ab31cfc01e368e79"
+  },
+  "reports/general-ledger_2026-03-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "9d20700446ebbe3364fe293b09add605ac02ae8559f37b4d752e50508055c902"
+  },
+  "reports/pnl_2026-01-01_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "7ad81ee3a15dd900f61effb5203e5c5f2c0daff30f06e2b13dc7ff825174b05f"
+  },
+  "reports/pnl_2026-01-01_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "0bfc4fc588772b56d8e152a80387cbaed8ceea4257c645c38c1251733a190bfe"
+  },
+  "reports/pnl_2026-01-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c668d561f2d353050a3ba0bccf52c38fc0255d61f2234d31c6d395b65ba389bf"
+  },
+  "reports/pnl_2026-01-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "129fcc3fe43cddec70dab2cc56062592e4e2ad4638520b7174f6ca7ab1e5a530"
+  },
+  "reports/pnl_2026-02-01_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "cf9ffaaa31bd2837a6ea97d8b56fd98059669fc394a50b239e66f05410238798"
+  },
+  "reports/pnl_2026-02-01_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b1519e377c91736e90a8185165358877f2f3408e5941f554d9d2098d8c5b691f"
+  },
+  "reports/pnl_2026-03-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "55704a434eadc0bd7d100b2b906fe2ef1c6bfc9f565eca5a57e9af678591c96d"
+  },
+  "reports/pnl_2026-03-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b549d7c8b23f705c17f9621e1c917444137dc5845d6defc54138d0a72df12bdf"
+  },
+  "reports/pnl_to_file_json.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json",
+      "--output",
+      "<WORK>/pnl-accrual-json.out"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3e65475a96917dae0dfaea2578278b0ef9b80df8cbab05f53898d66f5c689145"
+  },
+  "reports/pnl_to_file_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text",
+      "--output",
+      "<WORK>/pnl-accrual-text.out"
+    ],
+    "exit": 0,
+    "stdout_sha256": "462d2a10e9567c92d6e3c7a4330cf682d45ef9f734d60efd07e24f22d8b7973b"
+  },
+  "reports/quarterly-review.txt": {
+    "argv": [
+      "quarterly-review",
+      "--entity",
+      "<COMPANY>",
+      "--quarter",
+      "Q1",
+      "--year",
+      "2026"
+    ],
+    "exit": 0,
+    "stdout_sha256": "75ea0c16f11595d19716e4df142249efbedd1179d1a002379b895340950a8515"
+  },
+  "reports/trial-balance_2025-12-31_json.json": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2025-12-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "9be50703644ec5c841ecfe00c6b73a2dd14e212db0b3f349e917845aa048e544"
+  },
+  "reports/trial-balance_2025-12-31_text.txt": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2025-12-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "e10dcf0a6fec1ba401ae1186c4d1ccc38ef2b99b91f5e0983875efc667524970"
+  },
+  "reports/trial-balance_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "f892947efe7b2acf5d5329a525bc41624452acd0a34151019a9896962e243a41"
+  },
+  "reports/trial-balance_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "993c163cf0b453c23bad03311e16329eb6e08e42b3f2494a9bd2e9a311ded116"
+  },
+  "reports/trial-balance_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "96ef031f75e5bf282ae22a142fd1a664e2006a44f0d27e9ca1bffd7996c2c9c9"
+  },
+  "reports/trial-balance_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "87a1b39843918bcd179ce94f0339f47182ced9aba35e7d10bb22801325ea2267"
+  },
+  "reports/trial-balance_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "fdbf631e6e680367e8d4b9f68420027fb58ed7d1ca2ecd2ce59143b428cb4b22"
+  },
+  "reports/trial-balance_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "7866995c8ca0ef178934dd2d01b2b6c83c0504462561e0f8b947b51b13b6ef95"
+  },
+  "tax/export_command.txt": {
+    "argv": [
+      "tax",
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/tax-accrual"
+    ],
+    "exit": 0,
+    "stdout_sha256": "54fb6425907bc0d12d6f30b3eb456e4fdf3d4e0d9f7d3b49ba6e1f4966b9c088"
+  },
+  "tax/map_json.json": {
+    "argv": [
+      "tax",
+      "map",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "6b9c3bf26f2da6d6fda315949329c2a93345d45be3426fa7ab0f5024755d00e3"
+  },
+  "tax/map_text.txt": {
+    "argv": [
+      "tax",
+      "map",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "d67fd86f97ddd0df304be6720194477546766b573185a4234123ee9bc3ae5733"
+  },
+  "work/summary_json.json": {
+    "argv": [
+      "work",
+      "--entity",
+      "<COMPANY>",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c3b2b4f8944a211226b1b4f396e728d10c837529bf26911beea90dcc3d3b49a1"
+  },
+  "work/summary_text.txt": {
+    "argv": [
+      "work",
+      "--entity",
+      "<COMPANY>",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "faafe2b7232ed08f9745ead9dcd7f50824a28986e57d6b63c0c1f0848448a0af"
+  }
+}

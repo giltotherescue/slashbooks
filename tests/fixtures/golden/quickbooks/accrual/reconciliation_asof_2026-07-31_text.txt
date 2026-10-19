@@ -1,0 +1,17 @@
+Account reconciliation
+As of 2026-07-31 | Accrual basis | USD
+Detailed activity begins 2026-07-01; imported opening as of 2026-06-30.
+Imported fiscal summary: 2026-01-01 through 2026-06-30; earlier monthly detail is unavailable.
+
+Account                               | Ledger  | Supporting detail | Difference | Status    
+--------------------------------------+---------+-------------------+------------+-----------
+Assets:Fixed:Accumulated-Depreciation | -440.00 | -440.00           | 0.00       | reconciled
+Assets:Fixed:Equipment                | 2400.00 | 2400.00           | 0.00       | reconciled
+Assets:Other:Prepaid-Insurance        | 500.00  | 500.00            | 0.00       | reconciled
+Assets:Receivable:Accounts-Receivable | 600.00  | 600.00            | 0.00       | reconciled
+Liabilities:Other:Deferred-Revenue    | -500.00 | -500.00           | 0.00       | reconciled
+Liabilities:Other:Payroll-Payable     | -300.00 | -300.00           | 0.00       | reconciled
+Liabilities:Payable:Accounts-Payable  | -300.00 | -300.00           | 0.00       | reconciled
+
+Review issues:
+No outstanding review items.

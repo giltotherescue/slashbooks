@@ -1,0 +1,22 @@
+{
+  "amount": "-210.40",
+  "confirmed_category": "Expenses:Insurance",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "GRANITE INSURANCE PREMIUM",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-03-20",
+  "delta": null,
+  "description": "Granite Insurance premium",
+  "original_amount": "-210.40",
+  "proposed_category": "Expenses:Insurance",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0320-ins": "b28d33ae239ff97829608116dd116e0672e7a1df6a397f639d159528e87dadf1"
+  },
+  "source_id": "chk-0320-ins",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

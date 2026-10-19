@@ -1,0 +1,65 @@
+[
+  {
+    "account": "Assets:Receivable:Accounts-Receivable",
+    "as_of": "2026-06-30",
+    "base_remaining_amount": "1000.00",
+    "currency": "USD",
+    "evidence_ids": [
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+    ],
+    "evidence_refs": [
+      "evidence/opening.txt"
+    ],
+    "id": "customer-open",
+    "kind": "receivable",
+    "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+    "origin": {
+      "mode": "opening",
+      "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+    },
+    "original_amount": "1000.00",
+    "remaining_amount": "600.00",
+    "status": "open"
+  },
+  {
+    "account": "Liabilities:Other:Payroll-Payable",
+    "as_of": "2026-07-20",
+    "base_remaining_amount": "600.00",
+    "created_operation_id": "payroll-support",
+    "currency": "USD",
+    "evidence_ids": [
+      "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+    ],
+    "id": "july-payroll",
+    "kind": "accrual",
+    "origin": {
+      "mode": "existing",
+      "source_id": "accrual:provider-payroll-journal"
+    },
+    "original_amount": "600.00",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  },
+  {
+    "account": "Liabilities:Payable:Accounts-Payable",
+    "as_of": "2026-06-30",
+    "base_remaining_amount": "500.00",
+    "currency": "USD",
+    "evidence_ids": [
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+    ],
+    "evidence_refs": [
+      "evidence/opening.txt"
+    ],
+    "id": "vendor-open",
+    "kind": "payable",
+    "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+    "origin": {
+      "mode": "opening",
+      "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+    },
+    "original_amount": "500.00",
+    "remaining_amount": "300.00",
+    "status": "open"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "count": 1,
+  "instructions": [
+    {
+      "at": "2026-08-05T12:00:00Z",
+      "by": "owner",
+      "by_name": "Owner",
+      "category": "Expenses:Rent",
+      "counterparty": "MAPLE STREET PROPERTIES RENT",
+      "id": "ac6e132a123c9ebe"
+    }
+  ],
+  "kind": "taught",
+  "schema_version": 1
+}

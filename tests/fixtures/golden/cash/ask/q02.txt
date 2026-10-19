@@ -1,0 +1,14 @@
+Answer covers: cash basis, from 2026-01-01 to 2026-08-05.
+
+Total spending from 2026-01-01 to 2026-08-05: 11,806.06
+
+  Expenses › Fees: 45.00
+  Expenses › Insurance: 420.80
+  Expenses › Marketing: 150.57
+  Expenses › Meals: 300.45
+  Expenses › Office: 131.75
+  Expenses › Rent: 5,400.00
+  Expenses › Software: 309.09
+  Expenses › Subcontractors: 4,000.00
+  Expenses › Taxes: 480.00
+  Expenses › Travel: 568.40

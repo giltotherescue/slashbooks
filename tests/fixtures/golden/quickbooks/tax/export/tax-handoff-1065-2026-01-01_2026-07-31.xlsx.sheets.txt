@@ -1,0 +1,67 @@
+=== sheet: Read Me
+A1=Item	B1=Value
+A2=Disclaimer	B2=Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+A3=Company	B3=Synthetic Acceptance Services
+A4=Return	B4=Form 1065 (1065, chosen by workspace)
+A5=Line numbers	B5=Tax year 2025 federal forms; confirm against the current year's form
+A6=Period	B6=2026-01-01 to 2026-07-31
+A7=Basis	B7=Cash basis book balances computed by the Slashbooks engine
+A8=Total debits	B8=22640.00
+A9=Total credits	B9=22640.00
+A10=Unmapped accounts	B10=1
+A11=Sign convention	B11=Balance columns are debit-positive and credit-negative
+A12=Tax computation	B12=None. Book amounts only; the preparer makes all tax adjustments
+=== sheet: Trial Balance
+A1=Account Number	B1=Account	C1=Account Type	D1=Beginning Balance	E1=Debit	F1=Credit	G1=Balance	H1=Tax Form	I1=Schedule	J1=Form Line	K1=Tax Line Code	L1=Tax Line	M1=Statement Detail	N1=On Return	O1=Mapping Basis	P1=Needs Review	Q1=Note
+A2=1010	B2=Assets › Bank › Checking	C2=Assets	D2=0.00	E2=9600.00	F2=0.00	G2=9600.00	H2=Form 1065	I2=L	J2=1	K2=1065/L/1	L2=Cash	M2=	N2=yes	O2=name	P2=yes	Q2=
+A3=1020	B3=Assets › Fixed › Accumulated-Depreciation	C3=Assets	D3=0.00	E3=0.00	F3=440.00	G3=-440.00	H3=Form 1065	I3=L	J3=9b	K3=1065/L/9b	L3=Less accumulated depreciation	M3=	N3=yes	O3=name	P3=yes	Q3=
+A4=1030	B4=Assets › Fixed › Equipment	C4=Assets	D4=0.00	E4=2400.00	F4=0.00	G4=2400.00	H4=Form 1065	I4=L	J4=9a	K4=1065/L/9a	L4=Buildings and other depreciable assets	M4=	N4=yes	O4=name	P4=yes	Q4=
+A5=1040	B5=Assets › Other › Prepaid-Insurance	C5=Assets	D5=0.00	E5=500.00	F5=0.00	G5=500.00	H5=Form 1065	I5=L	J5=6	K5=1065/L/6	L5=Other current assets	M5=	N5=yes	O5=name	P5=yes	Q5=
+A6=1050	B6=Assets › Receivable › Accounts-Receivable	C6=Assets	D6=0.00	E6=600.00	F6=0.00	G6=600.00	H6=Form 1065	I6=L	J6=2a	K6=1065/L/2a	L6=Trade notes and accounts receivable	M6=	N6=yes	O6=name	P6=yes	Q6=
+A7=3010	B7=Equity › Retained-Earnings	C7=Equity	D7=0.00	E7=0.00	F7=9000.00	G7=-9000.00	H7=Form 1065	I7=L	J7=21	K7=1065/L/21	L7=Partners' capital accounts	M7=	N7=yes	O7=name	P7=yes	Q7=Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.
+A8=6010	B8=Expenses › Operating-Costs	C8=Expenses	D8=	E8=9540.00	F8=0.00	G8=9540.00	H8=Form 1065	I8=	J8=	K8=UNMAPPED	L8=	M8=	N8=	O8=unmapped	P8=yes	Q8=No name rule or safe default matches this account.
+A9=4010	B9=Income › Services	C9=Income	D9=	E9=0.00	F9=12100.00	G9=-12100.00	H9=Form 1065	I9=p1	J9=1a	K9=1065/p1/1a	L9=Gross receipts or sales	M9=	N9=yes	O9=account_type	P9=yes	Q9=
+A10=2010	B10=Liabilities › Other › Deferred-Revenue	C10=Liabilities	D10=0.00	E10=0.00	F10=500.00	G10=-500.00	H10=Form 1065	I10=L	J10=17	K10=1065/L/17	L10=Other current liabilities	M10=	N10=yes	O10=name	P10=yes	Q10=
+A11=2020	B11=Liabilities › Other › Payroll-Payable	C11=Liabilities	D11=0.00	E11=0.00	F11=300.00	G11=-300.00	H11=Form 1065	I11=L	J11=15	K11=1065/L/15	L11=Accounts payable	M11=	N11=yes	O11=name	P11=yes	Q11=
+A12=2030	B12=Liabilities › Payable › Accounts-Payable	C12=Liabilities	D12=0.00	E12=0.00	F12=300.00	G12=-300.00	H12=Form 1065	I12=L	J12=15	K12=1065/L/15	L12=Accounts payable	M12=	N12=yes	O12=name	P12=yes	Q12=
+A13=	B13=Total	C13=	D13=	E13=22640.00	F13=22640.00	G13=0.00	H13=	I13=	J13=	K13=	L13=	M13=	N13=	O13=	P13=	Q13=
+=== sheet: Tax Line Summary
+A1=Tax Form	B1=Schedule	C1=Form Line	D1=Tax Line Code	E1=Tax Line	F1=Statement Detail	G1=Beginning Book Amount	H1=Book Amount	I1=Normal Side	J1=On Return	K1=Accounts	L1=Note
+A2=Form 1065	B2=p1	C2=1a	D2=1065/p1/1a	E2=Gross receipts or sales	F2=	G2=	H2=12100.00	I2=credit	J2=yes	K2=Income:Services	L2=
+A3=Form 1065	B3=L	C3=1	D3=1065/L/1	E3=Cash	F3=	G3=0.00	H3=9600.00	I3=debit	J3=yes	K3=Assets:Bank:Checking	L3=
+A4=Form 1065	B4=L	C4=2a	D4=1065/L/2a	E4=Trade notes and accounts receivable	F4=	G4=0.00	H4=600.00	I4=debit	J4=yes	K4=Assets:Receivable:Accounts-Receivable	L4=
+A5=Form 1065	B5=L	C5=6	D5=1065/L/6	E5=Other current assets	F5=	G5=0.00	H5=500.00	I5=debit	J5=yes	K5=Assets:Other:Prepaid-Insurance	L5=
+A6=Form 1065	B6=L	C6=9a	D6=1065/L/9a	E6=Buildings and other depreciable assets	F6=	G6=0.00	H6=2400.00	I6=debit	J6=yes	K6=Assets:Fixed:Equipment	L6=
+A7=Form 1065	B7=L	C7=9b	D7=1065/L/9b	E7=Less accumulated depreciation	F7=	G7=0.00	H7=440.00	I7=credit	J7=yes	K7=Assets:Fixed:Accumulated-Depreciation	L7=
+A8=Form 1065	B8=L	C8=15	D8=1065/L/15	E8=Accounts payable	F8=	G8=0.00	H8=600.00	I8=credit	J8=yes	K8=Liabilities:Other:Payroll-Payable; Liabilities:Payable:Accounts-Payable	L8=
+A9=Form 1065	B9=L	C9=17	D9=1065/L/17	E9=Other current liabilities	F9=	G9=0.00	H9=500.00	I9=credit	J9=yes	K9=Liabilities:Other:Deferred-Revenue	L9=
+A10=Form 1065	B10=L	C10=21	D10=1065/L/21	E10=Partners' capital accounts	F10=	G10=0.00	H10=9000.00	I10=credit	J10=yes	K10=Equity:Retained-Earnings	L10=Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.
+=== sheet: Unmapped Accounts
+A1=Account Number	B1=Account	C1=Account Type	D1=Balance	E1=Reason	F1=How to fix
+A2=6010	B2=Expenses › Operating-Costs	C2=Expenses	D2=9540.00	E2=No name rule or safe default matches this account.	F2=books tax set --entity <company> --form 1065 --account Expenses:Operating-Costs --line <code>
+=== sheet: Lacerte TBU
+A1=Account Number	B1=Account Name	C1=Account Type	D1=Balance	E1=Slashbooks Tax Line
+A2=1010	B2=Assets › Bank › Checking	C2=A	D2=9600.00	E2=1065/L/1 Cash
+A3=1020	B3=Assets › Fixed › Accumulated-Depreciation	C3=A	D3=-440.00	E3=1065/L/9b Less accumulated depreciation
+A4=1030	B4=Assets › Fixed › Equipment	C4=A	D4=2400.00	E4=1065/L/9a Buildings and other depreciable assets
+A5=1040	B5=Assets › Other › Prepaid-Insurance	C5=A	D5=500.00	E5=1065/L/6 Other current assets
+A6=1050	B6=Assets › Receivable › Accounts-Receivable	C6=A	D6=600.00	E6=1065/L/2a Trade notes and accounts receivable
+A7=3010	B7=Equity › Retained-Earnings	C7=L	D7=-9000.00	E7=1065/L/21 Partners' capital accounts
+A8=6010	B8=Expenses › Operating-Costs	C8=E	D8=9540.00	E8=UNMAPPED
+A9=4010	B9=Income › Services	C9=R	D9=-12100.00	E9=1065/p1/1a Gross receipts or sales
+A10=2010	B10=Liabilities › Other › Deferred-Revenue	C10=L	D10=-500.00	E10=1065/L/17 Other current liabilities
+A11=2020	B11=Liabilities › Other › Payroll-Payable	C11=L	D11=-300.00	E11=1065/L/15 Accounts payable
+A12=2030	B12=Liabilities › Payable › Accounts-Payable	C12=L	D12=-300.00	E12=1065/L/15 Accounts payable
+=== sheet: UltraTax CS Import
+A1=Account Number	B1=Account Description	C1=Unit	D1=Tax Code	E1=Amount
+A2=1010	B2=Assets › Bank › Checking	C2=	D2=	E2=9600.00
+A3=1020	B3=Assets › Fixed › Accumulated-Depreciation	C3=	D3=	E3=-440.00
+A4=1030	B4=Assets › Fixed › Equipment	C4=	D4=	E4=2400.00
+A5=1040	B5=Assets › Other › Prepaid-Insurance	C5=	D5=	E5=500.00
+A6=1050	B6=Assets › Receivable › Accounts-Receivable	C6=	D6=	E6=600.00
+A7=3010	B7=Equity › Retained-Earnings	C7=	D7=	E7=-9000.00
+A8=6010	B8=Expenses › Operating-Costs	C8=	D8=	E8=9540.00
+A9=4010	B9=Income › Services	C9=	D9=	E9=-12100.00
+A10=2010	B10=Liabilities › Other › Deferred-Revenue	C10=	D10=	E10=-500.00
+A11=2020	B11=Liabilities › Other › Payroll-Payable	C11=	D11=	E11=-300.00
+A12=2030	B12=Liabilities › Payable › Accounts-Payable	C12=	D12=	E12=-300.00

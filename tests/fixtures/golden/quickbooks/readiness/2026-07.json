@@ -1,0 +1,114 @@
+{
+  "activity_from": "2026-07-01",
+  "activity_to": "2026-07-31",
+  "basis": "accrual",
+  "blockers": [],
+  "books_revision": 0,
+  "coverage": [
+    {
+      "account": "Assets:Bank:Checking",
+      "label": "synthetic-bank",
+      "months": [
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-07-01",
+          "gaps": [],
+          "month": "2026-07",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-07-31",
+          "verified": true
+        }
+      ],
+      "status": "complete",
+      "verified": true
+    }
+  ],
+  "evidence_fingerprint": "60259d20163eaa7d716f52e42f23bf4cc3bf89bbd34093394a5c9c98a9a40ef9",
+  "imported_summary_through": null,
+  "package_id": "d870fbf51b281ccec67ae7bdfd2550377339104f98c6014fae10c0d1936466c3",
+  "partial_post_cutover": false,
+  "period": "2026-07",
+  "period_status": "completed",
+  "policy_version": 0,
+  "reconciliations": [
+    {
+      "account": "Assets:Bank:Checking",
+      "as_of": "2026-07-31",
+      "discrepancy": "0.00",
+      "ledger_balance": "9600.00",
+      "record_id": "Assets:Bank:Checking@2026-07-31",
+      "source_balance": "9600.00",
+      "source_evidence_hashes": {
+        "evidence/july-bank.json": "603a7fc45142f0e558392ebbfb7e92a35b59ada4c80de129cb01712e34dc5979"
+      },
+      "source_evidence_refs": [
+        "evidence/july-bank.json"
+      ],
+      "source_integrity_residual": "0.00",
+      "source_opening_balance": "10000.00",
+      "source_snapshot_at": "2026-08-01T12:00:00+00:00",
+      "source_through": "2026-07-31",
+      "source_transaction_total": "-400.00",
+      "status": "clean"
+    }
+  ],
+  "reply_revision": 0,
+  "reports": [
+    {
+      "kind": "pnl",
+      "period_from": "2026-07-01",
+      "period_to": "2026-07-31",
+      "provisional": false,
+      "sha256": "4eb1506137da0e6da610822cac89807dc94e581fd3e1ed42c48806be9478e78b",
+      "totals": {
+        "net_income": "-640.00"
+      }
+    },
+    {
+      "kind": "balance_sheet",
+      "period_from": "2026-07-01",
+      "period_to": "2026-07-31",
+      "provisional": false,
+      "sha256": "ada1bb4092108adc8ae7a4c8d8d586c7e837252e1523341e611f6bd14e2db1b8",
+      "totals": {
+        "total_assets": "12660.00",
+        "total_liabilities_and_equity": "12660.00"
+      }
+    },
+    {
+      "kind": "trial_balance",
+      "period_from": "2026-07-01",
+      "period_to": "2026-07-31",
+      "provisional": false,
+      "sha256": "ce10d6d53663acc0e78584d7736843f7c20d38c5ca4c31c9c7e0fea21556cf85",
+      "totals": {
+        "net": "0.00",
+        "total_credits": "22640.00",
+        "total_debits": "22640.00"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_revision": 0,
+  "sources": [
+    {
+      "account": "Assets:Bank:Checking",
+      "coverage_from": "2026-07-01",
+      "coverage_status": "complete",
+      "coverage_to": "2026-07-31",
+      "requested_from": "2026-07-01",
+      "requested_to": "2026-07-31",
+      "source": "synthetic-bank"
+    }
+  ],
+  "state": "ready_for_review",
+  "warnings": []
+}

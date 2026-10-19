@@ -1,0 +1,280 @@
+{
+  "aging_basis": "due_date",
+  "as_of": "2026-01-31",
+  "basis": "accrual",
+  "bucket_labels": {
+    "1_30": "1–30 days overdue",
+    "31_60": "31–60 days overdue",
+    "61_90": "61–90 days overdue",
+    "current": "Current",
+    "over_90": "Over 90 days overdue",
+    "unapplied_credit": "Unapplied credit",
+    "unknown_due_date": "Due date not provided"
+  },
+  "canonical_digest": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097",
+  "coverage": {
+    "basis": "accrual",
+    "chart": [
+      {
+        "account": "Assets:Bank:Checking",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Bank:Checking"
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Accumulated-Depreciation"
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Equipment"
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Other:Prepaid-Expenses"
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Receivable:Accounts-Receivable"
+      },
+      {
+        "account": "Equity:Opening-Balances",
+        "account_type": "Equity",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Equity:Opening-Balances"
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Other:Deferred-Revenue"
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Payable:Accounts-Payable"
+      }
+    ],
+    "closed_position": true,
+    "currency": "USD",
+    "cutover_date": "2026-01-01",
+    "fiscal_start": "2026-01-01",
+    "id": "opening",
+    "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
+    "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+    "opening_source_id": "golden-opening",
+    "source_as_of": "2025-12-31",
+    "source_hashes": {},
+    "summary_from": null,
+    "summary_to": null,
+    "support_evidence_hashes": {
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
+    },
+    "support_status": "reconciled",
+    "verified": true
+  },
+  "credits_netted": false,
+  "currency": "USD",
+  "fingerprint": "43a482338a526460ed367098116aa1e0b8608dc34e59a5a418e01b4bff59e908",
+  "from_date": null,
+  "issues": [],
+  "kind": "aging",
+  "requested_from": null,
+  "requested_to": "2026-01-31",
+  "rows": [
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "aging_amount": "900.00",
+      "allocations_as_of": [],
+      "as_of": "2026-01-12",
+      "base_remaining_amount": "900.00",
+      "bucket": "current",
+      "bucket_label": "Current",
+      "counterparty": "Kestrel Foods",
+      "created_operation_id": "inv-1003-create",
+      "currency": "USD",
+      "days_past_due": 0,
+      "due_date": "2026-02-11",
+      "evidence_ids": [
+        "a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"
+      ],
+      "id": "inv-1003",
+      "kind": "receivable",
+      "origin": {
+        "counter_account": "Income:Consulting",
+        "mode": "new",
+        "source_id": "inv-1003-create-source"
+      },
+      "original_amount": "900.00",
+      "remaining_amount": "900.00",
+      "remaining_as_of": "900.00",
+      "signed_balance": "900.00",
+      "status": "open"
+    },
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "aging_amount": "6000.00",
+      "allocations_as_of": [],
+      "as_of": "2026-01-10",
+      "base_remaining_amount": "6000.00",
+      "bucket": "current",
+      "bucket_label": "Current",
+      "counterparty": "Orbit Labs",
+      "created_operation_id": "inv-1001-create",
+      "currency": "USD",
+      "days_past_due": 0,
+      "due_date": "2026-02-09",
+      "evidence_ids": [
+        "673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"
+      ],
+      "id": "inv-1001",
+      "kind": "receivable",
+      "origin": {
+        "counter_account": "Income:Consulting",
+        "mode": "new",
+        "source_id": "inv-1001-create-source"
+      },
+      "original_amount": "6000.00",
+      "remaining_amount": "6000.00",
+      "remaining_as_of": "6000.00",
+      "signed_balance": "6000.00",
+      "status": "open"
+    },
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "aging_amount": "1500.00",
+      "allocations_as_of": [
+        "settlement:pay-inv-open-1:inv-open-1"
+      ],
+      "as_of": "2025-12-31",
+      "base_remaining_amount": "4000.00",
+      "bucket": "31_60",
+      "bucket_label": "31–60 days overdue",
+      "counterparty": "Orbit Labs",
+      "currency": "USD",
+      "days_past_due": 42,
+      "due_date": "2025-12-20",
+      "evidence_ids": [
+        "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+      ],
+      "evidence_refs": [
+        "evidence/open-items.txt"
+      ],
+      "id": "inv-open-1",
+      "kind": "receivable",
+      "opening_source_id": "golden-opening",
+      "origin": {
+        "mode": "opening",
+        "source_id": "golden-opening"
+      },
+      "original_amount": "4000.00",
+      "reference": "INV-0950",
+      "remaining_amount": "1500.00",
+      "remaining_as_of": "1500.00",
+      "signed_balance": "1500.00",
+      "status": "open"
+    }
+  ],
+  "schema_version": 1,
+  "summary": [
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "0.00",
+        "61_90": "0.00",
+        "current": "900.00",
+        "over_90": "0.00",
+        "unapplied_credit": "0.00",
+        "unknown_due_date": "0.00"
+      },
+      "counterparty": "Kestrel Foods",
+      "currency": "USD",
+      "item_count": 1,
+      "kind": "receivable",
+      "total": "900.00"
+    },
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "1500.00",
+        "61_90": "0.00",
+        "current": "6000.00",
+        "over_90": "0.00",
+        "unapplied_credit": "0.00",
+        "unknown_due_date": "0.00"
+      },
+      "counterparty": "Orbit Labs",
+      "currency": "USD",
+      "item_count": 2,
+      "kind": "receivable",
+      "total": "7500.00"
+    }
+  ],
+  "summary_included": false,
+  "totals": {
+    "payable": {
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "0.00",
+        "61_90": "0.00",
+        "current": "0.00",
+        "over_90": "0.00",
+        "unknown_due_date": "0.00"
+      },
+      "count": 0,
+      "overdue_count": 0,
+      "overdue_total": "0.00",
+      "total": "0.00",
+      "unapplied_credits": {
+        "count": 0,
+        "total": "0.00"
+      }
+    },
+    "receivable": {
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "1500.00",
+        "61_90": "0.00",
+        "current": "6900.00",
+        "over_90": "0.00",
+        "unknown_due_date": "0.00"
+      },
+      "count": 3,
+      "overdue_count": 1,
+      "overdue_total": "1500.00",
+      "total": "8400.00",
+      "unapplied_credits": {
+        "count": 0,
+        "total": "0.00"
+      }
+    }
+  },
+  "unresolved_issues": []
+}

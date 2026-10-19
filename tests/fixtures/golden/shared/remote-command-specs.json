@@ -1,0 +1,447 @@
+{
+  "accrual item preview --entity E --input in.json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "input"
+    ],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "item",
+      "preview"
+    ]
+  },
+  "accrual item settle-apply --entity E --input in.json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "input"
+    ],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "item",
+      "settle-apply"
+    ]
+  },
+  "accrual journal due-reversals --entity E --as-of 2026-02-01": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "journal",
+      "due-reversals"
+    ]
+  },
+  "accrual journal due-reversals --entity E --as-of 2026-02-01 --apply": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "journal",
+      "due-reversals"
+    ]
+  },
+  "accrual migration apply --entity E --input in.json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "input"
+    ],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "migration",
+      "apply"
+    ]
+  },
+  "accrual opening preview --entity E --input in.json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "input"
+    ],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "opening",
+      "preview"
+    ]
+  },
+  "accrual period apply --entity E --input in.json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "input"
+    ],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "period",
+      "apply"
+    ]
+  },
+  "accrual report --entity E --kind aging --as-of 2026-01-31": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "report"
+    ]
+  },
+  "accrual rules list --entity E": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "rules",
+      "list"
+    ]
+  },
+  "accrual rules set-apply --entity E --input in.json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "input"
+    ],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "rules",
+      "set-apply"
+    ]
+  },
+  "accrual schedule due-preview --entity E --through 2026-01-31 --operation-id op": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "accrual",
+      "schedule",
+      "due-preview"
+    ]
+  },
+  "ask --entity E How much did we earn in January?": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "ask"
+    ]
+  },
+  "balance check --entity E --input in.json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "input"
+    ],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "balance",
+      "check"
+    ]
+  },
+  "compare period --entity E --qb-folder qb --from 2026-01-01 --to 2026-01-31": {
+    "entity_fields": [
+      "entity_path"
+    ],
+    "input_fields": [
+      "qb_folder"
+    ],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "compare",
+      "period"
+    ]
+  },
+  "coverage check --entity E --from 2026-01-01 --to 2026-01-31 --output cov.txt": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output"
+    ],
+    "path": [
+      "coverage",
+      "check"
+    ]
+  },
+  "entity account-add dir --account Expenses:Fees": {
+    "entity_fields": [
+      "path"
+    ],
+    "input_fields": [],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "entity",
+      "account-add"
+    ]
+  },
+  "entity init dir --basis accrual": {
+    "entity_fields": [
+      "path"
+    ],
+    "input_fields": [],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "entity",
+      "init"
+    ]
+  },
+  "export --entity E --from 2026-01-01 --to 2026-01-31 --output-dir out": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output_dir"
+    ],
+    "path": [
+      "export"
+    ]
+  },
+  "ledger snapshot --entity E": {
+    "error": "ContractError: the following arguments are required: --output"
+  },
+  "queue confirm --entity E --item x": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "queue",
+      "confirm"
+    ]
+  },
+  "queue list --entity E": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "queue",
+      "list"
+    ]
+  },
+  "queue propose --entity E --source-id x --category Expenses:Fees --reasoning r": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "queue",
+      "propose"
+    ]
+  },
+  "queue summary --entity E": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "queue",
+      "summary"
+    ]
+  },
+  "readiness --entity E --period 2026-01 --as-of 2026-02-02": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output"
+    ],
+    "path": [
+      "readiness"
+    ]
+  },
+  "reconcile --entity E --account Assets:Bank:Checking --source-balance 1.00 --as-of 2026-01-31": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [
+      "balances_json"
+    ],
+    "mutates": true,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "reconcile"
+    ]
+  },
+  "report balance-sheet --entity E --as-of 2026-01-31 --output out.txt": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output"
+    ],
+    "path": [
+      "report",
+      "balance-sheet"
+    ]
+  },
+  "report general-ledger --entity E --from 2026-01-01 --to 2026-01-31 --format json": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output"
+    ],
+    "path": [
+      "report",
+      "general-ledger"
+    ]
+  },
+  "report pnl --entity E --from 2026-01-01 --to 2026-01-31": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output"
+    ],
+    "path": [
+      "report",
+      "pnl"
+    ]
+  },
+  "report trial-balance --entity E --as-of 2026-01-31": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output"
+    ],
+    "path": [
+      "report",
+      "trial-balance"
+    ]
+  },
+  "tax export --entity E --year 2026 --output-dir out": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [
+      "output_dir"
+    ],
+    "path": [
+      "tax",
+      "export"
+    ]
+  },
+  "tax map --entity E --year 2026": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "tax",
+      "map"
+    ]
+  },
+  "work --entity E --from 2026-01-01 --to 2026-01-31": {
+    "entity_fields": [
+      "entity"
+    ],
+    "input_fields": [],
+    "mutates": false,
+    "network": false,
+    "output_fields": [],
+    "path": [
+      "work"
+    ]
+  }
+}

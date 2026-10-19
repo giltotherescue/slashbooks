@@ -1,0 +1,87 @@
+=== sheet: Read Me
+A1=Item	B1=Value
+A2=Disclaimer	B2=Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+A3=Company	B3=Pinecone Advisory Accrual
+A4=Return	B4=Form 1120-S (1120s, chosen by workspace)
+A5=Line numbers	B5=Tax year 2025 federal forms; confirm against the current year's form
+A6=Period	B6=2026-01-01 to 2026-03-31
+A7=Basis	B7=Cash basis book balances computed by the Slashbooks engine
+A8=Total debits	B8=49970.00
+A9=Total credits	B9=49970.00
+A10=Unmapped accounts	B10=1
+A11=Sign convention	B11=Balance columns are debit-positive and credit-negative
+A12=Tax computation	B12=None. Book amounts only; the preparer makes all tax adjustments
+=== sheet: Trial Balance
+A1=Account Number	B1=Account	C1=Account Type	D1=Beginning Balance	E1=Debit	F1=Credit	G1=Balance	H1=Tax Form	I1=Schedule	J1=Form Line	K1=Tax Line Code	L1=Tax Line	M1=Statement Detail	N1=On Return	O1=Mapping Basis	P1=Needs Review	Q1=Note
+A2=1010	B2=Assets › Bank › Checking	C2=Assets	D2=30000.00	E2=37300.00	F2=0.00	G2=37300.00	H2=Form 1120-S	I2=L	J2=1	K2=1120s/L/1	L2=Cash	M2=	N2=yes	O2=name	P2=yes	Q2=
+A3=1020	B3=Assets › Fixed › Accumulated-Depreciation	C3=Assets	D3=-1000.00	E3=0.00	F3=1500.00	G3=-1500.00	H3=Form 1120-S	I3=L	J3=10b	K3=1120s/L/10b	L3=Less accumulated depreciation	M3=	N3=yes	O3=name	P3=yes	Q3=
+A4=1030	B4=Assets › Fixed › Equipment	C4=Assets	D4=2400.00	E4=6000.00	F4=0.00	G4=6000.00	H4=Form 1120-S	I4=L	J4=10a	K4=1120s/L/10a	L4=Buildings and other depreciable assets	M4=	N4=yes	O4=name	P4=yes	Q4=
+A5=1040	B5=Assets › Other › Prepaid-Expenses	C5=Assets	D5=600.00	E5=1300.00	F5=0.00	G5=1300.00	H5=Form 1120-S	I5=L	J5=6	K5=1120s/L/6	L5=Other current assets	M5=	N5=yes	O5=name	P5=yes	Q5=
+A6=1050	B6=Assets › Receivable › Accounts-Receivable	C6=Assets	D6=4000.00	E6=2100.00	F6=0.00	G6=2100.00	H6=Form 1120-S	I6=L	J6=2a	K6=1120s/L/2a	L6=Trade notes and accounts receivable	M6=	N6=yes	O6=name	P6=yes	Q6=
+A7=3010	B7=Equity › Opening-Balances	C7=Equity	D7=-33900.00	E7=0.00	F7=33900.00	G7=-33900.00	H7=Form 1120-S	I7=L	J7=24	K7=1120s/L/24	L7=Retained earnings	M7=	N7=yes	O7=name	P7=yes	Q7=Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.
+A8=6010	B8=Expenses › Bad-Debt	C8=Expenses	D8=	E8=300.00	F8=0.00	G8=300.00	H8=Form 1120-S	I8=p1	J8=10	K8=1120s/p1/10	L8=Bad debts	M8=	N8=yes	O8=name	P8=yes	Q8=
+A9=6020	B9=Expenses › Bonus	C9=Expenses	D9=	E9=700.00	F9=0.00	G9=700.00	H9=Form 1120-S	I9=	J9=	K9=UNMAPPED	L9=	M9=	N9=	O9=unmapped	P9=yes	Q9=No name rule or safe default matches this account.
+A10=6030	B10=Expenses › Depreciation	C10=Expenses	D10=	E10=500.00	F10=0.00	G10=500.00	H10=Form 1120-S	I10=p1	J10=14	K10=1120s/p1/14	L10=Depreciation	M10=	N10=yes	O10=name	P10=yes	Q10=Book depreciation; the preparer computes tax depreciation.
+A11=6040	B11=Expenses › Insurance	C11=Expenses	D11=	E11=300.00	F11=0.00	G11=300.00	H11=Form 1120-S	I11=p1	J11=20	K11=1120s/p1/20	L11=Other deductions	M11=Insurance	N11=yes	O11=name	P11=yes	Q11=
+A12=6050	B12=Expenses › Software	C12=Expenses	D12=	E12=1000.00	F12=0.00	G12=1000.00	H12=Form 1120-S	I12=p1	J12=20	K12=1120s/p1/20	L12=Other deductions	M12=Software	N12=yes	O12=name	P12=yes	Q12=
+A13=6060	B13=Expenses › Utilities	C13=Expenses	D13=	E13=470.00	F13=0.00	G13=470.00	H13=Form 1120-S	I13=p1	J13=20	K13=1120s/p1/20	L13=Other deductions	M13=Utilities	N13=yes	O13=name	P13=yes	Q13=
+A14=4010	B14=Income › Consulting	C14=Income	D14=	E14=0.00	F14=11400.00	G14=-11400.00	H14=Form 1120-S	I14=p1	J14=1a	K14=1120s/p1/1a	L14=Gross receipts or sales	M14=	N14=yes	O14=account_type	P14=yes	Q14=
+A15=2010	B15=Liabilities › Other › Accrued-Liabilities	C15=Liabilities	D15=0.00	E15=0.00	F15=470.00	G15=-470.00	H15=Form 1120-S	I15=L	J15=18	K15=1120s/L/18	L15=Other current liabilities	M15=	N15=yes	O15=name	P15=yes	Q15=
+A16=2020	B16=Liabilities › Other › Deferred-Revenue	C16=Liabilities	D16=-600.00	E16=0.00	F16=2700.00	G16=-2700.00	H16=Form 1120-S	I16=L	J16=18	K16=1120s/L/18	L16=Other current liabilities	M16=	N16=yes	O16=name	P16=yes	Q16=
+A17=2030	B17=Liabilities › Payable › Accounts-Payable	C17=Liabilities	D17=-1500.00	E17=0.00	F17=0.00	G17=0.00	H17=Form 1120-S	I17=L	J17=16	K17=1120s/L/16	L17=Accounts payable	M17=	N17=yes	O17=name	P17=yes	Q17=
+A18=	B18=Total	C18=	D18=	E18=49970.00	F18=49970.00	G18=0.00	H18=	I18=	J18=	K18=	L18=	M18=	N18=	O18=	P18=	Q18=
+=== sheet: Tax Line Summary
+A1=Tax Form	B1=Schedule	C1=Form Line	D1=Tax Line Code	E1=Tax Line	F1=Statement Detail	G1=Beginning Book Amount	H1=Book Amount	I1=Normal Side	J1=On Return	K1=Accounts	L1=Note
+A2=Form 1120-S	B2=p1	C2=1a	D2=1120s/p1/1a	E2=Gross receipts or sales	F2=	G2=	H2=11400.00	I2=credit	J2=yes	K2=Income:Consulting	L2=
+A3=Form 1120-S	B3=p1	C3=10	D3=1120s/p1/10	E3=Bad debts	F3=	G3=	H3=300.00	I3=debit	J3=yes	K3=Expenses:Bad-Debt	L3=
+A4=Form 1120-S	B4=p1	C4=14	D4=1120s/p1/14	E4=Depreciation	F4=	G4=	H4=500.00	I4=debit	J4=yes	K4=Expenses:Depreciation	L4=Book depreciation; the preparer computes tax depreciation.
+A5=Form 1120-S	B5=p1	C5=20	D5=1120s/p1/20	E5=Other deductions	F5=Insurance	G5=	H5=300.00	I5=debit	J5=yes	K5=Expenses:Insurance	L5=
+A6=Form 1120-S	B6=p1	C6=20	D6=1120s/p1/20	E6=Other deductions	F6=Software	G6=	H6=1000.00	I6=debit	J6=yes	K6=Expenses:Software	L6=
+A7=Form 1120-S	B7=p1	C7=20	D7=1120s/p1/20	E7=Other deductions	F7=Utilities	G7=	H7=470.00	I7=debit	J7=yes	K7=Expenses:Utilities	L7=
+A8=Form 1120-S	B8=L	C8=1	D8=1120s/L/1	E8=Cash	F8=	G8=30000.00	H8=37300.00	I8=debit	J8=yes	K8=Assets:Bank:Checking	L8=
+A9=Form 1120-S	B9=L	C9=2a	D9=1120s/L/2a	E9=Trade notes and accounts receivable	F9=	G9=4000.00	H9=2100.00	I9=debit	J9=yes	K9=Assets:Receivable:Accounts-Receivable	L9=
+A10=Form 1120-S	B10=L	C10=6	D10=1120s/L/6	E10=Other current assets	F10=	G10=600.00	H10=1300.00	I10=debit	J10=yes	K10=Assets:Other:Prepaid-Expenses	L10=
+A11=Form 1120-S	B11=L	C11=10a	D11=1120s/L/10a	E11=Buildings and other depreciable assets	F11=	G11=2400.00	H11=6000.00	I11=debit	J11=yes	K11=Assets:Fixed:Equipment	L11=
+A12=Form 1120-S	B12=L	C12=10b	D12=1120s/L/10b	E12=Less accumulated depreciation	F12=	G12=1000.00	H12=1500.00	I12=credit	J12=yes	K12=Assets:Fixed:Accumulated-Depreciation	L12=
+A13=Form 1120-S	B13=L	C13=16	D13=1120s/L/16	E13=Accounts payable	F13=	G13=1500.00	H13=0.00	I13=credit	J13=yes	K13=Liabilities:Payable:Accounts-Payable	L13=
+A14=Form 1120-S	B14=L	C14=18	D14=1120s/L/18	E14=Other current liabilities	F14=	G14=600.00	H14=3170.00	I14=credit	J14=yes	K14=Liabilities:Other:Accrued-Liabilities; Liabilities:Other:Deferred-Revenue	L14=
+A15=Form 1120-S	B15=L	C15=24	D15=1120s/L/24	E15=Retained earnings	F15=	G15=33900.00	H15=33900.00	I15=credit	J15=yes	K15=Equity:Opening-Balances	L15=Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.
+=== sheet: Unmapped Accounts
+A1=Account Number	B1=Account	C1=Account Type	D1=Balance	E1=Reason	F1=How to fix
+A2=6020	B2=Expenses › Bonus	C2=Expenses	D2=700.00	E2=No name rule or safe default matches this account.	F2=books tax set --entity <company> --form 1120s --account Expenses:Bonus --line <code>
+=== sheet: Lacerte TBU
+A1=Account Number	B1=Account Name	C1=Account Type	D1=Balance	E1=Slashbooks Tax Line
+A2=1010	B2=Assets › Bank › Checking	C2=A	D2=37300.00	E2=1120s/L/1 Cash
+A3=1020	B3=Assets › Fixed › Accumulated-Depreciation	C3=A	D3=-1500.00	E3=1120s/L/10b Less accumulated depreciation
+A4=1030	B4=Assets › Fixed › Equipment	C4=A	D4=6000.00	E4=1120s/L/10a Buildings and other depreciable assets
+A5=1040	B5=Assets › Other › Prepaid-Expenses	C5=A	D5=1300.00	E5=1120s/L/6 Other current assets
+A6=1050	B6=Assets › Receivable › Accounts-Receivable	C6=A	D6=2100.00	E6=1120s/L/2a Trade notes and accounts receivable
+A7=3010	B7=Equity › Opening-Balances	C7=L	D7=-33900.00	E7=1120s/L/24 Retained earnings
+A8=6010	B8=Expenses › Bad-Debt	C8=E	D8=300.00	E8=1120s/p1/10 Bad debts
+A9=6020	B9=Expenses › Bonus	C9=E	D9=700.00	E9=UNMAPPED
+A10=6030	B10=Expenses › Depreciation	C10=E	D10=500.00	E10=1120s/p1/14 Depreciation
+A11=6040	B11=Expenses › Insurance	C11=E	D11=300.00	E11=1120s/p1/20 Other deductions
+A12=6050	B12=Expenses › Software	C12=E	D12=1000.00	E12=1120s/p1/20 Other deductions
+A13=6060	B13=Expenses › Utilities	C13=E	D13=470.00	E13=1120s/p1/20 Other deductions
+A14=4010	B14=Income › Consulting	C14=R	D14=-11400.00	E14=1120s/p1/1a Gross receipts or sales
+A15=2010	B15=Liabilities › Other › Accrued-Liabilities	C15=L	D15=-470.00	E15=1120s/L/18 Other current liabilities
+A16=2020	B16=Liabilities › Other › Deferred-Revenue	C16=L	D16=-2700.00	E16=1120s/L/18 Other current liabilities
+A17=2030	B17=Liabilities › Payable › Accounts-Payable	C17=L	D17=0.00	E17=1120s/L/16 Accounts payable
+=== sheet: UltraTax CS Import
+A1=Account Number	B1=Account Description	C1=Unit	D1=Tax Code	E1=Amount
+A2=1010	B2=Assets › Bank › Checking	C2=	D2=	E2=37300.00
+A3=1020	B3=Assets › Fixed › Accumulated-Depreciation	C3=	D3=	E3=-1500.00
+A4=1030	B4=Assets › Fixed › Equipment	C4=	D4=	E4=6000.00
+A5=1040	B5=Assets › Other › Prepaid-Expenses	C5=	D5=	E5=1300.00
+A6=1050	B6=Assets › Receivable › Accounts-Receivable	C6=	D6=	E6=2100.00
+A7=3010	B7=Equity › Opening-Balances	C7=	D7=	E7=-33900.00
+A8=6010	B8=Expenses › Bad-Debt	C8=	D8=	E8=300.00
+A9=6020	B9=Expenses › Bonus	C9=	D9=	E9=700.00
+A10=6030	B10=Expenses › Depreciation	C10=	D10=	E10=500.00
+A11=6040	B11=Expenses › Insurance	C11=	D11=	E11=300.00
+A12=6050	B12=Expenses › Software	C12=	D12=	E12=1000.00
+A13=6060	B13=Expenses › Utilities	C13=	D13=	E13=470.00
+A14=4010	B14=Income › Consulting	C14=	D14=	E14=-11400.00
+A15=2010	B15=Liabilities › Other › Accrued-Liabilities	C15=	D15=	E15=-470.00
+A16=2020	B16=Liabilities › Other › Deferred-Revenue	C16=	D16=	E16=-2700.00
+A17=2030	B17=Liabilities › Payable › Accounts-Payable	C17=	D17=	E17=0.00

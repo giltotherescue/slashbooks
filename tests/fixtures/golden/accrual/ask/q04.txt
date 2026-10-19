@@ -1,0 +1,50 @@
+Answer covers: accrual basis, from 2026-01-01 to 2026-08-05.
+
+Net income from 2026-01-01 to 2026-08-05: 8,130.00
+
+Profit and Loss  2026-01-01  through  2026-08-05
+================================================
+Accounting basis: accrual
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+Unresolved accounting issues:
+  - Schedule insurance-h2 has unposted recognition on 2026-04-30 (100.00 USD). [insurance-h2, recognition:insurance-h2:0:2026-04-30]
+  - Schedule insurance-h2 has unposted recognition on 2026-05-31 (100.00 USD). [insurance-h2, recognition:insurance-h2:0:2026-05-31]
+  - Schedule insurance-h2 has unposted recognition on 2026-06-30 (100.00 USD). [insurance-h2, recognition:insurance-h2:0:2026-06-30]
+  - Schedule laptop-new has unposted recognition on 2026-04-30 (100.00 USD). [laptop-new, recognition:laptop-new:0:2026-04-30]
+  - Schedule laptop-new has unposted recognition on 2026-05-31 (100.00 USD). [laptop-new, recognition:laptop-new:0:2026-05-31]
+  - Schedule laptop-new has unposted recognition on 2026-06-30 (100.00 USD). [laptop-new, recognition:laptop-new:0:2026-06-30]
+  - Schedule laptop-new has unposted recognition on 2026-07-31 (100.00 USD). [laptop-new, recognition:laptop-new:0:2026-07-31]
+  - Schedule laptop-old has unposted recognition on 2026-04-30 (100.00 USD). [laptop-old, recognition:laptop-old:0:2026-04-30]
+  - Schedule laptop-old has unposted recognition on 2026-05-31 (100.00 USD). [laptop-old, recognition:laptop-old:0:2026-05-31]
+  - Schedule laptop-old has unposted recognition on 2026-06-30 (100.00 USD). [laptop-old, recognition:laptop-old:0:2026-06-30]
+  - Schedule laptop-old has unposted recognition on 2026-07-31 (100.00 USD). [laptop-old, recognition:laptop-old:0:2026-07-31]
+  - Schedule retainer-h2 has unposted recognition on 2026-04-30 (100.00 USD). [retainer-h2, recognition:retainer-h2:0:2026-04-30]
+  - Schedule retainer-h2 has unposted recognition on 2026-05-31 (100.00 USD). [retainer-h2, recognition:retainer-h2:0:2026-05-31]
+  - Schedule retainer-h2 has unposted recognition on 2026-06-30 (100.00 USD). [retainer-h2, recognition:retainer-h2:0:2026-06-30]
+  - Schedule retainer-new has unposted recognition on 2026-04-30 (600.00 USD). [retainer-new, recognition:retainer-new:0:2026-04-30]
+  - Schedule retainer-new has unposted recognition on 2026-05-31 (600.00 USD). [retainer-new, recognition:retainer-new:0:2026-05-31]
+  - Schedule retainer-new has unposted recognition on 2026-06-30 (600.00 USD). [retainer-new, recognition:retainer-new:0:2026-06-30]
+  - Schedule retainer-new has unposted recognition on 2026-07-31 (600.00 USD). [retainer-new, recognition:retainer-new:0:2026-07-31]
+  - Schedule sw-annual has unposted recognition on 2026-04-30 (100.00 USD). [sw-annual, recognition:sw-annual:0:2026-04-30]
+  - Schedule sw-annual has unposted recognition on 2026-05-31 (100.00 USD). [sw-annual, recognition:sw-annual:0:2026-05-31]
+  - Schedule sw-annual has unposted recognition on 2026-06-30 (100.00 USD). [sw-annual, recognition:sw-annual:0:2026-06-30]
+  - Schedule sw-annual has unposted recognition on 2026-07-31 (100.00 USD). [sw-annual, recognition:sw-annual:0:2026-07-31]
+  - Journal utilities-estimate-mar has an unposted reversal due 2026-04-01. [utilities-estimate-mar]
+
+Revenue
+----------------------------------------
+  Income › Consulting                           11,400.00
+  Total Revenue                                 11,400.00
+
+Expenses
+----------------------------------------
+  Expenses › Bad-Debt                              300.00
+  Expenses › Bonus                                 700.00
+  Expenses › Depreciation                          500.00
+  Expenses › Insurance                             300.00
+  Expenses › Software                            1,000.00
+  Expenses › Utilities                             470.00
+  Total Expenses                                 3,270.00
+
+--------------------------------------------------------
+Net Income                                       8,130.00

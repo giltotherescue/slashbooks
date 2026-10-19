@@ -1,0 +1,35 @@
+Answer covers: accrual basis, from 2026-08-05 to 2026-08-05. No period was named in the question, so this uses today's date.
+
+Balance sheet as of 2026-08-05.
+
+Balance Sheet  as of  2026-08-05
+================================
+Accounting basis: accrual
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Retained fiscal summary coverage: 2026-01-01 through 2026-06-30
+
+Assets
+----------------------------------------
+  Assets › Bank › Checking                       9,600.00
+  Assets › Fixed › Accumulated-Depreciation        -440.00
+  Assets › Fixed › Equipment                     2,400.00
+  Assets › Other › Prepaid-Insurance               500.00
+  Assets › Receivable › Accounts-Receivable         600.00
+  Total Assets                                  12,660.00
+
+Liabilities
+----------------------------------------
+  Liabilities › Other › Deferred-Revenue           500.00
+  Liabilities › Other › Payroll-Payable            300.00
+  Liabilities › Payable › Accounts-Payable         300.00
+  Total Liabilities                              1,100.00
+
+Equity
+----------------------------------------
+  Equity › Retained-Earnings                     9,000.00
+  Net Income (current period)                    2,560.00
+  Total Equity                                  11,560.00
+
+--------------------------------------------------------
+Total Assets                                    12,660.00
+Total Liabilities And Equity                    12,660.00

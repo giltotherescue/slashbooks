@@ -1,0 +1,13 @@
+Outstanding balances
+As of 2026-01-31 | Accrual basis | USD
+Detailed activity begins 2026-01-01; imported opening as of 2025-12-31.
+
+Reference     | Type       | Customer / vendor | Due date   | Remaining | Status 
+--------------+------------+-------------------+------------+-----------+--------
+BILL-311      | Payable    | Delta Design      | 2026-01-15 | 0.00      | settled
+Orbit Labs    | Receivable | Orbit Labs        | 2026-02-09 | 6000.00   | open   
+Kestrel Foods | Receivable | Kestrel Foods     | 2026-02-11 | 900.00    | open   
+INV-0950      | Receivable | Orbit Labs        | 2025-12-20 | 1500.00   | open   
+
+Review issues:
+No outstanding review items.

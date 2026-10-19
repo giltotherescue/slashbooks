@@ -1,0 +1,8 @@
+{
+  "account_catalog": "sqlite",
+  "basis": "accrual",
+  "business_type": "consulting",
+  "canonical": "true",
+  "schema_version": "2",
+  "title": "Pinecone Advisory Accrual"
+}

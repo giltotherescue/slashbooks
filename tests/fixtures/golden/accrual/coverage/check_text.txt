@@ -1,0 +1,7 @@
+Source coverage 2026-01-01 to 2026-03-31: COMPLETE
+  1 account(s); months complete 3, partial 0, missing 0, inferred only 0
+
+Operating Checking (Assets › Bank › Checking): complete
+  2026-01  complete             basis: declared, transactions
+  2026-02  complete             basis: declared, transactions
+  2026-03  complete             basis: declared, transactions

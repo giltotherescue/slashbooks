@@ -1,0 +1,102 @@
+{
+  "as_of": "2026-03-31",
+  "basis": "accrual",
+  "canonical_digest": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097",
+  "coverage": {
+    "basis": "accrual",
+    "chart": [
+      {
+        "account": "Assets:Bank:Checking",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Bank:Checking"
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Accumulated-Depreciation"
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Equipment"
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Other:Prepaid-Expenses"
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Receivable:Accounts-Receivable"
+      },
+      {
+        "account": "Equity:Opening-Balances",
+        "account_type": "Equity",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Equity:Opening-Balances"
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Other:Deferred-Revenue"
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Payable:Accounts-Payable"
+      }
+    ],
+    "closed_position": true,
+    "currency": "USD",
+    "cutover_date": "2026-01-01",
+    "fiscal_start": "2026-01-01",
+    "id": "opening",
+    "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
+    "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+    "opening_source_id": "golden-opening",
+    "source_as_of": "2025-12-31",
+    "source_hashes": {},
+    "summary_from": null,
+    "summary_to": null,
+    "support_evidence_hashes": {
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
+    },
+    "support_status": "reconciled",
+    "verified": true
+  },
+  "currency": "USD",
+  "fingerprint": "69e252a0eafbd241a4eaec9f4e7e7f4a3cb245c0a908e45cc7190f4955b33aaf",
+  "from_date": null,
+  "issues": [],
+  "kind": "support",
+  "requested_from": null,
+  "requested_to": "2026-03-31",
+  "rows": [],
+  "schema_version": 1,
+  "summary_included": false,
+  "unresolved_issues": []
+}

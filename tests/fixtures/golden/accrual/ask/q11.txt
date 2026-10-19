@@ -1,0 +1,4 @@
+Not available: you asked for the cash basis, but these books are kept on the accrual basis, so no cash-basis figure is computed. Period asked: from 2026-03-01 to 2026-03-31.
+- Bank movements for the period: books report general-ledger --entity <COMPANY> --from 2026-03-01 --to 2026-03-31 (read the Assets:Bank accounts).
+- The same period on the accrual basis: books ask --entity <COMPANY> "What was our net income from 2026-03-01 to 2026-03-31?"
+- Future cash only: books forecast <COMPANY>

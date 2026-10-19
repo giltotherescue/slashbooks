@@ -1,0 +1,64 @@
+General Ledger  2026-03-01  through  2026-03-31
+===============================================
+Accounting basis: cash
+
+Assets › Bank › Checking
+----------------------------------------
+  2026-03-03  |  Maple Street Properties rent      -1,800.00
+  2026-03-05  |  Orbit Labs invoice 1005 payment       7,200.00
+  2026-03-11  |  Delta Design subcontractor      -1,500.00
+  2026-03-16  |  Kestrel Foods invoice 1006 payment       1,900.00
+  2026-03-20  |  Granite Insurance premium        -210.40
+  2026-03-25  |  Bank monthly service fee          -15.00
+  Account Total                                  5,574.60
+
+Expenses › Fees
+----------------------------------------
+  2026-03-25  |  Bank monthly service fee           15.00
+  Account Total                                     15.00
+
+Expenses › Insurance
+----------------------------------------
+  2026-03-20  |  Granite Insurance premium         210.40
+  Account Total                                    210.40
+
+Expenses › Meals
+----------------------------------------
+  2026-03-19  |  Juniper Bistro client lunch          47.10
+  Account Total                                     47.10
+
+Expenses › Rent
+----------------------------------------
+  2026-03-03  |  Maple Street Properties rent       1,800.00
+  Account Total                                  1,800.00
+
+Expenses › Software
+----------------------------------------
+  2026-03-04  |  CloudNotes software subscription          79.00
+  2026-03-24  |  Hostly web hosting                 24.03
+  Account Total                                    103.03
+
+Expenses › Subcontractors
+----------------------------------------
+  2026-03-11  |  Delta Design subcontractor       1,500.00
+  Account Total                                  1,500.00
+
+Expenses › Travel
+----------------------------------------
+  2026-03-12  |  Rail Express tickets              268.40
+  Account Total                                    268.40
+
+Income › Consulting
+----------------------------------------
+  2026-03-05  |  Orbit Labs invoice 1005 payment      -7,200.00
+  2026-03-16  |  Kestrel Foods invoice 1006 payment      -1,900.00
+  Account Total                                 -9,100.00
+
+Liabilities › CreditCard › Company
+----------------------------------------
+  2026-03-04  |  CloudNotes software subscription         -79.00
+  2026-03-12  |  Rail Express tickets             -268.40
+  2026-03-19  |  Juniper Bistro client lunch         -47.10
+  2026-03-24  |  Hostly web hosting                -24.03
+  Account Total                                   -418.53
+

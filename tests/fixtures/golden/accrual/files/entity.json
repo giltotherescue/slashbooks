@@ -1,0 +1,28 @@
+{
+  "accrual_capability_version": 1,
+  "bank_account_mappings": {
+    "checking": "Assets:Bank:Checking"
+  },
+  "basis": "accrual",
+  "business_type": "consulting",
+  "csv_account_mappings": {},
+  "cutover_date": "2026-01-01",
+  "declared_sources": [
+    "Operating Checking"
+  ],
+  "fiscal_year_start": "01-01",
+  "legal_structure": "llc",
+  "name": "Pinecone Advisory Accrual",
+  "provider_sources": [],
+  "related_entities": [],
+  "source_coverage": {
+    "Operating Checking": {
+      "account": "Assets:Bank:Checking",
+      "coverage_from": "2026-01-01",
+      "coverage_to": "2026-03-31"
+    }
+  },
+  "tax_handoff": {
+    "return_form": "1120s"
+  }
+}

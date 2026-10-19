@@ -1,0 +1,224 @@
+=== sheet: Cover
+A1=Field	B1=Value
+A2=Business	B2=Harbor Studio Cash
+A3=Period start	B3=2026-01-01
+A4=Period end	B4=2026-03-31
+A5=Generated	B5=2026-08-05 12:00 UTC
+A6=Source	B6=<COMPANY>
+A7=Accounting basis	B7=Cash basis
+A9=Sheet index	B9=
+A10=1. Cover	B10=This sheet
+A11=2. P&L	B11=Revenue and expenses for the period
+A12=3. Balance Sheet	B12=Assets, liabilities, and equity as of the period end
+A13=4. Trial Balance	B13=All account balances as of the period end
+A14=5. General Ledger	B14=Every posted transaction in the period
+A15=6. Reconciliations	B15=Account reconciliation status
+A16=7. Vendor 1099	B16=Vendor totals and potential 1099 candidates
+A17=8. Adjustment Log	B17=Corrected and reversed entries
+A18=9. Open Questions	B18=Structured questions and owner responses for accountant review
+A20=Sanity checks	B20=
+A21=entity_metadata	B21=[WARN] Entity setup is missing country, tax jurisdiction, operating currency. Add this context before relying on the accountant export.
+A22=indirect_tax_scope	B22=[PASS] No VAT/GST/sales-tax registration is marked in entity.json.
+A23=currency_scope	B23=[WARN] No operating currency is set in entity.json.
+A24=payroll_reports	B24=[PASS] Payroll is not marked as enabled in entity.json.
+A25=yoy_pnl_variance	B25=[WARN] No prior-year P&L transaction history is available in Slashbooks for year-over-year comparison. QuickBooks reference exports or opening balance snapshots may still exist, but this check only compares Slashbooks ledger activity.
+A26=equity_reconciliation	B26=[PASS] The balance sheet is in balance as of 2026-03-31: assets equal liabilities plus equity (33,043.47).
+A27=queue_empty	B27=[FAIL] There are 3 item(s) waiting for review in the queue. Review and confirm all items before generating the final export, or use --override to proceed anyway.
+A28=reconciliation_clean	B28=[PASS] All reconciliation records are clean or resolved, with source-period integrity checked.
+A30=Note	B30=This export was generated with --override. One or more sanity checks did not pass. Review the checks above before delivering.
+=== sheet: P&L
+A1=Category	B1=Account	C1=Amount
+A2=Money In	B2=	C2=
+A3=	B3=Income › Consulting	C3=26350.00
+A4=	B4=Total Revenue	C4=26350.00
+A6=Money Out	B6=	C6=
+A7=	B7=Expenses › Fees	C7=45.00
+A8=	B8=Expenses › Insurance	C8=420.80
+A9=	B9=Expenses › Marketing	C9=150.57
+A10=	B10=Expenses › Meals	C10=300.45
+A11=	B11=Expenses › Office	C11=131.75
+A12=	B12=Expenses › Rent	C12=5400.00
+A13=	B13=Expenses › Software	C13=309.09
+A14=	B14=Expenses › Subcontractors	C14=4000.00
+A15=	B15=Expenses › Taxes	C15=480.00
+A16=	B16=Expenses › Travel	C16=568.40
+A17=	B17=Total Expenses	C17=11806.06
+A19=Summary totals	B19=	C19=
+A20=	B20=Net Income	C20=14543.94
+=== sheet: Balance Sheet
+A1=Category	B1=Account	C1=Amount
+A2=Assets	B2=	C2=
+A3=	B3=Assets › Bank › Checking	C3=33043.47
+A4=	B4=Total Assets	C4=33043.47
+A6=Liabilities	B6=	C6=
+A7=	B7=Liabilities › CreditCard › Company	C7=499.53
+A8=	B8=Total Liabilities	C8=499.53
+A10=Equity	B10=	C10=
+A11=	B11=Equity › Owner-Contributions	C11=20000.00
+A12=	B12=Equity › Owner-Draws	C12=-2000.00
+A13=	B13=Net Income (current period)	C13=14543.94
+A14=	B14=Total Equity	C14=32543.94
+A16=Summary totals	B16=	C16=
+A17=	B17=Total Assets	C17=33043.47
+A18=	B18=Total Liabilities And Equity	C18=33043.47
+=== sheet: Trial Balance
+A1=Account	B1=Debit	C1=Credit
+A2=Assets › Bank › Checking	B2=33043.47	C2=
+A3=Equity › Owner-Contributions	B3=	C3=20000.00
+A4=Equity › Owner-Draws	B4=2000.00	C4=
+A5=Expenses › Fees	B5=45.00	C5=
+A6=Expenses › Insurance	B6=420.80	C6=
+A7=Expenses › Marketing	B7=150.57	C7=
+A8=Expenses › Meals	B8=300.45	C8=
+A9=Expenses › Office	B9=131.75	C9=
+A10=Expenses › Rent	B10=5400.00	C10=
+A11=Expenses › Software	B11=309.09	C11=
+A12=Expenses › Subcontractors	B12=4000.00	C12=
+A13=Expenses › Taxes	B13=480.00	C13=
+A14=Expenses › Travel	B14=568.40	C14=
+A15=Income › Consulting	B15=	C15=26350.00
+A16=Liabilities › CreditCard › Company	B16=	C16=499.53
+A18=Totals	B18=46849.53	C18=46849.53
+=== sheet: General Ledger
+A1=Account Type	B1=Account	C1=Account Detail	D1=Date	E1=Counterparty	F1=Memo	G1=Source ID	H1=Entry Type	I1=Amount
+A2=Assets	B2=Assets › Bank › Checking	C2=Checking	D2=2026-01-02	E2=	F2=Owner contribution wire	G2=chk-0102-owner	H2=Posted	I2=20000.00
+A3=Assets	B3=Assets › Bank › Checking	C3=Checking	D3=2026-01-05	E3=	F3=Maple Street Properties rent	G3=chk-0105-rent	H3=Posted	I3=-1800.00
+A4=Assets	B4=Assets › Bank › Checking	C4=Checking	D4=2026-01-08	E4=	F4=Orbit Labs invoice 1001 payment	G4=chk-0108-client	H4=Posted	I4=6500.00
+A5=Assets	B5=Assets › Bank › Checking	C5=Checking	D5=2026-01-12	E5=	F5=Delta Design subcontractor	G5=chk-0112-sub	H5=Posted	I5=-1250.00
+A6=Assets	B6=Assets › Bank › Checking	C6=Checking	D6=2026-01-15	E6=	F6=Granite Insurance premium	G6=chk-0115-ins	H6=Posted	I6=-210.40
+A7=Assets	B7=Assets › Bank › Checking	C7=Checking	D7=2026-01-20	E7=	F7=Kestrel Foods invoice 1002 payment	G7=chk-0120-client	H7=Posted	I7=3200.00
+A8=Assets	B8=Assets › Bank › Checking	C8=Checking	D8=2026-01-25	E8=	F8=Bank monthly service fee	G8=chk-0125-fee	H8=Posted	I8=-15.00
+A9=Assets	B9=Assets › Bank › Checking	C9=Checking	D9=2026-01-31	E9=	F9=Internal transfer: Company Card payment thank you / Payment thank you	G9=chk-0131-cardpay	H9=Posted	I9=-642.18
+A10=Assets	B10=Assets › Bank › Checking	C10=Checking	D10=2026-02-03	E10=	F10=Maple Street Properties rent	G10=chk-0203-rent	H10=Posted	I10=-1800.00
+A11=Assets	B11=Assets › Bank › Checking	C11=Checking	D11=2026-02-06	E11=	F11=Orbit Labs invoice 1003 payment	G11=chk-0206-client	H11=Posted	I11=4800.00
+A12=Assets	B12=Assets › Bank › Checking	C12=Checking	D12=2026-02-10	E12=	F12=Delta Design subcontractor	G12=chk-0210-sub	H12=Posted	I12=-1250.00
+A13=Assets	B13=Assets › Bank › Checking	C13=Checking	D13=2026-02-13	E13=	F13=Harbor Cafe invoice 1004 payment	G13=chk-0213-client	H13=Posted	I13=2750.00
+A14=Assets	B14=Assets › Bank › Checking	C14=Checking	D14=2026-02-17	E14=	F14=Owner draw transfer	G14=chk-0217-draw	H14=Posted	I14=-2000.00
+A15=Assets	B15=Assets › Bank › Checking	C15=Checking	D15=2026-02-24	E15=	F15=State franchise tax payment	G15=chk-0224-tax	H15=Posted	I15=-480.00
+A16=Assets	B16=Assets › Bank › Checking	C16=Checking	D16=2026-02-25	E16=	F16=Bank monthly service fee	G16=chk-0225-fee	H16=Posted	I16=-15.00
+A17=Assets	B17=Assets › Bank › Checking	C17=Checking	D17=2026-02-28	E17=	F17=Internal transfer: Company Card payment thank you / Payment thank you	G17=chk-0228-cardpay	H17=Posted	I17=-318.55
+A18=Assets	B18=Assets › Bank › Checking	C18=Checking	D18=2026-03-03	E18=	F18=Maple Street Properties rent	G18=chk-0303-rent	H18=Posted	I18=-1800.00
+A19=Assets	B19=Assets › Bank › Checking	C19=Checking	D19=2026-03-05	E19=	F19=Orbit Labs invoice 1005 payment	G19=chk-0305-client	H19=Posted	I19=7200.00
+A20=Assets	B20=Assets › Bank › Checking	C20=Checking	D20=2026-03-11	E20=	F20=Delta Design subcontractor	G20=chk-0311-sub	H20=Posted	I20=-1500.00
+A21=Assets	B21=Assets › Bank › Checking	C21=Checking	D21=2026-03-16	E21=	F21=Kestrel Foods invoice 1006 payment	G21=chk-0316-client	H21=Posted	I21=1900.00
+A22=Assets	B22=Assets › Bank › Checking	C22=Checking	D22=2026-03-20	E22=	F22=Granite Insurance premium	G22=chk-0320-ins	H22=Posted	I22=-210.40
+A23=Assets	B23=Assets › Bank › Checking	C23=Checking	D23=2026-03-25	E23=	F23=Bank monthly service fee	G23=chk-0325-fee	H23=Posted	I23=-15.00
+A24=	B24=Assets › Bank › Checking	C24=	D24=	E24=	F24=Account Total	G24=	H24=Account Total	I24=33043.47
+A26=Equity	B26=Equity › Owner-Contributions	C26=Owner-Contributions	D26=2026-01-02	E26=	F26=Owner contribution wire	G26=chk-0102-owner	H26=Posted	I26=-20000.00
+A27=	B27=Equity › Owner-Contributions	C27=	D27=	E27=	F27=Account Total	G27=	H27=Account Total	I27=-20000.00
+A29=Equity	B29=Equity › Owner-Draws	C29=Owner-Draws	D29=2026-02-17	E29=	F29=Owner draw transfer	G29=chk-0217-draw	H29=Posted	I29=2000.00
+A30=	B30=Equity › Owner-Draws	C30=	D30=	E30=	F30=Account Total	G30=	H30=Account Total	I30=2000.00
+A32=Expenses	B32=Expenses › Fees	C32=Fees	D32=2026-01-25	E32=	F32=Bank monthly service fee	G32=chk-0125-fee	H32=Posted	I32=15.00
+A33=Expenses	B33=Expenses › Fees	C33=Fees	D33=2026-02-25	E33=	F33=Bank monthly service fee	G33=chk-0225-fee	H33=Posted	I33=15.00
+A34=Expenses	B34=Expenses › Fees	C34=Fees	D34=2026-03-25	E34=	F34=Bank monthly service fee	G34=chk-0325-fee	H34=Posted	I34=15.00
+A35=	B35=Expenses › Fees	C35=	D35=	E35=	F35=Account Total	G35=	H35=Account Total	I35=45.00
+A37=Expenses	B37=Expenses › Insurance	C37=Insurance	D37=2026-01-15	E37=	F37=Granite Insurance premium	G37=chk-0115-ins	H37=Posted	I37=210.40
+A38=Expenses	B38=Expenses › Insurance	C38=Insurance	D38=2026-03-20	E38=	F38=Granite Insurance premium	G38=chk-0320-ins	H38=Posted	I38=210.40
+A39=	B39=Expenses › Insurance	C39=	D39=	E39=	F39=Account Total	G39=	H39=Account Total	I39=420.80
+A41=Expenses	B41=Expenses › Marketing	C41=Marketing	D41=2026-01-22	E41=	F41=Spark Ads campaign	G41=crd-0122-mkt	H41=Posted	I41=120.00
+A42=Expenses	B42=Expenses › Marketing	C42=Marketing	D42=2026-02-21	E42=	F42=Spark Ads campaign	G42=crd-0221-mkt	H42=Posted	I42=30.57
+A43=	B43=Expenses › Marketing	C43=	D43=	E43=	F43=Account Total	G43=	H43=Account Total	I43=150.57
+A45=Expenses	B45=Expenses › Meals	C45=Meals	D45=2026-01-10	E45=	F45=Juniper Bistro client lunch	G45=crd-0110-meal	H45=Posted	I45=86.35
+A46=Expenses	B46=Expenses › Meals	C46=Meals	D46=2026-01-18	E46=	F46=Skyway Airlines ticket	G46=crd-0118-travel	H46=Posted	I46=112.80
+A47=Expenses	B47=Expenses › Meals	C47=Meals	D47=2026-02-09	E47=	F47=Juniper Bistro team lunch	G47=crd-0209-meal	H47=Posted	I47=54.20
+A48=Expenses	B48=Expenses › Meals	C48=Meals	D48=2026-03-19	E48=	F48=Juniper Bistro client lunch	G48=crd-0319-meal	H48=Posted	I48=47.10
+A49=	B49=Expenses › Meals	C49=	D49=	E49=	F49=Account Total	G49=	H49=Account Total	I49=300.45
+A51=Expenses	B51=Expenses › Office	C51=Office	D51=2026-02-15	E51=	F51=Paper Pine office supplies	G51=crd-0215-office	H51=Posted	I51=131.75
+A52=	B52=Expenses › Office	C52=	D52=	E52=	F52=Account Total	G52=	H52=Account Total	I52=131.75
+A54=Expenses	B54=Expenses › Rent	C54=Rent	D54=2026-01-05	E54=	F54=Maple Street Properties rent	G54=chk-0105-rent	H54=Posted	I54=1800.00
+A55=Expenses	B55=Expenses › Rent	C55=Rent	D55=2026-02-03	E55=	F55=Maple Street Properties rent	G55=chk-0203-rent	H55=Posted	I55=1800.00
+A56=Expenses	B56=Expenses › Rent	C56=Rent	D56=2026-03-03	E56=	F56=Maple Street Properties rent	G56=chk-0303-rent	H56=Posted	I56=1800.00
+A57=	B57=Expenses › Rent	C57=	D57=	E57=	F57=Account Total	G57=	H57=Account Total	I57=5400.00
+A59=Expenses	B59=Expenses › Software	C59=Software	D59=2026-01-03	E59=	F59=CloudNotes software subscription	G59=crd-0103-sw	H59=Posted	I59=79.00
+A60=Expenses	B60=Expenses › Software	C60=Software	D60=2026-01-27	E60=	F60=Hostly web hosting	G60=crd-0127-sw	H60=Posted	I60=24.03
+A61=Expenses	B61=Expenses › Software	C61=Software	D61=2026-02-04	E61=	F61=CloudNotes software subscription	G61=crd-0204-sw	H61=Posted	I61=79.00
+A62=Expenses	B62=Expenses › Software	C62=Software	D62=2026-02-19	E62=	F62=Hostly web hosting	G62=crd-0219-sw	H62=Posted	I62=24.03
+A63=Expenses	B63=Expenses › Software	C63=Software	D63=2026-03-04	E63=	F63=CloudNotes software subscription	G63=crd-0304-sw	H63=Posted	I63=79.00
+A64=Expenses	B64=Expenses › Software	C64=Software	D64=2026-03-24	E64=	F64=Hostly web hosting	G64=crd-0324-sw	H64=Posted	I64=24.03
+A65=	B65=Expenses › Software	C65=	D65=	E65=	F65=Account Total	G65=	H65=Account Total	I65=309.09
+A67=Expenses	B67=Expenses › Subcontractors	C67=Subcontractors	D67=2026-01-12	E67=	F67=Delta Design subcontractor	G67=chk-0112-sub	H67=Posted	I67=1250.00
+A68=Expenses	B68=Expenses › Subcontractors	C68=Subcontractors	D68=2026-02-10	E68=	F68=Delta Design subcontractor	G68=chk-0210-sub	H68=Posted	I68=1250.00
+A69=Expenses	B69=Expenses › Subcontractors	C69=Subcontractors	D69=2026-03-11	E69=	F69=Delta Design subcontractor	G69=chk-0311-sub	H69=Posted	I69=1500.00
+A70=	B70=Expenses › Subcontractors	C70=	D70=	E70=	F70=Account Total	G70=	H70=Account Total	I70=4000.00
+A72=Expenses	B72=Expenses › Taxes	C72=Taxes	D72=2026-02-24	E72=	F72=State franchise tax payment	G72=chk-0224-tax	H72=Posted	I72=480.00
+A73=	B73=Expenses › Taxes	C73=	D73=	E73=	F73=Account Total	G73=	H73=Account Total	I73=480.00
+A75=Expenses	B75=Expenses › Travel	C75=Travel	D75=2026-01-18	E75=	F75=Skyway Airlines ticket	G75=crd-0118-travel	H75=Posted	I75=300.00
+A76=Expenses	B76=Expenses › Travel	C76=Travel	D76=2026-03-12	E76=	F76=Rail Express tickets	G76=crd-0312-travel	H76=Posted	I76=268.40
+A77=	B77=Expenses › Travel	C77=	D77=	E77=	F77=Account Total	G77=	H77=Account Total	I77=568.40
+A79=Income	B79=Income › Consulting	C79=Consulting	D79=2026-01-08	E79=	F79=Orbit Labs invoice 1001 payment	G79=chk-0108-client	H79=Posted	I79=-6500.00
+A80=Income	B80=Income › Consulting	C80=Consulting	D80=2026-01-20	E80=	F80=Kestrel Foods invoice 1002 payment	G80=chk-0120-client	H80=Posted	I80=-3200.00
+A81=Income	B81=Income › Consulting	C81=Consulting	D81=2026-02-06	E81=	F81=Orbit Labs invoice 1003 payment	G81=chk-0206-client	H81=Posted	I81=-4800.00
+A82=Income	B82=Income › Consulting	C82=Consulting	D82=2026-02-13	E82=	F82=Harbor Cafe invoice 1004 payment	G82=chk-0213-client	H82=Posted	I82=-2750.00
+A83=Income	B83=Income › Consulting	C83=Consulting	D83=2026-03-05	E83=	F83=Orbit Labs invoice 1005 payment	G83=chk-0305-client	H83=Posted	I83=-7200.00
+A84=Income	B84=Income › Consulting	C84=Consulting	D84=2026-03-16	E84=	F84=Kestrel Foods invoice 1006 payment	G84=chk-0316-client	H84=Posted	I84=-1900.00
+A85=	B85=Income › Consulting	C85=	D85=	E85=	F85=Account Total	G85=	H85=Account Total	I85=-26350.00
+A87=Liabilities	B87=Liabilities › CreditCard › Company	C87=Company	D87=2026-01-03	E87=	F87=CloudNotes software subscription	G87=crd-0103-sw	H87=Posted	I87=-79.00
+A88=Liabilities	B88=Liabilities › CreditCard › Company	C88=Company	D88=2026-01-10	E88=	F88=Juniper Bistro client lunch	G88=crd-0110-meal	H88=Posted	I88=-86.35
+A89=Liabilities	B89=Liabilities › CreditCard › Company	C89=Company	D89=2026-01-18	E89=	F89=Skyway Airlines ticket	G89=crd-0118-travel	H89=Posted	I89=-412.80
+A90=Liabilities	B90=Liabilities › CreditCard › Company	C90=Company	D90=2026-01-22	E90=	F90=Spark Ads campaign	G90=crd-0122-mkt	H90=Posted	I90=-120.00
+A91=Liabilities	B91=Liabilities › CreditCard › Company	C91=Company	D91=2026-01-27	E91=	F91=Hostly web hosting	G91=crd-0127-sw	H91=Posted	I91=-24.03
+A92=Liabilities	B92=Liabilities › CreditCard › Company	C92=Company	D92=2026-01-31	E92=	F92=Internal transfer: Company Card payment thank you / Payment thank you	G92=chk-0131-cardpay	H92=Posted	I92=642.18
+A93=Liabilities	B93=Liabilities › CreditCard › Company	C93=Company	D93=2026-02-04	E93=	F93=CloudNotes software subscription	G93=crd-0204-sw	H93=Posted	I93=-79.00
+A94=Liabilities	B94=Liabilities › CreditCard › Company	C94=Company	D94=2026-02-09	E94=	F94=Juniper Bistro team lunch	G94=crd-0209-meal	H94=Posted	I94=-54.20
+A95=Liabilities	B95=Liabilities › CreditCard › Company	C95=Company	D95=2026-02-15	E95=	F95=Paper Pine office supplies	G95=crd-0215-office	H95=Posted	I95=-131.75
+A96=Liabilities	B96=Liabilities › CreditCard › Company	C96=Company	D96=2026-02-19	E96=	F96=Hostly web hosting	G96=crd-0219-sw	H96=Posted	I96=-24.03
+A97=Liabilities	B97=Liabilities › CreditCard › Company	C97=Company	D97=2026-02-21	E97=	F97=Spark Ads campaign	G97=crd-0221-mkt	H97=Posted	I97=-30.57
+A98=Liabilities	B98=Liabilities › CreditCard › Company	C98=Company	D98=2026-02-28	E98=	F98=Internal transfer: Company Card payment thank you / Payment thank you	G98=chk-0228-cardpay	H98=Posted	I98=318.55
+A99=Liabilities	B99=Liabilities › CreditCard › Company	C99=Company	D99=2026-03-04	E99=	F99=CloudNotes software subscription	G99=crd-0304-sw	H99=Posted	I99=-79.00
+A100=Liabilities	B100=Liabilities › CreditCard › Company	C100=Company	D100=2026-03-12	E100=	F100=Rail Express tickets	G100=crd-0312-travel	H100=Posted	I100=-268.40
+A101=Liabilities	B101=Liabilities › CreditCard › Company	C101=Company	D101=2026-03-19	E101=	F101=Juniper Bistro client lunch	G101=crd-0319-meal	H101=Posted	I101=-47.10
+A102=Liabilities	B102=Liabilities › CreditCard › Company	C102=Company	D102=2026-03-24	E102=	F102=Hostly web hosting	G102=crd-0324-sw	H102=Posted	I102=-24.03
+A103=	B103=Liabilities › CreditCard › Company	C103=	D103=	E103=	F103=Account Total	G103=	H103=Account Total	I103=-499.53
+=== sheet: Reconciliations
+A1=Account	B1=As Of	C1=Ledger Balance	D1=Source Balance	E1=Difference	F1=Reconciliation Status	G1=Review Status	H1=Source	I1=Notes
+A2=Assets:Bank:Checking	B2=2026-01-31	C2=25782.42	D2=25782.42	E2=0.00	F2=clean	G2=PASS	H2=	I2=
+A3=Assets:Bank:Checking	B3=2026-02-28	C3=27468.87	D3=27468.87	E3=0.00	F3=clean	G3=PASS	H3=	I3=
+A4=Liabilities:CreditCard:Company	B4=2026-01-31	C4=-80.00	D4=-80.00	E4=0.00	F4=clean	G4=PASS	H4=	I4=
+A5=Liabilities:CreditCard:Company	B5=2026-02-28	C5=-81.00	D5=-81.00	E5=0.00	F5=clean	G5=PASS	H5=	I5=
+=== sheet: Vendor 1099
+A1=Vendor	B1=Net Paid	C1=1099 Candidate (if >= 600.00)	D1=Gross Paid	E1=Adjustments	F1=Review Notes
+A2=(no vendor payments in expense accounts for this period)	B2=	C2=	D2=	E2=	F2=
+=== sheet: Adjustment Log
+A1=Original ID	B1=Original Date	C1=Original Counterparty	D1=Original Amount	E1=Reversal ID	F1=Reversal Date	G1=Corrected ID	H1=Corrected Category	I1=Corrected Amount	J1=Trace Status	K1=Note
+A2=(no reversals or corrections found in the ledger)	B2=	C2=	D2=	E2=	F2=	G2=	H2=	I2=	J2=PASS	K2=
+=== sheet: Open Questions
+A1=#	B1=Area	C1=Related Sheet	D1=Related Account	E1=Source ID	F1=Amount	G1=Question / Note	H1=Owner Response	I1=Status
+A2=	B2=General	C2=	D2=	E2=	F2=	G2=(no open questions file found)	H2=	I2=closed
+=== sheet: Summary
+A1=Metric	B1=Value
+A2=Business	B2=Harbor Studio Cash
+A3=Produced by	B3=Slashbooks
+A4=Project link	B4=https://github.com/giltotherescue/slashbooks
+A5=Accounting basis	B5=Cash basis
+A6=Bookkeeping scope	B6=Simple cash-basis bookkeeping export; not a tax return or assurance report
+A7=Tax prep scope	B7=Handoff support only; tax treatment and filing positions remain preparer-reviewed
+A8=Legal structure	B8=llc
+A9=Country	B9=
+A10=Tax jurisdiction	B10=
+A11=Operating currency	B11=
+A12=Period start	B12=2026-01-01
+A13=Period end	B13=2026-03-31
+A14=Package status	B14=OVERRIDE
+A15=Warnings	B15=3
+A16=Failures	B16=1
+A17=Net income	B17=0
+A18=Ending cash	B18=0
+A19=Opening cumulative net income	B19=0.00
+A20=GL posting rows	B20=0
+A21=Open questions	B21=0
+A22=Reconciliation items needing review	B22=0
+A23=1099 candidates	B23=0
+=== sheet: Checks
+A1=Check	B1=Tie-out	C1=Status
+A2=Trial balance debits equal credits	B2=0	C2=0
+A3=Balance sheet balances	B3=0	C3=0
+A4=P&L net income agrees to balance sheet net-income movement	B4=0	C4=0
+A5=Open question count	B5=0	C5=0
+A6=Open reconciliation item count	B6=0	C6=0
+A7=1099 candidate count	B7=0	C7=0
+=== sheet: Source Index
+A1=Account	B1=As Of	C1=Ledger Balance	D1=Source Balance	E1=Difference	F1=Reconciliation Status	G1=Review Status	H1=Source	I1=Notes
+A2=Assets:Bank:Checking	B2=2026-01-31	C2=25782.42	D2=25782.42	E2=0.00	F2=clean	G2=PASS	H2=	I2=
+A3=Assets:Bank:Checking	B3=2026-02-28	C3=27468.87	D3=27468.87	E3=0.00	F3=clean	G3=PASS	H3=	I3=
+A4=Liabilities:CreditCard:Company	B4=2026-01-31	C4=-80.00	D4=-80.00	E4=0.00	F4=clean	G4=PASS	H4=	I4=
+A5=Liabilities:CreditCard:Company	B5=2026-02-28	C5=-81.00	D5=-81.00	E5=0.00	F5=clean	G5=PASS	H5=	I5=

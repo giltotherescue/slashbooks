@@ -1,0 +1,78 @@
+General Ledger  2026-02-01  through  2026-02-28
+===============================================
+Accounting basis: cash
+
+Assets › Bank › Checking
+----------------------------------------
+  2026-02-03  |  Maple Street Properties rent      -1,800.00
+  2026-02-06  |  Orbit Labs invoice 1003 payment       4,800.00
+  2026-02-10  |  Delta Design subcontractor      -1,250.00
+  2026-02-13  |  Harbor Cafe invoice 1004 payment       2,750.00
+  2026-02-17  |  Owner draw transfer            -2,000.00
+  2026-02-24  |  State franchise tax payment        -480.00
+  2026-02-25  |  Bank monthly service fee          -15.00
+  2026-02-28  |  Internal transfer: Company Card payment thank you / Payment thank you        -318.55
+  Account Total                                  1,686.45
+
+Equity › Owner-Draws
+----------------------------------------
+  2026-02-17  |  Owner draw transfer             2,000.00
+  Account Total                                  2,000.00
+
+Expenses › Fees
+----------------------------------------
+  2026-02-25  |  Bank monthly service fee           15.00
+  Account Total                                     15.00
+
+Expenses › Marketing
+----------------------------------------
+  2026-02-21  |  Spark Ads campaign                 30.57
+  Account Total                                     30.57
+
+Expenses › Meals
+----------------------------------------
+  2026-02-09  |  Juniper Bistro team lunch          54.20
+  Account Total                                     54.20
+
+Expenses › Office
+----------------------------------------
+  2026-02-15  |  Paper Pine office supplies         131.75
+  Account Total                                    131.75
+
+Expenses › Rent
+----------------------------------------
+  2026-02-03  |  Maple Street Properties rent       1,800.00
+  Account Total                                  1,800.00
+
+Expenses › Software
+----------------------------------------
+  2026-02-04  |  CloudNotes software subscription          79.00
+  2026-02-19  |  Hostly web hosting                 24.03
+  Account Total                                    103.03
+
+Expenses › Subcontractors
+----------------------------------------
+  2026-02-10  |  Delta Design subcontractor       1,250.00
+  Account Total                                  1,250.00
+
+Expenses › Taxes
+----------------------------------------
+  2026-02-24  |  State franchise tax payment         480.00
+  Account Total                                    480.00
+
+Income › Consulting
+----------------------------------------
+  2026-02-06  |  Orbit Labs invoice 1003 payment      -4,800.00
+  2026-02-13  |  Harbor Cafe invoice 1004 payment      -2,750.00
+  Account Total                                 -7,550.00
+
+Liabilities › CreditCard › Company
+----------------------------------------
+  2026-02-04  |  CloudNotes software subscription         -79.00
+  2026-02-09  |  Juniper Bistro team lunch         -54.20
+  2026-02-15  |  Paper Pine office supplies        -131.75
+  2026-02-19  |  Hostly web hosting                -24.03
+  2026-02-21  |  Spark Ads campaign                -30.57
+  2026-02-28  |  Internal transfer: Company Card payment thank you / Payment thank you         318.55
+  Account Total                                     -1.00
+

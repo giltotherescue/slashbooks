@@ -1,0 +1,22 @@
+Accrual activity register
+As of 2026-06-30 | Accrual basis | USD
+Detailed activity begins 2026-07-01; imported opening as of 2026-06-30.
+Imported fiscal summary: 2026-01-01 through 2026-06-30; earlier monthly detail is unavailable.
+
+2026-06-30 | Opening balances (2026-06-30)
+Account                               | Debit    | Credit   | Currency
+--------------------------------------+----------+----------+---------
+Assets:Bank:Checking                  | 10000.00 | 0.00     | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00     | 400.00   | USD     
+Assets:Fixed:Equipment                | 2400.00  | 0.00     | USD     
+Assets:Other:Prepaid-Insurance        | 600.00   | 0.00     | USD     
+Assets:Receivable:Accounts-Receivable | 1000.00  | 0.00     | USD     
+Equity:Retained-Earnings              | 0.00     | 9000.00  | USD     
+Expenses:Operating-Costs              | 8800.00  | 0.00     | USD     
+Income:Services                       | 0.00     | 12000.00 | USD     
+Liabilities:Other:Deferred-Revenue    | 0.00     | 600.00   | USD     
+Liabilities:Other:Payroll-Payable     | 0.00     | 300.00   | USD     
+Liabilities:Payable:Accounts-Payable  | 0.00     | 500.00   | USD     
+
+Review issues:
+No outstanding review items.

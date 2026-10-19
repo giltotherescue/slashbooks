@@ -1,0 +1,27 @@
+Trial Balance  as of  2026-03-31
+================================
+Accounting basis: accrual
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+
+All Accounts
+----------------------------------------
+Assets › Bank › Checking                      37,300.00
+Assets › Fixed › Accumulated-Depreciation      -1,500.00
+Assets › Fixed › Equipment                     6,000.00
+Assets › Other › Prepaid-Expenses              1,300.00
+Assets › Receivable › Accounts-Receivable       2,100.00
+Equity › Opening-Balances                    -33,900.00
+Expenses › Bad-Debt                              300.00
+Expenses › Bonus                                 700.00
+Expenses › Depreciation                          500.00
+Expenses › Insurance                             300.00
+Expenses › Software                            1,000.00
+Expenses › Utilities                             470.00
+Income › Consulting                          -11,400.00
+Liabilities › Other › Accrued-Liabilities        -470.00
+Liabilities › Other › Deferred-Revenue        -2,700.00
+
+--------------------------------------------------------
+Total Debits                                    49,970.00
+Total Credits                                   49,970.00
+Net                                                  0.00

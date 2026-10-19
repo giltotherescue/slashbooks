@@ -1,0 +1,32 @@
+{
+  "amount": "642.18",
+  "confirmed_category": "Internal transfer",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "Internal transfer",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-31",
+  "delta": null,
+  "description": "Transfer pair: Company Card payment thank you / Payment thank you",
+  "original_amount": "642.18",
+  "proposal_type": "transfer-pair",
+  "proposed_category": "Internal transfer",
+  "reasoning": "Synthetic card payment between own accounts",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0131-cardpay": "304ea35d4abfe5cafd802b28f1f324bb2fcc7d26c1fbb2af32339897a297049c",
+    "crd-0131-payment": "221ecf52bc4a1d7aa55aed5c24dbdff71c2159ef79c668403a462ac7294f4005"
+  },
+  "source_id": "transfer-pair-8c268e5b7b6e3bc4df4a",
+  "source_ids": [
+    "chk-0131-cardpay",
+    "crd-0131-payment"
+  ],
+  "status": "confirmed",
+  "transfer_accounts": [
+    "Assets:Bank:Checking",
+    "Liabilities:CreditCard:Company"
+  ],
+  "updated_at": "2026-08-05T12:00:00Z"
+}

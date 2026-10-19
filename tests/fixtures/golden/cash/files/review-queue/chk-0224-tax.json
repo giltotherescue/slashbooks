@@ -1,0 +1,22 @@
+{
+  "amount": "-480.00",
+  "confirmed_category": "Expenses:Taxes",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "STATE FRANCHISE TAX PAYMENT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-24",
+  "delta": null,
+  "description": "State franchise tax payment",
+  "original_amount": "-480.00",
+  "proposed_category": "Expenses:Taxes",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0224-tax": "86a3c031dc07501a738d2c9671cb57cc64921df05e44ac5f668c00796f787964"
+  },
+  "source_id": "chk-0224-tax",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

@@ -1,0 +1,137 @@
+General Ledger  2026-01-01  through  2026-03-31
+===============================================
+Accounting basis: cash
+
+Assets › Bank › Checking
+----------------------------------------
+  2026-01-02  |  Owner contribution wire        20,000.00
+  2026-01-05  |  Maple Street Properties rent      -1,800.00
+  2026-01-08  |  Orbit Labs invoice 1001 payment       6,500.00
+  2026-01-12  |  Delta Design subcontractor      -1,250.00
+  2026-01-15  |  Granite Insurance premium        -210.40
+  2026-01-20  |  Kestrel Foods invoice 1002 payment       3,200.00
+  2026-01-25  |  Bank monthly service fee          -15.00
+  2026-01-31  |  Internal transfer: Company Card payment thank you / Payment thank you        -642.18
+  2026-02-03  |  Maple Street Properties rent      -1,800.00
+  2026-02-06  |  Orbit Labs invoice 1003 payment       4,800.00
+  2026-02-10  |  Delta Design subcontractor      -1,250.00
+  2026-02-13  |  Harbor Cafe invoice 1004 payment       2,750.00
+  2026-02-17  |  Owner draw transfer            -2,000.00
+  2026-02-24  |  State franchise tax payment        -480.00
+  2026-02-25  |  Bank monthly service fee          -15.00
+  2026-02-28  |  Internal transfer: Company Card payment thank you / Payment thank you        -318.55
+  2026-03-03  |  Maple Street Properties rent      -1,800.00
+  2026-03-05  |  Orbit Labs invoice 1005 payment       7,200.00
+  2026-03-11  |  Delta Design subcontractor      -1,500.00
+  2026-03-16  |  Kestrel Foods invoice 1006 payment       1,900.00
+  2026-03-20  |  Granite Insurance premium        -210.40
+  2026-03-25  |  Bank monthly service fee          -15.00
+  Account Total                                 33,043.47
+
+Equity › Owner-Contributions
+----------------------------------------
+  2026-01-02  |  Owner contribution wire       -20,000.00
+  Account Total                                -20,000.00
+
+Equity › Owner-Draws
+----------------------------------------
+  2026-02-17  |  Owner draw transfer             2,000.00
+  Account Total                                  2,000.00
+
+Expenses › Fees
+----------------------------------------
+  2026-01-25  |  Bank monthly service fee           15.00
+  2026-02-25  |  Bank monthly service fee           15.00
+  2026-03-25  |  Bank monthly service fee           15.00
+  Account Total                                     45.00
+
+Expenses › Insurance
+----------------------------------------
+  2026-01-15  |  Granite Insurance premium         210.40
+  2026-03-20  |  Granite Insurance premium         210.40
+  Account Total                                    420.80
+
+Expenses › Marketing
+----------------------------------------
+  2026-01-22  |  Spark Ads campaign                120.00
+  2026-02-21  |  Spark Ads campaign                 30.57
+  Account Total                                    150.57
+
+Expenses › Meals
+----------------------------------------
+  2026-01-10  |  Juniper Bistro client lunch          86.35
+  2026-01-18  |  Skyway Airlines ticket            112.80
+  2026-02-09  |  Juniper Bistro team lunch          54.20
+  2026-03-19  |  Juniper Bistro client lunch          47.10
+  Account Total                                    300.45
+
+Expenses › Office
+----------------------------------------
+  2026-02-15  |  Paper Pine office supplies         131.75
+  Account Total                                    131.75
+
+Expenses › Rent
+----------------------------------------
+  2026-01-05  |  Maple Street Properties rent       1,800.00
+  2026-02-03  |  Maple Street Properties rent       1,800.00
+  2026-03-03  |  Maple Street Properties rent       1,800.00
+  Account Total                                  5,400.00
+
+Expenses › Software
+----------------------------------------
+  2026-01-03  |  CloudNotes software subscription          79.00
+  2026-01-27  |  Hostly web hosting                 24.03
+  2026-02-04  |  CloudNotes software subscription          79.00
+  2026-02-19  |  Hostly web hosting                 24.03
+  2026-03-04  |  CloudNotes software subscription          79.00
+  2026-03-24  |  Hostly web hosting                 24.03
+  Account Total                                    309.09
+
+Expenses › Subcontractors
+----------------------------------------
+  2026-01-12  |  Delta Design subcontractor       1,250.00
+  2026-02-10  |  Delta Design subcontractor       1,250.00
+  2026-03-11  |  Delta Design subcontractor       1,500.00
+  Account Total                                  4,000.00
+
+Expenses › Taxes
+----------------------------------------
+  2026-02-24  |  State franchise tax payment         480.00
+  Account Total                                    480.00
+
+Expenses › Travel
+----------------------------------------
+  2026-01-18  |  Skyway Airlines ticket            300.00
+  2026-03-12  |  Rail Express tickets              268.40
+  Account Total                                    568.40
+
+Income › Consulting
+----------------------------------------
+  2026-01-08  |  Orbit Labs invoice 1001 payment      -6,500.00
+  2026-01-20  |  Kestrel Foods invoice 1002 payment      -3,200.00
+  2026-02-06  |  Orbit Labs invoice 1003 payment      -4,800.00
+  2026-02-13  |  Harbor Cafe invoice 1004 payment      -2,750.00
+  2026-03-05  |  Orbit Labs invoice 1005 payment      -7,200.00
+  2026-03-16  |  Kestrel Foods invoice 1006 payment      -1,900.00
+  Account Total                                -26,350.00
+
+Liabilities › CreditCard › Company
+----------------------------------------
+  2026-01-03  |  CloudNotes software subscription         -79.00
+  2026-01-10  |  Juniper Bistro client lunch         -86.35
+  2026-01-18  |  Skyway Airlines ticket           -412.80
+  2026-01-22  |  Spark Ads campaign               -120.00
+  2026-01-27  |  Hostly web hosting                -24.03
+  2026-01-31  |  Internal transfer: Company Card payment thank you / Payment thank you         642.18
+  2026-02-04  |  CloudNotes software subscription         -79.00
+  2026-02-09  |  Juniper Bistro team lunch         -54.20
+  2026-02-15  |  Paper Pine office supplies        -131.75
+  2026-02-19  |  Hostly web hosting                -24.03
+  2026-02-21  |  Spark Ads campaign                -30.57
+  2026-02-28  |  Internal transfer: Company Card payment thank you / Payment thank you         318.55
+  2026-03-04  |  CloudNotes software subscription         -79.00
+  2026-03-12  |  Rail Express tickets             -268.40
+  2026-03-19  |  Juniper Bistro client lunch         -47.10
+  2026-03-24  |  Hostly web hosting                -24.03
+  Account Total                                   -499.53
+

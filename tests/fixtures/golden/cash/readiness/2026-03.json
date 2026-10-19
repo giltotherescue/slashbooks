@@ -1,0 +1,151 @@
+{
+  "basis": "cash",
+  "blockers": [
+    {
+      "action": "Run: books reconcile --entity <COMPANY> --account Assets:Bank:Checking --source-balance <statement ending balance> --as-of 2026-03-31 --source-opening-balance <statement opening balance> --source-transaction-total <signed activity 2026-03-01 to 2026-03-31> --source-snapshot-at <ISO time you read the statement> --source-through 2026-03-31 --source-evidence-ref <statement id>",
+      "code": "reconciliation_missing",
+      "message": "An expected source account lacks period-end reconciliation. Account Assets:Bank:Checking, period 2026-03.",
+      "refs": [
+        "Assets:Bank:Checking"
+      ]
+    },
+    {
+      "action": "Run: books reconcile --entity <COMPANY> --account Liabilities:CreditCard:Company --source-balance <statement ending balance> --as-of 2026-03-31 --source-opening-balance <statement opening balance> --source-transaction-total <signed activity 2026-03-01 to 2026-03-31> --source-snapshot-at <ISO time you read the statement> --source-through 2026-03-31 --source-evidence-ref <statement id>",
+      "code": "reconciliation_missing",
+      "message": "An expected source account lacks period-end reconciliation. Account Liabilities:CreditCard:Company, period 2026-03.",
+      "refs": [
+        "Liabilities:CreditCard:Company"
+      ]
+    },
+    {
+      "action": "Run: books queue list --entity <COMPANY> and confirm, correct, or withdraw each item.",
+      "code": "unresolved_period_work",
+      "message": "Period 2026-03 still has staged transactions, proposals, or duplicate decisions: chk-0326-mystery, chk-0330-deposit, chk-0330-deposit, crd-0327-unknown.",
+      "refs": [
+        "chk-0326-mystery",
+        "chk-0330-deposit",
+        "chk-0330-deposit",
+        "crd-0327-unknown"
+      ]
+    }
+  ],
+  "books_revision": 0,
+  "coverage": [
+    {
+      "account": "Assets:Bank:Checking",
+      "label": "Operating Checking",
+      "months": [
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-03-01",
+          "gaps": [],
+          "month": "2026-03",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-03-31",
+          "verified": true
+        }
+      ],
+      "status": "complete",
+      "verified": true
+    },
+    {
+      "account": "Liabilities:CreditCard:Company",
+      "label": "Company Card",
+      "months": [
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-03-01",
+          "gaps": [],
+          "month": "2026-03",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-03-31",
+          "verified": true
+        }
+      ],
+      "status": "complete",
+      "verified": true
+    }
+  ],
+  "evidence_fingerprint": "e57e8c6f7725c69d066bff2a5228ee4e4ccf011192256ca00753ddd39b90e954",
+  "package_id": "0e08c4af8185af86c7f0ce22da5668681b55d7469c3d58702753bab927057435",
+  "period": "2026-03",
+  "period_status": "completed",
+  "policy_version": 0,
+  "reconciliations": [],
+  "reply_revision": 0,
+  "reports": [
+    {
+      "kind": "pnl",
+      "period_from": "2026-03-01",
+      "period_to": "2026-03-31",
+      "provisional": true,
+      "sha256": "4fa6758f433eb7006b1db0592caddb1822afc305132cbed1e687dbe8bb430478",
+      "totals": {
+        "net_income": "5156.07"
+      }
+    },
+    {
+      "kind": "balance_sheet",
+      "period_from": "2026-03-01",
+      "period_to": "2026-03-31",
+      "provisional": true,
+      "sha256": "ef57fbe9cf198fc270c3e6cf39568c677c707e924db79e508f3513c390cbf10f",
+      "totals": {
+        "total_assets": "33043.47",
+        "total_liabilities_and_equity": "33043.47"
+      }
+    },
+    {
+      "kind": "trial_balance",
+      "period_from": "2026-03-01",
+      "period_to": "2026-03-31",
+      "provisional": true,
+      "sha256": "f1b11f4f83d10d3c7f2c72ef704ce955fda9e221793d2bf7216fc8c1b8579d0f",
+      "totals": {
+        "net": "0.00",
+        "total_credits": "46849.53",
+        "total_debits": "46849.53"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_revision": 0,
+  "sources": [
+    {
+      "account": "Liabilities:CreditCard:Company",
+      "coverage_from": "2026-01-01",
+      "coverage_status": "complete",
+      "coverage_to": "2026-03-31",
+      "requested_from": "2026-03-01",
+      "requested_to": "2026-03-31",
+      "source": "Company Card"
+    },
+    {
+      "account": "Assets:Bank:Checking",
+      "coverage_from": "2026-01-01",
+      "coverage_status": "complete",
+      "coverage_to": "2026-03-31",
+      "requested_from": "2026-03-01",
+      "requested_to": "2026-03-31",
+      "source": "Operating Checking"
+    }
+  ],
+  "state": "blocked",
+  "warnings": []
+}

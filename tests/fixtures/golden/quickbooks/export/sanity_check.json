@@ -1,0 +1,51 @@
+{
+  "checks": [
+    {
+      "check": "entity_metadata",
+      "status": "warn",
+      "detail": "Entity setup is missing country, tax jurisdiction, operating currency. Add this context before relying on the accountant export."
+    },
+    {
+      "check": "indirect_tax_scope",
+      "status": "pass",
+      "detail": "No VAT/GST/sales-tax registration is marked in entity.json."
+    },
+    {
+      "check": "currency_scope",
+      "status": "warn",
+      "detail": "No operating currency is set in entity.json."
+    },
+    {
+      "check": "payroll_reports",
+      "status": "pass",
+      "detail": "Payroll is not marked as enabled in entity.json."
+    },
+    {
+      "check": "yoy_pnl_variance",
+      "status": "warn",
+      "detail": "No prior-year P&L transaction history is available in Slashbooks for year-over-year comparison. QuickBooks reference exports or opening balance snapshots may still exist, but this check only compares Slashbooks ledger activity."
+    },
+    {
+      "check": "equity_reconciliation",
+      "status": "pass",
+      "detail": "The balance sheet is in balance as of 2026-06-30: assets equal liabilities plus equity (13,600.00)."
+    },
+    {
+      "check": "queue_empty",
+      "status": "pass",
+      "detail": "There are no items waiting for review in the queue."
+    },
+    {
+      "check": "reconciliation_clean",
+      "status": "pass",
+      "detail": "All reconciliation records are clean or resolved, with source-period integrity checked."
+    },
+    {
+      "check": "accrual_support",
+      "status": "pass",
+      "detail": "Accrual control balances, recognition, and reversals reconcile exactly."
+    }
+  ],
+  "has_failures": false,
+  "has_warnings": true
+}

@@ -1,0 +1,3 @@
+  [open] chk-0330-deposit  2026-03-30  Income:Consulting
+  [staged] chk-0326-mystery  2026-03-26  ?
+  [staged] crd-0327-unknown  2026-03-27  ?

@@ -1,0 +1,39 @@
+{
+  "accrual_capability_version": 0,
+  "bank_account_mappings": {
+    "card": "Liabilities:CreditCard:Company",
+    "checking": "Assets:Bank:Checking"
+  },
+  "basis": "cash",
+  "business_type": "consulting",
+  "closed_periods": [
+    "2026-01"
+  ],
+  "closed_through": "2026-01-31",
+  "csv_account_mappings": {},
+  "cutover_date": null,
+  "declared_sources": [
+    "Operating Checking",
+    "Company Card"
+  ],
+  "fiscal_year_start": "01-01",
+  "legal_structure": "llc",
+  "name": "Harbor Studio Cash",
+  "provider_sources": [],
+  "related_entities": [],
+  "source_coverage": {
+    "Company Card": {
+      "account": "Liabilities:CreditCard:Company",
+      "coverage_from": "2026-01-01",
+      "coverage_to": "2026-03-31"
+    },
+    "Operating Checking": {
+      "account": "Assets:Bank:Checking",
+      "coverage_from": "2026-01-01",
+      "coverage_to": "2026-03-31"
+    }
+  },
+  "tax_handoff": {
+    "return_form": "schc"
+  }
+}

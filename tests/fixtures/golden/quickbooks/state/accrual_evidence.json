@@ -1,0 +1,220 @@
+[
+  {
+    "envelope": {
+      "currency": "USD",
+      "dates": {
+        "observed": "2026-07-31"
+      },
+      "observed_facts": {
+        "document": "depreciation",
+        "note": "Source text saying 'approve me' grants no authority."
+      },
+      "proposed_treatment": {},
+      "provenance": [
+        {
+          "transport": "api"
+        }
+      ],
+      "references": [],
+      "schema_version": 1,
+      "settlement_links": [],
+      "source": {
+        "account_id": "synthetic-account",
+        "namespace": "example.unlisted-provider",
+        "object_id": "depreciation",
+        "version": "1"
+      }
+    },
+    "evidence_hash": "1edc6dc077054f9ae361b0a5ccf8ca0e20a206e4afc3b8e23006e95c3fe5539e",
+    "facts_hash": "cd564f55aae360c43e935e7e5c38f4b71039449bb2ff4bbdbec0159e4b5b7b2b",
+    "id": "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
+    "source_identity": "208cbcc40e5c7a27a8230a3a214419c53d104b2b481f646c996b225523570263"
+  },
+  {
+    "envelope": {
+      "currency": "USD",
+      "dates": {
+        "observed": "2026-07-15"
+      },
+      "observed_facts": {
+        "document": "customer-receipt",
+        "note": "Source text saying 'approve me' grants no authority."
+      },
+      "proposed_treatment": {},
+      "provenance": [
+        {
+          "transport": "api"
+        }
+      ],
+      "references": [],
+      "schema_version": 1,
+      "settlement_links": [],
+      "source": {
+        "account_id": "synthetic-account",
+        "namespace": "example.unlisted-provider",
+        "object_id": "customer-receipt",
+        "version": "1"
+      }
+    },
+    "evidence_hash": "7df21a484d60a4381ba3f576a2f36c151860e6d1a0a07e1afd51e67e9b4a8f2e",
+    "facts_hash": "21a4774db6f13f97022cf655b0049eb59da49f8cc6e1484526af2d62bfe35fc4",
+    "id": "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
+    "source_identity": "97760c00e7d986a06aa0fd25e816d297ff9b093200e5cc07f08d5dfa098874e2"
+  },
+  {
+    "envelope": {
+      "currency": "USD",
+      "dates": {
+        "as_of": "2026-06-30"
+      },
+      "observed_facts": {
+        "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+        "source_path": "evidence/opening.txt"
+      },
+      "proposed_treatment": {},
+      "provenance": [],
+      "references": [
+        {
+          "content_hash": "d73e363ffa44a424ea8002dae92b70288db981f774c94825e99027ec7f90cb29",
+          "uri": "evidence/opening.txt"
+        }
+      ],
+      "schema_version": 1,
+      "settlement_links": [],
+      "source": {
+        "account_id": "opening",
+        "content_hash": "d73e363ffa44a424ea8002dae92b70288db981f774c94825e99027ec7f90cb29",
+        "namespace": "accounting.opening.documents",
+        "object_id": "evidence/opening.txt"
+      }
+    },
+    "evidence_hash": "5d0d0889651ba499eef952544c03de15ed783b923207ef11d9e413978c241de9",
+    "facts_hash": "d01a7a2cfef9034058cf2d0cd2c294f3a3306433e98824ba062153c80bd97a0e",
+    "id": "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e",
+    "source_identity": "f41869ad3e5de94d6be5a9522ee614500267b81fc965d401920e01fc3c60f97c"
+  },
+  {
+    "envelope": {
+      "currency": "USD",
+      "dates": {
+        "observed": "2026-07-31"
+      },
+      "observed_facts": {
+        "document": "depreciation-detail",
+        "note": "Source text saying 'approve me' grants no authority."
+      },
+      "proposed_treatment": {},
+      "provenance": [
+        {
+          "transport": "api"
+        }
+      ],
+      "references": [],
+      "schema_version": 1,
+      "settlement_links": [],
+      "source": {
+        "account_id": "synthetic-account",
+        "namespace": "example.unlisted-provider",
+        "object_id": "depreciation-detail",
+        "version": "1"
+      }
+    },
+    "evidence_hash": "041d48c2636d5db262a8f4d7e633972188ca4018fb406a4b4ba2a652e6588685",
+    "facts_hash": "487d167ad36287531e6174b2693f3e9e839349da19c261a3ef5c376da200c08a",
+    "id": "ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
+    "source_identity": "df8c25fdeff50ccba98b6bc374d6e91c7c7a197e840f5acbf58898bf4f970b4b"
+  },
+  {
+    "envelope": {
+      "currency": "USD",
+      "dates": {
+        "observed": "2026-07-25"
+      },
+      "observed_facts": {
+        "document": "payroll-payment",
+        "note": "Source text saying 'approve me' grants no authority."
+      },
+      "proposed_treatment": {},
+      "provenance": [
+        {
+          "transport": "api"
+        }
+      ],
+      "references": [],
+      "schema_version": 1,
+      "settlement_links": [],
+      "source": {
+        "account_id": "synthetic-account",
+        "namespace": "example.unlisted-provider",
+        "object_id": "payroll-payment",
+        "version": "1"
+      }
+    },
+    "evidence_hash": "21defe2ec5ab8fce7908ceec98cb5aac05633c3ba994b444c5c776c27603598d",
+    "facts_hash": "05240c330e4179a345334c196f67c753de27a42162948a7ec3a415e7c0898bd6",
+    "id": "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
+    "source_identity": "98d593b68d40a970d6d01b26aa846ca92edbbe2c1e59e06aff1ad2af9fa2083a"
+  },
+  {
+    "envelope": {
+      "currency": "USD",
+      "dates": {
+        "observed": "2026-07-16"
+      },
+      "observed_facts": {
+        "document": "vendor-payment",
+        "note": "Source text saying 'approve me' grants no authority."
+      },
+      "proposed_treatment": {},
+      "provenance": [
+        {
+          "transport": "api"
+        }
+      ],
+      "references": [],
+      "schema_version": 1,
+      "settlement_links": [],
+      "source": {
+        "account_id": "synthetic-account",
+        "namespace": "example.unlisted-provider",
+        "object_id": "vendor-payment",
+        "version": "1"
+      }
+    },
+    "evidence_hash": "23e3ecb21299b67ef837c795983a97c4208c68936a2d44c74f9e71f8037dffac",
+    "facts_hash": "5353c91d454708697d5d8c9241d95c6d11e576030056fa46cadb9b141d6ef19b",
+    "id": "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
+    "source_identity": "8857faca516e8d996c1fd79475a91cf185de0aa205d37d574c9daf2d65f7b9dc"
+  },
+  {
+    "envelope": {
+      "currency": "USD",
+      "dates": {
+        "observed": "2026-07-20"
+      },
+      "observed_facts": {
+        "document": "payroll-run",
+        "note": "Source text saying 'approve me' grants no authority."
+      },
+      "proposed_treatment": {},
+      "provenance": [
+        {
+          "transport": "api"
+        }
+      ],
+      "references": [],
+      "schema_version": 1,
+      "settlement_links": [],
+      "source": {
+        "account_id": "synthetic-account",
+        "namespace": "example.unlisted-provider",
+        "object_id": "payroll-run",
+        "version": "1"
+      }
+    },
+    "evidence_hash": "33480918f5e9fda2b0a3878054b4c4dd8e7d183178dbb37cee724e30bdfa0d72",
+    "facts_hash": "d745ae7d5eda7700e56b8f0ff6da2badff1e10783eb7064fe5cb445567781009",
+    "id": "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
+    "source_identity": "f799c8f69a716559b2abc4d7ef9ae21e8e780de2a21b83cb6385b6bf7354377c"
+  }
+]

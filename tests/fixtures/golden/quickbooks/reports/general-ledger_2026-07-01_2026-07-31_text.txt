@@ -1,0 +1,56 @@
+General Ledger  2026-07-01  through  2026-07-31
+===============================================
+Accounting basis: accrual
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Imported activity summary: 2026-01-01 through 2026-06-30 (not included in this report)
+
+Assets › Bank › Checking
+----------------------------------------
+  2026-07-15  |  Payment received: dated 2026-06-30: (customer-open)         400.00
+  2026-07-16  |  Payment made: dated 2026-06-30: (vendor-open)        -200.00
+  2026-07-25  |  Payment made: dated 2026-07-20: (july-payroll)        -600.00
+  Account Total                                   -400.00
+
+Assets › Fixed › Accumulated-Depreciation
+----------------------------------------
+  2026-07-31  |  Synthetic asset roll-forward         -40.00
+  Account Total                                    -40.00
+
+Assets › Other › Prepaid-Insurance
+----------------------------------------
+  2026-07-31  |  Prepaid expense used: dated 2026-01-01 (Jul 2026)        -100.00
+  Account Total                                   -100.00
+
+Assets › Receivable › Accounts-Receivable
+----------------------------------------
+  2026-07-15  |  Payment received: dated 2026-06-30: (customer-open)        -400.00
+  Account Total                                   -400.00
+
+Expenses › Operating-Costs
+----------------------------------------
+  2026-07-20  |  Synthetic provider payroll         600.00
+  2026-07-31  |  Prepaid expense used: dated 2026-01-01 (Jul 2026)         100.00
+  2026-07-31  |  Synthetic asset roll-forward          40.00
+  Account Total                                    740.00
+
+Income › Services
+----------------------------------------
+  2026-07-31  |  Deferred revenue earned: dated 2026-01-01 (Jul 2026)        -100.00
+  Account Total                                   -100.00
+
+Liabilities › Other › Deferred-Revenue
+----------------------------------------
+  2026-07-31  |  Deferred revenue earned: dated 2026-01-01 (Jul 2026)         100.00
+  Account Total                                    100.00
+
+Liabilities › Other › Payroll-Payable
+----------------------------------------
+  2026-07-20  |  Synthetic provider payroll        -600.00
+  2026-07-25  |  Payment made: dated 2026-07-20: (july-payroll)         600.00
+  Account Total                                      0.00
+
+Liabilities › Payable › Accounts-Payable
+----------------------------------------
+  2026-07-16  |  Payment made: dated 2026-06-30: (vendor-open)         200.00
+  Account Total                                    200.00
+

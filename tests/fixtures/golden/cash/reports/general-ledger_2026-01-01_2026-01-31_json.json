@@ -1,0 +1,262 @@
+{
+  "kind": "general_ledger",
+  "from_date": "2026-01-01",
+  "to_date": "2026-01-31",
+  "sections": [
+    {
+      "label": "Assets › Bank › Checking",
+      "rows": [
+        {
+          "label": "2026-01-02  |  Owner contribution wire",
+          "amount": "20000.00",
+          "indent": 1,
+          "date": "2026-01-02"
+        },
+        {
+          "label": "2026-01-05  |  Maple Street Properties rent",
+          "amount": "-1800.00",
+          "indent": 1,
+          "date": "2026-01-05"
+        },
+        {
+          "label": "2026-01-08  |  Orbit Labs invoice 1001 payment",
+          "amount": "6500.00",
+          "indent": 1,
+          "date": "2026-01-08"
+        },
+        {
+          "label": "2026-01-12  |  Delta Design subcontractor",
+          "amount": "-1250.00",
+          "indent": 1,
+          "date": "2026-01-12"
+        },
+        {
+          "label": "2026-01-15  |  Granite Insurance premium",
+          "amount": "-210.40",
+          "indent": 1,
+          "date": "2026-01-15"
+        },
+        {
+          "label": "2026-01-20  |  Kestrel Foods invoice 1002 payment",
+          "amount": "3200.00",
+          "indent": 1,
+          "date": "2026-01-20"
+        },
+        {
+          "label": "2026-01-25  |  Bank monthly service fee",
+          "amount": "-15.00",
+          "indent": 1,
+          "date": "2026-01-25"
+        },
+        {
+          "label": "2026-01-31  |  Internal transfer: Company Card payment thank you / Payment thank you",
+          "amount": "-642.18",
+          "indent": 1,
+          "date": "2026-01-31"
+        }
+      ],
+      "total": "25782.42",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Equity › Owner-Contributions",
+      "rows": [
+        {
+          "label": "2026-01-02  |  Owner contribution wire",
+          "amount": "-20000.00",
+          "indent": 1,
+          "date": "2026-01-02"
+        }
+      ],
+      "total": "-20000.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Fees",
+      "rows": [
+        {
+          "label": "2026-01-25  |  Bank monthly service fee",
+          "amount": "15.00",
+          "indent": 1,
+          "date": "2026-01-25"
+        }
+      ],
+      "total": "15.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Insurance",
+      "rows": [
+        {
+          "label": "2026-01-15  |  Granite Insurance premium",
+          "amount": "210.40",
+          "indent": 1,
+          "date": "2026-01-15"
+        }
+      ],
+      "total": "210.40",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Marketing",
+      "rows": [
+        {
+          "label": "2026-01-22  |  Spark Ads campaign",
+          "amount": "120.00",
+          "indent": 1,
+          "date": "2026-01-22"
+        }
+      ],
+      "total": "120.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Meals",
+      "rows": [
+        {
+          "label": "2026-01-10  |  Juniper Bistro client lunch",
+          "amount": "86.35",
+          "indent": 1,
+          "date": "2026-01-10"
+        },
+        {
+          "label": "2026-01-18  |  Skyway Airlines ticket",
+          "amount": "112.80",
+          "indent": 1,
+          "date": "2026-01-18"
+        }
+      ],
+      "total": "199.15",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Rent",
+      "rows": [
+        {
+          "label": "2026-01-05  |  Maple Street Properties rent",
+          "amount": "1800.00",
+          "indent": 1,
+          "date": "2026-01-05"
+        }
+      ],
+      "total": "1800.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Software",
+      "rows": [
+        {
+          "label": "2026-01-03  |  CloudNotes software subscription",
+          "amount": "79.00",
+          "indent": 1,
+          "date": "2026-01-03"
+        },
+        {
+          "label": "2026-01-27  |  Hostly web hosting",
+          "amount": "24.03",
+          "indent": 1,
+          "date": "2026-01-27"
+        }
+      ],
+      "total": "103.03",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Subcontractors",
+      "rows": [
+        {
+          "label": "2026-01-12  |  Delta Design subcontractor",
+          "amount": "1250.00",
+          "indent": 1,
+          "date": "2026-01-12"
+        }
+      ],
+      "total": "1250.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Travel",
+      "rows": [
+        {
+          "label": "2026-01-18  |  Skyway Airlines ticket",
+          "amount": "300.00",
+          "indent": 1,
+          "date": "2026-01-18"
+        }
+      ],
+      "total": "300.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Income › Consulting",
+      "rows": [
+        {
+          "label": "2026-01-08  |  Orbit Labs invoice 1001 payment",
+          "amount": "-6500.00",
+          "indent": 1,
+          "date": "2026-01-08"
+        },
+        {
+          "label": "2026-01-20  |  Kestrel Foods invoice 1002 payment",
+          "amount": "-3200.00",
+          "indent": 1,
+          "date": "2026-01-20"
+        }
+      ],
+      "total": "-9700.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Liabilities › CreditCard › Company",
+      "rows": [
+        {
+          "label": "2026-01-03  |  CloudNotes software subscription",
+          "amount": "-79.00",
+          "indent": 1,
+          "date": "2026-01-03"
+        },
+        {
+          "label": "2026-01-10  |  Juniper Bistro client lunch",
+          "amount": "-86.35",
+          "indent": 1,
+          "date": "2026-01-10"
+        },
+        {
+          "label": "2026-01-18  |  Skyway Airlines ticket",
+          "amount": "-412.80",
+          "indent": 1,
+          "date": "2026-01-18"
+        },
+        {
+          "label": "2026-01-22  |  Spark Ads campaign",
+          "amount": "-120.00",
+          "indent": 1,
+          "date": "2026-01-22"
+        },
+        {
+          "label": "2026-01-27  |  Hostly web hosting",
+          "amount": "-24.03",
+          "indent": 1,
+          "date": "2026-01-27"
+        },
+        {
+          "label": "2026-01-31  |  Internal transfer: Company Card payment thank you / Payment thank you",
+          "amount": "642.18",
+          "indent": 1,
+          "date": "2026-01-31"
+        }
+      ],
+      "total": "-80.00",
+      "total_label": "Account Total"
+    }
+  ],
+  "totals": {},
+  "meta": {
+    "basis": "cash",
+    "currency": "USD",
+    "coverage": null,
+    "requested_from": "2026-01-01",
+    "requested_to": "2026-01-31",
+    "unresolved_issues": []
+  }
+}

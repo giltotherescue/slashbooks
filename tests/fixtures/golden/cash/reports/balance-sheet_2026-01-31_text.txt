@@ -1,0 +1,23 @@
+Balance Sheet  as of  2026-01-31
+================================
+Accounting basis: cash
+
+Assets
+----------------------------------------
+  Assets › Bank › Checking                      25,782.42
+  Total Assets                                  25,782.42
+
+Liabilities
+----------------------------------------
+  Liabilities › CreditCard › Company                80.00
+  Total Liabilities                                 80.00
+
+Equity
+----------------------------------------
+  Equity › Owner-Contributions                  20,000.00
+  Net Income (current period)                    5,702.42
+  Total Equity                                  25,702.42
+
+--------------------------------------------------------
+Total Assets                                    25,782.42
+Total Liabilities And Equity                    25,782.42

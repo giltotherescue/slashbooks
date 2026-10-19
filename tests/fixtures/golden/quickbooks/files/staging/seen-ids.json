@@ -1,0 +1,9 @@
+[
+  "accrual:provider-payroll-journal",
+  "customer-receipt",
+  "payroll-payment",
+  "quickbooks-opening-trial-balance-2026-07-01",
+  "schedule:recognition:deferred-open:0:2026-07-31",
+  "schedule:recognition:prepaid-open:0:2026-07-31",
+  "vendor-payment"
+]

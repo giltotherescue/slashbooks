@@ -1,0 +1,104 @@
+Account Type,Account,Account Detail,Date,Counterparty,Memo,Source ID,Entry Type,Amount
+Assets,Assets › Bank › Checking,Checking,2026-01-02,,Owner contribution wire,chk-0102-owner,Posted,20000.00
+Assets,Assets › Bank › Checking,Checking,2026-01-05,,Maple Street Properties rent,chk-0105-rent,Posted,-1800.00
+Assets,Assets › Bank › Checking,Checking,2026-01-08,,Orbit Labs invoice 1001 payment,chk-0108-client,Posted,6500.00
+Assets,Assets › Bank › Checking,Checking,2026-01-12,,Delta Design subcontractor,chk-0112-sub,Posted,-1250.00
+Assets,Assets › Bank › Checking,Checking,2026-01-15,,Granite Insurance premium,chk-0115-ins,Posted,-210.40
+Assets,Assets › Bank › Checking,Checking,2026-01-20,,Kestrel Foods invoice 1002 payment,chk-0120-client,Posted,3200.00
+Assets,Assets › Bank › Checking,Checking,2026-01-25,,Bank monthly service fee,chk-0125-fee,Posted,-15.00
+Assets,Assets › Bank › Checking,Checking,2026-01-31,,Internal transfer: Company Card payment thank you / Payment thank you,chk-0131-cardpay,Posted,-642.18
+Assets,Assets › Bank › Checking,Checking,2026-02-03,,Maple Street Properties rent,chk-0203-rent,Posted,-1800.00
+Assets,Assets › Bank › Checking,Checking,2026-02-06,,Orbit Labs invoice 1003 payment,chk-0206-client,Posted,4800.00
+Assets,Assets › Bank › Checking,Checking,2026-02-10,,Delta Design subcontractor,chk-0210-sub,Posted,-1250.00
+Assets,Assets › Bank › Checking,Checking,2026-02-13,,Harbor Cafe invoice 1004 payment,chk-0213-client,Posted,2750.00
+Assets,Assets › Bank › Checking,Checking,2026-02-17,,Owner draw transfer,chk-0217-draw,Posted,-2000.00
+Assets,Assets › Bank › Checking,Checking,2026-02-24,,State franchise tax payment,chk-0224-tax,Posted,-480.00
+Assets,Assets › Bank › Checking,Checking,2026-02-25,,Bank monthly service fee,chk-0225-fee,Posted,-15.00
+Assets,Assets › Bank › Checking,Checking,2026-02-28,,Internal transfer: Company Card payment thank you / Payment thank you,chk-0228-cardpay,Posted,-318.55
+Assets,Assets › Bank › Checking,Checking,2026-03-03,,Maple Street Properties rent,chk-0303-rent,Posted,-1800.00
+Assets,Assets › Bank › Checking,Checking,2026-03-05,,Orbit Labs invoice 1005 payment,chk-0305-client,Posted,7200.00
+Assets,Assets › Bank › Checking,Checking,2026-03-11,,Delta Design subcontractor,chk-0311-sub,Posted,-1500.00
+Assets,Assets › Bank › Checking,Checking,2026-03-16,,Kestrel Foods invoice 1006 payment,chk-0316-client,Posted,1900.00
+Assets,Assets › Bank › Checking,Checking,2026-03-20,,Granite Insurance premium,chk-0320-ins,Posted,-210.40
+Assets,Assets › Bank › Checking,Checking,2026-03-25,,Bank monthly service fee,chk-0325-fee,Posted,-15.00
+,Assets › Bank › Checking,,,,Account Total,,Account Total,33043.47
+
+Equity,Equity › Owner-Contributions,Owner-Contributions,2026-01-02,,Owner contribution wire,chk-0102-owner,Posted,-20000.00
+,Equity › Owner-Contributions,,,,Account Total,,Account Total,-20000.00
+
+Equity,Equity › Owner-Draws,Owner-Draws,2026-02-17,,Owner draw transfer,chk-0217-draw,Posted,2000.00
+,Equity › Owner-Draws,,,,Account Total,,Account Total,2000.00
+
+Expenses,Expenses › Fees,Fees,2026-01-25,,Bank monthly service fee,chk-0125-fee,Posted,15.00
+Expenses,Expenses › Fees,Fees,2026-02-25,,Bank monthly service fee,chk-0225-fee,Posted,15.00
+Expenses,Expenses › Fees,Fees,2026-03-25,,Bank monthly service fee,chk-0325-fee,Posted,15.00
+,Expenses › Fees,,,,Account Total,,Account Total,45.00
+
+Expenses,Expenses › Insurance,Insurance,2026-01-15,,Granite Insurance premium,chk-0115-ins,Posted,210.40
+Expenses,Expenses › Insurance,Insurance,2026-03-20,,Granite Insurance premium,chk-0320-ins,Posted,210.40
+,Expenses › Insurance,,,,Account Total,,Account Total,420.80
+
+Expenses,Expenses › Marketing,Marketing,2026-01-22,,Spark Ads campaign,crd-0122-mkt,Posted,120.00
+Expenses,Expenses › Marketing,Marketing,2026-02-21,,Spark Ads campaign,crd-0221-mkt,Posted,30.57
+,Expenses › Marketing,,,,Account Total,,Account Total,150.57
+
+Expenses,Expenses › Meals,Meals,2026-01-10,,Juniper Bistro client lunch,crd-0110-meal,Posted,86.35
+Expenses,Expenses › Meals,Meals,2026-01-18,,Skyway Airlines ticket,crd-0118-travel,Posted,112.80
+Expenses,Expenses › Meals,Meals,2026-02-09,,Juniper Bistro team lunch,crd-0209-meal,Posted,54.20
+Expenses,Expenses › Meals,Meals,2026-03-19,,Juniper Bistro client lunch,crd-0319-meal,Posted,47.10
+,Expenses › Meals,,,,Account Total,,Account Total,300.45
+
+Expenses,Expenses › Office,Office,2026-02-15,,Paper Pine office supplies,crd-0215-office,Posted,131.75
+,Expenses › Office,,,,Account Total,,Account Total,131.75
+
+Expenses,Expenses › Rent,Rent,2026-01-05,,Maple Street Properties rent,chk-0105-rent,Posted,1800.00
+Expenses,Expenses › Rent,Rent,2026-02-03,,Maple Street Properties rent,chk-0203-rent,Posted,1800.00
+Expenses,Expenses › Rent,Rent,2026-03-03,,Maple Street Properties rent,chk-0303-rent,Posted,1800.00
+,Expenses › Rent,,,,Account Total,,Account Total,5400.00
+
+Expenses,Expenses › Software,Software,2026-01-03,,CloudNotes software subscription,crd-0103-sw,Posted,79.00
+Expenses,Expenses › Software,Software,2026-01-27,,Hostly web hosting,crd-0127-sw,Posted,24.03
+Expenses,Expenses › Software,Software,2026-02-04,,CloudNotes software subscription,crd-0204-sw,Posted,79.00
+Expenses,Expenses › Software,Software,2026-02-19,,Hostly web hosting,crd-0219-sw,Posted,24.03
+Expenses,Expenses › Software,Software,2026-03-04,,CloudNotes software subscription,crd-0304-sw,Posted,79.00
+Expenses,Expenses › Software,Software,2026-03-24,,Hostly web hosting,crd-0324-sw,Posted,24.03
+,Expenses › Software,,,,Account Total,,Account Total,309.09
+
+Expenses,Expenses › Subcontractors,Subcontractors,2026-01-12,,Delta Design subcontractor,chk-0112-sub,Posted,1250.00
+Expenses,Expenses › Subcontractors,Subcontractors,2026-02-10,,Delta Design subcontractor,chk-0210-sub,Posted,1250.00
+Expenses,Expenses › Subcontractors,Subcontractors,2026-03-11,,Delta Design subcontractor,chk-0311-sub,Posted,1500.00
+,Expenses › Subcontractors,,,,Account Total,,Account Total,4000.00
+
+Expenses,Expenses › Taxes,Taxes,2026-02-24,,State franchise tax payment,chk-0224-tax,Posted,480.00
+,Expenses › Taxes,,,,Account Total,,Account Total,480.00
+
+Expenses,Expenses › Travel,Travel,2026-01-18,,Skyway Airlines ticket,crd-0118-travel,Posted,300.00
+Expenses,Expenses › Travel,Travel,2026-03-12,,Rail Express tickets,crd-0312-travel,Posted,268.40
+,Expenses › Travel,,,,Account Total,,Account Total,568.40
+
+Income,Income › Consulting,Consulting,2026-01-08,,Orbit Labs invoice 1001 payment,chk-0108-client,Posted,-6500.00
+Income,Income › Consulting,Consulting,2026-01-20,,Kestrel Foods invoice 1002 payment,chk-0120-client,Posted,-3200.00
+Income,Income › Consulting,Consulting,2026-02-06,,Orbit Labs invoice 1003 payment,chk-0206-client,Posted,-4800.00
+Income,Income › Consulting,Consulting,2026-02-13,,Harbor Cafe invoice 1004 payment,chk-0213-client,Posted,-2750.00
+Income,Income › Consulting,Consulting,2026-03-05,,Orbit Labs invoice 1005 payment,chk-0305-client,Posted,-7200.00
+Income,Income › Consulting,Consulting,2026-03-16,,Kestrel Foods invoice 1006 payment,chk-0316-client,Posted,-1900.00
+,Income › Consulting,,,,Account Total,,Account Total,-26350.00
+
+Liabilities,Liabilities › CreditCard › Company,Company,2026-01-03,,CloudNotes software subscription,crd-0103-sw,Posted,-79.00
+Liabilities,Liabilities › CreditCard › Company,Company,2026-01-10,,Juniper Bistro client lunch,crd-0110-meal,Posted,-86.35
+Liabilities,Liabilities › CreditCard › Company,Company,2026-01-18,,Skyway Airlines ticket,crd-0118-travel,Posted,-412.80
+Liabilities,Liabilities › CreditCard › Company,Company,2026-01-22,,Spark Ads campaign,crd-0122-mkt,Posted,-120.00
+Liabilities,Liabilities › CreditCard › Company,Company,2026-01-27,,Hostly web hosting,crd-0127-sw,Posted,-24.03
+Liabilities,Liabilities › CreditCard › Company,Company,2026-01-31,,Internal transfer: Company Card payment thank you / Payment thank you,chk-0131-cardpay,Posted,642.18
+Liabilities,Liabilities › CreditCard › Company,Company,2026-02-04,,CloudNotes software subscription,crd-0204-sw,Posted,-79.00
+Liabilities,Liabilities › CreditCard › Company,Company,2026-02-09,,Juniper Bistro team lunch,crd-0209-meal,Posted,-54.20
+Liabilities,Liabilities › CreditCard › Company,Company,2026-02-15,,Paper Pine office supplies,crd-0215-office,Posted,-131.75
+Liabilities,Liabilities › CreditCard › Company,Company,2026-02-19,,Hostly web hosting,crd-0219-sw,Posted,-24.03
+Liabilities,Liabilities › CreditCard › Company,Company,2026-02-21,,Spark Ads campaign,crd-0221-mkt,Posted,-30.57
+Liabilities,Liabilities › CreditCard › Company,Company,2026-02-28,,Internal transfer: Company Card payment thank you / Payment thank you,chk-0228-cardpay,Posted,318.55
+Liabilities,Liabilities › CreditCard › Company,Company,2026-03-04,,CloudNotes software subscription,crd-0304-sw,Posted,-79.00
+Liabilities,Liabilities › CreditCard › Company,Company,2026-03-12,,Rail Express tickets,crd-0312-travel,Posted,-268.40
+Liabilities,Liabilities › CreditCard › Company,Company,2026-03-19,,Juniper Bistro client lunch,crd-0319-meal,Posted,-47.10
+Liabilities,Liabilities › CreditCard › Company,Company,2026-03-24,,Hostly web hosting,crd-0324-sw,Posted,-24.03
+,Liabilities › CreditCard › Company,,,,Account Total,,Account Total,-499.53
+

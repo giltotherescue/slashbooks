@@ -1,0 +1,22 @@
+{
+  "amount": "-1250.00",
+  "confirmed_category": "Expenses:Subcontractors",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "DELTA DESIGN SUBCONTRACTOR",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-10",
+  "delta": null,
+  "description": "Delta Design subcontractor",
+  "original_amount": "-1250.00",
+  "proposed_category": "Expenses:Subcontractors",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0210-sub": "8679c9452e09ec10a56ab5b13ab119be43ddab3362cfc4c87bb6c50a78b01684"
+  },
+  "source_id": "chk-0210-sub",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

@@ -1,0 +1,39 @@
+Account Type,Account,Account Detail,Date,Counterparty,Memo,Source ID,Entry Type,Amount
+Assets,Assets › Bank › Checking,Checking,2026-01-15,,Payment to Delta Design: BILL-311,pay-bill-open-1-bank,Posted,-1500.00
+Assets,Assets › Bank › Checking,Checking,2026-01-20,,Payment from Orbit Labs: INV-0950,pay-inv-open-1-bank,Posted,2500.00
+,Assets › Bank › Checking,,,,Account Total,,Account Total,1000.00
+
+Assets,Assets › Fixed › Accumulated-Depreciation,Accumulated-Depreciation,2026-01-31,,Depreciation: dated 2025-03-01 (Jan 2026),schedule:recognition:laptop-old:0:2026-01-31,Posted,-100.00
+,Assets › Fixed › Accumulated-Depreciation,,,,Account Total,,Account Total,-100.00
+
+Assets,Assets › Other › Prepaid-Expenses,Prepaid-Expenses,2026-01-31,,Prepaid expense used: dated 2025-07-01 (Jan 2026),schedule:recognition:insurance-h2:0:2026-01-31,Posted,-100.00
+,Assets › Other › Prepaid-Expenses,,,,Account Total,,Account Total,-100.00
+
+Assets,Assets › Receivable › Accounts-Receivable,Accounts-Receivable,2026-01-10,,Invoice: Orbit Labs,accrual:inv-1001-create,Posted,6000.00
+Assets,Assets › Receivable › Accounts-Receivable,Accounts-Receivable,2026-01-12,,Invoice: Kestrel Foods,accrual:inv-1003-create,Posted,900.00
+Assets,Assets › Receivable › Accounts-Receivable,Accounts-Receivable,2026-01-20,,Payment from Orbit Labs: INV-0950,pay-inv-open-1-bank,Posted,-2500.00
+,Assets › Receivable › Accounts-Receivable,,,,Account Total,,Account Total,4400.00
+
+Expenses,Expenses › Depreciation,Depreciation,2026-01-31,,Depreciation: dated 2025-03-01 (Jan 2026),schedule:recognition:laptop-old:0:2026-01-31,Posted,100.00
+,Expenses › Depreciation,,,,Account Total,,Account Total,100.00
+
+Expenses,Expenses › Insurance,Insurance,2026-01-31,,Prepaid expense used: dated 2025-07-01 (Jan 2026),schedule:recognition:insurance-h2:0:2026-01-31,Posted,100.00
+,Expenses › Insurance,,,,Account Total,,Account Total,100.00
+
+Expenses,Expenses › Utilities,Utilities,2026-01-31,,Estimated January utilities,accrual:utilities-estimate-jan,Posted,450.00
+,Expenses › Utilities,,,,Account Total,,Account Total,450.00
+
+Income,Income › Consulting,Consulting,2026-01-10,,Invoice: Orbit Labs,accrual:inv-1001-create,Posted,-6000.00
+Income,Income › Consulting,Consulting,2026-01-12,,Invoice: Kestrel Foods,accrual:inv-1003-create,Posted,-900.00
+Income,Income › Consulting,Consulting,2026-01-31,,Deferred revenue earned: dated 2025-07-01 (Jan 2026),schedule:recognition:retainer-h2:0:2026-01-31,Posted,-100.00
+,Income › Consulting,,,,Account Total,,Account Total,-7000.00
+
+Liabilities,Liabilities › Other › Accrued-Liabilities,Accrued-Liabilities,2026-01-31,,Estimated January utilities,accrual:utilities-estimate-jan,Posted,-450.00
+,Liabilities › Other › Accrued-Liabilities,,,,Account Total,,Account Total,-450.00
+
+Liabilities,Liabilities › Other › Deferred-Revenue,Deferred-Revenue,2026-01-31,,Deferred revenue earned: dated 2025-07-01 (Jan 2026),schedule:recognition:retainer-h2:0:2026-01-31,Posted,100.00
+,Liabilities › Other › Deferred-Revenue,,,,Account Total,,Account Total,100.00
+
+Liabilities,Liabilities › Payable › Accounts-Payable,Accounts-Payable,2026-01-15,,Payment to Delta Design: BILL-311,pay-bill-open-1-bank,Posted,1500.00
+,Liabilities › Payable › Accounts-Payable,,,,Account Total,,Account Total,1500.00
+

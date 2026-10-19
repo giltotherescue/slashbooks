@@ -1,0 +1,8 @@
+{
+  "account_catalog": "sqlite",
+  "basis": "cash",
+  "business_type": "consulting",
+  "canonical": "true",
+  "schema_version": "1",
+  "title": "Harbor Studio Cash"
+}

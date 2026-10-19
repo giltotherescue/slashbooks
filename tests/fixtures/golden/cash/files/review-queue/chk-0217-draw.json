@@ -1,0 +1,22 @@
+{
+  "amount": "-2000.00",
+  "confirmed_category": "Equity:Owner-Draws",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "OWNER DRAW TRANSFER",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-17",
+  "delta": null,
+  "description": "Owner draw transfer",
+  "original_amount": "-2000.00",
+  "proposed_category": "Equity:Owner-Draws",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0217-draw": "c23fd7b8935c75a1ee05d58b2b1ebb163726f4ee62dbaef5757efe922fa80522"
+  },
+  "source_id": "chk-0217-draw",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

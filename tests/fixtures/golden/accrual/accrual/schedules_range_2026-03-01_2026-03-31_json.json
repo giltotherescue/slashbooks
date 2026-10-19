@@ -1,0 +1,352 @@
+{
+  "as_of": "2026-03-31",
+  "basis": "accrual",
+  "canonical_digest": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097",
+  "coverage": {
+    "basis": "accrual",
+    "chart": [
+      {
+        "account": "Assets:Bank:Checking",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Bank:Checking"
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Accumulated-Depreciation"
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Fixed:Equipment"
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Other:Prepaid-Expenses"
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "account_type": "Assets",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Assets:Receivable:Accounts-Receivable"
+      },
+      {
+        "account": "Equity:Opening-Balances",
+        "account_type": "Equity",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Equity:Opening-Balances"
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Other:Deferred-Revenue"
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "account_type": "Liabilities",
+        "currency": "USD",
+        "detail_type": "",
+        "open_date": "2025-12-31",
+        "source_account": "Liabilities:Payable:Accounts-Payable"
+      }
+    ],
+    "closed_position": true,
+    "currency": "USD",
+    "cutover_date": "2026-01-01",
+    "fiscal_start": "2026-01-01",
+    "id": "opening",
+    "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
+    "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+    "opening_source_id": "golden-opening",
+    "source_as_of": "2025-12-31",
+    "source_hashes": {},
+    "summary_from": null,
+    "summary_to": null,
+    "support_evidence_hashes": {
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
+    },
+    "support_status": "reconciled",
+    "verified": true
+  },
+  "currency": "USD",
+  "fingerprint": "c4abfd677b4a3d37ba787329ff4229488471e7ae149ea471488a996e94651500",
+  "from_date": "2026-03-01",
+  "issues": [],
+  "kind": "schedules",
+  "requested_from": "2026-03-01",
+  "requested_to": "2026-03-31",
+  "rows": [
+    {
+      "account": "Assets:Other:Prepaid-Expenses",
+      "allocations_as_of": [
+        "recognition:insurance-h2:0:2026-01-31",
+        "recognition:insurance-h2:0:2026-02-28",
+        "recognition:insurance-h2:0:2026-03-31"
+      ],
+      "amount": "1200.00",
+      "as_of": "2025-12-31",
+      "base_recognized_amount": "600.00",
+      "base_remaining_amount": "600.00",
+      "currency": "USD",
+      "evidence_ids": [
+        "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+      ],
+      "evidence_refs": [
+        "evidence/open-items.txt"
+      ],
+      "id": "insurance-h2",
+      "initial_remaining_amount": "600.00",
+      "kind": "prepaid",
+      "method": "equal_month",
+      "opening_source_id": "golden-opening",
+      "origin": {
+        "mode": "opening",
+        "source_id": "golden-opening"
+      },
+      "origin_reserved_amount": "600.00",
+      "recognition_account": "Expenses:Insurance",
+      "recognition_start": "2026-01-01",
+      "recognized_amount": "900.00",
+      "recognized_in_ledger": "300.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "300.00",
+      "remaining_as_of": "300.00",
+      "service_end": "2026-06-30",
+      "service_start": "2025-07-01",
+      "signed_balance": "300.00",
+      "status": "active"
+    },
+    {
+      "account": "Assets:Fixed:Equipment",
+      "accumulated_depreciation": "200.00",
+      "allocations_as_of": [
+        "recognition:laptop-new:0:2026-02-28",
+        "recognition:laptop-new:0:2026-03-31"
+      ],
+      "amount": "3600.00",
+      "asset_cost": "3600.00",
+      "base_recognized_amount": "0.00",
+      "base_remaining_amount": "3600.00",
+      "contra_account": "Assets:Fixed:Accumulated-Depreciation",
+      "created_operation_id": "laptop-new-create",
+      "currency": "USD",
+      "evidence_ids": [
+        "d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95"
+      ],
+      "generation": 0,
+      "id": "laptop-new",
+      "kind": "depreciation",
+      "method": "equal_month",
+      "net_book_value": "3400.00",
+      "origin": {
+        "date": "2026-02-10",
+        "funding_account": "Assets:Bank:Checking",
+        "mode": "new",
+        "source_id": "laptop-new-purchase"
+      },
+      "origin_date": "2026-02-10",
+      "origin_reserved_amount": "3600.00",
+      "recognition_account": "Expenses:Depreciation",
+      "recognition_start": "2026-02-01",
+      "recognized_amount": "200.00",
+      "recognized_in_ledger": "200.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "3400.00",
+      "remaining_as_of": "3400.00",
+      "service_end": "2029-01-31",
+      "service_start": "2026-02-01",
+      "signed_balance": "3600.00",
+      "status": "active"
+    },
+    {
+      "account": "Assets:Fixed:Equipment",
+      "accumulated_depreciation": "1300.00",
+      "allocations_as_of": [
+        "recognition:laptop-old:0:2026-01-31",
+        "recognition:laptop-old:0:2026-02-28",
+        "recognition:laptop-old:0:2026-03-31"
+      ],
+      "amount": "2400.00",
+      "as_of": "2025-12-31",
+      "asset_cost": "2400.00",
+      "base_recognized_amount": "1000.00",
+      "base_remaining_amount": "1400.00",
+      "contra_account": "Assets:Fixed:Accumulated-Depreciation",
+      "currency": "USD",
+      "evidence_ids": [
+        "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+      ],
+      "evidence_refs": [
+        "evidence/open-items.txt"
+      ],
+      "id": "laptop-old",
+      "initial_remaining_amount": "1400.00",
+      "kind": "depreciation",
+      "method": "equal_month",
+      "net_book_value": "1100.00",
+      "opening_source_id": "golden-opening",
+      "origin": {
+        "mode": "opening",
+        "source_id": "golden-opening"
+      },
+      "origin_reserved_amount": "2400.00",
+      "recognition_account": "Expenses:Depreciation",
+      "recognition_start": "2026-01-01",
+      "recognized_amount": "1300.00",
+      "recognized_in_ledger": "300.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "1100.00",
+      "remaining_as_of": "1100.00",
+      "salvage_value": "0.00",
+      "service_end": "2027-02-28",
+      "service_start": "2025-03-01",
+      "signed_balance": "2400.00",
+      "status": "active"
+    },
+    {
+      "account": "Liabilities:Other:Deferred-Revenue",
+      "allocations_as_of": [
+        "recognition:retainer-h2:0:2026-01-31",
+        "recognition:retainer-h2:0:2026-02-28",
+        "recognition:retainer-h2:0:2026-03-31"
+      ],
+      "amount": "1200.00",
+      "as_of": "2025-12-31",
+      "base_recognized_amount": "600.00",
+      "base_remaining_amount": "600.00",
+      "currency": "USD",
+      "evidence_ids": [
+        "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+      ],
+      "evidence_refs": [
+        "evidence/open-items.txt"
+      ],
+      "id": "retainer-h2",
+      "initial_remaining_amount": "600.00",
+      "kind": "deferred",
+      "method": "equal_month",
+      "opening_source_id": "golden-opening",
+      "origin": {
+        "mode": "opening",
+        "source_id": "golden-opening"
+      },
+      "origin_reserved_amount": "600.00",
+      "recognition_account": "Income:Consulting",
+      "recognition_start": "2026-01-01",
+      "recognized_amount": "900.00",
+      "recognized_in_ledger": "300.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "300.00",
+      "remaining_as_of": "300.00",
+      "service_end": "2026-06-30",
+      "service_start": "2025-07-01",
+      "signed_balance": "-300.00",
+      "status": "active"
+    },
+    {
+      "account": "Liabilities:Other:Deferred-Revenue",
+      "allocations_as_of": [
+        "recognition:retainer-new:0:2026-02-28",
+        "recognition:retainer-new:0:2026-03-31"
+      ],
+      "amount": "3600.00",
+      "base_recognized_amount": "0.00",
+      "base_remaining_amount": "3600.00",
+      "created_operation_id": "retainer-new-create",
+      "currency": "USD",
+      "evidence_ids": [
+        "a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6"
+      ],
+      "generation": 0,
+      "id": "retainer-new",
+      "kind": "deferred",
+      "method": "equal_month",
+      "origin": {
+        "date": "2026-02-01",
+        "funding_account": "Assets:Bank:Checking",
+        "mode": "new",
+        "source_id": "retainer-new-receipt"
+      },
+      "origin_date": "2026-02-01",
+      "origin_reserved_amount": "3600.00",
+      "recognition_account": "Income:Consulting",
+      "recognition_start": "2026-02-01",
+      "recognized_amount": "1200.00",
+      "recognized_in_ledger": "1200.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "2400.00",
+      "remaining_as_of": "2400.00",
+      "service_end": "2026-07-31",
+      "service_start": "2026-02-01",
+      "signed_balance": "-2400.00",
+      "status": "active"
+    },
+    {
+      "account": "Assets:Other:Prepaid-Expenses",
+      "allocations_as_of": [
+        "recognition:sw-annual:0:2026-02-28",
+        "recognition:sw-annual:0:2026-03-31"
+      ],
+      "amount": "1200.00",
+      "base_recognized_amount": "0.00",
+      "base_remaining_amount": "1200.00",
+      "created_operation_id": "sw-annual-create",
+      "currency": "USD",
+      "evidence_ids": [
+        "aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21"
+      ],
+      "generation": 0,
+      "id": "sw-annual",
+      "kind": "prepaid",
+      "method": "equal_month",
+      "origin": {
+        "date": "2026-02-01",
+        "funding_account": "Assets:Bank:Checking",
+        "mode": "new",
+        "source_id": "sw-annual-payment"
+      },
+      "origin_date": "2026-02-01",
+      "origin_reserved_amount": "1200.00",
+      "recognition_account": "Expenses:Software",
+      "recognition_start": "2026-02-01",
+      "recognized_amount": "200.00",
+      "recognized_in_ledger": "200.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "1000.00",
+      "remaining_as_of": "1000.00",
+      "service_end": "2027-01-31",
+      "service_start": "2026-02-01",
+      "signed_balance": "1000.00",
+      "status": "active"
+    }
+  ],
+  "schema_version": 1,
+  "summary_included": false,
+  "unresolved_issues": []
+}

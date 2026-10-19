@@ -1,0 +1,17 @@
+Account Number,Account Description,Unit,Tax Code,Amount
+1010,Assets › Bank › Checking,,,37300.00
+1020,Assets › Fixed › Accumulated-Depreciation,,,-1500.00
+1030,Assets › Fixed › Equipment,,,6000.00
+1040,Assets › Other › Prepaid-Expenses,,,1300.00
+1050,Assets › Receivable › Accounts-Receivable,,,2100.00
+3010,Equity › Opening-Balances,,,-33900.00
+6010,Expenses › Bad-Debt,,,300.00
+6020,Expenses › Bonus,,,700.00
+6030,Expenses › Depreciation,,,500.00
+6040,Expenses › Insurance,,,300.00
+6050,Expenses › Software,,,1000.00
+6060,Expenses › Utilities,,,470.00
+4010,Income › Consulting,,,-11400.00
+2010,Liabilities › Other › Accrued-Liabilities,,,-470.00
+2020,Liabilities › Other › Deferred-Revenue,,,-2700.00
+2030,Liabilities › Payable › Accounts-Payable,,,0.00

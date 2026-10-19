@@ -1,0 +1,23 @@
+Profit and Loss  2026-02-01  through  2026-02-28
+================================================
+Accounting basis: cash
+
+Money In
+----------------------------------------
+  Income › Consulting                            7,550.00
+  Total Revenue                                  7,550.00
+
+Money Out
+----------------------------------------
+  Expenses › Fees                                   15.00
+  Expenses › Marketing                              30.57
+  Expenses › Meals                                  54.20
+  Expenses › Office                                131.75
+  Expenses › Rent                                1,800.00
+  Expenses › Software                              103.03
+  Expenses › Subcontractors                      1,250.00
+  Expenses › Taxes                                 480.00
+  Total Expenses                                 3,864.55
+
+--------------------------------------------------------
+Net Income                                       3,685.45

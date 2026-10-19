@@ -1,0 +1,22 @@
+{
+  "amount": "3200.00",
+  "confirmed_category": "Income:Consulting",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "KESTREL FOODS INVOICE 1002 PAYMENT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-20",
+  "delta": null,
+  "description": "Kestrel Foods invoice 1002 payment",
+  "original_amount": "3200.00",
+  "proposed_category": "Income:Consulting",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0120-client": "aa2c26d7b4191bfa6f53d2f661203d3250c4cd0a07ab250fa5ac5a709920b461"
+  },
+  "source_id": "chk-0120-client",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

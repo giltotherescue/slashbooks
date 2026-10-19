@@ -1,0 +1,16 @@
+Prepaid expenses and deferred revenue
+As of 2026-03-31 | Accrual basis | USD
+Period begins 2026-01-01
+Detailed activity begins 2026-01-01; imported opening as of 2025-12-31.
+
+Schedule     | Type             | Account                            | Recognized | Remaining | Asset cost | Accumulated depreciation | Net book value | Status
+-------------+------------------+------------------------------------+------------+-----------+------------+--------------------------+----------------+-------
+insurance-h2 | Prepaid expense  | Assets:Other:Prepaid-Expenses      | 900.00     | 300.00    | -          | -                        | -              | active
+laptop-new   | Depreciation     | Assets:Fixed:Equipment             | 200.00     | 3400.00   | 3600.00    | 200.00                   | 3400.00        | active
+laptop-old   | Depreciation     | Assets:Fixed:Equipment             | 1300.00    | 1100.00   | 2400.00    | 1300.00                  | 1100.00        | active
+retainer-h2  | Deferred revenue | Liabilities:Other:Deferred-Revenue | 900.00     | 300.00    | -          | -                        | -              | active
+retainer-new | Deferred revenue | Liabilities:Other:Deferred-Revenue | 1200.00    | 2400.00   | -          | -                        | -              | active
+sw-annual    | Prepaid expense  | Assets:Other:Prepaid-Expenses      | 200.00     | 1000.00   | -          | -                        | -              | active
+
+Review issues:
+No outstanding review items.

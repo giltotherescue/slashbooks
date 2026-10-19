@@ -1,0 +1,620 @@
+{
+  "derived": true,
+  "period": {
+    "from": null,
+    "to": null
+  },
+  "schema_version": 1,
+  "summary": [
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Assets:Fixed:Equipment",
+        "Assets:Other:Prepaid-Expenses",
+        "Assets:Receivable:Accounts-Receivable",
+        "Expenses:Depreciation",
+        "Expenses:Insurance",
+        "Expenses:Software",
+        "Expenses:Utilities",
+        "Income:Consulting",
+        "Liabilities:Other:Deferred-Revenue",
+        "Liabilities:Payable:Accounts-Payable"
+      ],
+      "breakdown": [
+        {
+          "count": 7,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 5,
+          "label": "Expenses:Depreciation"
+        },
+        {
+          "count": 5,
+          "label": "Income:Consulting"
+        },
+        {
+          "count": 4,
+          "label": "Assets:Receivable:Accounts-Receivable"
+        },
+        {
+          "count": 4,
+          "label": "Liabilities:Payable:Accounts-Payable"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 0,
+        "transactions": 35
+      },
+      "kind": "imported",
+      "period": {
+        "from": "2025-12-31",
+        "to": "2026-03-31"
+      },
+      "text": "Imported 35 transactions."
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Assets:Fixed:Equipment",
+        "Assets:Other:Prepaid-Expenses",
+        "Assets:Receivable:Accounts-Receivable",
+        "Expenses:Depreciation",
+        "Expenses:Insurance",
+        "Expenses:Software",
+        "Expenses:Utilities",
+        "Income:Consulting",
+        "Liabilities:Other:Deferred-Revenue",
+        "Liabilities:Payable:Accounts-Payable"
+      ],
+      "breakdown": [
+        {
+          "count": 5,
+          "label": "Assets:Fixed:Accumulated-Depreciation"
+        },
+        {
+          "count": 5,
+          "label": "Assets:Other:Prepaid-Expenses"
+        },
+        {
+          "count": 5,
+          "label": "Liabilities:Other:Deferred-Revenue"
+        },
+        {
+          "count": 3,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 3,
+          "label": "Assets:Receivable:Accounts-Receivable"
+        }
+      ],
+      "counts": {
+        "direct": 35,
+        "entries": 35,
+        "from_suggestions": 0
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2025-12-31",
+        "to": "2026-03-31"
+      },
+      "text": "Recorded 35 entries."
+    },
+    {
+      "accounts": [
+        "Expenses:Utilities"
+      ],
+      "breakdown": [],
+      "counts": {
+        "entries": 0,
+        "reversals": 1,
+        "withdrawn": 0
+      },
+      "kind": "corrected",
+      "period": {
+        "from": "2026-02-01",
+        "to": "2026-02-01"
+      },
+      "text": "Reversed 1 entry."
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Checking"
+        }
+      ],
+      "counts": {
+        "accounts": 1,
+        "clean": 1,
+        "open": 0
+      },
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-01-31",
+        "to": "2026-01-31"
+      },
+      "text": "Reconciled 1 account through 2026-01-31."
+    }
+  ],
+  "work": [
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Assets:Fixed:Equipment",
+        "Assets:Other:Prepaid-Expenses",
+        "Assets:Receivable:Accounts-Receivable",
+        "Expenses:Depreciation",
+        "Expenses:Insurance",
+        "Expenses:Software",
+        "Expenses:Utilities",
+        "Income:Consulting",
+        "Liabilities:Other:Deferred-Revenue",
+        "Liabilities:Payable:Accounts-Payable"
+      ],
+      "breakdown": [
+        {
+          "count": 7,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 5,
+          "label": "Expenses:Depreciation"
+        },
+        {
+          "count": 5,
+          "label": "Income:Consulting"
+        },
+        {
+          "count": 4,
+          "label": "Assets:Receivable:Accounts-Receivable"
+        },
+        {
+          "count": 4,
+          "label": "Liabilities:Payable:Accounts-Payable"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 0,
+        "transactions": 35
+      },
+      "derived": true,
+      "fingerprint": "64a975d03dc6e500706bf0425cb70c1dda026bb539a8f0bbe35f23fd74ec73b3",
+      "kind": "imported",
+      "period": {
+        "from": "2025-12-31",
+        "to": "2026-03-31"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "accrual:bill-2001-create",
+          "type": "source"
+        },
+        {
+          "id": "accrual:bonus-actual-create",
+          "type": "source"
+        },
+        {
+          "id": "accrual:bonus-estimate-create",
+          "type": "source"
+        },
+        {
+          "id": "accrual:inv-1001-create",
+          "type": "source"
+        },
+        {
+          "id": "accrual:inv-1002-create",
+          "type": "source"
+        },
+        {
+          "id": "accrual:inv-1003-create",
+          "type": "source"
+        },
+        {
+          "id": "accrual:utilities-estimate-jan",
+          "type": "source"
+        },
+        {
+          "id": "accrual:utilities-estimate-mar",
+          "type": "source"
+        },
+        {
+          "id": "adjustment:bonus-true-up",
+          "type": "source"
+        },
+        {
+          "id": "adjustment:inv-1003-writeoff",
+          "type": "source"
+        },
+        {
+          "id": "golden-opening",
+          "type": "source"
+        },
+        {
+          "id": "laptop-new-purchase",
+          "type": "source"
+        },
+        {
+          "id": "pay-bill-2001-bank",
+          "type": "source"
+        },
+        {
+          "id": "pay-bill-open-1-bank",
+          "type": "source"
+        },
+        {
+          "id": "pay-bonus-actual-bank",
+          "type": "source"
+        },
+        {
+          "id": "pay-inv-1001-bank",
+          "type": "source"
+        },
+        {
+          "id": "pay-inv-1002-bank",
+          "type": "source"
+        },
+        {
+          "id": "pay-inv-open-1-bank",
+          "type": "source"
+        },
+        {
+          "id": "retainer-new-receipt",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:insurance-h2:0:2026-01-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:insurance-h2:0:2026-02-28",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:insurance-h2:0:2026-03-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:laptop-new:0:2026-02-28",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:laptop-new:0:2026-03-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:laptop-old:0:2026-01-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:laptop-old:0:2026-02-28",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:laptop-old:0:2026-03-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:retainer-h2:0:2026-01-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:retainer-h2:0:2026-02-28",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:retainer-h2:0:2026-03-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:retainer-new:0:2026-02-28",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:retainer-new:0:2026-03-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:sw-annual:0:2026-02-28",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:sw-annual:0:2026-03-31",
+          "type": "source"
+        },
+        {
+          "id": "sw-annual-payment",
+          "type": "source"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Assets:Fixed:Equipment",
+        "Assets:Other:Prepaid-Expenses",
+        "Assets:Receivable:Accounts-Receivable",
+        "Expenses:Depreciation",
+        "Expenses:Insurance",
+        "Expenses:Software",
+        "Expenses:Utilities",
+        "Income:Consulting",
+        "Liabilities:Other:Deferred-Revenue",
+        "Liabilities:Payable:Accounts-Payable"
+      ],
+      "breakdown": [
+        {
+          "count": 5,
+          "label": "Assets:Fixed:Accumulated-Depreciation"
+        },
+        {
+          "count": 5,
+          "label": "Assets:Other:Prepaid-Expenses"
+        },
+        {
+          "count": 5,
+          "label": "Liabilities:Other:Deferred-Revenue"
+        },
+        {
+          "count": 3,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 3,
+          "label": "Assets:Receivable:Accounts-Receivable"
+        }
+      ],
+      "counts": {
+        "direct": 35,
+        "entries": 35,
+        "from_suggestions": 0
+      },
+      "derived": true,
+      "fingerprint": "3a553d56973be8fa50aabba67fc1057aa2ec1d50da401a7c31881c677e7974e0",
+      "kind": "recorded",
+      "period": {
+        "from": "2025-12-31",
+        "to": "2026-03-31"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "golden-opening",
+          "type": "entry"
+        },
+        {
+          "id": "10",
+          "source_id": "accrual:inv-1002-create",
+          "type": "entry"
+        },
+        {
+          "id": "11",
+          "source_id": "sw-annual-payment",
+          "type": "entry"
+        },
+        {
+          "id": "12",
+          "source_id": "retainer-new-receipt",
+          "type": "entry"
+        },
+        {
+          "id": "13",
+          "source_id": "laptop-new-purchase",
+          "type": "entry"
+        },
+        {
+          "id": "14",
+          "source_id": "pay-bill-2001-bank",
+          "type": "entry"
+        },
+        {
+          "id": "15",
+          "source_id": "accrual:bonus-estimate-create",
+          "type": "entry"
+        },
+        {
+          "id": "16",
+          "source_id": "accrual:bonus-actual-create",
+          "type": "entry"
+        },
+        {
+          "id": "17",
+          "source_id": "adjustment:bonus-true-up",
+          "type": "entry"
+        },
+        {
+          "id": "18",
+          "source_id": "adjustment:inv-1003-writeoff",
+          "type": "entry"
+        },
+        {
+          "id": "19",
+          "source_id": "pay-inv-1002-bank",
+          "type": "entry"
+        },
+        {
+          "id": "2",
+          "source_id": "accrual:inv-1001-create",
+          "type": "entry"
+        },
+        {
+          "id": "20",
+          "source_id": "pay-bonus-actual-bank",
+          "type": "entry"
+        },
+        {
+          "id": "21",
+          "source_id": "accrual:utilities-estimate-mar",
+          "type": "entry"
+        },
+        {
+          "id": "22",
+          "source_id": "schedule:recognition:insurance-h2:0:2026-01-31",
+          "type": "entry"
+        },
+        {
+          "id": "23",
+          "source_id": "schedule:recognition:laptop-old:0:2026-01-31",
+          "type": "entry"
+        },
+        {
+          "id": "24",
+          "source_id": "schedule:recognition:retainer-h2:0:2026-01-31",
+          "type": "entry"
+        },
+        {
+          "id": "25",
+          "source_id": "schedule:recognition:insurance-h2:0:2026-02-28",
+          "type": "entry"
+        },
+        {
+          "id": "26",
+          "source_id": "schedule:recognition:laptop-new:0:2026-02-28",
+          "type": "entry"
+        },
+        {
+          "id": "27",
+          "source_id": "schedule:recognition:laptop-old:0:2026-02-28",
+          "type": "entry"
+        },
+        {
+          "id": "28",
+          "source_id": "schedule:recognition:retainer-h2:0:2026-02-28",
+          "type": "entry"
+        },
+        {
+          "id": "29",
+          "source_id": "schedule:recognition:retainer-new:0:2026-02-28",
+          "type": "entry"
+        },
+        {
+          "id": "3",
+          "source_id": "accrual:inv-1003-create",
+          "type": "entry"
+        },
+        {
+          "id": "30",
+          "source_id": "schedule:recognition:sw-annual:0:2026-02-28",
+          "type": "entry"
+        },
+        {
+          "id": "31",
+          "source_id": "schedule:recognition:insurance-h2:0:2026-03-31",
+          "type": "entry"
+        },
+        {
+          "id": "32",
+          "source_id": "schedule:recognition:laptop-new:0:2026-03-31",
+          "type": "entry"
+        },
+        {
+          "id": "33",
+          "source_id": "schedule:recognition:laptop-old:0:2026-03-31",
+          "type": "entry"
+        },
+        {
+          "id": "34",
+          "source_id": "schedule:recognition:retainer-h2:0:2026-03-31",
+          "type": "entry"
+        },
+        {
+          "id": "35",
+          "source_id": "schedule:recognition:retainer-new:0:2026-03-31",
+          "type": "entry"
+        },
+        {
+          "id": "36",
+          "source_id": "schedule:recognition:sw-annual:0:2026-03-31",
+          "type": "entry"
+        },
+        {
+          "id": "4",
+          "source_id": "pay-bill-open-1-bank",
+          "type": "entry"
+        },
+        {
+          "id": "5",
+          "source_id": "pay-inv-open-1-bank",
+          "type": "entry"
+        },
+        {
+          "id": "6",
+          "source_id": "accrual:utilities-estimate-jan",
+          "type": "entry"
+        },
+        {
+          "id": "7",
+          "source_id": "pay-inv-1001-bank",
+          "type": "entry"
+        },
+        {
+          "id": "9",
+          "source_id": "accrual:bill-2001-create",
+          "type": "entry"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Expenses:Utilities"
+      ],
+      "breakdown": [],
+      "counts": {
+        "entries": 0,
+        "reversals": 1,
+        "withdrawn": 0
+      },
+      "derived": true,
+      "fingerprint": "1ae9c0a9182d28c8acdc3ed24956b6e467aaea1c607b3fd2c2e8be58df17ec4e",
+      "kind": "corrected",
+      "period": {
+        "from": "2026-02-01",
+        "to": "2026-02-01"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "8",
+          "source_id": "accrual:due:utilities-estimate-jan",
+          "type": "entry"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Checking"
+        }
+      ],
+      "counts": {
+        "accounts": 1,
+        "clean": 1,
+        "open": 0
+      },
+      "derived": true,
+      "fingerprint": "e81dc23fd1832a22ef736b8e1595e49b58ec0dc682efdbe44dc228f2750d64bd",
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-01-31",
+        "to": "2026-01-31"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "Assets:Bank:Checking@2026-01-31",
+          "type": "reconciliation"
+        }
+      ]
+    }
+  ]
+}

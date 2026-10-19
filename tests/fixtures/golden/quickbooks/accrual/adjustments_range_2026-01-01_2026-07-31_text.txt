@@ -1,0 +1,65 @@
+Accrual activity register
+As of 2026-07-31 | Accrual basis | USD
+Period begins 2026-01-01
+Detailed activity begins 2026-07-01; imported opening as of 2026-06-30.
+Imported fiscal summary: 2026-01-01 through 2026-06-30; earlier monthly detail is unavailable.
+
+2026-06-30 | Opening balances (2026-06-30)
+Account                               | Debit    | Credit   | Currency
+--------------------------------------+----------+----------+---------
+Assets:Bank:Checking                  | 10000.00 | 0.00     | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00     | 400.00   | USD     
+Assets:Fixed:Equipment                | 2400.00  | 0.00     | USD     
+Assets:Other:Prepaid-Insurance        | 600.00   | 0.00     | USD     
+Assets:Receivable:Accounts-Receivable | 1000.00  | 0.00     | USD     
+Equity:Retained-Earnings              | 0.00     | 9000.00  | USD     
+Expenses:Operating-Costs              | 8800.00  | 0.00     | USD     
+Income:Services                       | 0.00     | 12000.00 | USD     
+Liabilities:Other:Deferred-Revenue    | 0.00     | 600.00   | USD     
+Liabilities:Other:Payroll-Payable     | 0.00     | 300.00   | USD     
+Liabilities:Payable:Accounts-Payable  | 0.00     | 500.00   | USD     
+
+2026-07-15 | Payment received: dated 2026-06-30
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Assets:Bank:Checking                  | 400.00 | 0.00   | USD     
+Assets:Receivable:Accounts-Receivable | 0.00   | 400.00 | USD     
+
+2026-07-16 | Payment made: dated 2026-06-30
+Account                              | Debit  | Credit | Currency
+-------------------------------------+--------+--------+---------
+Assets:Bank:Checking                 | 0.00   | 200.00 | USD     
+Liabilities:Payable:Accounts-Payable | 200.00 | 0.00   | USD     
+
+2026-07-20 | Synthetic provider payroll
+Account                           | Debit  | Credit | Currency
+----------------------------------+--------+--------+---------
+Expenses:Operating-Costs          | 600.00 | 0.00   | USD     
+Liabilities:Other:Payroll-Payable | 0.00   | 600.00 | USD     
+
+2026-07-25 | Payment made: dated 2026-07-20
+Account                           | Debit  | Credit | Currency
+----------------------------------+--------+--------+---------
+Assets:Bank:Checking              | 0.00   | 600.00 | USD     
+Liabilities:Other:Payroll-Payable | 600.00 | 0.00   | USD     
+
+2026-07-31 | Deferred revenue earned: dated 2026-01-01 (Jul 2026)
+Account                            | Debit  | Credit | Currency
+-----------------------------------+--------+--------+---------
+Income:Services                    | 0.00   | 100.00 | USD     
+Liabilities:Other:Deferred-Revenue | 100.00 | 0.00   | USD     
+
+2026-07-31 | Prepaid expense used: dated 2026-01-01 (Jul 2026)
+Account                        | Debit  | Credit | Currency
+-------------------------------+--------+--------+---------
+Expenses:Operating-Costs       | 100.00 | 0.00   | USD     
+Assets:Other:Prepaid-Insurance | 0.00   | 100.00 | USD     
+
+2026-07-31 | Synthetic asset roll-forward
+Account                               | Debit | Credit | Currency
+--------------------------------------+-------+--------+---------
+Expenses:Operating-Costs              | 40.00 | 0.00   | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00  | 40.00  | USD     
+
+Review issues:
+No outstanding review items.

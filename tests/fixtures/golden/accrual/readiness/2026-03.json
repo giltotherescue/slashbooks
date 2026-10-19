@@ -1,0 +1,102 @@
+{
+  "activity_from": "2026-03-01",
+  "activity_to": "2026-03-31",
+  "basis": "accrual",
+  "blockers": [
+    {
+      "action": "Run: books reconcile --entity <COMPANY> --account Assets:Bank:Checking --source-balance <statement ending balance> --as-of 2026-03-31 --source-opening-balance <statement opening balance> --source-transaction-total <signed activity 2026-03-01 to 2026-03-31> --source-snapshot-at <ISO time you read the statement> --source-through 2026-03-31 --source-evidence-ref <statement id>",
+      "code": "reconciliation_missing",
+      "message": "An expected source account lacks period-end reconciliation. Account Assets:Bank:Checking, period 2026-03.",
+      "refs": [
+        "Assets:Bank:Checking"
+      ]
+    }
+  ],
+  "books_revision": 0,
+  "coverage": [
+    {
+      "account": "Assets:Bank:Checking",
+      "label": "Operating Checking",
+      "months": [
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-03-01",
+          "gaps": [],
+          "month": "2026-03",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-03-31",
+          "verified": true
+        }
+      ],
+      "status": "complete",
+      "verified": true
+    }
+  ],
+  "evidence_fingerprint": "277553f83287fc5914234ca9608a963614bc8b0a6bce780264ce19ffb8b3a31c",
+  "imported_summary_through": null,
+  "package_id": "149521e9e9ca72b58abcbc3eb64de53581072ade94b0b8d072674dcb9030068a",
+  "partial_post_cutover": false,
+  "period": "2026-03",
+  "period_status": "completed",
+  "policy_version": 0,
+  "reconciliations": [],
+  "reply_revision": 0,
+  "reports": [
+    {
+      "kind": "pnl",
+      "period_from": "2026-03-01",
+      "period_to": "2026-03-31",
+      "provisional": true,
+      "sha256": "4cf1d0c36c0d9036e63feaf7d5795df12fefe559f5581dd7a02d6908c5130e00",
+      "totals": {
+        "net_income": "-170.00"
+      }
+    },
+    {
+      "kind": "balance_sheet",
+      "period_from": "2026-03-01",
+      "period_to": "2026-03-31",
+      "provisional": true,
+      "sha256": "a8b9fa4c87557d83fa2e0e0dfdbd054577e444a90599d267e7a428bb1c50116a",
+      "totals": {
+        "total_assets": "45200.00",
+        "total_liabilities_and_equity": "45200.00"
+      }
+    },
+    {
+      "kind": "trial_balance",
+      "period_from": "2026-03-01",
+      "period_to": "2026-03-31",
+      "provisional": true,
+      "sha256": "88cbe1894d9a9f64544b66ec1c7c9b20016445d9c4aa959e7b6a3f6bb80bf225",
+      "totals": {
+        "net": "0.00",
+        "total_credits": "49970.00",
+        "total_debits": "49970.00"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_revision": 0,
+  "sources": [
+    {
+      "account": "Assets:Bank:Checking",
+      "coverage_from": "2026-01-01",
+      "coverage_status": "complete",
+      "coverage_to": "2026-03-31",
+      "requested_from": "2026-03-01",
+      "requested_to": "2026-03-31",
+      "source": "Operating Checking"
+    }
+  ],
+  "state": "blocked",
+  "warnings": []
+}

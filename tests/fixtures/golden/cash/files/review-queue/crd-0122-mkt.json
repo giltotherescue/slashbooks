@@ -1,0 +1,22 @@
+{
+  "amount": "-120.00",
+  "confirmed_category": "Expenses:Marketing",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "SPARK ADS CAMPAIGN",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-22",
+  "delta": null,
+  "description": "Spark Ads campaign",
+  "original_amount": "-120.00",
+  "proposed_category": "Expenses:Marketing",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "crd-0122-mkt": "33b5f42ec897ac9290d40f0e5d631689eb7aa1b65a428401f32f3be4f4c6fd9a"
+  },
+  "source_id": "crd-0122-mkt",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

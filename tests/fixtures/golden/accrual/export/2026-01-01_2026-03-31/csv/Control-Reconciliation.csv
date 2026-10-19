@@ -1,0 +1,7 @@
+account,currency,difference,ledger_balance,note,status,support_balance,support_ids,support_required
+Assets:Fixed:Accumulated-Depreciation,USD,0.00,-1500.00,,reconciled,-1500.00,"[""laptop-new:accumulated"", ""laptop-old:accumulated""]",True
+Assets:Fixed:Equipment,USD,0.00,6000.00,,reconciled,6000.00,"[""laptop-new"", ""laptop-old""]",True
+Assets:Other:Prepaid-Expenses,USD,0.00,1300.00,,reconciled,1300.00,"[""insurance-h2"", ""sw-annual""]",True
+Assets:Receivable:Accounts-Receivable,USD,0.00,2100.00,,reconciled,2100.00,"[""inv-1001"", ""inv-1002"", ""inv-1003"", ""inv-open-1"", ""orbit-credit""]",True
+Liabilities:Other:Accrued-Liabilities,USD,None,-470.00,"Ledger balance, no supporting detail required.",ledger_only,None,[],False
+Liabilities:Other:Deferred-Revenue,USD,0.00,-2700.00,,reconciled,-2700.00,"[""retainer-h2"", ""retainer-new""]",True

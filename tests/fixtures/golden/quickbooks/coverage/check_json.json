@@ -1,0 +1,58 @@
+{
+  "accounts": [
+    {
+      "account": "Assets:Bank:Checking",
+      "label": "synthetic-bank",
+      "months": [
+        {
+          "basis": [
+            "transactions"
+          ],
+          "covered_days": 1,
+          "days": 30,
+          "from": "2026-06-01",
+          "gaps": [
+            {
+              "days": 29,
+              "from": "2026-06-01",
+              "to": "2026-06-29"
+            }
+          ],
+          "month": "2026-06",
+          "notes": [
+            "synthetic-bank coverage for Jun 30 is inferred from transaction dates only; add a statement or feed window to confirm it."
+          ],
+          "reasons": [
+            "synthetic-bank has no statement, feed window, declared coverage or transactions for Jun 1–29."
+          ],
+          "status": "partial",
+          "tieout": null,
+          "to": "2026-06-30",
+          "verified": false
+        }
+      ],
+      "sources": [
+        "synthetic-bank"
+      ],
+      "statements": [],
+      "status": "partial",
+      "verified": false
+    }
+  ],
+  "findings": [],
+  "from": "2026-06-01",
+  "kind": "source_coverage",
+  "max_quiet_days": 31,
+  "schema_version": 1,
+  "status": "incomplete",
+  "summary": {
+    "accounts": 1,
+    "errors": 0,
+    "months_complete": 0,
+    "months_inferred": 0,
+    "months_missing": 0,
+    "months_partial": 1,
+    "warnings": 0
+  },
+  "to": "2026-06-30"
+}

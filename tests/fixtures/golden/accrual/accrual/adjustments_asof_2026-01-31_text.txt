@@ -1,0 +1,66 @@
+Accrual activity register
+As of 2026-01-31 | Accrual basis | USD
+Detailed activity begins 2026-01-01; imported opening as of 2025-12-31.
+
+2025-12-31 | Opening balances (2025-12-31)
+Account                               | Debit    | Credit   | Currency
+--------------------------------------+----------+----------+---------
+Assets:Bank:Checking                  | 30000.00 | 0.00     | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00     | 1000.00  | USD     
+Assets:Fixed:Equipment                | 2400.00  | 0.00     | USD     
+Assets:Other:Prepaid-Expenses         | 600.00   | 0.00     | USD     
+Assets:Receivable:Accounts-Receivable | 4000.00  | 0.00     | USD     
+Equity:Opening-Balances               | 0.00     | 33900.00 | USD     
+Liabilities:Other:Deferred-Revenue    | 0.00     | 600.00   | USD     
+Liabilities:Payable:Accounts-Payable  | 0.00     | 1500.00  | USD     
+
+2026-01-10 | Invoice: Orbit Labs
+Account                               | Debit   | Credit  | Currency
+--------------------------------------+---------+---------+---------
+Assets:Receivable:Accounts-Receivable | 6000.00 | 0.00    | USD     
+Income:Consulting                     | 0.00    | 6000.00 | USD     
+
+2026-01-12 | Invoice: Kestrel Foods
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Assets:Receivable:Accounts-Receivable | 900.00 | 0.00   | USD     
+Income:Consulting                     | 0.00   | 900.00 | USD     
+
+2026-01-15 | Payment to Delta Design: BILL-311
+Account                              | Debit   | Credit  | Currency
+-------------------------------------+---------+---------+---------
+Assets:Bank:Checking                 | 0.00    | 1500.00 | USD     
+Liabilities:Payable:Accounts-Payable | 1500.00 | 0.00    | USD     
+
+2026-01-20 | Payment from Orbit Labs: INV-0950
+Account                               | Debit   | Credit  | Currency
+--------------------------------------+---------+---------+---------
+Assets:Bank:Checking                  | 2500.00 | 0.00    | USD     
+Assets:Receivable:Accounts-Receivable | 0.00    | 2500.00 | USD     
+
+2026-01-31 | Estimated January utilities
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Utilities                    | 450.00 | 0.00   | USD     
+Liabilities:Other:Accrued-Liabilities | 0.00   | 450.00 | USD     
+
+2026-01-31 | Prepaid expense used: dated 2025-07-01 (Jan 2026)
+Account                       | Debit  | Credit | Currency
+------------------------------+--------+--------+---------
+Expenses:Insurance            | 100.00 | 0.00   | USD     
+Assets:Other:Prepaid-Expenses | 0.00   | 100.00 | USD     
+
+2026-01-31 | Depreciation: dated 2025-03-01 (Jan 2026)
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Depreciation                 | 100.00 | 0.00   | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00   | 100.00 | USD     
+
+2026-01-31 | Deferred revenue earned: dated 2025-07-01 (Jan 2026)
+Account                            | Debit  | Credit | Currency
+-----------------------------------+--------+--------+---------
+Income:Consulting                  | 0.00   | 100.00 | USD     
+Liabilities:Other:Deferred-Revenue | 100.00 | 0.00   | USD     
+
+Review issues:
+No outstanding review items.

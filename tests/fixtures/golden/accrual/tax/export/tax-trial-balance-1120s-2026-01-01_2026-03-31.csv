@@ -1,0 +1,19 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+Account Number,Account,Account Type,Beginning Balance,Debit,Credit,Balance,Tax Form,Schedule,Form Line,Tax Line Code,Tax Line,Statement Detail,On Return,Mapping Basis,Needs Review,Note
+1010,Assets › Bank › Checking,Assets,30000.00,37300.00,0.00,37300.00,Form 1120-S,L,1,1120s/L/1,Cash,,yes,name,yes,
+1020,Assets › Fixed › Accumulated-Depreciation,Assets,-1000.00,0.00,1500.00,-1500.00,Form 1120-S,L,10b,1120s/L/10b,Less accumulated depreciation,,yes,name,yes,
+1030,Assets › Fixed › Equipment,Assets,2400.00,6000.00,0.00,6000.00,Form 1120-S,L,10a,1120s/L/10a,Buildings and other depreciable assets,,yes,name,yes,
+1040,Assets › Other › Prepaid-Expenses,Assets,600.00,1300.00,0.00,1300.00,Form 1120-S,L,6,1120s/L/6,Other current assets,,yes,name,yes,
+1050,Assets › Receivable › Accounts-Receivable,Assets,4000.00,2100.00,0.00,2100.00,Form 1120-S,L,2a,1120s/L/2a,Trade notes and accounts receivable,,yes,name,yes,
+3010,Equity › Opening-Balances,Equity,-33900.00,0.00,33900.00,-33900.00,Form 1120-S,L,24,1120s/L/24,Retained earnings,,yes,name,yes,Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.
+6010,Expenses › Bad-Debt,Expenses,,300.00,0.00,300.00,Form 1120-S,p1,10,1120s/p1/10,Bad debts,,yes,name,yes,
+6020,Expenses › Bonus,Expenses,,700.00,0.00,700.00,Form 1120-S,,,UNMAPPED,,,,unmapped,yes,No name rule or safe default matches this account.
+6030,Expenses › Depreciation,Expenses,,500.00,0.00,500.00,Form 1120-S,p1,14,1120s/p1/14,Depreciation,,yes,name,yes,Book depreciation; the preparer computes tax depreciation.
+6040,Expenses › Insurance,Expenses,,300.00,0.00,300.00,Form 1120-S,p1,20,1120s/p1/20,Other deductions,Insurance,yes,name,yes,
+6050,Expenses › Software,Expenses,,1000.00,0.00,1000.00,Form 1120-S,p1,20,1120s/p1/20,Other deductions,Software,yes,name,yes,
+6060,Expenses › Utilities,Expenses,,470.00,0.00,470.00,Form 1120-S,p1,20,1120s/p1/20,Other deductions,Utilities,yes,name,yes,
+4010,Income › Consulting,Income,,0.00,11400.00,-11400.00,Form 1120-S,p1,1a,1120s/p1/1a,Gross receipts or sales,,yes,account_type,yes,
+2010,Liabilities › Other › Accrued-Liabilities,Liabilities,0.00,0.00,470.00,-470.00,Form 1120-S,L,18,1120s/L/18,Other current liabilities,,yes,name,yes,
+2020,Liabilities › Other › Deferred-Revenue,Liabilities,-600.00,0.00,2700.00,-2700.00,Form 1120-S,L,18,1120s/L/18,Other current liabilities,,yes,name,yes,
+2030,Liabilities › Payable › Accounts-Payable,Liabilities,-1500.00,0.00,0.00,0.00,Form 1120-S,L,16,1120s/L/16,Accounts payable,,yes,name,yes,
+,Total,,,49970.00,49970.00,0.00,,,,,,,,,,

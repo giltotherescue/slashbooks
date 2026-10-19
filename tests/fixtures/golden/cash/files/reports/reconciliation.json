@@ -1,0 +1,102 @@
+[
+  {
+    "record_id": "Assets:Bank:Checking@2026-01-31",
+    "account": "Assets:Bank:Checking",
+    "as_of": "2026-01-31",
+    "ledger_balance": "25782.42",
+    "source_balance": "25782.42",
+    "discrepancy": "0.00",
+    "status": "clean",
+    "causes": [],
+    "source_integrity_residual": "0.00",
+    "source_opening_balance": "0",
+    "source_transaction_total": "25782.42",
+    "source_snapshot_at": "2026-02-02T12:00:00+00:00",
+    "source_through": "2026-01-31",
+    "source_evidence_refs": [
+      "evidence/checking-2026-01.json"
+    ],
+    "source_evidence_hashes": {
+      "evidence/checking-2026-01.json": "a28172a2e60788106dc4f18f29cfc2ec79a17e2b8fe427f119b0f6b1a1f9233a"
+    },
+    "created_at": "2026-08-05T12:00:00+00:00",
+    "updated_at": "2026-08-05T12:00:00+00:00",
+    "resolved_at": null,
+    "resolution_note": null
+  },
+  {
+    "record_id": "Assets:Bank:Checking@2026-02-28",
+    "account": "Assets:Bank:Checking",
+    "as_of": "2026-02-28",
+    "ledger_balance": "27468.87",
+    "source_balance": "27468.87",
+    "discrepancy": "0.00",
+    "status": "clean",
+    "causes": [],
+    "source_integrity_residual": "0.00",
+    "source_opening_balance": "25782.42",
+    "source_transaction_total": "1686.45",
+    "source_snapshot_at": "2026-03-02T12:00:00+00:00",
+    "source_through": "2026-02-28",
+    "source_evidence_refs": [
+      "evidence/checking-2026-02.json"
+    ],
+    "source_evidence_hashes": {
+      "evidence/checking-2026-02.json": "4552baa06616c05962d9f4df19ab63e808645106d6862a40e62872b77184bb99"
+    },
+    "created_at": "2026-08-05T12:00:00+00:00",
+    "updated_at": "2026-08-05T12:00:00+00:00",
+    "resolved_at": null,
+    "resolution_note": null
+  },
+  {
+    "record_id": "Liabilities:CreditCard:Company@2026-01-31",
+    "account": "Liabilities:CreditCard:Company",
+    "as_of": "2026-01-31",
+    "ledger_balance": "-80.00",
+    "source_balance": "-80.00",
+    "discrepancy": "0.00",
+    "status": "clean",
+    "causes": [],
+    "source_integrity_residual": "0.00",
+    "source_opening_balance": "0",
+    "source_transaction_total": "-80.00",
+    "source_snapshot_at": "2026-02-02T12:00:00+00:00",
+    "source_through": "2026-01-31",
+    "source_evidence_refs": [
+      "evidence/card-2026-01.json"
+    ],
+    "source_evidence_hashes": {
+      "evidence/card-2026-01.json": "bfffac57af771db42eacc8fbe84200df5e5a6a44d5490d6b143996c16bee2f1c"
+    },
+    "created_at": "2026-08-05T12:00:00+00:00",
+    "updated_at": "2026-08-05T12:00:00+00:00",
+    "resolved_at": null,
+    "resolution_note": null
+  },
+  {
+    "record_id": "Liabilities:CreditCard:Company@2026-02-28",
+    "account": "Liabilities:CreditCard:Company",
+    "as_of": "2026-02-28",
+    "ledger_balance": "-81.00",
+    "source_balance": "-81.00",
+    "discrepancy": "0.00",
+    "status": "clean",
+    "causes": [],
+    "source_integrity_residual": "0.00",
+    "source_opening_balance": "-80.00",
+    "source_transaction_total": "-1.00",
+    "source_snapshot_at": "2026-03-02T12:00:00+00:00",
+    "source_through": "2026-02-28",
+    "source_evidence_refs": [
+      "evidence/card-2026-02.json"
+    ],
+    "source_evidence_hashes": {
+      "evidence/card-2026-02.json": "8adf4d0e491b26f0609dcc48e2ffe90e1bc4ef89d405f639c8c1b5831cb9c61a"
+    },
+    "created_at": "2026-08-05T12:00:00+00:00",
+    "updated_at": "2026-08-05T12:00:00+00:00",
+    "resolved_at": null,
+    "resolution_note": null
+  }
+]

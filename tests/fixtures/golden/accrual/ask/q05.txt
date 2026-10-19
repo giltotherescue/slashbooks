@@ -1,0 +1,4 @@
+Answer covers: accrual basis, from 2026-08-05 to 2026-08-05. No period was named in the question, so this uses today's date.
+
+Open balances by due date as of 2026-08-05.
+What we owe (payables): 0.00 across 0 open item(s); overdue 0.00.

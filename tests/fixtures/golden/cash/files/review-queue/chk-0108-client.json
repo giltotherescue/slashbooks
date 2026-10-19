@@ -1,0 +1,22 @@
+{
+  "amount": "6500.00",
+  "confirmed_category": "Income:Consulting",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "ORBIT LABS INVOICE 1001 PAYMENT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-08",
+  "delta": null,
+  "description": "Orbit Labs invoice 1001 payment",
+  "original_amount": "6500.00",
+  "proposed_category": "Income:Consulting",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0108-client": "30842e9fb4d2346b0f5e2296638e6d7d0572632f35ae08ad0d9b7ddc7acb02b0"
+  },
+  "source_id": "chk-0108-client",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

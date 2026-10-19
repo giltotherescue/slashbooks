@@ -1,0 +1,187 @@
+{
+  "excluded": {
+    "runtime_state": 2
+  },
+  "files": [
+    {
+      "path": "business-profile.md",
+      "sha256": "5f8192a1c64da16f857e6a7f3a690b270027b9bb2bf78a73364cc3b779da84a7",
+      "size": 2037
+    },
+    {
+      "path": "entity.json",
+      "sha256": "8dc0154b66f4ebbc44f73fa9e2f8d3defbd412a9c4121cf50c7b79ec0933fa33",
+      "size": 650
+    },
+    {
+      "path": "evidence/july-bank.json",
+      "sha256": "603a7fc45142f0e558392ebbfb7e92a35b59ada4c80de129cb01712e34dc5979",
+      "size": 80
+    },
+    {
+      "path": "evidence/opening.txt",
+      "sha256": "d73e363ffa44a424ea8002dae92b70288db981f774c94825e99027ec7f90cb29",
+      "size": 72
+    },
+    {
+      "path": "ingestion/quickbooks/accounts.csv",
+      "sha256": "ae7ee713551b9ef92ef632c9141b752ea105cf0c68e82da84d28bfc068f7ab82",
+      "size": 565
+    },
+    {
+      "path": "ingestion/quickbooks/balance_sheet.csv",
+      "sha256": "7027affa922f529fc92072d92ce5de90b457078a75bef89f9d953d9169afe813",
+      "size": 295
+    },
+    {
+      "path": "ingestion/quickbooks/profit_and_loss.csv",
+      "sha256": "364fe068c45354c3541f3231d8f5a7d45c9cb5bbf0bf0cb22739d6aa384e2fd4",
+      "size": 147
+    },
+    {
+      "path": "ingestion/quickbooks/trial_balance.csv",
+      "sha256": "0cced0d6e3a553dfa49eb69a71dfc9264d69bc26cf4a8732243128c2b6df35b5",
+      "size": 362
+    },
+    {
+      "path": "ledger.sqlite"
+    },
+    {
+      "path": "reports/quarterly/2026-Q3.json",
+      "sha256": "a361fe69739e3b86374d92886762bfa227397af876e10c3c2762c1fc47f356a9",
+      "size": 17685
+    },
+    {
+      "path": "reports/quarterly/2026-Q3.txt",
+      "sha256": "ded262898c3a2b39c65df018260f98a1d072e9ffc92f6399a66c3c700e872ed9",
+      "size": 3761
+    },
+    {
+      "path": "reports/reconciliation.json",
+      "sha256": "40f547c1eec7216752b2bf31df54b43df7c0f2accaa55e606e1a89e723fef5df",
+      "size": 836
+    },
+    {
+      "path": "review-queue/customer-receipt.json",
+      "sha256": "98827e08abc2b64704adb2db78b2bd1a294aec72c912eca31f4a8f705412a78c",
+      "size": 824
+    },
+    {
+      "path": "review-queue/payroll-payment.json",
+      "sha256": "5c2225eefd8ef6146ea1988de3ea74f88c1bd71e73d390b0d6a01faea5b9daf5",
+      "size": 828
+    },
+    {
+      "path": "review-queue/vendor-payment.json",
+      "sha256": "c69de1cb06def5568611aa8b54b2ad3d8fec2b503eac7e086683fd68b7140a37",
+      "size": 823
+    },
+    {
+      "path": "staging/pending-categorization.json",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "size": 3
+    },
+    {
+      "path": "staging/seen-ids.json",
+      "sha256": "e0f84ffcc98876fcf94a6e77e98ab028a7c7f78a533f768c7151701bc178549c",
+      "size": 258
+    },
+    {
+      "path": "trust-policy.json",
+      "sha256": "0e9cf55171312665a8fb6a9a9b785343a68a933189c70a245405657bc343329c",
+      "size": 68
+    }
+  ],
+  "format": "slashbooks-company-snapshot",
+  "ledger": {
+    "content_sha256": "9a88c6c190049292805ee8c75a0bfd554c76d7dd90c1f4dccb5812176d539e23",
+    "schema_version": 2,
+    "tables": {
+      "accounts": {
+        "rows": 28,
+        "sha256": "465df1e1d80e2244a492d0d92e1af08aa6dc6cae6a8be63b63093a96837b5ce6"
+      },
+      "accrual_allocations": {
+        "rows": 5,
+        "sha256": "28d5dffb136ddfae3bedf89dbd326dffb22e9a703de8bf91dc4156be81816716"
+      },
+      "accrual_coverage": {
+        "rows": 5,
+        "sha256": "e789451a0d75045912a902a957fc5f26cb5d3453829c9849e5debdecca4c914f"
+      },
+      "accrual_evidence": {
+        "rows": 7,
+        "sha256": "528a0c1d7f370cecae55b586578bdca59c9632177d2a638a15661fd809fe8ea5"
+      },
+      "accrual_intents": {
+        "rows": 21,
+        "sha256": "0960c0051fa7cab1d1110caa01847ee3319c55bbb88592b95b0ac2126b997e73"
+      },
+      "accrual_items": {
+        "rows": 3,
+        "sha256": "b380137de79810ab333f27509a7c09eb8f50075268ff6b5e1b6f2fdd2c34069e"
+      },
+      "accrual_periods": {
+        "rows": 1,
+        "sha256": "c5c064051f59d94bd0fe2d407eab39ceba327b7cd395636b421a50c7fe9c3332"
+      },
+      "accrual_schedules": {
+        "rows": 2,
+        "sha256": "ba27960e055d4ea49c54fbb92f615c3b81c42abf3c53bfb2f0cbe041838834bc"
+      },
+      "audit_events": {
+        "rows": 58,
+        "sha256": "bbd63d641ce2bc614b58fa1dc36a5038f210b6ef80501e74a372215d4b596b59"
+      },
+      "balance_assertions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "entries": {
+        "rows": 8,
+        "sha256": "1a41aa341f44474c34bacc00e8958b9f638c557b346ed148a7edce5867046aa2"
+      },
+      "import_sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "meta": {
+        "rows": 6,
+        "sha256": "987a5296c0973cfa0cbaceecfc42385b66604a2d1609588a350f86930fa0a0d9"
+      },
+      "postings": {
+        "rows": 25,
+        "sha256": "6da40d62598a9ccf8b939b476e75f26893663a52a1c45cd86d5970cda3697649"
+      },
+      "source_transactions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "sqlite_sequence": {
+        "rows": 4,
+        "sha256": "51ac28d761a4d82c19ec5088025b60dff4632f74e2a33e7be252dd88bba86bd4"
+      }
+    }
+  },
+  "reports": {
+    "fingerprints": {
+      "balance_sheet": "ada1bb4092108adc8ae7a4c8d8d586c7e837252e1523341e611f6bd14e2db1b8",
+      "general_ledger": "5f8e9c7189825feadbb1df61c5e1fa32f2202a3399b16d603716f2db3a7ab4b7",
+      "pnl": "f55947f9d0f178b1a1522c6ff4159d77a035c795edf382d40e88a1f9e534cd4f",
+      "trial_balance": "ce10d6d53663acc0e78584d7736843f7c20d38c5ca4c31c9c7e0fea21556cf85"
+    },
+    "from": "2026-01-01",
+    "to": "2026-07-31"
+  },
+  "source_entity": {
+    "accrual_capability_version": 1,
+    "basis": "accrual",
+    "business_type": "consulting",
+    "currency": "USD",
+    "cutover_date": "2026-07-01",
+    "entity_json_sha256": "8dc0154b66f4ebbc44f73fa9e2f8d3defbd412a9c4121cf50c7b79ec0933fa33",
+    "legal_structure": "",
+    "name": "Synthetic Acceptance Services"
+  },
+  "version": 2
+}

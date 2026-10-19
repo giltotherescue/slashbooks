@@ -1,0 +1,8 @@
+account,currency,difference,ledger_balance,status,support_balance,support_ids,support_required
+Assets:Fixed:Accumulated-Depreciation,USD,0.00,-440.00,reconciled,-440.00,"[""external-support:depreciation-support""]",True
+Assets:Fixed:Equipment,USD,0.00,2400.00,reconciled,2400.00,"[""opening-support:equipment-open""]",True
+Assets:Other:Prepaid-Insurance,USD,0.00,500.00,reconciled,500.00,"[""prepaid-open""]",True
+Assets:Receivable:Accounts-Receivable,USD,0.00,600.00,reconciled,600.00,"[""customer-open""]",True
+Liabilities:Other:Deferred-Revenue,USD,0.00,-500.00,reconciled,-500.00,"[""deferred-open""]",True
+Liabilities:Other:Payroll-Payable,USD,0.00,-300.00,reconciled,-300.00,"[""july-payroll"", ""opening-support:payroll-open""]",True
+Liabilities:Payable:Accounts-Payable,USD,0.00,-300.00,reconciled,-300.00,"[""vendor-open""]",True

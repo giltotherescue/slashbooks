@@ -1,0 +1,404 @@
+{
+  "quarter": 1,
+  "year": 2026,
+  "period": {
+    "start": "2026-01-01",
+    "end": "2026-03-31"
+  },
+  "pnl": {
+    "kind": "pnl",
+    "from_date": "2026-01-01",
+    "to_date": "2026-03-31",
+    "sections": [
+      {
+        "label": "Revenue",
+        "rows": [
+          {
+            "label": "Income › Consulting",
+            "amount": "11400.00",
+            "indent": 1
+          }
+        ],
+        "total": "11400.00",
+        "total_label": "Total Revenue"
+      },
+      {
+        "label": "Expenses",
+        "rows": [
+          {
+            "label": "Expenses › Bad-Debt",
+            "amount": "300.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Bonus",
+            "amount": "700.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Depreciation",
+            "amount": "500.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Insurance",
+            "amount": "300.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Software",
+            "amount": "1000.00",
+            "indent": 1
+          },
+          {
+            "label": "Expenses › Utilities",
+            "amount": "470.00",
+            "indent": 1
+          }
+        ],
+        "total": "3270.00",
+        "total_label": "Total Expenses"
+      }
+    ],
+    "totals": {
+      "net_income": "8130.00"
+    },
+    "meta": {
+      "basis": "accrual",
+      "currency": "USD",
+      "coverage": {
+        "basis": "accrual",
+        "chart": [
+          {
+            "account": "Assets:Bank:Checking",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Bank:Checking"
+          },
+          {
+            "account": "Assets:Fixed:Accumulated-Depreciation",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Fixed:Accumulated-Depreciation"
+          },
+          {
+            "account": "Assets:Fixed:Equipment",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Fixed:Equipment"
+          },
+          {
+            "account": "Assets:Other:Prepaid-Expenses",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Other:Prepaid-Expenses"
+          },
+          {
+            "account": "Assets:Receivable:Accounts-Receivable",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Receivable:Accounts-Receivable"
+          },
+          {
+            "account": "Equity:Opening-Balances",
+            "account_type": "Equity",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Equity:Opening-Balances"
+          },
+          {
+            "account": "Liabilities:Other:Deferred-Revenue",
+            "account_type": "Liabilities",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Liabilities:Other:Deferred-Revenue"
+          },
+          {
+            "account": "Liabilities:Payable:Accounts-Payable",
+            "account_type": "Liabilities",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Liabilities:Payable:Accounts-Payable"
+          }
+        ],
+        "closed_position": true,
+        "currency": "USD",
+        "cutover_date": "2026-01-01",
+        "fiscal_start": "2026-01-01",
+        "id": "opening",
+        "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
+        "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+        "opening_source_id": "golden-opening",
+        "source_as_of": "2025-12-31",
+        "source_hashes": {},
+        "summary_from": null,
+        "summary_to": null,
+        "support_evidence_hashes": {
+          "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
+        },
+        "support_status": "reconciled",
+        "verified": true
+      },
+      "requested_from": "2026-01-01",
+      "requested_to": "2026-03-31",
+      "unresolved_issues": [],
+      "summary_included": false
+    }
+  },
+  "balance_sheet": {
+    "kind": "balance_sheet",
+    "from_date": null,
+    "to_date": "2026-03-31",
+    "sections": [
+      {
+        "label": "Assets",
+        "rows": [
+          {
+            "label": "Assets › Bank › Checking",
+            "amount": "37300.00",
+            "indent": 1
+          },
+          {
+            "label": "Assets › Fixed › Accumulated-Depreciation",
+            "amount": "-1500.00",
+            "indent": 1
+          },
+          {
+            "label": "Assets › Fixed › Equipment",
+            "amount": "6000.00",
+            "indent": 1
+          },
+          {
+            "label": "Assets › Other › Prepaid-Expenses",
+            "amount": "1300.00",
+            "indent": 1
+          },
+          {
+            "label": "Assets › Receivable › Accounts-Receivable",
+            "amount": "2100.00",
+            "indent": 1
+          }
+        ],
+        "total": "45200.00",
+        "total_label": "Total Assets"
+      },
+      {
+        "label": "Liabilities",
+        "rows": [
+          {
+            "label": "Liabilities › Other › Accrued-Liabilities",
+            "amount": "470.00",
+            "indent": 1
+          },
+          {
+            "label": "Liabilities › Other › Deferred-Revenue",
+            "amount": "2700.00",
+            "indent": 1
+          },
+          {
+            "label": "Liabilities › Payable › Accounts-Payable",
+            "amount": "0.00",
+            "indent": 1
+          }
+        ],
+        "total": "3170.00",
+        "total_label": "Total Liabilities"
+      },
+      {
+        "label": "Equity",
+        "rows": [
+          {
+            "label": "Equity › Opening-Balances",
+            "amount": "33900.00",
+            "indent": 1
+          },
+          {
+            "label": "Net Income (current period)",
+            "amount": "8130.00",
+            "indent": 1
+          }
+        ],
+        "total": "42030.00",
+        "total_label": "Total Equity"
+      }
+    ],
+    "totals": {
+      "total_assets": "45200.00",
+      "total_liabilities_and_equity": "45200.00"
+    },
+    "meta": {
+      "basis": "accrual",
+      "currency": "USD",
+      "coverage": {
+        "basis": "accrual",
+        "chart": [
+          {
+            "account": "Assets:Bank:Checking",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Bank:Checking"
+          },
+          {
+            "account": "Assets:Fixed:Accumulated-Depreciation",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Fixed:Accumulated-Depreciation"
+          },
+          {
+            "account": "Assets:Fixed:Equipment",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Fixed:Equipment"
+          },
+          {
+            "account": "Assets:Other:Prepaid-Expenses",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Other:Prepaid-Expenses"
+          },
+          {
+            "account": "Assets:Receivable:Accounts-Receivable",
+            "account_type": "Assets",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Assets:Receivable:Accounts-Receivable"
+          },
+          {
+            "account": "Equity:Opening-Balances",
+            "account_type": "Equity",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Equity:Opening-Balances"
+          },
+          {
+            "account": "Liabilities:Other:Deferred-Revenue",
+            "account_type": "Liabilities",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Liabilities:Other:Deferred-Revenue"
+          },
+          {
+            "account": "Liabilities:Payable:Accounts-Payable",
+            "account_type": "Liabilities",
+            "currency": "USD",
+            "detail_type": "",
+            "open_date": "2025-12-31",
+            "source_account": "Liabilities:Payable:Accounts-Payable"
+          }
+        ],
+        "closed_position": true,
+        "currency": "USD",
+        "cutover_date": "2026-01-01",
+        "fiscal_start": "2026-01-01",
+        "id": "opening",
+        "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
+        "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+        "opening_source_id": "golden-opening",
+        "source_as_of": "2025-12-31",
+        "source_hashes": {},
+        "summary_from": null,
+        "summary_to": null,
+        "support_evidence_hashes": {
+          "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
+        },
+        "support_status": "reconciled",
+        "verified": true
+      },
+      "requested_from": null,
+      "requested_to": "2026-03-31",
+      "unresolved_issues": [],
+      "summary_included": false,
+      "fiscal_start": "2026-01-01",
+      "cumulative_net_income": "8130.00",
+      "current_fiscal_net_income": "8130.00"
+    }
+  },
+  "variance_flags": [],
+  "auto_posted_sample": [
+    {
+      "date": "2026-01-10",
+      "description": "Invoice: Orbit Labs",
+      "account": "Income › Consulting",
+      "amount": "-6000.00"
+    },
+    {
+      "date": "2026-01-12",
+      "description": "Invoice: Kestrel Foods",
+      "account": "Income › Consulting",
+      "amount": "-900.00"
+    },
+    {
+      "date": "2026-01-31",
+      "description": "Estimated January utilities",
+      "account": "Expenses › Utilities",
+      "amount": "450.00"
+    },
+    {
+      "date": "2026-01-31",
+      "description": "Prepaid expense used: dated 2025-07-01 (Jan 2026)",
+      "account": "Expenses › Insurance",
+      "amount": "100.00"
+    },
+    {
+      "date": "2026-01-31",
+      "description": "Depreciation: dated 2025-03-01 (Jan 2026)",
+      "account": "Expenses › Depreciation",
+      "amount": "100.00"
+    },
+    {
+      "date": "2026-01-31",
+      "description": "Deferred revenue earned: dated 2025-07-01 (Jan 2026)",
+      "account": "Income › Consulting",
+      "amount": "-100.00"
+    },
+    {
+      "date": "2026-02-01",
+      "description": "Reversal of: Estimated January utilities",
+      "account": "Expenses › Utilities",
+      "amount": "-450.00"
+    },
+    {
+      "date": "2026-02-03",
+      "description": "Bill: Granite Hosting",
+      "account": "Expenses › Software",
+      "amount": "800.00"
+    },
+    {
+      "date": "2026-02-15",
+      "description": "Invoice: Orbit Labs",
+      "account": "Income › Consulting",
+      "amount": "-3000.00"
+    },
+    {
+      "date": "2026-02-28",
+      "description": "Estimate: Staff",
+      "account": "Expenses › Bonus",
+      "amount": "1000.00"
+    }
+  ],
+  "has_prior_quarter": false
+}

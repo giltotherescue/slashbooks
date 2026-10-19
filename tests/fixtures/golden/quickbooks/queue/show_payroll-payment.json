@@ -1,0 +1,24 @@
+{
+  "accrual_operation_id": "payroll-payment",
+  "accrual_treatment": "settlement",
+  "amount": "-600.00",
+  "confirmed_category": "settlement",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "SYNTHETIC SETTLEMENT PAYROLL-PAYMENT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-07-25",
+  "delta": null,
+  "description": "Synthetic settlement payroll-payment",
+  "original_amount": "-600.00",
+  "proposed_category": "Expenses:Operating-Costs",
+  "reasoning": "A cash category suggestion must not duplicate the accrued event.",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "payroll-payment": "ab358dc78c1fad424dd38cd708c3ef94ad833bb01c263b57499852e3d292b003"
+  },
+  "source_id": "payroll-payment",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

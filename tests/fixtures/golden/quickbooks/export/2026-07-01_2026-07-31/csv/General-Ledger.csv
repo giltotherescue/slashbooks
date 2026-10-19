@@ -1,0 +1,33 @@
+Account Type,Account,Account Detail,Date,Counterparty,Memo,Source ID,Entry Type,Amount
+Assets,Assets › Bank › Checking,Checking,2026-07-15,,Payment received: dated 2026-06-30,customer-receipt,Posted,400.00
+Assets,Assets › Bank › Checking,Checking,2026-07-16,,Payment made: dated 2026-06-30,vendor-payment,Posted,-200.00
+Assets,Assets › Bank › Checking,Checking,2026-07-25,,Payment made: dated 2026-07-20,payroll-payment,Posted,-600.00
+,Assets › Bank › Checking,,,,Account Total,,Account Total,-400.00
+
+Assets,Assets › Fixed › Accumulated-Depreciation,Accumulated-Depreciation,2026-07-31,,Synthetic asset roll-forward,accrual:july-depreciation,Posted,-40.00
+,Assets › Fixed › Accumulated-Depreciation,,,,Account Total,,Account Total,-40.00
+
+Assets,Assets › Other › Prepaid-Insurance,Prepaid-Insurance,2026-07-31,,Prepaid expense used: dated 2026-01-01 (Jul 2026),schedule:recognition:prepaid-open:0:2026-07-31,Posted,-100.00
+,Assets › Other › Prepaid-Insurance,,,,Account Total,,Account Total,-100.00
+
+Assets,Assets › Receivable › Accounts-Receivable,Accounts-Receivable,2026-07-15,,Payment received: dated 2026-06-30,customer-receipt,Posted,-400.00
+,Assets › Receivable › Accounts-Receivable,,,,Account Total,,Account Total,-400.00
+
+Expenses,Expenses › Operating-Costs,Operating-Costs,2026-07-20,,Synthetic provider payroll,accrual:provider-payroll-journal,Posted,600.00
+Expenses,Expenses › Operating-Costs,Operating-Costs,2026-07-31,,Prepaid expense used: dated 2026-01-01 (Jul 2026),schedule:recognition:prepaid-open:0:2026-07-31,Posted,100.00
+Expenses,Expenses › Operating-Costs,Operating-Costs,2026-07-31,,Synthetic asset roll-forward,accrual:july-depreciation,Posted,40.00
+,Expenses › Operating-Costs,,,,Account Total,,Account Total,740.00
+
+Income,Income › Services,Services,2026-07-31,,Deferred revenue earned: dated 2026-01-01 (Jul 2026),schedule:recognition:deferred-open:0:2026-07-31,Posted,-100.00
+,Income › Services,,,,Account Total,,Account Total,-100.00
+
+Liabilities,Liabilities › Other › Deferred-Revenue,Deferred-Revenue,2026-07-31,,Deferred revenue earned: dated 2026-01-01 (Jul 2026),schedule:recognition:deferred-open:0:2026-07-31,Posted,100.00
+,Liabilities › Other › Deferred-Revenue,,,,Account Total,,Account Total,100.00
+
+Liabilities,Liabilities › Other › Payroll-Payable,Payroll-Payable,2026-07-20,,Synthetic provider payroll,accrual:provider-payroll-journal,Posted,-600.00
+Liabilities,Liabilities › Other › Payroll-Payable,Payroll-Payable,2026-07-25,,Payment made: dated 2026-07-20,payroll-payment,Posted,600.00
+,Liabilities › Other › Payroll-Payable,,,,Account Total,,Account Total,0.00
+
+Liabilities,Liabilities › Payable › Accounts-Payable,Accounts-Payable,2026-07-16,,Payment made: dated 2026-06-30,vendor-payment,Posted,200.00
+,Liabilities › Payable › Accounts-Payable,,,,Account Total,,Account Total,200.00
+

@@ -1,0 +1,18 @@
+{
+  "accounts": 27,
+  "accrual_allocations": 26,
+  "accrual_coverage": 1,
+  "accrual_evidence": 17,
+  "accrual_intents": 60,
+  "accrual_items": 9,
+  "accrual_periods": 1,
+  "accrual_schedules": 6,
+  "audit_events": 172,
+  "balance_assertions": 0,
+  "entries": 36,
+  "import_sessions": 0,
+  "meta": 6,
+  "postings": 79,
+  "source_transactions": 0,
+  "sqlite_sequence": 4
+}

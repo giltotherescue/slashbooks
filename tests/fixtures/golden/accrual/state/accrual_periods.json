@@ -1,0 +1,11 @@
+[
+  {
+    "as_of": "2026-08-05",
+    "history": [],
+    "id": "2026-01",
+    "operation_id": "close-2026-01",
+    "readiness_package_id": "57953a803019b8e09aac3f9c167e6636677f10a37358110d7f3727b9a94756ab",
+    "reason": "Synthetic owner reviewed the January package",
+    "status": "closed"
+  }
+]

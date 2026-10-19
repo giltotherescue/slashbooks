@@ -1,0 +1,11 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+Tax Form,Schedule,Form Line,Tax Line Code,Tax Line,Statement Detail,Beginning Book Amount,Book Amount,Normal Side,On Return,Accounts,Note
+Form 1065,p1,1a,1065/p1/1a,Gross receipts or sales,,,12100.00,credit,yes,Income:Services,
+Form 1065,L,1,1065/L/1,Cash,,0.00,9600.00,debit,yes,Assets:Bank:Checking,
+Form 1065,L,2a,1065/L/2a,Trade notes and accounts receivable,,0.00,600.00,debit,yes,Assets:Receivable:Accounts-Receivable,
+Form 1065,L,6,1065/L/6,Other current assets,,0.00,500.00,debit,yes,Assets:Other:Prepaid-Insurance,
+Form 1065,L,9a,1065/L/9a,Buildings and other depreciable assets,,0.00,2400.00,debit,yes,Assets:Fixed:Equipment,
+Form 1065,L,9b,1065/L/9b,Less accumulated depreciation,,0.00,440.00,credit,yes,Assets:Fixed:Accumulated-Depreciation,
+Form 1065,L,15,1065/L/15,Accounts payable,,0.00,600.00,credit,yes,Liabilities:Other:Payroll-Payable; Liabilities:Payable:Accounts-Payable,
+Form 1065,L,17,1065/L/17,Other current liabilities,,0.00,500.00,credit,yes,Liabilities:Other:Deferred-Revenue,
+Form 1065,L,21,1065/L/21,Partners' capital accounts,,0.00,9000.00,credit,yes,Equity:Retained-Earnings,Book balance before closing the current period's net income and distributions; the preparer rolls equity forward.

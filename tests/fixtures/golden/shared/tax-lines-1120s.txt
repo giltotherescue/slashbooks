@@ -1,0 +1,42 @@
+1120s/p1/1a                Gross receipts or sales
+1120s/p1/5                 Other income (loss)
+1120s/p1/1b                Returns and allowances
+1120s/p1/2                 Cost of goods sold
+1120s/p1/7                 Compensation of officers
+1120s/p1/8                 Salaries and wages
+1120s/p1/9                 Repairs and maintenance
+1120s/p1/10                Bad debts
+1120s/p1/11                Rents
+1120s/p1/12                Taxes and licenses
+1120s/p1/13                Interest
+1120s/p1/14                Depreciation
+1120s/p1/15                Depletion
+1120s/p1/16                Advertising
+1120s/p1/17                Pension, profit-sharing, etc., plans
+1120s/p1/18                Employee benefit programs
+1120s/p1/20                Other deductions
+1120s/K/4                  Interest income
+1120s/K/5a                 Ordinary dividends
+1120s/K/12a                Cash charitable contributions
+1120s/M-2/7                Distributions
+1120s/M-1/nondeductible    Nondeductible book expense
+1120s/L/1                  Cash
+1120s/L/2a                 Trade notes and accounts receivable
+1120s/L/3                  Inventories
+1120s/L/6                  Other current assets
+1120s/L/7                  Loans to shareholders
+1120s/L/10a                Buildings and other depreciable assets
+1120s/L/12                 Land (net of any amortization)
+1120s/L/13a                Intangible assets (amortizable only)
+1120s/L/14                 Other assets
+1120s/L/10b                Less accumulated depreciation
+1120s/L/13b                Less accumulated amortization
+1120s/L/16                 Accounts payable
+1120s/L/17                 Mortgages, notes, bonds payable in less than 1 year
+1120s/L/18                 Other current liabilities
+1120s/L/19                 Loans from shareholders
+1120s/L/20                 Mortgages, notes, bonds payable in 1 year or more
+1120s/L/21                 Other liabilities
+1120s/L/22                 Capital stock
+1120s/L/23                 Additional paid-in capital
+1120s/L/24                 Retained earnings
