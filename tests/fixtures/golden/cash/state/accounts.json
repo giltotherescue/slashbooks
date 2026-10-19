@@ -1,0 +1,121 @@
+[
+  {
+    "account": "Expenses:Insurance",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2025-01-01"
+  },
+  {
+    "account": "Expenses:Rent",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2025-01-01"
+  },
+  {
+    "account": "Liabilities:CreditCard:Company",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2025-01-01"
+  },
+  {
+    "account": "Assets:Bank:Checking",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Equity:Opening-Balances",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Equity:Owner-Contributions",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Equity:Owner-Draws",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Fees",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Marketing",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Meals",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Office",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Software",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Subcontractors",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Taxes",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Travel",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Income:Consulting",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Liabilities:CreditCard",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  }
+]

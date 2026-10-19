@@ -1,0 +1,24 @@
+{
+  "accrual_operation_id": "customer-receipt",
+  "accrual_treatment": "settlement",
+  "amount": "400.00",
+  "confirmed_category": "settlement",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "SYNTHETIC SETTLEMENT CUSTOMER-RECEIPT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-07-15",
+  "delta": null,
+  "description": "Synthetic settlement customer-receipt",
+  "original_amount": "400.00",
+  "proposed_category": "Income:Consulting",
+  "reasoning": "A cash category suggestion must not duplicate the accrued event.",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "customer-receipt": "fdaf1f93252792a6217f5c3fbd5389183aae1cca434356ce598aed8ec76b0091"
+  },
+  "source_id": "customer-receipt",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

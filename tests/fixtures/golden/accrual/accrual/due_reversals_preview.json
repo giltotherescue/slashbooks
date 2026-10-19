@@ -1,0 +1,73 @@
+{
+  "as_of": "2026-12-31",
+  "blockers": [],
+  "results": [
+    {
+      "affected_dates": [
+        "2026-04-01"
+      ],
+      "authority": {
+        "mode": "local_operator"
+      },
+      "configuration_hash": "9e23214ed81b9a01d2c15604faafea3553bea0bed01b79367524bce8d04edd72",
+      "details": {
+        "journal_totals": {
+          "credits": "470.00",
+          "currency": "USD",
+          "debits": "470.00",
+          "difference": "0.00"
+        }
+      },
+      "entries": [
+        {
+          "date": "2026-04-01",
+          "description": "Reversal of: Estimated March utilities",
+          "meta": {
+            "evidence-ids": "[]",
+            "reverses": "accrual:utilities-estimate-mar",
+            "source-id": "accrual:due:utilities-estimate-mar"
+          },
+          "postings": [
+            {
+              "account": "Expenses:Utilities",
+              "amount": "-470.00",
+              "credit": "470.00",
+              "currency": "USD",
+              "debit": "0.00"
+            },
+            {
+              "account": "Liabilities:Other:Accrued-Liabilities",
+              "amount": "470.00",
+              "credit": "0.00",
+              "currency": "USD",
+              "debit": "470.00"
+            }
+          ],
+          "totals": {
+            "credits": "470.00",
+            "currency": "USD",
+            "debits": "470.00",
+            "difference": "0.00"
+          }
+        }
+      ],
+      "evidence": [],
+      "id": "due:utilities-estimate-mar",
+      "kind": "reversal",
+      "ledger_digest": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097",
+      "opens": [],
+      "plan_hash": "d55b0929f530b1886532e18657efd8bf948578443b4224551414b06a1f54449e",
+      "request": {
+        "date": "2026-04-01",
+        "description": "Reversal of: Estimated March utilities",
+        "id": "due:utilities-estimate-mar",
+        "original_id": "utilities-estimate-mar"
+      },
+      "request_hash": "5919332a9feed26d676641834b4fa3bb827d14cebeb08c87031c5e5c3cb0dfd3",
+      "schema_version": 1,
+      "supporting_hash": "fd5e70c06c97b49d28246d19217572b3b48dbe41e21f1b976f56a4a7b383ebda",
+      "warnings": []
+    }
+  ],
+  "status": "ok"
+}

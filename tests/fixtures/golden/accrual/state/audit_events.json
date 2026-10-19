@@ -1,0 +1,2867 @@
+[
+  {
+    "id": 1,
+    "payload": {
+      "backup": "ledger.sqlite.schema-v1.00000000000040008000000000000001.sqlite",
+      "from_version": 1,
+      "prior_store_sha256": "5f6760151073c9910a5ca674856fc5affcf98025f45562343586e89d0ea8d07b",
+      "to_version": 2
+    },
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "record_hash": "caeabe53b8b6a19a9caf9d44869843c103c1c129b9525aa3809f2c25c6b31a25",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "schema-upgraded"
+  },
+  {
+    "id": 2,
+    "payload": {
+      "entries": 0,
+      "session_id": "schema-upgrade",
+      "store_sha256": "680ee555c22fdaabdc5a9ac0bd719895882b5d07065b7799262104429ad84bea"
+    },
+    "prev_hash": "caeabe53b8b6a19a9caf9d44869843c103c1c129b9525aa3809f2c25c6b31a25",
+    "record_hash": "92a0dbd3c8f0796e9ec1ee08a49a16c8fa8a5b4b450d25dd5ac67c7d6b7ca4a9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 3,
+    "payload": {
+      "description": "Add account Expenses:Utilities: open 2025-12-31, currency USD",
+      "entries": 0,
+      "session_id": "entity-account-add"
+    },
+    "prev_hash": "92a0dbd3c8f0796e9ec1ee08a49a16c8fa8a5b4b450d25dd5ac67c7d6b7ca4a9",
+    "record_hash": "b8909c21fb50df13e547dd2d2ecfecb791999fddcd227c81793383513acacfe5",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 4,
+    "payload": {
+      "entries": 0,
+      "session_id": "entity-account-add",
+      "source_ids": [],
+      "store_sha256": "e29bae622917fee5b437fe8f96fb0afbfeb5fefcfb6b82a877b8c99227c5da51"
+    },
+    "prev_hash": "b8909c21fb50df13e547dd2d2ecfecb791999fddcd227c81793383513acacfe5",
+    "record_hash": "4ed0d7a0562eac5fd551ad8283bfd4bf49e64ffbd3f7f333fbd71f88e95a9271",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 5,
+    "payload": {
+      "description": "Add account Expenses:Bad-Debt: open 2025-12-31, currency USD",
+      "entries": 0,
+      "session_id": "entity-account-add"
+    },
+    "prev_hash": "4ed0d7a0562eac5fd551ad8283bfd4bf49e64ffbd3f7f333fbd71f88e95a9271",
+    "record_hash": "ceffaa502582fe4351cdc1fd1a3be5a0d4f2d8a5b335c8081db44d44587458b9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 6,
+    "payload": {
+      "entries": 0,
+      "session_id": "entity-account-add",
+      "source_ids": [],
+      "store_sha256": "7591c55277fbc573156b33497d5378b60b1c20ea26f1ce0d598206d73e83e312"
+    },
+    "prev_hash": "ceffaa502582fe4351cdc1fd1a3be5a0d4f2d8a5b335c8081db44d44587458b9",
+    "record_hash": "e00ccd483c44cb38ed45caa55848cd0657c08caf21a2a45df2762b365c13f26f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 7,
+    "payload": {
+      "description": "Add account Expenses:Bonus: open 2025-12-31, currency USD",
+      "entries": 0,
+      "session_id": "entity-account-add"
+    },
+    "prev_hash": "e00ccd483c44cb38ed45caa55848cd0657c08caf21a2a45df2762b365c13f26f",
+    "record_hash": "30adeccaa7dadb15a65eba81a047651239f77d4b788040f54c8942ac3f99260b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 8,
+    "payload": {
+      "entries": 0,
+      "session_id": "entity-account-add",
+      "source_ids": [],
+      "store_sha256": "c6bc930d22ab2443f31fbe99e218e42eca4442b3f25c0d2d5bb39e547092e4ac"
+    },
+    "prev_hash": "30adeccaa7dadb15a65eba81a047651239f77d4b788040f54c8942ac3f99260b",
+    "record_hash": "b68596114b0382f43d4b7a57c0d53b0e437395a5e4f3bd0d3d0c624b7accf099",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 9,
+    "payload": {
+      "description": "Add account Expenses:Insurance: open 2025-12-31, currency USD",
+      "entries": 0,
+      "session_id": "entity-account-add"
+    },
+    "prev_hash": "b68596114b0382f43d4b7a57c0d53b0e437395a5e4f3bd0d3d0c624b7accf099",
+    "record_hash": "4771d5fef083faa48a869c9b6252f2f0c4c62c0ca33c3e09846e07e1452ab66c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 10,
+    "payload": {
+      "entries": 0,
+      "session_id": "entity-account-add",
+      "source_ids": [],
+      "store_sha256": "3ffbc9c18bee4b814d0bbff5d7b4c8d5f26bec136bd80504703b65bd3bf1bfbd"
+    },
+    "prev_hash": "4771d5fef083faa48a869c9b6252f2f0c4c62c0ca33c3e09846e07e1452ab66c",
+    "record_hash": "a986ecca476d3827ecf21cd482db2ddb7c2fea257cbff84caa8c81b1d43632b8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 11,
+    "payload": {
+      "description": "Accrual migration: golden-opening",
+      "entries": 1,
+      "session_id": "golden-opening"
+    },
+    "prev_hash": "a986ecca476d3827ecf21cd482db2ddb7c2fea257cbff84caa8c81b1d43632b8",
+    "record_hash": "94088d17298c9b2fb061e98b16c63a0db6648cd2fd1b836b0bd09bc60bd1c8e6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 12,
+    "payload": {
+      "records": [
+        {
+          "id": "inv-open-1",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "bill-open-1",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "insurance-h2",
+          "revision": 1,
+          "table": "schedules"
+        },
+        {
+          "id": "retainer-h2",
+          "revision": 1,
+          "table": "schedules"
+        },
+        {
+          "id": "laptop-old",
+          "revision": 1,
+          "table": "schedules"
+        },
+        {
+          "id": "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "opening",
+          "revision": 1,
+          "table": "coverage"
+        },
+        {
+          "id": "operation:golden-opening",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "golden-opening"
+    },
+    "prev_hash": "94088d17298c9b2fb061e98b16c63a0db6648cd2fd1b836b0bd09bc60bd1c8e6",
+    "record_hash": "275c1b7c0cc071840b058a08b70e53201f080183b8e49be91e3d0bbfefcccee1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 13,
+    "payload": {
+      "session_id": "golden-opening",
+      "source_id": "golden-opening"
+    },
+    "prev_hash": "275c1b7c0cc071840b058a08b70e53201f080183b8e49be91e3d0bbfefcccee1",
+    "record_hash": "f73684d4eb22fe63e5e1ac7e516d995c753fd12c5b704890de6a967a3912082f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 14,
+    "payload": {
+      "entries": 1,
+      "session_id": "golden-opening",
+      "source_ids": [
+        "golden-opening"
+      ],
+      "store_sha256": "4c5578aae67da91e62ce75a2b0e595fe60841211cec8dbb2cabbcfcbb01ec962"
+    },
+    "prev_hash": "f73684d4eb22fe63e5e1ac7e516d995c753fd12c5b704890de6a967a3912082f",
+    "record_hash": "b572761e031611c2ab82c14b570faba09d6a0784aab73aa28ad194bde82b1d8b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 15,
+    "payload": {
+      "description": "Accrual evidence: evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0",
+      "entries": 0,
+      "session_id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"
+    },
+    "prev_hash": "b572761e031611c2ab82c14b570faba09d6a0784aab73aa28ad194bde82b1d8b",
+    "record_hash": "f0a27be3c7587421924b89ce44ddbdcfe2fb947ae2dda69255f00dd1a58fab10",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 16,
+    "payload": {
+      "records": [
+        {
+          "id": "673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"
+    },
+    "prev_hash": "f0a27be3c7587421924b89ce44ddbdcfe2fb947ae2dda69255f00dd1a58fab10",
+    "record_hash": "3efba1f82a87efc3968a2d13a0e1b72086714f05ef15dfe05316610911cca88e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 17,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0",
+      "source_ids": [],
+      "store_sha256": "c911809433ff05afe14ca174e69f797d2669ed454cdd3a50cd0567d191610db9"
+    },
+    "prev_hash": "3efba1f82a87efc3968a2d13a0e1b72086714f05ef15dfe05316610911cca88e",
+    "record_hash": "6ff41e017b0c5d41d968d263b044c623e235e076797cd0d309c9b66dd8d28197",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 18,
+    "payload": {
+      "description": "Accrual item_create: inv-1001-create",
+      "entries": 1,
+      "session_id": "inv-1001-create"
+    },
+    "prev_hash": "6ff41e017b0c5d41d968d263b044c623e235e076797cd0d309c9b66dd8d28197",
+    "record_hash": "5bd4c3a08e340e303b14797e04dddbe523142ab783cd3058a2c8bf76d641f689",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 19,
+    "payload": {
+      "records": [
+        {
+          "id": "inv-1001",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "source:ef676174efcbdac89a2018a88ee575b8464eb7ae645baee0bf07fb3c19fe6c32",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:inv-1001-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "inv-1001-create"
+    },
+    "prev_hash": "5bd4c3a08e340e303b14797e04dddbe523142ab783cd3058a2c8bf76d641f689",
+    "record_hash": "40439ea80fa8b1774e005ede16a1713dbc34e32eb5061ae8559d58a55d7bbdad",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 20,
+    "payload": {
+      "session_id": "inv-1001-create",
+      "source_id": "accrual:inv-1001-create"
+    },
+    "prev_hash": "40439ea80fa8b1774e005ede16a1713dbc34e32eb5061ae8559d58a55d7bbdad",
+    "record_hash": "4bd07c1eb9010ae24f85e01e7e8c60c90e5604d49476e8418f62d7fc415960c7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 21,
+    "payload": {
+      "entries": 1,
+      "session_id": "inv-1001-create",
+      "source_ids": [
+        "accrual:inv-1001-create"
+      ],
+      "store_sha256": "84e12687081ab61fd5c4f89dc458edced4ee188c7c8f29d234b06dc5265c5b8f"
+    },
+    "prev_hash": "4bd07c1eb9010ae24f85e01e7e8c60c90e5604d49476e8418f62d7fc415960c7",
+    "record_hash": "95de5661c3bc2135bb7b6c118ebdca02ec2d6e79fa6f256e30419df8552a5096",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 22,
+    "payload": {
+      "description": "Accrual evidence: evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b",
+      "entries": 0,
+      "session_id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"
+    },
+    "prev_hash": "95de5661c3bc2135bb7b6c118ebdca02ec2d6e79fa6f256e30419df8552a5096",
+    "record_hash": "81db6a4dd25e3396328384f1200af2096e44c4e7cc8c2878d8f1a8c668a164f9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 23,
+    "payload": {
+      "records": [
+        {
+          "id": "a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"
+    },
+    "prev_hash": "81db6a4dd25e3396328384f1200af2096e44c4e7cc8c2878d8f1a8c668a164f9",
+    "record_hash": "292cfe92898983016c56cac2784ae02e4bceb7d995e91dc14ebf84cce7abd704",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 24,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b",
+      "source_ids": [],
+      "store_sha256": "ae2c7e479fa3bca0466ff969e5c4829f1ceb920810c567502dec65bed7d9104c"
+    },
+    "prev_hash": "292cfe92898983016c56cac2784ae02e4bceb7d995e91dc14ebf84cce7abd704",
+    "record_hash": "79d494f5975f0e5d42daa0089d1c59e0fe037fd5c1de7a1ba0cc7ac806a05306",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 25,
+    "payload": {
+      "description": "Accrual item_create: inv-1003-create",
+      "entries": 1,
+      "session_id": "inv-1003-create"
+    },
+    "prev_hash": "79d494f5975f0e5d42daa0089d1c59e0fe037fd5c1de7a1ba0cc7ac806a05306",
+    "record_hash": "560105aad8424028ebf7c3b86d5cfeda0d9b4e0592d52af84f2f4d497b7eaef1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 26,
+    "payload": {
+      "records": [
+        {
+          "id": "inv-1003",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "source:31b607a0f11fdb5b2dce698f5a30651f7a4df31798065d37c46a7b0482a1dceb",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:inv-1003-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "inv-1003-create"
+    },
+    "prev_hash": "560105aad8424028ebf7c3b86d5cfeda0d9b4e0592d52af84f2f4d497b7eaef1",
+    "record_hash": "eb84770baa98d85a257081ad4547c3b91946aa293b2b99639af43a9555f89dfd",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 27,
+    "payload": {
+      "session_id": "inv-1003-create",
+      "source_id": "accrual:inv-1003-create"
+    },
+    "prev_hash": "eb84770baa98d85a257081ad4547c3b91946aa293b2b99639af43a9555f89dfd",
+    "record_hash": "f7daf1d9e2f3afef909d042a859da88934490383d55c3658820b27ba8cc42d16",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 28,
+    "payload": {
+      "entries": 1,
+      "session_id": "inv-1003-create",
+      "source_ids": [
+        "accrual:inv-1003-create"
+      ],
+      "store_sha256": "7cf797c473f916f47c264d240ff0b05056bfab18fd9e4e6a59ac9a4370fb85b0"
+    },
+    "prev_hash": "f7daf1d9e2f3afef909d042a859da88934490383d55c3658820b27ba8cc42d16",
+    "record_hash": "83e7637c05bd2eaa18c50da7cd66c432666a0550823887ac65069480d45f7b6c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 29,
+    "payload": {
+      "description": "Accrual evidence: evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058",
+      "entries": 0,
+      "session_id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058"
+    },
+    "prev_hash": "83e7637c05bd2eaa18c50da7cd66c432666a0550823887ac65069480d45f7b6c",
+    "record_hash": "a4d7b54eccb6248d0a47ead9c31894026734f6e8a721303a6812361e8a6c7834",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 30,
+    "payload": {
+      "records": [
+        {
+          "id": "f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058"
+    },
+    "prev_hash": "a4d7b54eccb6248d0a47ead9c31894026734f6e8a721303a6812361e8a6c7834",
+    "record_hash": "ec2a14dde3c6628ac9efd684b2bee4c813012d4cd2e9268594d5cde33fcc958c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 31,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058",
+      "source_ids": [],
+      "store_sha256": "4f4b06f9368786263e9a2a502b05c3dbcd7d722d52d05cb17d52b6afbf8ec75a"
+    },
+    "prev_hash": "ec2a14dde3c6628ac9efd684b2bee4c813012d4cd2e9268594d5cde33fcc958c",
+    "record_hash": "82caafbdc97354d6a1ef4875316ea6501b1215b74eda56b3ca81e89a53ac8e00",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 32,
+    "payload": {
+      "description": "Accrual item_settlement: pay-bill-open-1",
+      "entries": 1,
+      "session_id": "pay-bill-open-1"
+    },
+    "prev_hash": "82caafbdc97354d6a1ef4875316ea6501b1215b74eda56b3ca81e89a53ac8e00",
+    "record_hash": "6f7200d0645f0d0e96c67022446ec9c27cdda1032d3070a87a57abea356b3817",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 33,
+    "payload": {
+      "records": [
+        {
+          "id": "source:9f09075dde6460fc044640b036eb8fa62e2bf14383629b39c920787028cddfda",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "bill-open-1",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "settlement:pay-bill-open-1:bill-open-1",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:pay-bill-open-1",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "pay-bill-open-1"
+    },
+    "prev_hash": "6f7200d0645f0d0e96c67022446ec9c27cdda1032d3070a87a57abea356b3817",
+    "record_hash": "a949af25faa19aabe0aca98c8084d36a4bc10662197b09cea8ababb588614932",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 34,
+    "payload": {
+      "session_id": "pay-bill-open-1",
+      "source_id": "pay-bill-open-1-bank"
+    },
+    "prev_hash": "a949af25faa19aabe0aca98c8084d36a4bc10662197b09cea8ababb588614932",
+    "record_hash": "b6463d9694aa224ea0af36719063bc3ee49172f938f1d9735f4127baf17c20a9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 35,
+    "payload": {
+      "entries": 1,
+      "session_id": "pay-bill-open-1",
+      "source_ids": [
+        "pay-bill-open-1-bank"
+      ],
+      "store_sha256": "f581a52482979071cf0499b85a26c820b8e22baff427d82a4d5262d2a006f7b8"
+    },
+    "prev_hash": "b6463d9694aa224ea0af36719063bc3ee49172f938f1d9735f4127baf17c20a9",
+    "record_hash": "1bb885ffce3dde6767f571bb7717c9b43ba435f7cf53a52fe72f1c2c992c78be",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 36,
+    "payload": {
+      "description": "Accrual evidence: evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913",
+      "entries": 0,
+      "session_id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913"
+    },
+    "prev_hash": "1bb885ffce3dde6767f571bb7717c9b43ba435f7cf53a52fe72f1c2c992c78be",
+    "record_hash": "9c37aaed5a5e24cd055bb69755737d3ab8bcfc14fc1769eb39a93f3c76504889",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 37,
+    "payload": {
+      "records": [
+        {
+          "id": "560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913"
+    },
+    "prev_hash": "9c37aaed5a5e24cd055bb69755737d3ab8bcfc14fc1769eb39a93f3c76504889",
+    "record_hash": "fce149861d6beade86853b72ff2d565ca2ffa5850ec2948ed4b91a44707b92b6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 38,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913",
+      "source_ids": [],
+      "store_sha256": "a6dd8bf099b0ab2ff8937b3e62fdda82e018050ba04224fe7b8c33b574dd8a16"
+    },
+    "prev_hash": "fce149861d6beade86853b72ff2d565ca2ffa5850ec2948ed4b91a44707b92b6",
+    "record_hash": "2d72e2e0e2693bc97f32c36560c2e0b1c8a8bfebb6ffdc529b0908f9321e8ba0",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 39,
+    "payload": {
+      "description": "Accrual item_settlement: pay-inv-open-1",
+      "entries": 1,
+      "session_id": "pay-inv-open-1"
+    },
+    "prev_hash": "2d72e2e0e2693bc97f32c36560c2e0b1c8a8bfebb6ffdc529b0908f9321e8ba0",
+    "record_hash": "f631f5248f8fb86c72da4ac7cff4cdaa576948ebb9848bad27a84acc2b0d89a8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 40,
+    "payload": {
+      "records": [
+        {
+          "id": "source:3e0ee50be228021614ed5dc2469b6f3c2e72fcfb90aca3534eb4835427a0450e",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "inv-open-1",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "settlement:pay-inv-open-1:inv-open-1",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:pay-inv-open-1",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "pay-inv-open-1"
+    },
+    "prev_hash": "f631f5248f8fb86c72da4ac7cff4cdaa576948ebb9848bad27a84acc2b0d89a8",
+    "record_hash": "267df5ce754e65488f19edc22b22b77f5fecc548042256ff0524ff31869fb3c9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 41,
+    "payload": {
+      "session_id": "pay-inv-open-1",
+      "source_id": "pay-inv-open-1-bank"
+    },
+    "prev_hash": "267df5ce754e65488f19edc22b22b77f5fecc548042256ff0524ff31869fb3c9",
+    "record_hash": "9128d572acc2ab1c3869a82ad634eb7121172d683ec6b1529ecb06adbca3e8bb",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 42,
+    "payload": {
+      "entries": 1,
+      "session_id": "pay-inv-open-1",
+      "source_ids": [
+        "pay-inv-open-1-bank"
+      ],
+      "store_sha256": "ee4cf927a0ee3cec27e91c00b408fb16849e8410406834c4844cb5eea04f37a9"
+    },
+    "prev_hash": "9128d572acc2ab1c3869a82ad634eb7121172d683ec6b1529ecb06adbca3e8bb",
+    "record_hash": "2f4403c4c882f6b950fc964acf6732cb3d32b58ea7ef5dc6be7a2d76de3b34ef",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 43,
+    "payload": {
+      "description": "Accrual journal: utilities-estimate-jan",
+      "entries": 1,
+      "session_id": "utilities-estimate-jan"
+    },
+    "prev_hash": "2f4403c4c882f6b950fc964acf6732cb3d32b58ea7ef5dc6be7a2d76de3b34ef",
+    "record_hash": "bda0ab9c99b5342502eb49f939534af17a50265b481984fa7c8ed96d17dd853f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 44,
+    "payload": {
+      "records": [
+        {
+          "id": "reversal:utilities-estimate-jan",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:utilities-estimate-jan",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "utilities-estimate-jan"
+    },
+    "prev_hash": "bda0ab9c99b5342502eb49f939534af17a50265b481984fa7c8ed96d17dd853f",
+    "record_hash": "28a5fc8a7e03e5291a9cf9d000efe8faee65436d06b31ef1e2acbaf314969832",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 45,
+    "payload": {
+      "session_id": "utilities-estimate-jan",
+      "source_id": "accrual:utilities-estimate-jan"
+    },
+    "prev_hash": "28a5fc8a7e03e5291a9cf9d000efe8faee65436d06b31ef1e2acbaf314969832",
+    "record_hash": "26d828017065ff13e1d160f68c7cba713e3fd22063675ee31019bc26a55dccb9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 46,
+    "payload": {
+      "entries": 1,
+      "session_id": "utilities-estimate-jan",
+      "source_ids": [
+        "accrual:utilities-estimate-jan"
+      ],
+      "store_sha256": "de31a8c87dd7aa2f013be0b5f61d05427b241fc191a7ffc8ed40073dccd6daf0"
+    },
+    "prev_hash": "26d828017065ff13e1d160f68c7cba713e3fd22063675ee31019bc26a55dccb9",
+    "record_hash": "4f639a52dc5ad939f498a22dc7788a3c0ed0d07bc087cdc135ab6a8a9c7de9c3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 47,
+    "payload": {
+      "description": "Accrual evidence: evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127",
+      "entries": 0,
+      "session_id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127"
+    },
+    "prev_hash": "4f639a52dc5ad939f498a22dc7788a3c0ed0d07bc087cdc135ab6a8a9c7de9c3",
+    "record_hash": "c53250560ee590f2fc0fd67272320eedc26cff5590c0c3d2ffab2f057c6e795e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 48,
+    "payload": {
+      "records": [
+        {
+          "id": "c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127"
+    },
+    "prev_hash": "c53250560ee590f2fc0fd67272320eedc26cff5590c0c3d2ffab2f057c6e795e",
+    "record_hash": "649a85c5e97f0493c64fa222db1edf981baae87e73aacfe790b56a08880bdaa6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 49,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127",
+      "source_ids": [],
+      "store_sha256": "fe4100d58e3269aaa2772c8463f3d4d1c26dc2497e5ab8d6e32a93bb9d57cae7"
+    },
+    "prev_hash": "649a85c5e97f0493c64fa222db1edf981baae87e73aacfe790b56a08880bdaa6",
+    "record_hash": "0714b9d5e06b275bd7b2341f26900598d5216361fee06580e027275dfe2ca8c9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 50,
+    "payload": {
+      "description": "Accrual item_settlement: pay-inv-1001",
+      "entries": 1,
+      "session_id": "pay-inv-1001"
+    },
+    "prev_hash": "0714b9d5e06b275bd7b2341f26900598d5216361fee06580e027275dfe2ca8c9",
+    "record_hash": "a305672c1263db2821d6f2cdbb7d976325a5e0864780193adb002d62945dbbe1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 51,
+    "payload": {
+      "records": [
+        {
+          "id": "source:e975e4df10fec6a3748d9ce30f06916861920271456aea480679e6460b5e65b2",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "inv-1001",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "settlement:pay-inv-1001:inv-1001",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "orbit-credit",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "unapplied:pay-inv-1001:orbit-credit",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:pay-inv-1001",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "pay-inv-1001"
+    },
+    "prev_hash": "a305672c1263db2821d6f2cdbb7d976325a5e0864780193adb002d62945dbbe1",
+    "record_hash": "d58f55751f7d0e7dbd2261173e57ef06bc73d1291d62287b9a2cef020e6798b4",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 52,
+    "payload": {
+      "session_id": "pay-inv-1001",
+      "source_id": "pay-inv-1001-bank"
+    },
+    "prev_hash": "d58f55751f7d0e7dbd2261173e57ef06bc73d1291d62287b9a2cef020e6798b4",
+    "record_hash": "ada53466cbf3a3238011450e9e0c98e135126d8b9f94a538c9a2adf5fd9b7d0e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 53,
+    "payload": {
+      "entries": 1,
+      "session_id": "pay-inv-1001",
+      "source_ids": [
+        "pay-inv-1001-bank"
+      ],
+      "store_sha256": "84595eeecf93f9f87821dd743c022355396a3502413b649c31075f26b26562a6"
+    },
+    "prev_hash": "ada53466cbf3a3238011450e9e0c98e135126d8b9f94a538c9a2adf5fd9b7d0e",
+    "record_hash": "b9f9384e5d8bc4dbe72797eec186a82dba31dc1da84095045c4a038b13524e80",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 54,
+    "payload": {
+      "description": "Accrual reversal: due:utilities-estimate-jan",
+      "entries": 1,
+      "session_id": "due:utilities-estimate-jan"
+    },
+    "prev_hash": "b9f9384e5d8bc4dbe72797eec186a82dba31dc1da84095045c4a038b13524e80",
+    "record_hash": "cc5de32d72aa493d31a7ed56cd0b87dd80ef56f986d8687bb55e824a57d48c4f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 55,
+    "payload": {
+      "records": [
+        {
+          "id": "extinguished:utilities-estimate-jan",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "reversal:utilities-estimate-jan",
+          "revision": 2,
+          "table": "intents"
+        },
+        {
+          "id": "operation:due:utilities-estimate-jan",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "due:utilities-estimate-jan"
+    },
+    "prev_hash": "cc5de32d72aa493d31a7ed56cd0b87dd80ef56f986d8687bb55e824a57d48c4f",
+    "record_hash": "13b4ca6e9154f7aa36c4961dfb78708753dd2491e09cbbde1c77d7464427cda7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 56,
+    "payload": {
+      "session_id": "due:utilities-estimate-jan",
+      "source_id": "accrual:due:utilities-estimate-jan"
+    },
+    "prev_hash": "13b4ca6e9154f7aa36c4961dfb78708753dd2491e09cbbde1c77d7464427cda7",
+    "record_hash": "8bca8bce072ef23c479da1c1eae655cdd39f0f5dab56b8221694e6586e1cb9c4",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 57,
+    "payload": {
+      "entries": 1,
+      "session_id": "due:utilities-estimate-jan",
+      "source_ids": [
+        "accrual:due:utilities-estimate-jan"
+      ],
+      "store_sha256": "e3cdc004f623c4ee64cc3ab82aa3c7a5555a75b5e3cbb40a437d8ec36a70343f"
+    },
+    "prev_hash": "8bca8bce072ef23c479da1c1eae655cdd39f0f5dab56b8221694e6586e1cb9c4",
+    "record_hash": "a3086fccb6eb00157d9dd6ac54fce64e5ac8a76b052100b3da64e417566b2848",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 58,
+    "payload": {
+      "description": "Accrual evidence: evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e",
+      "entries": 0,
+      "session_id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e"
+    },
+    "prev_hash": "a3086fccb6eb00157d9dd6ac54fce64e5ac8a76b052100b3da64e417566b2848",
+    "record_hash": "7431d3c44e3360aca2feedf818675630cd36e575eedefed91f7511c0408d1fde",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 59,
+    "payload": {
+      "records": [
+        {
+          "id": "1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e"
+    },
+    "prev_hash": "7431d3c44e3360aca2feedf818675630cd36e575eedefed91f7511c0408d1fde",
+    "record_hash": "18f9ee07adddfc071988c6107ad21a1342b07c0a8bc098f18fdb130e4cee1f3e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 60,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e",
+      "source_ids": [],
+      "store_sha256": "7e8c17099a18eca66561d3743acf91e44cf34088fccbaaa5bc709a5f919a5639"
+    },
+    "prev_hash": "18f9ee07adddfc071988c6107ad21a1342b07c0a8bc098f18fdb130e4cee1f3e",
+    "record_hash": "dff46062a24d49d32d1a2b613701fee7bb9a19911d22ef13826d8a9de9695029",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 61,
+    "payload": {
+      "description": "Accrual item_create: bill-2001-create",
+      "entries": 1,
+      "session_id": "bill-2001-create"
+    },
+    "prev_hash": "dff46062a24d49d32d1a2b613701fee7bb9a19911d22ef13826d8a9de9695029",
+    "record_hash": "406bc887c5db959e6451d73674c811d3888fece39ce61635c8ce5883c677965f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 62,
+    "payload": {
+      "records": [
+        {
+          "id": "bill-2001",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "source:d7e6b805ed88c696828208b64d63da7ee692db423f7332c07e1fa09452a63ac4",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:bill-2001-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "bill-2001-create"
+    },
+    "prev_hash": "406bc887c5db959e6451d73674c811d3888fece39ce61635c8ce5883c677965f",
+    "record_hash": "5a5adf7255ed8428822c122b1fc03adf81a20ecf9f97f0366ea342e9686eca10",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 63,
+    "payload": {
+      "session_id": "bill-2001-create",
+      "source_id": "accrual:bill-2001-create"
+    },
+    "prev_hash": "5a5adf7255ed8428822c122b1fc03adf81a20ecf9f97f0366ea342e9686eca10",
+    "record_hash": "c720d870502edfd7c4e49a8efda1777ec33611787b5d59a29f06dbe957502b47",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 64,
+    "payload": {
+      "entries": 1,
+      "session_id": "bill-2001-create",
+      "source_ids": [
+        "accrual:bill-2001-create"
+      ],
+      "store_sha256": "7242b5f9997b19f4a9b2d4f3b82f56f6da0eea1f76b66698d65906ca4f83b41a"
+    },
+    "prev_hash": "c720d870502edfd7c4e49a8efda1777ec33611787b5d59a29f06dbe957502b47",
+    "record_hash": "f55f797ea7cd1c1991d0658512f549b8578dca5765cc7fe28914746174bea205",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 65,
+    "payload": {
+      "description": "Accrual evidence: evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6",
+      "entries": 0,
+      "session_id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6"
+    },
+    "prev_hash": "f55f797ea7cd1c1991d0658512f549b8578dca5765cc7fe28914746174bea205",
+    "record_hash": "10f94970a41a9edffeb3a0e654fd3c00f4e9df908f7de9c3b896b3365da3c5b8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 66,
+    "payload": {
+      "records": [
+        {
+          "id": "cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6"
+    },
+    "prev_hash": "10f94970a41a9edffeb3a0e654fd3c00f4e9df908f7de9c3b896b3365da3c5b8",
+    "record_hash": "75766c690a301c2273830e2c43c09e93e77ff86b62892e5505e3eb2ad269c881",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 67,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6",
+      "source_ids": [],
+      "store_sha256": "17879874c7ea8e30ddb73cbbea174333b1a8d2820be934c112297ea92e2d55a8"
+    },
+    "prev_hash": "75766c690a301c2273830e2c43c09e93e77ff86b62892e5505e3eb2ad269c881",
+    "record_hash": "19eb848ec5d7237b7e09b17539d86b8a0689171a80a8084d61800ee63ac095f6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 68,
+    "payload": {
+      "description": "Accrual item_create: inv-1002-create",
+      "entries": 1,
+      "session_id": "inv-1002-create"
+    },
+    "prev_hash": "19eb848ec5d7237b7e09b17539d86b8a0689171a80a8084d61800ee63ac095f6",
+    "record_hash": "0831a00b36553b71889d5bac806b293a48048ef037c37d94c2fb98d0e3fb87c5",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 69,
+    "payload": {
+      "records": [
+        {
+          "id": "inv-1002",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "source:70e41ad9055bda2bb1792d922b5fe9fd71324372316098ef799c60dfb4b9df56",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:inv-1002-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "inv-1002-create"
+    },
+    "prev_hash": "0831a00b36553b71889d5bac806b293a48048ef037c37d94c2fb98d0e3fb87c5",
+    "record_hash": "68f5d33a3737ffad2b350a3644bad95a787875f5413aec44664d3f9a9d432655",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 70,
+    "payload": {
+      "session_id": "inv-1002-create",
+      "source_id": "accrual:inv-1002-create"
+    },
+    "prev_hash": "68f5d33a3737ffad2b350a3644bad95a787875f5413aec44664d3f9a9d432655",
+    "record_hash": "9be357754fab97b3b8843ae7243473d440621525b00ce2069751fb7ba8f731b3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 71,
+    "payload": {
+      "entries": 1,
+      "session_id": "inv-1002-create",
+      "source_ids": [
+        "accrual:inv-1002-create"
+      ],
+      "store_sha256": "6546ddd0d093eac7ea2ef72ad5b1abcc48ac10050bb109cecf49ddb62fcd6075"
+    },
+    "prev_hash": "9be357754fab97b3b8843ae7243473d440621525b00ce2069751fb7ba8f731b3",
+    "record_hash": "a5bfeb8fbfcfd80d7484124eef4566cc94d0ee35d74e60e0a439dc763ba93922",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 72,
+    "payload": {
+      "description": "Accrual item_offset: apply-orbit-credit",
+      "entries": 0,
+      "session_id": "apply-orbit-credit"
+    },
+    "prev_hash": "a5bfeb8fbfcfd80d7484124eef4566cc94d0ee35d74e60e0a439dc763ba93922",
+    "record_hash": "cf91541edc95ecce782f82af1272716bf118713f1d9ad70bf065ddf9650803ac",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 73,
+    "payload": {
+      "records": [
+        {
+          "id": "orbit-credit",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "application:apply-orbit-credit:orbit-credit",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "inv-1002",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "application:apply-orbit-credit:inv-1002",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:apply-orbit-credit",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "apply-orbit-credit"
+    },
+    "prev_hash": "cf91541edc95ecce782f82af1272716bf118713f1d9ad70bf065ddf9650803ac",
+    "record_hash": "34545dc2ec85893eb513a1c6c00a9b517d6437a5bc8592cc6c2feebedb7e1aae",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 74,
+    "payload": {
+      "entries": 0,
+      "session_id": "apply-orbit-credit",
+      "source_ids": [],
+      "store_sha256": "0b9ec415be8909df5a67bba4ac8799929a09b75944c2d3de0882a0dedf5a00d7"
+    },
+    "prev_hash": "34545dc2ec85893eb513a1c6c00a9b517d6437a5bc8592cc6c2feebedb7e1aae",
+    "record_hash": "be933fc489d2f6f5df0e9dbf0e3ab9cca980e0be117fca744defb08252debbb0",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 75,
+    "payload": {
+      "description": "Accrual evidence: evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21",
+      "entries": 0,
+      "session_id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21"
+    },
+    "prev_hash": "be933fc489d2f6f5df0e9dbf0e3ab9cca980e0be117fca744defb08252debbb0",
+    "record_hash": "877e1087c4ec571ec72c569e779e9e1dbf6bdc8380137cefd12e72833f02b6d8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 76,
+    "payload": {
+      "records": [
+        {
+          "id": "aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21"
+    },
+    "prev_hash": "877e1087c4ec571ec72c569e779e9e1dbf6bdc8380137cefd12e72833f02b6d8",
+    "record_hash": "a765f3e76aa11d695df531068500334cacb6926e4128d0a9f4c4f156950937bd",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 77,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21",
+      "source_ids": [],
+      "store_sha256": "cd360842aaefb3f618bd575f106fc9942de8ca2596a9cab15c4afd02b72ea272"
+    },
+    "prev_hash": "a765f3e76aa11d695df531068500334cacb6926e4128d0a9f4c4f156950937bd",
+    "record_hash": "0ad11afeac153facc81e773606785a1f12720ad49400d79f7e1bbb28626baf45",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 78,
+    "payload": {
+      "description": "Accrual schedule_create: sw-annual-create",
+      "entries": 1,
+      "session_id": "sw-annual-create"
+    },
+    "prev_hash": "0ad11afeac153facc81e773606785a1f12720ad49400d79f7e1bbb28626baf45",
+    "record_hash": "c5b3d9b01959ecb47a19d1e725085e1ddb4b170ed693b37edfbc9ab330846726",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 79,
+    "payload": {
+      "records": [
+        {
+          "id": "sw-annual",
+          "revision": 1,
+          "table": "schedules"
+        },
+        {
+          "id": "source:8a03691236bb6dc8dd97deccbcc7627d89f4cbefa21776e97bb91d8babbddc6e",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:sw-annual-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "sw-annual-create"
+    },
+    "prev_hash": "c5b3d9b01959ecb47a19d1e725085e1ddb4b170ed693b37edfbc9ab330846726",
+    "record_hash": "d99df9987464bc67e40c6da2e407f5bc839586d20f603bffd4261b71aedbbba5",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 80,
+    "payload": {
+      "session_id": "sw-annual-create",
+      "source_id": "sw-annual-payment"
+    },
+    "prev_hash": "d99df9987464bc67e40c6da2e407f5bc839586d20f603bffd4261b71aedbbba5",
+    "record_hash": "e909cf08dcb30e394eaca796765b9d78da02cbeef4bfce4556aa953556ef144d",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 81,
+    "payload": {
+      "entries": 1,
+      "session_id": "sw-annual-create",
+      "source_ids": [
+        "sw-annual-payment"
+      ],
+      "store_sha256": "d797c3882ef0ee81bb73b554953b592bd0b972364bed93ea771bafe93b193647"
+    },
+    "prev_hash": "e909cf08dcb30e394eaca796765b9d78da02cbeef4bfce4556aa953556ef144d",
+    "record_hash": "1a4f2c4aca85ba543ce890a4de274d3871cd2b5d8d1c24198712833cfd696914",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 82,
+    "payload": {
+      "description": "Accrual evidence: evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6",
+      "entries": 0,
+      "session_id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6"
+    },
+    "prev_hash": "1a4f2c4aca85ba543ce890a4de274d3871cd2b5d8d1c24198712833cfd696914",
+    "record_hash": "aa6c82bdc03ed7202c0584baf9b712057a79f51c92caa59b8db39c9df3381654",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 83,
+    "payload": {
+      "records": [
+        {
+          "id": "a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6"
+    },
+    "prev_hash": "aa6c82bdc03ed7202c0584baf9b712057a79f51c92caa59b8db39c9df3381654",
+    "record_hash": "0a8e8831b4d314154c461eeeb21e4a47d95d8eea8e70b9c22e59aed1cb22d332",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 84,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6",
+      "source_ids": [],
+      "store_sha256": "2e6373b1d28e1f2efd2fd2f60fa1da3bd9f5ac544afafbb359371d69a74cd87c"
+    },
+    "prev_hash": "0a8e8831b4d314154c461eeeb21e4a47d95d8eea8e70b9c22e59aed1cb22d332",
+    "record_hash": "6874069942830f1a66078ae619bcd0e242ddb0f6f2e844258e9e4f808b687945",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 85,
+    "payload": {
+      "description": "Accrual schedule_create: retainer-new-create",
+      "entries": 1,
+      "session_id": "retainer-new-create"
+    },
+    "prev_hash": "6874069942830f1a66078ae619bcd0e242ddb0f6f2e844258e9e4f808b687945",
+    "record_hash": "294132496b9299728403f7c4542ea99cb98ea7c6d927ffa8a6f280d638626351",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 86,
+    "payload": {
+      "records": [
+        {
+          "id": "retainer-new",
+          "revision": 1,
+          "table": "schedules"
+        },
+        {
+          "id": "source:c8d4f4a0d70f90c3cb9c1fff986ac1838d2661a60d995bdaf36473600fcf9d15",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:retainer-new-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "retainer-new-create"
+    },
+    "prev_hash": "294132496b9299728403f7c4542ea99cb98ea7c6d927ffa8a6f280d638626351",
+    "record_hash": "8da79bbc2d2f56d0c32838e65c4cb27fc7c1f69abaae909edc7751b749b7fa47",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 87,
+    "payload": {
+      "session_id": "retainer-new-create",
+      "source_id": "retainer-new-receipt"
+    },
+    "prev_hash": "8da79bbc2d2f56d0c32838e65c4cb27fc7c1f69abaae909edc7751b749b7fa47",
+    "record_hash": "5c10af2dcaf88be76569997aaa42e8369940adb0c57c1b4401e9f5556ca45f46",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 88,
+    "payload": {
+      "entries": 1,
+      "session_id": "retainer-new-create",
+      "source_ids": [
+        "retainer-new-receipt"
+      ],
+      "store_sha256": "6926685ebbc75746293b5ee5a784c383dcdeaeafcae00eabb8b041f8a7c3325a"
+    },
+    "prev_hash": "5c10af2dcaf88be76569997aaa42e8369940adb0c57c1b4401e9f5556ca45f46",
+    "record_hash": "dd6b2a4726ba7418b6e9fc8ce1936297f7f9e5958d7e1448f4e549a48d3bc7ab",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 89,
+    "payload": {
+      "description": "Accrual evidence: evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95",
+      "entries": 0,
+      "session_id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95"
+    },
+    "prev_hash": "dd6b2a4726ba7418b6e9fc8ce1936297f7f9e5958d7e1448f4e549a48d3bc7ab",
+    "record_hash": "71efa9a92d8cf429907e457de935d61ac116fa984b8129e351f26faa5939716b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 90,
+    "payload": {
+      "records": [
+        {
+          "id": "d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95"
+    },
+    "prev_hash": "71efa9a92d8cf429907e457de935d61ac116fa984b8129e351f26faa5939716b",
+    "record_hash": "ed9abfe199db28a251dc9e0be3323fc4a2540659883d9b14a36872d606b65fb2",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 91,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95",
+      "source_ids": [],
+      "store_sha256": "4e2f461582485cff766dc9bcbe3f3d6ee05f897b7344cefb48eed0ff43544b7c"
+    },
+    "prev_hash": "ed9abfe199db28a251dc9e0be3323fc4a2540659883d9b14a36872d606b65fb2",
+    "record_hash": "f03fcf3a323a9413359fe4d1598d81172c61f51d08563089ca610ffccb959fea",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 92,
+    "payload": {
+      "description": "Accrual schedule_create: laptop-new-create",
+      "entries": 1,
+      "session_id": "laptop-new-create"
+    },
+    "prev_hash": "f03fcf3a323a9413359fe4d1598d81172c61f51d08563089ca610ffccb959fea",
+    "record_hash": "dcbd761e20856ce5cd0b22a00b4cb58af5a346f07d39e977127bc05db1fa5280",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 93,
+    "payload": {
+      "records": [
+        {
+          "id": "laptop-new",
+          "revision": 1,
+          "table": "schedules"
+        },
+        {
+          "id": "source:5dbd29ece3c83cd3f70b1b9dfe6382dd277ce0405216e85064a4328b9b2ea05c",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:laptop-new-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "laptop-new-create"
+    },
+    "prev_hash": "dcbd761e20856ce5cd0b22a00b4cb58af5a346f07d39e977127bc05db1fa5280",
+    "record_hash": "f3d68006911ab19daadb9600f66219b9d8ed18857cf9718de70346e9b0e227eb",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 94,
+    "payload": {
+      "session_id": "laptop-new-create",
+      "source_id": "laptop-new-purchase"
+    },
+    "prev_hash": "f3d68006911ab19daadb9600f66219b9d8ed18857cf9718de70346e9b0e227eb",
+    "record_hash": "2d0e160adc9b5c0d939e21efb9a53909de37097508042216cf21b637bec091b1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 95,
+    "payload": {
+      "entries": 1,
+      "session_id": "laptop-new-create",
+      "source_ids": [
+        "laptop-new-purchase"
+      ],
+      "store_sha256": "c7e6bc720302933c0975d63fbcb8c970a48ab3e6d3ff606307dd70d2da6de13e"
+    },
+    "prev_hash": "2d0e160adc9b5c0d939e21efb9a53909de37097508042216cf21b637bec091b1",
+    "record_hash": "cd7395138035a759d35b1506a2fc56c9a0e2dc0a9bf7ce387ee50b7fee6a1270",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 96,
+    "payload": {
+      "description": "Accrual evidence: evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050",
+      "entries": 0,
+      "session_id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050"
+    },
+    "prev_hash": "cd7395138035a759d35b1506a2fc56c9a0e2dc0a9bf7ce387ee50b7fee6a1270",
+    "record_hash": "38d6d5214edefa3a37140aa2c7e579d7d80ea81b97ad604dc61aeb5ca627bf6d",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 97,
+    "payload": {
+      "records": [
+        {
+          "id": "a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050"
+    },
+    "prev_hash": "38d6d5214edefa3a37140aa2c7e579d7d80ea81b97ad604dc61aeb5ca627bf6d",
+    "record_hash": "be08c280c4ed73548ceff083c7a225c9e7c66d3d3d163bd6b30f544b6c6ecc6d",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 98,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050",
+      "source_ids": [],
+      "store_sha256": "3672870d252b8a4bb2942823a2da719663872e6b158d707257750f87f457dd16"
+    },
+    "prev_hash": "be08c280c4ed73548ceff083c7a225c9e7c66d3d3d163bd6b30f544b6c6ecc6d",
+    "record_hash": "94a4e72840c7db63487c88beac99bd96697d125e09a1fdac7ca3c4c2cd24a635",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 99,
+    "payload": {
+      "description": "Accrual item_settlement: pay-bill-2001",
+      "entries": 1,
+      "session_id": "pay-bill-2001"
+    },
+    "prev_hash": "94a4e72840c7db63487c88beac99bd96697d125e09a1fdac7ca3c4c2cd24a635",
+    "record_hash": "fb1ae5809ba6f8b3f93846771dc7d054ac7d84e43b0700a01fa220effc32ab24",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 100,
+    "payload": {
+      "records": [
+        {
+          "id": "source:040d6bd743599abbe103344a8705245f16e6103ad1d49f4e5ba88dc6c97fa510",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "bill-2001",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "settlement:pay-bill-2001:bill-2001",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:pay-bill-2001",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "pay-bill-2001"
+    },
+    "prev_hash": "fb1ae5809ba6f8b3f93846771dc7d054ac7d84e43b0700a01fa220effc32ab24",
+    "record_hash": "db3504ef892b7b05cfe10946899d8aa8833e17d03231fc263cbceaf9491b8910",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 101,
+    "payload": {
+      "session_id": "pay-bill-2001",
+      "source_id": "pay-bill-2001-bank"
+    },
+    "prev_hash": "db3504ef892b7b05cfe10946899d8aa8833e17d03231fc263cbceaf9491b8910",
+    "record_hash": "74b0fbca6db1b0aa4f24c0db063f76c42f84e72b074ba1629ca87a713b16655c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 102,
+    "payload": {
+      "entries": 1,
+      "session_id": "pay-bill-2001",
+      "source_ids": [
+        "pay-bill-2001-bank"
+      ],
+      "store_sha256": "5c357687e8ede12411eae30d24ee12d6177b082d4a5d045a257e1d11e4e1ba9b"
+    },
+    "prev_hash": "74b0fbca6db1b0aa4f24c0db063f76c42f84e72b074ba1629ca87a713b16655c",
+    "record_hash": "35d2cfa7ebd1e5ebf7151a1891f6d98cb99280a04e99246ffa33267462090233",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 103,
+    "payload": {
+      "description": "Accrual evidence: evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18",
+      "entries": 0,
+      "session_id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18"
+    },
+    "prev_hash": "35d2cfa7ebd1e5ebf7151a1891f6d98cb99280a04e99246ffa33267462090233",
+    "record_hash": "5311edabdd6d5adc18503dbbb1640ad208db126160f51a4596acef1970b9fbf6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 104,
+    "payload": {
+      "records": [
+        {
+          "id": "9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18"
+    },
+    "prev_hash": "5311edabdd6d5adc18503dbbb1640ad208db126160f51a4596acef1970b9fbf6",
+    "record_hash": "9310596c68f2a166ad219d751a1bd8360d38102b6b4ba4e95e7ec34ffdb07b51",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 105,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18",
+      "source_ids": [],
+      "store_sha256": "2c5610e8d915839ee648424d7feec138b3807152f1525bf9e44c7733bc98d607"
+    },
+    "prev_hash": "9310596c68f2a166ad219d751a1bd8360d38102b6b4ba4e95e7ec34ffdb07b51",
+    "record_hash": "20dd2afe8c8daca6047b9003a5af9fe9c8c3d7f3076c33b41c3ff00335f63f57",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 106,
+    "payload": {
+      "description": "Accrual item_create: bonus-estimate-create",
+      "entries": 1,
+      "session_id": "bonus-estimate-create"
+    },
+    "prev_hash": "20dd2afe8c8daca6047b9003a5af9fe9c8c3d7f3076c33b41c3ff00335f63f57",
+    "record_hash": "9491048e4cc9bfa314051561ede004966c816119dd70f4a5862d306aaeaa17a7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 107,
+    "payload": {
+      "records": [
+        {
+          "id": "bonus-estimate",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "operation:bonus-estimate-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "bonus-estimate-create"
+    },
+    "prev_hash": "9491048e4cc9bfa314051561ede004966c816119dd70f4a5862d306aaeaa17a7",
+    "record_hash": "d93ed7e6efea4bc3be60f2e0fc0e39823e9266bdde758da0f0a720dedec3f791",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 108,
+    "payload": {
+      "session_id": "bonus-estimate-create",
+      "source_id": "accrual:bonus-estimate-create"
+    },
+    "prev_hash": "d93ed7e6efea4bc3be60f2e0fc0e39823e9266bdde758da0f0a720dedec3f791",
+    "record_hash": "c67984e5c94bbd1326db94c3e81aa7523231099a7e0a7ba22588bf91d09183c9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 109,
+    "payload": {
+      "entries": 1,
+      "session_id": "bonus-estimate-create",
+      "source_ids": [
+        "accrual:bonus-estimate-create"
+      ],
+      "store_sha256": "d4f88d7e014e94da424d5fe577b53113b5064d06d006e80f6af69b14969fa8d2"
+    },
+    "prev_hash": "c67984e5c94bbd1326db94c3e81aa7523231099a7e0a7ba22588bf91d09183c9",
+    "record_hash": "feb8584dc29d0fc5ef5ea8a9ab2a64e460eb4bf50a4cab600edfda3c570f215f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 110,
+    "payload": {
+      "description": "Accrual evidence: evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb",
+      "entries": 0,
+      "session_id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb"
+    },
+    "prev_hash": "feb8584dc29d0fc5ef5ea8a9ab2a64e460eb4bf50a4cab600edfda3c570f215f",
+    "record_hash": "75743f408b7110eb536b60793d9e8e2071531d78e8be23e9b536b9f385c9d5cf",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 111,
+    "payload": {
+      "records": [
+        {
+          "id": "b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb"
+    },
+    "prev_hash": "75743f408b7110eb536b60793d9e8e2071531d78e8be23e9b536b9f385c9d5cf",
+    "record_hash": "b3f138c7bb4c5509fa562df2bd7ed03e9e8779a3df45f7363bace2741155a0af",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 112,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb",
+      "source_ids": [],
+      "store_sha256": "a75395392bbbb39d99ffc00ad203e2d3be6bd7926a1e86e83c6978791c6f722b"
+    },
+    "prev_hash": "b3f138c7bb4c5509fa562df2bd7ed03e9e8779a3df45f7363bace2741155a0af",
+    "record_hash": "c20146e1d69f6fcb24de0f2b21608c623defc2a0465c8b52392356755b5aa754",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 113,
+    "payload": {
+      "description": "Accrual item_create: bonus-actual-create",
+      "entries": 1,
+      "session_id": "bonus-actual-create"
+    },
+    "prev_hash": "c20146e1d69f6fcb24de0f2b21608c623defc2a0465c8b52392356755b5aa754",
+    "record_hash": "3e259a55fd4f8b4f4affcd25f72ccfb166bc5f958899003fa43a58635cae7392",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 114,
+    "payload": {
+      "records": [
+        {
+          "id": "bonus-actual",
+          "revision": 1,
+          "table": "items"
+        },
+        {
+          "id": "source:2724321acf5c278e23353a293b296f94bb706d9d38e5e8c55025c7b50990b19f",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:bonus-actual-create",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "bonus-actual-create"
+    },
+    "prev_hash": "3e259a55fd4f8b4f4affcd25f72ccfb166bc5f958899003fa43a58635cae7392",
+    "record_hash": "f60f74659e7a40940be3a2f5f6a2aac47a954f5a6775dcbe6742175238e48db1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 115,
+    "payload": {
+      "session_id": "bonus-actual-create",
+      "source_id": "accrual:bonus-actual-create"
+    },
+    "prev_hash": "f60f74659e7a40940be3a2f5f6a2aac47a954f5a6775dcbe6742175238e48db1",
+    "record_hash": "362d0f1a40e0fb7c8f28b3445e1522158665f7ff24a9f91dc4e8fc0dbb9cd79a",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 116,
+    "payload": {
+      "entries": 1,
+      "session_id": "bonus-actual-create",
+      "source_ids": [
+        "accrual:bonus-actual-create"
+      ],
+      "store_sha256": "1dc9b4a48d78cd1f50a4e463fc11079ad7768c7a1e665bf3559a09a07d467166"
+    },
+    "prev_hash": "362d0f1a40e0fb7c8f28b3445e1522158665f7ff24a9f91dc4e8fc0dbb9cd79a",
+    "record_hash": "4962d51b429d739bd92ff20aa0f9a00c78d3fca287d434ca521243d11355138e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 117,
+    "payload": {
+      "description": "Accrual item_adjustment: bonus-true-up",
+      "entries": 1,
+      "session_id": "bonus-true-up"
+    },
+    "prev_hash": "4962d51b429d739bd92ff20aa0f9a00c78d3fca287d434ca521243d11355138e",
+    "record_hash": "9b23f183093a2686e9b2b7c669e9ca6207615fbe1c613e182b14feea1cc5efb7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 118,
+    "payload": {
+      "records": [
+        {
+          "id": "bonus-estimate",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "adjustment:bonus-true-up",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:bonus-true-up",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "bonus-true-up"
+    },
+    "prev_hash": "9b23f183093a2686e9b2b7c669e9ca6207615fbe1c613e182b14feea1cc5efb7",
+    "record_hash": "764fa456350186798fbd3c379efb4b0c231c29424b7d438e11b27cc7e91038c8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 119,
+    "payload": {
+      "session_id": "bonus-true-up",
+      "source_id": "adjustment:bonus-true-up"
+    },
+    "prev_hash": "764fa456350186798fbd3c379efb4b0c231c29424b7d438e11b27cc7e91038c8",
+    "record_hash": "649c6f202d23d23e355e7eb51be38ccf343530de8e8f315f762184c6dc661207",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 120,
+    "payload": {
+      "entries": 1,
+      "session_id": "bonus-true-up",
+      "source_ids": [
+        "adjustment:bonus-true-up"
+      ],
+      "store_sha256": "35830b1f9cffa1a50de9d4193e900993c2676af7b9c5c38a2523031a12d2adcb"
+    },
+    "prev_hash": "649c6f202d23d23e355e7eb51be38ccf343530de8e8f315f762184c6dc661207",
+    "record_hash": "d46c20d97fb5e54f9f5c78711482025dc48cd867da07793e233a14cf305f4a1d",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 121,
+    "payload": {
+      "description": "Accrual evidence: evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9",
+      "entries": 0,
+      "session_id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9"
+    },
+    "prev_hash": "d46c20d97fb5e54f9f5c78711482025dc48cd867da07793e233a14cf305f4a1d",
+    "record_hash": "d3a2e2f65c03d4ecad36fd40a691d7287aa13e944288738b810db1b608982778",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 122,
+    "payload": {
+      "records": [
+        {
+          "id": "481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9"
+    },
+    "prev_hash": "d3a2e2f65c03d4ecad36fd40a691d7287aa13e944288738b810db1b608982778",
+    "record_hash": "b3f18e5ff78b7363bdbed29fe00946483b02d11a165dc6a367e7eb0358a08ccd",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 123,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9",
+      "source_ids": [],
+      "store_sha256": "17da6ef0dd96d76b660fd8fc340f59a7a69f1668539056c0aef02f1fa152013e"
+    },
+    "prev_hash": "b3f18e5ff78b7363bdbed29fe00946483b02d11a165dc6a367e7eb0358a08ccd",
+    "record_hash": "2b714a4085aded1bc46899804172f4aa4e5d3cbaab4497c526b76ad3757b5700",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 124,
+    "payload": {
+      "description": "Accrual item_adjustment: inv-1003-writeoff",
+      "entries": 1,
+      "session_id": "inv-1003-writeoff"
+    },
+    "prev_hash": "2b714a4085aded1bc46899804172f4aa4e5d3cbaab4497c526b76ad3757b5700",
+    "record_hash": "e73113419055cf64ffb56c974a76dacffef41efaa6a4711d7a95acabfc8008d9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 125,
+    "payload": {
+      "records": [
+        {
+          "id": "inv-1003",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "adjustment:inv-1003-writeoff-source",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "source:39211449e17cd14ba1f08677c4c367e9e630b90fd63bb548c703362871ac0192",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:inv-1003-writeoff",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "inv-1003-writeoff"
+    },
+    "prev_hash": "e73113419055cf64ffb56c974a76dacffef41efaa6a4711d7a95acabfc8008d9",
+    "record_hash": "08518e14d2dd4cfa38e1b416e62d9c1cdbfc3a80eb6394700b2128537b058aaa",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 126,
+    "payload": {
+      "session_id": "inv-1003-writeoff",
+      "source_id": "adjustment:inv-1003-writeoff"
+    },
+    "prev_hash": "08518e14d2dd4cfa38e1b416e62d9c1cdbfc3a80eb6394700b2128537b058aaa",
+    "record_hash": "182f97a903868d40ac49da38b5eccd5fda47899c99c3ac2a84221e15cd071672",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 127,
+    "payload": {
+      "entries": 1,
+      "session_id": "inv-1003-writeoff",
+      "source_ids": [
+        "adjustment:inv-1003-writeoff"
+      ],
+      "store_sha256": "f2893c7f5a057abfb19cf3aa772296de03bef7ee0747d94d6986d5c1520a4d29"
+    },
+    "prev_hash": "182f97a903868d40ac49da38b5eccd5fda47899c99c3ac2a84221e15cd071672",
+    "record_hash": "007e86e75b6f1dcd57c69b8d4bb9ff0423c07714e049bfcd991be86aa0e22b2c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 128,
+    "payload": {
+      "description": "Accrual evidence: evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b",
+      "entries": 0,
+      "session_id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b"
+    },
+    "prev_hash": "007e86e75b6f1dcd57c69b8d4bb9ff0423c07714e049bfcd991be86aa0e22b2c",
+    "record_hash": "5294a008f5f0fe44a2969cda7865dd87bc37d22da9c1eb81ca07c029b34d54d6",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 129,
+    "payload": {
+      "records": [
+        {
+          "id": "60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b"
+    },
+    "prev_hash": "5294a008f5f0fe44a2969cda7865dd87bc37d22da9c1eb81ca07c029b34d54d6",
+    "record_hash": "e65ab99f9d84c8e0aee37b046207018512342cf6a84a916a063aa54b0f9b75da",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 130,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b",
+      "source_ids": [],
+      "store_sha256": "41fd1054a906b0eef19fdaef7a411a760f86c9255f494b9697c472f18273dd0d"
+    },
+    "prev_hash": "e65ab99f9d84c8e0aee37b046207018512342cf6a84a916a063aa54b0f9b75da",
+    "record_hash": "f5771f116eaadc174ab90d3a4c3eb5a80dc965bf60f4f26f9c3d544aebb2c368",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 131,
+    "payload": {
+      "description": "Accrual item_settlement: pay-inv-1002",
+      "entries": 1,
+      "session_id": "pay-inv-1002"
+    },
+    "prev_hash": "f5771f116eaadc174ab90d3a4c3eb5a80dc965bf60f4f26f9c3d544aebb2c368",
+    "record_hash": "6f1fe1af6010b72679a3d8ee91dcf828bd4f10b9a810fd7854d9f223377b4eb4",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 132,
+    "payload": {
+      "records": [
+        {
+          "id": "source:6422e6a54e71d7937ece2a3ccd27c8547a08899159bb7cc12aa8b92c100809eb",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "inv-1002",
+          "revision": 3,
+          "table": "items"
+        },
+        {
+          "id": "settlement:pay-inv-1002:inv-1002",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:pay-inv-1002",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "pay-inv-1002"
+    },
+    "prev_hash": "6f1fe1af6010b72679a3d8ee91dcf828bd4f10b9a810fd7854d9f223377b4eb4",
+    "record_hash": "0e187eb12ac9aec84f86e9714d9fd7e256dc8be5f02097b2223cefee52e9b60f",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 133,
+    "payload": {
+      "session_id": "pay-inv-1002",
+      "source_id": "pay-inv-1002-bank"
+    },
+    "prev_hash": "0e187eb12ac9aec84f86e9714d9fd7e256dc8be5f02097b2223cefee52e9b60f",
+    "record_hash": "32ac1ba08ad980d851a7d4f33de08b9ade12ec5790334b33639cf2b8802a3ad9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 134,
+    "payload": {
+      "entries": 1,
+      "session_id": "pay-inv-1002",
+      "source_ids": [
+        "pay-inv-1002-bank"
+      ],
+      "store_sha256": "f31433ef2d5ef55704cf0d64f943f62219cbaf5e98e3939cab7e696a8cc22177"
+    },
+    "prev_hash": "32ac1ba08ad980d851a7d4f33de08b9ade12ec5790334b33639cf2b8802a3ad9",
+    "record_hash": "dfbd85accd07e751fe06d930e762f48a90ce7475c09e4b8e7bab0cafd85573a5",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 135,
+    "payload": {
+      "description": "Accrual evidence: evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353",
+      "entries": 0,
+      "session_id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353"
+    },
+    "prev_hash": "dfbd85accd07e751fe06d930e762f48a90ce7475c09e4b8e7bab0cafd85573a5",
+    "record_hash": "6395a82acca7598086e7c7db97dd9730c80519a047543a1b70f3a360c200cc65",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 136,
+    "payload": {
+      "records": [
+        {
+          "id": "3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353",
+          "revision": 1,
+          "table": "evidence"
+        },
+        {
+          "id": "operation:evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353"
+    },
+    "prev_hash": "6395a82acca7598086e7c7db97dd9730c80519a047543a1b70f3a360c200cc65",
+    "record_hash": "bed8db6171054da11d53f61fc3abf5f758348ddb687017dfecd79cec1cb8a790",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 137,
+    "payload": {
+      "entries": 0,
+      "session_id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353",
+      "source_ids": [],
+      "store_sha256": "079ac53c969fd755712b95b06c266c9779d3981b3c65b04453ff9d5da466fb55"
+    },
+    "prev_hash": "bed8db6171054da11d53f61fc3abf5f758348ddb687017dfecd79cec1cb8a790",
+    "record_hash": "57f5f3fe83c09466be20c4239874ff6ceef25c546e62517cf929b473eb36e963",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 138,
+    "payload": {
+      "description": "Accrual item_settlement: pay-bonus-actual",
+      "entries": 1,
+      "session_id": "pay-bonus-actual"
+    },
+    "prev_hash": "57f5f3fe83c09466be20c4239874ff6ceef25c546e62517cf929b473eb36e963",
+    "record_hash": "478ffe8abdee9e9e804679abc289ad896b5a17fd9a9ecd16cb6f94c31461b914",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 139,
+    "payload": {
+      "records": [
+        {
+          "id": "source:b888c745f4c820c0931775ac48ee4d57693f2006a238a279a1684b6cfeb8a922",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "bonus-actual",
+          "revision": 2,
+          "table": "items"
+        },
+        {
+          "id": "settlement:pay-bonus-actual:bonus-actual",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "operation:pay-bonus-actual",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "pay-bonus-actual"
+    },
+    "prev_hash": "478ffe8abdee9e9e804679abc289ad896b5a17fd9a9ecd16cb6f94c31461b914",
+    "record_hash": "5f53f73d4f361c1c83563f9c67d4a3a1391146d7ab45ed7aa49e36e1812a5e34",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 140,
+    "payload": {
+      "session_id": "pay-bonus-actual",
+      "source_id": "pay-bonus-actual-bank"
+    },
+    "prev_hash": "5f53f73d4f361c1c83563f9c67d4a3a1391146d7ab45ed7aa49e36e1812a5e34",
+    "record_hash": "24df27996f0e1f9b42a6f9824037f427b09f9cb5669acea761213dcfa67d4fba",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 141,
+    "payload": {
+      "entries": 1,
+      "session_id": "pay-bonus-actual",
+      "source_ids": [
+        "pay-bonus-actual-bank"
+      ],
+      "store_sha256": "5015d1dd39e4f1fddef33340d01a7c98cfe3abfec3ddae46bcd8459bda24c1ad"
+    },
+    "prev_hash": "24df27996f0e1f9b42a6f9824037f427b09f9cb5669acea761213dcfa67d4fba",
+    "record_hash": "e6036eea854ff1027551f2f5a795287be91f74e53fbc7b4dbb8e0173abfd60eb",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 142,
+    "payload": {
+      "description": "Accrual journal: utilities-estimate-mar",
+      "entries": 1,
+      "session_id": "utilities-estimate-mar"
+    },
+    "prev_hash": "e6036eea854ff1027551f2f5a795287be91f74e53fbc7b4dbb8e0173abfd60eb",
+    "record_hash": "337bc684639276f1a2a0f427c9344af78cfae68cdbcf236884de16b1c7ca1dff",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 143,
+    "payload": {
+      "records": [
+        {
+          "id": "reversal:utilities-estimate-mar",
+          "revision": 1,
+          "table": "intents"
+        },
+        {
+          "id": "operation:utilities-estimate-mar",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "utilities-estimate-mar"
+    },
+    "prev_hash": "337bc684639276f1a2a0f427c9344af78cfae68cdbcf236884de16b1c7ca1dff",
+    "record_hash": "318d33bd413d1affc5d5feb8757088d7da9860ec06e0763529f136146b8f32ba",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 144,
+    "payload": {
+      "session_id": "utilities-estimate-mar",
+      "source_id": "accrual:utilities-estimate-mar"
+    },
+    "prev_hash": "318d33bd413d1affc5d5feb8757088d7da9860ec06e0763529f136146b8f32ba",
+    "record_hash": "22ebebb606187a9cab8c3270e55d7a09b0af5187464c61d4e1c47d7c93e1d88b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 145,
+    "payload": {
+      "entries": 1,
+      "session_id": "utilities-estimate-mar",
+      "source_ids": [
+        "accrual:utilities-estimate-mar"
+      ],
+      "store_sha256": "fefb0b163e326ef8dc9097c156a8794c4759e9440b257fe3d4dbd9292a319517"
+    },
+    "prev_hash": "22ebebb606187a9cab8c3270e55d7a09b0af5187464c61d4e1c47d7c93e1d88b",
+    "record_hash": "bf7e1652587abd3be700a14c77b734b2d7f055d06b8b95f1338df4b6dc3c16a1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 146,
+    "payload": {
+      "description": "Accrual schedule_due: recognize-2026-01-31",
+      "entries": 3,
+      "session_id": "recognize-2026-01-31"
+    },
+    "prev_hash": "bf7e1652587abd3be700a14c77b734b2d7f055d06b8b95f1338df4b6dc3c16a1",
+    "record_hash": "ace4e31f09cb4bf5c9019868edad1672ba1e3c1b5978dff18622309019d2dcd5",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 147,
+    "payload": {
+      "records": [
+        {
+          "id": "recognition:insurance-h2:0:2026-01-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "insurance-h2",
+          "revision": 2,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:laptop-old:0:2026-01-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "laptop-old",
+          "revision": 2,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:retainer-h2:0:2026-01-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "retainer-h2",
+          "revision": 2,
+          "table": "schedules"
+        },
+        {
+          "id": "operation:recognize-2026-01-31",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "recognize-2026-01-31"
+    },
+    "prev_hash": "ace4e31f09cb4bf5c9019868edad1672ba1e3c1b5978dff18622309019d2dcd5",
+    "record_hash": "660fd24665206f2ba1ff3f008ac5018f480a3d671c723f37fb0fa666f49315d7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 148,
+    "payload": {
+      "session_id": "recognize-2026-01-31",
+      "source_id": "schedule:recognition:insurance-h2:0:2026-01-31"
+    },
+    "prev_hash": "660fd24665206f2ba1ff3f008ac5018f480a3d671c723f37fb0fa666f49315d7",
+    "record_hash": "202a532fd2aeaaa31b4e71e5f32e1d9b02d058ac8f02f11fc64a1c418ab3c8ff",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 149,
+    "payload": {
+      "session_id": "recognize-2026-01-31",
+      "source_id": "schedule:recognition:laptop-old:0:2026-01-31"
+    },
+    "prev_hash": "202a532fd2aeaaa31b4e71e5f32e1d9b02d058ac8f02f11fc64a1c418ab3c8ff",
+    "record_hash": "9271588b35d53edd3eb4b0a56e3bd48cc46f76b0e8461f0cbb254fdedcb8b608",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 150,
+    "payload": {
+      "session_id": "recognize-2026-01-31",
+      "source_id": "schedule:recognition:retainer-h2:0:2026-01-31"
+    },
+    "prev_hash": "9271588b35d53edd3eb4b0a56e3bd48cc46f76b0e8461f0cbb254fdedcb8b608",
+    "record_hash": "a1be86f594fd3618d12d3376267f9caa6cb8c068ca1e1a2ce43bcc71727c23ae",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 151,
+    "payload": {
+      "entries": 3,
+      "session_id": "recognize-2026-01-31",
+      "source_ids": [
+        "schedule:recognition:insurance-h2:0:2026-01-31",
+        "schedule:recognition:laptop-old:0:2026-01-31",
+        "schedule:recognition:retainer-h2:0:2026-01-31"
+      ],
+      "store_sha256": "cb4cd202c4b2db246b5cfde3f77c9a70d8d0fbe203044716076d6ca4b9c17527"
+    },
+    "prev_hash": "a1be86f594fd3618d12d3376267f9caa6cb8c068ca1e1a2ce43bcc71727c23ae",
+    "record_hash": "acba05c24ed56a6b17effa8e1a117753173b89e6477670f859d808078390adca",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 152,
+    "payload": {
+      "description": "Accrual schedule_due: recognize-2026-02-28",
+      "entries": 6,
+      "session_id": "recognize-2026-02-28"
+    },
+    "prev_hash": "acba05c24ed56a6b17effa8e1a117753173b89e6477670f859d808078390adca",
+    "record_hash": "e724e6e7d0d02c8f8bc85de088af70d22bc3b45d89cc16e00928befd63b4680a",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 153,
+    "payload": {
+      "records": [
+        {
+          "id": "recognition:insurance-h2:0:2026-02-28",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "insurance-h2",
+          "revision": 3,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:laptop-new:0:2026-02-28",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "laptop-new",
+          "revision": 2,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:laptop-old:0:2026-02-28",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "laptop-old",
+          "revision": 3,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:retainer-h2:0:2026-02-28",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "retainer-h2",
+          "revision": 3,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:retainer-new:0:2026-02-28",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "retainer-new",
+          "revision": 2,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:sw-annual:0:2026-02-28",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "sw-annual",
+          "revision": 2,
+          "table": "schedules"
+        },
+        {
+          "id": "operation:recognize-2026-02-28",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "recognize-2026-02-28"
+    },
+    "prev_hash": "e724e6e7d0d02c8f8bc85de088af70d22bc3b45d89cc16e00928befd63b4680a",
+    "record_hash": "d156ae7c52dc8ef58c689f767a81d0d72f2d6028fc637c30e2b949116b82fa4c",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 154,
+    "payload": {
+      "session_id": "recognize-2026-02-28",
+      "source_id": "schedule:recognition:insurance-h2:0:2026-02-28"
+    },
+    "prev_hash": "d156ae7c52dc8ef58c689f767a81d0d72f2d6028fc637c30e2b949116b82fa4c",
+    "record_hash": "d4b08a35f33e4691b0c2e585d8753de486d3719477f793429e643937410f5c9b",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 155,
+    "payload": {
+      "session_id": "recognize-2026-02-28",
+      "source_id": "schedule:recognition:laptop-new:0:2026-02-28"
+    },
+    "prev_hash": "d4b08a35f33e4691b0c2e585d8753de486d3719477f793429e643937410f5c9b",
+    "record_hash": "24c8373c53bfe3a60680fe7b3aa124dcfaabd801e0b8685c4201feccf928cd39",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 156,
+    "payload": {
+      "session_id": "recognize-2026-02-28",
+      "source_id": "schedule:recognition:laptop-old:0:2026-02-28"
+    },
+    "prev_hash": "24c8373c53bfe3a60680fe7b3aa124dcfaabd801e0b8685c4201feccf928cd39",
+    "record_hash": "92bd4fae0f7ef4fa8cd7455fa70e6cc50a18527b11a194d3fb3eb6893dedf34a",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 157,
+    "payload": {
+      "session_id": "recognize-2026-02-28",
+      "source_id": "schedule:recognition:retainer-h2:0:2026-02-28"
+    },
+    "prev_hash": "92bd4fae0f7ef4fa8cd7455fa70e6cc50a18527b11a194d3fb3eb6893dedf34a",
+    "record_hash": "5581fdc82ebeea4bcdecee2e2eeaa2566f4b294db0f761ed798be8f6b38659f1",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 158,
+    "payload": {
+      "session_id": "recognize-2026-02-28",
+      "source_id": "schedule:recognition:retainer-new:0:2026-02-28"
+    },
+    "prev_hash": "5581fdc82ebeea4bcdecee2e2eeaa2566f4b294db0f761ed798be8f6b38659f1",
+    "record_hash": "49bde434f9ba4e0b0b303c7622a043d04eb247a42e76d3759790a742c6e86e47",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 159,
+    "payload": {
+      "session_id": "recognize-2026-02-28",
+      "source_id": "schedule:recognition:sw-annual:0:2026-02-28"
+    },
+    "prev_hash": "49bde434f9ba4e0b0b303c7622a043d04eb247a42e76d3759790a742c6e86e47",
+    "record_hash": "ffc211b932114cf7aafe833d7f07783fdbaa5f88233d6cd10c74b67ef51651ff",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 160,
+    "payload": {
+      "entries": 6,
+      "session_id": "recognize-2026-02-28",
+      "source_ids": [
+        "schedule:recognition:insurance-h2:0:2026-02-28",
+        "schedule:recognition:laptop-new:0:2026-02-28",
+        "schedule:recognition:laptop-old:0:2026-02-28",
+        "schedule:recognition:retainer-h2:0:2026-02-28",
+        "schedule:recognition:retainer-new:0:2026-02-28",
+        "schedule:recognition:sw-annual:0:2026-02-28"
+      ],
+      "store_sha256": "412a42441bb07ad0bf463db8ad436c425520d590dcb735aeb5726d5f83b72ca2"
+    },
+    "prev_hash": "ffc211b932114cf7aafe833d7f07783fdbaa5f88233d6cd10c74b67ef51651ff",
+    "record_hash": "fba64334e3dbe79d28cbdd54fceea63950850e639d43a4c1d0485df000f575e7",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 161,
+    "payload": {
+      "description": "Accrual schedule_due: recognize-2026-03-31",
+      "entries": 6,
+      "session_id": "recognize-2026-03-31"
+    },
+    "prev_hash": "fba64334e3dbe79d28cbdd54fceea63950850e639d43a4c1d0485df000f575e7",
+    "record_hash": "0671c73107465cc839c46f76e49378a8c2cdf24dc19e36c3e6dba0880ad19719",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 162,
+    "payload": {
+      "records": [
+        {
+          "id": "recognition:insurance-h2:0:2026-03-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "insurance-h2",
+          "revision": 4,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:laptop-new:0:2026-03-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "laptop-new",
+          "revision": 3,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:laptop-old:0:2026-03-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "laptop-old",
+          "revision": 4,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:retainer-h2:0:2026-03-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "retainer-h2",
+          "revision": 4,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:retainer-new:0:2026-03-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "retainer-new",
+          "revision": 3,
+          "table": "schedules"
+        },
+        {
+          "id": "recognition:sw-annual:0:2026-03-31",
+          "revision": 1,
+          "table": "allocations"
+        },
+        {
+          "id": "sw-annual",
+          "revision": 3,
+          "table": "schedules"
+        },
+        {
+          "id": "operation:recognize-2026-03-31",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "recognize-2026-03-31"
+    },
+    "prev_hash": "0671c73107465cc839c46f76e49378a8c2cdf24dc19e36c3e6dba0880ad19719",
+    "record_hash": "365bd822bdc6ed2b306a22803f94622b606028414ec3f0404339fb05c2954013",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 163,
+    "payload": {
+      "session_id": "recognize-2026-03-31",
+      "source_id": "schedule:recognition:insurance-h2:0:2026-03-31"
+    },
+    "prev_hash": "365bd822bdc6ed2b306a22803f94622b606028414ec3f0404339fb05c2954013",
+    "record_hash": "8f8c48b7b40b19ba7781e2ee2e4dbfba010e1ad1b9afcb757ce8c743bded5fe4",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 164,
+    "payload": {
+      "session_id": "recognize-2026-03-31",
+      "source_id": "schedule:recognition:laptop-new:0:2026-03-31"
+    },
+    "prev_hash": "8f8c48b7b40b19ba7781e2ee2e4dbfba010e1ad1b9afcb757ce8c743bded5fe4",
+    "record_hash": "72026411400dc249a4ed9a9a2f4b70bc98f201571dd5e78bcfb1585bf649c0e8",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 165,
+    "payload": {
+      "session_id": "recognize-2026-03-31",
+      "source_id": "schedule:recognition:laptop-old:0:2026-03-31"
+    },
+    "prev_hash": "72026411400dc249a4ed9a9a2f4b70bc98f201571dd5e78bcfb1585bf649c0e8",
+    "record_hash": "0f5ab8d0a1951bc60d8628bf3c53bde1ab9d437772eb5d5b1556d7e38043ee3e",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 166,
+    "payload": {
+      "session_id": "recognize-2026-03-31",
+      "source_id": "schedule:recognition:retainer-h2:0:2026-03-31"
+    },
+    "prev_hash": "0f5ab8d0a1951bc60d8628bf3c53bde1ab9d437772eb5d5b1556d7e38043ee3e",
+    "record_hash": "2122a2fb92e371bba7c4b3dd7a155dc4f727867b3540ec52818ef2538a875272",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 167,
+    "payload": {
+      "session_id": "recognize-2026-03-31",
+      "source_id": "schedule:recognition:retainer-new:0:2026-03-31"
+    },
+    "prev_hash": "2122a2fb92e371bba7c4b3dd7a155dc4f727867b3540ec52818ef2538a875272",
+    "record_hash": "f6dbaf9b3bfd1074a3cf8a5c26f97c405c90c0dba571df6ad046017621b4cb73",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 168,
+    "payload": {
+      "session_id": "recognize-2026-03-31",
+      "source_id": "schedule:recognition:sw-annual:0:2026-03-31"
+    },
+    "prev_hash": "f6dbaf9b3bfd1074a3cf8a5c26f97c405c90c0dba571df6ad046017621b4cb73",
+    "record_hash": "8e5baed922f0e6f6571edd8c28b23635921ed616384a4e72a75045da27e09802",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "entry-written"
+  },
+  {
+    "id": 169,
+    "payload": {
+      "entries": 6,
+      "session_id": "recognize-2026-03-31",
+      "source_ids": [
+        "schedule:recognition:insurance-h2:0:2026-03-31",
+        "schedule:recognition:laptop-new:0:2026-03-31",
+        "schedule:recognition:laptop-old:0:2026-03-31",
+        "schedule:recognition:retainer-h2:0:2026-03-31",
+        "schedule:recognition:retainer-new:0:2026-03-31",
+        "schedule:recognition:sw-annual:0:2026-03-31"
+      ],
+      "store_sha256": "2c111e423b1c39cc789e6742fa49fa72a5bca410af6b7e7114628b6ffaf65c49"
+    },
+    "prev_hash": "8e5baed922f0e6f6571edd8c28b23635921ed616384a4e72a75045da27e09802",
+    "record_hash": "5800cfa639c61964fcdf699a12b8895d1be18ec2b089073a86c6a417204f0229",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  },
+  {
+    "id": 170,
+    "payload": {
+      "description": "Accrual period_close: close-2026-01",
+      "entries": 0,
+      "session_id": "close-2026-01"
+    },
+    "prev_hash": "5800cfa639c61964fcdf699a12b8895d1be18ec2b089073a86c6a417204f0229",
+    "record_hash": "2a7a8a8eafca5876af2eab047af68f125f33c05db7b029d742eca552bb624490",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "intent"
+  },
+  {
+    "id": 171,
+    "payload": {
+      "records": [
+        {
+          "id": "2026-01",
+          "revision": 1,
+          "table": "periods"
+        },
+        {
+          "id": "operation:close-2026-01",
+          "revision": 1,
+          "table": "intents"
+        }
+      ],
+      "session_id": "close-2026-01"
+    },
+    "prev_hash": "2a7a8a8eafca5876af2eab047af68f125f33c05db7b029d742eca552bb624490",
+    "record_hash": "6f9a24b68bfa0a925287a7a2847b8732956b408dce4362ddcb726d57d9d84ec3",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "supporting-records-written"
+  },
+  {
+    "id": 172,
+    "payload": {
+      "entries": 0,
+      "session_id": "close-2026-01",
+      "source_ids": [],
+      "store_sha256": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097"
+    },
+    "prev_hash": "6f9a24b68bfa0a925287a7a2847b8732956b408dce4362ddcb726d57d9d84ec3",
+    "record_hash": "7b33b0d018ca160ec08e361d4e6fbcfe6136e1ffa9743fac78fcd0cb45692ac9",
+    "ts": "2026-08-05T12:00:00Z",
+    "type": "ledger-store-sealed"
+  }
+]

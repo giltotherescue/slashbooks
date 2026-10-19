@@ -1,0 +1,136 @@
+General Ledger  2026-01-01  through  2026-03-31
+===============================================
+Accounting basis: accrual
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+
+Assets › Bank › Checking
+----------------------------------------
+  2026-01-15  |  Payment to Delta Design: BILL-311: Delta Design (BILL-311)      -1,500.00
+  2026-01-20  |  Payment from Orbit Labs: INV-0950: Orbit Labs (INV-0950)       2,500.00
+  2026-02-01  |  Prepaid expense                -1,200.00
+  2026-02-01  |  Deferred revenue received       3,600.00
+  2026-02-05  |  Payment from Orbit Labs: Overpayment: Orbit Labs (Overpayment, inv-1001)       6,500.00
+  2026-02-10  |  Equipment purchase             -3,600.00
+  2026-02-20  |  Payment to Granite Hosting: Granite Hosting (bill-2001)        -800.00
+  2026-03-18  |  Payment from Orbit Labs: Orbit Labs (inv-1002)       2,500.00
+  2026-03-25  |  Payment to Staff: Staff (bonus-actual)        -700.00
+  Account Total                                  7,300.00
+
+Assets › Fixed › Accumulated-Depreciation
+----------------------------------------
+  2026-01-31  |  Depreciation: dated 2025-03-01 (Jan 2026)        -100.00
+  2026-02-28  |  Depreciation: dated 2026-02-01 (Feb 2026)        -100.00
+  2026-02-28  |  Depreciation: dated 2025-03-01 (Feb 2026)        -100.00
+  2026-03-31  |  Depreciation: dated 2026-02-01 (Mar 2026)        -100.00
+  2026-03-31  |  Depreciation: dated 2025-03-01 (Mar 2026)        -100.00
+  Account Total                                   -500.00
+
+Assets › Fixed › Equipment
+----------------------------------------
+  2026-02-10  |  Equipment purchase              3,600.00
+  Account Total                                  3,600.00
+
+Assets › Other › Prepaid-Expenses
+----------------------------------------
+  2026-01-31  |  Prepaid expense used: dated 2025-07-01 (Jan 2026)        -100.00
+  2026-02-01  |  Prepaid expense                 1,200.00
+  2026-02-28  |  Prepaid expense used: dated 2025-07-01 (Feb 2026)        -100.00
+  2026-02-28  |  Prepaid expense used: dated 2026-02-01 (Feb 2026)        -100.00
+  2026-03-31  |  Prepaid expense used: dated 2025-07-01 (Mar 2026)        -100.00
+  2026-03-31  |  Prepaid expense used: dated 2026-02-01 (Mar 2026)        -100.00
+  Account Total                                    700.00
+
+Assets › Receivable › Accounts-Receivable
+----------------------------------------
+  2026-01-10  |  Invoice: Orbit Labs             6,000.00
+  2026-01-12  |  Invoice: Kestrel Foods            900.00
+  2026-01-20  |  Payment from Orbit Labs: INV-0950: Orbit Labs (INV-0950)      -2,500.00
+  2026-02-05  |  Payment from Orbit Labs: Overpayment: Orbit Labs (Overpayment, inv-1001)      -6,000.00
+  2026-02-05  |  Payment from Orbit Labs: Overpayment: Orbit Labs (Overpayment, inv-1001)        -500.00
+  2026-02-15  |  Invoice: Orbit Labs             3,000.00
+  2026-03-18  |  Payment from Orbit Labs: Orbit Labs (inv-1002)      -2,500.00
+  2026-03-20  |  Written off: Kestrel Foods - Synthetic uncollectible balance        -300.00
+  Account Total                                 -1,900.00
+
+Expenses › Bad-Debt
+----------------------------------------
+  2026-03-20  |  Written off: Kestrel Foods - Synthetic uncollectible balance         300.00
+  Account Total                                    300.00
+
+Expenses › Bonus
+----------------------------------------
+  2026-02-28  |  Estimate: Staff                 1,000.00
+  2026-03-10  |  Bill: Staff                       700.00
+  2026-03-10  |  Estimate settled: Staff (actual: Staff) - Actual bonus approved      -1,000.00
+  Account Total                                    700.00
+
+Expenses › Depreciation
+----------------------------------------
+  2026-01-31  |  Depreciation: dated 2025-03-01 (Jan 2026)         100.00
+  2026-02-28  |  Depreciation: dated 2026-02-01 (Feb 2026)         100.00
+  2026-02-28  |  Depreciation: dated 2025-03-01 (Feb 2026)         100.00
+  2026-03-31  |  Depreciation: dated 2026-02-01 (Mar 2026)         100.00
+  2026-03-31  |  Depreciation: dated 2025-03-01 (Mar 2026)         100.00
+  Account Total                                    500.00
+
+Expenses › Insurance
+----------------------------------------
+  2026-01-31  |  Prepaid expense used: dated 2025-07-01 (Jan 2026)         100.00
+  2026-02-28  |  Prepaid expense used: dated 2025-07-01 (Feb 2026)         100.00
+  2026-03-31  |  Prepaid expense used: dated 2025-07-01 (Mar 2026)         100.00
+  Account Total                                    300.00
+
+Expenses › Software
+----------------------------------------
+  2026-02-03  |  Bill: Granite Hosting             800.00
+  2026-02-28  |  Prepaid expense used: dated 2026-02-01 (Feb 2026)         100.00
+  2026-03-31  |  Prepaid expense used: dated 2026-02-01 (Mar 2026)         100.00
+  Account Total                                  1,000.00
+
+Expenses › Utilities
+----------------------------------------
+  2026-01-31  |  Estimated January utilities         450.00
+  2026-02-01  |  Reversal of: Estimated January utilities        -450.00
+  2026-03-31  |  Estimated March utilities         470.00
+  Account Total                                    470.00
+
+Income › Consulting
+----------------------------------------
+  2026-01-10  |  Invoice: Orbit Labs            -6,000.00
+  2026-01-12  |  Invoice: Kestrel Foods           -900.00
+  2026-01-31  |  Deferred revenue earned: dated 2025-07-01 (Jan 2026)        -100.00
+  2026-02-15  |  Invoice: Orbit Labs            -3,000.00
+  2026-02-28  |  Deferred revenue earned: dated 2025-07-01 (Feb 2026)        -100.00
+  2026-02-28  |  Deferred revenue earned: dated 2026-02-01 (Feb 2026)        -600.00
+  2026-03-31  |  Deferred revenue earned: dated 2025-07-01 (Mar 2026)        -100.00
+  2026-03-31  |  Deferred revenue earned: dated 2026-02-01 (Mar 2026)        -600.00
+  Account Total                                -11,400.00
+
+Liabilities › Other › Accrued-Liabilities
+----------------------------------------
+  2026-01-31  |  Estimated January utilities        -450.00
+  2026-02-01  |  Reversal of: Estimated January utilities         450.00
+  2026-03-31  |  Estimated March utilities        -470.00
+  Account Total                                   -470.00
+
+Liabilities › Other › Deferred-Revenue
+----------------------------------------
+  2026-01-31  |  Deferred revenue earned: dated 2025-07-01 (Jan 2026)         100.00
+  2026-02-01  |  Deferred revenue received      -3,600.00
+  2026-02-28  |  Deferred revenue earned: dated 2025-07-01 (Feb 2026)         100.00
+  2026-02-28  |  Deferred revenue earned: dated 2026-02-01 (Feb 2026)         600.00
+  2026-03-31  |  Deferred revenue earned: dated 2025-07-01 (Mar 2026)         100.00
+  2026-03-31  |  Deferred revenue earned: dated 2026-02-01 (Mar 2026)         600.00
+  Account Total                                 -2,100.00
+
+Liabilities › Payable › Accounts-Payable
+----------------------------------------
+  2026-01-15  |  Payment to Delta Design: BILL-311: Delta Design (BILL-311)       1,500.00
+  2026-02-03  |  Bill: Granite Hosting            -800.00
+  2026-02-20  |  Payment to Granite Hosting: Granite Hosting (bill-2001)         800.00
+  2026-02-28  |  Estimate: Staff                -1,000.00
+  2026-03-10  |  Bill: Staff                      -700.00
+  2026-03-10  |  Estimate settled: Staff (actual: Staff) - Actual bonus approved       1,000.00
+  2026-03-25  |  Payment to Staff: Staff (bonus-actual)         700.00
+  Account Total                                  1,500.00
+

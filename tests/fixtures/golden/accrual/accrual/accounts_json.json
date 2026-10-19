@@ -1,0 +1,312 @@
+{
+  "accounts": [
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Assets:Bank:Checking",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": false,
+      "role": "cash_or_bank",
+      "subtype": "bank",
+      "support_records": {},
+      "type": "Assets"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Assets:Fixed:Accumulated-Depreciation",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "accumulated_depreciation",
+      "support_records": {},
+      "type": "Assets"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Assets:Fixed:Equipment",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "fixed_asset",
+      "support_records": {
+        "schedules": 2
+      },
+      "type": "Assets"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Assets:Other:Prepaid-Expenses",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "prepaid",
+      "support_records": {
+        "schedules": 2
+      },
+      "type": "Assets"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Assets:Receivable:Accounts-Receivable",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "receivable",
+      "support_records": {
+        "items": 5
+      },
+      "type": "Assets"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Equity:Opening-Balances",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": false,
+      "role": "equity",
+      "subtype": "equity",
+      "support_records": {},
+      "type": "Equity"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Equity:Owner-Contributions",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "equity",
+      "subtype": "equity",
+      "support_records": {},
+      "type": "Equity"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Equity:Owner-Draws",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "equity",
+      "subtype": "equity",
+      "support_records": {},
+      "type": "Equity"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Expenses:Bad-Debt",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Expenses:Bonus",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Expenses:Depreciation",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Fees",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Expenses:Insurance",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Marketing",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Meals",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Office",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Expenses:Software",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Subcontractors",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Taxes",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Travel",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Expenses:Utilities",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Income:Consulting",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "income",
+      "subtype": "income",
+      "support_records": {},
+      "type": "Income"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Liabilities:CreditCard",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "card",
+      "subtype": "credit_card",
+      "support_records": {},
+      "type": "Liabilities"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Liabilities:Other:Accrued-Liabilities",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "accrued_liabilities",
+      "support_records": {},
+      "type": "Liabilities"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Liabilities:Other:Customer-Deposits",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "customer_deposits",
+      "support_records": {},
+      "type": "Liabilities"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Liabilities:Other:Deferred-Revenue",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "deferred_revenue",
+      "support_records": {
+        "schedules": 2
+      },
+      "type": "Liabilities"
+    },
+    {
+      "currency": "USD",
+      "has_postings": true,
+      "name": "Liabilities:Payable:Accounts-Payable",
+      "open_date": "2025-12-31",
+      "reconciles_to_support": true,
+      "role": "control",
+      "subtype": "payable",
+      "support_records": {
+        "items": 4
+      },
+      "type": "Liabilities"
+    }
+  ],
+  "basis": "accrual"
+}

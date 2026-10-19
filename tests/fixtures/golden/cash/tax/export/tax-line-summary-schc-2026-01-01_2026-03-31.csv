@@ -1,0 +1,15 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+Tax Form,Schedule,Form Line,Tax Line Code,Tax Line,Statement Detail,Beginning Book Amount,Book Amount,Normal Side,On Return,Accounts,Note
+Schedule C (Form 1040),I,1,schc/I/1,Gross receipts or sales,,,26350.00,credit,yes,Income:Consulting,
+Schedule C (Form 1040),II,8,schc/II/8,Advertising,,,150.57,debit,yes,Expenses:Marketing,
+Schedule C (Form 1040),II,11,schc/II/11,Contract labor,,,4000.00,debit,yes,Expenses:Subcontractors,
+Schedule C (Form 1040),II,15,schc/II/15,Insurance (other than health),,,420.80,debit,yes,Expenses:Insurance,
+Schedule C (Form 1040),II,18,schc/II/18,Office expense,,,131.75,debit,yes,Expenses:Office,
+Schedule C (Form 1040),II,20b,schc/II/20b,Rent or lease: other business property,,,5400.00,debit,yes,Expenses:Rent,
+Schedule C (Form 1040),II,23,schc/II/23,Taxes and licenses,,,480.00,debit,yes,Expenses:Taxes,
+Schedule C (Form 1040),II,24a,schc/II/24a,Travel,,,568.40,debit,yes,Expenses:Travel,
+Schedule C (Form 1040),II,24b,schc/II/24b,Deductible meals,,,300.45,debit,yes,Expenses:Meals,Full book amount; the preparer applies the meals deduction limit.
+Schedule C (Form 1040),II,27b,schc/II/27b,"Other expenses (Part V, line 48)",Fees,,45.00,debit,yes,Expenses:Fees,
+Schedule C (Form 1040),II,27b,schc/II/27b,"Other expenses (Part V, line 48)",Software,,309.09,debit,yes,Expenses:Software,
+Schedule C (Form 1040),none,balance_sheet,schc/none/balance_sheet,Balance sheet account (Schedule C has no balance sheet),,0.00,32543.94,debit,no,Assets:Bank:Checking; Liabilities:CreditCard:Company,
+Schedule C (Form 1040),none,owner_equity,schc/none/owner_equity,Owner contributions and draws (not on Schedule C),,0.00,-18000.00,debit,no,Equity:Owner-Contributions; Equity:Owner-Draws,

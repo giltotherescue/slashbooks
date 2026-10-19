@@ -1,0 +1,10 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+Tax handoff for Schedule C (Form 1040) written to: <WORK>/tax-cash
+  README.txt
+  lacerte-tbu-schc-2026-01-01_2026-03-31.csv
+  tax-line-summary-schc-2026-01-01_2026-03-31.csv
+  tax-trial-balance-schc-2026-01-01_2026-03-31.csv
+  ultratax-tb-import-schc-2026-01-01_2026-03-31.csv
+  unmapped-accounts-schc-2026-01-01_2026-03-31.csv
+  Debits 46849.53, credits 46849.53
+  Install the xlsx extra to also get the Excel workbook: pip install 'agent-books[xlsx]'

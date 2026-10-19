@@ -1,0 +1,19 @@
+Profit and Loss  2026-01-01  through  2026-01-31
+================================================
+Accounting basis: accrual
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+
+Revenue
+----------------------------------------
+  Income › Consulting                            7,000.00
+  Total Revenue                                  7,000.00
+
+Expenses
+----------------------------------------
+  Expenses › Depreciation                          100.00
+  Expenses › Insurance                             100.00
+  Expenses › Utilities                             450.00
+  Total Expenses                                   650.00
+
+--------------------------------------------------------
+Net Income                                       6,350.00

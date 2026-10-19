@@ -1,0 +1,20 @@
+Receivables and payables aging
+As of 2026-06-30 | Accrual basis | USD
+Detailed activity begins 2026-07-01; imported opening as of 2026-06-30.
+Imported fiscal summary: 2026-01-01 through 2026-06-30; earlier monthly detail is unavailable.
+
+Reference     | Type       | Customer / vendor | Due date     | Aging                 | Balance
+--------------+------------+-------------------+--------------+-----------------------+--------
+vendor-open   | Payable    | Not provided      | Not provided | Due date not provided | 500.00 
+customer-open | Receivable | Not provided      | Not provided | Due date not provided | 1000.00
+
+Summary by type, account and customer/vendor; unapplied credits are separate.
+Total receivable | 1000.00 | Overdue 0.00 | Items 1 | Overdue items 0
+Total payable | 500.00 | Overdue 0.00 | Items 1 | Overdue items 0
+Payable | Liabilities:Payable:Accounts-Payable | Not provided | USD | Total 500.00
+  Due date not provided: 500.00
+Receivable | Assets:Receivable:Accounts-Receivable | Not provided | USD | Total 1000.00
+  Due date not provided: 1000.00
+
+Review issues:
+No outstanding review items.

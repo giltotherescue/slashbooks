@@ -1,0 +1,3 @@
+  [confirmed] customer-receipt  2026-07-15  Income:Consulting
+  [confirmed] payroll-payment  2026-07-25  Expenses:Operating-Costs
+  [confirmed] vendor-payment  2026-07-16  Expenses:Operating-Costs

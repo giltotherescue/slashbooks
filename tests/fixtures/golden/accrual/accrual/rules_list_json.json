@@ -1,0 +1,23 @@
+{
+  "company_rules": [],
+  "count": 1,
+  "counterparty_rules": [
+    {
+      "counterparty": "GRANITE HOSTING",
+      "method": "equal_month",
+      "note": "Annual plan, paid up front",
+      "scope": "counterparty",
+      "set_at": "2026-02-01T10:00:00Z",
+      "set_by": "owner",
+      "source": "person",
+      "summary": "a prepaid expense over 12 months",
+      "term_months": 12,
+      "treatment": "prepaid",
+      "version": 1
+    }
+  ],
+  "effect": "proposals_only",
+  "kind": "accrual_rules",
+  "schema_version": 1,
+  "skipped": []
+}

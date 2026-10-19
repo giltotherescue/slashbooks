@@ -1,0 +1,456 @@
+{
+  "as_of": "2026-07-31",
+  "basis": "accrual",
+  "canonical_digest": "9a88c6c190049292805ee8c75a0bfd554c76d7dd90c1f4dccb5812176d539e23",
+  "coverage": {
+    "basis": "accrual",
+    "chart": [
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "account_type": "Accounts payable (A/P)",
+        "currency": "USD",
+        "detail_type": "Accounts payable (A/P)",
+        "open_date": "2026-06-30",
+        "source_account": "Accounts Payable"
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "account_type": "Accounts receivable (A/R)",
+        "currency": "USD",
+        "detail_type": "Accounts receivable (A/R)",
+        "open_date": "2026-06-30",
+        "source_account": "Accounts Receivable"
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "account_type": "Fixed Assets",
+        "currency": "USD",
+        "detail_type": "Fixed Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Accumulated Depreciation"
+      },
+      {
+        "account": "Assets:Bank:Checking",
+        "account_type": "Bank",
+        "currency": "USD",
+        "detail_type": "Bank",
+        "open_date": "2026-06-30",
+        "source_account": "Checking"
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "account_type": "Other Current Liabilities",
+        "currency": "USD",
+        "detail_type": "Other Current Liabilities",
+        "open_date": "2026-06-30",
+        "source_account": "Deferred Revenue"
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "account_type": "Fixed Assets",
+        "currency": "USD",
+        "detail_type": "Fixed Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Equipment"
+      },
+      {
+        "account": "Expenses:Operating-Costs",
+        "account_type": "Expenses",
+        "currency": "USD",
+        "detail_type": "Expenses",
+        "open_date": "2026-06-30",
+        "source_account": "Operating Costs"
+      },
+      {
+        "account": "Liabilities:Other:Payroll-Payable",
+        "account_type": "Other Current Liabilities",
+        "currency": "USD",
+        "detail_type": "Other Current Liabilities",
+        "open_date": "2026-06-30",
+        "source_account": "Payroll Payable"
+      },
+      {
+        "account": "Assets:Other:Prepaid-Insurance",
+        "account_type": "Other Current Assets",
+        "currency": "USD",
+        "detail_type": "Other Current Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Prepaid Insurance"
+      },
+      {
+        "account": "Equity:Retained-Earnings",
+        "account_type": "Equity",
+        "currency": "USD",
+        "detail_type": "Equity",
+        "open_date": "2026-06-30",
+        "source_account": "Retained Earnings"
+      },
+      {
+        "account": "Income:Services",
+        "account_type": "Income",
+        "currency": "USD",
+        "detail_type": "Income",
+        "open_date": "2026-06-30",
+        "source_account": "Services"
+      }
+    ],
+    "closed_position": false,
+    "currency": "USD",
+    "cutover_date": "2026-07-01",
+    "fiscal_start": "2026-01-01",
+    "id": "opening",
+    "intent_hash": "d37fa3d509d6968aa9352b1f0acdca3ab04b108452f882a39afb1acbb51815fd",
+    "mapping_hash": "556bba3ee2b2d2b02f18e085c275fd11cab7ad3ca04d761acada0420aa54f63c",
+    "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+    "source_as_of": "2026-06-30",
+    "source_hashes": {
+      "balance_sheet": "7027affa922f529fc92072d92ce5de90b457078a75bef89f9d953d9169afe813",
+      "chart_of_accounts": "ae7ee713551b9ef92ef632c9141b752ea105cf0c68e82da84d28bfc068f7ab82",
+      "profit_and_loss": "364fe068c45354c3541f3231d8f5a7d45c9cb5bbf0bf0cb22739d6aa384e2fd4",
+      "trial_balance": "0cced0d6e3a553dfa49eb69a71dfc9264d69bc26cf4a8732243128c2b6df35b5"
+    },
+    "source_paths": {
+      "balance_sheet": "ingestion/quickbooks/balance_sheet.csv",
+      "chart_of_accounts": "ingestion/quickbooks/accounts.csv",
+      "profit_and_loss": "ingestion/quickbooks/profit_and_loss.csv",
+      "trial_balance": "ingestion/quickbooks/trial_balance.csv"
+    },
+    "summary_from": "2026-01-01",
+    "summary_to": "2026-06-30",
+    "support_evidence_hashes": {
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e": "9da1f4656f64826791f41cd093ec924f09d70a71478bbfb932644524ebf6bf65"
+    },
+    "support_status": "reconciled",
+    "verified": true
+  },
+  "currency": "USD",
+  "fingerprint": "1bc8aa37b6892027242421ff961f01cc635583413a9d91f8f680907bab4ebaaa",
+  "from_date": "2026-01-01",
+  "historical_detail_available": false,
+  "issues": [],
+  "kind": "adjustments",
+  "requested_from": "2026-01-01",
+  "requested_to": "2026-07-31",
+  "rows": [
+    {
+      "date": "2026-06-30",
+      "description": "Opening balances (2026-06-30)",
+      "metadata": {
+        "accrual-opening": "true",
+        "coverage-id": "opening",
+        "cutover-date": "2026-07-01",
+        "import-source": "quickbooks-opening",
+        "source-id": "quickbooks-opening-trial-balance-2026-07-01",
+        "summary-from": "2026-01-01",
+        "summary-to": "2026-06-30"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+          ],
+          "id": "quickbooks-opening-trial-balance-2026-07-01",
+          "kind": "migration",
+          "plan_hash": "5c0622d27518551940f06a96ff3ae75b1c2f3e07b3e731deeefa0e022c2e403d",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Assets:Bank:Checking",
+          "amount": "10000.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "amount": "-400.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Fixed:Equipment",
+          "amount": "2400.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Other:Prepaid-Insurance",
+          "amount": "600.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Receivable:Accounts-Receivable",
+          "amount": "1000.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Equity:Retained-Earnings",
+          "amount": "-9000.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Expenses:Operating-Costs",
+          "amount": "8800.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Income:Services",
+          "amount": "-12000.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Other:Deferred-Revenue",
+          "amount": "-600.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "amount": "-300.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Payable:Accounts-Payable",
+          "amount": "-500.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+    },
+    {
+      "date": "2026-07-15",
+      "description": "Payment received: dated 2026-06-30",
+      "metadata": {
+        "settlement-id": "customer-receipt",
+        "source-id": "customer-receipt"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6"
+          ],
+          "id": "customer-receipt",
+          "kind": "item_settlement",
+          "plan_hash": "d74a9b9191786ecae95cd8cb05dda6cb4f9677abf709da509c19bd81c21e0fd0",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Assets:Bank:Checking",
+          "amount": "400.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Receivable:Accounts-Receivable",
+          "amount": "-400.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "customer-receipt"
+    },
+    {
+      "date": "2026-07-16",
+      "description": "Payment made: dated 2026-06-30",
+      "metadata": {
+        "settlement-id": "vendor-payment",
+        "source-id": "vendor-payment"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1"
+          ],
+          "id": "vendor-payment",
+          "kind": "item_settlement",
+          "plan_hash": "2095521b8b0e2e31f2e8c0a1a1902e4e8c5518ff45abe51ccbf38cbf3fbded36",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Assets:Bank:Checking",
+          "amount": "-200.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Payable:Accounts-Payable",
+          "amount": "200.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "vendor-payment"
+    },
+    {
+      "date": "2026-07-20",
+      "description": "Synthetic provider payroll",
+      "metadata": {
+        "accrual-intent": "provider-payroll-journal",
+        "evidence-ids": "[\"fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09\"]",
+        "source-id": "accrual:provider-payroll-journal"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+          ],
+          "id": "payroll-support",
+          "kind": "item_create",
+          "plan_hash": "8f06cab569bed709f9cd7116dbaa898fa78efdea8f1b00dad9dcc81ff049f37a",
+          "role": "linked_existing_source"
+        },
+        {
+          "evidence_ids": [
+            "fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09"
+          ],
+          "id": "provider-payroll-journal",
+          "kind": "journal",
+          "plan_hash": "a8cbfce53fbe2f65520350a1a036930e43885b077746fd73741bb7df0a8e448f",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Expenses:Operating-Costs",
+          "amount": "600.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "amount": "-600.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "accrual:provider-payroll-journal"
+    },
+    {
+      "date": "2026-07-25",
+      "description": "Payment made: dated 2026-07-20",
+      "metadata": {
+        "settlement-id": "payroll-payment",
+        "source-id": "payroll-payment"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba"
+          ],
+          "id": "payroll-payment",
+          "kind": "item_settlement",
+          "plan_hash": "53c04af96d982e9c652b823bc7d17116baf534fb52a5565d208798eaa7c7386f",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Assets:Bank:Checking",
+          "amount": "-600.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "amount": "600.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "payroll-payment"
+    },
+    {
+      "date": "2026-07-31",
+      "description": "Deferred revenue earned: dated 2026-01-01 (Jul 2026)",
+      "metadata": {
+        "schedule-id": "deferred-open",
+        "source-id": "schedule:recognition:deferred-open:0:2026-07-31"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+          ],
+          "id": "july-recognition",
+          "kind": "schedule_due",
+          "plan_hash": "75efe4e5a9835df135c750dbd69ea01fce82d18cdc2ea446c52d1da1c2c7ae34",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Income:Services",
+          "amount": "-100.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Liabilities:Other:Deferred-Revenue",
+          "amount": "100.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "schedule:recognition:deferred-open:0:2026-07-31"
+    },
+    {
+      "date": "2026-07-31",
+      "description": "Prepaid expense used: dated 2026-01-01 (Jul 2026)",
+      "metadata": {
+        "schedule-id": "prepaid-open",
+        "source-id": "schedule:recognition:prepaid-open:0:2026-07-31"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+          ],
+          "id": "july-recognition",
+          "kind": "schedule_due",
+          "plan_hash": "75efe4e5a9835df135c750dbd69ea01fce82d18cdc2ea446c52d1da1c2c7ae34",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Expenses:Operating-Costs",
+          "amount": "100.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Other:Prepaid-Insurance",
+          "amount": "-100.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "schedule:recognition:prepaid-open:0:2026-07-31"
+    },
+    {
+      "date": "2026-07-31",
+      "description": "Synthetic asset roll-forward",
+      "metadata": {
+        "accrual-intent": "july-depreciation",
+        "evidence-ids": "[\"073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6\"]",
+        "source-id": "accrual:july-depreciation"
+      },
+      "operations": [
+        {
+          "evidence_ids": [
+            "073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6"
+          ],
+          "id": "july-depreciation",
+          "kind": "journal",
+          "plan_hash": "55793bd9f817caddcd40fe9ea015e75e5af273e94d1ad81b4a7f8cbc1499a124",
+          "role": "posted_effect"
+        }
+      ],
+      "postings": [
+        {
+          "account": "Expenses:Operating-Costs",
+          "amount": "40.00",
+          "currency": "USD"
+        },
+        {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "amount": "-40.00",
+          "currency": "USD"
+        }
+      ],
+      "source_id": "accrual:july-depreciation"
+    }
+  ],
+  "schema_version": 1,
+  "summary_included": true,
+  "unresolved_issues": []
+}

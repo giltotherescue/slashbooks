@@ -1,0 +1,85 @@
+General Ledger  2026-03-01  through  2026-03-31
+===============================================
+Accounting basis: accrual
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+
+Assets › Bank › Checking
+----------------------------------------
+  2026-03-18  |  Payment from Orbit Labs: Orbit Labs (inv-1002)       2,500.00
+  2026-03-25  |  Payment to Staff: Staff (bonus-actual)        -700.00
+  Account Total                                  1,800.00
+
+Assets › Fixed › Accumulated-Depreciation
+----------------------------------------
+  2026-03-31  |  Depreciation: dated 2026-02-01 (Mar 2026)        -100.00
+  2026-03-31  |  Depreciation: dated 2025-03-01 (Mar 2026)        -100.00
+  Account Total                                   -200.00
+
+Assets › Other › Prepaid-Expenses
+----------------------------------------
+  2026-03-31  |  Prepaid expense used: dated 2025-07-01 (Mar 2026)        -100.00
+  2026-03-31  |  Prepaid expense used: dated 2026-02-01 (Mar 2026)        -100.00
+  Account Total                                   -200.00
+
+Assets › Receivable › Accounts-Receivable
+----------------------------------------
+  2026-03-18  |  Payment from Orbit Labs: Orbit Labs (inv-1002)      -2,500.00
+  2026-03-20  |  Written off: Kestrel Foods - Synthetic uncollectible balance        -300.00
+  Account Total                                 -2,800.00
+
+Expenses › Bad-Debt
+----------------------------------------
+  2026-03-20  |  Written off: Kestrel Foods - Synthetic uncollectible balance         300.00
+  Account Total                                    300.00
+
+Expenses › Bonus
+----------------------------------------
+  2026-03-10  |  Bill: Staff                       700.00
+  2026-03-10  |  Estimate settled: Staff (actual: Staff) - Actual bonus approved      -1,000.00
+  Account Total                                   -300.00
+
+Expenses › Depreciation
+----------------------------------------
+  2026-03-31  |  Depreciation: dated 2026-02-01 (Mar 2026)         100.00
+  2026-03-31  |  Depreciation: dated 2025-03-01 (Mar 2026)         100.00
+  Account Total                                    200.00
+
+Expenses › Insurance
+----------------------------------------
+  2026-03-31  |  Prepaid expense used: dated 2025-07-01 (Mar 2026)         100.00
+  Account Total                                    100.00
+
+Expenses › Software
+----------------------------------------
+  2026-03-31  |  Prepaid expense used: dated 2026-02-01 (Mar 2026)         100.00
+  Account Total                                    100.00
+
+Expenses › Utilities
+----------------------------------------
+  2026-03-31  |  Estimated March utilities         470.00
+  Account Total                                    470.00
+
+Income › Consulting
+----------------------------------------
+  2026-03-31  |  Deferred revenue earned: dated 2025-07-01 (Mar 2026)        -100.00
+  2026-03-31  |  Deferred revenue earned: dated 2026-02-01 (Mar 2026)        -600.00
+  Account Total                                   -700.00
+
+Liabilities › Other › Accrued-Liabilities
+----------------------------------------
+  2026-03-31  |  Estimated March utilities        -470.00
+  Account Total                                   -470.00
+
+Liabilities › Other › Deferred-Revenue
+----------------------------------------
+  2026-03-31  |  Deferred revenue earned: dated 2025-07-01 (Mar 2026)         100.00
+  2026-03-31  |  Deferred revenue earned: dated 2026-02-01 (Mar 2026)         600.00
+  Account Total                                    700.00
+
+Liabilities › Payable › Accounts-Payable
+----------------------------------------
+  2026-03-10  |  Bill: Staff                      -700.00
+  2026-03-10  |  Estimate settled: Staff (actual: Staff) - Actual bonus approved       1,000.00
+  2026-03-25  |  Payment to Staff: Staff (bonus-actual)         700.00
+  Account Total                                  1,000.00
+

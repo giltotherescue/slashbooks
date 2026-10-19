@@ -1,0 +1,198 @@
+[
+  {
+    "account": "Assets:Bank:Checking",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Assets:Fixed:Accumulated-Depreciation",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Assets:Fixed:Equipment",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Assets:Other:Prepaid-Insurance",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Assets:Receivable:Accounts-Receivable",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Equity:Retained-Earnings",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Expenses:Operating-Costs",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Income:Services",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Liabilities:Other:Deferred-Revenue",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Liabilities:Other:Payroll-Payable",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Liabilities:Payable:Accounts-Payable",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-06-30"
+  },
+  {
+    "account": "Assets:Other:Prepaid-Expenses",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Equity:Opening-Balances",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Equity:Owner-Contributions",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Equity:Owner-Draws",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Depreciation",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Fees",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Marketing",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Meals",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Office",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Software",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Subcontractors",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Taxes",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Expenses:Travel",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Income:Consulting",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Liabilities:CreditCard",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Liabilities:Other:Accrued-Liabilities",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
+    "account": "Liabilities:Other:Customer-Deposits",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  }
+]

@@ -1,0 +1,217 @@
+{
+  "as_of": "2026-07-31",
+  "basis": "accrual",
+  "canonical_digest": "9a88c6c190049292805ee8c75a0bfd554c76d7dd90c1f4dccb5812176d539e23",
+  "coverage": {
+    "basis": "accrual",
+    "chart": [
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "account_type": "Accounts payable (A/P)",
+        "currency": "USD",
+        "detail_type": "Accounts payable (A/P)",
+        "open_date": "2026-06-30",
+        "source_account": "Accounts Payable"
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "account_type": "Accounts receivable (A/R)",
+        "currency": "USD",
+        "detail_type": "Accounts receivable (A/R)",
+        "open_date": "2026-06-30",
+        "source_account": "Accounts Receivable"
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "account_type": "Fixed Assets",
+        "currency": "USD",
+        "detail_type": "Fixed Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Accumulated Depreciation"
+      },
+      {
+        "account": "Assets:Bank:Checking",
+        "account_type": "Bank",
+        "currency": "USD",
+        "detail_type": "Bank",
+        "open_date": "2026-06-30",
+        "source_account": "Checking"
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "account_type": "Other Current Liabilities",
+        "currency": "USD",
+        "detail_type": "Other Current Liabilities",
+        "open_date": "2026-06-30",
+        "source_account": "Deferred Revenue"
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "account_type": "Fixed Assets",
+        "currency": "USD",
+        "detail_type": "Fixed Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Equipment"
+      },
+      {
+        "account": "Expenses:Operating-Costs",
+        "account_type": "Expenses",
+        "currency": "USD",
+        "detail_type": "Expenses",
+        "open_date": "2026-06-30",
+        "source_account": "Operating Costs"
+      },
+      {
+        "account": "Liabilities:Other:Payroll-Payable",
+        "account_type": "Other Current Liabilities",
+        "currency": "USD",
+        "detail_type": "Other Current Liabilities",
+        "open_date": "2026-06-30",
+        "source_account": "Payroll Payable"
+      },
+      {
+        "account": "Assets:Other:Prepaid-Insurance",
+        "account_type": "Other Current Assets",
+        "currency": "USD",
+        "detail_type": "Other Current Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Prepaid Insurance"
+      },
+      {
+        "account": "Equity:Retained-Earnings",
+        "account_type": "Equity",
+        "currency": "USD",
+        "detail_type": "Equity",
+        "open_date": "2026-06-30",
+        "source_account": "Retained Earnings"
+      },
+      {
+        "account": "Income:Services",
+        "account_type": "Income",
+        "currency": "USD",
+        "detail_type": "Income",
+        "open_date": "2026-06-30",
+        "source_account": "Services"
+      }
+    ],
+    "closed_position": false,
+    "currency": "USD",
+    "cutover_date": "2026-07-01",
+    "fiscal_start": "2026-01-01",
+    "id": "opening",
+    "intent_hash": "d37fa3d509d6968aa9352b1f0acdca3ab04b108452f882a39afb1acbb51815fd",
+    "mapping_hash": "556bba3ee2b2d2b02f18e085c275fd11cab7ad3ca04d761acada0420aa54f63c",
+    "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+    "source_as_of": "2026-06-30",
+    "source_hashes": {
+      "balance_sheet": "7027affa922f529fc92072d92ce5de90b457078a75bef89f9d953d9169afe813",
+      "chart_of_accounts": "ae7ee713551b9ef92ef632c9141b752ea105cf0c68e82da84d28bfc068f7ab82",
+      "profit_and_loss": "364fe068c45354c3541f3231d8f5a7d45c9cb5bbf0bf0cb22739d6aa384e2fd4",
+      "trial_balance": "0cced0d6e3a553dfa49eb69a71dfc9264d69bc26cf4a8732243128c2b6df35b5"
+    },
+    "source_paths": {
+      "balance_sheet": "ingestion/quickbooks/balance_sheet.csv",
+      "chart_of_accounts": "ingestion/quickbooks/accounts.csv",
+      "profit_and_loss": "ingestion/quickbooks/profit_and_loss.csv",
+      "trial_balance": "ingestion/quickbooks/trial_balance.csv"
+    },
+    "summary_from": "2026-01-01",
+    "summary_to": "2026-06-30",
+    "support_evidence_hashes": {
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e": "9da1f4656f64826791f41cd093ec924f09d70a71478bbfb932644524ebf6bf65"
+    },
+    "support_status": "reconciled",
+    "verified": true
+  },
+  "currency": "USD",
+  "fingerprint": "ca9202fd33a4edd38aca239e7ca0c5997f0c5c9aaca541655c1f184618802195",
+  "from_date": "2026-01-01",
+  "historical_detail_available": false,
+  "issues": [],
+  "kind": "schedules",
+  "requested_from": "2026-01-01",
+  "requested_to": "2026-07-31",
+  "rows": [
+    {
+      "account": "Liabilities:Other:Deferred-Revenue",
+      "allocations_as_of": [
+        "recognition:deferred-open:0:2026-07-31"
+      ],
+      "amount": "1200.00",
+      "as_of": "2026-06-30",
+      "base_recognized_amount": "600.00",
+      "base_remaining_amount": "600.00",
+      "currency": "USD",
+      "evidence_ids": [
+        "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+      ],
+      "evidence_refs": [
+        "evidence/opening.txt"
+      ],
+      "id": "deferred-open",
+      "initial_remaining_amount": "600.00",
+      "kind": "deferred",
+      "method": "equal_month",
+      "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+      "origin": {
+        "mode": "opening",
+        "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+      },
+      "origin_reserved_amount": "600.00",
+      "recognition_account": "Income:Services",
+      "recognition_start": "2026-07-01",
+      "recognized_amount": "700.00",
+      "recognized_in_ledger": "100.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "500.00",
+      "remaining_as_of": "500.00",
+      "service_end": "2026-12-31",
+      "service_start": "2026-01-01",
+      "signed_balance": "-500.00",
+      "status": "active"
+    },
+    {
+      "account": "Assets:Other:Prepaid-Insurance",
+      "allocations_as_of": [
+        "recognition:prepaid-open:0:2026-07-31"
+      ],
+      "amount": "1200.00",
+      "as_of": "2026-06-30",
+      "base_recognized_amount": "600.00",
+      "base_remaining_amount": "600.00",
+      "currency": "USD",
+      "evidence_ids": [
+        "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+      ],
+      "evidence_refs": [
+        "evidence/opening.txt"
+      ],
+      "id": "prepaid-open",
+      "initial_remaining_amount": "600.00",
+      "kind": "prepaid",
+      "method": "equal_month",
+      "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+      "origin": {
+        "mode": "opening",
+        "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+      },
+      "origin_reserved_amount": "600.00",
+      "recognition_account": "Expenses:Operating-Costs",
+      "recognition_start": "2026-07-01",
+      "recognized_amount": "700.00",
+      "recognized_in_ledger": "100.00",
+      "recognized_refund_amount": "0.00",
+      "refunded_amount": "0.00",
+      "remaining_amount": "500.00",
+      "remaining_as_of": "500.00",
+      "service_end": "2026-12-31",
+      "service_start": "2026-01-01",
+      "signed_balance": "500.00",
+      "status": "active"
+    }
+  ],
+  "schema_version": 1,
+  "summary_included": true,
+  "unresolved_issues": []
+}

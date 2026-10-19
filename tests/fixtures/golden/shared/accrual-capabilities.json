@@ -1,0 +1,108 @@
+{
+  "authority_action": "adjust",
+  "basis": "accrual",
+  "capability_version": 1,
+  "currency": "USD",
+  "operations": [
+    "intake",
+    "journal",
+    "schedule",
+    "item",
+    "support",
+    "evidence-link",
+    "period",
+    "rules",
+    "opening",
+    "migration",
+    "report",
+    "accounts",
+    "receipt"
+  ],
+  "operator_only": [
+    "period"
+  ],
+  "posting_requires_opt_in": true,
+  "request_schemas": [
+    "apply",
+    "correction",
+    "evidence_link",
+    "item",
+    "item_adjustment",
+    "item_offset",
+    "journal",
+    "migration_preview",
+    "migration_supporting",
+    "opening",
+    "period",
+    "reversal",
+    "rule_clear",
+    "rule_match",
+    "rule_set",
+    "schedule",
+    "schedule_change",
+    "schedule_due",
+    "settlement",
+    "support"
+  ],
+  "rules_effect": "proposals_only",
+  "verbs": {
+    "evidence-link": [
+      "preview",
+      "apply"
+    ],
+    "item": [
+      "preview",
+      "apply",
+      "settle-preview",
+      "settle-apply",
+      "adjust-preview",
+      "adjust-apply",
+      "offset-preview",
+      "offset-apply",
+      "list"
+    ],
+    "journal": [
+      "preview",
+      "apply",
+      "correct-preview",
+      "correct-apply",
+      "reverse-preview",
+      "reverse-apply",
+      "due-reversals"
+    ],
+    "migration": [
+      "preview",
+      "apply"
+    ],
+    "opening": [
+      "preview",
+      "apply",
+      "draft"
+    ],
+    "period": [
+      "preview",
+      "apply"
+    ],
+    "rules": [
+      "set-preview",
+      "set-apply",
+      "clear-preview",
+      "clear-apply",
+      "match",
+      "list"
+    ],
+    "schedule": [
+      "preview",
+      "apply",
+      "due-apply",
+      "change-preview",
+      "change-apply",
+      "list",
+      "due-preview"
+    ],
+    "support": [
+      "preview",
+      "apply"
+    ]
+  }
+}

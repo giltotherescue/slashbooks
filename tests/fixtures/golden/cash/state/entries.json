@@ -1,0 +1,1263 @@
+[
+  {
+    "date": "2026-01-02",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0102-owner"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Owner contribution wire",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "20000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Equity:Owner-Contributions",
+        "amount": "-20000.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-03",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0103-sw"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "CloudNotes software subscription",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-79.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Software",
+        "amount": "79.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-05",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0105-rent"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Maple Street Properties rent",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1800.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Rent",
+        "amount": "1800.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-08",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0108-client"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Orbit Labs invoice 1001 payment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "6500.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-6500.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-10",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0110-meal"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Juniper Bistro client lunch",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-86.35",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Meals",
+        "amount": "86.35",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-12",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0112-sub"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Delta Design subcontractor",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1250.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Subcontractors",
+        "amount": "1250.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-15",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0115-ins"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Granite Insurance premium",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-210.40",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Insurance",
+        "amount": "210.40",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-18",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0118-travel"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ],
+      [
+        "review-workflow",
+        "split"
+      ]
+    ],
+    "narration": "Skyway Airlines ticket",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-412.80",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Travel",
+        "amount": "300.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Meals",
+        "amount": "112.80",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review",
+      "reviewed-split"
+    ]
+  },
+  {
+    "date": "2026-01-20",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0120-client"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Kestrel Foods invoice 1002 payment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "3200.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-3200.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-22",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0122-mkt"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Spark Ads campaign",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-120.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Marketing",
+        "amount": "120.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-25",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0125-fee"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Bank monthly service fee",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-15.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Fees",
+        "amount": "15.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-27",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0127-sw"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Hostly web hosting",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-24.03",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Software",
+        "amount": "24.03",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-01-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0131-cardpay"
+      ],
+      [
+        "paired-source-id",
+        "crd-0131-payment"
+      ],
+      [
+        "transfer-pair-id",
+        "transfer-pair-8c268e5b7b6e3bc4df4a"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ],
+      [
+        "review-workflow",
+        "transfer-pair"
+      ]
+    ],
+    "narration": "Internal transfer: Company Card payment thank you / Payment thank you",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-642.18",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "642.18",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review",
+      "internal-transfer"
+    ]
+  },
+  {
+    "date": "2026-02-03",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0203-rent"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Maple Street Properties rent",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1800.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Rent",
+        "amount": "1800.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-04",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0204-sw"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "CloudNotes software subscription",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-79.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Software",
+        "amount": "79.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-06",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0206-client"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Orbit Labs invoice 1003 payment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "4800.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-4800.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-09",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0209-meal"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Juniper Bistro team lunch",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-54.20",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Meals",
+        "amount": "54.20",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-10",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0210-sub"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Delta Design subcontractor",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1250.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Subcontractors",
+        "amount": "1250.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-13",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0213-client"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Harbor Cafe invoice 1004 payment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "2750.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-2750.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-15",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0215-office"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Paper Pine office supplies",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-131.75",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Office",
+        "amount": "131.75",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-17",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0217-draw"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Owner draw transfer",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-2000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Equity:Owner-Draws",
+        "amount": "2000.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-19",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0219-sw"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Hostly web hosting",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-24.03",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Software",
+        "amount": "24.03",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-21",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0221-mkt"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Spark Ads campaign",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-30.57",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Marketing",
+        "amount": "30.57",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-24",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0224-tax"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "State franchise tax payment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-480.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Taxes",
+        "amount": "480.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-25",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0225-fee"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Bank monthly service fee",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-15.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Fees",
+        "amount": "15.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0228-cardpay"
+      ],
+      [
+        "paired-source-id",
+        "crd-0228-payment"
+      ],
+      [
+        "transfer-pair-id",
+        "transfer-pair-6169014b0b35c579cc89"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ],
+      [
+        "review-workflow",
+        "transfer-pair"
+      ]
+    ],
+    "narration": "Internal transfer: Company Card payment thank you / Payment thank you",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-318.55",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "318.55",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review",
+      "internal-transfer"
+    ]
+  },
+  {
+    "date": "2026-03-03",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0303-rent"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Maple Street Properties rent",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1800.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Rent",
+        "amount": "1800.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-04",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0304-sw"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "CloudNotes software subscription",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-79.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Software",
+        "amount": "79.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-05",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0305-client"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Orbit Labs invoice 1005 payment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "7200.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-7200.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-11",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0311-sub"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Delta Design subcontractor",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1500.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Subcontractors",
+        "amount": "1500.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-12",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0312-travel"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Rail Express tickets",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-268.40",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Travel",
+        "amount": "268.40",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-16",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0316-client"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Kestrel Foods invoice 1006 payment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "1900.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-1900.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-19",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0319-meal"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Juniper Bistro client lunch",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-47.10",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Meals",
+        "amount": "47.10",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-20",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0320-ins"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Granite Insurance premium",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-210.40",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Insurance",
+        "amount": "210.40",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-24",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "crd-0324-sw"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Hostly web hosting",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:CreditCard:Company",
+        "amount": "-24.03",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Software",
+        "amount": "24.03",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  },
+  {
+    "date": "2026-03-25",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "chk-0325-fee"
+      ],
+      [
+        "import-session",
+        "golden-cash-review"
+      ]
+    ],
+    "narration": "Bank monthly service fee",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-15.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Fees",
+        "amount": "15.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": [
+      "import-golden-cash-review"
+    ]
+  }
+]

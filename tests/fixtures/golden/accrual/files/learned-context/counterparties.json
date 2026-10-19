@@ -1,0 +1,19 @@
+{
+  "GRANITE HOSTING": {
+    "accrual": {
+      "method": "equal_month",
+      "note": "Annual plan, paid up front",
+      "set_at": "2026-02-01T10:00:00Z",
+      "set_by": "owner",
+      "source": "person",
+      "term_months": 12,
+      "treatment": "prepaid",
+      "version": 1
+    },
+    "canonical_category": "",
+    "confirmed_count": 0,
+    "last_confirmed_date": "",
+    "notes": "",
+    "reset": false
+  }
+}

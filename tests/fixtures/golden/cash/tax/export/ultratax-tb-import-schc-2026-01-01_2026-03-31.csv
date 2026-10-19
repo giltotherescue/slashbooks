@@ -1,0 +1,16 @@
+Account Number,Account Description,Unit,Tax Code,Amount
+1010,Assets › Bank › Checking,,,33043.47
+3010,Equity › Owner-Contributions,,,-20000.00
+3020,Equity › Owner-Draws,,,2000.00
+6010,Expenses › Fees,,,45.00
+6020,Expenses › Insurance,,,420.80
+6030,Expenses › Marketing,,,150.57
+6040,Expenses › Meals,,,300.45
+6050,Expenses › Office,,,131.75
+6060,Expenses › Rent,,,5400.00
+6070,Expenses › Software,,,309.09
+6080,Expenses › Subcontractors,,,4000.00
+6090,Expenses › Taxes,,,480.00
+6100,Expenses › Travel,,,568.40
+4010,Income › Consulting,,,-26350.00
+2010,Liabilities › CreditCard › Company,,,-499.53

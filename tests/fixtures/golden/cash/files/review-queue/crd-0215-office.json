@@ -1,0 +1,22 @@
+{
+  "amount": "-131.75",
+  "confirmed_category": "Expenses:Office",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "PAPER PINE OFFICE SUPPLIES",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-15",
+  "delta": null,
+  "description": "Paper Pine office supplies",
+  "original_amount": "-131.75",
+  "proposed_category": "Expenses:Office",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "crd-0215-office": "3a7c687811a5a2b2161bca7c52d6ba160a065fcfcef79ff5531e2ca8080ceba2"
+  },
+  "source_id": "crd-0215-office",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

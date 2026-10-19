@@ -1,0 +1,323 @@
+{
+  "excluded": {
+    "runtime_state": 1
+  },
+  "files": [
+    {
+      "path": "business-profile.md",
+      "sha256": "5f8192a1c64da16f857e6a7f3a690b270027b9bb2bf78a73364cc3b779da84a7",
+      "size": 2037
+    },
+    {
+      "path": "entity.json",
+      "sha256": "c228e4603f0aa779a6ff78686f33138f4ed652579e3fec2b72c5b9234529ec43",
+      "size": 931
+    },
+    {
+      "path": "evidence/card-2026-01.json",
+      "sha256": "bfffac57af771db42eacc8fbe84200df5e5a6a44d5490d6b143996c16bee2f1c",
+      "size": 61
+    },
+    {
+      "path": "evidence/card-2026-02.json",
+      "sha256": "8adf4d0e491b26f0609dcc48e2ffe90e1bc4ef89d405f639c8c1b5831cb9c61a",
+      "size": 61
+    },
+    {
+      "path": "evidence/checking-2026-01.json",
+      "sha256": "a28172a2e60788106dc4f18f29cfc2ec79a17e2b8fe427f119b0f6b1a1f9233a",
+      "size": 65
+    },
+    {
+      "path": "evidence/checking-2026-02.json",
+      "sha256": "4552baa06616c05962d9f4df19ab63e808645106d6862a40e62872b77184bb99",
+      "size": 65
+    },
+    {
+      "path": "learned-context/counterparties.json",
+      "sha256": "0da24ed99b399b2bb9159f9e3dade33361a5d2b5864370ff0e32235205b6ab52",
+      "size": 5863
+    },
+    {
+      "path": "ledger.sqlite"
+    },
+    {
+      "path": "reports/quarterly/2026-Q1.json",
+      "sha256": "188e81323ad02fac4629ce111cb34212d4403e5eebfd929a51dacec2234a7c15",
+      "size": 5443
+    },
+    {
+      "path": "reports/quarterly/2026-Q1.txt",
+      "sha256": "832077f9f94f48f612f812873254d69dd3e40255db3dc4129f07cb5f8fa0285b",
+      "size": 3065
+    },
+    {
+      "path": "reports/reconciliation.json",
+      "sha256": "18eb9fb584138863f502227eca0f26fbe7f88b37071039b9d0b2f1ea3b434b2d",
+      "size": 3397
+    },
+    {
+      "path": "review-queue/chk-0102-owner.json",
+      "sha256": "c689b707d949cef7e2ba164d3b7abbb03bb02cd9521376578b5207f733b93ed0",
+      "size": 705
+    },
+    {
+      "path": "review-queue/chk-0105-rent.json",
+      "sha256": "0acf1a4971f0797eadb87bf95a28425e3fd98f26845a024897b97981cb8fefc9",
+      "size": 845
+    },
+    {
+      "path": "review-queue/chk-0108-client.json",
+      "sha256": "add54feb00d5798097f597ad47209984a867213a0322dc01fa2a788b5b32253d",
+      "size": 703
+    },
+    {
+      "path": "review-queue/chk-0112-sub.json",
+      "sha256": "e531aac12339a84dc1fce498f46f28819061b5e13b27681b1b639227dceabd29",
+      "size": 701
+    },
+    {
+      "path": "review-queue/chk-0115-ins.json",
+      "sha256": "749ac757925061ee568c5a4b106fe488a59654f521ede836620489ea59768283",
+      "size": 687
+    },
+    {
+      "path": "review-queue/chk-0120-client.json",
+      "sha256": "4e435640fc5ae15579bfbcbe69b0810451744d59f024d780d4566b76c390d553",
+      "size": 709
+    },
+    {
+      "path": "review-queue/chk-0125-fee.json",
+      "sha256": "4a582943a637b30d7fe12261b8ded51f0d6260e7b247ef4ca261918249a8e775",
+      "size": 673
+    },
+    {
+      "path": "review-queue/chk-0203-rent.json",
+      "sha256": "780fe6ca8df5e4e523675204cee81c31d82fbfd97fdf36f00ec04ad65658e87e",
+      "size": 845
+    },
+    {
+      "path": "review-queue/chk-0206-client.json",
+      "sha256": "51ee532d7125a8723a03ed44c2f1dd330e8e5a05ab697d3774814f5ebc376edc",
+      "size": 703
+    },
+    {
+      "path": "review-queue/chk-0210-sub.json",
+      "sha256": "38340aa40717aaf87280ad26c128938ecb8504535339befa3d7919b607cde956",
+      "size": 701
+    },
+    {
+      "path": "review-queue/chk-0213-client.json",
+      "sha256": "ea5787e8f9ebb9f00526eebdfa92e83100c85de4b0883c23046c719ff0a3622e",
+      "size": 705
+    },
+    {
+      "path": "review-queue/chk-0217-draw.json",
+      "sha256": "38f67fa7287109fffcd482c5ab9d54070a68cb884a43a75536e932e853374a3b",
+      "size": 679
+    },
+    {
+      "path": "review-queue/chk-0224-tax.json",
+      "sha256": "3257fb6101ab7d8a65d3f4aa00bd8130941409b8891ac9396402fa8e7f3b850d",
+      "size": 683
+    },
+    {
+      "path": "review-queue/chk-0225-fee.json",
+      "sha256": "3cbd79862ade26efd252f35c19446aab5db1eaffe75dedfe84c68b9aa4cefc20",
+      "size": 673
+    },
+    {
+      "path": "review-queue/chk-0303-rent.json",
+      "sha256": "14e99f76c3c7bfb316922d9db1c977ae9cb5e8f799be3597420eba866a27377d",
+      "size": 845
+    },
+    {
+      "path": "review-queue/chk-0305-client.json",
+      "sha256": "a42cda8cc195006bae3923a25185d668dfffdc57871ac4a3a3686ffc7e305546",
+      "size": 703
+    },
+    {
+      "path": "review-queue/chk-0311-sub.json",
+      "sha256": "a4f0ed0ce0efdeb3e9ddbd880ef0ed814b10e2bde6fcd9d778ea4e06799c9332",
+      "size": 701
+    },
+    {
+      "path": "review-queue/chk-0316-client.json",
+      "sha256": "0918e983544e6a0dee2fe8d3ed424ac450634364bfff6db90ded4fe473bc0844",
+      "size": 709
+    },
+    {
+      "path": "review-queue/chk-0320-ins.json",
+      "sha256": "d63f8ff93cecdc61cb3031e7251c9d14bc1205c54dd5a7b5b4ad6460c0a3a720",
+      "size": 687
+    },
+    {
+      "path": "review-queue/chk-0325-fee.json",
+      "sha256": "93548048bd2845b99df6841ce32c46b2ebb7a8b67180d24d8d8ae710a375d7cb",
+      "size": 673
+    },
+    {
+      "path": "review-queue/chk-0330-deposit.json",
+      "sha256": "122bdbf7a3fdd08daaf3c1b072c797299406852128ce7a3e50f304e4cfa7f70d",
+      "size": 655
+    },
+    {
+      "path": "review-queue/crd-0103-sw.json",
+      "sha256": "6cf25b7cfbb452d09146c0d69bc2383c2508c8c1c0a3ea4bf6c73b6f6e5b8fe1",
+      "size": 695
+    },
+    {
+      "path": "review-queue/crd-0110-meal.json",
+      "sha256": "98f882f4f39fcdff569712d25da2fa79d7028c7a84f5f736b8209bc07bdf277f",
+      "size": 683
+    },
+    {
+      "path": "review-queue/crd-0118-travel.json",
+      "sha256": "f021143034b1ac822f344aaf89e5bc22cdaa77011e0d9d68e7aff5ff15a16c74",
+      "size": 940
+    },
+    {
+      "path": "review-queue/crd-0122-mkt.json",
+      "sha256": "02936980a91207a52d16fee71df1c6ba89847afddc37fe7f4655254463253225",
+      "size": 673
+    },
+    {
+      "path": "review-queue/crd-0127-sw.json",
+      "sha256": "f2fb9d6af324deec768b5b105ada6622ce6d63b94c772e648997ed92de043a0f",
+      "size": 667
+    },
+    {
+      "path": "review-queue/crd-0204-sw.json",
+      "sha256": "670707092fe24ab0ee1f3c3b63b893ba1a486f6527d3cf67d9f7dcc85e585c88",
+      "size": 695
+    },
+    {
+      "path": "review-queue/crd-0209-meal.json",
+      "sha256": "ffca91f1df67449e4db1f83a9c935b31495500c630a6568f87fc92d08161386b",
+      "size": 679
+    },
+    {
+      "path": "review-queue/crd-0215-office.json",
+      "sha256": "6635412a8b95051275b2e93fb4d5c509a693231db23f50088448af184a9f75eb",
+      "size": 689
+    },
+    {
+      "path": "review-queue/crd-0219-sw.json",
+      "sha256": "feef8d5f9b686b53ae6553250b9c7362130829879af28538823e2e4ca1389d56",
+      "size": 667
+    },
+    {
+      "path": "review-queue/crd-0221-mkt.json",
+      "sha256": "55ac779eca6120522811171985545a981a4ac85c9fdd4eae229598f5d55e98b0",
+      "size": 671
+    },
+    {
+      "path": "review-queue/crd-0304-sw.json",
+      "sha256": "2dbca566a3a9c7fd41260c9d6f05aef38df2fd858f6b876c7165e273ac46743e",
+      "size": 695
+    },
+    {
+      "path": "review-queue/crd-0312-travel.json",
+      "sha256": "edf0319473231dd864aaaaac18d66981263f1d796bcff2792f1ca1319e39d57b",
+      "size": 677
+    },
+    {
+      "path": "review-queue/crd-0319-meal.json",
+      "sha256": "2db39a50ba6f649a21830842c3562e0f5c873e52ef6b06aa0fd396c1964aba5c",
+      "size": 683
+    },
+    {
+      "path": "review-queue/crd-0324-sw.json",
+      "sha256": "295455b7da8097126cb033c0524c9daef86da0fd567b0b7c7ae3b93e0d9f6365",
+      "size": 667
+    },
+    {
+      "path": "review-queue/transfer-pair-6169014b0b35c579cc89.json",
+      "sha256": "eb980422bad587afbdbb68dc406dd0f5bbd0cfbfe08a60fdbd25fc335d215638",
+      "size": 1046
+    },
+    {
+      "path": "review-queue/transfer-pair-8c268e5b7b6e3bc4df4a.json",
+      "sha256": "1de6e399c7001cad03039f216ff0880893e38d144bde2118da0e6fc981b50e5b",
+      "size": 1046
+    },
+    {
+      "path": "staging/pending-categorization.json",
+      "sha256": "b3abfc57db1009e5abaf9baed4bf45b164e42fe68bc308d63203ddfcdb112aad",
+      "size": 688
+    },
+    {
+      "path": "staging/seen-ids.json",
+      "sha256": "305c0c43ff68f18d75a554254fe8cb642f8f956ec16fb78cac3dab03735ea17c",
+      "size": 733
+    },
+    {
+      "path": "trust-policy.json",
+      "sha256": "0e9cf55171312665a8fb6a9a9b785343a68a933189c70a245405657bc343329c",
+      "size": 68
+    }
+  ],
+  "format": "slashbooks-company-snapshot",
+  "ledger": {
+    "content_sha256": "cfa880893c2dc64e8187b8a82124450fb63dd8a926b113a7ad1212391eea13bd",
+    "schema_version": 1,
+    "tables": {
+      "accounts": {
+        "rows": 17,
+        "sha256": "c7e5f47c54147539a49b1823c148250f271642062028c54a4d0fe20cda5509fd"
+      },
+      "audit_events": {
+        "rows": 150,
+        "sha256": "7834b06298554662a1066c1c15802694774827b7f97011a0375f574eeef66fe9"
+      },
+      "balance_assertions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "entries": {
+        "rows": 36,
+        "sha256": "19a131ead3eaac8376758504396066bd2225a3eb8e87d7444dbf84bfee910a51"
+      },
+      "import_sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "meta": {
+        "rows": 6,
+        "sha256": "963b03aab9286e4e93f8c86c3eb92c9af5f9035f191cc5053d9c98b3f299250f"
+      },
+      "postings": {
+        "rows": 73,
+        "sha256": "b3e3d42fb499fb5de63b33cc6cc806d97bb3e28b6386012ff87d208345fa0327"
+      },
+      "source_transactions": {
+        "rows": 38,
+        "sha256": "8c86128b375fd11d160db41b24124c6650af2f0c48a3db03577a6805b4d53579"
+      },
+      "sqlite_sequence": {
+        "rows": 4,
+        "sha256": "69ddea2b7d1e6142de578e5d4c74dc244c285b65e737f5bd546f0f4474716905"
+      }
+    }
+  },
+  "reports": {
+    "fingerprints": {
+      "balance_sheet": "4bd472da02810bdb8f91b2101abdd8d76e3252489ce6a905273a56867f33020e",
+      "general_ledger": "1e0f8c57b8c99355d2cbadb31287233d7dae9a5ecb1a63f8b2f645f61f57eba7",
+      "pnl": "972e20364ea53468fa608cf95b7a65a4d3efe989c666df70c69c60a115bd595b",
+      "trial_balance": "8e5f452e98e6bbbe38c8f284c1fb363ebb88e0062e07a702826c2fc8b656f8d0"
+    },
+    "from": "2025-01-01",
+    "to": "2026-03-25"
+  },
+  "source_entity": {
+    "basis": "cash",
+    "business_type": "consulting",
+    "currency": "USD",
+    "cutover_date": null,
+    "entity_json_sha256": "c228e4603f0aa779a6ff78686f33138f4ed652579e3fec2b72c5b9234529ec43",
+    "legal_structure": "llc",
+    "name": "Harbor Studio Cash"
+  },
+  "version": 1
+}

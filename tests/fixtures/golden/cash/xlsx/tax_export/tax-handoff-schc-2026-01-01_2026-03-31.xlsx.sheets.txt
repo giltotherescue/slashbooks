@@ -1,0 +1,82 @@
+=== sheet: Read Me
+A1=Item	B1=Value
+A2=Disclaimer	B2=Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+A3=Company	B3=Harbor Studio Cash
+A4=Return	B4=Schedule C (Form 1040) (schc, chosen by workspace)
+A5=Line numbers	B5=Tax year 2025 federal forms; confirm against the current year's form
+A6=Period	B6=2026-01-01 to 2026-03-31
+A7=Basis	B7=Cash basis book balances computed by the Slashbooks engine
+A8=Total debits	B8=46849.53
+A9=Total credits	B9=46849.53
+A10=Unmapped accounts	B10=0
+A11=Sign convention	B11=Balance columns are debit-positive and credit-negative
+A12=Tax computation	B12=None. Book amounts only; the preparer makes all tax adjustments
+=== sheet: Trial Balance
+A1=Account Number	B1=Account	C1=Account Type	D1=Beginning Balance	E1=Debit	F1=Credit	G1=Balance	H1=Tax Form	I1=Schedule	J1=Form Line	K1=Tax Line Code	L1=Tax Line	M1=Statement Detail	N1=On Return	O1=Mapping Basis	P1=Needs Review	Q1=Note
+A2=1010	B2=Assets › Bank › Checking	C2=Assets	D2=0.00	E2=33043.47	F2=0.00	G2=33043.47	H2=Schedule C (Form 1040)	I2=none	J2=balance_sheet	K2=schc/none/balance_sheet	L2=Balance sheet account (Schedule C has no balance sheet)	M2=	N2=no	O2=name	P2=no	Q2=
+A3=3010	B3=Equity › Owner-Contributions	C3=Equity	D3=0.00	E3=0.00	F3=20000.00	G3=-20000.00	H3=Schedule C (Form 1040)	I3=none	J3=owner_equity	K3=schc/none/owner_equity	L3=Owner contributions and draws (not on Schedule C)	M3=	N3=no	O3=name	P3=yes	Q3=
+A4=3020	B4=Equity › Owner-Draws	C4=Equity	D4=0.00	E4=2000.00	F4=0.00	G4=2000.00	H4=Schedule C (Form 1040)	I4=none	J4=owner_equity	K4=schc/none/owner_equity	L4=Owner contributions and draws (not on Schedule C)	M4=	N4=no	O4=name	P4=yes	Q4=
+A5=6010	B5=Expenses › Fees	C5=Expenses	D5=	E5=45.00	F5=0.00	G5=45.00	H5=Schedule C (Form 1040)	I5=II	J5=27b	K5=schc/II/27b	L5=Other expenses (Part V, line 48)	M5=Fees	N5=yes	O5=name	P5=yes	Q5=
+A6=6020	B6=Expenses › Insurance	C6=Expenses	D6=	E6=420.80	F6=0.00	G6=420.80	H6=Schedule C (Form 1040)	I6=II	J6=15	K6=schc/II/15	L6=Insurance (other than health)	M6=	N6=yes	O6=name	P6=yes	Q6=
+A7=6030	B7=Expenses › Marketing	C7=Expenses	D7=	E7=150.57	F7=0.00	G7=150.57	H7=Schedule C (Form 1040)	I7=II	J7=8	K7=schc/II/8	L7=Advertising	M7=	N7=yes	O7=name	P7=yes	Q7=
+A8=6040	B8=Expenses › Meals	C8=Expenses	D8=	E8=300.45	F8=0.00	G8=300.45	H8=Schedule C (Form 1040)	I8=II	J8=24b	K8=schc/II/24b	L8=Deductible meals	M8=	N8=yes	O8=name	P8=yes	Q8=Full book amount; the preparer applies the meals deduction limit.
+A9=6050	B9=Expenses › Office	C9=Expenses	D9=	E9=131.75	F9=0.00	G9=131.75	H9=Schedule C (Form 1040)	I9=II	J9=18	K9=schc/II/18	L9=Office expense	M9=	N9=yes	O9=name	P9=yes	Q9=
+A10=6060	B10=Expenses › Rent	C10=Expenses	D10=	E10=5400.00	F10=0.00	G10=5400.00	H10=Schedule C (Form 1040)	I10=II	J10=20b	K10=schc/II/20b	L10=Rent or lease: other business property	M10=	N10=yes	O10=name	P10=yes	Q10=
+A11=6070	B11=Expenses › Software	C11=Expenses	D11=	E11=309.09	F11=0.00	G11=309.09	H11=Schedule C (Form 1040)	I11=II	J11=27b	K11=schc/II/27b	L11=Other expenses (Part V, line 48)	M11=Software	N11=yes	O11=name	P11=yes	Q11=
+A12=6080	B12=Expenses › Subcontractors	C12=Expenses	D12=	E12=4000.00	F12=0.00	G12=4000.00	H12=Schedule C (Form 1040)	I12=II	J12=11	K12=schc/II/11	L12=Contract labor	M12=	N12=yes	O12=name	P12=yes	Q12=
+A13=6090	B13=Expenses › Taxes	C13=Expenses	D13=	E13=480.00	F13=0.00	G13=480.00	H13=Schedule C (Form 1040)	I13=II	J13=23	K13=schc/II/23	L13=Taxes and licenses	M13=	N13=yes	O13=name	P13=yes	Q13=
+A14=6100	B14=Expenses › Travel	C14=Expenses	D14=	E14=568.40	F14=0.00	G14=568.40	H14=Schedule C (Form 1040)	I14=II	J14=24a	K14=schc/II/24a	L14=Travel	M14=	N14=yes	O14=name	P14=yes	Q14=
+A15=4010	B15=Income › Consulting	C15=Income	D15=	E15=0.00	F15=26350.00	G15=-26350.00	H15=Schedule C (Form 1040)	I15=I	J15=1	K15=schc/I/1	L15=Gross receipts or sales	M15=	N15=yes	O15=account_type	P15=yes	Q15=
+A16=2010	B16=Liabilities › CreditCard › Company	C16=Liabilities	D16=0.00	E16=0.00	F16=499.53	G16=-499.53	H16=Schedule C (Form 1040)	I16=none	J16=balance_sheet	K16=schc/none/balance_sheet	L16=Balance sheet account (Schedule C has no balance sheet)	M16=	N16=no	O16=name	P16=no	Q16=
+A17=	B17=Total	C17=	D17=	E17=46849.53	F17=46849.53	G17=0.00	H17=	I17=	J17=	K17=	L17=	M17=	N17=	O17=	P17=	Q17=
+=== sheet: Tax Line Summary
+A1=Tax Form	B1=Schedule	C1=Form Line	D1=Tax Line Code	E1=Tax Line	F1=Statement Detail	G1=Beginning Book Amount	H1=Book Amount	I1=Normal Side	J1=On Return	K1=Accounts	L1=Note
+A2=Schedule C (Form 1040)	B2=I	C2=1	D2=schc/I/1	E2=Gross receipts or sales	F2=	G2=	H2=26350.00	I2=credit	J2=yes	K2=Income:Consulting	L2=
+A3=Schedule C (Form 1040)	B3=II	C3=8	D3=schc/II/8	E3=Advertising	F3=	G3=	H3=150.57	I3=debit	J3=yes	K3=Expenses:Marketing	L3=
+A4=Schedule C (Form 1040)	B4=II	C4=11	D4=schc/II/11	E4=Contract labor	F4=	G4=	H4=4000.00	I4=debit	J4=yes	K4=Expenses:Subcontractors	L4=
+A5=Schedule C (Form 1040)	B5=II	C5=15	D5=schc/II/15	E5=Insurance (other than health)	F5=	G5=	H5=420.80	I5=debit	J5=yes	K5=Expenses:Insurance	L5=
+A6=Schedule C (Form 1040)	B6=II	C6=18	D6=schc/II/18	E6=Office expense	F6=	G6=	H6=131.75	I6=debit	J6=yes	K6=Expenses:Office	L6=
+A7=Schedule C (Form 1040)	B7=II	C7=20b	D7=schc/II/20b	E7=Rent or lease: other business property	F7=	G7=	H7=5400.00	I7=debit	J7=yes	K7=Expenses:Rent	L7=
+A8=Schedule C (Form 1040)	B8=II	C8=23	D8=schc/II/23	E8=Taxes and licenses	F8=	G8=	H8=480.00	I8=debit	J8=yes	K8=Expenses:Taxes	L8=
+A9=Schedule C (Form 1040)	B9=II	C9=24a	D9=schc/II/24a	E9=Travel	F9=	G9=	H9=568.40	I9=debit	J9=yes	K9=Expenses:Travel	L9=
+A10=Schedule C (Form 1040)	B10=II	C10=24b	D10=schc/II/24b	E10=Deductible meals	F10=	G10=	H10=300.45	I10=debit	J10=yes	K10=Expenses:Meals	L10=Full book amount; the preparer applies the meals deduction limit.
+A11=Schedule C (Form 1040)	B11=II	C11=27b	D11=schc/II/27b	E11=Other expenses (Part V, line 48)	F11=Fees	G11=	H11=45.00	I11=debit	J11=yes	K11=Expenses:Fees	L11=
+A12=Schedule C (Form 1040)	B12=II	C12=27b	D12=schc/II/27b	E12=Other expenses (Part V, line 48)	F12=Software	G12=	H12=309.09	I12=debit	J12=yes	K12=Expenses:Software	L12=
+A13=Schedule C (Form 1040)	B13=none	C13=balance_sheet	D13=schc/none/balance_sheet	E13=Balance sheet account (Schedule C has no balance sheet)	F13=	G13=0.00	H13=32543.94	I13=debit	J13=no	K13=Assets:Bank:Checking; Liabilities:CreditCard:Company	L13=
+A14=Schedule C (Form 1040)	B14=none	C14=owner_equity	D14=schc/none/owner_equity	E14=Owner contributions and draws (not on Schedule C)	F14=	G14=0.00	H14=-18000.00	I14=debit	J14=no	K14=Equity:Owner-Contributions; Equity:Owner-Draws	L14=
+=== sheet: Unmapped Accounts
+A1=Account Number	B1=Account	C1=Account Type	D1=Balance	E1=Reason	F1=How to fix
+=== sheet: Lacerte TBU
+A1=Account Number	B1=Account Name	C1=Account Type	D1=Balance	E1=Slashbooks Tax Line
+A2=1010	B2=Assets › Bank › Checking	C2=A	D2=33043.47	E2=schc/none/balance_sheet Balance sheet account (Schedule C has no balance sheet)
+A3=3010	B3=Equity › Owner-Contributions	C3=L	D3=-20000.00	E3=schc/none/owner_equity Owner contributions and draws (not on Schedule C)
+A4=3020	B4=Equity › Owner-Draws	C4=L	D4=2000.00	E4=schc/none/owner_equity Owner contributions and draws (not on Schedule C)
+A5=6010	B5=Expenses › Fees	C5=E	D5=45.00	E5=schc/II/27b Other expenses (Part V, line 48)
+A6=6020	B6=Expenses › Insurance	C6=E	D6=420.80	E6=schc/II/15 Insurance (other than health)
+A7=6030	B7=Expenses › Marketing	C7=E	D7=150.57	E7=schc/II/8 Advertising
+A8=6040	B8=Expenses › Meals	C8=E	D8=300.45	E8=schc/II/24b Deductible meals
+A9=6050	B9=Expenses › Office	C9=E	D9=131.75	E9=schc/II/18 Office expense
+A10=6060	B10=Expenses › Rent	C10=E	D10=5400.00	E10=schc/II/20b Rent or lease: other business property
+A11=6070	B11=Expenses › Software	C11=E	D11=309.09	E11=schc/II/27b Other expenses (Part V, line 48)
+A12=6080	B12=Expenses › Subcontractors	C12=E	D12=4000.00	E12=schc/II/11 Contract labor
+A13=6090	B13=Expenses › Taxes	C13=E	D13=480.00	E13=schc/II/23 Taxes and licenses
+A14=6100	B14=Expenses › Travel	C14=E	D14=568.40	E14=schc/II/24a Travel
+A15=4010	B15=Income › Consulting	C15=R	D15=-26350.00	E15=schc/I/1 Gross receipts or sales
+A16=2010	B16=Liabilities › CreditCard › Company	C16=L	D16=-499.53	E16=schc/none/balance_sheet Balance sheet account (Schedule C has no balance sheet)
+=== sheet: UltraTax CS Import
+A1=Account Number	B1=Account Description	C1=Unit	D1=Tax Code	E1=Amount
+A2=1010	B2=Assets › Bank › Checking	C2=	D2=	E2=33043.47
+A3=3010	B3=Equity › Owner-Contributions	C3=	D3=	E3=-20000.00
+A4=3020	B4=Equity › Owner-Draws	C4=	D4=	E4=2000.00
+A5=6010	B5=Expenses › Fees	C5=	D5=	E5=45.00
+A6=6020	B6=Expenses › Insurance	C6=	D6=	E6=420.80
+A7=6030	B7=Expenses › Marketing	C7=	D7=	E7=150.57
+A8=6040	B8=Expenses › Meals	C8=	D8=	E8=300.45
+A9=6050	B9=Expenses › Office	C9=	D9=	E9=131.75
+A10=6060	B10=Expenses › Rent	C10=	D10=	E10=5400.00
+A11=6070	B11=Expenses › Software	C11=	D11=	E11=309.09
+A12=6080	B12=Expenses › Subcontractors	C12=	D12=	E12=4000.00
+A13=6090	B13=Expenses › Taxes	C13=	D13=	E13=480.00
+A14=6100	B14=Expenses › Travel	C14=	D14=	E14=568.40
+A15=4010	B15=Income › Consulting	C15=	D15=	E15=-26350.00
+A16=2010	B16=Liabilities › CreditCard › Company	C16=	D16=	E16=-499.53

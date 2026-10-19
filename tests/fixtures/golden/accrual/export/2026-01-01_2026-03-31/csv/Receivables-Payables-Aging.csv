@@ -1,0 +1,21 @@
+Receivables and payables aging
+Report as of,2026-03-31
+Accounting basis,accrual
+Currency,USD
+Aging basis,Explicit due dates; unapplied credits remain separate
+Detailed activity begins,2026-01-01
+Imported opening as of,2025-12-31
+Opening verified,True
+Opening supporting status,reconciled
+
+Type,Customer / vendor,Reference,Accounting date,Due date,Aging,Balance,Account,Currency,Item ID
+receivable,Kestrel Foods,,2026-01-12,2026-02-11,31–60 days overdue,600.00,Assets:Receivable:Accounts-Receivable,USD,inv-1003
+receivable,Orbit Labs,INV-0950,2025-12-31,2025-12-20,Over 90 days overdue,1500.00,Assets:Receivable:Accounts-Receivable,USD,inv-open-1
+
+Summary by type/account/customer; unapplied credits are separate
+Type,Account,Customer / vendor,Currency,Current,1–30 days overdue,31–60 days overdue,61–90 days overdue,Over 90 days overdue,Due date not provided,Unapplied credit,Total
+receivable,Assets:Receivable:Accounts-Receivable,Kestrel Foods,USD,0.00,0.00,600.00,0.00,0.00,0.00,0.00,600.00
+receivable,Assets:Receivable:Accounts-Receivable,Orbit Labs,USD,0.00,0.00,0.00,0.00,1500.00,0.00,0.00,1500.00
+
+Review items
+No outstanding review items

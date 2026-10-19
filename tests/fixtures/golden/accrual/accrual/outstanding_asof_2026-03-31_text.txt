@@ -1,0 +1,18 @@
+Outstanding balances
+As of 2026-03-31 | Accrual basis | USD
+Detailed activity begins 2026-01-01; imported opening as of 2025-12-31.
+
+Reference       | Type             | Customer / vendor | Due date     | Remaining | Status 
+----------------+------------------+-------------------+--------------+-----------+--------
+Granite Hosting | Payable          | Granite Hosting   | 2026-03-05   | 0.00      | settled
+BILL-311        | Payable          | Delta Design      | 2026-01-15   | 0.00      | settled
+Staff           | Payable          | Staff             | Not provided | 0.00      | settled
+Staff           | Accrued balance  | Staff             | 2026-04-15   | 0.00      | settled
+Orbit Labs      | Receivable       | Orbit Labs        | 2026-02-09   | 0.00      | settled
+Orbit Labs      | Receivable       | Orbit Labs        | 2026-03-17   | 0.00      | settled
+Kestrel Foods   | Receivable       | Kestrel Foods     | 2026-02-11   | 600.00    | open   
+INV-0950        | Receivable       | Orbit Labs        | 2025-12-20   | 1500.00   | open   
+Overpayment     | Unapplied credit | Orbit Labs        | Not provided | 0.00      | settled
+
+Review issues:
+No outstanding review items.

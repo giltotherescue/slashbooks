@@ -1,0 +1,24 @@
+{
+  "accrual_operation_id": "vendor-payment",
+  "accrual_treatment": "settlement",
+  "amount": "-200.00",
+  "confirmed_category": "settlement",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "SYNTHETIC SETTLEMENT VENDOR-PAYMENT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-07-16",
+  "delta": null,
+  "description": "Synthetic settlement vendor-payment",
+  "original_amount": "-200.00",
+  "proposed_category": "Expenses:Operating-Costs",
+  "reasoning": "A cash category suggestion must not duplicate the accrued event.",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "vendor-payment": "1accdc21e75800109c64eda24250ad515116aa2fee3b4b67155ca6003f03b8a0"
+  },
+  "source_id": "vendor-payment",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

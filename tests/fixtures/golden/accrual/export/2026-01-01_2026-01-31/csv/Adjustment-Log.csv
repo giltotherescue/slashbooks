@@ -1,0 +1,2 @@
+Original ID,Original Date,Original Counterparty,Original Amount,Reversal ID,Reversal Date,Corrected ID,Corrected Category,Corrected Amount,Trace Status,Note
+accrual:utilities-estimate-jan,2026-01-31,,450.00,accrual:due:utilities-estimate-jan,2026-02-01,,,,REVIEW,Reversal of: Estimated January utilities

@@ -1,0 +1,75 @@
+[
+  {
+    "amount": "100.00",
+    "date": "2026-07-31",
+    "evidence_ids": [
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+    ],
+    "generation": 0,
+    "id": "recognition:deferred-open:0:2026-07-31",
+    "kind": "recognition",
+    "schedule_id": "deferred-open",
+    "service_end": "2026-07-31",
+    "service_start": "2026-07-01",
+    "source_id": "schedule:recognition:deferred-open:0:2026-07-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-07-31",
+    "evidence_ids": [
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+    ],
+    "generation": 0,
+    "id": "recognition:prepaid-open:0:2026-07-31",
+    "kind": "recognition",
+    "schedule_id": "prepaid-open",
+    "service_end": "2026-07-31",
+    "service_start": "2026-07-01",
+    "source_id": "schedule:recognition:prepaid-open:0:2026-07-31"
+  },
+  {
+    "amount": "400.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "400.00",
+    "date": "2026-07-15",
+    "evidence_ids": [
+      "6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6"
+    ],
+    "id": "settlement:customer-receipt:customer-open",
+    "item_id": "customer-open",
+    "kind": "settlement",
+    "signed_amount": "400.00",
+    "source_id": "customer-receipt",
+    "source_mode": "new"
+  },
+  {
+    "amount": "600.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "-600.00",
+    "date": "2026-07-25",
+    "evidence_ids": [
+      "dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba"
+    ],
+    "id": "settlement:payroll-payment:july-payroll",
+    "item_id": "july-payroll",
+    "kind": "settlement",
+    "signed_amount": "-600.00",
+    "source_id": "payroll-payment",
+    "source_mode": "new"
+  },
+  {
+    "amount": "200.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "-200.00",
+    "date": "2026-07-16",
+    "evidence_ids": [
+      "e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1"
+    ],
+    "id": "settlement:vendor-payment:vendor-open",
+    "item_id": "vendor-open",
+    "kind": "settlement",
+    "signed_amount": "-200.00",
+    "source_id": "vendor-payment",
+    "source_mode": "new"
+  }
+]

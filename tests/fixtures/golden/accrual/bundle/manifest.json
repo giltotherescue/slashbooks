@@ -1,0 +1,157 @@
+{
+  "excluded": {
+    "runtime_state": 2
+  },
+  "files": [
+    {
+      "path": "business-profile.md",
+      "sha256": "5f8192a1c64da16f857e6a7f3a690b270027b9bb2bf78a73364cc3b779da84a7",
+      "size": 2037
+    },
+    {
+      "path": "entity.json",
+      "sha256": "d683fe9712c3eb88407bfda1ab040d89269dfa16bbee99ff1d9a1ebce60866e9",
+      "size": 658
+    },
+    {
+      "path": "evidence/bank-2026-01.json",
+      "sha256": "e850e44bfe81586ff2f84c4f740075c5ca9f839812b8d071c3ab856f8f862ef0",
+      "size": 60
+    },
+    {
+      "path": "evidence/open-items.txt",
+      "sha256": "441b7c1b7df8f67ff3023c4cbaf358f570670b9b8098c1c0b25b12a5b82106d3",
+      "size": 63
+    },
+    {
+      "path": "learned-context/accrual-rules.json",
+      "sha256": "54d6680f5014d66b2265b1406e2c24fbca2dc14ad3af70a5aabb238c80d1ffb6",
+      "size": 1108
+    },
+    {
+      "path": "learned-context/counterparties.json",
+      "sha256": "d3f2c91abb4567b13d9ca52d3c91c6e89445fc22eeda25749bd24fa2189a4e45",
+      "size": 418
+    },
+    {
+      "path": "ledger.sqlite"
+    },
+    {
+      "path": "reports/quarterly/2026-Q1.json",
+      "sha256": "b18ea437993192b974a2b9c23a33b947c3625cedf8feeb34d712d2eee1ec2450",
+      "size": 12198
+    },
+    {
+      "path": "reports/quarterly/2026-Q1.txt",
+      "sha256": "3acc93d1c0e881067916d1be6d559de5423c178ee023a95f4e80ba586aed1a1e",
+      "size": 3284
+    },
+    {
+      "path": "reports/reconciliation.json",
+      "sha256": "227f0b10d1e0e8827548a9c98c0113b9a3285f76c834fd9de26cf8dcf3ff3704",
+      "size": 844
+    },
+    {
+      "path": "staging/seen-ids.json",
+      "sha256": "c9d3d78244f64c1f3e18c2dbbaa141db0618232b00f35fd86035d3dfa298e84d",
+      "size": 225
+    },
+    {
+      "path": "trust-policy.json",
+      "sha256": "0e9cf55171312665a8fb6a9a9b785343a68a933189c70a245405657bc343329c",
+      "size": 68
+    }
+  ],
+  "format": "slashbooks-company-snapshot",
+  "ledger": {
+    "content_sha256": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097",
+    "schema_version": 2,
+    "tables": {
+      "accounts": {
+        "rows": 27,
+        "sha256": "0d902b07ba767b3f3c023479c9167783c73746da11f72805bf6db6c2c603096a"
+      },
+      "accrual_allocations": {
+        "rows": 26,
+        "sha256": "ae2e2f89e9037b0d665e3eafeb2290af66cbaa8777e57a3c3c53fd435ce7df21"
+      },
+      "accrual_coverage": {
+        "rows": 1,
+        "sha256": "3ea981970eae27d4f2f05148afcc036957564d477cb44d120a19299fd991520c"
+      },
+      "accrual_evidence": {
+        "rows": 17,
+        "sha256": "416a77e07c2990148659b104e7c77eaabc5ec78b8a826eb77c03c5775a94254f"
+      },
+      "accrual_intents": {
+        "rows": 60,
+        "sha256": "89a52e109ec75322249e95b2d189d2f06b90bd3ae16ab657e80c18beddb1646e"
+      },
+      "accrual_items": {
+        "rows": 9,
+        "sha256": "8368e3b3f012ce85120d57e0a9a925d5113f2c965d91b4a2dcc935abf8476e12"
+      },
+      "accrual_periods": {
+        "rows": 1,
+        "sha256": "be714e85aa89b85339a2921058fc8073baec53df99aee698bacae60de8e25e43"
+      },
+      "accrual_schedules": {
+        "rows": 6,
+        "sha256": "9be51f107e9597ea42f2751efd7134786375ced7eef022bef9155716eac5804a"
+      },
+      "audit_events": {
+        "rows": 172,
+        "sha256": "bff790ff6c0794c53b2927c9dd1007a92bb241cb530556c2f2db7c2b226331c1"
+      },
+      "balance_assertions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "entries": {
+        "rows": 36,
+        "sha256": "2c5f9dbd4494ac44cf46f68245a75c8c9cf7f8b397872c41ceacbb8ee886ef32"
+      },
+      "import_sessions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "meta": {
+        "rows": 6,
+        "sha256": "4c15d1696582f29e14c2aa15b60f3114f959a023fa00cc77edfe3dc62968d9e9"
+      },
+      "postings": {
+        "rows": 79,
+        "sha256": "6500c6a27d425343772e35fbbf8bee424829dfc8337c682b008bf378b0139cd4"
+      },
+      "source_transactions": {
+        "rows": 0,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      "sqlite_sequence": {
+        "rows": 4,
+        "sha256": "293d336d90c667054dfbc2bdada8c28560ed3438c9020ffebb73aac455bf1902"
+      }
+    }
+  },
+  "reports": {
+    "fingerprints": {
+      "balance_sheet": "a8b9fa4c87557d83fa2e0e0dfdbd054577e444a90599d267e7a428bb1c50116a",
+      "general_ledger": "d9c6559ac18578582ff9fc039fc55a8168256818bf66c71fb5f4b3d89f29169b",
+      "pnl": "335ace1a9ba10de4b17e27deb7e3905e7bdd0f0b91ad2f9d473cd2e28178563f",
+      "trial_balance": "88cbe1894d9a9f64544b66ec1c7c9b20016445d9c4aa959e7b6a3f6bb80bf225"
+    },
+    "from": "2026-01-01",
+    "to": "2026-03-31"
+  },
+  "source_entity": {
+    "accrual_capability_version": 1,
+    "basis": "accrual",
+    "business_type": "consulting",
+    "currency": "USD",
+    "cutover_date": "2026-01-01",
+    "entity_json_sha256": "d683fe9712c3eb88407bfda1ab040d89269dfa16bbee99ff1d9a1ebce60866e9",
+    "legal_structure": "llc",
+    "name": "Pinecone Advisory Accrual"
+  },
+  "version": 2
+}

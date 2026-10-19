@@ -1,0 +1,13 @@
+External supporting balances
+As of 2026-07-31 | Accrual basis | USD
+Detailed activity begins 2026-07-01; imported opening as of 2026-06-30.
+Imported fiscal summary: 2026-01-01 through 2026-06-30; earlier monthly detail is unavailable.
+
+Support                               | Account                               | Supporting document date | Balance
+--------------------------------------+---------------------------------------+--------------------------+--------
+external-support:depreciation-support | Assets:Fixed:Accumulated-Depreciation | 2026-07-31               | -440.00
+opening-support:equipment-open        | Assets:Fixed:Equipment                | 2026-06-30               | 2400.00
+opening-support:payroll-open          | Liabilities:Other:Payroll-Payable     | 2026-06-30               | -300.00
+
+Review issues:
+No outstanding review items.

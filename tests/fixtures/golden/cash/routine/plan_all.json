@@ -1,0 +1,39 @@
+{
+  "actions": [
+    {
+      "authority_id": "golden-rule-fees",
+      "category": "Expenses:Fees",
+      "source_id": "chk-0326-mystery"
+    }
+  ],
+  "next_cursor": null,
+  "skipped": [],
+  "unresolved": [
+    {
+      "account_name": "Operating Checking",
+      "amount": "875.00",
+      "counterparty_key": "MOBILE DEPOSIT",
+      "currency": "USD",
+      "date": "2026-03-30",
+      "description": "Mobile deposit",
+      "ledger_account": "Assets:Bank:Checking",
+      "reason": "existing_review",
+      "sign": "positive",
+      "source_account_id": "checking",
+      "source_id": "chk-0330-deposit"
+    },
+    {
+      "account_name": "Company Card",
+      "amount": "-96.00",
+      "counterparty_key": "QX SUPPLIES ORDER",
+      "currency": "USD",
+      "date": "2026-03-27",
+      "description": "QX Supplies order 7741",
+      "ledger_account": "Liabilities:CreditCard:Company",
+      "reason": "needs_category",
+      "sign": "negative",
+      "source_account_id": "card",
+      "source_id": "crd-0327-unknown"
+    }
+  ]
+}

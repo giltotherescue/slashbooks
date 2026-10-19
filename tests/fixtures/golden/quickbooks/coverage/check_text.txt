@@ -1,0 +1,7 @@
+Source coverage 2026-06-01 to 2026-06-30: INCOMPLETE
+  1 account(s); months complete 0, partial 1, missing 0, inferred only 0
+
+synthetic-bank (Assets › Bank › Checking): partial
+  2026-06  partial              basis: transactions
+      - synthetic-bank has no statement, feed window, declared coverage or transactions for Jun 1–29.
+      - synthetic-bank coverage for Jun 30 is inferred from transaction dates only; add a statement or feed window to confirm it.

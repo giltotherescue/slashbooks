@@ -1,0 +1,1034 @@
+{
+  "ask/q01.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much did we earn in January?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much did we earn in January?",
+    "stdout_sha256": "7762bf1659d464294fcb38497075873344fcb5e35dd699683da8d746a6b14fba"
+  },
+  "ask/q02.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What were our total expenses this year?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What were our total expenses this year?",
+    "stdout_sha256": "1f7e559da2f8b48c0a9254a814935b34e66c7a302023aab9306ed0fc8e65576f"
+  },
+  "ask/q03.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much did we spend on software in March?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much did we spend on software in March?",
+    "stdout_sha256": "e10191d61e8fa746cfa58625f6a0c9e120b16cf3863a7400aa5143423f31808d"
+  },
+  "ask/q04.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much did we pay Maple Street last quarter?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much did we pay Maple Street last quarter?",
+    "stdout_sha256": "9c64ed5c67b6ea3f7123aced67699d701b05244d994ee391500986743f8467b9"
+  },
+  "ask/q05.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How are we doing this year?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How are we doing this year?",
+    "stdout_sha256": "68ffd1c556e612cd9d1c16eb1e3fd0fb7fec8753a7ccc5d8e2f7a46e757c44c8"
+  },
+  "ask/q06.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What do we owe?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What do we owe?",
+    "stdout_sha256": "6f6044051fbd08061c69fd97c2246da0199d5ecee2b41f962332b6e92545833d"
+  },
+  "ask/q07.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What is the balance sheet?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What is the balance sheet?",
+    "stdout_sha256": "87de8662e2e2381192ae7368fdffaad998b65b4ee4ed099d331064fe883c8eaa"
+  },
+  "ask/q08.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What were owner draws this month?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What were owner draws this month?",
+    "stdout_sha256": "b95e3c953c966c4059fc1535afe44b04220c059679e52faad3e4b7652dad88a3"
+  },
+  "ask/q09.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "How much cash did we spend on software in March?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "How much cash did we spend on software in March?",
+    "stdout_sha256": "e10191d61e8fa746cfa58625f6a0c9e120b16cf3863a7400aa5143423f31808d"
+  },
+  "ask/q10.txt": {
+    "argv": [
+      "ask",
+      "--entity",
+      "<COMPANY>",
+      "What was our accrual net income in March?",
+      "--today",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "question": "What was our accrual net income in March?",
+    "stdout_sha256": "800cf8702a9c5860291d8d85c7e92a68d180bfc22c9bf2e37be7fd6feefe1d10"
+  },
+  "coverage/check_json.json": {
+    "argv": [
+      "coverage",
+      "check",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "5045758367e28c5e5b83b3c4cf60488272e0a4910f8a359179fcfb8a441f6932"
+  },
+  "coverage/check_text.txt": {
+    "argv": [
+      "coverage",
+      "check",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "00dd2efc39103fa4f45e5fa7b8e243bd12bb4ed35fe7c70d937edcf8cab08bd5"
+  },
+  "coverage/statement_list.json": {
+    "argv": [
+      "coverage",
+      "statement-list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "5ec38122677ae0f46edefed7463343cd1ed5ef2fae5a8783bacfd8d451dab135"
+  },
+  "entity/related_entities.txt": {
+    "argv": [
+      "entity",
+      "related-entity",
+      "list",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3368f9aea72326242f5681688aa4fd7f2d4b95c45479973b73181a78cec5b36e"
+  },
+  "export/2026-01-01_2026-01-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--output-dir",
+      "<WORK>/export-cash-2026-01-01-2026-01-31"
+    ],
+    "exit": 1,
+    "stderr": "Error: Sanity checks have failures. Fix them before generating the export, or run with --override to proceed anyway.\n  [FAIL] queue_empty: There are 3 item(s) waiting for review in the queue. Review and confirm all items before generating the final export, or use --override to proceed anyway.\n",
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "export/2026-01-01_2026-01-31_override_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--output-dir",
+      "<WORK>/export-cash-2026-01-01-2026-01-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "9ac01094cf3cbddef77bb21ddddf2ef92a42ec895a9abcd2966427ead1c1bb29"
+  },
+  "export/2026-01-01_2026-03-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/export-cash-2026-01-01-2026-03-31"
+    ],
+    "exit": 1,
+    "stderr": "Error: Sanity checks have failures. Fix them before generating the export, or run with --override to proceed anyway.\n  [FAIL] queue_empty: There are 3 item(s) waiting for review in the queue. Review and confirm all items before generating the final export, or use --override to proceed anyway.\n",
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "export/2026-01-01_2026-03-31_override_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/export-cash-2026-01-01-2026-03-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "28f757a0438a13a6c744173d670ee9d1bb904a16374e49fcf09ad08a3689c4a1"
+  },
+  "export/sanity_check.json": {
+    "argv": [
+      "sanity-check",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31"
+    ],
+    "exit": 1,
+    "stdout_sha256": "b64276cfcd3b34be4e1b936f5229537710848fafa8e64df4b51e35a3295d491b"
+  },
+  "queue/duplicates.json": {
+    "argv": [
+      "queue",
+      "duplicates",
+      "--entity",
+      "<COMPANY>",
+      "--json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "54494bab0eb5f6f68730a01a920e0b203bc7706c9017041de68d798bc618cc64"
+  },
+  "queue/list.txt": {
+    "argv": [
+      "queue",
+      "list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "2218f5c8c9138e555e0e4fea811e314187d92ebc73c414810e6a41e915b8c981"
+  },
+  "queue/list_open.txt": {
+    "argv": [
+      "queue",
+      "list",
+      "--entity",
+      "<COMPANY>",
+      "--status",
+      "open"
+    ],
+    "exit": 0,
+    "stdout_sha256": "ed3529c3db07b755ea2bb89b37e33f805c6714eee518517d57f61fb08894064a"
+  },
+  "queue/show_chk-0105-rent.json": {
+    "argv": [
+      "queue",
+      "show",
+      "--entity",
+      "<COMPANY>",
+      "--item",
+      "chk-0105-rent"
+    ],
+    "exit": 0,
+    "stdout_sha256": "0acf1a4971f0797eadb87bf95a28425e3fd98f26845a024897b97981cb8fefc9"
+  },
+  "queue/show_chk-0330-deposit.json": {
+    "argv": [
+      "queue",
+      "show",
+      "--entity",
+      "<COMPANY>",
+      "--item",
+      "chk-0330-deposit"
+    ],
+    "exit": 0,
+    "stdout_sha256": "122bdbf7a3fdd08daaf3c1b072c797299406852128ce7a3e50f304e4cfa7f70d"
+  },
+  "queue/show_crd-0118-travel.json": {
+    "argv": [
+      "queue",
+      "show",
+      "--entity",
+      "<COMPANY>",
+      "--item",
+      "crd-0118-travel"
+    ],
+    "exit": 0,
+    "stdout_sha256": "f021143034b1ac822f344aaf89e5bc22cdaa77011e0d9d68e7aff5ff15a16c74"
+  },
+  "queue/show_transfer-pair-6169014b0b35c579cc89.json": {
+    "argv": [
+      "queue",
+      "show",
+      "--entity",
+      "<COMPANY>",
+      "--item",
+      "transfer-pair-6169014b0b35c579cc89"
+    ],
+    "exit": 0,
+    "stdout_sha256": "eb980422bad587afbdbb68dc406dd0f5bbd0cfbfe08a60fdbd25fc335d215638"
+  },
+  "queue/show_transfer-pair-8c268e5b7b6e3bc4df4a.json": {
+    "argv": [
+      "queue",
+      "show",
+      "--entity",
+      "<COMPANY>",
+      "--item",
+      "transfer-pair-8c268e5b7b6e3bc4df4a"
+    ],
+    "exit": 0,
+    "stdout_sha256": "1de6e399c7001cad03039f216ff0880893e38d144bde2118da0e6fc981b50e5b"
+  },
+  "queue/split_templates.txt": {
+    "argv": [
+      "queue",
+      "split-template-list",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "e58bad4dcd137b7c3b20ae766e039c6fc0cf8b2a086aa233c85530c63cd54fcb"
+  },
+  "queue/summary.txt": {
+    "argv": [
+      "queue",
+      "summary",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "03b62e1043097c2a4ae2f8848f72895b88177b5ceedebd9ec6fd27a6a7a21284"
+  },
+  "queue/taught.json": {
+    "argv": [
+      "queue",
+      "taught",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a50d0af01a8a1259a67e68ff881e4abdafc975c47abf562062b00ff3f9ec1d16"
+  },
+  "queue/transfer_candidates.txt": {
+    "argv": [
+      "queue",
+      "transfer-candidates",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c736e3e2124caeb2816e3ebd7d88872cdc9565c74bc45cafd1f55924665581d2"
+  },
+  "queue/transfer_exceptions.txt": {
+    "argv": [
+      "queue",
+      "transfer-exceptions",
+      "--entity",
+      "<COMPANY>"
+    ],
+    "exit": 0,
+    "stdout_sha256": "8f5c428ce4735912dc7cce6a7c1e6ce739f3e6cc235767e43452a12d94c9be9d"
+  },
+  "readiness/2026-01.json": {
+    "argv": [
+      "readiness",
+      "--entity",
+      "<COMPANY>",
+      "--period",
+      "2026-01",
+      "--as-of",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "stdout_sha256": "cbe4a682a1c60c5c425e7d9b7b62d5501869de20c26855b7b0a22d2ac415edf8"
+  },
+  "readiness/2026-02.json": {
+    "argv": [
+      "readiness",
+      "--entity",
+      "<COMPANY>",
+      "--period",
+      "2026-02",
+      "--as-of",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "stdout_sha256": "aee1b884ffff0c9bf5ab341d50ba4961a3c04e1576ed8f44648eb7cd9db168e9"
+  },
+  "readiness/2026-03.json": {
+    "argv": [
+      "readiness",
+      "--entity",
+      "<COMPANY>",
+      "--period",
+      "2026-03",
+      "--as-of",
+      "2026-08-05"
+    ],
+    "exit": 0,
+    "stdout_sha256": "f827febbb9a537f4cad8fc7cd7f1b042906c0ed0fed7dc98a8f1369c25710fb9"
+  },
+  "reports/balance-sheet_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "de66d0cbe910198a868464d825a5e0e3a2b6b6ca7657a46c40b703d5774c618a"
+  },
+  "reports/balance-sheet_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "198bb01447b0b66140097494ed9b639a14008ef8fe8d516aa49adc95dde79474"
+  },
+  "reports/balance-sheet_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3baa5866403b6c4b7b7413b13d4d782f965d69eb404139dd01b088a295f7b3fb"
+  },
+  "reports/balance-sheet_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "72dcb3211ac3d4ff4223bebdde2c3972b4940fbe4c7e881c5d893550d05de882"
+  },
+  "reports/balance-sheet_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "b9ee09edb92e6a413e5b5817cde4f498510005c7030daa00014b1b7591717bb8"
+  },
+  "reports/balance-sheet_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "balance-sheet",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "70e8b6ac247c2736773e4a145e75e3018adffac303fb41a224875065d0b98928"
+  },
+  "reports/general-ledger_2026-01-01_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "4a8884fd116cdb91ab110f0c10dd878ec0235ea57c5f60ecbe7937f5dbf76c81"
+  },
+  "reports/general-ledger_2026-01-01_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "8875d450d02aefb393e885fde5e55ca7c36c0e0f75cb7fb126b8cabeb1ccb3e8"
+  },
+  "reports/general-ledger_2026-01-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "67b0d84f12940b3719724e0016608a2830e255923b9cf6a12bddc41c473dbb81"
+  },
+  "reports/general-ledger_2026-01-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "77f7575d46b421b08eaba8164fe63f71b131c0b377a5b5d18f92a4424a9790cd"
+  },
+  "reports/general-ledger_2026-02-01_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "5f4fafc92e35fe628bdfc8db10497e3ff8d98090bd84915445677f2e01521b2f"
+  },
+  "reports/general-ledger_2026-02-01_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a324720792379acedebf55c600b648eda2dfb5cffe8a958101a70788898b0480"
+  },
+  "reports/general-ledger_2026-03-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "da16cb4e2ec473f5932fa5a52db3d13eb7720390d49738bc92f535bbb92a76ea"
+  },
+  "reports/general-ledger_2026-03-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "general-ledger",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a59cfcef020196987c8d391e1b419956530e59f5e153f4773a742339d7d5cdf6"
+  },
+  "reports/pnl_2026-01-01_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "1f83d87993fd984c5b30410ff01669fb7763ff2c117ae6b4737261695153be28"
+  },
+  "reports/pnl_2026-01-01_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c983c000251fbadba71aac5e9a7239c42bd1212b874a0bd2c5bc33de7f48f009"
+  },
+  "reports/pnl_2026-01-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "2bd7f7e25274c3ed3364599f508db7d87c492dc5ded18f58b1236e3dd3f7b783"
+  },
+  "reports/pnl_2026-01-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "7bdc699d0f1ca59dc6f96162a0c6476c1c600bc64919f191f74866ebadcec5af"
+  },
+  "reports/pnl_2026-02-01_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "dfd19d11e437d941e1844f59fbf2f2e3fa3abb4e964b2db3422de26ccc2d3993"
+  },
+  "reports/pnl_2026-02-01_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-02-01",
+      "--to",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "ebcedbb4adc999f86d0e32a5da875edc37c562d803155596e5d530b2a5921ba3"
+  },
+  "reports/pnl_2026-03-01_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "8542bc292c73b555f4b10bab9d5699123703b7ad779ee009724ce420e6e61a05"
+  },
+  "reports/pnl_2026-03-01_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-03-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "cd1298cc032cc3af207b704b1144155c1aa2041ee54b7361716dec7bcab4a8cc"
+  },
+  "reports/pnl_to_file_json.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json",
+      "--output",
+      "<WORK>/pnl-cash-json.out"
+    ],
+    "exit": 0,
+    "stdout_sha256": "fba152849de324ee6be6af84552a93a655fa8c07061e55823f90d1e792421f49"
+  },
+  "reports/pnl_to_file_text.txt": {
+    "argv": [
+      "report",
+      "pnl",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text",
+      "--output",
+      "<WORK>/pnl-cash-text.out"
+    ],
+    "exit": 0,
+    "stdout_sha256": "ad3189467184c987d5cb9bc309221f742a703956d7eff852a3fb4bd4a399957e"
+  },
+  "reports/quarterly-review.txt": {
+    "argv": [
+      "quarterly-review",
+      "--entity",
+      "<COMPANY>",
+      "--quarter",
+      "Q1",
+      "--year",
+      "2026"
+    ],
+    "exit": 0,
+    "stdout_sha256": "75ea0c16f11595d19716e4df142249efbedd1179d1a002379b895340950a8515"
+  },
+  "reports/trial-balance_2026-01-31_json.json": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "dc84a43b186a1925c24f246cac05909820f8449791a058417196016fa42b4142"
+  },
+  "reports/trial-balance_2026-01-31_text.txt": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-01-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "c3c4003f92256ccc80188572e3b5cc8ba9e934d858dddf621868c2b3c58721eb"
+  },
+  "reports/trial-balance_2026-02-28_json.json": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "59320582d75762c9ea5b1831efa33bb36b007bb16684bea6a682549507fb734a"
+  },
+  "reports/trial-balance_2026-02-28_text.txt": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-02-28",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "4f8e69279277f1a051667f88f1be767404ab6260b40de55570bff0951295c0e0"
+  },
+  "reports/trial-balance_2026-03-31_json.json": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3af221af0a37215b60f56a24091925690c4d03ddafce4621136b7e930ff264d2"
+  },
+  "reports/trial-balance_2026-03-31_text.txt": {
+    "argv": [
+      "report",
+      "trial-balance",
+      "--entity",
+      "<COMPANY>",
+      "--as-of",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "24067fc51592be8a0ddb20cfd4b509a8ecf699c00bd97d5da12b275f9eed7a66"
+  },
+  "tax/export_command.txt": {
+    "argv": [
+      "tax",
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/tax-cash"
+    ],
+    "exit": 0,
+    "stdout_sha256": "1dc722106297dd29281d8ebfb0c30127525ea0cad01f0db6a942c95a6fb275e7"
+  },
+  "tax/map_json.json": {
+    "argv": [
+      "tax",
+      "map",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "3904ff8f7a8eff2f970258cf4058f5100a6eb8877779dcf7a09aee7bf8184ccc"
+  },
+  "tax/map_text.txt": {
+    "argv": [
+      "tax",
+      "map",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "5379b90ed3d3572eb99d677e80d7bb16058e074c17c644403a4f18909ba1034e"
+  },
+  "work/summary_json.json": {
+    "argv": [
+      "work",
+      "--entity",
+      "<COMPANY>",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdout_sha256": "f45354e01a3b343673e71d3e5ae22377210fef727ff26679ddde1e1fef4dba5d"
+  },
+  "work/summary_text.txt": {
+    "argv": [
+      "work",
+      "--entity",
+      "<COMPANY>",
+      "--format",
+      "text"
+    ],
+    "exit": 0,
+    "stdout_sha256": "6e56a6b6ba54d9fddbdfc19415a44626081416b4be5ae444f4b57b32cba07f75"
+  },
+  "xlsx/export_2026-01-01_2026-01-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--output-dir",
+      "<WORK>/xlsx-export-cash-2026-01-01-2026-01-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "11b137dd1b8ed50e5e15312f21f1aaae08b0b4432d0e1285d361ff39035cf0b7"
+  },
+  "xlsx/export_2026-01-01_2026-03-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/xlsx-export-cash-2026-01-01-2026-03-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a972803e171b9020f9b5e56cf57e0dcce1534a3064d224781874b9bca6a7050c"
+  },
+  "xlsx/tax_export_command.txt": {
+    "argv": [
+      "tax",
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/xlsx-tax-cash"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a57569153aa7b5c9414e720f58841d6486b37d297aa7d5862d725f0600f86335"
+  }
+}

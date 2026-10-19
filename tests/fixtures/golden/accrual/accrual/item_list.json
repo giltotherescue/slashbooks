@@ -1,0 +1,205 @@
+[
+  {
+    "account": "Liabilities:Payable:Accounts-Payable",
+    "as_of": "2026-02-03",
+    "base_remaining_amount": "800.00",
+    "counterparty": "Granite Hosting",
+    "created_operation_id": "bill-2001-create",
+    "currency": "USD",
+    "due_date": "2026-03-05",
+    "evidence_ids": [
+      "1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e"
+    ],
+    "id": "bill-2001",
+    "kind": "payable",
+    "origin": {
+      "counter_account": "Expenses:Software",
+      "mode": "new",
+      "source_id": "bill-2001-create-source"
+    },
+    "original_amount": "800.00",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  },
+  {
+    "account": "Liabilities:Payable:Accounts-Payable",
+    "as_of": "2025-12-31",
+    "base_remaining_amount": "1500.00",
+    "counterparty": "Delta Design",
+    "currency": "USD",
+    "due_date": "2026-01-15",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "evidence_refs": [
+      "evidence/open-items.txt"
+    ],
+    "id": "bill-open-1",
+    "kind": "payable",
+    "opening_source_id": "golden-opening",
+    "origin": {
+      "mode": "opening",
+      "source_id": "golden-opening"
+    },
+    "original_amount": "1500.00",
+    "reference": "BILL-311",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  },
+  {
+    "account": "Liabilities:Payable:Accounts-Payable",
+    "as_of": "2026-03-10",
+    "base_remaining_amount": "700.00",
+    "counterparty": "Staff",
+    "created_operation_id": "bonus-actual-create",
+    "currency": "USD",
+    "evidence_ids": [
+      "b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb"
+    ],
+    "id": "bonus-actual",
+    "kind": "payable",
+    "origin": {
+      "counter_account": "Expenses:Bonus",
+      "mode": "new",
+      "source_id": "bonus-actual-create-source"
+    },
+    "original_amount": "700.00",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  },
+  {
+    "account": "Liabilities:Payable:Accounts-Payable",
+    "actual_item_id": "bonus-actual",
+    "as_of": "2026-02-28",
+    "base_remaining_amount": "1000.00",
+    "counterparty": "Staff",
+    "created_operation_id": "bonus-estimate-create",
+    "currency": "USD",
+    "due_date": "2026-04-15",
+    "estimate_basis": "Synthetic target bonus pool",
+    "evidence_ids": [],
+    "id": "bonus-estimate",
+    "kind": "accrual",
+    "origin": {
+      "counter_account": "Expenses:Bonus",
+      "mode": "new",
+      "source_id": "bonus-estimate-create-source"
+    },
+    "original_amount": "1000.00",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  },
+  {
+    "account": "Assets:Receivable:Accounts-Receivable",
+    "as_of": "2026-01-10",
+    "base_remaining_amount": "6000.00",
+    "counterparty": "Orbit Labs",
+    "created_operation_id": "inv-1001-create",
+    "currency": "USD",
+    "due_date": "2026-02-09",
+    "evidence_ids": [
+      "673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"
+    ],
+    "id": "inv-1001",
+    "kind": "receivable",
+    "origin": {
+      "counter_account": "Income:Consulting",
+      "mode": "new",
+      "source_id": "inv-1001-create-source"
+    },
+    "original_amount": "6000.00",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  },
+  {
+    "account": "Assets:Receivable:Accounts-Receivable",
+    "as_of": "2026-02-15",
+    "base_remaining_amount": "3000.00",
+    "counterparty": "Orbit Labs",
+    "created_operation_id": "inv-1002-create",
+    "currency": "USD",
+    "due_date": "2026-03-17",
+    "evidence_ids": [
+      "cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6"
+    ],
+    "id": "inv-1002",
+    "kind": "receivable",
+    "origin": {
+      "counter_account": "Income:Consulting",
+      "mode": "new",
+      "source_id": "inv-1002-create-source"
+    },
+    "original_amount": "3000.00",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  },
+  {
+    "account": "Assets:Receivable:Accounts-Receivable",
+    "as_of": "2026-01-12",
+    "base_remaining_amount": "900.00",
+    "counterparty": "Kestrel Foods",
+    "created_operation_id": "inv-1003-create",
+    "currency": "USD",
+    "due_date": "2026-02-11",
+    "evidence_ids": [
+      "a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"
+    ],
+    "id": "inv-1003",
+    "kind": "receivable",
+    "origin": {
+      "counter_account": "Income:Consulting",
+      "mode": "new",
+      "source_id": "inv-1003-create-source"
+    },
+    "original_amount": "900.00",
+    "remaining_amount": "600.00",
+    "status": "open"
+  },
+  {
+    "account": "Assets:Receivable:Accounts-Receivable",
+    "as_of": "2025-12-31",
+    "base_remaining_amount": "4000.00",
+    "counterparty": "Orbit Labs",
+    "currency": "USD",
+    "due_date": "2025-12-20",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "evidence_refs": [
+      "evidence/open-items.txt"
+    ],
+    "id": "inv-open-1",
+    "kind": "receivable",
+    "opening_source_id": "golden-opening",
+    "origin": {
+      "mode": "opening",
+      "source_id": "golden-opening"
+    },
+    "original_amount": "4000.00",
+    "reference": "INV-0950",
+    "remaining_amount": "1500.00",
+    "status": "open"
+  },
+  {
+    "account": "Assets:Receivable:Accounts-Receivable",
+    "as_of": "2026-02-05",
+    "base_remaining_amount": "500.00",
+    "counterparty": "Orbit Labs",
+    "created_operation_id": "pay-inv-1001",
+    "currency": "USD",
+    "direction": "credit",
+    "evidence_ids": [
+      "c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127"
+    ],
+    "id": "orbit-credit",
+    "kind": "credit",
+    "origin": {
+      "mode": "new",
+      "source_id": "pay-inv-1001-bank"
+    },
+    "original_amount": "500.00",
+    "reference": "Overpayment",
+    "remaining_amount": "0.00",
+    "status": "settled"
+  }
+]

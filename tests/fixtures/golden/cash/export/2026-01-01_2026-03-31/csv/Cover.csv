@@ -1,0 +1,30 @@
+Field,Value
+Business,Harbor Studio Cash
+Period start,2026-01-01
+Period end,2026-03-31
+Generated,2026-08-05 12:00 UTC
+Source,<COMPANY>
+Accounting basis,Cash basis
+
+Sheet index,
+1. Cover,This sheet
+2. P&L,Revenue and expenses for the period
+3. Balance Sheet,"Assets, liabilities, and equity as of the period end"
+4. Trial Balance,All account balances as of the period end
+5. General Ledger,Every posted transaction in the period
+6. Reconciliations,Account reconciliation status
+7. Vendor 1099,Vendor totals and potential 1099 candidates
+8. Adjustment Log,Corrected and reversed entries
+9. Open Questions,Structured questions and owner responses for accountant review
+
+Sanity checks,
+entity_metadata,"[WARN] Entity setup is missing country, tax jurisdiction, operating currency. Add this context before relying on the accountant export."
+indirect_tax_scope,[PASS] No VAT/GST/sales-tax registration is marked in entity.json.
+currency_scope,[WARN] No operating currency is set in entity.json.
+payroll_reports,[PASS] Payroll is not marked as enabled in entity.json.
+yoy_pnl_variance,"[WARN] No prior-year P&L transaction history is available in Slashbooks for year-over-year comparison. QuickBooks reference exports or opening balance snapshots may still exist, but this check only compares Slashbooks ledger activity."
+equity_reconciliation,"[PASS] The balance sheet is in balance as of 2026-03-31: assets equal liabilities plus equity (33,043.47)."
+queue_empty,"[FAIL] There are 3 item(s) waiting for review in the queue. Review and confirm all items before generating the final export, or use --override to proceed anyway."
+reconciliation_clean,"[PASS] All reconciliation records are clean or resolved, with source-period integrity checked."
+
+Note,This export was generated with --override. One or more sanity checks did not pass. Review the checks above before delivering.

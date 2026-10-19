@@ -1,0 +1,216 @@
+=== sheet: Cover
+A1=Field	B1=Value
+A2=Business	B2=Pinecone Advisory Accrual
+A3=Period start	B3=2026-01-01
+A4=Period end	B4=2026-01-31
+A5=Generated	B5=2026-08-05 12:00 UTC
+A6=Source	B6=<COMPANY>
+A7=Accounting basis	B7=Accrual basis
+A9=Sheet index	B9=
+A10=1. Cover	B10=This sheet
+A11=2. P&L	B11=Revenue and expenses for the period
+A12=3. Balance Sheet	B12=Assets, liabilities, and equity as of the period end
+A13=4. Trial Balance	B13=All account balances as of the period end
+A14=5. General Ledger	B14=Every posted transaction in the period
+A15=6. Reconciliations	B15=Account reconciliation status
+A16=7. Vendor 1099	B16=Vendor totals and potential 1099 candidates
+A17=8. Adjustment Log	B17=Corrected and reversed entries
+A18=9. Open Questions	B18=Structured questions and owner responses for accountant review
+A20=Sanity checks	B20=
+A21=entity_metadata	B21=[WARN] Entity setup is missing country, tax jurisdiction, operating currency. Add this context before relying on the accountant export.
+A22=indirect_tax_scope	B22=[PASS] No VAT/GST/sales-tax registration is marked in entity.json.
+A23=currency_scope	B23=[WARN] No operating currency is set in entity.json.
+A24=payroll_reports	B24=[PASS] Payroll is not marked as enabled in entity.json.
+A25=yoy_pnl_variance	B25=[WARN] No prior-year P&L transaction history is available in Slashbooks for year-over-year comparison. QuickBooks reference exports or opening balance snapshots may still exist, but this check only compares Slashbooks ledger activity.
+A26=equity_reconciliation	B26=[PASS] The balance sheet is in balance as of 2026-01-31: assets equal liabilities plus equity (41,200.00).
+A27=queue_empty	B27=[PASS] There are no items waiting for review in the queue.
+A28=reconciliation_clean	B28=[PASS] All reconciliation records are clean or resolved, with source-period integrity checked.
+A29=accrual_support	B29=[PASS] Accrual control balances, recognition, and reversals reconcile exactly.
+=== sheet: P&L
+A1=Category	B1=Account	C1=Amount
+A2=Revenue	B2=	C2=
+A3=	B3=Income › Consulting	C3=7000.00
+A4=	B4=Total Revenue	C4=7000.00
+A6=Expenses	B6=	C6=
+A7=	B7=Expenses › Depreciation	C7=100.00
+A8=	B8=Expenses › Insurance	C8=100.00
+A9=	B9=Expenses › Utilities	C9=450.00
+A10=	B10=Total Expenses	C10=650.00
+A12=Summary totals	B12=	C12=
+A13=	B13=Net Income	C13=6350.00
+A15=Report metadata	B15=Basis	C15=Accrual basis
+A16=Report metadata	B16=Coverage	C16={"basis": "accrual", "chart": [{"account": "Assets:Bank:Checking", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Bank:Checking"}, {"account": "Assets:Fixed:Accumulated-Depreciation", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Accumulated-Depreciation"}, {"account": "Assets:Fixed:Equipment", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Equipment"}, {"account": "Assets:Other:Prepaid-Expenses", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Other:Prepaid-Expenses"}, {"account": "Assets:Receivable:Accounts-Receivable", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Receivable:Accounts-Receivable"}, {"account": "Equity:Opening-Balances", "account_type": "Equity", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Equity:Opening-Balances"}, {"account": "Liabilities:Other:Deferred-Revenue", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Other:Deferred-Revenue"}, {"account": "Liabilities:Payable:Accounts-Payable", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Payable:Accounts-Payable"}], "closed_position": true, "currency": "USD", "cutover_date": "2026-01-01", "fiscal_start": "2026-01-01", "id": "opening", "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3", "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44", "opening_source_id": "golden-opening", "source_as_of": "2025-12-31", "source_hashes": {}, "summary_from": null, "summary_to": null, "support_evidence_hashes": {"39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"}, "support_status": "reconciled", "verified": true}
+A17=Report metadata	B17=Unresolved issues	C17=[]
+=== sheet: Balance Sheet
+A1=Category	B1=Account	C1=Amount
+A2=Assets	B2=	C2=
+A3=	B3=Assets › Bank › Checking	C3=31000.00
+A4=	B4=Assets › Fixed › Accumulated-Depreciation	C4=-1100.00
+A5=	B5=Assets › Fixed › Equipment	C5=2400.00
+A6=	B6=Assets › Other › Prepaid-Expenses	C6=500.00
+A7=	B7=Assets › Receivable › Accounts-Receivable	C7=8400.00
+A8=	B8=Total Assets	C8=41200.00
+A10=Liabilities	B10=	C10=
+A11=	B11=Liabilities › Other › Accrued-Liabilities	C11=450.00
+A12=	B12=Liabilities › Other › Deferred-Revenue	C12=500.00
+A13=	B13=Liabilities › Payable › Accounts-Payable	C13=0.00
+A14=	B14=Total Liabilities	C14=950.00
+A16=Equity	B16=	C16=
+A17=	B17=Equity › Opening-Balances	C17=33900.00
+A18=	B18=Net Income (current period)	C18=6350.00
+A19=	B19=Total Equity	C19=40250.00
+A21=Summary totals	B21=	C21=
+A22=	B22=Total Assets	C22=41200.00
+A23=	B23=Total Liabilities And Equity	C23=41200.00
+A25=Report metadata	B25=Basis	C25=Accrual basis
+A26=Report metadata	B26=Coverage	C26={"basis": "accrual", "chart": [{"account": "Assets:Bank:Checking", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Bank:Checking"}, {"account": "Assets:Fixed:Accumulated-Depreciation", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Accumulated-Depreciation"}, {"account": "Assets:Fixed:Equipment", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Equipment"}, {"account": "Assets:Other:Prepaid-Expenses", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Other:Prepaid-Expenses"}, {"account": "Assets:Receivable:Accounts-Receivable", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Receivable:Accounts-Receivable"}, {"account": "Equity:Opening-Balances", "account_type": "Equity", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Equity:Opening-Balances"}, {"account": "Liabilities:Other:Deferred-Revenue", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Other:Deferred-Revenue"}, {"account": "Liabilities:Payable:Accounts-Payable", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Payable:Accounts-Payable"}], "closed_position": true, "currency": "USD", "cutover_date": "2026-01-01", "fiscal_start": "2026-01-01", "id": "opening", "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3", "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44", "opening_source_id": "golden-opening", "source_as_of": "2025-12-31", "source_hashes": {}, "summary_from": null, "summary_to": null, "support_evidence_hashes": {"39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"}, "support_status": "reconciled", "verified": true}
+A27=Report metadata	B27=Unresolved issues	C27=[]
+=== sheet: Trial Balance
+A1=Account	B1=Debit	C1=Credit
+A2=Assets › Bank › Checking	B2=31000.00	C2=
+A3=Assets › Fixed › Accumulated-Depreciation	B3=	C3=1100.00
+A4=Assets › Fixed › Equipment	B4=2400.00	C4=
+A5=Assets › Other › Prepaid-Expenses	B5=500.00	C5=
+A6=Assets › Receivable › Accounts-Receivable	B6=8400.00	C6=
+A7=Equity › Opening-Balances	B7=	C7=33900.00
+A8=Expenses › Depreciation	B8=100.00	C8=
+A9=Expenses › Insurance	B9=100.00	C9=
+A10=Expenses › Utilities	B10=450.00	C10=
+A11=Income › Consulting	B11=	C11=7000.00
+A12=Liabilities › Other › Accrued-Liabilities	B12=	C12=450.00
+A13=Liabilities › Other › Deferred-Revenue	B13=	C13=500.00
+A15=Totals	B15=42950.00	C15=42950.00
+A17=Report metadata	B17=Basis	C17=Accrual basis
+A18=Report metadata	B18=Coverage	C18={"basis": "accrual", "chart": [{"account": "Assets:Bank:Checking", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Bank:Checking"}, {"account": "Assets:Fixed:Accumulated-Depreciation", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Accumulated-Depreciation"}, {"account": "Assets:Fixed:Equipment", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Equipment"}, {"account": "Assets:Other:Prepaid-Expenses", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Other:Prepaid-Expenses"}, {"account": "Assets:Receivable:Accounts-Receivable", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Receivable:Accounts-Receivable"}, {"account": "Equity:Opening-Balances", "account_type": "Equity", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Equity:Opening-Balances"}, {"account": "Liabilities:Other:Deferred-Revenue", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Other:Deferred-Revenue"}, {"account": "Liabilities:Payable:Accounts-Payable", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Payable:Accounts-Payable"}], "closed_position": true, "currency": "USD", "cutover_date": "2026-01-01", "fiscal_start": "2026-01-01", "id": "opening", "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3", "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44", "opening_source_id": "golden-opening", "source_as_of": "2025-12-31", "source_hashes": {}, "summary_from": null, "summary_to": null, "support_evidence_hashes": {"39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"}, "support_status": "reconciled", "verified": true}
+A19=Report metadata	B19=Unresolved issues	C19=[]
+=== sheet: General Ledger
+A1=Account Type	B1=Account	C1=Account Detail	D1=Date	E1=Counterparty	F1=Memo	G1=Source ID	H1=Entry Type	I1=Amount
+A2=Assets	B2=Assets › Bank › Checking	C2=Checking	D2=2026-01-15	E2=	F2=Payment to Delta Design: BILL-311	G2=pay-bill-open-1-bank	H2=Posted	I2=-1500.00
+A3=Assets	B3=Assets › Bank › Checking	C3=Checking	D3=2026-01-20	E3=	F3=Payment from Orbit Labs: INV-0950	G3=pay-inv-open-1-bank	H3=Posted	I3=2500.00
+A4=	B4=Assets › Bank › Checking	C4=	D4=	E4=	F4=Account Total	G4=	H4=Account Total	I4=1000.00
+A6=Assets	B6=Assets › Fixed › Accumulated-Depreciation	C6=Accumulated-Depreciation	D6=2026-01-31	E6=	F6=Depreciation: dated 2025-03-01 (Jan 2026)	G6=schedule:recognition:laptop-old:0:2026-01-31	H6=Posted	I6=-100.00
+A7=	B7=Assets › Fixed › Accumulated-Depreciation	C7=	D7=	E7=	F7=Account Total	G7=	H7=Account Total	I7=-100.00
+A9=Assets	B9=Assets › Other › Prepaid-Expenses	C9=Prepaid-Expenses	D9=2026-01-31	E9=	F9=Prepaid expense used: dated 2025-07-01 (Jan 2026)	G9=schedule:recognition:insurance-h2:0:2026-01-31	H9=Posted	I9=-100.00
+A10=	B10=Assets › Other › Prepaid-Expenses	C10=	D10=	E10=	F10=Account Total	G10=	H10=Account Total	I10=-100.00
+A12=Assets	B12=Assets › Receivable › Accounts-Receivable	C12=Accounts-Receivable	D12=2026-01-10	E12=	F12=Invoice: Orbit Labs	G12=accrual:inv-1001-create	H12=Posted	I12=6000.00
+A13=Assets	B13=Assets › Receivable › Accounts-Receivable	C13=Accounts-Receivable	D13=2026-01-12	E13=	F13=Invoice: Kestrel Foods	G13=accrual:inv-1003-create	H13=Posted	I13=900.00
+A14=Assets	B14=Assets › Receivable › Accounts-Receivable	C14=Accounts-Receivable	D14=2026-01-20	E14=	F14=Payment from Orbit Labs: INV-0950	G14=pay-inv-open-1-bank	H14=Posted	I14=-2500.00
+A15=	B15=Assets › Receivable › Accounts-Receivable	C15=	D15=	E15=	F15=Account Total	G15=	H15=Account Total	I15=4400.00
+A17=Expenses	B17=Expenses › Depreciation	C17=Depreciation	D17=2026-01-31	E17=	F17=Depreciation: dated 2025-03-01 (Jan 2026)	G17=schedule:recognition:laptop-old:0:2026-01-31	H17=Posted	I17=100.00
+A18=	B18=Expenses › Depreciation	C18=	D18=	E18=	F18=Account Total	G18=	H18=Account Total	I18=100.00
+A20=Expenses	B20=Expenses › Insurance	C20=Insurance	D20=2026-01-31	E20=	F20=Prepaid expense used: dated 2025-07-01 (Jan 2026)	G20=schedule:recognition:insurance-h2:0:2026-01-31	H20=Posted	I20=100.00
+A21=	B21=Expenses › Insurance	C21=	D21=	E21=	F21=Account Total	G21=	H21=Account Total	I21=100.00
+A23=Expenses	B23=Expenses › Utilities	C23=Utilities	D23=2026-01-31	E23=	F23=Estimated January utilities	G23=accrual:utilities-estimate-jan	H23=Posted	I23=450.00
+A24=	B24=Expenses › Utilities	C24=	D24=	E24=	F24=Account Total	G24=	H24=Account Total	I24=450.00
+A26=Income	B26=Income › Consulting	C26=Consulting	D26=2026-01-10	E26=	F26=Invoice: Orbit Labs	G26=accrual:inv-1001-create	H26=Posted	I26=-6000.00
+A27=Income	B27=Income › Consulting	C27=Consulting	D27=2026-01-12	E27=	F27=Invoice: Kestrel Foods	G27=accrual:inv-1003-create	H27=Posted	I27=-900.00
+A28=Income	B28=Income › Consulting	C28=Consulting	D28=2026-01-31	E28=	F28=Deferred revenue earned: dated 2025-07-01 (Jan 2026)	G28=schedule:recognition:retainer-h2:0:2026-01-31	H28=Posted	I28=-100.00
+A29=	B29=Income › Consulting	C29=	D29=	E29=	F29=Account Total	G29=	H29=Account Total	I29=-7000.00
+A31=Liabilities	B31=Liabilities › Other › Accrued-Liabilities	C31=Accrued-Liabilities	D31=2026-01-31	E31=	F31=Estimated January utilities	G31=accrual:utilities-estimate-jan	H31=Posted	I31=-450.00
+A32=	B32=Liabilities › Other › Accrued-Liabilities	C32=	D32=	E32=	F32=Account Total	G32=	H32=Account Total	I32=-450.00
+A34=Liabilities	B34=Liabilities › Other › Deferred-Revenue	C34=Deferred-Revenue	D34=2026-01-31	E34=	F34=Deferred revenue earned: dated 2025-07-01 (Jan 2026)	G34=schedule:recognition:retainer-h2:0:2026-01-31	H34=Posted	I34=100.00
+A35=	B35=Liabilities › Other › Deferred-Revenue	C35=	D35=	E35=	F35=Account Total	G35=	H35=Account Total	I35=100.00
+A37=Liabilities	B37=Liabilities › Payable › Accounts-Payable	C37=Accounts-Payable	D37=2026-01-15	E37=	F37=Payment to Delta Design: BILL-311	G37=pay-bill-open-1-bank	H37=Posted	I37=1500.00
+A38=	B38=Liabilities › Payable › Accounts-Payable	C38=	D38=	E38=	F38=Account Total	G38=	H38=Account Total	I38=1500.00
+=== sheet: Reconciliations
+A1=Account	B1=As Of	C1=Ledger Balance	D1=Source Balance	E1=Difference	F1=Reconciliation Status	G1=Review Status	H1=Source	I1=Notes
+A2=Assets:Bank:Checking	B2=2026-01-31	C2=31000.00	D2=31000.00	E2=0.00	F2=clean	G2=PASS	H2=	I2=
+=== sheet: Vendor 1099
+A1=Vendor	B1=Net Paid	C1=1099 Candidate (if >= 600.00)	D1=Gross Paid	E1=Adjustments	F1=Review Notes
+A2=(no vendor payments in expense accounts for this period)	B2=	C2=	D2=	E2=	F2=
+=== sheet: Adjustment Log
+A1=Original ID	B1=Original Date	C1=Original Counterparty	D1=Original Amount	E1=Reversal ID	F1=Reversal Date	G1=Corrected ID	H1=Corrected Category	I1=Corrected Amount	J1=Trace Status	K1=Note
+A2=accrual:utilities-estimate-jan	B2=2026-01-31	C2=	D2=450.00	E2=accrual:due:utilities-estimate-jan	F2=2026-02-01	G2=	H2=	I2=	J2=REVIEW	K2=Reversal of: Estimated January utilities
+=== sheet: Open Questions
+A1=#	B1=Area	C1=Related Sheet	D1=Related Account	E1=Source ID	F1=Amount	G1=Question / Note	H1=Owner Response	I1=Status
+A2=	B2=General	C2=	D2=	E2=	F2=	G2=(no open questions file found)	H2=	I2=closed
+=== sheet: Recognition Schedules
+A1=account	B1=accumulated_depreciation	C1=allocations_as_of	D1=amount	E1=as_of	F1=asset_cost	G1=base_recognized_amount	H1=base_remaining_amount	I1=contra_account	J1=currency	K1=evidence_ids	L1=evidence_refs	M1=id	N1=initial_remaining_amount	O1=kind	P1=method	Q1=net_book_value	R1=opening_source_id	S1=origin	T1=origin_reserved_amount	U1=recognition_account	V1=recognition_start	W1=recognized_amount	X1=recognized_in_ledger	Y1=recognized_refund_amount	Z1=refunded_amount	AA1=remaining_amount	AB1=remaining_as_of	AC1=salvage_value	AD1=service_end	AE1=service_start	AF1=signed_balance	AG1=status
+A2=Assets:Other:Prepaid-Expenses	B2=	C2=["recognition:insurance-h2:0:2026-01-31"]	D2=1200.00	E2=2025-12-31	F2=	G2=600.00	H2=600.00	I2=	J2=USD	K2=["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"]	L2=["evidence/open-items.txt"]	M2=insurance-h2	N2=600.00	O2=prepaid	P2=equal_month	Q2=	R2=golden-opening	S2={"mode": "opening", "source_id": "golden-opening"}	T2=600.00	U2=Expenses:Insurance	V2=2026-01-01	W2=700.00	X2=100.00	Y2=0.00	Z2=0.00	AA2=500.00	AB2=500.00	AC2=	AD2=2026-06-30	AE2=2025-07-01	AF2=500.00	AG2=active
+A3=Assets:Fixed:Equipment	B3=1100.00	C3=["recognition:laptop-old:0:2026-01-31"]	D3=2400.00	E3=2025-12-31	F3=2400.00	G3=1000.00	H3=1400.00	I3=Assets:Fixed:Accumulated-Depreciation	J3=USD	K3=["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"]	L3=["evidence/open-items.txt"]	M3=laptop-old	N3=1400.00	O3=depreciation	P3=equal_month	Q3=1300.00	R3=golden-opening	S3={"mode": "opening", "source_id": "golden-opening"}	T3=2400.00	U3=Expenses:Depreciation	V3=2026-01-01	W3=1100.00	X3=100.00	Y3=0.00	Z3=0.00	AA3=1300.00	AB3=1300.00	AC3=0.00	AD3=2027-02-28	AE3=2025-03-01	AF3=2400.00	AG3=active
+A4=Liabilities:Other:Deferred-Revenue	B4=	C4=["recognition:retainer-h2:0:2026-01-31"]	D4=1200.00	E4=2025-12-31	F4=	G4=600.00	H4=600.00	I4=	J4=USD	K4=["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"]	L4=["evidence/open-items.txt"]	M4=retainer-h2	N4=600.00	O4=deferred	P4=equal_month	Q4=	R4=golden-opening	S4={"mode": "opening", "source_id": "golden-opening"}	T4=600.00	U4=Income:Consulting	V4=2026-01-01	W4=700.00	X4=100.00	Y4=0.00	Z4=0.00	AA4=500.00	AB4=500.00	AC4=	AD4=2026-06-30	AE4=2025-07-01	AF4=-500.00	AG4=active
+=== sheet: Outstanding Balances
+A1=account	B1=allocations_as_of	C1=as_of	D1=base_remaining_amount	E1=counterparty	F1=created_operation_id	G1=currency	H1=due_date	I1=evidence_ids	J1=evidence_refs	K1=id	L1=kind	M1=opening_source_id	N1=origin	O1=original_amount	P1=reference	Q1=remaining_amount	R1=remaining_as_of	S1=signed_balance	T1=status
+A2=Liabilities:Payable:Accounts-Payable	B2=["settlement:pay-bill-open-1:bill-open-1"]	C2=2025-12-31	D2=1500.00	E2=Delta Design	F2=	G2=USD	H2=2026-01-15	I2=["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"]	J2=["evidence/open-items.txt"]	K2=bill-open-1	L2=payable	M2=golden-opening	N2={"mode": "opening", "source_id": "golden-opening"}	O2=1500.00	P2=BILL-311	Q2=0.00	R2=0.00	S2=-0.00	T2=settled
+A3=Assets:Receivable:Accounts-Receivable	B3=[]	C3=2026-01-10	D3=6000.00	E3=Orbit Labs	F3=inv-1001-create	G3=USD	H3=2026-02-09	I3=["673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"]	J3=	K3=inv-1001	L3=receivable	M3=	N3={"counter_account": "Income:Consulting", "mode": "new", "source_id": "inv-1001-create-source"}	O3=6000.00	P3=	Q3=6000.00	R3=6000.00	S3=6000.00	T3=open
+A4=Assets:Receivable:Accounts-Receivable	B4=[]	C4=2026-01-12	D4=900.00	E4=Kestrel Foods	F4=inv-1003-create	G4=USD	H4=2026-02-11	I4=["a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"]	J4=	K4=inv-1003	L4=receivable	M4=	N4={"counter_account": "Income:Consulting", "mode": "new", "source_id": "inv-1003-create-source"}	O4=900.00	P4=	Q4=900.00	R4=900.00	S4=900.00	T4=open
+A5=Assets:Receivable:Accounts-Receivable	B5=["settlement:pay-inv-open-1:inv-open-1"]	C5=2025-12-31	D5=4000.00	E5=Orbit Labs	F5=	G5=USD	H5=2025-12-20	I5=["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"]	J5=["evidence/open-items.txt"]	K5=inv-open-1	L5=receivable	M5=golden-opening	N5={"mode": "opening", "source_id": "golden-opening"}	O5=4000.00	P5=INV-0950	Q5=1500.00	R5=1500.00	S5=1500.00	T5=open
+=== sheet: Receivables Payables Aging
+A1=Receivables and payables aging
+A2=Report as of	B2=2026-01-31
+A3=Accounting basis	B3=accrual
+A4=Currency	B4=USD
+A5=Aging basis	B5=Explicit due dates; unapplied credits remain separate
+A6=Detailed activity begins	B6=2026-01-01
+A7=Imported opening as of	B7=2025-12-31
+A8=Opening verified	B8=True
+A9=Opening supporting status	B9=reconciled
+A11=Type	B11=Customer / vendor	C11=Reference	D11=Accounting date	E11=Due date	F11=Aging	G11=Balance	H11=Account	I11=Currency	J11=Item ID
+A12=receivable	B12=Kestrel Foods	C12=	D12=2026-01-12	E12=2026-02-11	F12=Current	G12=900.00	H12=Assets:Receivable:Accounts-Receivable	I12=USD	J12=inv-1003
+A13=receivable	B13=Orbit Labs	C13=	D13=2026-01-10	E13=2026-02-09	F13=Current	G13=6000.00	H13=Assets:Receivable:Accounts-Receivable	I13=USD	J13=inv-1001
+A14=receivable	B14=Orbit Labs	C14=INV-0950	D14=2025-12-31	E14=2025-12-20	F14=31–60 days overdue	G14=1500.00	H14=Assets:Receivable:Accounts-Receivable	I14=USD	J14=inv-open-1
+A16=Summary by type/account/customer; unapplied credits are separate
+A17=Type	B17=Account	C17=Customer / vendor	D17=Currency	E17=Current	F17=1–30 days overdue	G17=31–60 days overdue	H17=61–90 days overdue	I17=Over 90 days overdue	J17=Due date not provided	K17=Unapplied credit	L17=Total
+A18=receivable	B18=Assets:Receivable:Accounts-Receivable	C18=Kestrel Foods	D18=USD	E18=900.00	F18=0.00	G18=0.00	H18=0.00	I18=0.00	J18=0.00	K18=0.00	L18=900.00
+A19=receivable	B19=Assets:Receivable:Accounts-Receivable	C19=Orbit Labs	D19=USD	E19=6000.00	F19=0.00	G19=1500.00	H19=0.00	I19=0.00	J19=0.00	K19=0.00	L19=7500.00
+A21=Review items
+A22=No outstanding review items
+=== sheet: External Support
+A1=id	B1=account	C1=balance
+=== sheet: Control Reconciliation
+A1=account	B1=currency	C1=difference	D1=ledger_balance	E1=note	F1=status	G1=support_balance	H1=support_ids	I1=support_required
+A2=Assets:Fixed:Accumulated-Depreciation	B2=USD	C2=0.00	D2=-1100.00	E2=	F2=reconciled	G2=-1100.00	H2=["laptop-old:accumulated"]	I2=True
+A3=Assets:Fixed:Equipment	B3=USD	C3=0.00	D3=2400.00	E3=	F3=reconciled	G3=2400.00	H3=["laptop-old"]	I3=True
+A4=Assets:Other:Prepaid-Expenses	B4=USD	C4=0.00	D4=500.00	E4=	F4=reconciled	G4=500.00	H4=["insurance-h2"]	I4=True
+A5=Assets:Receivable:Accounts-Receivable	B5=USD	C5=0.00	D5=8400.00	E5=	F5=reconciled	G5=8400.00	H5=["inv-1001", "inv-1003", "inv-open-1"]	I5=True
+A6=Liabilities:Other:Accrued-Liabilities	B6=USD	C6=None	D6=-450.00	E6=Ledger balance, no supporting detail required.	F6=ledger_only	G6=None	H6=[]	I6=False
+A7=Liabilities:Other:Deferred-Revenue	B7=USD	C7=0.00	D7=-500.00	E7=	F7=reconciled	G7=-500.00	H7=["retainer-h2"]	I7=True
+=== sheet: Accrual Adjustments
+A1=date	B1=description	C1=metadata	D1=operations	E1=postings	F1=source_id
+A2=2026-01-10	B2=Invoice: Orbit Labs	C2={"item-id": "inv-1001", "origin-source-id": "inv-1001-create-source", "source-id": "accrual:inv-1001-create"}	D2=[{"evidence_ids": ["673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"], "id": "inv-1001-create", "kind": "item_create", "plan_hash": "67825e74ce479b10b207c874bd42d732321a4a46c6b01f4c844f71bc9d358c0c", "role": "posted_effect"}]	E2=[{"account": "Assets:Receivable:Accounts-Receivable", "amount": "6000.00", "currency": "USD"}, {"account": "Income:Consulting", "amount": "-6000.00", "currency": "USD"}]	F2=accrual:inv-1001-create
+A3=2026-01-12	B3=Invoice: Kestrel Foods	C3={"item-id": "inv-1003", "origin-source-id": "inv-1003-create-source", "source-id": "accrual:inv-1003-create"}	D3=[{"evidence_ids": ["a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"], "id": "inv-1003-create", "kind": "item_create", "plan_hash": "9bd381a01bef7f5a9d33e55a009507cd6d69a7246c7721e03dbd9bbec0635cbf", "role": "posted_effect"}]	E3=[{"account": "Assets:Receivable:Accounts-Receivable", "amount": "900.00", "currency": "USD"}, {"account": "Income:Consulting", "amount": "-900.00", "currency": "USD"}]	F3=accrual:inv-1003-create
+A4=2026-01-15	B4=Payment to Delta Design: BILL-311	C4={"settlement-id": "pay-bill-open-1", "source-id": "pay-bill-open-1-bank"}	D4=[{"evidence_ids": ["f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058"], "id": "pay-bill-open-1", "kind": "item_settlement", "plan_hash": "d6d7f85eaa828306c948b911c97a2e88cb3330491e7e478d35e55dbe585b2d8a", "role": "posted_effect"}]	E4=[{"account": "Assets:Bank:Checking", "amount": "-1500.00", "currency": "USD"}, {"account": "Liabilities:Payable:Accounts-Payable", "amount": "1500.00", "currency": "USD"}]	F4=pay-bill-open-1-bank
+A5=2026-01-20	B5=Payment from Orbit Labs: INV-0950	C5={"settlement-id": "pay-inv-open-1", "source-id": "pay-inv-open-1-bank"}	D5=[{"evidence_ids": ["560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913"], "id": "pay-inv-open-1", "kind": "item_settlement", "plan_hash": "31fd16c4f45368a1a993d144cfb9a7e773baa5767182ab8acf96f049b099e9ac", "role": "posted_effect"}]	E5=[{"account": "Assets:Bank:Checking", "amount": "2500.00", "currency": "USD"}, {"account": "Assets:Receivable:Accounts-Receivable", "amount": "-2500.00", "currency": "USD"}]	F5=pay-inv-open-1-bank
+A6=2026-01-31	B6=Estimated January utilities	C6={"accrual-intent": "utilities-estimate-jan", "estimate-basis": "Synthetic three-month average", "evidence-ids": "[]", "source-id": "accrual:utilities-estimate-jan"}	D6=[{"evidence_ids": [], "id": "utilities-estimate-jan", "kind": "journal", "plan_hash": "7fa242a3dc9433ea81ada1cb808b62b6421b890f7867a5b1baeacf23dfb49c79", "role": "posted_effect"}]	E6=[{"account": "Expenses:Utilities", "amount": "450.00", "currency": "USD"}, {"account": "Liabilities:Other:Accrued-Liabilities", "amount": "-450.00", "currency": "USD"}]	F6=accrual:utilities-estimate-jan
+A7=2026-01-31	B7=Prepaid expense used: dated 2025-07-01 (Jan 2026)	C7={"schedule-id": "insurance-h2", "source-id": "schedule:recognition:insurance-h2:0:2026-01-31"}	D7=[{"evidence_ids": ["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"], "id": "recognize-2026-01-31", "kind": "schedule_due", "plan_hash": "ba7ceccf9894f175a88ff71295f01760d322ba5a4a2bc59f8bb91fed33cb6c3a", "role": "posted_effect"}]	E7=[{"account": "Expenses:Insurance", "amount": "100.00", "currency": "USD"}, {"account": "Assets:Other:Prepaid-Expenses", "amount": "-100.00", "currency": "USD"}]	F7=schedule:recognition:insurance-h2:0:2026-01-31
+A8=2026-01-31	B8=Depreciation: dated 2025-03-01 (Jan 2026)	C8={"schedule-id": "laptop-old", "source-id": "schedule:recognition:laptop-old:0:2026-01-31"}	D8=[{"evidence_ids": ["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"], "id": "recognize-2026-01-31", "kind": "schedule_due", "plan_hash": "ba7ceccf9894f175a88ff71295f01760d322ba5a4a2bc59f8bb91fed33cb6c3a", "role": "posted_effect"}]	E8=[{"account": "Expenses:Depreciation", "amount": "100.00", "currency": "USD"}, {"account": "Assets:Fixed:Accumulated-Depreciation", "amount": "-100.00", "currency": "USD"}]	F8=schedule:recognition:laptop-old:0:2026-01-31
+A9=2026-01-31	B9=Deferred revenue earned: dated 2025-07-01 (Jan 2026)	C9={"schedule-id": "retainer-h2", "source-id": "schedule:recognition:retainer-h2:0:2026-01-31"}	D9=[{"evidence_ids": ["39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"], "id": "recognize-2026-01-31", "kind": "schedule_due", "plan_hash": "ba7ceccf9894f175a88ff71295f01760d322ba5a4a2bc59f8bb91fed33cb6c3a", "role": "posted_effect"}]	E9=[{"account": "Income:Consulting", "amount": "-100.00", "currency": "USD"}, {"account": "Liabilities:Other:Deferred-Revenue", "amount": "100.00", "currency": "USD"}]	F9=schedule:recognition:retainer-h2:0:2026-01-31
+=== sheet: Accounting Coverage
+A1=as_of	B1=basis	C1=coverage	D1=issues
+A2=2026-01-31	B2=accrual	C2={"basis": "accrual", "chart": [{"account": "Assets:Bank:Checking", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Bank:Checking"}, {"account": "Assets:Fixed:Accumulated-Depreciation", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Accumulated-Depreciation"}, {"account": "Assets:Fixed:Equipment", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Fixed:Equipment"}, {"account": "Assets:Other:Prepaid-Expenses", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Other:Prepaid-Expenses"}, {"account": "Assets:Receivable:Accounts-Receivable", "account_type": "Assets", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Assets:Receivable:Accounts-Receivable"}, {"account": "Equity:Opening-Balances", "account_type": "Equity", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Equity:Opening-Balances"}, {"account": "Liabilities:Other:Deferred-Revenue", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Other:Deferred-Revenue"}, {"account": "Liabilities:Payable:Accounts-Payable", "account_type": "Liabilities", "currency": "USD", "detail_type": "", "open_date": "2025-12-31", "source_account": "Liabilities:Payable:Accounts-Payable"}], "closed_position": true, "currency": "USD", "cutover_date": "2026-01-01", "fiscal_start": "2026-01-01", "id": "opening", "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3", "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44", "opening_source_id": "golden-opening", "source_as_of": "2025-12-31", "source_hashes": {}, "summary_from": null, "summary_to": null, "support_evidence_hashes": {"39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"}, "support_status": "reconciled", "verified": true}	D2=[]
+=== sheet: Summary
+A1=Metric	B1=Value
+A2=Business	B2=Pinecone Advisory Accrual
+A3=Produced by	B3=Slashbooks
+A4=Project link	B4=https://github.com/giltotherescue/slashbooks
+A5=Accounting basis	B5=Accrual basis
+A6=Bookkeeping scope	B6=Accrual bookkeeping foundations export
+A7=Tax prep scope	B7=Handoff support only; tax treatment and filing positions remain preparer-reviewed
+A8=Legal structure	B8=llc
+A9=Country	B9=
+A10=Tax jurisdiction	B10=
+A11=Operating currency	B11=
+A12=Period start	B12=2026-01-01
+A13=Period end	B13=2026-01-31
+A14=Package status	B14=WARN
+A15=Warnings	B15=3
+A16=Failures	B16=0
+A17=Net income	B17=0
+A18=Ending cash	B18=0
+A19=Opening cumulative net income	B19=0.00
+A20=GL posting rows	B20=0
+A21=Open questions	B21=0
+A22=Reconciliation items needing review	B22=0
+A23=1099 candidates	B23=0
+A24=Closing cumulative net income	B24=6350.00
+=== sheet: Checks
+A1=Check	B1=Tie-out	C1=Status
+A2=Trial balance debits equal credits	B2=0	C2=0
+A3=Balance sheet balances	B3=0	C3=0
+A4=P&L net income agrees to balance sheet net-income movement	B4=0	C4=0
+A5=Open question count	B5=0	C5=0
+A6=Open reconciliation item count	B6=0	C6=0
+A7=1099 candidate count	B7=0	C7=0
+=== sheet: Source Index
+A1=Account	B1=As Of	C1=Ledger Balance	D1=Source Balance	E1=Difference	F1=Reconciliation Status	G1=Review Status	H1=Source	I1=Notes
+A2=Assets:Bank:Checking	B2=2026-01-31	C2=31000.00	D2=31000.00	E2=0.00	F2=clean	G2=PASS	H2=	I2=

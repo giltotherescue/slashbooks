@@ -1,0 +1,286 @@
+{
+  "derived": true,
+  "period": {
+    "from": null,
+    "to": null
+  },
+  "schema_version": 1,
+  "summary": [
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Expenses:Operating-Costs",
+        "Income:Services"
+      ],
+      "breakdown": [
+        {
+          "count": 4,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Operating-Costs"
+        },
+        {
+          "count": 1,
+          "label": "Income:Services"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 0,
+        "transactions": 8
+      },
+      "kind": "imported",
+      "period": {
+        "from": "2026-06-30",
+        "to": "2026-07-31"
+      },
+      "text": "Imported 8 transactions."
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Expenses:Operating-Costs",
+        "Income:Services"
+      ],
+      "breakdown": [
+        {
+          "count": 2,
+          "label": "Liabilities:Other:Payroll-Payable"
+        },
+        {
+          "count": 1,
+          "label": "Assets:Fixed:Accumulated-Depreciation"
+        },
+        {
+          "count": 1,
+          "label": "Assets:Other:Prepaid-Insurance"
+        },
+        {
+          "count": 1,
+          "label": "Assets:Receivable:Accounts-Receivable"
+        },
+        {
+          "count": 1,
+          "label": "Liabilities:Other:Deferred-Revenue"
+        }
+      ],
+      "counts": {
+        "direct": 5,
+        "entries": 8,
+        "from_suggestions": 3
+      },
+      "kind": "recorded",
+      "period": {
+        "from": "2026-06-30",
+        "to": "2026-07-31"
+      },
+      "text": "Recorded 8 entries. 3 came from approved suggestions."
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Checking"
+        }
+      ],
+      "counts": {
+        "accounts": 1,
+        "clean": 1,
+        "open": 0
+      },
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-07-31",
+        "to": "2026-07-31"
+      },
+      "text": "Reconciled 1 account through 2026-07-31."
+    }
+  ],
+  "work": [
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Expenses:Operating-Costs",
+        "Income:Services"
+      ],
+      "breakdown": [
+        {
+          "count": 4,
+          "label": "Assets:Bank:Checking"
+        },
+        {
+          "count": 3,
+          "label": "Expenses:Operating-Costs"
+        },
+        {
+          "count": 1,
+          "label": "Income:Services"
+        }
+      ],
+      "counts": {
+        "duplicates_skipped": 0,
+        "transactions": 8
+      },
+      "derived": true,
+      "fingerprint": "b45646138a1b22d5ca74ee6db5d1fa6e9badbb61a407b1d184b43b1d7b6773e2",
+      "kind": "imported",
+      "period": {
+        "from": "2026-06-30",
+        "to": "2026-07-31"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "accrual:july-depreciation",
+          "type": "source"
+        },
+        {
+          "id": "accrual:provider-payroll-journal",
+          "type": "source"
+        },
+        {
+          "id": "customer-receipt",
+          "type": "source"
+        },
+        {
+          "id": "payroll-payment",
+          "type": "source"
+        },
+        {
+          "id": "quickbooks-opening-trial-balance-2026-07-01",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:deferred-open:0:2026-07-31",
+          "type": "source"
+        },
+        {
+          "id": "schedule:recognition:prepaid-open:0:2026-07-31",
+          "type": "source"
+        },
+        {
+          "id": "vendor-payment",
+          "type": "source"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking",
+        "Expenses:Operating-Costs",
+        "Income:Services"
+      ],
+      "breakdown": [
+        {
+          "count": 2,
+          "label": "Liabilities:Other:Payroll-Payable"
+        },
+        {
+          "count": 1,
+          "label": "Assets:Fixed:Accumulated-Depreciation"
+        },
+        {
+          "count": 1,
+          "label": "Assets:Other:Prepaid-Insurance"
+        },
+        {
+          "count": 1,
+          "label": "Assets:Receivable:Accounts-Receivable"
+        },
+        {
+          "count": 1,
+          "label": "Liabilities:Other:Deferred-Revenue"
+        }
+      ],
+      "counts": {
+        "direct": 5,
+        "entries": 8,
+        "from_suggestions": 3
+      },
+      "derived": true,
+      "fingerprint": "feca763a24135c61496a993f10c6e4c28c8a36e4381a571aec9c31a7f006192b",
+      "kind": "recorded",
+      "period": {
+        "from": "2026-06-30",
+        "to": "2026-07-31"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "1",
+          "source_id": "quickbooks-opening-trial-balance-2026-07-01",
+          "type": "entry"
+        },
+        {
+          "id": "2",
+          "source_id": "customer-receipt",
+          "type": "entry"
+        },
+        {
+          "id": "3",
+          "source_id": "vendor-payment",
+          "type": "entry"
+        },
+        {
+          "id": "4",
+          "source_id": "schedule:recognition:deferred-open:0:2026-07-31",
+          "type": "entry"
+        },
+        {
+          "id": "5",
+          "source_id": "schedule:recognition:prepaid-open:0:2026-07-31",
+          "type": "entry"
+        },
+        {
+          "id": "6",
+          "source_id": "accrual:provider-payroll-journal",
+          "type": "entry"
+        },
+        {
+          "id": "7",
+          "source_id": "payroll-payment",
+          "type": "entry"
+        },
+        {
+          "id": "8",
+          "source_id": "accrual:july-depreciation",
+          "type": "entry"
+        }
+      ]
+    },
+    {
+      "accounts": [
+        "Assets:Bank:Checking"
+      ],
+      "breakdown": [
+        {
+          "count": 1,
+          "label": "Assets:Bank:Checking"
+        }
+      ],
+      "counts": {
+        "accounts": 1,
+        "clean": 1,
+        "open": 0
+      },
+      "derived": true,
+      "fingerprint": "998fc0f8f54e125733d91e3abcec268231eb5f9d04ddb0018588aa2cd161f3b3",
+      "kind": "reconciled",
+      "period": {
+        "from": "2026-07-31",
+        "to": "2026-07-31"
+      },
+      "schema_version": 1,
+      "subjects": [
+        {
+          "id": "Assets:Bank:Checking@2026-07-31",
+          "type": "reconciliation"
+        }
+      ]
+    }
+  ]
+}

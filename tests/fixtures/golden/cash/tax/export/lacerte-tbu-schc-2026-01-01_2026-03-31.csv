@@ -1,0 +1,16 @@
+Account Number,Account Name,Account Type,Balance,Slashbooks Tax Line
+1010,Assets › Bank › Checking,A,33043.47,schc/none/balance_sheet Balance sheet account (Schedule C has no balance sheet)
+3010,Equity › Owner-Contributions,L,-20000.00,schc/none/owner_equity Owner contributions and draws (not on Schedule C)
+3020,Equity › Owner-Draws,L,2000.00,schc/none/owner_equity Owner contributions and draws (not on Schedule C)
+6010,Expenses › Fees,E,45.00,"schc/II/27b Other expenses (Part V, line 48)"
+6020,Expenses › Insurance,E,420.80,schc/II/15 Insurance (other than health)
+6030,Expenses › Marketing,E,150.57,schc/II/8 Advertising
+6040,Expenses › Meals,E,300.45,schc/II/24b Deductible meals
+6050,Expenses › Office,E,131.75,schc/II/18 Office expense
+6060,Expenses › Rent,E,5400.00,schc/II/20b Rent or lease: other business property
+6070,Expenses › Software,E,309.09,"schc/II/27b Other expenses (Part V, line 48)"
+6080,Expenses › Subcontractors,E,4000.00,schc/II/11 Contract labor
+6090,Expenses › Taxes,E,480.00,schc/II/23 Taxes and licenses
+6100,Expenses › Travel,E,568.40,schc/II/24a Travel
+4010,Income › Consulting,R,-26350.00,schc/I/1 Gross receipts or sales
+2010,Liabilities › CreditCard › Company,L,-499.53,schc/none/balance_sheet Balance sheet account (Schedule C has no balance sheet)

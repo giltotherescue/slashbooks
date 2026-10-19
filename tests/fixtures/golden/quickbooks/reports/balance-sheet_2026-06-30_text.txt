@@ -1,0 +1,31 @@
+Balance Sheet  as of  2026-06-30
+================================
+Accounting basis: accrual
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Retained fiscal summary coverage: 2026-01-01 through 2026-06-30
+
+Assets
+----------------------------------------
+  Assets › Bank › Checking                      10,000.00
+  Assets › Fixed › Accumulated-Depreciation        -400.00
+  Assets › Fixed › Equipment                     2,400.00
+  Assets › Other › Prepaid-Insurance               600.00
+  Assets › Receivable › Accounts-Receivable       1,000.00
+  Total Assets                                  13,600.00
+
+Liabilities
+----------------------------------------
+  Liabilities › Other › Deferred-Revenue           600.00
+  Liabilities › Other › Payroll-Payable            300.00
+  Liabilities › Payable › Accounts-Payable         500.00
+  Total Liabilities                              1,400.00
+
+Equity
+----------------------------------------
+  Equity › Retained-Earnings                     9,000.00
+  Net Income (current period)                    3,200.00
+  Total Equity                                  12,200.00
+
+--------------------------------------------------------
+Total Assets                                    13,600.00
+Total Liabilities And Equity                    13,600.00

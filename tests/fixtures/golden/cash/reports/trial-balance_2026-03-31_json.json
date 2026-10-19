@@ -1,0 +1,193 @@
+{
+  "kind": "trial_balance",
+  "from_date": null,
+  "to_date": "2026-03-31",
+  "sections": [
+    {
+      "label": "All Accounts",
+      "rows": [
+        {
+          "label": "Assets › Bank › Checking",
+          "amount": "33043.47",
+          "indent": 0
+        },
+        {
+          "label": "Equity › Owner-Contributions",
+          "amount": "-20000.00",
+          "indent": 0
+        },
+        {
+          "label": "Equity › Owner-Draws",
+          "amount": "2000.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Fees",
+          "amount": "45.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Insurance",
+          "amount": "420.80",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Marketing",
+          "amount": "150.57",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Meals",
+          "amount": "300.45",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Office",
+          "amount": "131.75",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Rent",
+          "amount": "5400.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Software",
+          "amount": "309.09",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Subcontractors",
+          "amount": "4000.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Taxes",
+          "amount": "480.00",
+          "indent": 0
+        },
+        {
+          "label": "Expenses › Travel",
+          "amount": "568.40",
+          "indent": 0
+        },
+        {
+          "label": "Income › Consulting",
+          "amount": "-26350.00",
+          "indent": 0
+        },
+        {
+          "label": "Liabilities › CreditCard › Company",
+          "amount": "-499.53",
+          "indent": 0
+        }
+      ],
+      "total": null
+    }
+  ],
+  "totals": {
+    "total_debits": "46849.53",
+    "total_credits": "46849.53",
+    "net": "0.00"
+  },
+  "meta": {
+    "basis": "cash",
+    "currency": "USD",
+    "coverage": null,
+    "requested_from": null,
+    "requested_to": "2026-03-31",
+    "unresolved_issues": [],
+    "raw_rows": [
+      {
+        "label": "Assets › Bank › Checking",
+        "debit": "33043.47",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Equity › Owner-Contributions",
+        "debit": "0.00",
+        "credit": "20000.00",
+        "indent": 0
+      },
+      {
+        "label": "Equity › Owner-Draws",
+        "debit": "2000.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Fees",
+        "debit": "45.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Insurance",
+        "debit": "420.80",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Marketing",
+        "debit": "150.57",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Meals",
+        "debit": "300.45",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Office",
+        "debit": "131.75",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Rent",
+        "debit": "5400.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Software",
+        "debit": "309.09",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Subcontractors",
+        "debit": "4000.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Taxes",
+        "debit": "480.00",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Expenses › Travel",
+        "debit": "568.40",
+        "credit": "0.00",
+        "indent": 0
+      },
+      {
+        "label": "Income › Consulting",
+        "debit": "0.00",
+        "credit": "26350.00",
+        "indent": 0
+      },
+      {
+        "label": "Liabilities › CreditCard › Company",
+        "debit": "0.00",
+        "credit": "499.53",
+        "indent": 0
+      }
+    ]
+  }
+}

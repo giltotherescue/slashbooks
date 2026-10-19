@@ -1,0 +1,4 @@
+Answer covers: accrual basis, from 2026-08-05 to 2026-08-05. No period was named in the question, so this uses today's date.
+
+Deferred revenue still to recognize as of 2026-08-05: 500.00 across 1 schedule(s).
+  deferred: deferred-open (Liabilities:Other:Deferred-Revenue): 500.00

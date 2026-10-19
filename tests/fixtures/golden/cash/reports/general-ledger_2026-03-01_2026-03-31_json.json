@@ -1,0 +1,206 @@
+{
+  "kind": "general_ledger",
+  "from_date": "2026-03-01",
+  "to_date": "2026-03-31",
+  "sections": [
+    {
+      "label": "Assets › Bank › Checking",
+      "rows": [
+        {
+          "label": "2026-03-03  |  Maple Street Properties rent",
+          "amount": "-1800.00",
+          "indent": 1,
+          "date": "2026-03-03"
+        },
+        {
+          "label": "2026-03-05  |  Orbit Labs invoice 1005 payment",
+          "amount": "7200.00",
+          "indent": 1,
+          "date": "2026-03-05"
+        },
+        {
+          "label": "2026-03-11  |  Delta Design subcontractor",
+          "amount": "-1500.00",
+          "indent": 1,
+          "date": "2026-03-11"
+        },
+        {
+          "label": "2026-03-16  |  Kestrel Foods invoice 1006 payment",
+          "amount": "1900.00",
+          "indent": 1,
+          "date": "2026-03-16"
+        },
+        {
+          "label": "2026-03-20  |  Granite Insurance premium",
+          "amount": "-210.40",
+          "indent": 1,
+          "date": "2026-03-20"
+        },
+        {
+          "label": "2026-03-25  |  Bank monthly service fee",
+          "amount": "-15.00",
+          "indent": 1,
+          "date": "2026-03-25"
+        }
+      ],
+      "total": "5574.60",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Fees",
+      "rows": [
+        {
+          "label": "2026-03-25  |  Bank monthly service fee",
+          "amount": "15.00",
+          "indent": 1,
+          "date": "2026-03-25"
+        }
+      ],
+      "total": "15.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Insurance",
+      "rows": [
+        {
+          "label": "2026-03-20  |  Granite Insurance premium",
+          "amount": "210.40",
+          "indent": 1,
+          "date": "2026-03-20"
+        }
+      ],
+      "total": "210.40",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Meals",
+      "rows": [
+        {
+          "label": "2026-03-19  |  Juniper Bistro client lunch",
+          "amount": "47.10",
+          "indent": 1,
+          "date": "2026-03-19"
+        }
+      ],
+      "total": "47.10",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Rent",
+      "rows": [
+        {
+          "label": "2026-03-03  |  Maple Street Properties rent",
+          "amount": "1800.00",
+          "indent": 1,
+          "date": "2026-03-03"
+        }
+      ],
+      "total": "1800.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Software",
+      "rows": [
+        {
+          "label": "2026-03-04  |  CloudNotes software subscription",
+          "amount": "79.00",
+          "indent": 1,
+          "date": "2026-03-04"
+        },
+        {
+          "label": "2026-03-24  |  Hostly web hosting",
+          "amount": "24.03",
+          "indent": 1,
+          "date": "2026-03-24"
+        }
+      ],
+      "total": "103.03",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Subcontractors",
+      "rows": [
+        {
+          "label": "2026-03-11  |  Delta Design subcontractor",
+          "amount": "1500.00",
+          "indent": 1,
+          "date": "2026-03-11"
+        }
+      ],
+      "total": "1500.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Travel",
+      "rows": [
+        {
+          "label": "2026-03-12  |  Rail Express tickets",
+          "amount": "268.40",
+          "indent": 1,
+          "date": "2026-03-12"
+        }
+      ],
+      "total": "268.40",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Income › Consulting",
+      "rows": [
+        {
+          "label": "2026-03-05  |  Orbit Labs invoice 1005 payment",
+          "amount": "-7200.00",
+          "indent": 1,
+          "date": "2026-03-05"
+        },
+        {
+          "label": "2026-03-16  |  Kestrel Foods invoice 1006 payment",
+          "amount": "-1900.00",
+          "indent": 1,
+          "date": "2026-03-16"
+        }
+      ],
+      "total": "-9100.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Liabilities › CreditCard › Company",
+      "rows": [
+        {
+          "label": "2026-03-04  |  CloudNotes software subscription",
+          "amount": "-79.00",
+          "indent": 1,
+          "date": "2026-03-04"
+        },
+        {
+          "label": "2026-03-12  |  Rail Express tickets",
+          "amount": "-268.40",
+          "indent": 1,
+          "date": "2026-03-12"
+        },
+        {
+          "label": "2026-03-19  |  Juniper Bistro client lunch",
+          "amount": "-47.10",
+          "indent": 1,
+          "date": "2026-03-19"
+        },
+        {
+          "label": "2026-03-24  |  Hostly web hosting",
+          "amount": "-24.03",
+          "indent": 1,
+          "date": "2026-03-24"
+        }
+      ],
+      "total": "-418.53",
+      "total_label": "Account Total"
+    }
+  ],
+  "totals": {},
+  "meta": {
+    "basis": "cash",
+    "currency": "USD",
+    "coverage": null,
+    "requested_from": "2026-03-01",
+    "requested_to": "2026-03-31",
+    "unresolved_issues": []
+  }
+}

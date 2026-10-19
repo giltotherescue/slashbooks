@@ -1,0 +1,283 @@
+{
+  "aging_basis": "due_date",
+  "as_of": "2026-06-30",
+  "basis": "accrual",
+  "bucket_labels": {
+    "1_30": "1–30 days overdue",
+    "31_60": "31–60 days overdue",
+    "61_90": "61–90 days overdue",
+    "current": "Current",
+    "over_90": "Over 90 days overdue",
+    "unapplied_credit": "Unapplied credit",
+    "unknown_due_date": "Due date not provided"
+  },
+  "canonical_digest": "9a88c6c190049292805ee8c75a0bfd554c76d7dd90c1f4dccb5812176d539e23",
+  "coverage": {
+    "basis": "accrual",
+    "chart": [
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "account_type": "Accounts payable (A/P)",
+        "currency": "USD",
+        "detail_type": "Accounts payable (A/P)",
+        "open_date": "2026-06-30",
+        "source_account": "Accounts Payable"
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "account_type": "Accounts receivable (A/R)",
+        "currency": "USD",
+        "detail_type": "Accounts receivable (A/R)",
+        "open_date": "2026-06-30",
+        "source_account": "Accounts Receivable"
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "account_type": "Fixed Assets",
+        "currency": "USD",
+        "detail_type": "Fixed Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Accumulated Depreciation"
+      },
+      {
+        "account": "Assets:Bank:Checking",
+        "account_type": "Bank",
+        "currency": "USD",
+        "detail_type": "Bank",
+        "open_date": "2026-06-30",
+        "source_account": "Checking"
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "account_type": "Other Current Liabilities",
+        "currency": "USD",
+        "detail_type": "Other Current Liabilities",
+        "open_date": "2026-06-30",
+        "source_account": "Deferred Revenue"
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "account_type": "Fixed Assets",
+        "currency": "USD",
+        "detail_type": "Fixed Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Equipment"
+      },
+      {
+        "account": "Expenses:Operating-Costs",
+        "account_type": "Expenses",
+        "currency": "USD",
+        "detail_type": "Expenses",
+        "open_date": "2026-06-30",
+        "source_account": "Operating Costs"
+      },
+      {
+        "account": "Liabilities:Other:Payroll-Payable",
+        "account_type": "Other Current Liabilities",
+        "currency": "USD",
+        "detail_type": "Other Current Liabilities",
+        "open_date": "2026-06-30",
+        "source_account": "Payroll Payable"
+      },
+      {
+        "account": "Assets:Other:Prepaid-Insurance",
+        "account_type": "Other Current Assets",
+        "currency": "USD",
+        "detail_type": "Other Current Assets",
+        "open_date": "2026-06-30",
+        "source_account": "Prepaid Insurance"
+      },
+      {
+        "account": "Equity:Retained-Earnings",
+        "account_type": "Equity",
+        "currency": "USD",
+        "detail_type": "Equity",
+        "open_date": "2026-06-30",
+        "source_account": "Retained Earnings"
+      },
+      {
+        "account": "Income:Services",
+        "account_type": "Income",
+        "currency": "USD",
+        "detail_type": "Income",
+        "open_date": "2026-06-30",
+        "source_account": "Services"
+      }
+    ],
+    "closed_position": false,
+    "currency": "USD",
+    "cutover_date": "2026-07-01",
+    "fiscal_start": "2026-01-01",
+    "id": "opening",
+    "intent_hash": "d37fa3d509d6968aa9352b1f0acdca3ab04b108452f882a39afb1acbb51815fd",
+    "mapping_hash": "556bba3ee2b2d2b02f18e085c275fd11cab7ad3ca04d761acada0420aa54f63c",
+    "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+    "source_as_of": "2026-06-30",
+    "source_hashes": {
+      "balance_sheet": "7027affa922f529fc92072d92ce5de90b457078a75bef89f9d953d9169afe813",
+      "chart_of_accounts": "ae7ee713551b9ef92ef632c9141b752ea105cf0c68e82da84d28bfc068f7ab82",
+      "profit_and_loss": "364fe068c45354c3541f3231d8f5a7d45c9cb5bbf0bf0cb22739d6aa384e2fd4",
+      "trial_balance": "0cced0d6e3a553dfa49eb69a71dfc9264d69bc26cf4a8732243128c2b6df35b5"
+    },
+    "source_paths": {
+      "balance_sheet": "ingestion/quickbooks/balance_sheet.csv",
+      "chart_of_accounts": "ingestion/quickbooks/accounts.csv",
+      "profit_and_loss": "ingestion/quickbooks/profit_and_loss.csv",
+      "trial_balance": "ingestion/quickbooks/trial_balance.csv"
+    },
+    "summary_from": "2026-01-01",
+    "summary_to": "2026-06-30",
+    "support_evidence_hashes": {
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e": "9da1f4656f64826791f41cd093ec924f09d70a71478bbfb932644524ebf6bf65"
+    },
+    "support_status": "reconciled",
+    "verified": true
+  },
+  "credits_netted": false,
+  "currency": "USD",
+  "fingerprint": "026429a487fe033379e555ecde973d65cb9146fe872014760002069aa850290f",
+  "from_date": null,
+  "issues": [],
+  "kind": "aging",
+  "requested_from": null,
+  "requested_to": "2026-06-30",
+  "rows": [
+    {
+      "account": "Liabilities:Payable:Accounts-Payable",
+      "aging_amount": "500.00",
+      "allocations_as_of": [],
+      "as_of": "2026-06-30",
+      "base_remaining_amount": "500.00",
+      "bucket": "unknown_due_date",
+      "bucket_label": "Due date not provided",
+      "currency": "USD",
+      "days_past_due": null,
+      "due_date": null,
+      "evidence_ids": [
+        "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+      ],
+      "evidence_refs": [
+        "evidence/opening.txt"
+      ],
+      "id": "vendor-open",
+      "kind": "payable",
+      "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+      "origin": {
+        "mode": "opening",
+        "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+      },
+      "original_amount": "500.00",
+      "remaining_amount": "500.00",
+      "remaining_as_of": "500.00",
+      "signed_balance": "-500.00",
+      "status": "open"
+    },
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "aging_amount": "1000.00",
+      "allocations_as_of": [],
+      "as_of": "2026-06-30",
+      "base_remaining_amount": "1000.00",
+      "bucket": "unknown_due_date",
+      "bucket_label": "Due date not provided",
+      "currency": "USD",
+      "days_past_due": null,
+      "due_date": null,
+      "evidence_ids": [
+        "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+      ],
+      "evidence_refs": [
+        "evidence/opening.txt"
+      ],
+      "id": "customer-open",
+      "kind": "receivable",
+      "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+      "origin": {
+        "mode": "opening",
+        "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+      },
+      "original_amount": "1000.00",
+      "remaining_amount": "1000.00",
+      "remaining_as_of": "1000.00",
+      "signed_balance": "1000.00",
+      "status": "open"
+    }
+  ],
+  "schema_version": 1,
+  "summary": [
+    {
+      "account": "Liabilities:Payable:Accounts-Payable",
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "0.00",
+        "61_90": "0.00",
+        "current": "0.00",
+        "over_90": "0.00",
+        "unapplied_credit": "0.00",
+        "unknown_due_date": "500.00"
+      },
+      "counterparty": null,
+      "currency": "USD",
+      "item_count": 1,
+      "kind": "payable",
+      "total": "500.00"
+    },
+    {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "0.00",
+        "61_90": "0.00",
+        "current": "0.00",
+        "over_90": "0.00",
+        "unapplied_credit": "0.00",
+        "unknown_due_date": "1000.00"
+      },
+      "counterparty": null,
+      "currency": "USD",
+      "item_count": 1,
+      "kind": "receivable",
+      "total": "1000.00"
+    }
+  ],
+  "summary_included": false,
+  "totals": {
+    "payable": {
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "0.00",
+        "61_90": "0.00",
+        "current": "0.00",
+        "over_90": "0.00",
+        "unknown_due_date": "500.00"
+      },
+      "count": 1,
+      "overdue_count": 0,
+      "overdue_total": "0.00",
+      "total": "500.00",
+      "unapplied_credits": {
+        "count": 0,
+        "total": "0.00"
+      }
+    },
+    "receivable": {
+      "buckets": {
+        "1_30": "0.00",
+        "31_60": "0.00",
+        "61_90": "0.00",
+        "current": "0.00",
+        "over_90": "0.00",
+        "unknown_due_date": "1000.00"
+      },
+      "count": 1,
+      "overdue_count": 0,
+      "overdue_total": "0.00",
+      "total": "1000.00",
+      "unapplied_credits": {
+        "count": 0,
+        "total": "0.00"
+      }
+    }
+  },
+  "unresolved_issues": []
+}

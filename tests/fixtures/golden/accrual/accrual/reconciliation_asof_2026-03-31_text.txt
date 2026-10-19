@@ -1,0 +1,15 @@
+Account reconciliation
+As of 2026-03-31 | Accrual basis | USD
+Detailed activity begins 2026-01-01; imported opening as of 2025-12-31.
+
+Account                               | Ledger   | Supporting detail | Difference   | Status     
+--------------------------------------+----------+-------------------+--------------+------------
+Assets:Fixed:Accumulated-Depreciation | -1500.00 | -1500.00          | 0.00         | reconciled 
+Assets:Fixed:Equipment                | 6000.00  | 6000.00           | 0.00         | reconciled 
+Assets:Other:Prepaid-Expenses         | 1300.00  | 1300.00           | 0.00         | reconciled 
+Assets:Receivable:Accounts-Receivable | 2100.00  | 2100.00           | 0.00         | reconciled 
+Liabilities:Other:Accrued-Liabilities | -470.00  | Not provided      | Not provided | ledger_only
+Liabilities:Other:Deferred-Revenue    | -2700.00 | -2700.00          | 0.00         | reconciled 
+
+Review issues:
+No outstanding review items.

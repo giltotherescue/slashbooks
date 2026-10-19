@@ -1,0 +1,65 @@
+General Ledger  2026-01-01  through  2026-01-31
+===============================================
+Accounting basis: accrual
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+
+Assets › Bank › Checking
+----------------------------------------
+  2026-01-15  |  Payment to Delta Design: BILL-311: Delta Design (BILL-311)      -1,500.00
+  2026-01-20  |  Payment from Orbit Labs: INV-0950: Orbit Labs (INV-0950)       2,500.00
+  Account Total                                  1,000.00
+
+Assets › Fixed › Accumulated-Depreciation
+----------------------------------------
+  2026-01-31  |  Depreciation: dated 2025-03-01 (Jan 2026)        -100.00
+  Account Total                                   -100.00
+
+Assets › Other › Prepaid-Expenses
+----------------------------------------
+  2026-01-31  |  Prepaid expense used: dated 2025-07-01 (Jan 2026)        -100.00
+  Account Total                                   -100.00
+
+Assets › Receivable › Accounts-Receivable
+----------------------------------------
+  2026-01-10  |  Invoice: Orbit Labs             6,000.00
+  2026-01-12  |  Invoice: Kestrel Foods            900.00
+  2026-01-20  |  Payment from Orbit Labs: INV-0950: Orbit Labs (INV-0950)      -2,500.00
+  Account Total                                  4,400.00
+
+Expenses › Depreciation
+----------------------------------------
+  2026-01-31  |  Depreciation: dated 2025-03-01 (Jan 2026)         100.00
+  Account Total                                    100.00
+
+Expenses › Insurance
+----------------------------------------
+  2026-01-31  |  Prepaid expense used: dated 2025-07-01 (Jan 2026)         100.00
+  Account Total                                    100.00
+
+Expenses › Utilities
+----------------------------------------
+  2026-01-31  |  Estimated January utilities         450.00
+  Account Total                                    450.00
+
+Income › Consulting
+----------------------------------------
+  2026-01-10  |  Invoice: Orbit Labs            -6,000.00
+  2026-01-12  |  Invoice: Kestrel Foods           -900.00
+  2026-01-31  |  Deferred revenue earned: dated 2025-07-01 (Jan 2026)        -100.00
+  Account Total                                 -7,000.00
+
+Liabilities › Other › Accrued-Liabilities
+----------------------------------------
+  2026-01-31  |  Estimated January utilities        -450.00
+  Account Total                                   -450.00
+
+Liabilities › Other › Deferred-Revenue
+----------------------------------------
+  2026-01-31  |  Deferred revenue earned: dated 2025-07-01 (Jan 2026)         100.00
+  Account Total                                    100.00
+
+Liabilities › Payable › Accounts-Payable
+----------------------------------------
+  2026-01-15  |  Payment to Delta Design: BILL-311: Delta Design (BILL-311)       1,500.00
+  Account Total                                  1,500.00
+

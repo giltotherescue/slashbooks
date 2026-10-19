@@ -1,0 +1,23 @@
+Trial Balance  as of  2026-01-31
+================================
+Accounting basis: cash
+
+All Accounts
+----------------------------------------
+Assets › Bank › Checking                      25,782.42
+Equity › Owner-Contributions                 -20,000.00
+Expenses › Fees                                   15.00
+Expenses › Insurance                             210.40
+Expenses › Marketing                             120.00
+Expenses › Meals                                 199.15
+Expenses › Rent                                1,800.00
+Expenses › Software                              103.03
+Expenses › Subcontractors                      1,250.00
+Expenses › Travel                                300.00
+Income › Consulting                           -9,700.00
+Liabilities › CreditCard › Company               -80.00
+
+--------------------------------------------------------
+Total Debits                                    29,780.00
+Total Credits                                   29,780.00
+Net                                                  0.00

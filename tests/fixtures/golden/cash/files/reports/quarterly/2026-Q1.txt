@@ -1,0 +1,67 @@
+Quarterly Review: Q1 2026
+Period: 2026-01-01 through 2026-03-31
+==================================================
+
+Profit and Loss  2026-01-01  through  2026-03-31
+================================================
+Accounting basis: cash
+
+Money In
+----------------------------------------
+  Income › Consulting                           26,350.00
+  Total Revenue                                 26,350.00
+
+Money Out
+----------------------------------------
+  Expenses › Fees                                   45.00
+  Expenses › Insurance                             420.80
+  Expenses › Marketing                             150.57
+  Expenses › Meals                                 300.45
+  Expenses › Office                                131.75
+  Expenses › Rent                                5,400.00
+  Expenses › Software                              309.09
+  Expenses › Subcontractors                      4,000.00
+  Expenses › Taxes                                 480.00
+  Expenses › Travel                                568.40
+  Total Expenses                                11,806.06
+
+--------------------------------------------------------
+Net Income                                      14,543.94
+
+Balance Sheet  as of  2026-03-31
+================================
+Accounting basis: cash
+
+Assets
+----------------------------------------
+  Assets › Bank › Checking                      33,043.47
+  Total Assets                                  33,043.47
+
+Liabilities
+----------------------------------------
+  Liabilities › CreditCard › Company               499.53
+  Total Liabilities                                499.53
+
+Equity
+----------------------------------------
+  Equity › Owner-Contributions                  20,000.00
+  Equity › Owner-Draws                          -2,000.00
+  Net Income (current period)                   14,543.94
+  Total Equity                                  32,543.94
+
+--------------------------------------------------------
+Total Assets                                    33,043.47
+Total Liabilities And Equity                    33,043.47
+
+Auto-posted entries sample (spot-check)
+----------------------------------------
+  2026-01-03  CloudNotes software subscription          Expenses › Software  79.00
+  2026-01-05  Maple Street Properties rent              Expenses › Rent  1800.00
+  2026-01-08  Orbit Labs invoice 1001 payment           Income › Consulting  -6500.00
+  2026-01-10  Juniper Bistro client lunch               Expenses › Meals  86.35
+  2026-01-12  Delta Design subcontractor                Expenses › Subcontractors  1250.00
+  2026-01-15  Granite Insurance premium                 Expenses › Insurance  210.40
+  2026-01-18  Skyway Airlines ticket                    Expenses › Travel  300.00
+  2026-01-18  Skyway Airlines ticket                    Expenses › Meals  112.80
+  2026-01-20  Kestrel Foods invoice 1002 payment        Income › Consulting  -3200.00
+  2026-01-22  Spark Ads campaign                        Expenses › Marketing  120.00

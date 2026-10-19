@@ -1,0 +1,9 @@
+{
+  "company_rules": [],
+  "count": 0,
+  "counterparty_rules": [],
+  "effect": "proposals_only",
+  "kind": "accrual_rules",
+  "schema_version": 1,
+  "skipped": []
+}

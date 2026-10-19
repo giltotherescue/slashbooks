@@ -1,0 +1,15 @@
+{
+  "blockers": [],
+  "bundle_created": true,
+  "file_count": 51,
+  "format": 1,
+  "import_ready": false,
+  "ledger_content_sha256": "cfa880893c2dc64e8187b8a82124450fb63dd8a926b113a7ad1212391eea13bd",
+  "report_fingerprints": {
+    "balance_sheet": "4bd472da02810bdb8f91b2101abdd8d76e3252489ce6a905273a56867f33020e",
+    "general_ledger": "1e0f8c57b8c99355d2cbadb31287233d7dae9a5ecb1a63f8b2f645f61f57eba7",
+    "pnl": "972e20364ea53468fa608cf95b7a65a4d3efe989c666df70c69c60a115bd595b",
+    "trial_balance": "8e5f452e98e6bbbe38c8f284c1fb363ebb88e0062e07a702826c2fc8b656f8d0"
+  },
+  "status": "exported"
+}

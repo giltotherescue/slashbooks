@@ -1,0 +1,99 @@
+{
+  "activity_from": "2026-06-01",
+  "activity_to": "2026-06-30",
+  "basis": "accrual",
+  "blockers": [
+    {
+      "action": "Run: books reconcile --entity <COMPANY> --account Assets:Bank:Checking --source-balance <statement ending balance> --as-of 2026-06-30 --source-opening-balance <statement opening balance> --source-transaction-total <signed activity 2026-06-01 to 2026-06-30> --source-snapshot-at <ISO time you read the statement> --source-through 2026-06-30 --source-evidence-ref <statement id>",
+      "code": "reconciliation_missing",
+      "message": "An expected source account lacks period-end reconciliation. Account Assets:Bank:Checking, period 2026-06.",
+      "refs": [
+        "Assets:Bank:Checking"
+      ]
+    },
+    {
+      "code": "report_validation_failed",
+      "message": "Draft financial reports could not be validated.",
+      "refs": [
+        "CoverageError"
+      ]
+    },
+    {
+      "action": "After you confirm the source covers it, run: books entity source-coverage <COMPANY> --source \"synthetic-bank\" --from 2026-06-01 --to 2026-06-30. Coverage is additive; earlier ranges stay.",
+      "code": "source_coverage_incomplete",
+      "message": "Source synthetic-bank (account Assets:Bank:Checking) has recorded coverage 2026-07-01 through 2026-07-31, but period 2026-06 needs 2026-06-01 through 2026-06-30.",
+      "refs": [
+        "synthetic-bank"
+      ]
+    },
+    {
+      "code": "source_month_partial",
+      "message": "synthetic-bank has no statement, feed window, declared coverage or transactions for Jun 1–29.",
+      "refs": [
+        "Assets:Bank:Checking"
+      ]
+    }
+  ],
+  "books_revision": 0,
+  "coverage": [
+    {
+      "account": "Assets:Bank:Checking",
+      "label": "synthetic-bank",
+      "months": [
+        {
+          "basis": [
+            "transactions"
+          ],
+          "covered_days": 1,
+          "days": 30,
+          "from": "2026-06-01",
+          "gaps": [
+            {
+              "days": 29,
+              "from": "2026-06-01",
+              "to": "2026-06-29"
+            }
+          ],
+          "month": "2026-06",
+          "notes": [
+            "synthetic-bank coverage for Jun 30 is inferred from transaction dates only; add a statement or feed window to confirm it."
+          ],
+          "reasons": [
+            "synthetic-bank has no statement, feed window, declared coverage or transactions for Jun 1–29."
+          ],
+          "status": "partial",
+          "tieout": null,
+          "to": "2026-06-30",
+          "verified": false
+        }
+      ],
+      "status": "partial",
+      "verified": false
+    }
+  ],
+  "evidence_fingerprint": "333fbde301b722a712d3c310dfa2154c4a419793eecd9894cdfc5837a5c10dda",
+  "imported_summary_through": null,
+  "package_id": "a040ba86ee8c2e02544d9fe39add2b94d4c39b5fe3d345bdaf8bab7d3d2e60d1",
+  "partial_post_cutover": false,
+  "period": "2026-06",
+  "period_status": "completed",
+  "policy_version": 0,
+  "reconciliations": [],
+  "reply_revision": 0,
+  "reports": [],
+  "schema_version": 1,
+  "source_revision": 0,
+  "sources": [
+    {
+      "account": "Assets:Bank:Checking",
+      "coverage_from": "2026-07-01",
+      "coverage_status": "partial",
+      "coverage_to": "2026-07-31",
+      "requested_from": "2026-06-01",
+      "requested_to": "2026-06-30",
+      "source": "synthetic-bank"
+    }
+  ],
+  "state": "blocked",
+  "warnings": []
+}

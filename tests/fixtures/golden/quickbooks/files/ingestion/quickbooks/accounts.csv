@@ -1,0 +1,12 @@
+Account name,Account type,Detail type
+Checking,Bank,Bank
+Accounts Receivable,Accounts receivable (A/R),Accounts receivable (A/R)
+Prepaid Insurance,Other Current Assets,Other Current Assets
+Equipment,Fixed Assets,Fixed Assets
+Accumulated Depreciation,Fixed Assets,Fixed Assets
+Accounts Payable,Accounts payable (A/P),Accounts payable (A/P)
+Deferred Revenue,Other Current Liabilities,Other Current Liabilities
+Payroll Payable,Other Current Liabilities,Other Current Liabilities
+Retained Earnings,Equity,Equity
+Services,Income,Income
+Operating Costs,Expenses,Expenses

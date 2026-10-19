@@ -1,0 +1,219 @@
+Accrual activity register
+As of 2026-03-31 | Accrual basis | USD
+Period begins 2026-01-01
+Detailed activity begins 2026-01-01; imported opening as of 2025-12-31.
+
+2026-01-10 | Invoice: Orbit Labs
+Account                               | Debit   | Credit  | Currency
+--------------------------------------+---------+---------+---------
+Assets:Receivable:Accounts-Receivable | 6000.00 | 0.00    | USD     
+Income:Consulting                     | 0.00    | 6000.00 | USD     
+
+2026-01-12 | Invoice: Kestrel Foods
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Assets:Receivable:Accounts-Receivable | 900.00 | 0.00   | USD     
+Income:Consulting                     | 0.00   | 900.00 | USD     
+
+2026-01-15 | Payment to Delta Design: BILL-311
+Account                              | Debit   | Credit  | Currency
+-------------------------------------+---------+---------+---------
+Assets:Bank:Checking                 | 0.00    | 1500.00 | USD     
+Liabilities:Payable:Accounts-Payable | 1500.00 | 0.00    | USD     
+
+2026-01-20 | Payment from Orbit Labs: INV-0950
+Account                               | Debit   | Credit  | Currency
+--------------------------------------+---------+---------+---------
+Assets:Bank:Checking                  | 2500.00 | 0.00    | USD     
+Assets:Receivable:Accounts-Receivable | 0.00    | 2500.00 | USD     
+
+2026-01-31 | Estimated January utilities
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Utilities                    | 450.00 | 0.00   | USD     
+Liabilities:Other:Accrued-Liabilities | 0.00   | 450.00 | USD     
+
+2026-01-31 | Prepaid expense used: dated 2025-07-01 (Jan 2026)
+Account                       | Debit  | Credit | Currency
+------------------------------+--------+--------+---------
+Expenses:Insurance            | 100.00 | 0.00   | USD     
+Assets:Other:Prepaid-Expenses | 0.00   | 100.00 | USD     
+
+2026-01-31 | Depreciation: dated 2025-03-01 (Jan 2026)
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Depreciation                 | 100.00 | 0.00   | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00   | 100.00 | USD     
+
+2026-01-31 | Deferred revenue earned: dated 2025-07-01 (Jan 2026)
+Account                            | Debit  | Credit | Currency
+-----------------------------------+--------+--------+---------
+Income:Consulting                  | 0.00   | 100.00 | USD     
+Liabilities:Other:Deferred-Revenue | 100.00 | 0.00   | USD     
+
+2026-02-01 | Reversal of: Estimated January utilities
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Utilities                    | 0.00   | 450.00 | USD     
+Liabilities:Other:Accrued-Liabilities | 450.00 | 0.00   | USD     
+
+2026-02-01 | Prepaid expense
+Account                       | Debit   | Credit  | Currency
+------------------------------+---------+---------+---------
+Assets:Other:Prepaid-Expenses | 1200.00 | 0.00    | USD     
+Assets:Bank:Checking          | 0.00    | 1200.00 | USD     
+
+2026-02-01 | Deferred revenue received
+Account                            | Debit   | Credit  | Currency
+-----------------------------------+---------+---------+---------
+Liabilities:Other:Deferred-Revenue | 0.00    | 3600.00 | USD     
+Assets:Bank:Checking               | 3600.00 | 0.00    | USD     
+
+2026-02-03 | Bill: Granite Hosting
+Account                              | Debit  | Credit | Currency
+-------------------------------------+--------+--------+---------
+Liabilities:Payable:Accounts-Payable | 0.00   | 800.00 | USD     
+Expenses:Software                    | 800.00 | 0.00   | USD     
+
+2026-02-05 | Payment from Orbit Labs: Overpayment
+Account                               | Debit   | Credit  | Currency
+--------------------------------------+---------+---------+---------
+Assets:Bank:Checking                  | 6500.00 | 0.00    | USD     
+Assets:Receivable:Accounts-Receivable | 0.00    | 6000.00 | USD     
+Assets:Receivable:Accounts-Receivable | 0.00    | 500.00  | USD     
+
+2026-02-10 | Equipment purchase
+Account                | Debit   | Credit  | Currency
+-----------------------+---------+---------+---------
+Assets:Fixed:Equipment | 3600.00 | 0.00    | USD     
+Assets:Bank:Checking   | 0.00    | 3600.00 | USD     
+
+2026-02-15 | Invoice: Orbit Labs
+Account                               | Debit   | Credit  | Currency
+--------------------------------------+---------+---------+---------
+Assets:Receivable:Accounts-Receivable | 3000.00 | 0.00    | USD     
+Income:Consulting                     | 0.00    | 3000.00 | USD     
+
+2026-02-20 | Payment to Granite Hosting
+Account                              | Debit  | Credit | Currency
+-------------------------------------+--------+--------+---------
+Assets:Bank:Checking                 | 0.00   | 800.00 | USD     
+Liabilities:Payable:Accounts-Payable | 800.00 | 0.00   | USD     
+
+2026-02-28 | Estimate: Staff
+Account                              | Debit   | Credit  | Currency
+-------------------------------------+---------+---------+---------
+Liabilities:Payable:Accounts-Payable | 0.00    | 1000.00 | USD     
+Expenses:Bonus                       | 1000.00 | 0.00    | USD     
+
+2026-02-28 | Prepaid expense used: dated 2025-07-01 (Feb 2026)
+Account                       | Debit  | Credit | Currency
+------------------------------+--------+--------+---------
+Expenses:Insurance            | 100.00 | 0.00   | USD     
+Assets:Other:Prepaid-Expenses | 0.00   | 100.00 | USD     
+
+2026-02-28 | Depreciation: dated 2026-02-01 (Feb 2026)
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Depreciation                 | 100.00 | 0.00   | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00   | 100.00 | USD     
+
+2026-02-28 | Depreciation: dated 2025-03-01 (Feb 2026)
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Depreciation                 | 100.00 | 0.00   | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00   | 100.00 | USD     
+
+2026-02-28 | Deferred revenue earned: dated 2025-07-01 (Feb 2026)
+Account                            | Debit  | Credit | Currency
+-----------------------------------+--------+--------+---------
+Income:Consulting                  | 0.00   | 100.00 | USD     
+Liabilities:Other:Deferred-Revenue | 100.00 | 0.00   | USD     
+
+2026-02-28 | Deferred revenue earned: dated 2026-02-01 (Feb 2026)
+Account                            | Debit  | Credit | Currency
+-----------------------------------+--------+--------+---------
+Income:Consulting                  | 0.00   | 600.00 | USD     
+Liabilities:Other:Deferred-Revenue | 600.00 | 0.00   | USD     
+
+2026-02-28 | Prepaid expense used: dated 2026-02-01 (Feb 2026)
+Account                       | Debit  | Credit | Currency
+------------------------------+--------+--------+---------
+Expenses:Software             | 100.00 | 0.00   | USD     
+Assets:Other:Prepaid-Expenses | 0.00   | 100.00 | USD     
+
+2026-03-10 | Bill: Staff
+Account                              | Debit  | Credit | Currency
+-------------------------------------+--------+--------+---------
+Liabilities:Payable:Accounts-Payable | 0.00   | 700.00 | USD     
+Expenses:Bonus                       | 700.00 | 0.00   | USD     
+
+2026-03-10 | Estimate settled: Staff (actual: Staff) - Actual bonus approved
+Account                              | Debit   | Credit  | Currency
+-------------------------------------+---------+---------+---------
+Liabilities:Payable:Accounts-Payable | 1000.00 | 0.00    | USD     
+Expenses:Bonus                       | 0.00    | 1000.00 | USD     
+True-up of bonus-estimate against bonus-actual: estimate 1000.00, actual 700.00, variance -300.00 (actual minus estimate).
+
+2026-03-18 | Payment from Orbit Labs
+Account                               | Debit   | Credit  | Currency
+--------------------------------------+---------+---------+---------
+Assets:Bank:Checking                  | 2500.00 | 0.00    | USD     
+Assets:Receivable:Accounts-Receivable | 0.00    | 2500.00 | USD     
+
+2026-03-20 | Written off: Kestrel Foods - Synthetic uncollectible balance
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Assets:Receivable:Accounts-Receivable | 0.00   | 300.00 | USD     
+Expenses:Bad-Debt                     | 300.00 | 0.00   | USD     
+
+2026-03-25 | Payment to Staff
+Account                              | Debit  | Credit | Currency
+-------------------------------------+--------+--------+---------
+Assets:Bank:Checking                 | 0.00   | 700.00 | USD     
+Liabilities:Payable:Accounts-Payable | 700.00 | 0.00   | USD     
+
+2026-03-31 | Estimated March utilities
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Utilities                    | 470.00 | 0.00   | USD     
+Liabilities:Other:Accrued-Liabilities | 0.00   | 470.00 | USD     
+
+2026-03-31 | Prepaid expense used: dated 2025-07-01 (Mar 2026)
+Account                       | Debit  | Credit | Currency
+------------------------------+--------+--------+---------
+Expenses:Insurance            | 100.00 | 0.00   | USD     
+Assets:Other:Prepaid-Expenses | 0.00   | 100.00 | USD     
+
+2026-03-31 | Depreciation: dated 2026-02-01 (Mar 2026)
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Depreciation                 | 100.00 | 0.00   | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00   | 100.00 | USD     
+
+2026-03-31 | Depreciation: dated 2025-03-01 (Mar 2026)
+Account                               | Debit  | Credit | Currency
+--------------------------------------+--------+--------+---------
+Expenses:Depreciation                 | 100.00 | 0.00   | USD     
+Assets:Fixed:Accumulated-Depreciation | 0.00   | 100.00 | USD     
+
+2026-03-31 | Deferred revenue earned: dated 2025-07-01 (Mar 2026)
+Account                            | Debit  | Credit | Currency
+-----------------------------------+--------+--------+---------
+Income:Consulting                  | 0.00   | 100.00 | USD     
+Liabilities:Other:Deferred-Revenue | 100.00 | 0.00   | USD     
+
+2026-03-31 | Deferred revenue earned: dated 2026-02-01 (Mar 2026)
+Account                            | Debit  | Credit | Currency
+-----------------------------------+--------+--------+---------
+Income:Consulting                  | 0.00   | 600.00 | USD     
+Liabilities:Other:Deferred-Revenue | 600.00 | 0.00   | USD     
+
+2026-03-31 | Prepaid expense used: dated 2026-02-01 (Mar 2026)
+Account                       | Debit  | Credit | Currency
+------------------------------+--------+--------+---------
+Expenses:Software             | 100.00 | 0.00   | USD     
+Assets:Other:Prepaid-Expenses | 0.00   | 100.00 | USD     
+
+Review issues:
+No outstanding review items.

@@ -1,0 +1,64 @@
+[
+  {
+    "account": "Liabilities:Other:Deferred-Revenue",
+    "amount": "1200.00",
+    "as_of": "2026-06-30",
+    "base_recognized_amount": "600.00",
+    "base_remaining_amount": "600.00",
+    "currency": "USD",
+    "evidence_ids": [
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+    ],
+    "evidence_refs": [
+      "evidence/opening.txt"
+    ],
+    "id": "deferred-open",
+    "initial_remaining_amount": "600.00",
+    "kind": "deferred",
+    "method": "equal_month",
+    "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+    "origin": {
+      "mode": "opening",
+      "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+    },
+    "origin_reserved_amount": "600.00",
+    "recognition_account": "Income:Services",
+    "recognition_start": "2026-07-01",
+    "recognized_amount": "700.00",
+    "remaining_amount": "500.00",
+    "service_end": "2026-12-31",
+    "service_start": "2026-01-01",
+    "status": "active"
+  },
+  {
+    "account": "Assets:Other:Prepaid-Insurance",
+    "amount": "1200.00",
+    "as_of": "2026-06-30",
+    "base_recognized_amount": "600.00",
+    "base_remaining_amount": "600.00",
+    "currency": "USD",
+    "evidence_ids": [
+      "a27a20e150452779a36e19909b35ea2f8086d84b3c0c8bb249701c748c59537e"
+    ],
+    "evidence_refs": [
+      "evidence/opening.txt"
+    ],
+    "id": "prepaid-open",
+    "initial_remaining_amount": "600.00",
+    "kind": "prepaid",
+    "method": "equal_month",
+    "opening_source_id": "quickbooks-opening-trial-balance-2026-07-01",
+    "origin": {
+      "mode": "opening",
+      "source_id": "quickbooks-opening-trial-balance-2026-07-01"
+    },
+    "origin_reserved_amount": "600.00",
+    "recognition_account": "Expenses:Operating-Costs",
+    "recognition_start": "2026-07-01",
+    "recognized_amount": "700.00",
+    "remaining_amount": "500.00",
+    "service_end": "2026-12-31",
+    "service_start": "2026-01-01",
+    "status": "active"
+  }
+]

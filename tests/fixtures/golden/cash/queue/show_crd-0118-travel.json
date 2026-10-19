@@ -1,0 +1,35 @@
+{
+  "amount": "-412.80",
+  "confirmed_category": "Split transaction",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "SKYWAY AIRLINES TICKET",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-18",
+  "delta": null,
+  "description": "Skyway Airlines ticket",
+  "liability_effect": [],
+  "original_amount": "-412.80",
+  "proposal_type": "split",
+  "proposed_category": "Split transaction",
+  "reasoning": "Synthetic split airfare and meals",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "crd-0118-travel": "c920a5b356bc0b79240d124cbfed66d4297253a7687461d187c47a57df9e6854"
+  },
+  "source_id": "crd-0118-travel",
+  "split_postings": [
+    {
+      "account": "Expenses:Travel",
+      "amount": "300.00"
+    },
+    {
+      "account": "Expenses:Meals",
+      "amount": "112.80"
+    }
+  ],
+  "split_template": null,
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

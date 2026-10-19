@@ -1,0 +1,39 @@
+  [confirmed] chk-0102-owner  2026-01-02  Equity:Owner-Contributions
+  [confirmed] chk-0105-rent  2026-01-05  Expenses:Rent
+  [confirmed] chk-0108-client  2026-01-08  Income:Consulting
+  [confirmed] chk-0112-sub  2026-01-12  Expenses:Subcontractors
+  [confirmed] chk-0115-ins  2026-01-15  Expenses:Insurance
+  [confirmed] chk-0120-client  2026-01-20  Income:Consulting
+  [confirmed] chk-0125-fee  2026-01-25  Expenses:Fees
+  [confirmed] chk-0203-rent  2026-02-03  Expenses:Rent
+  [confirmed] chk-0206-client  2026-02-06  Income:Consulting
+  [confirmed] chk-0210-sub  2026-02-10  Expenses:Subcontractors
+  [confirmed] chk-0213-client  2026-02-13  Income:Consulting
+  [confirmed] chk-0217-draw  2026-02-17  Equity:Owner-Draws
+  [confirmed] chk-0224-tax  2026-02-24  Expenses:Taxes
+  [confirmed] chk-0225-fee  2026-02-25  Expenses:Fees
+  [confirmed] chk-0303-rent  2026-03-03  Expenses:Rent
+  [confirmed] chk-0305-client  2026-03-05  Income:Consulting
+  [confirmed] chk-0311-sub  2026-03-11  Expenses:Subcontractors
+  [confirmed] chk-0316-client  2026-03-16  Income:Consulting
+  [confirmed] chk-0320-ins  2026-03-20  Expenses:Insurance
+  [confirmed] chk-0325-fee  2026-03-25  Expenses:Fees
+  [open] chk-0330-deposit  2026-03-30  Income:Consulting
+  [confirmed] crd-0103-sw  2026-01-03  Expenses:Software
+  [confirmed] crd-0110-meal  2026-01-10  Expenses:Meals
+  [confirmed] crd-0118-travel  2026-01-18  Split transaction
+  [confirmed] crd-0122-mkt  2026-01-22  Expenses:Marketing
+  [confirmed] crd-0127-sw  2026-01-27  Expenses:Software
+  [confirmed] crd-0204-sw  2026-02-04  Expenses:Software
+  [confirmed] crd-0209-meal  2026-02-09  Expenses:Meals
+  [confirmed] crd-0215-office  2026-02-15  Expenses:Office
+  [confirmed] crd-0219-sw  2026-02-19  Expenses:Software
+  [confirmed] crd-0221-mkt  2026-02-21  Expenses:Marketing
+  [confirmed] crd-0304-sw  2026-03-04  Expenses:Software
+  [confirmed] crd-0312-travel  2026-03-12  Expenses:Travel
+  [confirmed] crd-0319-meal  2026-03-19  Expenses:Meals
+  [confirmed] crd-0324-sw  2026-03-24  Expenses:Software
+  [confirmed] transfer-pair-6169014b0b35c579cc89  2026-02-28  Internal transfer
+  [confirmed] transfer-pair-8c268e5b7b6e3bc4df4a  2026-01-31  Internal transfer
+  [staged] chk-0326-mystery  2026-03-26  ?
+  [staged] crd-0327-unknown  2026-03-27  ?

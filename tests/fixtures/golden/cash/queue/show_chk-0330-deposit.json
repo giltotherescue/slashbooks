@@ -1,0 +1,22 @@
+{
+  "amount": "875.00",
+  "confirmed_category": null,
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "MOBILE DEPOSIT",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-03-30",
+  "delta": null,
+  "description": "Mobile deposit",
+  "original_amount": "875.00",
+  "proposed_category": "Income:Consulting",
+  "reasoning": "Synthetic: still waiting for a person",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0330-deposit": "4c03b67b7531402033c6d360c4612a01480bd1f5fcb73d1dcca2946fe96755ed"
+  },
+  "source_id": "chk-0330-deposit",
+  "status": "open",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

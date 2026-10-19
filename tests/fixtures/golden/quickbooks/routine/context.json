@@ -1,0 +1,121 @@
+{
+  "categories": [
+    {
+      "label": "Assets:Fixed:Accumulated-Depreciation",
+      "name": "Assets:Fixed:Accumulated-Depreciation"
+    },
+    {
+      "label": "Assets:Fixed:Equipment",
+      "name": "Assets:Fixed:Equipment"
+    },
+    {
+      "label": "Assets:Other:Prepaid-Expenses",
+      "name": "Assets:Other:Prepaid-Expenses"
+    },
+    {
+      "label": "Assets:Other:Prepaid-Insurance",
+      "name": "Assets:Other:Prepaid-Insurance"
+    },
+    {
+      "label": "Assets:Receivable:Accounts-Receivable",
+      "name": "Assets:Receivable:Accounts-Receivable"
+    },
+    {
+      "label": "Equity:Opening-Balances",
+      "name": "Equity:Opening-Balances"
+    },
+    {
+      "label": "Equity:Owner-Contributions",
+      "name": "Equity:Owner-Contributions"
+    },
+    {
+      "label": "Equity:Owner-Draws",
+      "name": "Equity:Owner-Draws"
+    },
+    {
+      "label": "Equity:Retained-Earnings",
+      "name": "Equity:Retained-Earnings"
+    },
+    {
+      "label": "Expenses:Depreciation",
+      "name": "Expenses:Depreciation"
+    },
+    {
+      "label": "Expenses:Fees",
+      "name": "Expenses:Fees"
+    },
+    {
+      "label": "Expenses:Marketing",
+      "name": "Expenses:Marketing"
+    },
+    {
+      "label": "Expenses:Meals",
+      "name": "Expenses:Meals"
+    },
+    {
+      "label": "Expenses:Office",
+      "name": "Expenses:Office"
+    },
+    {
+      "label": "Expenses:Operating-Costs",
+      "name": "Expenses:Operating-Costs"
+    },
+    {
+      "label": "Expenses:Software",
+      "name": "Expenses:Software"
+    },
+    {
+      "label": "Expenses:Subcontractors",
+      "name": "Expenses:Subcontractors"
+    },
+    {
+      "label": "Expenses:Taxes",
+      "name": "Expenses:Taxes"
+    },
+    {
+      "label": "Expenses:Travel",
+      "name": "Expenses:Travel"
+    },
+    {
+      "label": "Income:Consulting",
+      "name": "Income:Consulting"
+    },
+    {
+      "label": "Income:Services",
+      "name": "Income:Services"
+    },
+    {
+      "label": "Liabilities:Other:Accrued-Liabilities",
+      "name": "Liabilities:Other:Accrued-Liabilities"
+    },
+    {
+      "label": "Liabilities:Other:Customer-Deposits",
+      "name": "Liabilities:Other:Customer-Deposits"
+    },
+    {
+      "label": "Liabilities:Other:Deferred-Revenue",
+      "name": "Liabilities:Other:Deferred-Revenue"
+    },
+    {
+      "label": "Liabilities:Other:Payroll-Payable",
+      "name": "Liabilities:Other:Payroll-Payable"
+    },
+    {
+      "label": "Liabilities:Payable:Accounts-Payable",
+      "name": "Liabilities:Payable:Accounts-Payable"
+    }
+  ],
+  "counterparties": [],
+  "counts": {
+    "held": 0,
+    "posted": 8
+  },
+  "source_accounts": [
+    {
+      "account_type": "checking",
+      "id": "checking",
+      "ledger_account": "Assets:Bank:Checking",
+      "name": "checking"
+    }
+  ]
+}

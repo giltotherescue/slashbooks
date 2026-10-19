@@ -1,0 +1,24 @@
+Metric,Value
+Business,Synthetic Acceptance Services
+Produced by,Slashbooks
+Project link,https://github.com/giltotherescue/slashbooks
+Accounting basis,Accrual basis
+Bookkeeping scope,Accrual bookkeeping foundations export
+Tax prep scope,Handoff support only; tax treatment and filing positions remain preparer-reviewed
+Legal structure,
+Country,
+Tax jurisdiction,
+Operating currency,
+Period start,2026-07-01
+Period end,2026-07-31
+Package status,WARN
+Warnings,3
+Failures,0
+Net income,-640.00
+Ending cash,9600.00
+Opening cumulative net income,3200.00
+GL posting rows,14
+Open questions,0
+Reconciliation items needing review,0
+1099 candidates,0
+Closing cumulative net income,2560.00

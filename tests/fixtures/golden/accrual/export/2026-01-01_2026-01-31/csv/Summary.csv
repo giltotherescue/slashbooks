@@ -1,0 +1,24 @@
+Metric,Value
+Business,Pinecone Advisory Accrual
+Produced by,Slashbooks
+Project link,https://github.com/giltotherescue/slashbooks
+Accounting basis,Accrual basis
+Bookkeeping scope,Accrual bookkeeping foundations export
+Tax prep scope,Handoff support only; tax treatment and filing positions remain preparer-reviewed
+Legal structure,llc
+Country,
+Tax jurisdiction,
+Operating currency,
+Period start,2026-01-01
+Period end,2026-01-31
+Package status,WARN
+Warnings,3
+Failures,0
+Net income,6350.00
+Ending cash,31000.00
+Opening cumulative net income,0.00
+GL posting rows,16
+Open questions,0
+Reconciliation items needing review,0
+1099 candidates,0
+Closing cumulative net income,6350.00

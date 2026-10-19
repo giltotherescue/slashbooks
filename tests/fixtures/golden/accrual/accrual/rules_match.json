@@ -1,0 +1,78 @@
+{
+  "considered": [
+    {
+      "applies": true,
+      "counterparty": "GRANITE HOSTING",
+      "reason": "saved rule for GRANITE HOSTING",
+      "scope": "counterparty"
+    }
+  ],
+  "counterparty_key": "GRANITE HOSTING",
+  "draft": {
+    "command": "books accrual schedule preview --entity PATH --input FILE",
+    "missing": [
+      {
+        "field": "evidence_ids",
+        "why": "attach the stored supporting document: run `books accrual intake` and use its id"
+      }
+    ],
+    "next": "Fill in anything missing, then run the command. The preview shows the exact entries; apply it only with the authority you already have. This draft records nothing.",
+    "notes": [
+      "account Assets:Other:Prepaid-Expenses was chosen from the chart of accounts because it is the only prepaid account.",
+      "service_end is 12 months after service_start, minus one day, because both dates are inclusive."
+    ],
+    "ready_for_preview": false,
+    "request": {
+      "account": "Assets:Other:Prepaid-Expenses",
+      "amount": "1200.00",
+      "currency": "USD",
+      "id": "prepaid-bank-granite-0401",
+      "kind": "prepaid",
+      "method": "equal_month",
+      "operation_id": "prepaid-bank-granite-0401-create",
+      "origin": {
+        "date": "2026-04-01",
+        "funding_account": "Assets:Bank:Checking",
+        "mode": "new",
+        "source_id": "bank-granite-0401"
+      },
+      "recognition_account": "Expenses:Software",
+      "reference": "Granite Hosting",
+      "service_end": "2027-03-31",
+      "service_start": "2026-04-01"
+    },
+    "status": "draft",
+    "warnings": []
+  },
+  "effect": "proposals_only",
+  "explanation": "Saved accrual rule (supplier rule for GRANITE HOSTING, set by owner on 2026-02-01): a prepaid expense over 12 months. Annual plan, paid up front. This is a suggestion; a person still approves, and nothing is recorded from the rule alone.",
+  "facts": {
+    "account": "Expenses:Software",
+    "amount": "1200.00",
+    "counterparty": "Granite Hosting",
+    "date": "2026-04-01",
+    "description": "GRANITE HOSTING 5001",
+    "funding_account": "Assets:Bank:Checking",
+    "service_start": "2026-04-01",
+    "source_id": "bank-granite-0401"
+  },
+  "kind": "accrual_rule_match",
+  "reason": "matched",
+  "rule": {
+    "counterparty": "GRANITE HOSTING",
+    "method": "equal_month",
+    "note": "Annual plan, paid up front",
+    "scope": "counterparty",
+    "set_at": "2026-02-01T10:00:00Z",
+    "set_by": "owner",
+    "source": "person",
+    "term_months": 12,
+    "treatment": "prepaid",
+    "version": 1
+  },
+  "schema_version": 1,
+  "status": "matched",
+  "why": [
+    "A saved rule for GRANITE HOSTING applies. A supplier or customer rule wins over company rules."
+  ]
+}

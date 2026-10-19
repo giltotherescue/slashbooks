@@ -1,0 +1,22 @@
+{
+  "amount": "20000.00",
+  "confirmed_category": "Equity:Owner-Contributions",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "OWNER CONTRIBUTION WIRE",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-01-02",
+  "delta": null,
+  "description": "Owner contribution wire",
+  "original_amount": "20000.00",
+  "proposed_category": "Equity:Owner-Contributions",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "chk-0102-owner": "29b02ca5ae14f11fadf917685057760c1c4925c03a73d4deabc4397d72087040"
+  },
+  "source_id": "chk-0102-owner",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

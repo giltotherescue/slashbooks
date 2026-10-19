@@ -1,0 +1,4 @@
+Install the xlsx extra to also get the Excel workbook: pip install 'agent-books[xlsx]'
+Accountant export written to: <WORK>/export-accrual-2026-01-01-2026-03-31
+  CSV exports: 19 files in <WORK>/export-accrual-2026-01-01-2026-03-31/csv
+  Install the xlsx extra to also get the Excel workbook: pip install 'agent-books[xlsx]'

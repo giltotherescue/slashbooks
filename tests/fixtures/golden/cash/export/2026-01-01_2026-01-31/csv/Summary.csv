@@ -1,0 +1,23 @@
+Metric,Value
+Business,Harbor Studio Cash
+Produced by,Slashbooks
+Project link,https://github.com/giltotherescue/slashbooks
+Accounting basis,Cash basis
+Bookkeeping scope,Simple cash-basis bookkeeping export; not a tax return or assurance report
+Tax prep scope,Handoff support only; tax treatment and filing positions remain preparer-reviewed
+Legal structure,llc
+Country,
+Tax jurisdiction,
+Operating currency,
+Period start,2026-01-01
+Period end,2026-01-31
+Package status,OVERRIDE
+Warnings,3
+Failures,1
+Net income,5702.42
+Ending cash,25782.42
+Opening cumulative net income,0.00
+GL posting rows,27
+Open questions,0
+Reconciliation items needing review,0
+1099 candidates,0

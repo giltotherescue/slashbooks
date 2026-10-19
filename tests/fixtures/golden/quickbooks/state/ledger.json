@@ -1,0 +1,10 @@
+{
+  "content_digest": "9a88c6c190049292805ee8c75a0bfd554c76d7dd90c1f4dccb5812176d539e23",
+  "counts": {
+    "accounts": 28,
+    "audit_events": 58,
+    "balances": 0,
+    "entries": 8,
+    "postings": 25
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "accounts": 17,
+  "audit_events": 150,
+  "balance_assertions": 0,
+  "entries": 36,
+  "import_sessions": 0,
+  "meta": 6,
+  "postings": 73,
+  "source_transactions": 38,
+  "sqlite_sequence": 4
+}

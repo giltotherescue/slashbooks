@@ -1,0 +1,83 @@
+{
+  "accounts": [
+    {
+      "account": "Assets:Bank:Checking",
+      "label": "Operating Checking",
+      "months": [
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-01-01",
+          "gaps": [],
+          "month": "2026-01",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-01-31",
+          "verified": true
+        },
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 28,
+          "days": 28,
+          "from": "2026-02-01",
+          "gaps": [],
+          "month": "2026-02",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-02-28",
+          "verified": true
+        },
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-03-01",
+          "gaps": [],
+          "month": "2026-03",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-03-31",
+          "verified": true
+        }
+      ],
+      "sources": [
+        "Operating Checking"
+      ],
+      "statements": [],
+      "status": "complete",
+      "verified": true
+    }
+  ],
+  "findings": [],
+  "from": "2026-01-01",
+  "kind": "source_coverage",
+  "max_quiet_days": 31,
+  "schema_version": 1,
+  "status": "complete",
+  "summary": {
+    "accounts": 1,
+    "errors": 0,
+    "months_complete": 3,
+    "months_inferred": 0,
+    "months_missing": 0,
+    "months_partial": 0,
+    "warnings": 0
+  },
+  "to": "2026-03-31"
+}

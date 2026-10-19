@@ -1,0 +1,375 @@
+[
+  {
+    "action": "true_up",
+    "actual_amount": "700.00",
+    "actual_item_id": "bonus-actual",
+    "amount": "1000.00",
+    "counter_account": "Expenses:Bonus",
+    "date": "2026-03-10",
+    "estimate_amount": "1000.00",
+    "evidence_ids": [],
+    "id": "adjustment:bonus-true-up",
+    "item_id": "bonus-estimate",
+    "kind": "credit",
+    "operation_id": "bonus-true-up",
+    "reason": "Actual bonus approved",
+    "source_id": "bonus-true-up",
+    "variance": "-300.00"
+  },
+  {
+    "action": "writeoff",
+    "amount": "300.00",
+    "counter_account": "Expenses:Bad-Debt",
+    "date": "2026-03-20",
+    "evidence_ids": [
+      "481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9"
+    ],
+    "id": "adjustment:inv-1003-writeoff-source",
+    "item_id": "inv-1003",
+    "kind": "writeoff",
+    "operation_id": "inv-1003-writeoff",
+    "reason": "Synthetic uncollectible balance",
+    "source_id": "inv-1003-writeoff-source"
+  },
+  {
+    "amount": "500.00",
+    "counterparty": "Orbit Labs",
+    "date": "2026-02-16",
+    "evidence_ids": [],
+    "id": "application:apply-orbit-credit:inv-1002",
+    "item_id": "inv-1002",
+    "kind": "application",
+    "linked_item_id": "orbit-credit",
+    "operation_id": "apply-orbit-credit",
+    "reason": "Apply overpayment",
+    "role": "target"
+  },
+  {
+    "amount": "500.00",
+    "counterparty": "Orbit Labs",
+    "date": "2026-02-16",
+    "evidence_ids": [],
+    "id": "application:apply-orbit-credit:orbit-credit",
+    "item_id": "orbit-credit",
+    "kind": "application",
+    "linked_item_id": "inv-1002",
+    "operation_id": "apply-orbit-credit",
+    "reason": "Apply overpayment",
+    "role": "credit"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-01-31",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:insurance-h2:0:2026-01-31",
+    "kind": "recognition",
+    "schedule_id": "insurance-h2",
+    "service_end": "2026-01-31",
+    "service_start": "2026-01-01",
+    "source_id": "schedule:recognition:insurance-h2:0:2026-01-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-02-28",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:insurance-h2:0:2026-02-28",
+    "kind": "recognition",
+    "schedule_id": "insurance-h2",
+    "service_end": "2026-02-28",
+    "service_start": "2026-02-01",
+    "source_id": "schedule:recognition:insurance-h2:0:2026-02-28"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-03-31",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:insurance-h2:0:2026-03-31",
+    "kind": "recognition",
+    "schedule_id": "insurance-h2",
+    "service_end": "2026-03-31",
+    "service_start": "2026-03-01",
+    "source_id": "schedule:recognition:insurance-h2:0:2026-03-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-02-28",
+    "evidence_ids": [
+      "d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95"
+    ],
+    "generation": 0,
+    "id": "recognition:laptop-new:0:2026-02-28",
+    "kind": "recognition",
+    "schedule_id": "laptop-new",
+    "service_end": "2026-02-28",
+    "service_start": "2026-02-01",
+    "source_id": "schedule:recognition:laptop-new:0:2026-02-28"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-03-31",
+    "evidence_ids": [
+      "d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95"
+    ],
+    "generation": 0,
+    "id": "recognition:laptop-new:0:2026-03-31",
+    "kind": "recognition",
+    "schedule_id": "laptop-new",
+    "service_end": "2026-03-31",
+    "service_start": "2026-03-01",
+    "source_id": "schedule:recognition:laptop-new:0:2026-03-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-01-31",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:laptop-old:0:2026-01-31",
+    "kind": "recognition",
+    "schedule_id": "laptop-old",
+    "service_end": "2026-01-31",
+    "service_start": "2026-01-01",
+    "source_id": "schedule:recognition:laptop-old:0:2026-01-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-02-28",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:laptop-old:0:2026-02-28",
+    "kind": "recognition",
+    "schedule_id": "laptop-old",
+    "service_end": "2026-02-28",
+    "service_start": "2026-02-01",
+    "source_id": "schedule:recognition:laptop-old:0:2026-02-28"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-03-31",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:laptop-old:0:2026-03-31",
+    "kind": "recognition",
+    "schedule_id": "laptop-old",
+    "service_end": "2026-03-31",
+    "service_start": "2026-03-01",
+    "source_id": "schedule:recognition:laptop-old:0:2026-03-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-01-31",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:retainer-h2:0:2026-01-31",
+    "kind": "recognition",
+    "schedule_id": "retainer-h2",
+    "service_end": "2026-01-31",
+    "service_start": "2026-01-01",
+    "source_id": "schedule:recognition:retainer-h2:0:2026-01-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-02-28",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:retainer-h2:0:2026-02-28",
+    "kind": "recognition",
+    "schedule_id": "retainer-h2",
+    "service_end": "2026-02-28",
+    "service_start": "2026-02-01",
+    "source_id": "schedule:recognition:retainer-h2:0:2026-02-28"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-03-31",
+    "evidence_ids": [
+      "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10"
+    ],
+    "generation": 0,
+    "id": "recognition:retainer-h2:0:2026-03-31",
+    "kind": "recognition",
+    "schedule_id": "retainer-h2",
+    "service_end": "2026-03-31",
+    "service_start": "2026-03-01",
+    "source_id": "schedule:recognition:retainer-h2:0:2026-03-31"
+  },
+  {
+    "amount": "600.00",
+    "date": "2026-02-28",
+    "evidence_ids": [
+      "a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6"
+    ],
+    "generation": 0,
+    "id": "recognition:retainer-new:0:2026-02-28",
+    "kind": "recognition",
+    "schedule_id": "retainer-new",
+    "service_end": "2026-02-28",
+    "service_start": "2026-02-01",
+    "source_id": "schedule:recognition:retainer-new:0:2026-02-28"
+  },
+  {
+    "amount": "600.00",
+    "date": "2026-03-31",
+    "evidence_ids": [
+      "a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6"
+    ],
+    "generation": 0,
+    "id": "recognition:retainer-new:0:2026-03-31",
+    "kind": "recognition",
+    "schedule_id": "retainer-new",
+    "service_end": "2026-03-31",
+    "service_start": "2026-03-01",
+    "source_id": "schedule:recognition:retainer-new:0:2026-03-31"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-02-28",
+    "evidence_ids": [
+      "aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21"
+    ],
+    "generation": 0,
+    "id": "recognition:sw-annual:0:2026-02-28",
+    "kind": "recognition",
+    "schedule_id": "sw-annual",
+    "service_end": "2026-02-28",
+    "service_start": "2026-02-01",
+    "source_id": "schedule:recognition:sw-annual:0:2026-02-28"
+  },
+  {
+    "amount": "100.00",
+    "date": "2026-03-31",
+    "evidence_ids": [
+      "aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21"
+    ],
+    "generation": 0,
+    "id": "recognition:sw-annual:0:2026-03-31",
+    "kind": "recognition",
+    "schedule_id": "sw-annual",
+    "service_end": "2026-03-31",
+    "service_start": "2026-03-01",
+    "source_id": "schedule:recognition:sw-annual:0:2026-03-31"
+  },
+  {
+    "amount": "800.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "-800.00",
+    "date": "2026-02-20",
+    "evidence_ids": [
+      "a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050"
+    ],
+    "id": "settlement:pay-bill-2001:bill-2001",
+    "item_id": "bill-2001",
+    "kind": "settlement",
+    "signed_amount": "-800.00",
+    "source_id": "pay-bill-2001-bank",
+    "source_mode": "new"
+  },
+  {
+    "amount": "1500.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "-1500.00",
+    "date": "2026-01-15",
+    "evidence_ids": [
+      "f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058"
+    ],
+    "id": "settlement:pay-bill-open-1:bill-open-1",
+    "item_id": "bill-open-1",
+    "kind": "settlement",
+    "signed_amount": "-1500.00",
+    "source_id": "pay-bill-open-1-bank",
+    "source_mode": "new"
+  },
+  {
+    "amount": "700.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "-700.00",
+    "date": "2026-03-25",
+    "evidence_ids": [
+      "3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353"
+    ],
+    "id": "settlement:pay-bonus-actual:bonus-actual",
+    "item_id": "bonus-actual",
+    "kind": "settlement",
+    "signed_amount": "-700.00",
+    "source_id": "pay-bonus-actual-bank",
+    "source_mode": "new"
+  },
+  {
+    "amount": "6000.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "6500.00",
+    "date": "2026-02-05",
+    "evidence_ids": [
+      "c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127"
+    ],
+    "id": "settlement:pay-inv-1001:inv-1001",
+    "item_id": "inv-1001",
+    "kind": "settlement",
+    "signed_amount": "6000.00",
+    "source_id": "pay-inv-1001-bank",
+    "source_mode": "new"
+  },
+  {
+    "amount": "2500.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "2500.00",
+    "date": "2026-03-18",
+    "evidence_ids": [
+      "60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b"
+    ],
+    "id": "settlement:pay-inv-1002:inv-1002",
+    "item_id": "inv-1002",
+    "kind": "settlement",
+    "signed_amount": "2500.00",
+    "source_id": "pay-inv-1002-bank",
+    "source_mode": "new"
+  },
+  {
+    "amount": "2500.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "2500.00",
+    "date": "2026-01-20",
+    "evidence_ids": [
+      "560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913"
+    ],
+    "id": "settlement:pay-inv-open-1:inv-open-1",
+    "item_id": "inv-open-1",
+    "kind": "settlement",
+    "signed_amount": "2500.00",
+    "source_id": "pay-inv-open-1-bank",
+    "source_mode": "new"
+  },
+  {
+    "amount": "500.00",
+    "bank_account": "Assets:Bank:Checking",
+    "bank_amount": "6500.00",
+    "date": "2026-02-05",
+    "evidence_ids": [
+      "c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127"
+    ],
+    "id": "unapplied:pay-inv-1001:orbit-credit",
+    "item_id": "orbit-credit",
+    "kind": "unapplied_receipt",
+    "signed_amount": "500.00",
+    "source_id": "pay-inv-1001-bank",
+    "source_mode": "new"
+  }
+]

@@ -1,0 +1,164 @@
+{
+  "basis": "cash",
+  "blockers": [],
+  "books_revision": 0,
+  "coverage": [
+    {
+      "account": "Assets:Bank:Checking",
+      "label": "Operating Checking",
+      "months": [
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-01-01",
+          "gaps": [],
+          "month": "2026-01",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-01-31",
+          "verified": true
+        }
+      ],
+      "status": "complete",
+      "verified": true
+    },
+    {
+      "account": "Liabilities:CreditCard:Company",
+      "label": "Company Card",
+      "months": [
+        {
+          "basis": [
+            "declared",
+            "transactions"
+          ],
+          "covered_days": 31,
+          "days": 31,
+          "from": "2026-01-01",
+          "gaps": [],
+          "month": "2026-01",
+          "notes": [],
+          "reasons": [],
+          "status": "complete",
+          "tieout": null,
+          "to": "2026-01-31",
+          "verified": true
+        }
+      ],
+      "status": "complete",
+      "verified": true
+    }
+  ],
+  "evidence_fingerprint": "fec03b5aab29d83b9c6004c785ff8958f70275a8d71545b4855db43e2d2ddbb2",
+  "package_id": "2e4392abd7eaa9bb6828cc9b3dfd27f8bdb38a18e82e5f79c3e33c83b187d52f",
+  "period": "2026-01",
+  "period_status": "completed",
+  "policy_version": 0,
+  "reconciliations": [
+    {
+      "account": "Assets:Bank:Checking",
+      "as_of": "2026-01-31",
+      "discrepancy": "0.00",
+      "ledger_balance": "25782.42",
+      "record_id": "Assets:Bank:Checking@2026-01-31",
+      "source_balance": "25782.42",
+      "source_evidence_hashes": {
+        "evidence/checking-2026-01.json": "a28172a2e60788106dc4f18f29cfc2ec79a17e2b8fe427f119b0f6b1a1f9233a"
+      },
+      "source_evidence_refs": [
+        "evidence/checking-2026-01.json"
+      ],
+      "source_integrity_residual": "0.00",
+      "source_opening_balance": "0",
+      "source_snapshot_at": "2026-02-02T12:00:00+00:00",
+      "source_through": "2026-01-31",
+      "source_transaction_total": "25782.42",
+      "status": "clean"
+    },
+    {
+      "account": "Liabilities:CreditCard:Company",
+      "as_of": "2026-01-31",
+      "discrepancy": "0.00",
+      "ledger_balance": "-80.00",
+      "record_id": "Liabilities:CreditCard:Company@2026-01-31",
+      "source_balance": "-80.00",
+      "source_evidence_hashes": {
+        "evidence/card-2026-01.json": "bfffac57af771db42eacc8fbe84200df5e5a6a44d5490d6b143996c16bee2f1c"
+      },
+      "source_evidence_refs": [
+        "evidence/card-2026-01.json"
+      ],
+      "source_integrity_residual": "0.00",
+      "source_opening_balance": "0",
+      "source_snapshot_at": "2026-02-02T12:00:00+00:00",
+      "source_through": "2026-01-31",
+      "source_transaction_total": "-80.00",
+      "status": "clean"
+    }
+  ],
+  "reply_revision": 0,
+  "reports": [
+    {
+      "kind": "pnl",
+      "period_from": "2026-01-01",
+      "period_to": "2026-01-31",
+      "provisional": false,
+      "sha256": "1e22a88494f38876532ecd291a66f2ea8a38d3aee37f3ea81d7e6450b574b41f",
+      "totals": {
+        "net_income": "5702.42"
+      }
+    },
+    {
+      "kind": "balance_sheet",
+      "period_from": "2026-01-01",
+      "period_to": "2026-01-31",
+      "provisional": false,
+      "sha256": "7541d874dce8f3ef0fcc0dd634a5e0cc2d23137ceec3388918b150132be306da",
+      "totals": {
+        "total_assets": "25782.42",
+        "total_liabilities_and_equity": "25782.42"
+      }
+    },
+    {
+      "kind": "trial_balance",
+      "period_from": "2026-01-01",
+      "period_to": "2026-01-31",
+      "provisional": false,
+      "sha256": "b6efaf4d352e6b14149ac0d5ef65848f0928a23c75005d2c0a44771051678049",
+      "totals": {
+        "net": "0.00",
+        "total_credits": "29780.00",
+        "total_debits": "29780.00"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_revision": 0,
+  "sources": [
+    {
+      "account": "Liabilities:CreditCard:Company",
+      "coverage_from": "2026-01-01",
+      "coverage_status": "complete",
+      "coverage_to": "2026-03-31",
+      "requested_from": "2026-01-01",
+      "requested_to": "2026-01-31",
+      "source": "Company Card"
+    },
+    {
+      "account": "Assets:Bank:Checking",
+      "coverage_from": "2026-01-01",
+      "coverage_status": "complete",
+      "coverage_to": "2026-03-31",
+      "requested_from": "2026-01-01",
+      "requested_to": "2026-01-31",
+      "source": "Operating Checking"
+    }
+  ],
+  "state": "ready_for_review",
+  "warnings": []
+}

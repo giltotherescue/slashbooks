@@ -1,0 +1,4 @@
+Imported 35 transactions.
+Recorded 35 entries.
+Reversed 1 entry.
+Reconciled 1 account through 2026-01-31.

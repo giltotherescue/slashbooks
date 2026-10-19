@@ -1,0 +1,22 @@
+{
+  "amount": "-54.20",
+  "confirmed_category": "Expenses:Meals",
+  "context": "",
+  "corrected_at": null,
+  "counterparty": "JUNIPER BISTRO TEAM LUNCH",
+  "created_at": "2026-08-05T12:00:00Z",
+  "date": "2026-02-09",
+  "delta": null,
+  "description": "Juniper Bistro team lunch",
+  "original_amount": "-54.20",
+  "proposed_category": "Expenses:Meals",
+  "reasoning": "Synthetic golden categorization",
+  "requires_human_review": false,
+  "session_summary_id": null,
+  "source_hashes": {
+    "crd-0209-meal": "f4e357f51b73a44bc4b12e52f7860c6ff68291e8e17f5533e854308f8e86921e"
+  },
+  "source_id": "crd-0209-meal",
+  "status": "confirmed",
+  "updated_at": "2026-08-05T12:00:00Z"
+}

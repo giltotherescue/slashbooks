@@ -1,0 +1,386 @@
+{
+  "kind": "general_ledger",
+  "from_date": "2026-02-01",
+  "to_date": "2026-02-28",
+  "sections": [
+    {
+      "label": "Assets › Bank › Checking",
+      "rows": [
+        {
+          "label": "2026-02-01  |  Prepaid expense",
+          "amount": "-1200.00",
+          "indent": 1,
+          "date": "2026-02-01"
+        },
+        {
+          "label": "2026-02-01  |  Deferred revenue received",
+          "amount": "3600.00",
+          "indent": 1,
+          "date": "2026-02-01"
+        },
+        {
+          "label": "2026-02-05  |  Payment from Orbit Labs: Overpayment: Orbit Labs (Overpayment, inv-1001)",
+          "amount": "6500.00",
+          "indent": 1,
+          "date": "2026-02-05"
+        },
+        {
+          "label": "2026-02-10  |  Equipment purchase",
+          "amount": "-3600.00",
+          "indent": 1,
+          "date": "2026-02-10"
+        },
+        {
+          "label": "2026-02-20  |  Payment to Granite Hosting: Granite Hosting (bill-2001)",
+          "amount": "-800.00",
+          "indent": 1,
+          "date": "2026-02-20"
+        }
+      ],
+      "total": "4500.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Assets › Fixed › Accumulated-Depreciation",
+      "rows": [
+        {
+          "label": "2026-02-28  |  Depreciation: dated 2026-02-01 (Feb 2026)",
+          "amount": "-100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        },
+        {
+          "label": "2026-02-28  |  Depreciation: dated 2025-03-01 (Feb 2026)",
+          "amount": "-100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "-200.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Assets › Fixed › Equipment",
+      "rows": [
+        {
+          "label": "2026-02-10  |  Equipment purchase",
+          "amount": "3600.00",
+          "indent": 1,
+          "date": "2026-02-10"
+        }
+      ],
+      "total": "3600.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Assets › Other › Prepaid-Expenses",
+      "rows": [
+        {
+          "label": "2026-02-01  |  Prepaid expense",
+          "amount": "1200.00",
+          "indent": 1,
+          "date": "2026-02-01"
+        },
+        {
+          "label": "2026-02-28  |  Prepaid expense used: dated 2025-07-01 (Feb 2026)",
+          "amount": "-100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        },
+        {
+          "label": "2026-02-28  |  Prepaid expense used: dated 2026-02-01 (Feb 2026)",
+          "amount": "-100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "1000.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Assets › Receivable › Accounts-Receivable",
+      "rows": [
+        {
+          "label": "2026-02-05  |  Payment from Orbit Labs: Overpayment: Orbit Labs (Overpayment, inv-1001)",
+          "amount": "-6000.00",
+          "indent": 1,
+          "date": "2026-02-05"
+        },
+        {
+          "label": "2026-02-05  |  Payment from Orbit Labs: Overpayment: Orbit Labs (Overpayment, inv-1001)",
+          "amount": "-500.00",
+          "indent": 1,
+          "date": "2026-02-05"
+        },
+        {
+          "label": "2026-02-15  |  Invoice: Orbit Labs",
+          "amount": "3000.00",
+          "indent": 1,
+          "date": "2026-02-15"
+        }
+      ],
+      "total": "-3500.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Bonus",
+      "rows": [
+        {
+          "label": "2026-02-28  |  Estimate: Staff",
+          "amount": "1000.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "1000.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Depreciation",
+      "rows": [
+        {
+          "label": "2026-02-28  |  Depreciation: dated 2026-02-01 (Feb 2026)",
+          "amount": "100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        },
+        {
+          "label": "2026-02-28  |  Depreciation: dated 2025-03-01 (Feb 2026)",
+          "amount": "100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "200.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Insurance",
+      "rows": [
+        {
+          "label": "2026-02-28  |  Prepaid expense used: dated 2025-07-01 (Feb 2026)",
+          "amount": "100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "100.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Software",
+      "rows": [
+        {
+          "label": "2026-02-03  |  Bill: Granite Hosting",
+          "amount": "800.00",
+          "indent": 1,
+          "date": "2026-02-03"
+        },
+        {
+          "label": "2026-02-28  |  Prepaid expense used: dated 2026-02-01 (Feb 2026)",
+          "amount": "100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "900.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Expenses › Utilities",
+      "rows": [
+        {
+          "label": "2026-02-01  |  Reversal of: Estimated January utilities",
+          "amount": "-450.00",
+          "indent": 1,
+          "date": "2026-02-01"
+        }
+      ],
+      "total": "-450.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Income › Consulting",
+      "rows": [
+        {
+          "label": "2026-02-15  |  Invoice: Orbit Labs",
+          "amount": "-3000.00",
+          "indent": 1,
+          "date": "2026-02-15"
+        },
+        {
+          "label": "2026-02-28  |  Deferred revenue earned: dated 2025-07-01 (Feb 2026)",
+          "amount": "-100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        },
+        {
+          "label": "2026-02-28  |  Deferred revenue earned: dated 2026-02-01 (Feb 2026)",
+          "amount": "-600.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "-3700.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Liabilities › Other › Accrued-Liabilities",
+      "rows": [
+        {
+          "label": "2026-02-01  |  Reversal of: Estimated January utilities",
+          "amount": "450.00",
+          "indent": 1,
+          "date": "2026-02-01"
+        }
+      ],
+      "total": "450.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Liabilities › Other › Deferred-Revenue",
+      "rows": [
+        {
+          "label": "2026-02-01  |  Deferred revenue received",
+          "amount": "-3600.00",
+          "indent": 1,
+          "date": "2026-02-01"
+        },
+        {
+          "label": "2026-02-28  |  Deferred revenue earned: dated 2025-07-01 (Feb 2026)",
+          "amount": "100.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        },
+        {
+          "label": "2026-02-28  |  Deferred revenue earned: dated 2026-02-01 (Feb 2026)",
+          "amount": "600.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "-2900.00",
+      "total_label": "Account Total"
+    },
+    {
+      "label": "Liabilities › Payable › Accounts-Payable",
+      "rows": [
+        {
+          "label": "2026-02-03  |  Bill: Granite Hosting",
+          "amount": "-800.00",
+          "indent": 1,
+          "date": "2026-02-03"
+        },
+        {
+          "label": "2026-02-20  |  Payment to Granite Hosting: Granite Hosting (bill-2001)",
+          "amount": "800.00",
+          "indent": 1,
+          "date": "2026-02-20"
+        },
+        {
+          "label": "2026-02-28  |  Estimate: Staff",
+          "amount": "-1000.00",
+          "indent": 1,
+          "date": "2026-02-28"
+        }
+      ],
+      "total": "-1000.00",
+      "total_label": "Account Total"
+    }
+  ],
+  "totals": {},
+  "meta": {
+    "basis": "accrual",
+    "currency": "USD",
+    "coverage": {
+      "basis": "accrual",
+      "chart": [
+        {
+          "account": "Assets:Bank:Checking",
+          "account_type": "Assets",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Assets:Bank:Checking"
+        },
+        {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "account_type": "Assets",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Assets:Fixed:Accumulated-Depreciation"
+        },
+        {
+          "account": "Assets:Fixed:Equipment",
+          "account_type": "Assets",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Assets:Fixed:Equipment"
+        },
+        {
+          "account": "Assets:Other:Prepaid-Expenses",
+          "account_type": "Assets",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Assets:Other:Prepaid-Expenses"
+        },
+        {
+          "account": "Assets:Receivable:Accounts-Receivable",
+          "account_type": "Assets",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Assets:Receivable:Accounts-Receivable"
+        },
+        {
+          "account": "Equity:Opening-Balances",
+          "account_type": "Equity",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Equity:Opening-Balances"
+        },
+        {
+          "account": "Liabilities:Other:Deferred-Revenue",
+          "account_type": "Liabilities",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Liabilities:Other:Deferred-Revenue"
+        },
+        {
+          "account": "Liabilities:Payable:Accounts-Payable",
+          "account_type": "Liabilities",
+          "currency": "USD",
+          "detail_type": "",
+          "open_date": "2025-12-31",
+          "source_account": "Liabilities:Payable:Accounts-Payable"
+        }
+      ],
+      "closed_position": true,
+      "currency": "USD",
+      "cutover_date": "2026-01-01",
+      "fiscal_start": "2026-01-01",
+      "id": "opening",
+      "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
+      "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+      "opening_source_id": "golden-opening",
+      "source_as_of": "2025-12-31",
+      "source_hashes": {},
+      "summary_from": null,
+      "summary_to": null,
+      "support_evidence_hashes": {
+        "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
+      },
+      "support_status": "reconciled",
+      "verified": true
+    },
+    "requested_from": "2026-02-01",
+    "requested_to": "2026-02-28",
+    "unresolved_issues": [],
+    "summary_included": false
+  }
+}

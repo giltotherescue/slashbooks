@@ -1,0 +1,5 @@
+Answer covers: accrual basis, from 2026-08-05 to 2026-08-05. No period was named in the question, so this uses today's date.
+
+Prepaid expenses still to recognize as of 2026-08-05: 1,300.00 across 2 schedule(s).
+  prepaid: insurance-h2 (Assets:Other:Prepaid-Expenses): 300.00
+  prepaid: sw-annual (Assets:Other:Prepaid-Expenses): 1,000.00

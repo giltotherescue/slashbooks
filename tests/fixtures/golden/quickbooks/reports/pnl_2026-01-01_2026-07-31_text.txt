@@ -1,0 +1,18 @@
+Profit and Loss  2026-01-01  through  2026-07-31
+================================================
+Accounting basis: accrual
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Imported activity summary: 2026-01-01 through 2026-06-30 (included)
+
+Revenue
+----------------------------------------
+  Income › Services                             12,100.00
+  Total Revenue                                 12,100.00
+
+Expenses
+----------------------------------------
+  Expenses › Operating-Costs                     9,540.00
+  Total Expenses                                 9,540.00
+
+--------------------------------------------------------
+Net Income                                       2,560.00

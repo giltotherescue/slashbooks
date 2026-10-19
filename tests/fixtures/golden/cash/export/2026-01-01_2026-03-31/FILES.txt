@@ -1,0 +1,12 @@
+csv/Adjustment-Log.csv
+csv/Balance-Sheet.csv
+csv/Checks.csv
+csv/Cover.csv
+csv/General-Ledger.csv
+csv/Open-Questions.csv
+csv/P-and-L.csv
+csv/Reconciliations.csv
+csv/Source-Index.csv
+csv/Summary.csv
+csv/Trial-Balance.csv
+csv/Vendor-1099.csv

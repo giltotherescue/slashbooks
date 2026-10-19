@@ -1,0 +1,17 @@
+Account Number,Account Name,Account Type,Balance,Slashbooks Tax Line
+1010,Assets › Bank › Checking,A,37300.00,1120s/L/1 Cash
+1020,Assets › Fixed › Accumulated-Depreciation,A,-1500.00,1120s/L/10b Less accumulated depreciation
+1030,Assets › Fixed › Equipment,A,6000.00,1120s/L/10a Buildings and other depreciable assets
+1040,Assets › Other › Prepaid-Expenses,A,1300.00,1120s/L/6 Other current assets
+1050,Assets › Receivable › Accounts-Receivable,A,2100.00,1120s/L/2a Trade notes and accounts receivable
+3010,Equity › Opening-Balances,L,-33900.00,1120s/L/24 Retained earnings
+6010,Expenses › Bad-Debt,E,300.00,1120s/p1/10 Bad debts
+6020,Expenses › Bonus,E,700.00,UNMAPPED
+6030,Expenses › Depreciation,E,500.00,1120s/p1/14 Depreciation
+6040,Expenses › Insurance,E,300.00,1120s/p1/20 Other deductions
+6050,Expenses › Software,E,1000.00,1120s/p1/20 Other deductions
+6060,Expenses › Utilities,E,470.00,1120s/p1/20 Other deductions
+4010,Income › Consulting,R,-11400.00,1120s/p1/1a Gross receipts or sales
+2010,Liabilities › Other › Accrued-Liabilities,L,-470.00,1120s/L/18 Other current liabilities
+2020,Liabilities › Other › Deferred-Revenue,L,-2700.00,1120s/L/18 Other current liabilities
+2030,Liabilities › Payable › Accounts-Payable,L,0.00,1120s/L/16 Accounts payable

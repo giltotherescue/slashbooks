@@ -1,0 +1,12 @@
+Account Number,Account Name,Account Type,Balance,Slashbooks Tax Line
+1010,Assets › Bank › Checking,A,9600.00,1065/L/1 Cash
+1020,Assets › Fixed › Accumulated-Depreciation,A,-440.00,1065/L/9b Less accumulated depreciation
+1030,Assets › Fixed › Equipment,A,2400.00,1065/L/9a Buildings and other depreciable assets
+1040,Assets › Other › Prepaid-Insurance,A,500.00,1065/L/6 Other current assets
+1050,Assets › Receivable › Accounts-Receivable,A,600.00,1065/L/2a Trade notes and accounts receivable
+3010,Equity › Retained-Earnings,L,-9000.00,1065/L/21 Partners' capital accounts
+6010,Expenses › Operating-Costs,E,9540.00,UNMAPPED
+4010,Income › Services,R,-12100.00,1065/p1/1a Gross receipts or sales
+2010,Liabilities › Other › Deferred-Revenue,L,-500.00,1065/L/17 Other current liabilities
+2020,Liabilities › Other › Payroll-Payable,L,-300.00,1065/L/15 Accounts payable
+2030,Liabilities › Payable › Accounts-Payable,L,-300.00,1065/L/15 Accounts payable

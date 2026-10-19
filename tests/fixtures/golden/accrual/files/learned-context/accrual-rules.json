@@ -1,0 +1,36 @@
+{
+  "receipts": [
+    {
+      "id": "rule-granite",
+      "kind": "accrual_rule_set",
+      "plan_hash": "5fd0fc7e64e7fe8c44ea074aa5820891db5eec8f04ea82583b08a9d55bb2eaee",
+      "receipt": {
+        "action": "create",
+        "after": {
+          "method": "equal_month",
+          "note": "Annual plan, paid up front",
+          "set_at": "2026-02-01T10:00:00Z",
+          "set_by": "owner",
+          "source": "person",
+          "term_months": 12,
+          "treatment": "prepaid",
+          "version": 1
+        },
+        "before": null,
+        "effect": "proposals_only",
+        "id": "rule-granite",
+        "kind": "accrual_rule_set",
+        "plan_hash": "5fd0fc7e64e7fe8c44ea074aa5820891db5eec8f04ea82583b08a9d55bb2eaee",
+        "request_hash": "7c0510bf33bdf6c87cdb497aca8ea52088b3706e4fc0b3056e3afd159d067ef0",
+        "status": "applied",
+        "target": {
+          "counterparty": "GRANITE HOSTING",
+          "scope": "counterparty"
+        }
+      },
+      "request_hash": "7c0510bf33bdf6c87cdb497aca8ea52088b3706e4fc0b3056e3afd159d067ef0"
+    }
+  ],
+  "rules": [],
+  "version": 1
+}

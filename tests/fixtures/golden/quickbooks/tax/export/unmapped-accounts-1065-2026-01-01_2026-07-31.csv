@@ -1,0 +1,3 @@
+Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.
+Account Number,Account,Account Type,Balance,Reason,How to fix
+6010,Expenses › Operating-Costs,Expenses,9540.00,No name rule or safe default matches this account.,books tax set --entity <company> --form 1065 --account Expenses:Operating-Costs --line <code>

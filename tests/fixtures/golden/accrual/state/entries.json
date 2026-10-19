@@ -1,0 +1,1264 @@
+[
+  {
+    "date": "2025-12-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "golden-opening"
+      ],
+      [
+        "import-source",
+        "accrual-opening"
+      ],
+      [
+        "accrual-opening",
+        "true"
+      ],
+      [
+        "coverage-id",
+        "opening"
+      ],
+      [
+        "cutover-date",
+        "2026-01-01"
+      ]
+    ],
+    "narration": "Opening balances (2025-12-31)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "30000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "amount": "-1000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Fixed:Equipment",
+        "amount": "2400.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "amount": "600.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "4000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Equity:Opening-Balances",
+        "amount": "-33900.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "amount": "-600.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "-1500.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-10",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:inv-1001-create"
+      ],
+      [
+        "item-id",
+        "inv-1001"
+      ],
+      [
+        "origin-source-id",
+        "inv-1001-create-source"
+      ]
+    ],
+    "narration": "Invoice: Orbit Labs",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "6000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-6000.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-12",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:inv-1003-create"
+      ],
+      [
+        "item-id",
+        "inv-1003"
+      ],
+      [
+        "origin-source-id",
+        "inv-1003-create-source"
+      ]
+    ],
+    "narration": "Invoice: Kestrel Foods",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "900.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-900.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-15",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "pay-bill-open-1-bank"
+      ],
+      [
+        "settlement-id",
+        "pay-bill-open-1"
+      ]
+    ],
+    "narration": "Payment to Delta Design: BILL-311",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1500.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "1500.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-20",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "pay-inv-open-1-bank"
+      ],
+      [
+        "settlement-id",
+        "pay-inv-open-1"
+      ]
+    ],
+    "narration": "Payment from Orbit Labs: INV-0950",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "2500.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "-2500.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:utilities-estimate-jan"
+      ],
+      [
+        "accrual-intent",
+        "utilities-estimate-jan"
+      ],
+      [
+        "evidence-ids",
+        "[]"
+      ],
+      [
+        "estimate-basis",
+        "Synthetic three-month average"
+      ]
+    ],
+    "narration": "Estimated January utilities",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Utilities",
+        "amount": "450.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Accrued-Liabilities",
+        "amount": "-450.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:insurance-h2:0:2026-01-31"
+      ],
+      [
+        "schedule-id",
+        "insurance-h2"
+      ]
+    ],
+    "narration": "Prepaid expense used: dated 2025-07-01 (Jan 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Insurance",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:laptop-old:0:2026-01-31"
+      ],
+      [
+        "schedule-id",
+        "laptop-old"
+      ]
+    ],
+    "narration": "Depreciation: dated 2025-03-01 (Jan 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Depreciation",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-01-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:retainer-h2:0:2026-01-31"
+      ],
+      [
+        "schedule-id",
+        "retainer-h2"
+      ]
+    ],
+    "narration": "Deferred revenue earned: dated 2025-07-01 (Jan 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Income:Consulting",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-01",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:due:utilities-estimate-jan"
+      ],
+      [
+        "reverses",
+        "accrual:utilities-estimate-jan"
+      ],
+      [
+        "evidence-ids",
+        "[]"
+      ]
+    ],
+    "narration": "Reversal of: Estimated January utilities",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Utilities",
+        "amount": "-450.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Accrued-Liabilities",
+        "amount": "450.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-01",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "sw-annual-payment"
+      ],
+      [
+        "schedule-id",
+        "sw-annual"
+      ]
+    ],
+    "narration": "Prepaid expense",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "amount": "1200.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-1200.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-01",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "retainer-new-receipt"
+      ],
+      [
+        "schedule-id",
+        "retainer-new"
+      ]
+    ],
+    "narration": "Deferred revenue received",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "amount": "-3600.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "3600.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-03",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:bill-2001-create"
+      ],
+      [
+        "item-id",
+        "bill-2001"
+      ],
+      [
+        "origin-source-id",
+        "bill-2001-create-source"
+      ]
+    ],
+    "narration": "Bill: Granite Hosting",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "-800.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Software",
+        "amount": "800.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-05",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "pay-inv-1001-bank"
+      ],
+      [
+        "settlement-id",
+        "pay-inv-1001"
+      ]
+    ],
+    "narration": "Payment from Orbit Labs: Overpayment",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "6500.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "-6000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "-500.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-10",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "laptop-new-purchase"
+      ],
+      [
+        "schedule-id",
+        "laptop-new"
+      ]
+    ],
+    "narration": "Equipment purchase",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Fixed:Equipment",
+        "amount": "3600.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-3600.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-15",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:inv-1002-create"
+      ],
+      [
+        "item-id",
+        "inv-1002"
+      ],
+      [
+        "origin-source-id",
+        "inv-1002-create-source"
+      ]
+    ],
+    "narration": "Invoice: Orbit Labs",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "3000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Income:Consulting",
+        "amount": "-3000.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-20",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "pay-bill-2001-bank"
+      ],
+      [
+        "settlement-id",
+        "pay-bill-2001"
+      ]
+    ],
+    "narration": "Payment to Granite Hosting",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-800.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "800.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:bonus-estimate-create"
+      ],
+      [
+        "item-id",
+        "bonus-estimate"
+      ],
+      [
+        "origin-source-id",
+        "bonus-estimate-create-source"
+      ],
+      [
+        "estimate-basis",
+        "Synthetic target bonus pool"
+      ]
+    ],
+    "narration": "Estimate: Staff",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "-1000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Bonus",
+        "amount": "1000.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:insurance-h2:0:2026-02-28"
+      ],
+      [
+        "schedule-id",
+        "insurance-h2"
+      ]
+    ],
+    "narration": "Prepaid expense used: dated 2025-07-01 (Feb 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Insurance",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:laptop-new:0:2026-02-28"
+      ],
+      [
+        "schedule-id",
+        "laptop-new"
+      ]
+    ],
+    "narration": "Depreciation: dated 2026-02-01 (Feb 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Depreciation",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:laptop-old:0:2026-02-28"
+      ],
+      [
+        "schedule-id",
+        "laptop-old"
+      ]
+    ],
+    "narration": "Depreciation: dated 2025-03-01 (Feb 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Depreciation",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:retainer-h2:0:2026-02-28"
+      ],
+      [
+        "schedule-id",
+        "retainer-h2"
+      ]
+    ],
+    "narration": "Deferred revenue earned: dated 2025-07-01 (Feb 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Income:Consulting",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:retainer-new:0:2026-02-28"
+      ],
+      [
+        "schedule-id",
+        "retainer-new"
+      ]
+    ],
+    "narration": "Deferred revenue earned: dated 2026-02-01 (Feb 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Income:Consulting",
+        "amount": "-600.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "amount": "600.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-02-28",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:sw-annual:0:2026-02-28"
+      ],
+      [
+        "schedule-id",
+        "sw-annual"
+      ]
+    ],
+    "narration": "Prepaid expense used: dated 2026-02-01 (Feb 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Software",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-10",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:bonus-actual-create"
+      ],
+      [
+        "item-id",
+        "bonus-actual"
+      ],
+      [
+        "origin-source-id",
+        "bonus-actual-create-source"
+      ]
+    ],
+    "narration": "Bill: Staff",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "-700.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Bonus",
+        "amount": "700.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-10",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "adjustment:bonus-true-up"
+      ],
+      [
+        "item-id",
+        "bonus-estimate"
+      ],
+      [
+        "origin-source-id",
+        "bonus-true-up"
+      ]
+    ],
+    "narration": "Estimate settled: Staff (actual: Staff) - Actual bonus approved",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "1000.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Bonus",
+        "amount": "-1000.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-18",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "pay-inv-1002-bank"
+      ],
+      [
+        "settlement-id",
+        "pay-inv-1002"
+      ]
+    ],
+    "narration": "Payment from Orbit Labs",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "2500.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "-2500.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-20",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "adjustment:inv-1003-writeoff"
+      ],
+      [
+        "item-id",
+        "inv-1003"
+      ],
+      [
+        "origin-source-id",
+        "inv-1003-writeoff-source"
+      ]
+    ],
+    "narration": "Written off: Kestrel Foods - Synthetic uncollectible balance",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "amount": "-300.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Expenses:Bad-Debt",
+        "amount": "300.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-25",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "pay-bonus-actual-bank"
+      ],
+      [
+        "settlement-id",
+        "pay-bonus-actual"
+      ]
+    ],
+    "narration": "Payment to Staff",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Assets:Bank:Checking",
+        "amount": "-700.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "amount": "700.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "accrual:utilities-estimate-mar"
+      ],
+      [
+        "accrual-intent",
+        "utilities-estimate-mar"
+      ],
+      [
+        "evidence-ids",
+        "[]"
+      ],
+      [
+        "estimate-basis",
+        "Synthetic three-month average"
+      ]
+    ],
+    "narration": "Estimated March utilities",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Utilities",
+        "amount": "470.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Accrued-Liabilities",
+        "amount": "-470.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:insurance-h2:0:2026-03-31"
+      ],
+      [
+        "schedule-id",
+        "insurance-h2"
+      ]
+    ],
+    "narration": "Prepaid expense used: dated 2025-07-01 (Mar 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Insurance",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:laptop-new:0:2026-03-31"
+      ],
+      [
+        "schedule-id",
+        "laptop-new"
+      ]
+    ],
+    "narration": "Depreciation: dated 2026-02-01 (Mar 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Depreciation",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:laptop-old:0:2026-03-31"
+      ],
+      [
+        "schedule-id",
+        "laptop-old"
+      ]
+    ],
+    "narration": "Depreciation: dated 2025-03-01 (Mar 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Depreciation",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:retainer-h2:0:2026-03-31"
+      ],
+      [
+        "schedule-id",
+        "retainer-h2"
+      ]
+    ],
+    "narration": "Deferred revenue earned: dated 2025-07-01 (Mar 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Income:Consulting",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:retainer-new:0:2026-03-31"
+      ],
+      [
+        "schedule-id",
+        "retainer-new"
+      ]
+    ],
+    "narration": "Deferred revenue earned: dated 2026-02-01 (Mar 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Income:Consulting",
+        "amount": "-600.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "amount": "600.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  },
+  {
+    "date": "2026-03-31",
+    "flag": "*",
+    "links": [],
+    "meta": [
+      [
+        "source-id",
+        "schedule:recognition:sw-annual:0:2026-03-31"
+      ],
+      [
+        "schedule-id",
+        "sw-annual"
+      ]
+    ],
+    "narration": "Prepaid expense used: dated 2026-02-01 (Mar 2026)",
+    "payee": null,
+    "postings": [
+      {
+        "account": "Expenses:Software",
+        "amount": "100.00",
+        "currency": "USD",
+        "meta": []
+      },
+      {
+        "account": "Assets:Other:Prepaid-Expenses",
+        "amount": "-100.00",
+        "currency": "USD",
+        "meta": []
+      }
+    ],
+    "tags": []
+  }
+]

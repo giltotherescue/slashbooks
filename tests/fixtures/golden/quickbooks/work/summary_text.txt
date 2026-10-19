@@ -1,0 +1,3 @@
+Imported 8 transactions.
+Recorded 8 entries. 3 came from approved suggestions.
+Reconciled 1 account through 2026-07-31.
