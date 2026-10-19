@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/giltotherescue/slashbooks/docs/work-event.schema.json",
   "title": "Slashbooks work event",
-  "description": "One typed, countable record of books work (schema version 1). The engine sets the books fields. A host sets actor, via, run, command_id, occurred_at, visibility and subjects_key. Phase 1 events contain counts only and never contain money amounts. See docs/work-events.md.",
+  "description": "One typed, countable record of books work (schema version 1). The engine sets the books fields. A host sets actor, via, run, command_id, occurred_at, visibility and subjects_key. Counts, breakdown, accounts and subjects never contain money. The optional amounts field lists the amounts and accounts that the engine recorded, as Decimal strings. See docs/work-events.md.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -131,6 +131,78 @@
         }
       },
       "description": "Engine-side stable references to the rows behind the counts. The engine lists every subject; a host may store more than 200 elsewhere and set subjects_key."
+    },
+    "amounts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "id",
+          "accounts"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "source",
+              "entry",
+              "suggestion",
+              "evidence",
+              "question",
+              "reconciliation",
+              "publication",
+              "email"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "accounts": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+            "description": "Absolute size of the movement: the funding (first) posting of an entry, or the amount of a suggestion."
+          },
+          "ledger_balance": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+            "description": "Reconciliation: the books balance, signed."
+          },
+          "source_balance": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+            "description": "Reconciliation: the source balance, signed."
+          },
+          "discrepancy": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+            "description": "Reconciliation: source minus books, signed."
+          }
+        }
+      },
+      "description": "Optional. The amount and accounts that the engine recorded for each suggestion, entry or reconciliation behind the event. Decimal strings, never numbers. Not part of the fingerprint."
+    },
+    "amounts_truncated": {
+      "const": true,
+      "description": "Set when more than 200 rows exist and amounts holds the first 200."
     },
     "fingerprint": {
       "type": "string",

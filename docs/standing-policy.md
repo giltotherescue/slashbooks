@@ -11,6 +11,12 @@ that policy to a short-lived executor and an expected books revision. Changes to
 the policy or books revision require a new preflight. Final approval, publication,
 period close/reopen and authority changes cannot appear in a preparation policy.
 
+A policy can also carry an optional `ask_first_above` amount (a string or integer,
+non-negative, at most two decimal places). While the policy runs a command,
+a suggestion or approval above that absolute amount is refused so that a person
+decides. A policy without the field has the same fingerprint as before. See
+[caller controls](agent-controls.md).
+
 The integration must obtain the policy and current version from its authenticated
 authority store. Do not read authority from the agent's workspace, model output,
 receipt text, question response or a caller-controlled environment variable.

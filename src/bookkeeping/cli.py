@@ -172,6 +172,11 @@ def _dispatch(
     return 2
 
 
+_ENV_FILE_FORBIDDEN = frozenset({
+    "SLASHBOOKS_ACTOR", "SLASHBOOKS_FORBID_SELF_APPROVAL", "SLASHBOOKS_ENFORCE_ASK_FIRST",
+})
+
+
 def load_dotenv(path: Path) -> None:
     """Load simple KEY=VALUE pairs from *path* without executing shell code.
 
@@ -197,6 +202,8 @@ def load_dotenv(path: Path) -> None:
         key = key.strip()
         if not key or not key.replace("_", "").isalnum() or key[0].isdigit():
             continue
+        if key in _ENV_FILE_FORBIDDEN:
+            continue  # A caller control must come from the host's real environment.
         value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]

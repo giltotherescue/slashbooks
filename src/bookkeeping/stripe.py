@@ -498,6 +498,10 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             # Per-account accrual: hold processor activity that could settle an open invoice or fund a schedule.
             if needs_treatment(normalized) or (bt.get('amount') and needs_treatment({**normalized, 'amount': _amount(bt['amount'])})):
                 raise ValueError('accrual_treatment_required')
+            # A row above the ask-first amount waits for a person; apply never records it.
+            if queue.txn_is_above_ask_first(entity, normalized) or (
+                    bt.get('amount') and queue.txn_is_above_ask_first(entity, {**normalized, 'amount': _amount(bt['amount'])})):
+                raise ValueError('above_ask_first_amount')
             kind = bt.get('type')
             source_id = _object_id(bt.get('source'))
             source = bt.get('source') if isinstance(bt.get('source'), dict) else None

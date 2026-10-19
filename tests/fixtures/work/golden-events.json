@@ -4,6 +4,18 @@
       "accounts": [
         "Assets:Bank:Operating-Checking"
       ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Expenses:Software"
+          ],
+          "amount": "54.99",
+          "id": "1",
+          "source_id": "syn-001",
+          "type": "entry"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -35,6 +47,18 @@
     {
       "accounts": [
         "Assets:Bank:Operating-Checking"
+      ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Income:Consulting"
+          ],
+          "amount": "1840.00",
+          "id": "5",
+          "source_id": "syn-002",
+          "type": "entry"
+        }
       ],
       "breakdown": [
         {
@@ -68,6 +92,19 @@
       "accounts": [
         "Assets:Bank:Operating-Checking"
       ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Expenses:Software",
+            "Expenses:Fees"
+          ],
+          "amount": "42.00",
+          "id": "2",
+          "source_id": "syn-004",
+          "type": "entry"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -100,6 +137,18 @@
       "accounts": [
         "Assets:Bank:Operating-Checking"
       ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Assets:Bank:Reserve-Savings"
+          ],
+          "amount": "500.00",
+          "id": "3",
+          "source_id": "syn-006",
+          "type": "entry"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -131,6 +180,18 @@
     {
       "accounts": [
         "Assets:Bank:Operating-Checking"
+      ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Expenses:Meals"
+          ],
+          "amount": "180.00",
+          "id": "4",
+          "source_id": "syn-003",
+          "type": "entry"
+        }
       ],
       "breakdown": [
         {
@@ -252,6 +313,18 @@
       "accounts": [
         "Assets:Bank:Operating-Checking"
       ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Expenses:Software"
+          ],
+          "amount": "20.00",
+          "id": "9",
+          "source_id": "syn-008",
+          "type": "entry"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -313,6 +386,27 @@
       "accounts": [
         "Assets:Bank:Operating-Checking"
       ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Expenses:Software"
+          ],
+          "amount": "54.99",
+          "id": "6",
+          "type": "entry"
+        },
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Expenses:Office"
+          ],
+          "amount": "54.99",
+          "id": "7",
+          "source_id": "syn-001-fix",
+          "type": "entry"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -349,6 +443,17 @@
       "accounts": [
         "Assets:Bank:Operating-Checking"
       ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Income:Consulting"
+          ],
+          "amount": "1840.00",
+          "id": "8",
+          "type": "entry"
+        }
+      ],
       "breakdown": [],
       "counts": {
         "entries": 0,
@@ -373,6 +478,16 @@
   "propose": [
     {
       "accounts": [],
+      "amounts": [
+        {
+          "accounts": [
+            "Expenses:Software"
+          ],
+          "amount": "54.99",
+          "id": "syn-001",
+          "type": "suggestion"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -400,6 +515,24 @@
   "propose_group": [
     {
       "accounts": [],
+      "amounts": [
+        {
+          "accounts": [
+            "Expenses:Office"
+          ],
+          "amount": "180.00",
+          "id": "syn-003",
+          "type": "suggestion"
+        },
+        {
+          "accounts": [
+            "Expenses:Office"
+          ],
+          "amount": "75.00",
+          "id": "syn-005",
+          "type": "suggestion"
+        }
+      ],
       "breakdown": [
         {
           "count": 2,
@@ -431,6 +564,16 @@
   "propose_income": [
     {
       "accounts": [],
+      "amounts": [
+        {
+          "accounts": [
+            "Income:Consulting"
+          ],
+          "amount": "1840.00",
+          "id": "syn-002",
+          "type": "suggestion"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -458,6 +601,17 @@
   "propose_split": [
     {
       "accounts": [],
+      "amounts": [
+        {
+          "accounts": [
+            "Expenses:Software",
+            "Expenses:Fees"
+          ],
+          "amount": "42.00",
+          "id": "syn-004",
+          "type": "suggestion"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -485,6 +639,17 @@
   "propose_transfer": [
     {
       "accounts": [],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking",
+            "Assets:Bank:Reserve-Savings"
+          ],
+          "amount": "500.00",
+          "id": "transfer-pair-dd3e708a42d3a76d1c30",
+          "type": "suggestion"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -513,6 +678,18 @@
     {
       "accounts": [
         "Assets:Bank:Operating-Checking"
+      ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking"
+          ],
+          "discrepancy": "876.99",
+          "id": "Assets:Bank:Operating-Checking@2026-10-12",
+          "ledger_balance": "-776.99",
+          "source_balance": "100.00",
+          "type": "reconciliation"
+        }
       ],
       "breakdown": [
         {
@@ -545,6 +722,18 @@
       "accounts": [
         "Assets:Bank:Operating-Checking"
       ],
+      "amounts": [
+        {
+          "accounts": [
+            "Assets:Bank:Operating-Checking"
+          ],
+          "discrepancy": "876.99",
+          "id": "Assets:Bank:Operating-Checking@2026-10-12",
+          "ledger_balance": "-776.99",
+          "source_balance": "100.00",
+          "type": "reconciliation"
+        }
+      ],
       "breakdown": [
         {
           "count": 1,
@@ -574,6 +763,16 @@
   "withdraw": [
     {
       "accounts": [],
+      "amounts": [
+        {
+          "accounts": [
+            "Expenses:Office"
+          ],
+          "amount": "75.00",
+          "id": "syn-005",
+          "type": "suggestion"
+        }
+      ],
       "breakdown": [],
       "counts": {
         "entries": 0,

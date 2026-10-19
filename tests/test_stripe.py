@@ -96,6 +96,18 @@ class StripeTests(unittest.TestCase):
         self.assertEqual(before, self.files())
         self.assertFalse((self.entity.path / 'learned-context').exists())
 
+    def test_row_above_the_ask_first_amount_is_staged_held_and_never_applied(self):
+        self.entity.trust_policy['ask_first_above'] = '50.00'
+        plan = self.stage()
+        self.assertEqual([], plan['actions'])
+        self.assertEqual([('stripe:acct_test:txn_sale', 'above_ask_first_amount')],
+                         [(row['source_id'], row['reason']) for row in plan['unresolved']])
+        result = self.apply()
+        self.assertEqual((0, 1), (result['posted'], result['held']))
+        self.assertEqual([], list(self.store.load_entries()))
+        self.entity.trust_policy['ask_first_above'] = '100.00'
+        self.assertEqual(1, len(stripe_plan(self.entity, self.raw, self.policy)['actions']))
+
     def test_plan_is_read_only_and_apply_requires_staged_sources(self):
         before = self.files()
         plan = stripe_plan(self.entity, self.raw, self.policy)

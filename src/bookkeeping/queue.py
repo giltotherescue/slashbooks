@@ -61,6 +61,7 @@ Queue item schema
   "created_at":         ISO,
   "updated_at":         ISO,
   "session_summary_id": str | null,
+  "created_by":         str | absent     # opaque actor from SLASHBOOKS_ACTOR when the item was proposed
   "accrual_rule":       {scope, treatment, ...} | absent  # saved accrual rule that matched; a suggestion only
 }
 
@@ -89,7 +90,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Optional
 from functools import wraps
@@ -112,6 +113,204 @@ ACTIONABLE_QUEUE_STATUSES = frozenset({"open", "reopened", "requires-reproposal"
 _SOURCE_ID_ALIASES_FILE = "source-id-aliases.json"
 _REASONING_MAX_LEN = 2000
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+# ---------------------------------------------------------------------------
+# Caller controls: actor, self-approval
+# ---------------------------------------------------------------------------
+
+ACTOR_ENV = "SLASHBOOKS_ACTOR"
+FORBID_SELF_APPROVAL_ENV = "SLASHBOOKS_FORBID_SELF_APPROVAL"
+ACTOR_MAX_LEN = 200
+
+
+class QueueControlError(ValueError):
+    """A queue command was refused by a caller control. Nothing was written.
+
+    ``code`` is a stable machine-readable reason. The CLI prints it in a JSON
+    error document on standard error and exits with a non-zero code.
+    """
+
+    code = "queue_control"
+
+
+class InvalidActorError(QueueControlError):
+    code = "invalid_actor"
+
+
+class SelfApprovalError(QueueControlError):
+    code = "self_approval"
+
+
+def current_actor() -> Optional[str]:
+    """Return the actor named by SLASHBOOKS_ACTOR, or None when it is not set.
+
+    The value is an opaque string that the caller chooses (for example an
+    identifier for a connected AI agent). The engine does not interpret it. A
+    value longer than 200 characters, or one with a control character, is
+    refused so a bad value never reaches a queue file.
+    """
+    value = os.environ.get(ACTOR_ENV)
+    if value is None or value == "":
+        return None
+    if len(value) > ACTOR_MAX_LEN or _CONTROL_RE.search(value) or value != value.strip():
+        raise InvalidActorError(
+            f"{ACTOR_ENV} must be at most {ACTOR_MAX_LEN} characters, with no control characters "
+            "and no leading or trailing whitespace."
+        )
+    return value
+
+
+def _creator_fields() -> dict[str, str]:
+    actor = current_actor()
+    return {"created_by": actor} if actor else {}
+
+
+ENFORCE_ASK_FIRST_ENV = "SLASHBOOKS_ENFORCE_ASK_FIRST"
+ASK_FIRST_REASON = "above_ask_first_amount"
+
+
+class AskFirstError(QueueControlError):
+    code = ASK_FIRST_REASON
+
+
+def _parse_ask_first(value: Any) -> Decimal:
+    """Parse a configured ask-first amount. An unreadable value holds every non-zero amount."""
+    if isinstance(value, bool) or value is None:
+        return Decimal("0")
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+    if not amount.is_finite() or amount < 0:
+        return Decimal("0")
+    return amount
+
+
+def _boundary_ask_first() -> Optional[Decimal]:
+    """Return the ask-first amount of the trusted standing policy that runs this command, if any."""
+    from . import preparation_runtime
+
+    boundary = preparation_runtime._active.get()
+    if boundary is None:
+        return None
+    return getattr(boundary.context.policy, "ask_first_above", None)
+
+
+def ask_first_above(entity: Entity) -> Optional[Decimal]:
+    """Return the amount above which a person must decide, or None when none is set.
+
+    Two sources can set it: ``ask_first_above`` in the company's ``trust-policy.json``,
+    and ``StandingPolicy.ask_first_above`` of the trusted standing policy that runs
+    the command. When both are set, the lower amount applies.
+    """
+    values: list[Decimal] = []
+    if entity.trust_policy.get("ask_first_above") is not None:
+        values.append(_parse_ask_first(entity.trust_policy.get("ask_first_above")))
+    trusted = _boundary_ask_first()
+    if trusted is not None:
+        values.append(_parse_ask_first(trusted))
+    return min(values) if values else None
+
+
+def amount_is_above_ask_first(entity: Entity, amount: Optional[Decimal]) -> bool:
+    """True when an ask-first amount is set and the absolute amount is above it.
+
+    An unreadable amount (None) counts as above, so it waits for a person.
+    """
+    limit = ask_first_above(entity)
+    if limit is None:
+        return False
+    return amount is None or abs(amount) > limit
+
+
+def amount_for_txn(txn: dict) -> Optional[Decimal]:
+    """Return the absolute amount of a source transaction, or None when it cannot be read."""
+    if txn.get("amount") is None and txn.get("creditAmount") is None and txn.get("debitAmount") is None:
+        return None  # No amount field at all is not an amount of zero.
+    try:
+        amount = _txn_amount(txn)
+    except (InvalidOperation, ValueError, TypeError, ArithmeticError):
+        return None
+    return abs(amount) if amount.is_finite() else None
+
+
+def txn_is_above_ask_first(entity: Entity, txn: dict) -> bool:
+    """True when this source transaction must wait for a person because of its amount."""
+    if ask_first_above(entity) is None:
+        return False
+    return amount_is_above_ask_first(entity, amount_for_txn(txn))
+
+
+def _amount_for_loaded_item(entity: Entity, item: dict) -> Optional[Decimal]:
+    source_ids = [str(value) for value in item.get("source_ids") or [] if value] or [str(item.get("source_id") or "")]
+    amounts: list[Decimal] = []
+    for source_id in source_ids:
+        txn = _get_pending_txn(entity, source_id) if source_id else None
+        if txn is None:
+            amounts = []
+            break
+        amount = amount_for_txn(txn)
+        if amount is None:
+            return None
+        amounts.append(amount)
+    if amounts:
+        return max(amounts)
+    try:
+        recorded = Decimal(str(item.get("amount")))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return abs(recorded) if recorded.is_finite() else None
+
+
+def amount_for_item(entity: Entity, item_id: str) -> Optional[Decimal]:
+    """Return the absolute amount that a queue item decides, or None when it cannot be read.
+
+    A category item and a split use the amount of the source transaction. A
+    transfer pair uses the absolute amount of the pair. The live staged
+    transaction is used when it is still staged; the amount recorded on the item
+    is the fallback. Raises FileNotFoundError when the item does not exist.
+    """
+    return _amount_for_loaded_item(entity, read_queue_item(entity, item_id))
+
+
+def _enforced_ask_first(entity: Entity) -> Optional[Decimal]:
+    """Return the ask-first amount that propose and confirm must enforce, or None."""
+    from .preparation_runtime import is_preparation
+
+    if os.environ.get(ENFORCE_ASK_FIRST_ENV) == "1" or is_preparation():
+        return ask_first_above(entity)  # The lower of the company and standing-policy limits.
+    return None
+
+
+def _refuse_above_ask_first(entity: Entity, amount: Optional[Decimal]) -> None:
+    limit = _enforced_ask_first(entity)
+    if limit is None:
+        return
+    if amount is None or abs(amount) > limit:
+        raise AskFirstError(
+            "This amount is above the ask-first limit. A person must make this decision."
+        )
+
+
+def _refuse_item_above_ask_first(entity: Entity, item: dict) -> None:
+    if _enforced_ask_first(entity) is not None:
+        _refuse_above_ask_first(entity, _amount_for_loaded_item(entity, item))
+
+
+def _forbid_self_approval(item: dict) -> None:
+    """Refuse when the confirming actor created the item (opt-in by environment)."""
+    if os.environ.get(FORBID_SELF_APPROVAL_ENV) != "1":
+        return
+    actor = current_actor()
+    if actor is None:
+        # Fail closed: the host asked for this control but did not say who is approving.
+        raise InvalidActorError(f"{ACTOR_ENV} is required when {FORBID_SELF_APPROVAL_ENV}=1.")
+    creator = item.get("created_by")
+    if isinstance(creator, str) and creator and actor == creator:
+        raise SelfApprovalError(
+            "The actor that made this suggestion cannot approve it. A different actor must approve it."
+        )
+
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +598,10 @@ def eligible_for_autopost(entity: Entity, counterparty_key: str, txn: dict | Non
         if _scope.discipline(entity) != _scope.DISCIPLINE_OFF:
             return False
     elif (treatment_check or (lambda row: needs_treatment(entity, row)))(txn):
+        return False
+    # A row above the ask-first amount waits for a person, even when a rule or
+    # learned category matches. A row without a readable amount waits as well.
+    if ask_first_above(entity) is not None and (txn is None or txn_is_above_ask_first(entity, txn)):
         return False
     threshold = entity.auto_post_threshold
     queue_all = bool(entity.trust_policy.get("queue_all_until_confirmed", True))
@@ -1429,6 +1632,7 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
         # across reproposal. Interactive confirmation may resolve it; standing
         # preparation authority may not silently absorb the changed evidence.
         "requires_human_review": bool(existing_item.get("requires_human_review", False)),
+        **_creator_fields(),
         **({"taught": stamp} if (stamp := taught_stamp(entity, counterparty, category)) else {}),
         **({"accrual_rule": rule_stamp} if rule_stamp else {}),
     }
@@ -1454,6 +1658,7 @@ def propose(
     from .ledger.importer import _entity_write_lock
     with _entity_write_lock(entity.path):
         txn, = _proposal_sources(entity, "categorize", [source_id])
+        _refuse_above_ask_first(entity, amount_for_txn(txn))
         item = _category_proposal_item(entity, txn, category, reasoning, context)
         _save_item(entity, item)
         return item
@@ -1475,6 +1680,8 @@ def propose_group(
     from .ledger.importer import _entity_write_lock
     with _entity_write_lock(entity.path):
         sources = _proposal_sources(entity, "categorize", source_ids)
+        for source in sources:
+            _refuse_above_ask_first(entity, amount_for_txn(source))
         # Build and validate every item before the first rename. A changed or
         # invalid member therefore cannot leave a partially authorized group.
         items = [_category_proposal_item(entity, source, category, reasoning, context)
@@ -1547,6 +1754,7 @@ def _propose_split_unlocked(
     the owner before approval.
     """
     txn, = _proposal_sources(entity, "split", [source_id])
+    _refuse_above_ask_first(entity, amount_for_txn(txn))
     if template:
         templates = _load_split_templates(entity)
         try:
@@ -1595,6 +1803,7 @@ def _propose_split_unlocked(
         "updated_at": now,
         "session_summary_id": None,
         "requires_human_review": bool(existing_item.get("requires_human_review", False)),
+        **_creator_fields(),
     }
     _save_item(entity, item)
     return item
@@ -1644,6 +1853,8 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
 def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None, *, accrual_treatment: str | None = None) -> dict:
     """Approve and post a prepared split without an interim single-category entry."""
     item = _load_item(entity, item_id)
+    _forbid_self_approval(item)
+    _refuse_item_above_ask_first(entity, item)
     _require_accrual_cash_treatment(entity, item, accrual_treatment)
     if item.get("proposal_type") != "split":
         raise ValueError(f"Queue item '{item_id}' is not a split proposal.")
@@ -1802,6 +2013,7 @@ def propose_transfer(entity: Entity, source_ids: list[str], reasoning: str) -> d
 def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning: str) -> dict:
     sources = _proposal_sources(entity, "match_transfer", source_ids)
     first, second, amount, first_account, second_account = _transfer_details(entity, source_ids, sources)
+    _refuse_above_ask_first(entity, abs(amount))
     item_id = _transfer_item_id(source_ids)
     existing_path = _item_path(entity, item_id)
     existing_item: dict[str, Any] = {}
@@ -1838,6 +2050,7 @@ def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning:
         "updated_at": now,
         "session_summary_id": None,
         "requires_human_review": bool(existing_item.get("requires_human_review", False)),
+        **_creator_fields(),
     }
     _save_item(entity, item)
     return item
@@ -1847,6 +2060,8 @@ def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning:
 def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional[str] = None) -> dict:
     """Post one audited transfer pair while preserving both source dates."""
     item = _load_item(entity, item_id)
+    _forbid_self_approval(item)
+    _refuse_item_above_ask_first(entity, item)
     if item.get("proposal_type") != "transfer-pair":
         raise ValueError(f"Queue item '{item_id}' is not a transfer pair.")
     if item.get("status") not in {"open", "reopened"}:
@@ -2198,6 +2413,8 @@ def confirm(
     Returns the updated item dict.
     """
     item = _load_item(entity, item_id)
+    _forbid_self_approval(item)
+    _refuse_item_above_ask_first(entity, item)
 
     if item.get("proposal_type") == "split":
         return confirm_split(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment)
@@ -2306,6 +2523,8 @@ def correct(
         )
 
     item = _load_item(entity, item_id)
+    _forbid_self_approval(item)
+    _refuse_item_above_ask_first(entity, item)
 
     if item.get("proposal_type") in {"split", "transfer-pair", "related-entity", "intercompany"}:
         raise ValueError("Specialized proposals cannot use generic correction. Withdraw and repropose the item.")
@@ -2371,6 +2590,11 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
     ]
     if not item_ids:
         raise ValueError(f"No open proposals found for category '{category}'.")
+    # Check every member before the first write, so a refusal leaves no partial group.
+    for item_id in item_ids:
+        checked = _load_item(entity, item_id)
+        _forbid_self_approval(checked)
+        _refuse_item_above_ask_first(entity, checked)
     return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
 
 
@@ -2846,6 +3070,7 @@ def add_parser(subparsers: Any) -> None:
     list_p = queue_sub.add_parser("list", help="List queue items")
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
     list_p.add_argument("--status", default=None, help="Filter by status, or use actionable for all unresolved review work")
+    list_p.add_argument("--json", action="store_true", dest="as_json", help="Print the full items as a JSON document")
 
     summary_p = queue_sub.add_parser(
         "summary",
@@ -2881,6 +3106,14 @@ def add_parser(subparsers: Any) -> None:
     qr_parser.add_argument("--year", required=True, type=int, help="Year (e.g. 2026)")
 
 
+def _print_error(exc: Exception) -> None:
+    """Print a command error. A caller-control refusal also names its code."""
+    if isinstance(exc, QueueControlError):
+        print(json.dumps({"error": {"code": exc.code, "message": str(exc)}}), file=sys.stderr)
+    else:
+        print(f"Error: {exc}", file=sys.stderr)
+
+
 def run(args: Any) -> int:
     """Dispatch queue or quarterly-review command."""
     cmd = getattr(args, "command", None)
@@ -2911,7 +3144,7 @@ def run(args: Any) -> int:
                 print(f"  Status: {item['status']}")
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "propose-group":
@@ -2921,7 +3154,7 @@ def run(args: Any) -> int:
                 print(f"Proposed {len(items)} item(s) → {args.category}")
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "propose-split":
@@ -2934,7 +3167,7 @@ def run(args: Any) -> int:
                     print(f"  Liability effect: {effect['account']} {effect['amount']}")
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "split-template-save":
@@ -2944,14 +3177,14 @@ def run(args: Any) -> int:
                 print(f"{verb} split template {report['name']} with {len(report['postings'])} posting(s).")
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "split-template-list":
             try:
                 templates = list_split_templates(entity)
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
             if not templates:
                 print("No split templates saved.")
@@ -2974,7 +3207,7 @@ def run(args: Any) -> int:
                     )
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "transfer-exceptions":
@@ -2991,7 +3224,7 @@ def run(args: Any) -> int:
                     )
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "propose-transfer":
@@ -3001,7 +3234,7 @@ def run(args: Any) -> int:
                 print("  Sources: " + ", ".join(item["source_ids"]))
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "confirm":
@@ -3010,7 +3243,7 @@ def run(args: Any) -> int:
                 print(f"Confirmed: {item['source_id']} → {item['confirmed_category']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "confirm-group":
@@ -3019,7 +3252,7 @@ def run(args: Any) -> int:
                 print(f"Confirmed {len(items)} item(s) → {args.category}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "confirm-split":
@@ -3028,7 +3261,7 @@ def run(args: Any) -> int:
                 print(f"Confirmed split: {item['source_id']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "confirm-transfer":
@@ -3037,7 +3270,7 @@ def run(args: Any) -> int:
                 print("Confirmed transfer pair: " + ", ".join(item["source_ids"]))
                 return 0
             except (FileNotFoundError, ValueError) as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "correct":
@@ -3047,7 +3280,7 @@ def run(args: Any) -> int:
                 print(f"Corrected: {item['source_id']} → {item['confirmed_category']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "withdraw":
@@ -3056,14 +3289,14 @@ def run(args: Any) -> int:
                 print(f"Withdrawn: {item['source_id']}")
                 return 0
             except (FileNotFoundError, ValueError) as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "duplicates":
             try:
                 candidates = list_duplicate_candidates(entity)
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
             if args.as_json:
                 print(json.dumps({"schema_version": 1, "kind": "duplicate_candidates",
@@ -3091,7 +3324,7 @@ def run(args: Any) -> int:
                     print("Distinct activity was released to the normal categorization workflow.")
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "propose-intercompany":
@@ -3101,7 +3334,7 @@ def run(args: Any) -> int:
                 print(f"Proposed intercompany treatment: {item['source_id']} → {item['proposed_category']}")
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "propose-related":
@@ -3111,11 +3344,15 @@ def run(args: Any) -> int:
                 print(f"  {item['related_entity']}: {item['related_entity_treatment']}")
                 return 0
             except ValueError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         elif qcmd == "list":
             items = list_queue_items(entity, status=args.status)
+            if getattr(args, "as_json", False):
+                print(json.dumps({"schema_version": 1, "kind": "queue_items",
+                                  "count": len(items), "items": items}, indent=2, sort_keys=True))
+                return 0
             if not items:
                 print("No queue items found.")
                 return 0
@@ -3158,7 +3395,7 @@ def run(args: Any) -> int:
                 print(json.dumps(item, indent=2, sort_keys=True))
                 return 0
             except FileNotFoundError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                _print_error(exc)
                 return 1
 
         print(f"Unknown queue command: {qcmd}", file=sys.stderr)
