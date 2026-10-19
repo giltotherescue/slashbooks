@@ -211,7 +211,7 @@
       "--override"
     ],
     "exit": 0,
-    "stdout_sha256": "dc96df73d1387555a6b8ada403367e9e2eb77de45a6d6952e900e8b71cbb6901"
+    "stdout_sha256": "9ac01094cf3cbddef77bb21ddddf2ef92a42ec895a9abcd2966427ead1c1bb29"
   },
   "export/2026-01-01_2026-03-31_command.txt": {
     "argv": [
@@ -243,7 +243,7 @@
       "--override"
     ],
     "exit": 0,
-    "stdout_sha256": "81e02c697a85be3ff03afb3e66db1eb03c77bc4870ddfe84e08f005d8c79fde4"
+    "stdout_sha256": "28f757a0438a13a6c744173d670ee9d1bb904a16374e49fcf09ad08a3689c4a1"
   },
   "export/sanity_check.json": {
     "argv": [
@@ -927,7 +927,7 @@
       "<WORK>/tax-cash"
     ],
     "exit": 0,
-    "stdout_sha256": "902216942d121da6b8743bfff49868620c701bb5c568b887709037d3f8ce06f7"
+    "stdout_sha256": "1dc722106297dd29281d8ebfb0c30127525ea0cad01f0db6a942c95a6fb275e7"
   },
   "tax/map_json.json": {
     "argv": [
@@ -982,5 +982,53 @@
     ],
     "exit": 0,
     "stdout_sha256": "6e56a6b6ba54d9fddbdfc19415a44626081416b4be5ae444f4b57b32cba07f75"
+  },
+  "xlsx/export_2026-01-01_2026-01-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--output-dir",
+      "<WORK>/xlsx-export-cash-2026-01-01-2026-01-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "11b137dd1b8ed50e5e15312f21f1aaae08b0b4432d0e1285d361ff39035cf0b7"
+  },
+  "xlsx/export_2026-01-01_2026-03-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/xlsx-export-cash-2026-01-01-2026-03-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a972803e171b9020f9b5e56cf57e0dcce1534a3064d224781874b9bca6a7050c"
+  },
+  "xlsx/tax_export_command.txt": {
+    "argv": [
+      "tax",
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/xlsx-tax-cash"
+    ],
+    "exit": 0,
+    "stdout_sha256": "a57569153aa7b5c9414e720f58841d6486b37d297aa7d5862d725f0600f86335"
   }
 }

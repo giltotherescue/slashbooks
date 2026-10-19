@@ -4,12 +4,14 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from golden_support import READINESS_AS_OF, Capture, Normalizer, frozen_clock, pretty_json, run_cli
+from golden_support import (READINESS_AS_OF, XLSX_AVAILABLE, Capture, Normalizer, frozen_clock, pretty_json,
+                            run_cli, xlsx_text)
 
 ACCRUAL_KINDS = ("aging", "schedules", "adjustments", "support", "reconciliation", "outstanding")
 
@@ -198,6 +200,8 @@ def capture_company(kind: str, root: Path, work: Path) -> Capture:
             capture.tree(f"export/{start}_{end}", out)
     capture.cli("export/sanity_check", ["sanity-check", *entity_arg, "--from", plan["ranges"][-1][0], "--to", plan["ranges"][-1][1]])
 
+    _capture_xlsx(capture, kind, root, work, plan)
+
     # Tax map and exports.
     start, end = plan["tax_range"]
     for fmt in ("text", "json"):
@@ -235,6 +239,30 @@ def capture_company(kind: str, root: Path, work: Path) -> Capture:
     _capture_library(capture, kind, root, accrual)
     _capture_state(capture, kind, root, work)
     return capture
+
+
+def _capture_xlsx(capture: Capture, kind: str, root: Path, work: Path, plan: dict) -> None:
+    """Workbook sheets, on a copy of the company so the extra pass changes nothing. Optional group `xlsx/`."""
+    if not XLSX_AVAILABLE:
+        return
+    copy = work / f"{kind}-xlsx-copy"
+    shutil.copytree(root, copy, ignore=shutil.ignore_patterns("backups"))
+    xlsx = Capture(Normalizer(copy, work))
+    xlsx.manifest, xlsx.files = capture.manifest, capture.files
+    for start, end in plan["exports"]:
+        out = work / f"xlsx-export-{kind}-{start}-{end}"
+        argv = ["export", "--entity", str(copy), "--from", start, "--to", end, "--output-dir", str(out), "--override"]
+        xlsx.cli(f"xlsx/export_{start}_{end}_command", argv, xlsx=True)
+        if out.exists():
+            for sheet in sorted(out.glob("*.xlsx")):
+                xlsx.put(f"xlsx/export_{start}_{end}/{sheet.name}.sheets.txt", xlsx_text(sheet))
+    start, end = plan["tax_range"]
+    tax_out = work / f"xlsx-tax-{kind}"
+    xlsx.cli("xlsx/tax_export_command", ["tax", "export", "--entity", str(copy), "--from", start, "--to", end,
+                                         "--output-dir", str(tax_out)], xlsx=True)
+    for sheet in sorted(tax_out.glob("*.xlsx")):
+        xlsx.put(f"xlsx/tax_export/{sheet.name}.sheets.txt", xlsx_text(sheet))
+    shutil.rmtree(copy)
 
 
 def _capture_library(capture: Capture, kind: str, root: Path, accrual: bool) -> None:

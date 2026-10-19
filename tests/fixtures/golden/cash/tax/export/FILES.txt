@@ -1,7 +1,6 @@
 README.txt
 lacerte-tbu-schc-2026-01-01_2026-03-31.csv
 manifest.json
-tax-handoff-schc-2026-01-01_2026-03-31.xlsx
 tax-line-summary-schc-2026-01-01_2026-03-31.csv
 tax-trial-balance-schc-2026-01-01_2026-03-31.csv
 ultratax-tb-import-schc-2026-01-01_2026-03-31.csv

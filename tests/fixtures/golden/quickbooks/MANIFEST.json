@@ -877,7 +877,7 @@
       "<WORK>/export-quickbooks-2026-07-01-2026-07-31"
     ],
     "exit": 0,
-    "stdout_sha256": "89fd524321188d6732e64b792fb558d7ed59788b2a81d1f306f3f7064d6ea657"
+    "stdout_sha256": "f7d1d87e846b404fec132db21af73c2d8a0b85841596fd82c5cde6fbae643a43"
   },
   "export/sanity_check.json": {
     "argv": [
@@ -1398,7 +1398,7 @@
       "<WORK>/tax-quickbooks"
     ],
     "exit": 0,
-    "stdout_sha256": "c5e326908632ace4ece2cbc414b767c513f2a8ee8e74339bbd9569a3d5dde522"
+    "stdout_sha256": "faea1ebad51d7c6a218a29c48a13ead200b288bb329f8431dc479cfc3500cc22"
   },
   "tax/map_json.json": {
     "argv": [
@@ -1453,5 +1453,37 @@
     ],
     "exit": 0,
     "stdout_sha256": "6a356e9249469153e89b20d7f9bc23db667da01607014953f199a1704bf68fd3"
+  },
+  "xlsx/export_2026-07-01_2026-07-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-07-01",
+      "--to",
+      "2026-07-31",
+      "--output-dir",
+      "<WORK>/xlsx-export-quickbooks-2026-07-01-2026-07-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "00b88737f8d258dec784527e351ba76efd970fbe10397b8adfe5c49daf31ddbd"
+  },
+  "xlsx/tax_export_command.txt": {
+    "argv": [
+      "tax",
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-07-31",
+      "--output-dir",
+      "<WORK>/xlsx-tax-quickbooks"
+    ],
+    "exit": 0,
+    "stdout_sha256": "94483e3936ec94e73f9217dcf3e21a365367be19943709e2b8f392f771ec7977"
   }
 }

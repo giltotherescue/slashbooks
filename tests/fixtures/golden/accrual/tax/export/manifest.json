@@ -3,16 +3,12 @@
   "disclaimer": "Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.",
   "files": {
     "README.txt": {
-      "sha256": "b48ad078ec9d897cb66d0458562d1e2a1f96bff6e221d255647e07cdc64ae7f2",
+      "sha256": "d6efd5fb27b2fde620fbbd5d916d1c6060d443cc3870a67d607106417f280d4d",
       "sheet": "Read Me"
     },
     "lacerte-tbu-1120s-2026-01-01_2026-03-31.csv": {
       "sha256": "9706a74e5086a0fbd1ea594bb949ea9fc17df20508b8b5308d7d87c805eb8163",
       "sheet": "Lacerte TBU"
-    },
-    "tax-handoff-1120s-2026-01-01_2026-03-31.xlsx": {
-      "sha256": "789e2b942c0228afaaaae93d8b7d3265cbae20535dd0324f18fdf4cdd1eea301",
-      "sheet": "Workbook"
     },
     "tax-line-summary-1120s-2026-01-01_2026-03-31.csv": {
       "sha256": "675728a22d47e882d45e2088e845551bc30fc83955851a0481c23e4a6f486c12",
@@ -65,5 +61,5 @@
   "unmapped": [
     "Expenses:Bonus"
   ],
-  "xlsx_note": null
+  "xlsx_note": "Install the xlsx extra to also get the Excel workbook: pip install 'agent-books[xlsx]'"
 }

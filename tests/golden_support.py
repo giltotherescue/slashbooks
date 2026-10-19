@@ -23,6 +23,7 @@ import contextlib
 import datetime as _datetime_module
 import difflib
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -171,13 +172,28 @@ class Normalizer:
         return text
 
 
-def run_cli(argv: list[str]) -> tuple[int, str, str]:
-    """Run ``books`` in-process under the frozen clock; return (exit, stdout, stderr)."""
+XLSX_AVAILABLE = importlib.util.find_spec("xlsxwriter") is not None
+_real_find_spec = importlib.util.find_spec
+
+
+def _find_spec_without_xlsx(name: str, *args: Any, **kwargs: Any) -> Any:
+    return None if name == "xlsxwriter" else _real_find_spec(name, *args, **kwargs)
+
+
+def run_cli(argv: list[str], *, xlsx: bool = False) -> tuple[int, str, str]:
+    """Run ``books`` in-process under the frozen clock; return (exit, stdout, stderr).
+
+    The XLSX extra is optional and CI does not install it, so by default the engine
+    is told ``xlsxwriter`` is absent and writes CSV only. ``xlsx=True`` leaves it on.
+    """
     from bookkeeping.cli import main
 
     out, err = io.StringIO(), io.StringIO()
     cwd = os.getcwd()
+    hide = None if xlsx else _find_spec_without_xlsx
     with tempfile.TemporaryDirectory() as empty, frozen_clock():
+        if hide:
+            importlib.util.find_spec = hide
         os.chdir(empty)  # `books` reads ./.env; never read the developer's
         try:
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
@@ -187,6 +203,7 @@ def run_cli(argv: list[str]) -> tuple[int, str, str]:
                     code = exit_.code if isinstance(exit_.code, int) else 1
         finally:
             os.chdir(cwd)
+            importlib.util.find_spec = _real_find_spec
     return int(code or 0), out.getvalue(), err.getvalue()
 
 
@@ -255,9 +272,9 @@ class Capture:
         if info:
             self.manifest[name] = info
 
-    def cli(self, name: str, argv: list[str], *, kind: str | None = None) -> tuple[int, str, str]:
+    def cli(self, name: str, argv: list[str], *, kind: str | None = None, xlsx: bool = False) -> tuple[int, str, str]:
         """Run a command and record stdout (pretty JSON or text), exit code and stderr."""
-        code, out, err = run_cli(argv)
+        code, out, err = run_cli(argv, xlsx=xlsx)
         out, err = self.normalize(out), self.normalize(err)
         if argv and argv[0] == "readiness":
             out = _stable_package_id(out)
@@ -338,6 +355,9 @@ REGENERATE_HELP = (
 )
 
 
+OPTIONAL_PREFIX = "xlsx/"  # compared only when the optional xlsxwriter package is installed
+
+
 def _manifest_text(capture: Capture) -> str:
     return json.dumps(capture.manifest, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
@@ -345,6 +365,11 @@ def _manifest_text(capture: Capture) -> str:
 def compare_or_update(company: str, capture: Capture) -> list[str]:
     """Compare captured outputs with tests/fixtures/golden/<company>. Return diff blocks."""
     directory = GOLDEN_ROOT / company
+    if os.environ.get("UPDATE_GOLDEN") and not XLSX_AVAILABLE:
+        raise RuntimeError("Regenerating needs the XLSX extra so the xlsx/ goldens are written: pip install -e '.[xlsx]'")
+    if not XLSX_AVAILABLE:
+        capture.files = {k: v for k, v in capture.files.items() if not k.startswith(OPTIONAL_PREFIX)}
+        capture.manifest = {k: v for k, v in capture.manifest.items() if not k.startswith(OPTIONAL_PREFIX)}
     files = dict(capture.files)
     files["MANIFEST.json"] = _manifest_text(capture)
     if os.environ.get("UPDATE_GOLDEN"):
@@ -357,6 +382,19 @@ def compare_or_update(company: str, capture: Capture) -> list[str]:
         return []
     problems: list[str] = []
     existing = {str(p.relative_to(directory)): p for p in directory.rglob("*") if p.is_file()} if directory.exists() else {}
+    if not XLSX_AVAILABLE:
+        existing = {k: v for k, v in existing.items() if not k.startswith(OPTIONAL_PREFIX)}
+        existing.pop("MANIFEST.json", None)  # the manifest of an XLSX-less run is not comparable file-wide
+        files.pop("MANIFEST.json")
+        golden = json.loads((directory / "MANIFEST.json").read_text()) if (directory / "MANIFEST.json").exists() else {}
+        golden = {k: v for k, v in golden.items() if not k.startswith(OPTIONAL_PREFIX)}
+        if golden != capture.manifest:
+            changed = sorted(k for k in set(golden) | set(capture.manifest) if golden.get(k) != capture.manifest.get(k))
+            problems_manifest = [f"MANIFEST.json: command, exit code or stdout hash changed for {company}/{k}" for k in changed]
+        else:
+            problems_manifest = []
+    else:
+        problems_manifest = []
     for name in sorted(set(files) | set(existing)):
         if name not in existing:
             problems.append(f"NEW output with no golden file: {company}/{name}")
@@ -372,4 +410,4 @@ def compare_or_update(company: str, capture: Capture) -> list[str]:
                 if len(diff) > len(shown):
                     shown.append(f"... {len(diff) - len(shown)} more diff lines")
                 problems.append("\n".join(shown))
-    return problems
+    return problems + problems_manifest

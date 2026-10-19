@@ -17,6 +17,5 @@ Files:
   unmapped-accounts-1120s-2026-01-01_2026-03-31.csv (Unmapped Accounts)
   lacerte-tbu-1120s-2026-01-01_2026-03-31.csv (Lacerte TBU)
   ultratax-tb-import-1120s-2026-01-01_2026-03-31.csv (UltraTax CS Import)
-  tax-handoff-1120s-2026-01-01_2026-03-31.xlsx (Workbook)
 
 The Lacerte and UltraTax files start with the header row that those products import, so they do not repeat this note.

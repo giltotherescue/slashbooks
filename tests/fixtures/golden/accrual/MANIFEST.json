@@ -928,7 +928,7 @@
       "<WORK>/export-accrual-2026-01-01-2026-01-31"
     ],
     "exit": 0,
-    "stdout_sha256": "99256755302785ea437a5394c5cccdeb2255ea34f42bab1a7281497124b27378"
+    "stdout_sha256": "2ff120b5950f3494f77e1b7141af93811aa88f95fbf7fb963a18e08b8a959b05"
   },
   "export/2026-01-01_2026-03-31_command.txt": {
     "argv": [
@@ -943,7 +943,7 @@
       "<WORK>/export-accrual-2026-01-01-2026-03-31"
     ],
     "exit": 0,
-    "stdout_sha256": "13be49d46e8e3e6fea63c2ec702fce76924f575a56cf10e64990269ae2c0dbc2"
+    "stdout_sha256": "45cf24f259d024e52f9bd74b98cfa79674fcf793ce5ef72534b53d2a65861581"
   },
   "export/sanity_check.json": {
     "argv": [
@@ -1623,7 +1623,7 @@
       "<WORK>/tax-accrual"
     ],
     "exit": 0,
-    "stdout_sha256": "54fb6425907bc0d12d6f30b3eb456e4fdf3d4e0d9f7d3b49ba6e1f4966b9c088"
+    "stdout_sha256": "d0729e522d2297825f727a6387c287a1f4d49c17ee7c2300d98df74906ea006b"
   },
   "tax/map_json.json": {
     "argv": [
@@ -1678,5 +1678,53 @@
     ],
     "exit": 0,
     "stdout_sha256": "faafe2b7232ed08f9745ead9dcd7f50824a28986e57d6b63c0c1f0848448a0af"
+  },
+  "xlsx/export_2026-01-01_2026-01-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-01-31",
+      "--output-dir",
+      "<WORK>/xlsx-export-accrual-2026-01-01-2026-01-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "58e7231eef5d95907613b7e89e81dcc4d03b93147c27ad95fd3d4aa17d4a3058"
+  },
+  "xlsx/export_2026-01-01_2026-03-31_command.txt": {
+    "argv": [
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/xlsx-export-accrual-2026-01-01-2026-03-31",
+      "--override"
+    ],
+    "exit": 0,
+    "stdout_sha256": "f0b456356099b1bc4a9f2cabb1c8918347ca018320558e29843cf84f300a0584"
+  },
+  "xlsx/tax_export_command.txt": {
+    "argv": [
+      "tax",
+      "export",
+      "--entity",
+      "<COMPANY>",
+      "--from",
+      "2026-01-01",
+      "--to",
+      "2026-03-31",
+      "--output-dir",
+      "<WORK>/xlsx-tax-accrual"
+    ],
+    "exit": 0,
+    "stdout_sha256": "221cc78abea2693c0f377779a2d2ebc59b320343092b4638b2da5bccfba63978"
   }
 }

@@ -1,0 +1,3 @@
+Accountant export written to: <WORK>/xlsx-export-accrual-2026-01-01-2026-03-31
+  CSV exports: 19 files in <WORK>/xlsx-export-accrual-2026-01-01-2026-03-31/csv
+  XLSX workbook: <WORK>/xlsx-export-accrual-2026-01-01-2026-03-31/accountant-export-2026-01-01_2026-03-31.xlsx

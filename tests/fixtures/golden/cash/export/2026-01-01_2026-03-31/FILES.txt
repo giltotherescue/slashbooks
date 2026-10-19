@@ -1,4 +1,3 @@
-accountant-export-2026-01-01_2026-03-31.xlsx
 csv/Adjustment-Log.csv
 csv/Balance-Sheet.csv
 csv/Checks.csv
