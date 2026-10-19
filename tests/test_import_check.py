@@ -159,6 +159,14 @@ class ImportCheckTests(unittest.TestCase):
         self.assertEqual((c["credits"]["status"], c["credits"]["detail_code"]), ("differs", "totals_differ"))
         self.assertEqual((c["closing"]["status"], c["closing"]["detail_code"]), ("differs", "books_differ"))
 
+    def test_row_on_the_period_start_day_is_in_the_books_movement(self):
+        path = self.csv("jan.csv", "01/01/2026,TEST A,-10.00", "01/15/2026,TEST B,100.00")
+        entry = self.import_csv(path, "jan", period_start="2026-01-01", period_end="2026-01-31",
+                                opening_balance="500.00", closing_balance="590.00")
+        c = self.checks(entry["import_check"])
+        self.assertEqual((c["closing"]["status"], c["closing"]["books"]), ("matches", "590.00"))
+        self.assertEqual(entry["import_check"]["status"], "matches")
+
     def test_unaccounted_row_differs_on_count(self):
         entry = self.import_chase()
         queue = json.loads(self.queue_path().read_text())
