@@ -462,7 +462,7 @@ def check_parsed(entity: Any, record: Mapping[str, Any], profile: Mapping[str, A
     """Check one parsed statement (see ``statement_import``) against the books."""
     from . import statement_import as si
 
-    kept, outside = si._apply_boundary(list(statement["transactions"]), dict(profile))
+    kept, _ = si._apply_boundary(list(statement["transactions"]), dict(profile))
     kept_ids = {t["id"] for t in kept}
     return check_statement(
         entity, record, kept, outside_boundary=[t for t in statement["transactions"] if t["id"] not in kept_ids],
