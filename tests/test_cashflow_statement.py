@@ -228,6 +228,42 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(classify("Equity:Owner-Draws", "equity")[0], "financing")
         self.assertEqual(classify("Liabilities:Other:Term-Loan", "other_liability")[0], "financing")
 
+    def test_debt_name_wins_over_the_payable_prefix(self):
+        for name in ("Liabilities:Payable:Notes-Payable", "Liabilities:Payable:Loan", "Liabilities:Payable:Bank-LOC"):
+            self.assertEqual(classify(name, "payable")[0], "financing", name)
+        self.assertEqual(classify("Liabilities:Payable:Accounts-Payable", "payable")[0], "operating")
+
+    def test_debt_name_uses_word_boundaries(self):
+        for name in ("Liabilities:Other:Notebook-Supplier", "Liabilities:Other:Loanable-Credits", "Liabilities:Other:Allocation"):
+            self.assertEqual(classify(name, "other_liability")[0], "needs_classification", name)
+        self.assertEqual(classify("Liabilities:Other:Term-Loan", "other_liability")[0], "financing")
+
+    def test_nested_accumulated_depreciation_is_not_a_fixed_asset(self):
+        ledger = """\
+option "operating_currency" "USD"
+
+2026-01-01 open Assets:Bank:Checking USD
+2026-01-01 open Assets:Fixed:Equipment:Laptops USD
+2026-01-01 open Assets:Fixed:Equipment:Accumulated-Depreciation USD
+2026-01-01 open Expenses:Depreciation USD
+2026-01-01 open Equity:Owner-Contributions USD
+
+2026-01-01 * "Start"
+  Assets:Bank:Checking          5000.00 USD
+  Equity:Owner-Contributions   -5000.00 USD
+
+2026-01-15 * "Depreciation"
+  Expenses:Depreciation          100.00 USD
+  Assets:Fixed:Equipment:Accumulated-Depreciation  -100.00 USD
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            r = cash_flow(make_entity(Path(tmp), ledger), date(2026, 1, 2), date(2026, 1, 31))
+        self.assertEqual(r.totals["net_cash_investing"], D("0.00"))
+        self.assertEqual(r.totals["net_cash_operating"], D("0.00"))  # -100 net income + 100 add-back
+        add_back = next(l for l in r.lines if l.get("account") == "Assets:Fixed:Equipment:Accumulated-Depreciation")
+        self.assertEqual(add_back["amount"], "100.00")
+        self.assertIn("Depreciation and amortization", add_back["label"])
+
     def test_ambiguous_accounts_are_visible_not_guessed(self):
         self.assertEqual(classify("Liabilities:Other:Sales-Tax", "other_liability")[0], "needs_classification")
         self.assertEqual(classify("Assets:Uncategorized:Bank", "other_asset")[0], "needs_classification")

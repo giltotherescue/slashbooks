@@ -68,7 +68,8 @@ CASH_DEFINITION = "Cash means bank and cash accounts. Credit card balances are l
 _CASH_SUBTYPES = {"bank", "cash"}
 _OPERATING_SUBTYPES = ("receivable", "prepaid", "payable", "accrued_liabilities", "deferred_revenue",
                        "customer_deposits", "credit_card")
-_FINANCING_NAME = re.compile(r"loan|note|mortgage|debt|line[-_ ]?of[-_ ]?credit|\bloc\b", re.IGNORECASE)
+_FINANCING_NAME = re.compile(
+    r"(?<![A-Za-z])(loans?|notes?|mortgages?|debt|line[-_ ]?of[-_ ]?credit|loc)(?![A-Za-z])", re.IGNORECASE)
 _CASH_LIKE_NAME = re.compile(r"(?<![A-Za-z])(cash|checking|savings|bank|petty)(?![A-Za-z])", re.IGNORECASE)
 _OPENING_NAME = re.compile(r"opening", re.IGNORECASE)
 _RETAINED_NAME = re.compile(r"retained|prior[-_ ]?year|prior[-_ ]?period", re.IGNORECASE)
@@ -92,13 +93,23 @@ def classify_accounts(conn: Any, names: set[str]) -> dict[str, str]:
 
     records = {table: _records(conn, table) for table in ("items", "schedules")}
     usage = _usage_subtypes(records)
-    return {name: _subtype(name, usage) for name in names}
+    subtypes = {name: _subtype(name, usage) for name in names}
+    for name, subtype in subtypes.items():
+        # A nested contra account such as Assets:Fixed:Equipment:Accumulated-Depreciation is
+        # accumulated depreciation, not a fixed asset.
+        if (subtype == "fixed_asset" and name not in usage
+                and any(part.lower().startswith("accumulated") for part in name.split(":")[1:])):
+            subtypes[name] = "accumulated_depreciation"
+    return subtypes
 
 
 def classify(account: str, subtype: str) -> tuple[str, str]:
     """Return ``(group, reason)`` for one balance sheet account."""
     if subtype in _CASH_SUBTYPES:
         return "cash", f"{subtype} account"
+    if subtype in {"payable", "other_liability", "accrued_liabilities"} and _FINANCING_NAME.search(
+            account.split(":", 1)[-1]):
+        return "financing", "debt account (the debt name wins over the payable prefix)"
     if subtype == "accumulated_depreciation":
         return "operating", "depreciation add-back"
     if subtype in _OPERATING_SUBTYPES:
