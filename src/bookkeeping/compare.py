@@ -2470,7 +2470,7 @@ def add_parser(subparsers: Any) -> None:
     bt_run.add_argument("--truth", type=Path, dest="truth", default=None,
                         help="Ground-truth CSV with columns source_id,account. Scores categories "
                              "and writes the accuracy report")
-    bt_run.add_argument("--report", type=Path, dest="report", default=None,
+    bt_run.add_argument("--report", type=Path, dest="report_dir", default=None,
                         help="Folder for accuracy-report.json and accuracy-report.md "
                              "(needs --truth; default: the entity migration-confidence folder)")
     bt_run.add_argument("--seed", type=int, dest="seed", default=None,
@@ -2549,7 +2549,7 @@ def run(args: Any) -> int:
 
             truth = getattr(args, "truth", None)
             as_json = getattr(args, "as_json", False)
-            report_dir = getattr(args, "report", None)
+            report_dir = getattr(args, "report_dir", None)
             seed = getattr(args, "seed", None)
             if truth is None and (as_json or report_dir is not None or seed is not None):
                 print("Error: --report, --seed and --json need --truth.", file=sys.stderr)

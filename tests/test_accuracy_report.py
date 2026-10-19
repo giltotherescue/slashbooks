@@ -177,6 +177,16 @@ class AccuracyReportTests(unittest.TestCase):
         self.assertFalse((self.out / "accuracy-report.json").exists())
 
 
+class RemoteContractTests(unittest.TestCase):
+    def test_truth_is_an_input_and_report_folder_an_output(self):
+        from bookkeeping.remote_contract import command_spec
+        spec = command_spec(["backtest", "run", "--entity", "e", "--qb-folder", "q",
+                             "--from", "2026-01-01", "--to", "2026-03-31",
+                             "--truth", "t.csv", "--report", "out"])
+        self.assertIn("truth", spec["input_fields"])
+        self.assertIn("report_dir", spec["output_fields"])
+
+
 class RenderTests(unittest.TestCase):
     def test_rate_none_renders_with_n(self):
         from bookkeeping.accuracy_report import headline
