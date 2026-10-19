@@ -146,6 +146,9 @@ class SelfApprovalTests(ControlTestCase):
         os.environ["SLASHBOOKS_ACTOR"] = "person:two"
         self.assertEqual(confirm(self.entity, "a1", "s", ts=TS)["status"], "confirmed")
         os.environ.pop("SLASHBOOKS_ACTOR")
+        with self.assertRaises(queue_module.InvalidActorError):
+            confirm(self.entity, "a2", "s", ts=TS)
+        os.environ.pop("SLASHBOOKS_FORBID_SELF_APPROVAL")
         self.assertEqual(confirm(self.entity, "a2", "s", ts=TS)["status"], "confirmed")
 
     def test_item_without_creator_is_unaffected(self) -> None:
@@ -256,7 +259,7 @@ class AskFirstAutopostTests(ControlTestCase):
     def test_unreadable_setting_holds_every_nonzero_amount(self) -> None:
         _learn(self.entity)
         check = lambda row: False  # noqa: E731
-        for bad in ("lots", -5, True, None, "NaN"):
+        for bad in ("lots", -5, True, "NaN"):
             _set_ask_first(self.entity, bad)
             self.assertFalse(queue_module.eligible_for_autopost(
                 self.entity, "VENDOR A", {"id": "x", "amount": "0.01"}, treatment_check=check), bad)
@@ -406,7 +409,8 @@ class AskFirstEnforcementTests(ControlTestCase):
 
     def test_trusted_policy_enforces_without_the_flag(self) -> None:
         self.pending("big", amount="900.00")
-        with patch.object(queue_module, "_boundary_ask_first", return_value=Decimal("500.00")):
+        with patch.object(queue_module, "_boundary_ask_first", return_value=Decimal("500.00")), \
+                patch("bookkeeping.preparation_runtime.is_preparation", return_value=True):
             with self.assertRaises(queue_module.AskFirstError):
                 propose(self.entity, "big", "Expenses:Software", "r")
 
@@ -510,6 +514,104 @@ class PreparationBoundaryAskFirstTests(ControlTestCase):
         self.assertNotEqual(results["large"][0], 0)
         self.assertEqual(json.loads(results["large"][1])["error"]["code"], "above_ask_first_amount")
         self.assertEqual(sorted(path.stem for path in self.entity.review_queue_dir.glob("*.json")), ["small"])
+
+
+class ReviewFixTests(ControlTestCase):
+    def test_boundary_enforces_the_lower_of_company_and_policy_limits(self) -> None:
+        self.pending("mid", amount="300.00")
+        self.pending("big", amount="900.00")
+        in_boundary = patch("bookkeeping.preparation_runtime.is_preparation", return_value=True)
+        # Company limit lower than the policy limit.
+        _set_ask_first(self.entity, "200.00")
+        with patch.object(queue_module, "_boundary_ask_first", return_value=Decimal("500.00")), in_boundary:
+            with self.assertRaises(queue_module.AskFirstError):
+                propose(self.entity, "mid", "Expenses:Software", "r")
+        # Policy limit lower than the company limit.
+        _set_ask_first(self.entity, "800.00")
+        with patch.object(queue_module, "_boundary_ask_first", return_value=Decimal("250.00")), in_boundary:
+            with self.assertRaises(queue_module.AskFirstError):
+                propose(self.entity, "mid", "Expenses:Software", "r")
+        # Only the company limit is set; the policy has none.
+        _set_ask_first(self.entity, "200.00")
+        with patch.object(queue_module, "_boundary_ask_first", return_value=None), in_boundary:
+            with self.assertRaises(queue_module.AskFirstError):
+                propose(self.entity, "mid", "Expenses:Software", "r")
+        # Confirm enforces both limits as well.
+        _set_ask_first(self.entity, "1000.00")
+        propose(self.entity, "mid", "Expenses:Software", "r")
+        _set_ask_first(self.entity, "200.00")
+        with patch.object(queue_module, "_boundary_ask_first", return_value=None), in_boundary:
+            with self.assertRaises(queue_module.AskFirstError):
+                confirm(self.entity, "mid", "s", ts=TS)
+        self.assertEqual(self.ledger_count(), 0)
+
+    def test_null_company_limit_means_no_limit(self) -> None:
+        _set_ask_first(self.entity, None)
+        self.assertIsNone(queue_module.ask_first_above(self.entity))
+        _learn(self.entity)
+        self.assertTrue(queue_module.eligible_for_autopost(
+            self.entity, "VENDOR A", {"id": "x", "amount": "999999.00"}, treatment_check=lambda row: False))
+
+    def test_self_approval_control_fails_closed_without_an_actor(self) -> None:
+        self.pending("a1")
+        os.environ["SLASHBOOKS_ACTOR"] = "agent:one"
+        propose(self.entity, "a1", "Expenses:Software", "r")
+        os.environ.pop("SLASHBOOKS_ACTOR")
+        os.environ["SLASHBOOKS_FORBID_SELF_APPROVAL"] = "1"
+        with self.assertRaises(queue_module.InvalidActorError):
+            confirm(self.entity, "a1", "s", ts=TS)
+        self.assertEqual(self.ledger_count(), 0)
+
+    def test_actor_with_surrounding_whitespace_is_invalid(self) -> None:
+        self.pending("a1")
+        for bad in (" agent", "agent ", "  "):
+            os.environ["SLASHBOOKS_ACTOR"] = bad
+            with self.assertRaises(queue_module.InvalidActorError):
+                propose(self.entity, "a1", "Expenses:Software", "r")
+
+    def test_a_new_proposal_replaces_the_creator(self) -> None:
+        self.pending("a1")
+        os.environ["SLASHBOOKS_ACTOR"] = "agent:one"
+        propose(self.entity, "a1", "Expenses:Software", "r")
+        os.environ["SLASHBOOKS_ACTOR"] = "person:two"
+        self.assertEqual(propose(self.entity, "a1", "Expenses:Fees", "r")["created_by"], "person:two")
+        os.environ.pop("SLASHBOOKS_ACTOR")
+        self.assertNotIn("created_by", propose(self.entity, "a1", "Expenses:Meals", "r"))
+
+    def test_env_file_cannot_supply_a_caller_control(self) -> None:
+        env_file = Path(self.tmp.name) / ".env"
+        env_file.write_text("SLASHBOOKS_ACTOR=x\nSLASHBOOKS_FORBID_SELF_APPROVAL=1\n"
+                            "SLASHBOOKS_ENFORCE_ASK_FIRST=1\nOTHER_KEY_FOR_TEST=kept\n", encoding="utf-8")
+        os.environ.pop("OTHER_KEY_FOR_TEST", None)
+        self.addCleanup(os.environ.pop, "OTHER_KEY_FOR_TEST", None)
+        cli.load_dotenv(env_file)
+        for name in ("SLASHBOOKS_ACTOR", "SLASHBOOKS_FORBID_SELF_APPROVAL", "SLASHBOOKS_ENFORCE_ASK_FIRST"):
+            self.assertNotIn(name, os.environ)
+        self.assertEqual(os.environ["OTHER_KEY_FOR_TEST"], "kept")
+
+    def test_huge_amount_in_a_queue_item_does_not_break_work_capture(self) -> None:
+        from bookkeeping import work
+        self.assertIsNone(work._money("1e30"))
+        self.assertIsNone(work._money("-9e999999", absolute=True))
+        self.pending("big", amount="1e30")
+        propose(self.entity, "big", "Expenses:Software", "r")
+        with work.capture(self.entity.path) as receipt:
+            pass
+        self.assertEqual(receipt.events, [])
+
+    def test_accrual_and_multi_line_entries_keep_accounts_without_an_amount(self) -> None:
+        from bookkeeping.work import EntryRow, _entry_amount_row
+        def row(accounts, amounts, **meta):
+            return EntryRow(1, "2026-01-01", "s", "", meta, tuple(accounts), tuple(amounts))
+        bank = _entry_amount_row(row(["Assets:Bank:Checking", "Expenses:Fees"], ["-5.00", "5.00"], **{"source-id": "s"}))
+        self.assertEqual(bank["amount"], "5.00")
+        journal = _entry_amount_row(row(["Assets:Bank:Checking", "Expenses:Fees"], ["-5.00", "5.00"],
+                                        **{"accrual-intent": "j1"}))
+        self.assertNotIn("amount", journal)
+        self.assertEqual(journal["accounts"], ["Assets:Bank:Checking", "Expenses:Fees"])
+        multi = _entry_amount_row(row(["Assets:AR", "Income:A", "Income:B"], ["10.00", "-6.00", "-4.00"]))
+        self.assertNotIn("amount", multi)
+        self.assertEqual(multi["accounts"], ["Assets:AR", "Income:A", "Income:B"])
 
 
 if __name__ == "__main__":

@@ -101,7 +101,7 @@ change. Each row has the subject reference (`type`, `id`, optional `source_id`),
 | Row for | `amount` | `accounts` | Other fields |
 |---|---|---|---|
 | A suggestion (`categorized`, withdrawn in `corrected`) | The absolute amount of the source transaction, or of the transfer pair. | The proposed category; the allocation accounts of a split; both accounts of a transfer pair. | |
-| An entry (`recorded`, `corrected`) | The absolute amount of the funding (first) posting. | Every account the entry posts to. A same-day transfer pair is one entry between its two accounts. | |
+| An entry (`recorded`, `corrected`) | The absolute amount of the funding (first) posting, only for an entry of one bank or card row (two postings, or a reviewed split). An accrual journal or another multi-line entry has no `amount`. | Every account the entry posts to. A same-day transfer pair is one entry between its two accounts. | |
 | A reconciliation (`reconciled`) | | The reconciled account. | `ledger_balance`, `source_balance` and `discrepancy`, signed as recorded. |
 
 Accrual adjustments, `ledger correct` and similar commands write ledger

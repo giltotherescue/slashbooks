@@ -152,9 +152,10 @@ def current_actor() -> Optional[str]:
     value = os.environ.get(ACTOR_ENV)
     if value is None or value == "":
         return None
-    if len(value) > ACTOR_MAX_LEN or _CONTROL_RE.search(value):
+    if len(value) > ACTOR_MAX_LEN or _CONTROL_RE.search(value) or value != value.strip():
         raise InvalidActorError(
-            f"{ACTOR_ENV} must be at most {ACTOR_MAX_LEN} characters and must not contain control characters."
+            f"{ACTOR_ENV} must be at most {ACTOR_MAX_LEN} characters, with no control characters "
+            "and no leading or trailing whitespace."
         )
     return value
 
@@ -203,7 +204,7 @@ def ask_first_above(entity: Entity) -> Optional[Decimal]:
     the command. When both are set, the lower amount applies.
     """
     values: list[Decimal] = []
-    if "ask_first_above" in entity.trust_policy:
+    if entity.trust_policy.get("ask_first_above") is not None:
         values.append(_parse_ask_first(entity.trust_policy.get("ask_first_above")))
     trusted = _boundary_ask_first()
     if trusted is not None:
@@ -274,10 +275,11 @@ def amount_for_item(entity: Entity, item_id: str) -> Optional[Decimal]:
 
 def _enforced_ask_first(entity: Entity) -> Optional[Decimal]:
     """Return the ask-first amount that propose and confirm must enforce, or None."""
-    if os.environ.get(ENFORCE_ASK_FIRST_ENV) == "1":
-        return ask_first_above(entity)
-    trusted = _boundary_ask_first()
-    return None if trusted is None else _parse_ask_first(trusted)
+    from .preparation_runtime import is_preparation
+
+    if os.environ.get(ENFORCE_ASK_FIRST_ENV) == "1" or is_preparation():
+        return ask_first_above(entity)  # The lower of the company and standing-policy limits.
+    return None
 
 
 def _refuse_above_ask_first(entity: Entity, amount: Optional[Decimal]) -> None:
@@ -300,8 +302,11 @@ def _forbid_self_approval(item: dict) -> None:
     if os.environ.get(FORBID_SELF_APPROVAL_ENV) != "1":
         return
     actor = current_actor()
+    if actor is None:
+        # Fail closed: the host asked for this control but did not say who is approving.
+        raise InvalidActorError(f"{ACTOR_ENV} is required when {FORBID_SELF_APPROVAL_ENV}=1.")
     creator = item.get("created_by")
-    if actor and isinstance(creator, str) and creator and actor == creator:
+    if isinstance(creator, str) and creator and actor == creator:
         raise SelfApprovalError(
             "The actor that made this suggestion cannot approve it. A different actor must approve it."
         )

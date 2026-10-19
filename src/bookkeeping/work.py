@@ -379,13 +379,13 @@ def _money(value: Any, *, absolute: bool = False) -> str | None:
     """Return a Decimal string with at least two decimal places, or None when unreadable."""
     try:
         amount = Decimal(str(value).strip())
-    except (InvalidOperation, ValueError):
+        if not amount.is_finite():
+            return None
+        if absolute:
+            amount = abs(amount)
+        cents = amount.quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError, ArithmeticError):
         return None
-    if not amount.is_finite():
-        return None
-    if absolute:
-        amount = abs(amount)
-    cents = amount.quantize(Decimal("0.01"))
     return f"{(cents if cents == amount else amount):f}"
 
 
@@ -408,9 +408,20 @@ def _reconciliation_amount_row(record_id: str, record: Mapping[str, Any]) -> dic
     return row
 
 
+def _is_single_source_entry(entry: EntryRow) -> bool:
+    """True for an entry that records one bank or card row: two postings, or a reviewed split.
+
+    An accrual journal or another multi-line entry has no single amount, so its row
+    keeps the accounts and leaves out ``amount``.
+    """
+    if any(key.startswith("accrual") for key in entry.meta):
+        return False
+    return len(entry.accounts) == 2 or entry.meta.get("review-workflow") == "split"
+
+
 def _entry_amount_row(entry: EntryRow) -> dict[str, Any]:
     row: dict[str, Any] = {**_entry_subject(entry), "accounts": _accounts_in_order(entry.accounts)}
-    if entry.amounts:
+    if entry.amounts and _is_single_source_entry(entry):
         # The size of the movement is the funding (first) posting, without a sign.
         text = _money(entry.amounts[0], absolute=True)
         if text is not None:
