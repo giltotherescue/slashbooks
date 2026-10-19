@@ -33,12 +33,19 @@ prefix).
 Credit cards are working capital, not cash: a card charge is an expense in net
 income and an increase in the card balance, so it appears as an operating line.
 
-Reconciliation
---------------
-beginning cash + net change in cash = ending cash must equal the bank and cash
-accounts on the balance sheet at the end date, to the cent.  When it does not, the
-result carries ``reconciliation.ties = false`` and the amount of the difference,
-and the command exits with code 1.
+Ledger integrity check
+----------------------
+Net income comes from the same postings as the balances, so the check is not an
+outside proof.  It catches an unbalanced ledger and a mistake in the grouping:
+beginning cash + net change in cash must equal the bank and cash accounts at the end
+date, and that total is read again straight from the postings.  Both comparisons use
+cents.  When one differs, ``reconciliation.ties`` is ``false``, the differences are
+shown, and the command exits with code 1.  An asset account named like cash (for
+example ``Assets:Checking``) that is not a bank or cash account gives a warning.
+
+Definition of cash: bank and cash accounts.  Credit card balances are liabilities in
+operating working capital.  (The accrual cash view counts a card charge as paid on
+the charge date, so the two reports differ on purpose.)
 """
 from __future__ import annotations
 
@@ -50,16 +57,19 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
 
-from .cache import open_cache
+from .cache import get_account_balance, open_cache
 from .statements import _SEP, _account_balances_as_of, profit_and_loss
 from .structure import SCHEMA_VERSION
 
 ZERO = Decimal("0.00")
 
+CASH_DEFINITION = "Cash means bank and cash accounts. Credit card balances are liabilities in operating working capital."
+
 _CASH_SUBTYPES = {"bank", "cash"}
 _OPERATING_SUBTYPES = ("receivable", "prepaid", "payable", "accrued_liabilities", "deferred_revenue",
                        "customer_deposits", "credit_card")
 _FINANCING_NAME = re.compile(r"loan|note|mortgage|debt|line[-_ ]?of[-_ ]?credit|\bloc\b", re.IGNORECASE)
+_CASH_LIKE_NAME = re.compile(r"(?<![A-Za-z])(cash|checking|savings|bank|petty)(?![A-Za-z])", re.IGNORECASE)
 _OPENING_NAME = re.compile(r"opening", re.IGNORECASE)
 _RETAINED_NAME = re.compile(r"retained|prior[-_ ]?year|prior[-_ ]?period", re.IGNORECASE)
 
@@ -123,6 +133,7 @@ class CashflowResult:
     reconciliation: dict[str, Any]
     needs_classification: list[dict]
     meta: dict[str, Any] = field(default_factory=dict)
+    warnings: list[dict] = field(default_factory=list)
     kind: str = "cashflow"
 
     @property
@@ -152,6 +163,8 @@ class CashflowResult:
             "totals": {k: str(v) for k, v in self.totals.items()},
             "reconciliation": self.reconciliation,
             "needs_classification": self.needs_classification,
+            "warnings": self.warnings,
+            "cash_definition": CASH_DEFINITION,
             "structure": {"version": SCHEMA_VERSION, "lines": self.lines},
             "meta": self.meta,
         }
@@ -164,26 +177,33 @@ class CashflowResult:
         out = [head, "=" * len(head)]
         if self.meta.get("basis"):
             out.append(f"Accounting basis: {self.meta['basis']}")
+        coverage = self.meta.get("coverage")
+        if coverage:
+            out.append(f"Activity cutover: {coverage['cutover_date']}, opening balances as of {coverage['source_as_of']}")
         out.append("Method: indirect")
+        out.append(CASH_DEFINITION)
         for issue in self.meta.get("unresolved_issues", []):
             message = issue.get("message") or issue.get("code", "Unresolved issue").replace("_", " ")
             out.append(f"  - {message}")
         for line in self.lines:
             if line["type"] == "section":
                 out += ["", line["label"], "-" * 40]
-            elif line["type"] == "total":
-                out.append(f"{line['label']:<42} {Decimal(line['amount']):>14,.2f}")
             elif "amount" in line:
-                pad = "  " * line.get("indent", 1) if line["type"] in {"account", "computed"} else "  "
-                out.append(f"{pad}{line['label']:<40} {Decimal(line['amount']):>14,.2f}")
+                pad = "  " * line.get("indent", 0)
+                if line["type"] in {"account", "computed"} and line.get("section"):
+                    pad = "  " * max(line.get("indent", 1), 1)
+                out.append(f"{pad}{line['label']:<{42 - len(pad)}} {Decimal(line['amount']):>14,.2f}")
         rec = self.reconciliation
-        out += ["", "Reconciliation", "-" * 40,
+        out += ["", "Ledger integrity check", "-" * 40,
                 f"  Beginning cash {rec['beginning_cash']} + net change {rec['net_change_in_cash']} = {rec['ending_cash_per_statement']}",
-                f"  Cash on the balance sheet at {self.to_date}: {rec['balance_sheet_cash']}"]
+                f"  Bank and cash accounts at {self.to_date}: {rec['cash_accounts_total']}"]
         if rec["ties"]:
-            out.append("  The statement ties to the balance sheet cash accounts.")
+            out.append("  The check passed: the statement agrees with the bank and cash account balances.")
         else:
-            out.append(f"  DIFFERENCE: {rec['difference']}. The statement does not tie to the balance sheet cash accounts.")
+            out.append(f"  DIFFERENCE: {rec['difference']} (statement) and {rec['cash_accounts_difference']} (accounts). "
+                       "The ledger does not pass the integrity check.")
+        for warning in self.warnings:
+            out.append(f"  WARNING: {warning['message']}")
         if self.needs_classification:
             out += ["", "Needs classification: these accounts changed and the engine does not know their group.",
                     "The amounts are in the net change in cash. Classify each account to move it."]
@@ -200,6 +220,7 @@ def build_cash_flow(
     end: dict[str, Decimal],
     subtypes: dict[str, str],
     meta: Optional[dict[str, Any]] = None,
+    independent_ending_cash: Optional[Decimal] = None,
 ) -> CashflowResult:
     """Pure builder: balances in, statement out.  No I/O."""
     groups: dict[str, list[tuple[str, Decimal, str, str]]] = {k: [] for k in GROUP_LABELS}
@@ -208,9 +229,11 @@ def build_cash_flow(
     for account in sorted(set(begin) | set(end)):
         if not _is_balance_sheet(account):
             if account.split(":")[0] not in {"Income", "Expenses"}:
-                groups["needs_classification"].append(
-                    (account, -(end.get(account, ZERO) - begin.get(account, ZERO)), "unknown",
-                     "account type is not an asset, liability, equity, income or expense"))
+                effect = -(end.get(account, ZERO) - begin.get(account, ZERO))
+                if effect:
+                    groups["needs_classification"].append(
+                        (account, effect, "unknown",
+                         "account type is not an asset, liability, equity, income or expense"))
             continue
         before, after = begin.get(account, ZERO), end.get(account, ZERO)
         group, reason = classify(account, subtypes.get(account, "other_asset"))
@@ -255,7 +278,19 @@ def build_cash_flow(
 
     net_change = sum(subtotals.values(), ZERO)
     ending_per_statement = beginning_cash + net_change
-    difference = ending_per_statement - ending_cash
+    # Quantize before comparing, so a sub-cent residue never reads as "Difference: 0.00".
+    cents = Decimal("0.01")
+    cross_check = ending_cash if independent_ending_cash is None else independent_ending_cash
+    difference = ending_per_statement.quantize(cents) - ending_cash.quantize(cents)
+    cross_difference = ending_cash.quantize(cents) - cross_check.quantize(cents)
+    warnings: list[dict] = []
+    for account in sorted(set(begin) | set(end)):
+        if (account.split(":")[0] == "Assets" and _CASH_LIKE_NAME.search(account.split(":", 1)[-1])
+                and classify(account, subtypes.get(account, "other_asset"))[0] == "needs_classification"
+                and (begin.get(account, ZERO) or end.get(account, ZERO))):
+            warnings.append({"code": "possible_cash_account", "account": account,
+                             "message": f"{rendered(account)} looks like a cash account but is not a bank or cash account, "
+                                        "so it is not counted as cash."})
     lines.append({"type": "total", "key": "net_change_in_cash", "label": "Net change in cash",
                   "amount": _money(net_change), "indent": 0})
     lines.append({"type": "computed", "key": "beginning_cash", "label": "Cash at beginning of period",
@@ -278,11 +313,14 @@ def build_cash_flow(
         "net_change_in_cash": _money(net_change),
         "ending_cash_per_statement": _money(ending_per_statement),
         "balance_sheet_cash": _money(ending_cash),
+        "check": "ledger_integrity",
         "difference": _money(difference),
-        "ties": difference == 0,
+        "cash_accounts_total": _money(cross_check),
+        "cash_accounts_difference": _money(cross_difference),
+        "ties": difference == 0 and cross_difference == 0,
         "cash_accounts": cash_accounts,
     }
-    return CashflowResult(from_date, to_date, lines, totals, reconciliation, needs, dict(meta or {}))
+    return CashflowResult(from_date, to_date, lines, totals, reconciliation, needs, dict(meta or {}), warnings)
 
 
 _OPENING_SOURCES = {"quickbooks-opening", "accrual-opening"}
@@ -356,7 +394,10 @@ def cash_flow(entity_path: Path | str, from_date: date, to_date: date) -> Cashfl
             begin[account] = begin.get(account, ZERO) + amount
         end = _account_balances_as_of(conn, to_date)
         subtypes = classify_accounts(conn, set(begin) | set(end))
+        # A second, independent read: sum the bank and cash accounts straight from the postings.
+        independent = sum((get_account_balance(conn, a, to_date) for a, t in subtypes.items() if t in _CASH_SUBTYPES), ZERO)
     finally:
         conn.close()
     meta = dict(pnl.meta)
-    return build_cash_flow(from_date, to_date, pnl.totals["net_income"], begin, end, subtypes, meta)
+    return build_cash_flow(from_date, to_date, pnl.totals["net_income"], begin, end, subtypes, meta,
+                           independent_ending_cash=independent)

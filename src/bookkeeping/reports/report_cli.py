@@ -80,7 +80,7 @@ def _run_compare(args: Any, entity: Path, output: Optional[Path], fmt: str, rc: 
         return 1
     _emit(result.to_json() if fmt == "json" else result.to_text(), output)
     if not result.ties:
-        print(f"Error: the cash flow statement does not tie to the balance sheet cash accounts. "
+        print(f"Error: the cash flow statement failed the ledger integrity check. "
               f"Difference: {result.tie_difference}.", file=sys.stderr)
         return 1
     return 0
@@ -107,7 +107,7 @@ def _run_cashflow(args: Any, entity: Path, output: Optional[Path], fmt: str) -> 
         return 1
     _emit(result.to_json() if fmt == "json" else result.to_text(), output)
     if not result.reconciliation["ties"]:
-        print(f"Error: the cash flow statement does not tie to the balance sheet cash accounts. "
+        print(f"Error: the cash flow statement failed the ledger integrity check. "
               f"Difference: {result.reconciliation['difference']}.", file=sys.stderr)
         return 1
     return 0

@@ -61,9 +61,17 @@ The engine does not guess. A "Needs classification" group is always visible and 
 cash, so the statement still ties. A credit card is working capital, not cash: a card charge is an expense in net
 income and a larger card balance in the operating group. Opening balances are a starting point, never a cash flow (see below).
 
-Reconciliation: beginning cash plus the net change must equal the bank and cash accounts on the balance sheet at the
-end date, to the cent. If it does not, `reconciliation.ties` is `false`, `difference` shows the amount, and the
-command exits with code 1.
+Definition of cash: cash means bank and cash accounts. Credit card balances are liabilities in operating working
+capital. The accrual cash view counts a card charge as paid on the charge date, so the two reports differ on purpose.
+The JSON has this text in `cash_definition`, and the text report prints it.
+
+Ledger integrity check (`reconciliation`): beginning cash plus the net change must equal the bank and cash accounts at
+the end date, and the engine reads that total again straight from the postings. Both comparisons use cents. This is
+not an outside proof: net income comes from the same postings, so the check catches an unbalanced ledger and a mistake
+in grouping, not a missing transaction. If it fails, `reconciliation.ties` is `false`, `difference` and
+`cash_accounts_difference` show the amounts, and the command exits with code 1. An asset account that is named like cash
+(for example `Assets:Checking`) but is not a bank or cash account is listed in `warnings` with code
+`possible_cash_account`.
 
 ```json
 {
@@ -77,8 +85,11 @@ command exits with code 1.
              "net_cash_financing": "12000.00", "needs_classification": "-300.00",
              "net_change_in_cash": "15000.00", "beginning_cash": "0.00", "ending_cash": "15000.00"},
   "reconciliation": {"beginning_cash": "0.00", "net_change_in_cash": "15000.00", "ending_cash_per_statement": "15000.00",
-                     "balance_sheet_cash": "15000.00", "difference": "0.00", "ties": true,
+                     "balance_sheet_cash": "15000.00", "check": "ledger_integrity", "difference": "0.00",
+                     "cash_accounts_total": "15000.00", "cash_accounts_difference": "0.00", "ties": true,
                      "cash_accounts": [{"account": "Assets:Bank:Checking", "beginning": "0.00", "ending": "15000.00"}]},
+  "warnings": [],
+  "cash_definition": "Cash means bank and cash accounts. Credit card balances are liabilities in operating working capital.",
   "needs_classification": [{"account": "Assets:Processors:Stripe", "label": "Change in Assets › Processors › Stripe",
                             "subtype": "other_asset", "cash_effect": "-300.00", "reason": "other asset: operating, investing or a clearing balance is not known"}],
   "structure": {"version": 2, "lines": ["..."]},

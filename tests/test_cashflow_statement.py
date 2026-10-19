@@ -142,7 +142,8 @@ class CashBookTests(unittest.TestCase):
 
     def test_text_has_reconciliation_and_classification_notice(self):
         text = cash_flow(self.entity, date(2026, 1, 1), date(2026, 1, 31)).to_text()
-        self.assertIn("The statement ties to the balance sheet cash accounts.", text)
+        self.assertIn("The check passed", text)
+        self.assertIn("Cash means bank and cash accounts.", text)
         self.assertIn("Needs classification", text)
         self.assertIn("Processors", text)
         for token in ["beancount", "SELECT", "sqlite", "Assets:Bank:"]:
@@ -242,6 +243,7 @@ class ReconciliationTests(unittest.TestCase):
         self.assertFalse(r.reconciliation["ties"])
         self.assertEqual(r.reconciliation["difference"], "-100.00")
         self.assertIn("DIFFERENCE: -100.00", r.to_text())
+        self.assertEqual(r.reconciliation["check"], "ledger_integrity")
 
     def test_command_fails_with_the_difference(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,6 +259,40 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("Difference: -100.00", err.getvalue())
         self.assertFalse(json.loads(out.getvalue())["reconciliation"]["ties"])
+
+
+class IntegrityCheckTests(unittest.TestCase):
+    def test_sub_cent_residue_does_not_fail(self):
+        r = build_cash_flow(date(2026, 1, 1), date(2026, 1, 31), D("0.00"),
+                            {"Assets:Bank:Checking": D("0.00")}, {"Assets:Bank:Checking": D("0.001")},
+                            {"Assets:Bank:Checking": "bank"})
+        self.assertTrue(r.reconciliation["ties"])
+        self.assertEqual(r.reconciliation["difference"], "0.00")
+
+    def test_independent_cash_total_must_agree(self):
+        r = build_cash_flow(date(2026, 1, 1), date(2026, 1, 31), D("100.00"),
+                            {"Assets:Bank:Checking": D("0.00"), "Income:X": D("0.00")},
+                            {"Assets:Bank:Checking": D("100.00"), "Income:X": D("-100.00")},
+                            {"Assets:Bank:Checking": "bank"}, independent_ending_cash=D("90.00"))
+        self.assertFalse(r.reconciliation["ties"])
+        self.assertEqual(r.reconciliation["cash_accounts_difference"], "10.00")
+
+    def test_cash_like_account_in_needs_classification_warns(self):
+        r = build_cash_flow(date(2026, 1, 1), date(2026, 1, 31), D("100.00"),
+                            {"Assets:Checking": D("0.00"), "Income:X": D("0.00")},
+                            {"Assets:Checking": D("100.00"), "Income:X": D("-100.00")},
+                            {"Assets:Checking": "other_asset"})
+        self.assertEqual([w["code"] for w in r.warnings], ["possible_cash_account"])
+        self.assertEqual(r.warnings[0]["account"], "Assets:Checking")
+        self.assertIn("WARNING", r.to_text())
+        self.assertEqual(json.loads(r.to_json())["warnings"][0]["account"], "Assets:Checking")
+
+    def test_ordinary_book_has_no_warnings_and_states_cash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = cash_flow(cash_book_entity(Path(tmp)), date(2026, 1, 1), date(2026, 1, 31))
+        self.assertEqual(r.warnings, [])
+        self.assertEqual(r.reconciliation["cash_accounts_total"], "15000.00")
+        self.assertIn("Credit card balances are liabilities", json.loads(r.to_json())["cash_definition"])
 
 
 class CliTests(unittest.TestCase):
