@@ -211,18 +211,19 @@ def _atomic_ledger_write_unlocked(
     Returns the store seal event hash.
     """
     store = _ensure_ledger_store(entity)
-    from ..entity import resolve_basis, require_accrual
+    from ..accrual.scope import DISCIPLINE_ALL, discipline, require_write_scope
+    from ..entity import resolve_basis
     resolve_basis(entity.entity_config, authoritative_basis=store.get_meta("basis"))
     current_entity = load_entity(entity.path) if (entity.path / "entity.json").exists() else entity
     resolve_basis(entity.entity_config, authoritative_basis=resolve_basis(current_entity.entity_config))
     source_transactions = source_transactions or []
     seal_hash = ""
     if supporting_mutations:
-        require_accrual(entity)
-        require_accrual(current_entity)
-    if resolve_basis(entity.entity_config) == "accrual" and new_entries:
+        require_write_scope(entity)
+        require_write_scope(current_entity)
+    if discipline(entity.entity_config) == DISCIPLINE_ALL and new_entries:
         from ..accrual.journals import _check_dates
-        require_accrual(current_entity)
+        require_write_scope(current_entity)
         _check_dates(current_entity, store, [entry.date.isoformat() for entry in new_entries], "ordinary_write")
     with store.transaction(immediate=bool(supporting_mutations) or expected_digest is not None) as conn:
         if supporting_mutations or expected_digest is not None:
@@ -435,8 +436,8 @@ def _import_transactions_unlocked(
     ImportResult
     """
     _validate_normalized_transactions(normalized_txns)
-    from ..entity import resolve_basis
-    accrual = resolve_basis(entity.entity_config) == "accrual"
+    from ..accrual.treatment import treatment_checker
+    needs_treatment = treatment_checker(entity)
     # Trusted hosted runners force this at the shared boundary so every
     # connector, including legacy paths, keeps approval separate from intake.
     if intake_only or os.environ.get("SLASHBOOKS_INTAKE_ONLY") == "1":
@@ -547,7 +548,7 @@ def _import_transactions_unlocked(
             result.superseded += 1
 
         # Categorize.
-        if accrual:
+        if needs_treatment(txn):
             # A learned category describes a counterparty, not whether this
             # payment settles an existing obligation or funds future service.
             held = dict(txn)
