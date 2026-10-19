@@ -12,6 +12,11 @@ confidence_package(entity, qb_folder, from_date, to_date) -> dict
     spot-audit sample, and plain-English Markdown summary.
     Writes to <entity>/reports/migration-confidence/.
 
+compare_categories(entity, truth_csv, from_date=None, to_date=None) -> dict
+    Score categories against a ground-truth file (columns source_id,account):
+    per-transaction agreement, a confusion table, and the auto-posted versus
+    pending split. See accuracy_report.py for the published report.
+
 load_differences(entity) -> list[dict]
     Read the persisted differences.json (returns [] when absent).
 
@@ -26,6 +31,7 @@ run(args)
 Subcommands:
   backtest run  --entity PATH --qb-folder PATH --from DATE --to DATE
                 [--skip-fetch] [--banksync-json FILE ...]  [--partial]
+                [--truth CSV [--report DIR] [--seed N] [--json]]
   compare period --entity PATH --qb-folder PATH --from DATE --to DATE
   compare categorize-diff --key K --category C --note N --entity PATH
   compare accept-diff --key K --note N --entity PATH
@@ -2153,6 +2159,10 @@ def backtest_run(
     skip_fetch: bool = False,
     banksync_json_files: Optional[list[Path]] = None,
     partial: bool = False,
+    truth_csv: Optional[Path] = None,
+    report_dir: Optional[Path] = None,
+    seed: Optional[int] = None,
+    json_out: Optional[list] = None,
     print_fn=print,
 ) -> int:
     """Orchestrate the full backtest chain.
@@ -2163,6 +2173,12 @@ def backtest_run(
     3. Generate statements
     4. compare_period
     5. confidence_package
+    6. accuracy report (only with *truth_csv*)
+
+    With *truth_csv*, step 6 writes ``accuracy-report.json`` and
+    ``accuracy-report.md`` into *report_dir* (default: the migration-confidence
+    folder of the entity). *seed* is recorded in the report. When *json_out* is
+    a list, the report dict is appended to it.
 
     Returns 0 on success, non-zero when there are blocking items (unless --partial).
     """
@@ -2295,6 +2311,26 @@ def backtest_run(
         blocking = []
         fatal_issues = []
         package = {}
+
+    # --- Step 6: Accuracy report ---
+    if truth_csv is not None:
+        print_fn("")
+        print_fn("Step 6: Writing accuracy report...")
+        try:
+            from .accuracy_report import build_accuracy_report, write_accuracy_report
+            report = build_accuracy_report(
+                entity, truth_csv, comparison, from_date, to_date, seed=seed,
+            )
+            out_dir = Path(report_dir) if report_dir else _confidence_dir(entity)
+            json_path, md_path = write_accuracy_report(report, out_dir)
+            print_fn(f"  {report['headline']}")
+            print_fn(f"  Accuracy report written to: {json_path}")
+            print_fn(f"  Readable copy:              {md_path}")
+            if json_out is not None:
+                json_out.append(report)
+        except (ValueError, OSError) as exc:
+            print_fn(f"ERROR: Accuracy report failed: {exc}")
+            return 1
 
     # --- Summary ---
     print_fn("")
@@ -2431,6 +2467,17 @@ def add_parser(subparsers: Any) -> None:
                         help="Pre-saved BankSync JSON files (collect_bank_data output shape)")
     bt_run.add_argument("--partial", action="store_true",
                         help="Continue and produce what it can even if blocking items exist")
+    bt_run.add_argument("--truth", type=Path, dest="truth", default=None,
+                        help="Ground-truth CSV with columns source_id,account. Scores categories "
+                             "and writes the accuracy report")
+    bt_run.add_argument("--report", type=Path, dest="report", default=None,
+                        help="Folder for accuracy-report.json and accuracy-report.md "
+                             "(needs --truth; default: the entity migration-confidence folder)")
+    bt_run.add_argument("--seed", type=int, dest="seed", default=None,
+                        help="Seed of the synthetic data, recorded in the accuracy report")
+    bt_run.add_argument("--json", action="store_true", dest="as_json",
+                        help="Print the accuracy report as JSON on stdout "
+                             "(needs --truth; progress goes to stderr)")
 
     # ---- compare ------------------------------------------------------------
     cmp_parser = subparsers.add_parser("compare", help="QuickBooks comparison tools")
@@ -2499,6 +2546,37 @@ def run(args: Any) -> int:
                 return 1
 
             banksync_files = [Path(f) for f in (args.banksync_json or [])]
+
+            truth = getattr(args, "truth", None)
+            as_json = getattr(args, "as_json", False)
+            report_dir = getattr(args, "report", None)
+            seed = getattr(args, "seed", None)
+            if truth is None and (as_json or report_dir is not None or seed is not None):
+                print("Error: --report, --seed and --json need --truth.", file=sys.stderr)
+                return 1
+            if truth is not None and not Path(truth).is_file():
+                print(f"Error: truth file not found: {truth}", file=sys.stderr)
+                return 1
+
+            if truth is not None:
+                collected: list[dict] = []
+                rc = backtest_run(
+                    entity_path=entity_path,
+                    qb_folder=qb_folder,
+                    from_date=from_date,
+                    to_date=to_date,
+                    skip_fetch=getattr(args, "skip_fetch", False),
+                    banksync_json_files=banksync_files or None,
+                    partial=getattr(args, "partial", False),
+                    truth_csv=Path(truth).resolve(),
+                    report_dir=Path(report_dir).resolve() if report_dir else None,
+                    seed=seed,
+                    json_out=collected,
+                    print_fn=(lambda msg="": print(msg, file=sys.stderr)) if as_json else print,
+                )
+                if as_json and collected:
+                    print(json.dumps(collected[0], indent=2, sort_keys=True))
+                return rc
 
             return backtest_run(
                 entity_path=entity_path,
