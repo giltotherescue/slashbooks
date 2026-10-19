@@ -261,6 +261,7 @@ class ComparisonReport:
     pending_categorization_count: int = 0  # Bug 5: number of items still pending categorization
     matched_rows: list[dict] = field(default_factory=list)  # rows compared with no difference
     tb_totals: Optional[dict] = None  # parsed reference trial-balance totals
+    view: Optional[str] = None  # the view compared, set only when it is not the company's default view
 
     def total_material(self) -> int:
         return len(self.material_diffs)
@@ -289,6 +290,7 @@ class ComparisonReport:
             "errors": self.errors,
             "summary": _comparison_summary(self),
             "matched": list(self.matched_rows),
+            **({"view": self.view} if self.view else {}),
         }
 
 
@@ -564,6 +566,7 @@ def _compare_pnl(
     readiness: Optional[ReadinessReport] = None,
     pending_count: int = 0,
     matched: Optional[list] = None,
+    view: Optional[str] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare P&L category totals.
 
@@ -574,8 +577,10 @@ def _compare_pnl(
     """
     # Our P&L
     try:
-        our_pnl = stmt_pnl(entity.path, from_date, to_date)
+        our_pnl = stmt_pnl(entity.path, from_date, to_date, basis=view)
     except Exception:
+        if view:
+            raise  # a view that was asked for is never replaced by an empty comparison
         return [], []
 
     # QB P&L — use inventory slot to get the period-correct file (Bug 1 fix).
@@ -683,6 +688,7 @@ def _compare_bs(
     pct_t: Decimal,
     readiness: Optional[ReadinessReport] = None,
     matched: Optional[list] = None,
+    view: Optional[str] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare balance sheet account balances as of period end.
 
@@ -691,8 +697,10 @@ def _compare_bs(
     period-end comparison (Bug 2 fix).
     """
     try:
-        our_bs = stmt_bs(entity.path, to_date)
+        our_bs = stmt_bs(entity.path, to_date, view=view)
     except Exception:
+        if view:
+            raise
         return [], []
 
     # Use the balance_sheet_comparison slot (period-end BS) when available via
@@ -777,6 +785,7 @@ def _compare_tb(
     readiness: Optional[ReadinessReport] = None,
     matched: Optional[list] = None,
     totals: Optional[dict] = None,
+    view: Optional[str] = None,
 ) -> tuple[list[DiffRecord], list[DiffRecord]]:
     """Compare trial balance totals (debit/credit sums)."""
     # Only compare if QB has a cash-basis TB
@@ -797,7 +806,7 @@ def _compare_tb(
         raise ValueError(f"Could not parse QuickBooks Trial Balance export {tb_path}: {exc}") from exc
 
     from .entity import resolve_basis
-    basis = resolve_basis(entity.entity_config)
+    basis = view or resolve_basis(entity.entity_config)
     if qb_tb.basis != basis:
         if basis == "accrual":
             raise ValueError("Trial balance basis does not match accrual company policy.")
@@ -805,9 +814,9 @@ def _compare_tb(
         return [], []
 
     try:
-        our_tb = stmt_tb(entity.path, to_date)
+        our_tb = stmt_tb(entity.path, to_date, view=view)
     except Exception:
-        if basis == "accrual":
+        if basis == "accrual" or view:
             raise
         return [], []
 
@@ -1340,8 +1349,13 @@ def compare_period(
     qb_folder: Path,
     from_date: date,
     to_date: date,
+    view: Optional[str] = None,
 ) -> ComparisonReport:
     """Multi-grain generated-vs-reference comparison.
+
+    ``view`` is None (the company's default view) or the view to compare. The reference reports must be on the same
+    basis as the view. The cash view has no balance sheet or trial balance, so those grains are not compared on it.
+    A comparison on a view other than the default is not saved with the dispositions of the default comparison.
 
     Compares:
     (a) P&L category totals
@@ -1352,12 +1366,24 @@ def compare_period(
     """
     report = ComparisonReport(from_date=from_date, to_date=to_date)
 
+    from .entity import resolve_basis
+    default_view = resolve_basis(entity.entity_config)
+    if view not in (None, "cash", "accrual"):
+        raise ValueError("view must be cash or accrual.")
+    if view == default_view:
+        view = None
+    if view == "accrual":
+        from .accrual.scope import capability
+        if capability(entity) != 1:
+            from .reports.statements import NO_ACCRUAL_VIEW
+            raise ValueError(NO_ACCRUAL_VIEW)
+    report.view = view
+
     # Readiness check — inventory assigns files to slots by period semantics,
     # so every subsequent grain can use slot.file to get the period-correct CSV
     # rather than relying on alphabetical sort order (Bug 1 fix).
-    from .entity import resolve_basis
     readiness = inventory(qb_folder, from_date=from_date, to_date=to_date,
-                          expected_basis=resolve_basis(entity.entity_config))
+                          expected_basis=view or default_view)
     report.readiness = readiness
 
     abs_t, pct_t = _materiality_thresholds(entity)
@@ -1398,18 +1424,21 @@ def compare_period(
     try:
         pm, pi = _compare_pnl(
             entity, qb_folder, from_date, to_date, qb_type_map, abs_t, pct_t,
-            readiness=readiness, pending_count=pending_count, matched=report.matched_rows,
+            readiness=readiness, pending_count=pending_count, matched=report.matched_rows, view=view,
         )
         report.material_diffs.extend(pm)
         report.immaterial_diffs.extend(pi)
     except Exception as e:
         report.errors.append(f"P&L comparison error: {e}")
 
+    cash_view_only_pnl = view == "cash"
     # (b) Balance sheet
     try:
+        if cash_view_only_pnl:
+            raise ValueError("The cash view has no balance sheet, so it is not compared. Compare the accrual view for balances.")
         bm, bi = _compare_bs(
             entity, qb_folder, to_date, qb_type_map, abs_t, pct_t,
-            readiness=readiness, matched=report.matched_rows,
+            readiness=readiness, matched=report.matched_rows, view=view,
         )
         report.material_diffs.extend(bm)
         report.immaterial_diffs.extend(bi)
@@ -1418,9 +1447,11 @@ def compare_period(
 
     # (c) Trial balance
     try:
+        if cash_view_only_pnl:
+            raise ValueError("The cash view has no trial balance, so it is not compared. Compare the accrual view for balances.")
         tb_totals: dict = {}
         tm, ti = _compare_tb(entity, qb_folder, to_date, abs_t, pct_t, readiness=readiness,
-                             matched=report.matched_rows, totals=tb_totals)
+                             matched=report.matched_rows, totals=tb_totals, view=view)
         report.tb_totals = tb_totals or None
         report.material_diffs.extend(tm)
         report.immaterial_diffs.extend(ti)
@@ -1467,8 +1498,11 @@ def compare_period(
     # Annotate the report with pending count so callers can surface it.
     report.pending_categorization_count = pending_count
 
-    # Persist differences (merge with existing to preserve dispositions)
+    # Persist differences (merge with existing to preserve dispositions). A comparison on a view other than the
+    # default is a separate question, so it neither reads nor overwrites the saved dispositions.
     try:
+        if view:
+            return report
         existing = load_differences(entity)
         all_fresh = report.material_diffs + report.immaterial_diffs
         merged = _merge_differences(existing, all_fresh, abs_t, pct_t)
@@ -2494,6 +2528,9 @@ def add_parser(subparsers: Any) -> None:
     period_p.add_argument("--to", required=True, dest="to_date")
     period_p.add_argument("--json", action="store_true", dest="as_json",
                           help="Output as JSON")
+    period_p.add_argument("--basis", choices=["cash", "accrual"], default=None, dest="view",
+                          help="View to compare. Default: the company's default view. The QuickBooks reports must be on the same basis. "
+                               "The cash view compares the profit and loss only.")
 
     # compare categorize-diff
     cat_p = cmp_sub.add_parser(
@@ -2604,13 +2641,17 @@ def run(args: Any) -> int:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
 
-            report = compare_period(entity, qb_folder, from_date, to_date)
+            try:
+                report = compare_period(entity, qb_folder, from_date, to_date, view=getattr(args, "view", None))
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
 
             if getattr(args, "as_json", False):
                 print(json.dumps(report.to_dict(), indent=2))
             else:
                 d = report.to_dict()
-                print(f"Comparison: {from_date} through {to_date}")
+                print(f"Comparison: {from_date} through {to_date}" + (f" ({report.view} view)" if report.view else ""))
                 print(f"  Material differences: {d['material_diff_count']}")
                 print(f"  Matched transactions: {d['matched_count']}")
                 print(f"  Unmatched (ours / QB): {len(d['unmatched_ours'])} / {len(d['unmatched_qb'])}")
