@@ -480,6 +480,8 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
     """
     as_of = cutover if tracking else cutover - timedelta(days=1)
     coverage_id = TRACKING_COVERAGE_ID if tracking else "opening"
+    if tracking:
+        narration = f"Opening items at accrual tracking start ({cutover.isoformat()})"
     mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
     coverage = {"id": coverage_id, "basis": "accrual", "currency": "USD", "cutover_date": cutover.isoformat(),
                 "source_as_of": as_of.isoformat(), "fiscal_start": fiscal_start.isoformat(),

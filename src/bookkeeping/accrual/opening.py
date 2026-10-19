@@ -244,8 +244,7 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
         return _build_plan(
             entity, store, operation="accrual-opening",
             import_source="accrual-tracking-opening" if start else "accrual-opening",
-            narration=(f"Opening items at accrual tracking start ({start})" if start
-                       else f"Opening balances ({(cutover - timedelta(days=1)).isoformat()})"),
+            narration=f"Opening balances ({(cutover - timedelta(days=1)).isoformat()})",
             financial=financial, mapping=mapping, chart=chart,
             supporting=supporting, cutover=cutover, fiscal_start=cutover, closed_position=True,
             source_id=request["operation_id"], coverage_extra={"source_hashes": {}, "mapping_hash": _hash(mapping)},
