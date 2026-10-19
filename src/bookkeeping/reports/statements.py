@@ -891,8 +891,9 @@ def _ask_core(
 
     conn = open_cache(entity_path)
     try:
-        from ..accrual.reports import CoverageError, basis, financial_metadata
-        if basis(conn) == "accrual" and intent != "unknown":
+        from ..accrual.reports import CoverageError, financial_metadata
+        from ..accrual.scope import accrual_active
+        if accrual_active(conn) and intent != "unknown":
             if is_net and not is_draws and not is_vendor:
                 intent = "net_income"
             # Use the same coverage checks and recognition totals as statements.

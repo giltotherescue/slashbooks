@@ -435,7 +435,8 @@ def compute(conn: Any, from_date: date, to_date: date) -> dict[str, Any]:
 
 def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
     """Cash-basis profit and loss derived from accrual books."""
-    from ..accrual.reports import CoverageError, basis, financial_metadata, opening_coverage
+    from ..accrual.reports import CoverageError, financial_metadata, opening_coverage
+    from ..accrual.scope import accrual_active
     from .cache import open_cache
     from .statements import StatementResult, _render_account
     if from_date > to_date:
@@ -443,7 +444,7 @@ def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        if basis(conn) != "accrual":
+        if not accrual_active(conn):
             raise ValueError("Cash books keep no data for an accrual view: there are no invoices, bills, prepaid or deferred records. "
                              "Run books report pnl without --basis, or with --basis cash.")
         opening = opening_coverage(conn)
