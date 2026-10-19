@@ -10,8 +10,10 @@ compares the two states. The request text, the reasoning text, and the agent
 narrative never change a count. If a command changes nothing, it gives an
 empty list.
 
-Schema version 1 contains counts only. A work event never contains a money
-amount.
+The counts, the breakdown, the accounts and the subjects of a work event never
+contain money. An optional `amounts` field lists the amounts and accounts that
+the engine recorded (see "Amounts" below), so a host can write "matched a
+transfer of 500.00 between A and B" without any math.
 
 - Schema: [`docs/work-event.schema.json`](work-event.schema.json) (JSON Schema
   2020-12).
@@ -73,7 +75,9 @@ events = receipt.events
 | `counts` | engine | Counts for the kind. Each count is a non-negative integer. |
 | `breakdown` | engine | At most 5 `{label, count}` rows, by count and then label. Labels are engine account names or treatment names such as `Split transaction`. |
 | `subjects` | engine | Stable references to the rows behind the counts. The engine lists every subject. |
-| `fingerprint` | engine | SHA-256 of the canonical JSON of the engine fields. |
+| `amounts` | engine | Optional. At most 200 rows with the amount and accounts that the engine recorded for each suggestion, entry or reconciliation behind the event. Not part of the fingerprint. |
+| `amounts_truncated` | engine | `true` only when more than 200 rows exist. |
+| `fingerprint` | engine | SHA-256 of the canonical JSON of the engine fields, without `amounts` and `amounts_truncated`. |
 | `derived` | engine or host | `true` only for events rebuilt from the current state. |
 | `actor`, `via`, `run`, `command_id`, `occurred_at`, `visibility`, `subjects_key` | host | Who did the work, through which surface, in which run, and when it was committed. The engine never sets these fields. |
 
@@ -86,6 +90,24 @@ Subject references:
 | `suggestion` | The review queue item ID. |
 | `reconciliation` | The reconciliation record ID (`ACCOUNT@YYYY-MM-DD`). |
 | `evidence`, `question`, `publication`, `email` | Reserved for hosts and later engine commands. |
+
+## Amounts
+
+`amounts` is an additive field. It is on the `categorized`, `recorded`,
+`corrected` and `reconciled` events. A caller that does not read it sees no
+change. Each row has the subject reference (`type`, `id`, optional `source_id`),
+`accounts` in posting order, and Decimal strings (never numbers):
+
+| Row for | `amount` | `accounts` | Other fields |
+|---|---|---|---|
+| A suggestion (`categorized`, withdrawn in `corrected`) | The absolute amount of the source transaction, or of the transfer pair. | The proposed category; the allocation accounts of a split; both accounts of a transfer pair. | |
+| An entry (`recorded`, `corrected`) | The absolute amount of the funding (first) posting. | Every account the entry posts to. A same-day transfer pair is one entry between its two accounts. | |
+| A reconciliation (`reconciled`) | | The reconciled account. | `ledger_balance`, `source_balance` and `discrepancy`, signed as recorded. |
+
+Accrual adjustments, `ledger correct` and similar commands write ledger
+entries, so their amounts appear on `recorded` or `corrected` rows. The text
+output of every command does not change. Derived events (`books work`) carry no `amounts`, so its output does not change either. `summarize` ignores `amounts`, so a
+summary line never contains money.
 
 ## Kinds
 
@@ -149,7 +171,8 @@ later. For each committed command, the host must:
    set `subjects_key`.
 
 To aggregate events, add counts and merge breakdowns and accounts. Never add
-money. `bookkeeping.work.summarize(events)` is a reference implementation.
+the amounts of different events: a suggestion and the entry that records it
+show the same money. `bookkeeping.work.summarize(events)` is a reference implementation.
 
 ## Add a new state source
 

@@ -259,14 +259,53 @@ class ScenarioTests(unittest.TestCase):
         self.assertEqual(events[0]["counts"], {"duplicates": 1})
         self.assertEqual(events[0]["subjects"], [{"type": "source", "id": "feed-legacy-001"}])
 
-    def test_events_never_contain_host_fields_or_amounts(self) -> None:
+    def test_events_never_contain_host_fields_and_money_stays_in_amounts(self) -> None:
         for events in self.steps.values():
             for event in events:
                 for field in work.HOST_FIELDS:
                     self.assertNotIn(field, event)
-                text = json.dumps(event)
+                text = json.dumps({key: value for key, value in event.items()
+                                   if key not in ("amounts", "amounts_truncated")})
                 for amount in ("54.99", "1840", "180.00", "500.00"):
                     self.assertNotIn(amount, text)
+
+    def test_amounts_name_the_money_and_accounts_that_were_recorded(self) -> None:
+        def rows(step: str, kind: str) -> list[dict]:
+            return next(event for event in self.steps[step] if event["kind"] == kind)["amounts"]
+
+        transfer = rows("propose_transfer", "categorized")
+        self.assertEqual(transfer[0]["amount"], "500.00")
+        self.assertEqual(transfer[0]["accounts"], [CHECKING, "Assets:Bank:Reserve-Savings"])
+        entry = rows("confirm_transfer", "recorded")[0]
+        self.assertEqual((entry["amount"], entry["accounts"]), ("500.00", [CHECKING, "Assets:Bank:Reserve-Savings"]))
+        self.assertEqual(rows("propose", "categorized")[0]["amount"], "54.99")
+        self.assertEqual(rows("propose_split", "categorized")[0]["accounts"], ["Expenses:Software", "Expenses:Fees"])
+        self.assertEqual(rows("confirm_split", "recorded")[0]["amount"], "42.00")
+        self.assertEqual(sorted(row["id"] for row in rows("propose_group", "categorized")), ["syn-003", "syn-005"])
+        self.assertEqual(rows("withdraw", "corrected")[0]["amount"], "75.00")
+        self.assertEqual([row["amount"] for row in rows("ledger_correct", "corrected")], ["54.99", "54.99"])
+        reconciled = rows("reconcile", "reconciled")[0]
+        self.assertEqual((reconciled["source_balance"], reconciled["ledger_balance"], reconciled["discrepancy"]),
+                         ("100.00", "-776.99", "876.99"))
+
+    def test_amounts_are_additive_and_leave_the_fingerprint_alone(self) -> None:
+        for events in self.steps.values():
+            for event in events:
+                if "amounts" in event:
+                    self.assertEqual(work.validate_event(event, engine=True), [])
+                    bare = {key: value for key, value in event.items() if key != "amounts"}
+                    self.assertEqual(event["fingerprint"], work._fingerprint(bare))
+
+    def test_derived_events_carry_no_amounts(self) -> None:
+        events = work.derived_events(Path(self.tmp.name) / "co")
+        self.assertTrue(events)
+        for event in events:
+            self.assertNotIn("amounts", event)
+            self.assertEqual(work.validate_event(event, engine=True), [])
+
+    def test_summary_still_has_no_money(self) -> None:
+        events = [event for step in self.steps.values() for event in step]
+        self.assertNotIn("amount", json.dumps(work.summarize(events)))
 
 
 class ReplayTests(unittest.TestCase):
@@ -489,6 +528,45 @@ class SchemaTests(unittest.TestCase):
         self.assertNotEqual(work.validate_event({**event, "visibility": "staff"}, engine=True), [])
         self.assertNotEqual(work.validate_event({**event, "counts": {**event["counts"], "entries": 9}},
                                                 engine=True), [])
+
+    def test_amounts_validation(self) -> None:
+        golden = json.loads((FIXTURES / "golden-events.json").read_text(encoding="utf-8"))
+        event = dict(golden["confirm"][0])
+        self.assertIn("amounts", event)
+        bad_rows = [
+            [],
+            [{"type": "entry", "id": "1", "accounts": [], "amount": 5.0}],
+            [{"type": "entry", "id": "1", "accounts": [], "amount": "5,00"}],
+            [{"type": "entry", "id": "1", "accounts": [], "amount": "1e3"}],
+            [{"type": "money", "id": "1", "accounts": []}],
+            [{"type": "entry", "id": "1", "accounts": [], "memo": "x"}],
+            [{"type": "entry", "id": "1", "accounts": "Assets"}],
+        ]
+        for rows in bad_rows:
+            with self.subTest(rows=rows):
+                bad = {**event, "amounts": rows}
+                self.assertNotEqual(work.validate_event(bad), [])
+                self._jsonschema(bad, valid=False)
+        self.assertNotEqual(work.validate_event({**event, "amounts_truncated": False}), [])
+        self.assertNotEqual(work.validate_event({k: v for k, v in event.items() if k != "amounts"} | {"amounts_truncated": True}), [])
+        self._jsonschema(event, valid=True)
+
+    def test_amounts_are_capped(self) -> None:
+        rows = [{"type": "suggestion", "id": f"s{i:04d}", "accounts": ["Expenses:Fees"], "amount": "1.00"}
+                for i in range(work.MAX_AMOUNT_ROWS + 5)]
+        event = work._event("categorized", {"suggestions": len(rows)}, dates=[], accounts=[], labels=[],
+                            subjects=[], derived=False, amounts=rows)
+        self.assertEqual(len(event["amounts"]), work.MAX_AMOUNT_ROWS)
+        self.assertIs(event["amounts_truncated"], True)
+        self.assertEqual(work.validate_event(event, engine=True), [])
+
+    def test_money_formatting(self) -> None:
+        self.assertEqual(work._money("-54.9"), "-54.90")
+        self.assertEqual(work._money("100"), "100.00")
+        self.assertEqual(work._money("-54.99", absolute=True), "54.99")
+        self.assertEqual(work._money("0.001"), "0.001")
+        for bad in ("abc", "NaN", "Infinity", ""):
+            self.assertIsNone(work._money(bad))
 
     def _jsonschema(self, event: dict, *, valid: bool) -> None:
         try:

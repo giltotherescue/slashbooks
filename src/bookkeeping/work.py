@@ -12,7 +12,10 @@ which surface (``via``), in which run (``run``), and when the host committed it
 the engine never sets them. See ``docs/work-events.md`` and
 ``docs/work-event.schema.json``.
 
-Phase 1 events contain counts only. They never contain money amounts.
+Counts, breakdown, accounts and subjects never contain money. The optional
+``amounts`` field lists the amount and accounts that the engine recorded for
+each suggestion, entry or reconciliation behind the event, as Decimal strings.
+It is additive and is not part of the fingerprint.
 """
 from __future__ import annotations
 
@@ -21,9 +24,11 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
+import re
 import sqlite3
 import sys
 from typing import Any, Iterable, Iterator, Mapping, Sequence
@@ -88,6 +93,14 @@ HOST_FIELDS = ("actor", "via", "run", "command_id", "occurred_at", "visibility",
 
 MAX_ACCOUNTS = 20
 MAX_BREAKDOWN = 5
+MAX_AMOUNT_ROWS = 200
+
+# Fields of an ``amounts`` row. Money fields are Decimal strings.
+AMOUNT_MONEY_FIELDS = ("amount", "ledger_balance", "source_balance", "discrepancy")
+AMOUNT_ROW_FIELDS = ("type", "id", "source_id", "accounts", *AMOUNT_MONEY_FIELDS)
+# Fields that are outside the fingerprint, so an existing event keeps its fingerprint.
+_UNFINGERPRINTED = frozenset({"fingerprint", "amounts", "amounts_truncated"})
+_MONEY = re.compile(r"-?[0-9]+(?:\.[0-9]+)?\Z")
 
 _OPEN_STATUSES = frozenset({"open", "reopened"})
 _CLEAN_RECONCILIATION = frozenset({"clean", "resolved"})
@@ -113,6 +126,7 @@ class EntryRow:
     paired_source_id: str
     meta: Mapping[str, str]
     accounts: tuple[str, ...]
+    amounts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -175,11 +189,13 @@ def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[
             (entries_after,),
         ).fetchall()
         posting_accounts: dict[int, list[str]] = {}
+        posting_amounts: dict[int, list[str]] = {}
         for posting in conn.execute(
-            "SELECT entry_id, account FROM postings WHERE entry_id > ? ORDER BY entry_id, id",
+            "SELECT entry_id, account, amount FROM postings WHERE entry_id > ? ORDER BY entry_id, id",
             (entries_after,),
         ):
             posting_accounts.setdefault(int(posting[0]), []).append(str(posting[1]))
+            posting_amounts.setdefault(int(posting[0]), []).append(str(posting[2]))
         entries: list[EntryRow] = []
         for row in rows:
             try:
@@ -194,6 +210,7 @@ def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[
                 paired_source_id=meta.get("paired-source-id", ""),
                 meta=meta,
                 accounts=accounts,
+                amounts=tuple(posting_amounts.get(int(row["id"]), ())),
             ))
         return max_id, source_ids, tuple(entries)
     finally:
@@ -208,10 +225,20 @@ def _queue_item(raw: Any) -> dict | None:
         sources = tuple(str(value) for value in raw_sources if value)
     else:
         sources = (str(raw["source_id"]),)
+    proposal_type = str(raw.get("proposal_type") or "category")
+    if proposal_type == "transfer-pair":
+        accounts = [str(value) for value in raw.get("transfer_accounts") or [] if value]
+    elif isinstance(raw.get("split_postings"), list):
+        accounts = [str(posting.get("account")) for posting in raw["split_postings"]
+                    if isinstance(posting, dict) and posting.get("account")]
+    else:
+        accounts = [str(raw.get("confirmed_category") or raw.get("proposed_category") or "")]
     return {
         "id": str(raw["source_id"]),
+        "amount": str(raw.get("amount") or ""),
+        "accounts": [value for value in accounts if value],
         "status": str(raw.get("status") or ""),
-        "proposal_type": str(raw.get("proposal_type") or "category"),
+        "proposal_type": proposal_type,
         "proposed_category": str(raw.get("proposed_category") or ""),
         "confirmed_category": str(raw.get("confirmed_category") or ""),
         "date": str(raw.get("date") or "")[:10],
@@ -311,7 +338,7 @@ def take_snapshot(
 
 
 def _fingerprint(event: Mapping[str, Any]) -> str:
-    body = {key: value for key, value in event.items() if key != "fingerprint"}
+    body = {key: value for key, value in event.items() if key not in _UNFINGERPRINTED}
     return hashlib.sha256(
         json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
@@ -348,8 +375,60 @@ def _subjects(values: Iterable[dict[str, str]]) -> list[dict[str, str]]:
     return sorted(unique.values(), key=lambda value: (value["type"], value["id"], value.get("source_id", "")))
 
 
+def _money(value: Any, *, absolute: bool = False) -> str | None:
+    """Return a Decimal string with at least two decimal places, or None when unreadable."""
+    try:
+        amount = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return None
+    if not amount.is_finite():
+        return None
+    if absolute:
+        amount = abs(amount)
+    cents = amount.quantize(Decimal("0.01"))
+    return f"{(cents if cents == amount else amount):f}"
+
+
+def _accounts_in_order(values: Iterable[str]) -> list[str]:
+    seen: dict[str, None] = {}
+    for value in values:
+        if value:
+            seen.setdefault(value, None)
+    return list(seen)[:MAX_ACCOUNTS]
+
+
+def _reconciliation_amount_row(record_id: str, record: Mapping[str, Any]) -> dict[str, Any]:
+    """Balances are signed as the reconciliation recorded them."""
+    row: dict[str, Any] = {"type": "reconciliation", "id": record_id,
+                           "accounts": _accounts_in_order([str(record.get("account") or "")])}
+    for name in ("ledger_balance", "source_balance", "discrepancy"):
+        text = _money(record.get(name)) if record.get(name) not in (None, "") else None
+        if text is not None:
+            row[name] = text
+    return row
+
+
+def _entry_amount_row(entry: EntryRow) -> dict[str, Any]:
+    row: dict[str, Any] = {**_entry_subject(entry), "accounts": _accounts_in_order(entry.accounts)}
+    if entry.amounts:
+        # The size of the movement is the funding (first) posting, without a sign.
+        text = _money(entry.amounts[0], absolute=True)
+        if text is not None:
+            row["amount"] = text
+    return row
+
+
+def _item_amount_row(item: Mapping[str, Any]) -> dict[str, Any]:
+    row: dict[str, Any] = {"type": "suggestion", "id": item["id"], "accounts": _accounts_in_order(item["accounts"])}
+    text = _money(item.get("amount"), absolute=True) if item.get("amount") else None
+    if text is not None:
+        row["amount"] = text
+    return row
+
+
 def _event(kind: str, counts: dict[str, int], *, dates: Iterable[str], accounts: Iterable[str],
-           labels: Iterable[str], subjects: Iterable[dict[str, str]], derived: bool) -> dict[str, Any]:
+           labels: Iterable[str], subjects: Iterable[dict[str, str]], derived: bool,
+           amounts: Iterable[dict[str, Any]] | None = None) -> dict[str, Any]:
     event: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "kind": kind,
@@ -362,6 +441,12 @@ def _event(kind: str, counts: dict[str, int], *, dates: Iterable[str], accounts:
     if derived:
         event["derived"] = True
     event["fingerprint"] = _fingerprint(event)
+    if amounts is not None:
+        rows = sorted(amounts, key=lambda row: (row["type"], row["id"], row.get("source_id", "")))
+        if rows:
+            event["amounts"] = rows[:MAX_AMOUNT_ROWS]
+            if len(rows) > MAX_AMOUNT_ROWS:
+                event["amounts_truncated"] = True
     return event
 
 
@@ -479,6 +564,7 @@ def work_events(
             labels=(item["proposed_category"] or item["proposal_type"] for item in suggested),
             subjects=({"type": "suggestion", "id": item["id"]} for item in suggested),
             derived=derived,
+            amounts=[_item_amount_row(item) for item in suggested],
         ))
 
     # recorded: new entries that are not corrections.
@@ -494,6 +580,7 @@ def work_events(
             labels=(_entry_category(entry) for entry in recorded),
             subjects=(_entry_subject(entry) for entry in recorded),
             derived=derived,
+            amounts=[_entry_amount_row(entry) for entry in recorded],
         ))
 
     # corrected: replacement entries, reversals, and withdrawn suggestions.
@@ -508,6 +595,8 @@ def work_events(
             subjects=[_entry_subject(entry) for entry in changed]
             + [{"type": "suggestion", "id": item["id"]} for item in newly["withdrawn"]],
             derived=derived,
+            amounts=[_entry_amount_row(entry) for entry in changed]
+            + [_item_amount_row(item) for item in newly["withdrawn"]],
         ))
 
     # reconciled: reconciliation records that are new or changed in substance.
@@ -528,6 +617,7 @@ def work_events(
             labels=(str(record.get("account") or "") for _, record in reconciled),
             subjects=({"type": "reconciliation", "id": record_id} for record_id, _ in reconciled),
             derived=derived,
+            amounts=[_reconciliation_amount_row(record_id, record) for record_id, record in reconciled],
         ))
 
     # flagged: new possible duplicates that wait for a decision.
@@ -646,7 +736,7 @@ def validate_event(event: Any, *, engine: bool = False) -> list[str]:
     if not isinstance(event, dict):
         return ["event must be an object"]
     allowed = {"schema_version", "kind", "period", "accounts", "counts", "breakdown",
-               "subjects", "fingerprint", "derived", *HOST_FIELDS}
+               "subjects", "fingerprint", "derived", "amounts", "amounts_truncated", *HOST_FIELDS}
     for key in sorted(set(event) - allowed):
         errors.append(f"unknown field: {key}")
     for key in ("schema_version", "kind", "period", "accounts", "counts", "breakdown", "subjects"):
@@ -694,6 +784,7 @@ def validate_event(event: Any, *, engine: bool = False) -> list[str]:
             and ("source_id" not in row or _is_text(row["source_id"], 1000))
             for row in subjects):
         errors.append("subjects must be {type, id, source_id?} references")
+    errors.extend(_validate_amounts(event))
     fingerprint = event.get("fingerprint")
     if fingerprint is not None and not (isinstance(fingerprint, str) and len(fingerprint) == 64
                                         and all(c in "0123456789abcdef" for c in fingerprint)):
@@ -709,6 +800,30 @@ def validate_event(event: Any, *, engine: bool = False) -> list[str]:
         elif fingerprint != _fingerprint(event):
             errors.append("fingerprint does not match the event content")
     errors.extend(_validate_host_fields(event))
+    return errors
+
+
+def _validate_amounts(event: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    rows = event.get("amounts")
+    if "amounts" in event:
+        if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_AMOUNT_ROWS:
+            return [f"amounts must be 1 to {MAX_AMOUNT_ROWS} rows"]
+        for row in rows:
+            ok = (
+                isinstance(row, dict) and set(row) <= set(AMOUNT_ROW_FIELDS)
+                and row.get("type") in SUBJECT_TYPES and _is_text(row.get("id"), 1000)
+                and ("source_id" not in row or _is_text(row["source_id"], 1000))
+                and isinstance(row.get("accounts"), list) and len(row["accounts"]) <= MAX_ACCOUNTS
+                and all(_is_text(value) for value in row["accounts"])
+                and all(isinstance(row[name], str) and _MONEY.fullmatch(row[name])
+                        for name in AMOUNT_MONEY_FIELDS if name in row)
+            )
+            if not ok:
+                errors.append("amounts rows must be {type, id, source_id?, accounts, amount?} with Decimal strings")
+                break
+    if "amounts_truncated" in event and (event["amounts_truncated"] is not True or "amounts" not in event):
+        errors.append("amounts_truncated must be true and needs amounts")
     return errors
 
 
@@ -839,13 +954,16 @@ def derived_events(entity_path: Path | str, from_date: str | None = None,
     The engine does not keep a per-command work history. This view compares the
     current books with empty books, limited to rows dated inside the window,
     so its period is the books date, not the time of the work. Each event has
-    ``derived: true``.
+    ``derived: true``. Derived events carry no ``amounts``, so the output of
+    ``books work`` does not change; only the events of a captured command do.
     """
     window = None
     if from_date or to_date:
         window = (from_date or "0001-01-01", to_date or "9999-12-31")
     after = take_snapshot(entity_path, entries_after=0, window=window)
-    return work_events(EMPTY_SNAPSHOT, after, derived=True)
+    events = work_events(EMPTY_SNAPSHOT, after, derived=True)
+    return [{key: value for key, value in event.items() if key not in ("amounts", "amounts_truncated")}
+            for event in events]
 
 
 def run(args: argparse.Namespace) -> int:

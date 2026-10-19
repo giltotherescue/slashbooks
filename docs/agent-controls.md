@@ -83,3 +83,12 @@ item does not exist. `queue.ask_first_above(entity)` returns the effective
 limit or `None`. `queue.amount_is_above_ask_first(entity, amount)` and
 `queue.txn_is_above_ask_first(entity, txn)` apply the rule. A host does not need
 the private queue functions.
+
+## Amounts in command results
+
+A host reads the result of a command from the work events (`--work-out`, see
+[work events](work-events.md)). Each `categorized`, `recorded`, `corrected` and
+`reconciled` event has an optional `amounts` list with the amount and accounts
+that the engine recorded, as Decimal strings. A host can write "matched a
+transfer of 500.00 between A and B" without math. The text output of the
+commands does not change.
