@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..ledger.store import LedgerStore, default_store_path
+from .scope import accrual_active
 from .store import list_records
 
 
@@ -105,7 +106,7 @@ def list_accounts(entity) -> dict[str, Any]:
         role = _role(name)
         accounts.append({"name": name, "type": name.split(":")[0], "role": role, "subtype": _subtype(name, usage), "currency": currency,
                          "open_date": open_date, "has_postings": name in used,
-                         "reconciles_to_support": role == "control" and entity.basis == "accrual",
+                         "reconciles_to_support": role == "control" and accrual_active(entity),
                          "support_records": support.get(name, {})})
     return {"basis": entity.basis, "accounts": accounts}
 

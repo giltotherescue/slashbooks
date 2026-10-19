@@ -26,7 +26,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping
 
-from ..entity import Entity, load_entity, require_accrual
+from ..entity import Entity, load_entity
+from .scope import accrual_active, require_write_scope
 from .intake import IntakeValidationError, canonical_hash, normalize_amount
 from .journals import JournalError, _day
 from .schedules import _account, _request
@@ -86,12 +87,12 @@ def _now() -> str:
 
 def _entity(entity: Entity, *, write: bool) -> Entity:
     entity = load_entity(entity.path)
-    if entity.basis != "accrual":
+    if not accrual_active(entity):
         raise JournalError("accrual_basis_required", "Saved accrual rules need accrual-basis books.",
                            "Use this command on an accrual company.")
     if write:
         try:
-            require_accrual(entity)
+            require_write_scope(entity)
         except ValueError as exc:
             raise JournalError("accrual_writes_off", str(exc), "Turn on accrual writes for this company first.") from exc
     return entity
@@ -919,7 +920,7 @@ def proposal_stamp(entity: Entity, txn: Mapping[str, Any], category: str) -> dic
     Never raises and never blocks a proposal: a proposal is useful without it.
     """
     try:
-        if entity.basis != "accrual":
+        if not accrual_active(entity):
             return None
         facts = {"amount": str(txn.get("amount") or "0"), "account": category,
                  "description": str(txn.get("description") or ""), "counterparty": str(txn.get("counterparty") or "")}

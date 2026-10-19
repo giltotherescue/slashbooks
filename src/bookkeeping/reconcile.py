@@ -303,9 +303,10 @@ def _reconcile_unlocked(
     conn = open_cache(entity_path)
     try:
         ledger_bal = get_account_balance(conn, account, as_of)
-        from .accrual.reports import basis, coverage_metadata, reconciliation as supporting_reconciliation
+        from .accrual.reports import coverage_metadata, reconciliation as supporting_reconciliation
+        from .accrual.scope import accrual_active
         control_support = None
-        if basis(conn) == "accrual":
+        if accrual_active(conn):
             coverage_metadata(conn, "reconciliation", None, as_of)
             control_support = next((row for row in supporting_reconciliation(conn, as_of) if row["account"] == account), None)
     finally:

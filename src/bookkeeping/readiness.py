@@ -18,6 +18,7 @@ import re
 from typing import Any, Mapping
 
 from .coverage import check_coverage, readiness_items as coverage_readiness_items
+from .accrual.scope import accrual_active
 from .entity import load_entity
 from .ledger.projections import render_store_ledger
 from .ledger.store import LedgerStore, default_store_path
@@ -341,11 +342,11 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         raise TypeError("A deterministic as_of date is required.")
     start, end = _period_dates(period)
     entity = load_entity(entity_path)
-    if entity.basis == "accrual":
+    if accrual_active(entity):
         from .accrual.reports import is_credit_card_account
     store_path = default_store_path(entity.path)
     partial_opening = None
-    if entity.basis == "accrual" and store_path.is_file():
+    if accrual_active(entity) and store_path.is_file():
         from .accrual.reports import opening_coverage
         with LedgerStore(store_path).connection() as conn:
             opening = opening_coverage(conn)
@@ -375,13 +376,13 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         for entry in store.load_entries(to_date=end):
             for posting in entry.postings:
                 ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
-                if entity.basis == "accrual" and entry.date >= start:
+                if accrual_active(entity) and entry.date >= start:
                     if is_credit_card_account(posting.account):
                         card_activity.add(posting.account)
                 if partial_opening and entry.date < start:
                     opening_balances[posting.account] = opening_balances.get(posting.account, Decimal("0")) + posting.amount
 
-    if entity.basis == "accrual":
+    if accrual_active(entity):
         card_activity.update(account for account, balance in ledger_balances.items() if balance and is_credit_card_account(account))
     sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)))
 
@@ -517,7 +518,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
                 refs = [str(item) for item in [*audit_errors, *validation_errors][:20]]
                 blockers.append({"code": "ledger_validation_failed", "message": "The ledger or its audit chain failed deterministic validation.", "refs": refs})
             reports = _report_refs(entity.path, start, end, provisional=True)
-            if entity.basis == "accrual":
+            if accrual_active(entity):
                 from .accrual.reports import support_snapshot, unresolved, opening_coverage, coverage_metadata
                 with store.connection() as conn:
                     coverage_metadata(conn, "pnl", start, end)
@@ -560,7 +561,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         "reconciliations": sorted(normalized_recs, key=lambda item: str(item.get("account"))),
         "reports": reports,
     }
-    if entity.basis == "accrual":
+    if accrual_active(entity):
         document.update(activity_from=start.isoformat(), activity_to=end.isoformat(),
                         partial_post_cutover=partial_opening is not None,
                         imported_summary_through=partial_opening["source_as_of"] if partial_opening else None)
