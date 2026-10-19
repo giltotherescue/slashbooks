@@ -35,8 +35,9 @@ Each line has:
 ```
 
 - The P&L has these rows: `total_revenue`, then (only when a cost-of-sales account exists) `total_cost_of_sales` and
-  `gross_profit`, then `total_expenses`, then `net_income`. A cost-of-sales account is an expense account whose
-  second name part is Cost of Sales, Cost of Goods Sold, COGS or Cost of Revenue. In `structure`, `total_expenses`
+  `gross_profit`, then `total_expenses`, then `net_income`. The engine finds cost-of-sales accounts by name only: an expense account whose
+  second name part is Cost of Sales, Cost of Goods Sold, COGS or Cost of Revenue. An account with another name is an
+  ordinary expense, so Gross Profit is absent when no account has such a name. In `structure`, `total_expenses`
   does not include cost of sales. The older `sections` field keeps every expense in one total.
 - The balance sheet structure adds `balanced` and `difference` (assets minus liabilities and equity).
 - With `--format text`, `--structure` changes nothing.

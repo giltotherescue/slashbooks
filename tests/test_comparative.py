@@ -154,6 +154,12 @@ class PnlTests(ComparativeBase):
         self.assertLess(keys.index("Expenses:Marketing"), keys.index("total_expenses"))
         self.assertGreater(keys.index("Expenses:Marketing"), keys.index("gross_profit"))
 
+    def test_prior_only_account_keeps_account_order(self):
+        r = compare_pnl(self.entity, date(2026, 1, 1), date(2026, 1, 31), "prior_year")
+        expense_keys = [l["key"] for l in r.lines if l.get("section") == "expenses" and l["type"] == "account"]
+        self.assertEqual(expense_keys, sorted(expense_keys))
+        self.assertEqual(expense_keys, ["Expenses:Marketing", "Expenses:Office", "Expenses:Software"])
+
     def test_prior_total_equals_sum_of_prior_lines(self):
         r = compare_pnl(self.entity, date(2026, 1, 1), date(2026, 1, 31), "prior_year")
         total = sum((D(l["prior_amount"]) for l in r.lines if l.get("section") == "expenses" and l["type"] == "account"),

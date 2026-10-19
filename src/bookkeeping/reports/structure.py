@@ -44,7 +44,10 @@ def _account_from_label(label: str) -> str:
 
 
 def is_cost_of_sales(account: str) -> bool:
-    """True when the account sits under a cost-of-sales group, for example
+    """True when the account sits under a cost-of-sales group, found by NAME only: the
+    second name part must be Cost of Sales, Cost of Goods Sold, COGS, Cost of Revenue or
+    Cost of Goods.  No account type or tag is read, so an account named otherwise is an
+    ordinary expense.  Examples:
     ``Expenses:Cost-of-Sales:Hosting`` or ``Expenses:COGS``."""
     parts = account.split(":")
     if len(parts) < 2 or parts[0] != "Expenses":

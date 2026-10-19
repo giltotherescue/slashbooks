@@ -150,9 +150,13 @@ def merge_lines(current: list[dict], prior: Optional[list[dict]], income_key: Op
             if line["type"] == "subtotal":
                 merged.insert(section_end(section), {**line, "amount": str(ZERO)})
             else:
-                at = next((i for i, l in enumerate(merged) if l["type"] == "subtotal" and l.get("section") == section),
-                          section_end(section))
-                merged.insert(at, {**line, "amount": str(ZERO)})
+                # Keep account order: before the first later-named account of the section.
+                later = next((i for i, l in enumerate(merged) if l.get("section") == section
+                              and l["type"] == "account" and l["key"] > line["key"]), None)
+                if later is None or line["type"] != "account":
+                    later = next((i for i, l in enumerate(merged)
+                                  if l["type"] == "subtotal" and l.get("section") == section), section_end(section))
+                merged.insert(later, {**line, "amount": str(ZERO)})
 
     income_cur = amount(cur_by_key.get(income_key)) if income_key else None
     income_prior = amount(prior_by_key.get(income_key)) if income_key and prior is not None else None
