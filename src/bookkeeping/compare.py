@@ -1857,6 +1857,9 @@ def _render_confidence_markdown(package: dict) -> str:
     if package.get("blocking_items"):
         lines.append("## Blocking Issues (must resolve before certifying)")
         lines.append("")
+        for b in package["blocking_items"]:
+            lines.append(f"- **{b['label']}**: {b['reason']}")
+        lines.append("")
 
     coverage_exceptions = package.get("coverage_exceptions", [])
     if coverage_exceptions:
@@ -1868,9 +1871,6 @@ def _render_confidence_markdown(package: dict) -> str:
                 f"- **{exception['source']}**: {label} from "
                 f"{exception['from']} through {exception['to']}."
             )
-        lines.append("")
-        for b in package["blocking_items"]:
-            lines.append(f"- **{b['label']}**: {b['reason']}")
         lines.append("")
 
     if package.get("fatal_migration_issues"):

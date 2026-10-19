@@ -2232,5 +2232,52 @@ option "inferred_tolerance_default" "USD:0.005"
         self.assertEqual(d["pending_categorization_count"], 12)
 
 
+class TestConfidenceMarkdownBlockingIssues(unittest.TestCase):
+    """The Blocking Issues list renders on its own, not inside coverage exceptions."""
+
+    @staticmethod
+    def _package(**overrides) -> dict:
+        package = {
+            "entity": "Acme",
+            "period": {"from": "2026-01-01", "to": "2026-03-31"},
+            "generated_at": "2026-04-01T00:00:00Z",
+            "readiness_recap": {"ready": True, "slots": [], "ambiguous_files": []},
+            "match_summary": {"matched_transactions": 0, "unmatched_ours": 0, "unmatched_qb": 0},
+            "total_material_diffs": 0,
+            "differences_by_category": {},
+        }
+        package.update(overrides)
+        return package
+
+    def test_blocking_items_render_without_coverage_exceptions(self):
+        from src.bookkeeping.compare import _render_confidence_markdown
+        md = _render_confidence_markdown(self._package(
+            blocking_items=[{"label": "Comparison error", "reason": "P&L missing"}],
+        ))
+        self.assertIn("## Blocking Issues", md)
+        self.assertIn("- **Comparison error**: P&L missing", md)
+
+    def test_blocking_items_sit_under_blocking_heading(self):
+        from src.bookkeeping.compare import _render_confidence_markdown
+        md = _render_confidence_markdown(self._package(
+            blocking_items=[{"label": "Comparison error", "reason": "P&L missing"}],
+            coverage_exceptions=[{
+                "source": "Mercury", "kind": "missing-statement",
+                "from": "2026-02-01", "to": "2026-02-28",
+            }],
+        ))
+        blocking_at = md.index("## Blocking Issues")
+        bullet_at = md.index("- **Comparison error**")
+        coverage_at = md.index("## Source Coverage Exceptions")
+        self.assertLess(blocking_at, bullet_at)
+        self.assertLess(bullet_at, coverage_at)
+        self.assertEqual(md.count("- **Comparison error**"), 1)
+
+    def test_no_blocking_heading_when_none(self):
+        from src.bookkeeping.compare import _render_confidence_markdown
+        md = _render_confidence_markdown(self._package(blocking_items=[]))
+        self.assertNotIn("## Blocking Issues", md)
+
+
 if __name__ == "__main__":
     unittest.main()
