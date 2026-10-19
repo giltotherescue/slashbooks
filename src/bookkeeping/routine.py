@@ -263,8 +263,8 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
     if closed_date and closed_date.isoformat() != closed_through:
         raise ValueError('closed_through must use YYYY-MM-DD.')
     pending, opens, posted, reversed_ids, owned = _state(entity)
-    from .entity import resolve_basis
-    accrual = resolve_basis(entity.entity_config) == 'accrual'
+    from .accrual.treatment import treatment_checker
+    needs_treatment = treatment_checker(entity)
     rules, answers = _authority(policy, [] if decisions is None else decisions, pending, opens, posted)
     if source_ids is not None and (not isinstance(source_ids, list) or not all(isinstance(sid, str) and sid for sid in source_ids)
                                    or len(set(source_ids)) != len(source_ids)):
@@ -304,7 +304,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 raise ValueError('existing_review')
             if not policy['enabled']:
                 raise ValueError('policy_disabled')
-            if accrual:
+            if needs_treatment(txn):
                 raise ValueError('accrual_treatment_required')
             eligible = []
             if sid in answers:

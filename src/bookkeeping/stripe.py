@@ -387,6 +387,9 @@ def _bank_action(match, payout, net, pending, posted, owned, opens, entity, cuto
     bank = pending.get(sid)
     if not bank or routine_source_digest([bank]) != match['bank_source_digest']:
         raise ValueError('bank_source_changed_or_missing')
+    from .accrual.treatment import needs_treatment
+    if needs_treatment(entity, bank):
+        raise ValueError('accrual_treatment_required')
     account = match['approved_ledger_account']
     if ((entity.entity_config.get('bank_account_mappings') or {}).get(bank.get('accountId')) != account
             or account not in opens or not account.startswith('Assets:Bank:')
@@ -413,9 +416,11 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
     arrays. Expanded BT source objects are also accepted. Invoice lines must be
     complete; partial payments, taxes, discounts and credits are held, not guessed.
     """
-    from .entity import resolve_basis
-    if resolve_basis(entity.entity_config) == 'accrual':
+    from .accrual.scope import DISCIPLINE_ALL, discipline
+    from .accrual.treatment import treatment_checker
+    if discipline(entity.entity_config) == DISCIPLINE_ALL:
         raise ValueError('Cash-only Stripe posting is unavailable for accrual companies. Capture provider evidence with books accrual intake, then preview a journal/schedule/settlement with the explicit accounting treatment.')
+    needs_treatment = treatment_checker(entity)
     pending, opens, posted, reversed_ids, owned = _state(entity)
     _policy(policy, opens)
     if type(limit) is not int or not 1 <= limit <= 500 or not isinstance(after_source_id, str):
@@ -490,6 +495,9 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                 raise ValueError('invalid_balance_status')
             if sid in owned:
                 raise ValueError('existing_review')
+            # Per-account accrual: hold processor activity that could settle an open invoice or fund a schedule.
+            if needs_treatment(normalized) or (bt.get('amount') and needs_treatment({**normalized, 'amount': _amount(bt['amount'])})):
+                raise ValueError('accrual_treatment_required')
             kind = bt.get('type')
             source_id = _object_id(bt.get('source'))
             source = bt.get('source') if isinstance(bt.get('source'), dict) else None

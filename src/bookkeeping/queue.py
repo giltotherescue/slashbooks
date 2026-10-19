@@ -378,7 +378,7 @@ def check_taught(entity: Entity, source_ids: list[str], category: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def eligible_for_autopost(entity: Entity, counterparty_key: str) -> bool:
+def eligible_for_autopost(entity: Entity, counterparty_key: str, txn: dict | None = None, *, treatment_check: Callable[[dict], bool] | None = None) -> bool:
     """Return True when counterparty meets the deterministic trust threshold.
 
     Rules (KTD binding):
@@ -392,8 +392,13 @@ def eligible_for_autopost(entity: Entity, counterparty_key: str) -> bool:
     canonical_category auto-posts (count still acts as a ceiling — False means
     the owner has disabled the ramp entirely as a global kill-switch).
     """
-    from .entity import resolve_basis
-    if resolve_basis(entity.entity_config) == "accrual":
+    from .accrual import scope as _scope
+    from .accrual.treatment import needs_treatment
+    if txn is None:
+        # Without the transaction nothing can show that accrual rules do not apply.
+        if _scope.discipline(entity) != _scope.DISCIPLINE_OFF:
+            return False
+    elif (treatment_check or (lambda row: needs_treatment(entity, row)))(txn):
         return False
     threshold = entity.auto_post_threshold
     queue_all = bool(entity.trust_policy.get("queue_all_until_confirmed", True))
@@ -425,12 +430,15 @@ def make_categorizer(entity: Entity) -> Callable[[dict], tuple[str, str]]:
       - If eligible_for_autopost → return (canonical_category, 'auto')
       - Else                     → return ('', 'queue')
     """
+    from .accrual.treatment import treatment_checker
+    check = treatment_checker(entity)
+
     def _categorize(txn: dict) -> tuple[str, str]:
         description = str(txn.get("description") or "")
         counterparty = str(txn.get("counterparty") or "")
         key = _counterparty_key(description, counterparty)
 
-        if eligible_for_autopost(entity, key):
+        if eligible_for_autopost(entity, key, txn, treatment_check=check):
             ctx = load_learned_context(entity)
             entry = ctx.get(key, {})
             category = str(entry.get("canonical_category", ""))
@@ -2002,10 +2010,15 @@ def _validate_related_entity_proposal(entity: Entity, item: dict) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _require_accrual_cash_treatment(entity: Entity, item: dict, treatment: str | None) -> None:
-    from .entity import resolve_basis
-    if resolve_basis(entity.entity_config) != "accrual":
-        return
+def _require_accrual_cash_treatment(entity: Entity, item: dict, treatment: str | None, txn: dict | None = None) -> bool:
+    """Require an explicit treatment when accrual rules apply to this source.
+
+    Returns True when a treatment applies. For a source outside accrual scope it
+    returns False and records nothing, so the entry matches the cash path.
+    """
+    from .accrual.treatment import needs_treatment
+    if not needs_treatment(entity, txn if txn is not None else item):
+        return False
     if treatment != "new_cash_event":
         raise ValueError("Accrual bank activity needs an explicit treatment: link an outstanding item/schedule, or confirm --accrual-treatment new_cash_event for a new current-period event.")
     from .accrual.store import list_records
@@ -2016,6 +2029,7 @@ def _require_accrual_cash_treatment(entity: Entity, item: dict, treatment: str |
            for row in list_records(store, table)):
         raise ValueError("This source already owns an accrual item/schedule; link its existing financial effect instead of posting a new cash event.")
     item["accrual_treatment"] = treatment
+    return True
 
 
 def _write_confirmed_entry(
@@ -2041,7 +2055,8 @@ def _write_confirmed_entry(
     staging = StagingStore(entity.staging_dir)
 
     source_id = str(txn.get("id") or "")
-    _require_accrual_cash_treatment(entity, {"source_id": source_id}, accrual_treatment)
+    if not _require_accrual_cash_treatment(entity, {"source_id": source_id}, accrual_treatment, txn):
+        accrual_treatment = None
     raw_date = str(txn.get("date") or "")[:10]
     try:
         txn_date = _date.fromisoformat(raw_date)
