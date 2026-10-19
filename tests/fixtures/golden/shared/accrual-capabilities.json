@@ -13,6 +13,7 @@
     "period",
     "rules",
     "opening",
+    "enable",
     "migration",
     "report",
     "accounts",
@@ -25,6 +26,7 @@
   "request_schemas": [
     "apply",
     "correction",
+    "enable",
     "evidence_link",
     "item",
     "item_adjustment",
@@ -42,10 +44,15 @@
     "schedule_change",
     "schedule_due",
     "settlement",
-    "support"
+    "support",
+    "tracking_opening"
   ],
   "rules_effect": "proposals_only",
   "verbs": {
+    "enable": [
+      "preview",
+      "apply"
+    ],
     "evidence-link": [
       "preview",
       "apply"

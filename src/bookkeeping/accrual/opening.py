@@ -13,11 +13,11 @@ import json
 from decimal import Decimal
 from typing import Any, Mapping
 
-from ..entity import Entity, load_entity, require_accrual
+from ..entity import Entity, load_entity
 from ..ledger.model import _validate_account_name
 from ..ledger.store import LedgerStore, default_store_path
 from .journals import JournalError
-from .migration import _build_plan, _hash, _money
+from .migration import _build_plan, _hash, _money, require_capability
 
 REQUEST_FIELDS = {"operation_id", "cutover", "lines", "items", "schedules", "external", "evidence_refs", "evidence_ids"}
 LINE_FIELDS = {"account", "amount", "debit", "credit"}
@@ -27,6 +27,7 @@ SCHEDULE_FIELDS = {"id", "kind", "account", "recognition_account", "contra_accou
                    "service_start", "service_end", "method", "counterparty", "reference", "description", "evidence_refs", "evidence_ids", "currency"}
 EXTERNAL_FIELDS = {"id", "account", "balance", "counterparty", "reference", "description", "evidence_refs", "evidence_ids", "currency"}
 BALANCE_SHEET_ROOTS = ("Assets:", "Liabilities:", "Equity:")
+TRACKING_EQUITY = "Equity:Opening-Balance-Adjustments"
 NEW_COMPANY_STEPS = (
     "books entity init NEW_DIR --name NAME --basis accrual --cutover-date CUTOVER",
     "books accrual opening draft --entity CASH_DIR --cutover CUTOVER > draft.json",
@@ -71,18 +72,26 @@ def _line_amount(line: Mapping[str, Any], where: str) -> Decimal:
     return debit - credit
 
 
-def normalize_request(request: Any) -> dict[str, Any]:
+def normalize_request(request: Any, *, tracking_start: str | None = None) -> dict[str, Any]:
+    """Validate an opening request. ``tracking_start`` selects the opening items of a company that turned accrual on later."""
     if not isinstance(request, Mapping):
         raise _err("invalid_request", "Opening request must be an object.", "Pass one JSON object; see `books accrual schema` request opening.")
     _unknown(request, REQUEST_FIELDS, "the opening request")
+    if tracking_start:
+        if "lines" in request:
+            raise _err("tracking_lines_derived", "This company turned accrual on later, so opening lines are worked out from the items, schedules and external rows.",
+                       "Remove `lines`. List only what is still open on the tracking start date; the balancing amount goes to " + TRACKING_EQUITY + ".")
+        if request.get("cutover", tracking_start) != tracking_start:
+            raise _err("tracking_cutover_mismatch", f"cutover {request.get('cutover')} is not the tracking start {tracking_start}.",
+                       f"Set cutover to {tracking_start}, or leave it out. Opening items are dated the tracking start date.")
     try:
-        cutover = date.fromisoformat(request.get("cutover"))
+        cutover = date.fromisoformat(request.get("cutover", tracking_start) if tracking_start else request.get("cutover"))
     except (TypeError, ValueError):
         raise _err("invalid_date", "cutover must be a YYYY-MM-DD date.",
                    "Set cutover to the first day of accrual books. The opening entry is dated the day before.") from None
     lines = []
     seen = set()
-    for index, line in enumerate(_rows(request, "lines")):
+    for index, line in enumerate([] if tracking_start else _rows(request, "lines")):
         where = f"lines[{index}]"
         _unknown(line, LINE_FIELDS, where)
         account = line.get("account")
@@ -101,10 +110,10 @@ def normalize_request(request: Any) -> dict[str, Any]:
         amount = _line_amount(line, where)
         if amount:
             lines.append({"account": account, "amount": format(amount, ".2f")})
-    if not lines:
+    if not lines and not tracking_start:
         raise _err("missing_lines", "lines is empty.", "Add opening balance lines (account and amount).")
     total = sum(Decimal(row["amount"]) for row in lines)
-    if total:
+    if total and not tracking_start:
         raise _err("unbalanced_opening", f"Opening lines do not balance; debits minus credits is {total:.2f} USD.",
                    "Adjust lines so debits equal credits. Use Equity:Retained-Earnings or Equity:Opening-Balances for the difference only if it is real.")
     default_refs = {k: request.get(k, []) for k in ("evidence_refs", "evidence_ids")}
@@ -135,17 +144,71 @@ def normalize_request(request: Any) -> dict[str, Any]:
             out.append(row)
         if out:
             normalized[name] = out
+    if tracking_start:
+        normalized["lines"] = _derive_lines(normalized)
+        if not normalized["lines"]:
+            raise _err("missing_support", "Nothing is open to carry in.", "List at least one open invoice, bill, prepaid or deferred balance, or an external control balance.")
     return normalized
+
+
+def _signed_support(request: Mapping[str, Any]) -> dict[str, Decimal]:
+    """Debit-positive balance each control account must carry, from the support rows. Preview ties them again."""
+    totals: dict[str, Decimal] = {}
+
+    def add(account: Any, amount: Decimal) -> None:
+        if isinstance(account, str):
+            totals[account] = totals.get(account, Decimal(0)) + amount
+    for row in request.get("items", []):
+        amount = _money(row["remaining_amount"])
+        if row.get("kind") == "credit":
+            sign = 1 if row.get("direction") == "debit" else -1
+        else:
+            sign = 1 if str(row.get("account", "")).startswith("Assets:") else -1
+        add(row.get("account"), amount * sign)
+    for row in request.get("schedules", []):
+        kind = row.get("kind")
+        if kind == "depreciation":
+            add(row.get("account"), _money(row["amount"]))
+            add(row.get("contra_account"), -_money(row.get("recognized_amount", "0.00")))
+        else:
+            add(row.get("account"), _money(row["remaining_amount"]) * (-1 if kind == "deferred" else 1))
+    for row in request.get("external", []):
+        add(row.get("account"), _money(row["balance"]))
+    return totals
+
+
+def _derive_lines(request: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Opening lines for a company that turned accrual on later: the support rows plus one balancing equity line."""
+    try:
+        totals = _signed_support(request)
+    except (KeyError, ValueError) as exc:
+        raise _err("invalid_support", f"An item, schedule or external row is missing an amount: {exc}",
+                   "Give open_amount on items, amount/recognized_amount on schedules and balance on external rows.") from None
+    for account in totals:
+        if not account.startswith(("Assets:", "Liabilities:")):
+            raise _err("opening_income_expense", f"{account} is not an asset or liability account.",
+                       "Items, schedules and external rows carry balance sheet control accounts only.")
+        try:
+            _validate_account_name(account)
+        except ValueError as exc:
+            raise _err("invalid_account", f"{account}: {exc}", "Fix the account name.") from None
+    lines = {account: amount for account, amount in totals.items() if amount}
+    balance = -sum(lines.values(), Decimal(0))
+    if balance:
+        lines[TRACKING_EQUITY] = balance
+    return [{"account": a, "amount": format(v, ".2f")} for a, v in sorted(lines.items())]
 
 
 def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
     """Preview an opening without writing. Returns a plan that `apply` takes unchanged."""
+    from .enable import tracking_start
     entity = load_entity(entity.path)
-    require_accrual(entity)
+    start = tracking_start(entity)
+    require_capability(entity)
     raw_request = json.loads(json.dumps(request))
-    request = normalize_request(request)
+    request = normalize_request(request, tracking_start=start)
     cutover = date.fromisoformat(request["cutover"])
-    as_of = cutover - timedelta(days=1)
+    as_of = cutover if start else cutover - timedelta(days=1)
     financial = {row["account"]: Decimal(row["amount"]) for row in request["lines"]}
     store = LedgerStore(default_store_path(entity.path))
     existing = {opened.account: opened for opened in store.load_opens()}
@@ -179,11 +242,14 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
                       "detail_type": "", "open_date": effective.isoformat(), "currency": "USD"})
     try:
         return _build_plan(
-            entity, store, operation="accrual-opening", import_source="accrual-opening",
-            narration=f"Opening balances ({(cutover - timedelta(days=1)).isoformat()})", financial=financial, mapping=mapping, chart=chart,
+            entity, store, operation="accrual-opening",
+            import_source="accrual-tracking-opening" if start else "accrual-opening",
+            narration=f"Opening balances ({(cutover - timedelta(days=1)).isoformat()})",
+            financial=financial, mapping=mapping, chart=chart,
             supporting=supporting, cutover=cutover, fiscal_start=cutover, closed_position=True,
             source_id=request["operation_id"], coverage_extra={"source_hashes": {}, "mapping_hash": _hash(mapping)},
-            request_extra={"opening": "accrual-opening"}, plan_extra={"request": raw_request, "folder": None})
+            request_extra={"opening": "accrual-tracking-opening" if start else "accrual-opening"},
+            plan_extra={"request": raw_request, "folder": None}, tracking=bool(start))
     except ValueError as exc:
         if isinstance(exc, JournalError):
             raise
@@ -206,6 +272,20 @@ def draft_from_cash_company(entity: Entity, cutover: str) -> dict[str, Any]:
     """
     entity = load_entity(entity.path)
     day = date.fromisoformat(cutover)
+    from .enable import tracking_start
+    if tracking_start(entity):
+        if cutover != tracking_start(entity):
+            raise _err("tracking_cutover_mismatch", f"cutover {cutover} is not the tracking start {tracking_start(entity)}.",
+                       f"Use --cutover {tracking_start(entity)}.")
+        return {"status": "draft", "source_company": entity.name, "balances_as_of": cutover,
+                "request": {"operation_id": f"opening-{cutover}", "cutover": cutover, "evidence_refs": [], "items": []},
+                "agent_must_add": [
+                    "items: each invoice and bill still open on the tracking start date (id, kind, account, counterparty, reference, due_date, open_amount).",
+                    "schedules: remaining prepaid, deferred and fixed asset balances.",
+                    "evidence_refs: a company-relative file for each supporting row.",
+                    "Do not add lines. The balancing amount goes to " + TRACKING_EQUITY + "."],
+                "next_steps": ["books accrual opening preview --entity PATH --input request.json > plan.json",
+                               "books accrual opening apply --entity PATH --input plan.json"]}
     as_of = day - timedelta(days=1)
     store = LedgerStore(default_store_path(entity.path))
     totals: dict[str, Decimal] = {}

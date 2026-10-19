@@ -103,9 +103,11 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             ("item", "preview"), ("item", "settle-preview"), ("item", "adjust-preview"), ("item", "offset-preview"), ("item", "list"),
             ("migration", "preview"), ("support", "preview"), ("report",), ("evidence-link", "preview"),
             ("accounts",), ("receipt",), ("opening", "preview"), ("opening", "draft"),
-            ("rules", "list"), ("rules", "match"), ("rules", "set-preview"), ("rules", "clear-preview")}
+            ("enable", "preview"), ("rules", "list"), ("rules", "match"), ("rules", "set-preview"), ("rules", "clear-preview")}
         if path[1:] == ("journal", "due-reversals"):
             mutates = args.apply
+    if path == ("entity", "set-view") and not args.apply:
+        mutates = False  # The default is a preview; --apply changes the company.
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False
     if path == ("qb", "sync-import"):

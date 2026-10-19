@@ -487,7 +487,8 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
         if populated:
             raise ValueError(
                 "A populated company (one that already has entries) cannot change accounting basis, and Slashbooks does not convert in place. "
-                "Prior periods stay in this company. Start a new accrual company at the cutover date and open it with balances: "
+                "To keep these books and add accrual records from a date, run books accrual enable preview --entity THIS_DIR --tracking-start YYYY-MM-DD. "
+                "Prior periods stay in this company. Or start a new accrual company at the cutover date and open it with balances: "
                 "1) books entity init NEW_DIR --name NAME --basis accrual --cutover-date YYYY-MM-DD; "
                 "2) books accrual opening draft --entity THIS_DIR --cutover YYYY-MM-DD > draft.json (then add open invoices and bills); "
                 "3) books accrual opening preview --entity NEW_DIR --input draft.json > plan.json; "
@@ -976,6 +977,16 @@ def add_parser(subparsers: Any) -> None:
     )
     add_account_parser.add_argument("--currency", default="USD", help="Currency, default USD")
 
+    set_view_parser = entity_sub.add_parser(
+        "set-view",
+        help="Choose the default report view, cash or accrual (person-only). Previews unless --apply is given",
+    )
+    set_view_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    set_view_parser.add_argument("--view", required=True, choices=("cash", "accrual"),
+                                 help="Default view for report, ask and export. Accrual needs `books accrual enable` first")
+    set_view_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    set_view_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+
     map_parser = entity_sub.add_parser(
         "bank-account-map",
         help="Map a stable connected-bank account ID to an existing ledger account",
@@ -1067,6 +1078,22 @@ def run(args: Any) -> int:
 
         verb = "Added" if report["status"] == "created" else "Already present"
         print(f"{verb}: {report['account']} (open {report['open_date']})")
+        return 0
+
+    if args.entity_command == "set-view":
+        target = _resolve_target(args.path)
+        try:
+            from .accrual import enable as accrual_enable
+            entity = load_entity(target)
+            if args.apply:
+                result = accrual_enable.apply_set_view(entity, args.view, args.plan_hash)
+            else:
+                result = accrual_enable.preview_set_view(entity, args.view)
+        except (FileNotFoundError, ValueError) as exc:
+            result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
         return 0
 
     if args.entity_command == "bank-account-map":

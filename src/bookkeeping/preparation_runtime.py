@@ -69,9 +69,11 @@ def supported_preparation_command(argv: list[str]) -> PreparationCommandSpec:
         return PreparationCommandSpec(path, "read", None)
     if path[0] == "accrual":
         if path[1:] in {("schema",), ("capabilities",), ("schedule", "list"), ("item", "list"), ("report",),
-                        ("accounts",), ("receipt",), ("opening", "draft"),
+                        ("accounts",), ("receipt",), ("opening", "draft"), ("enable", "preview"),
                         ("rules", "list"), ("rules", "match"), ("rules", "set-preview"), ("rules", "clear-preview")}:
             return PreparationCommandSpec(path, "read", None)
+        # `enable apply` and `entity set-view` stay unsupported here on purpose: turning accrual on and choosing the
+        # default view are person-only writes that standing posting authority never covers.
         # `rules set-apply` and `rules clear-apply` stay unsupported here on purpose. A saved rule only
         # changes what is proposed, so standing posting authority does not cover it.
         if path[1:] in {("intake",), ("journal", "preview"), ("journal", "apply"),

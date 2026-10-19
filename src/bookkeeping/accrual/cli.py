@@ -78,6 +78,15 @@ def add_parser(subparsers: Any) -> None:
     draft = children.add_parser("draft", help="Draft an opening request from an existing company's balances (read-only)")
     draft.add_argument("--entity", required=True, type=Path, help="Existing (for example cash-basis) company")
     draft.add_argument("--cutover", required=True, help="First day of the new accrual books; balances are taken the day before")
+    enable = commands.add_parser("enable", help="Turn accrual on inside an existing company at a tracking start date (person-only; preview first)")
+    children = enable.add_subparsers(dest="accrual_enable_command", required=True)
+    preview = children.add_parser("preview", help="Show what turning accrual on changes. Writes nothing.")
+    preview.add_argument("--entity", required=True, type=Path)
+    preview.add_argument("--tracking-start", required=True, help="First day accrual records are kept; accrual figures start here")
+    preview.add_argument("--operation-id", help="Stable ID; defaults to accrual-enable-<date>")
+    apply = children.add_parser("apply", help="Apply the unchanged preview. An exact repeat returns already_applied.")
+    apply.add_argument("--entity", required=True, type=Path)
+    apply.add_argument("--input", required=True, type=Path)
     migration = commands.add_parser("migration")
     children = migration.add_subparsers(dest="accrual_migration_command", required=True)
     preview = children.add_parser("preview")
@@ -93,7 +102,7 @@ def add_parser(subparsers: Any) -> None:
 
 
 _METAVARS = {"entity": "PATH", "input": "FILE", "supporting": "FILE", "folder": "REPORTS", "operation_id": "ID",
-             **{name: "YYYY-MM-DD" for name in ("as_of", "through", "from_date", "to_date", "cutover", "fiscal_start")}}
+             **{name: "YYYY-MM-DD" for name in ("as_of", "through", "from_date", "to_date", "cutover", "fiscal_start", "tracking_start")}}
 
 
 def _command_lines() -> tuple[list[str], dict[str, list[str]]]:
@@ -287,7 +296,19 @@ def request_schemas() -> dict[str, Any]:
                        "reference": "INV-1", "due_date": "2025-12-15", "open_amount": "300.00"},
                       {"id": "synthetic-bill-1", "kind": "payable", "account": "Liabilities:Payable:Accounts-Payable", "counterparty": "Synthetic Supplier",
                        "reference": "BILL-9", "due_date": "2026-01-10", "open_amount": "100.00"}]}])
-    return {"opening": opening, "journal": journal,
+    enable = record(["tracking_start"], {
+        "tracking_start": {**day, "description": "First day accrual records are kept. Accrual figures start on this date; earlier periods stay cash books."},
+        "operation_id": {**text, "description": "Stable ID. Defaults to accrual-enable-<tracking_start>."}},
+        description="Turn accrual on inside an existing company. `books accrual enable preview --tracking-start DATE`, then `enable apply --input` with the unchanged preview. "
+                    "Nothing already recorded changes, and the default view stays as it is. Person-only. Afterward `books accrual opening` lists what is open on that date.")
+    tracking_opening = record([], {key: value for key, value in opening["properties"].items() if key != "lines"} | {
+        "cutover": {**day, "description": "Optional. Must equal the tracking start date. The one opening entry is dated that day."}},
+        description="Opening items for a company that turned accrual on later (`books accrual enable`). List only what is still open on the tracking start date. "
+                    "Lines are worked out from the support rows; the balancing amount goes to Equity:Opening-Balance-Adjustments. Same preview and apply commands as `opening`.",
+        examples=[{"operation_id": "synthetic-tracking-opening", "evidence_refs": ["evidence/open-invoices.pdf"],
+                   "items": [{"id": "synthetic-inv-7", "kind": "receivable", "account": "Assets:Receivable:Accounts-Receivable", "counterparty": "Synthetic Customer",
+                              "reference": "INV-7", "due_date": "2026-04-20", "open_amount": "900.00"}]}])
+    return {"enable": enable, "opening": opening, "tracking_opening": tracking_opening, "journal": journal,
         "evidence_link": record(["operation_id", "target_operation_id", "evidence_ids", "reason"], {
             "operation_id": text, "target_operation_id": text, "evidence_ids": ids, "reason": text},
             description="Explicitly identify another source as a supporting document of a committed effect; no matching heuristic or financial posting."),
@@ -452,6 +473,12 @@ def run(args: argparse.Namespace) -> int:
                                                 "Check operation_id, or `books accrual report --kind adjustments`. The operation was not applied.")
                 result = {"status": record["status"], "id": args.id, "kind": record["kind"], "request_hash": record["request_hash"],
                           "plan_hash": record["plan_hash"], "receipt": record["receipt"]}
+            elif command == "enable":
+                from . import enable
+                if args.accrual_enable_command == "preview":
+                    result = enable.preview_enable(entity, args.tracking_start, args.operation_id)
+                else:
+                    result = enable.apply_enable(entity, _input(args.input))
             elif command == "opening":
                 from . import opening
                 verb = args.accrual_opening_command

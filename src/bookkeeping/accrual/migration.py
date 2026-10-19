@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 
 from .. import quickbooks as qb
-from ..entity import load_entity, require_accrual
+from ..entity import load_entity
 from ..ledger.importer import _entity_write_lock, check_store_integrity
 from ..ledger.model import Entry, Open, Posting, _validate_account_name
 from ..ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore, default_store_path
@@ -23,6 +23,14 @@ from .store import SupportingMutation, TABLES, list_records, load_record
 from .intake import canonical_hash, evidence_hash, facts_hash, normalize_evidence, source_identity
 
 VERSION = 1
+TRACKING_COVERAGE_ID = "tracking"
+
+
+def require_capability(entity):
+    """An opening needs the accrual capability (version 1). The default report view does not matter."""
+    from .scope import capability
+    if capability(entity) != 1:
+        raise ValueError("Accrual writes require capability version 1. Run `books accrual enable` first, or create the company with --basis accrual.")
 
 
 def _hash(value):
@@ -401,7 +409,7 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
     Returns a JSON-portable preview. All support mismatches stay visible and
     block application; report basis selection never sets company policy.
     """
-    require_accrual(entity)
+    require_capability(entity)
     cutover = _day(cutover)
     if fiscal_start is None:
         raise ValueError("Supply the evidenced fiscal_start explicitly; fiscal policy cannot be inferred from report toggles.")
@@ -461,14 +469,21 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
 
 
 def _build_plan(entity, store, *, operation, import_source, narration, financial, mapping, chart, supporting,
-                cutover, fiscal_start, closed_position, source_id, coverage_extra, request_extra, plan_extra):
+                cutover, fiscal_start, closed_position, source_id, coverage_extra, request_extra, plan_extra,
+                tracking=False):
     """Shared opening core: tie support to control balances and bind the accounting preview.
 
-    QuickBooks reports and the source-neutral opening request both end here.
+    QuickBooks reports and the source-neutral opening request both end here. ``tracking`` is the
+    opening items of a company that turned accrual on later: the one entry is dated the tracking
+    start date itself (the day before could be in a closed period), the coverage record is
+    ``tracking`` and the company may already hold entries.
     """
-    as_of = cutover - timedelta(days=1)
+    as_of = cutover if tracking else cutover - timedelta(days=1)
+    coverage_id = TRACKING_COVERAGE_ID if tracking else "opening"
+    if tracking:
+        narration = f"Opening items at accrual tracking start ({cutover.isoformat()})"
     mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
-    coverage = {"id": "opening", "basis": "accrual", "currency": "USD", "cutover_date": cutover.isoformat(),
+    coverage = {"id": coverage_id, "basis": "accrual", "currency": "USD", "cutover_date": cutover.isoformat(),
                 "source_as_of": as_of.isoformat(), "fiscal_start": fiscal_start.isoformat(),
                 "summary_from": None if closed_position else fiscal_start.isoformat(),
                 "summary_to": None if closed_position else as_of.isoformat(), "closed_position": closed_position,
@@ -482,10 +497,10 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
     with store.connection() as conn:
         if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
             raise ValueError("Opening accrual import requires an explicit schema upgrade.")
-        existing = load_record(store, "coverage", "opening", conn)
+        existing = load_record(store, "coverage", coverage_id, conn)
         if existing and existing.get("intent_hash") != coverage["intent_hash"]:
             raise ValueError("Opening supporting document conflicts with the already applied cutover.")
-        if not existing and (conn.execute("SELECT 1 FROM entries UNION ALL SELECT 1 FROM balance_assertions UNION ALL SELECT 1 FROM source_transactions LIMIT 1").fetchone()
+        if not existing and not tracking and (conn.execute("SELECT 1 FROM entries UNION ALL SELECT 1 FROM balance_assertions UNION ALL SELECT 1 FROM source_transactions LIMIT 1").fetchone()
                              or any(list_records(store, table, conn) for table in TABLES if table not in {"evidence", "periods", "intents"})):
             raise ValueError("Opening cutover requires an empty target. A company that already has entries cannot take an opening; start a new accrual company at the cutover date.")
         digest = store.content_digest(conn)
@@ -498,7 +513,7 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
             "coverage": coverage, "balances": facts["balances"], "support": mutations,
             "support_differences": differences, "expected_digest": digest,
             "config_hash": _hash(entity.entity_config), "preview_hash": _hash(facts),
-            "import_source": import_source, "narration": narration, **plan_extra}
+            "import_source": import_source, "narration": narration, **({"tracking": True} if tracking else {}), **plan_extra}
     if not differences and not existing:
         from .journals import _preview_operation
         entries, opens, changes = _effects(plan)
@@ -520,14 +535,15 @@ def _effects(plan):
     coverage = plan["coverage"]
     opened = _day(coverage["source_as_of"])
     postings = tuple(Posting(a, _money(n)) for a, n in sorted(plan["balances"].items()) if _money(n))
+    tracking = coverage["id"] == TRACKING_COVERAGE_ID
     metadata = (("source-id", coverage["opening_source_id"]), ("import-source", plan.get("import_source", "quickbooks-opening")),
-                        ("accrual-opening", "true"), ("coverage-id", "opening"),
+                        ("accrual-tracking-opening" if tracking else "accrual-opening", "true"), ("coverage-id", coverage["id"]),
                         ("cutover-date", coverage["cutover_date"]))
     if not coverage["closed_position"]:
         metadata += (("summary-from", coverage["summary_from"]), ("summary-to", coverage["summary_to"]))
     entry = Entry(date=opened, narration=plan.get("narration", "Reconciled accrual opening balances from QuickBooks"), meta=metadata, postings=postings)
     mutations = [SupportingMutation(row["table"], row["id"], row["payload"]) for row in plan["support"]]
-    mutations.append(SupportingMutation("coverage", "opening", coverage))
+    mutations.append(SupportingMutation("coverage", coverage["id"], coverage))
     opens = [Open(_day(account["open_date"]), account["account"], (account["currency"],))
              for account in coverage["chart"]]
     return [entry], opens, mutations
@@ -539,7 +555,7 @@ def apply(entity, plan):
         raise ValueError("Unsupported opening preview.")
     with _entity_write_lock(entity.path):
         current_entity = load_entity(entity.path)
-        require_accrual(current_entity)
+        require_capability(current_entity)
         if plan["operation"] == "accrual-opening":
             from .opening import preview_opening
             fresh = preview_opening(current_entity, plan.get("request"))

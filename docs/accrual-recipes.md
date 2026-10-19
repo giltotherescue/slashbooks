@@ -860,6 +860,52 @@ books accrual opening apply --entity NEW_DIR --input plan.json
 The balance sheet at 2026-01-01 shows the cash balances, the receivable, and equity
 that includes the added amount.
 
+### Recipe 19: turn on accrual in a company that already has cash books
+
+Use this when the company keeps its cash history and wants invoices, bills and prepaid
+balances from a date forward. The company file and ledger stay; earlier periods stay cash.
+A person runs the apply steps.
+
+```sh
+books accrual enable preview --entity PATH --tracking-start 2026-04-01 > enable.json
+books accrual enable apply --entity PATH --input enable.json
+```
+
+Nothing recorded changes. If invoices or bills are still open on 2026-04-01, list only those.
+Leave out `lines` and `cutover`; the entry is dated the tracking start and the balancing amount goes to
+`Equity:Opening-Balance-Adjustments`. (Writing records while the default view is cash needs the
+treatment-scope change; until then run `books entity set-view PATH --view accrual --apply` first.)
+
+```json
+{
+  "operation_id": "tracking-opening",
+  "evidence_refs": ["evidence/open-items-2026-04-01.pdf"],
+  "items": [
+    {"id": "inv-1", "kind": "receivable", "account": "Assets:Receivable:Accounts-Receivable",
+     "counterparty": "Orbit Labs", "reference": "INV-1", "due_date": "2026-03-20", "open_amount": "900.00"},
+    {"id": "bill-1", "kind": "payable", "account": "Liabilities:Payable:Accounts-Payable",
+     "counterparty": "Delta Design", "reference": "B-1", "due_date": "2026-04-10", "open_amount": "250.00"}
+  ]
+}
+```
+
+```sh
+books accrual opening preview --entity PATH --input request.json > plan.json
+books accrual opening apply --entity PATH --input plan.json
+```
+
+The entry is dated 2026-04-01: receivable 900.00 debit, payable 250.00 credit, and
+`Equity:Opening-Balance-Adjustments` 650.00 credit (900.00 minus 250.00). Check:
+
+```sh
+books accrual report --entity PATH --kind aging --as-of 2026-04-30 --format text
+books report balance-sheet --entity PATH --as-of 2026-04-30        # accrual view only
+books report pnl --entity PATH --from 2026-01-01 --to 2026-03-31 --basis cash
+```
+
+An accrual-view request for a period before 2026-04-01 is refused with the first available date; the
+cash view answers it and equals the cash books from before.
+
 ## Close the month
 
 ### Recipe 16: month-end close

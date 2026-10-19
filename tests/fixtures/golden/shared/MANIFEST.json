@@ -5,7 +5,7 @@
       "capabilities"
     ],
     "exit": 0,
-    "stdout_sha256": "21d3d61225baf27ebe19419e657aef24887af030600f8fae0587fc9d176d584d"
+    "stdout_sha256": "25a6c0d9006c2d4746a9e7b9d2bc968f95c7a4c4e2522ddb1436bd21876eee66"
   },
   "accrual-schema.json": {
     "argv": [
@@ -13,7 +13,7 @@
       "schema"
     ],
     "exit": 0,
-    "stdout_sha256": "3e2a206880ef6f83576026a3b0d6cf97790cbb3d3f430368e2d36d994dd7f1e7"
+    "stdout_sha256": "0234c38f1c1bafecff60b79cc4c9985b8fe1a3472358c0a804efe524a456c9bf"
   },
   "procedures-list.json": {
     "argv": [

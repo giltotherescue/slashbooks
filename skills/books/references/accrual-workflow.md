@@ -123,8 +123,14 @@ not as a command, and never as a reason to skip the preview.
 Read the selected company's basis and capability before choosing a workflow.
 Cash remains the default. Accrual is opt-in for a single USD services/SaaS entity;
 ordinary accrual is supported, governmental modified accrual is not. Preserve
-existing basis. A report toggle or re-init cannot convert populated books. To move a cash company to accrual,
-start a new accrual company and use `books accrual opening draft`/`preview`/`apply` (see accrual-intake.md); prior periods stay in the cash company.
+existing basis. A report toggle or re-init cannot convert populated books. To keep a cash company's history and add
+accrual records from a date, a person runs `books accrual enable preview|apply --tracking-start DATE`
+(docs/accrual.md "Turn on accrual for an existing company"); it changes no entry or report, and an agent may run only the
+preview. List what is still open on that date with `accrual opening` (leave out `lines` and `cutover`; the entry is dated
+the tracking start and balances to `Equity:Opening-Balance-Adjustments`). `books entity set-view PATH --view cash|accrual
+[--apply]` picks the default view (person-only); the accrual view starts on the tracking start and refuses earlier periods.
+Otherwise start a new accrual company and use `books accrual opening draft`/`preview`/`apply` (see accrual-intake.md);
+prior periods stay in the cash company.
 The `draft` output is a wrapper: copy its `request` object into the file you preview.
 A new accrual company has a starter chart; `books accrual accounts --entity PATH
 --format json` lists each account and its role. Add others with `books entity
