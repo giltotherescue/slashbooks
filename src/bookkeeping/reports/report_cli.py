@@ -19,6 +19,11 @@ def extend_parser(report_sub: Any, common_args: Any, pnl_p: Any, bs_p: Any) -> N
                  "subtotal and total rows (Gross Profit, Total Assets, Total Liabilities and Equity)",
         )
 
+    cf_p = report_sub.add_parser("cashflow", help="Statement of cash flows (indirect method)")
+    cf_p.add_argument("--from", dest="from_date", required=True, help="Start date (YYYY-MM-DD)")
+    cf_p.add_argument("--to", dest="to_date", required=True, help="End date (YYYY-MM-DD)")
+    common_args(cf_p)
+
 
 def _emit(content: str, output: Optional[Path]) -> None:
     if output:
@@ -43,4 +48,33 @@ def run_extended(args: Any, entity: Path, output: Optional[Path], fmt: str) -> O
         from .structure import structured_json
         _emit(structured_json(balance_sheet(entity, date.fromisoformat(args.as_of))), output)
         return 0
+    if rc == "cashflow":
+        return _run_cashflow(args, entity, output, fmt)
     return None
+
+
+def _run_cashflow(args: Any, entity: Path, output: Optional[Path], fmt: str) -> int:
+    import sys
+    from ..accrual.reports import CoverageError
+    from .cashflow_statement import cash_flow
+
+    try:
+        result = cash_flow(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date))
+    except CoverageError as exc:
+        lines = [f"Error: {exc}"]
+        if exc.first_date:
+            from_date, to_date = args.from_date, args.to_date
+            if exc.field == "from":
+                from_date, to_date = exc.first_date, max(to_date, exc.first_date)
+            else:
+                to_date, from_date = exc.first_date, min(from_date, exc.first_date)
+            lines.append(f"The first available date is {exc.first_date}. Run: books report cashflow "
+                         f"--entity {args.entity} --from {from_date} --to {to_date}")
+        print("\n".join(lines), file=sys.stderr)
+        return 1
+    _emit(result.to_json() if fmt == "json" else result.to_text(), output)
+    if not result.reconciliation["ties"]:
+        print(f"Error: the cash flow statement does not tie to the balance sheet cash accounts. "
+              f"Difference: {result.reconciliation['difference']}.", file=sys.stderr)
+        return 1
+    return 0
