@@ -60,6 +60,7 @@ _CASH_SUBTYPES = {"bank", "cash"}
 _OPERATING_SUBTYPES = ("receivable", "prepaid", "payable", "accrued_liabilities", "deferred_revenue",
                        "customer_deposits", "credit_card")
 _FINANCING_NAME = re.compile(r"loan|note|mortgage|debt|line[-_ ]?of[-_ ]?credit|\bloc\b", re.IGNORECASE)
+_OPENING_NAME = re.compile(r"opening", re.IGNORECASE)
 _RETAINED_NAME = re.compile(r"retained|prior[-_ ]?year|prior[-_ ]?period", re.IGNORECASE)
 
 GROUP_LABELS = {
@@ -95,6 +96,8 @@ def classify(account: str, subtype: str) -> tuple[str, str]:
     if subtype == "fixed_asset":
         return "investing", "fixed asset"
     if subtype == "equity":
+        if _OPENING_NAME.search(account.split(":", 1)[-1]):
+            return "needs_classification", "opening balance equity is a starting point, not a financing flow"
         if _RETAINED_NAME.search(account.split(":", 1)[-1]):
             return "needs_classification", "retained earnings or prior-period equity moves for a reason the engine cannot see"
         return "financing", "equity account"
@@ -282,13 +285,75 @@ def build_cash_flow(
     return CashflowResult(from_date, to_date, lines, totals, reconciliation, needs, dict(meta or {}))
 
 
+_OPENING_SOURCES = {"quickbooks-opening", "accrual-opening"}
+
+
+def opening_entries(conn: Any, from_date: date, to_date: date) -> list[dict]:
+    """Imported opening-balance entries dated in [from_date, to_date].
+
+    An entry is an opening entry when its ``import-source`` is ``quickbooks-opening``
+    or ``accrual-opening``, or its ``accrual-opening`` metadata is ``true``.  A ledger
+    cache without entry metadata is matched by the QuickBooks opening ``source_id``.
+    """
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
+    meta_column = "metadata_json" if "metadata_json" in columns else "'[]'"
+    found = []
+    rows = conn.execute(
+        f"SELECT id, date, source_id, {meta_column} FROM entries WHERE date >= ? AND date <= ? ORDER BY id",
+        (from_date.isoformat(), to_date.isoformat()),
+    ).fetchall()
+    for entry_id, entry_date, source_id, raw in rows:
+        try:
+            decoded = json.loads(raw or "[]")
+            meta = dict(decoded.items() if isinstance(decoded, dict) else decoded)
+        except (TypeError, ValueError):
+            meta = {}
+        if (meta.get("import-source") in _OPENING_SOURCES or meta.get("accrual-opening") == "true"
+                or str(source_id or "").startswith("quickbooks-opening-")):
+            found.append({"id": entry_id, "date": date.fromisoformat(entry_date)})
+    return found
+
+
+def _opening_balances(conn: Any, entry_ids: list[int]) -> dict[str, Decimal]:
+    totals: dict[str, Decimal] = {}
+    for entry_id in entry_ids:
+        for account, amount in conn.execute("SELECT account, amount FROM postings WHERE entry_id = ?", (entry_id,)):
+            totals[account] = totals.get(account, ZERO) + Decimal(amount)
+    return totals
+
+
 def cash_flow(entity_path: Path | str, from_date: date, to_date: date) -> CashflowResult:
-    """Compute the statement of cash flows for [from_date, to_date] inclusive."""
+    """Compute the statement of cash flows for [from_date, to_date] inclusive.
+
+    Opening balances are a starting point, never a cash flow:
+
+    * A period that starts inside an imported fiscal summary is refused (the P&L
+      accepts it, a cash flow cannot).
+    * An opening entry dated on ``from_date`` is part of the beginning balances.
+    * An opening entry dated after ``from_date`` and on or before ``to_date`` makes
+      the beginning balances unknowable, so the report is refused.
+    """
+    from ..accrual.reports import CoverageError
+
     entity_path = Path(entity_path)
     pnl = profit_and_loss(entity_path, from_date, to_date)  # validates dates and coverage
+    if pnl.meta.get("summary_included"):
+        cutover = (pnl.meta.get("coverage") or {}).get("cutover_date")
+        raise CoverageError(
+            "A cash flow statement cannot start inside the imported fiscal summary, because the opening "
+            "balances are its starting point. Start on or after the cutover date.", cutover, "from")
     conn = open_cache(entity_path)
     try:
+        openings = opening_entries(conn, from_date, to_date)
+        later = [o for o in openings if o["date"] > from_date]
+        if later:
+            first = min(o["date"] for o in later).isoformat()
+            raise CoverageError(
+                f"The opening balances are dated {first}, inside the period. Cash flows before opening balances "
+                f"are unknown. Start the cash flow statement on {first}.", first, "from")
         begin = _account_balances_as_of(conn, from_date - timedelta(days=1))
+        for account, amount in _opening_balances(conn, [o["id"] for o in openings]).items():
+            begin[account] = begin.get(account, ZERO) + amount
         end = _account_balances_as_of(conn, to_date)
         subtypes = classify_accounts(conn, set(begin) | set(end))
     finally:

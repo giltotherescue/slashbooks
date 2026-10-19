@@ -59,8 +59,7 @@ reports. A cash book with no accrual records uses the account-name prefix.
 
 The engine does not guess. A "Needs classification" group is always visible and always counted in the net change in
 cash, so the statement still ties. A credit card is working capital, not cash: a card charge is an expense in net
-income and a larger card balance in the operating group. Opening-balance entries dated inside the period appear in
-the groups of their accounts.
+income and a larger card balance in the operating group. Opening balances are a starting point, never a cash flow (see below).
 
 Reconciliation: beginning cash plus the net change must equal the bank and cash accounts on the balance sheet at the
 end date, to the cent. If it does not, `reconciliation.ties` is `false`, `difference` shows the amount, and the
@@ -86,6 +85,13 @@ command exits with code 1.
   "meta": {"basis": "cash"}
 }
 ```
+
+### Opening balances
+
+An imported opening entry (QuickBooks opening or accrual opening) is part of the beginning balances, never a cash
+flow. An opening entry dated on the `--from` date is counted in the beginning balances. An opening entry dated after
+`--from` and on or before `--to` makes the beginning balances unknown, so the command refuses and gives the date to
+start from. An equity account whose name says opening is never placed in financing; it goes to "Needs classification".
 
 ## Comparative periods: `--compare previous|prior_year`
 
@@ -136,4 +142,4 @@ that the engine cannot place go to "Needs classification". These are approximate
 - Sales tax and payroll liabilities have no recognized name, so they go to "Needs classification".
 - Retained earnings and prior-period equity moves go to "Needs classification".
 - A gain or loss on the sale of a fixed asset is not split from the sale proceeds.
-- A report that starts before the imported opening cutover follows the same coverage rule as the P&L.
+- A period that starts inside an imported fiscal summary is refused with the first available date (the cutover). The P&L accepts such a period; a cash flow statement cannot, because the opening balances are its starting point. In `--compare`, a prior period like that is reported as having no data.
