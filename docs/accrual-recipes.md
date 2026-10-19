@@ -1085,6 +1085,25 @@ Schedules and items already created from the rule stay too. A request that names
 unknown field, a bad account, a term outside 1 to 600 months or an inexact threshold
 fails with the field and the next step.
 
+## Cash view
+
+### Recipe 18: show a cash-basis profit and loss
+
+Use it when an owner, lender or tax preparer asks for the same period on a cash
+basis. The books stay accrual. Nothing is posted and no period lock changes.
+
+```sh
+books report pnl --entity . --from 2026-03-01 --to 2026-03-31 --basis cash
+```
+
+The report says "Cash basis (derived from accrual books)" and ends with a tie-out.
+For March it can read: accrual net income 4,500.00, cash net income 5,000.00, difference
+-500.00, explained by payables of -500.00 (a commission bill recorded and not yet paid).
+Each rule, such as "an invoice is income when it is paid" and "a prepaid schedule is
+expense on the day it is paid", is listed in the `meta.method` block of
+`--format json`, and in [the cash view](accrual.md#cash-view). Ask the same question in
+words with `books ask --entity . "What was our cash-basis profit for March 2026?"`.
+
 ## Export for the accountant
 
 Export reads the saved reconciliation, so run the reconcile step (recipe 16, step 4)

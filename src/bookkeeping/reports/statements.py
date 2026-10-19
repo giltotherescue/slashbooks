@@ -133,7 +133,9 @@ class StatementResult:
         _head = self._header()
         lines.append(_head)
         lines.append("=" * len(_head))
-        if self.meta.get("basis"):
+        if self.meta.get("view_label"):
+            lines.append(f"Accounting basis: {self.meta['view_label']}; the books are kept on the {self.meta.get('books_basis', 'accrual')} basis")
+        elif self.meta.get("basis"):
             lines.append(f"Accounting basis: {self.meta['basis']}")
         coverage = self.meta.get("coverage")
         if coverage:
@@ -145,7 +147,9 @@ class StatementResult:
                     lines.append(f"Imported activity summary: {period} ({included})")
                 else:
                     lines.append(f"Retained fiscal summary coverage: {period}")
-        issues = self.meta.get("unresolved_issues", [])
+        if Decimal(self.meta.get("noncash_entries_total", "0")):
+            lines.append(f"Includes ${Decimal(self.meta['noncash_entries_total']):,.2f} of entries that may not be cash - see the list")
+        issues = [i for i in self.meta.get("unresolved_issues", []) if i.get("code") != "cash_view_noncash_entry"]
         if issues:
             lines.append("Unresolved accounting issues:")
             for issue in issues:
@@ -175,6 +179,10 @@ class StatementResult:
             for k, v in self.totals.items():
                 k_readable = k.replace("_", " ").title()
                 lines.append(f"{k_readable:<42} {_fmt(v):>14}")
+        if self.meta.get("tie_out"):
+            from .cashview import noncash_lines, tie_out_lines
+            lines.extend(noncash_lines(self.meta.get("unresolved_issues", [])))
+            lines.extend(tie_out_lines(self.meta["tie_out"]))
         return "\n".join(lines)
 
     def _header(self) -> str:
@@ -185,6 +193,8 @@ class StatementResult:
             "general_ledger": "General Ledger",
         }
         label = kind_labels.get(self.kind, self.kind.replace("_", " ").title())
+        if self.meta.get("view_label"):
+            label = f"{label} - {self.meta['view_label']}"
         if self.from_date and self.to_date and self.kind in ("pnl", "general_ledger"):
             return f"{label}  {self.from_date}  through  {self.to_date}"
         if self.to_date and self.kind in ("balance_sheet", "trial_balance"):
@@ -229,14 +239,37 @@ def profit_and_loss(
     entity_path: Path | str,
     from_date: date,
     to_date: date,
+    basis: Optional[str] = None,
 ) -> StatementResult:
-    """Compute profit and loss for the period [from_date, to_date] inclusive."""
+    """Compute profit and loss for the period [from_date, to_date] inclusive.
+
+    ``basis`` is None (the basis the books keep), ``"cash"`` or ``"accrual"``. Accrual books
+    can show a derived cash view; cash books keep no data for an accrual view.
+    """
     entity_path = Path(entity_path)
+    if basis not in (None, "cash", "accrual"):
+        raise ValueError("basis must be cash or accrual.")
+    if basis:
+        kept = _kept_basis(entity_path)
+        if kept == "accrual" and basis == "cash":
+            from .cashview import profit_and_loss as cash_view
+            return cash_view(entity_path, from_date, to_date)
+        if kept == "cash" and basis == "accrual":
+            raise ValueError("Cash books keep no data for an accrual view: there are no invoices, bills, prepaid or deferred records. "
+                             "Run books report pnl without --basis, or with --basis cash.")
     conn = open_cache(entity_path)
     try:
         return _compute_pnl(conn, from_date, to_date)
     finally:
         conn.close()
+
+
+def _kept_basis(entity_path: Path) -> Optional[str]:
+    from ..entity import load_entity, resolve_basis
+    try:
+        return resolve_basis(load_entity(entity_path).entity_config)
+    except Exception:
+        return None
 
 
 def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
@@ -715,6 +748,16 @@ def _without_cash_wording(question: str) -> str:
     return text.strip(" ,;") or "What is my profit?"
 
 
+def _without_accrual_wording(question: str) -> str:
+    """Remove the accrual-basis wording so the question is grammatical on the kept basis."""
+    text = re.sub(r"(?i)\b(?:on|using|in|under|with|by)\s+(?:an|the)\s+accrual[- ]?(?:basis|view|method|based|accounting)\b", "", question)
+    text = re.sub(r"(?i)\b(?:an\s+|the\s+)?accrual[- ]?(?:basis|view|method|based|accounting)\b", "", text)
+    text = re.sub(r"(?i)\baccrual[- ](profit|income|p&l)\b", r"\1", text)
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s+([?.!,;])", r"\1", text)
+    return text.strip(" ,;") or "What is my profit?"
+
+
 def ask(
     entity_path: Path | str,
     question: str,
@@ -723,8 +766,9 @@ def ask(
 ) -> AskResult:
     """Answer a question and always say which basis and period the answer covers.
 
-    A question that asks for a basis the books do not keep is refused with the
-    nearest valid report, never answered on the other basis.
+    Accrual books answer a cash-basis question from the derived cash view and say so.
+    Cash books keep no data for an accrual view, so that question is refused with
+    the reason, never answered on the other basis.
     """
     from ..entity import load_entity, resolve_basis
     if today is None:
@@ -743,16 +787,21 @@ def ask(
     if from_date is None:
         from_date, to_date = date(today.year, 1, 1), today
     span = f"from {from_date} to {to_date}"
-    if kept and wanted and wanted != kept:
-        options = [f"- Bank movements for the period: books report general-ledger --entity {entity_path} --from {from_date} --to {to_date} (read the Assets:Bank accounts)."]
-        if kept == "accrual":
-            options.append(f"- The same period on the accrual basis: books ask --entity {entity_path} \""
-                           + (f"What was our net income from {from_date} to {to_date}?" if cash_flow else _without_cash_wording(question)) + "\"")
-            options.append(f"- Future cash only: books forecast {entity_path}")
-        text = (f"Not available: you asked for the {wanted} basis, but these books are kept on the {kept} basis, "
-                f"so no {wanted}-basis figure is computed. Period asked: {span}.\n" + "\n".join(options))
+    cash_view = kept == "accrual" and wanted == "cash"
+    if kept == "cash" and wanted == "accrual":
+        options = [f"- The same period on the cash basis these books keep: books ask --entity {entity_path} \"" + _without_accrual_wording(question) + "\"",
+                   "- To keep accrual books, start an accrual company at a cutover date: see docs/accrual.md."]
+        text = (f"Not available: you asked for the accrual basis, but these books are kept on the cash basis. Cash books keep no invoices, bills, "
+                f"prepaid or deferred records, so there is nothing to build an accrual figure from. Period asked: {span}.\n" + "\n".join(options))
         return AskResult(question=question, intent="unavailable_basis", answer_text=text,
                          data={"unavailable": "basis_not_kept", "requested_basis": wanted, "books_basis": kept,
+                               "from_date": str(from_date), "to_date": str(to_date)})
+    if cash_view and ask_intents.match(question):
+        text = (f"Not available: the cash-basis view covers profit and loss only. Balances such as receivables, payables, prepaid expenses and "
+                f"the balance sheet are kept on the accrual basis. Period asked: {span}.\n"
+                f"- Ask the same question without cash wording: books ask --entity {entity_path} \"{_without_cash_wording(question)}\"")
+        return AskResult(question=question, intent="unavailable_basis", answer_text=text,
+                         data={"unavailable": "cash_view_profit_and_loss_only", "requested_basis": wanted, "books_basis": kept,
                                "from_date": str(from_date), "to_date": str(to_date)})
     names = ask_intents.match(question)
     routed = None
@@ -765,13 +814,19 @@ def ask(
         result.answer_text = f"Answer covers: {kept or 'unknown'} basis, from {routed.data['from_date']} to {routed.data['to_date']}.{note}\n\n" + result.answer_text
         result.data.setdefault("basis", kept)
         return result
-    result = _ask_core(entity_path, question, today=today)
+    result = _ask_core(entity_path, question, today=today, cash_view=cash_view)
     if result.intent == "unknown":
         return result
     answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
     note = "" if named else " No period was named in the question, so this covers the year to date."
-    result.answer_text = (f"Answer covers: {kept or 'unknown'} basis, from {answered_from} to {answered_to}.{note}\n\n"
+    covered = "cash basis (derived from accrual books)" if cash_view else f"{kept or 'unknown'} basis"
+    result.answer_text = (f"Answer covers: {covered}, from {answered_from} to {answered_to}.{note}\n\n"
                           + result.answer_text)
+    if cash_view:
+        result.data.update(basis="cash", books_basis="accrual", derived_from="accrual")
+        total = Decimal(((result.data.get("meta") or {}).get("noncash_entries_total")) or "0")
+        if total:
+            result.answer_text = result.answer_text.replace("\n\n", f"\nNote: this includes ${total:,.2f} of entries that may not be cash. They are listed under \"Entries that may not be cash\" below.\n\n", 1)
     result.data.setdefault("basis", kept)
     result.data.setdefault("from_date", answered_from)
     result.data.setdefault("to_date", answered_to)
@@ -783,6 +838,7 @@ def _ask_core(
     question: str,
     *,
     today: Optional[date] = None,
+    cash_view: bool = False,
 ) -> AskResult:
     """Dispatch a plain-English question to deterministic statement/cache queries.
 
@@ -809,6 +865,8 @@ def _ask_core(
     is_draws = bool(re.search(r"\b(draw|draws|owner pay|owner draws|distribution|distributions)\b", q_lower))
     is_vendor = bool(re.search(r"\b(?:how much did we pay|how much have we paid|paid to|payments? to)\b", q_lower))
     is_net = bool(re.search(r"\b(net income|profit|how are we doing|doing|performance|p&l)\b", q_lower))
+    if cash_view and re.search(r"\b(receive|received|collect|collected|brought in)\b", q_lower):
+        is_revenue = True
 
     # draws check before spend (more specific)
     if is_draws:
@@ -839,12 +897,19 @@ def _ask_core(
                 intent = "net_income"
             # Use the same coverage checks and recognition totals as statements.
             # A summarized opening cannot answer an arbitrary historical period.
-            metadata = financial_metadata(conn, "pnl", from_date, to_date)
-            context = StatementResult("pnl", from_date, to_date, meta=metadata).to_text()
+            derived = None
+            if cash_view:
+                from .cashview import profit_and_loss as cash_pnl
+                derived = cash_pnl(entity_path, from_date, to_date)
+                metadata = derived.meta
+                context = derived.to_text()
+            else:
+                metadata = financial_metadata(conn, "pnl", from_date, to_date)
+                context = StatementResult("pnl", from_date, to_date, meta=metadata).to_text()
             dates = {"from_date": str(from_date), "to_date": str(to_date), "meta": metadata}
-            if intent == "vendor" or (intent in {"revenue", "spend"} and re.search(r"\b(paid|pay|payments?|receipts)\b", q_lower)):
+            if intent == "vendor" or (not cash_view and intent in {"revenue", "spend"} and re.search(r"\b(paid|pay|payments?|receipts)\b", q_lower)):
                 return AskResult(question=question, intent=intent,
-                    answer_text="Cash payments and receipts require linked bank movements and settlement evidence. Use the general ledger and settlement reports to inspect those movements.\n\n" + context,
+                    answer_text="Cash payments and receipts by vendor or customer require linked bank movements and settlement supporting documents. Use the general ledger and settlement reports to inspect those movements.\n\n" + context,
                     data={**dates, "unavailable": "cash_payment_linkage_required"})
             if intent == "draws":
                 if metadata.get("summary_included"):
@@ -854,16 +919,17 @@ def _ask_core(
                 return AskResult(question=question, intent=intent,
                     answer_text=f"Recorded owner draws {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + context,
                     data={**dates, "total_draws": str(total)})
-            pnl = _compute_pnl(conn, from_date, to_date)
+            pnl = derived or _compute_pnl(conn, from_date, to_date)
             if intent == "revenue":
-                total, key, label = pnl.sections[0]["total"], "total_revenue", "Recognized revenue"
+                total, key, label = pnl.sections[0]["total"], "total_revenue", ("Revenue received (cash basis)" if cash_view else "Recognized revenue")
             elif intent == "spend":
                 category = _extract_category(question)
                 total = (sum((r["amount"] for r in pnl.sections[1]["rows"] if category.lower() in r["label"].lower()), Decimal("0.00"))
                          if category else pnl.sections[1]["total"])
-                key, label = "total_expenses", "Recognized expenses" + (f" matching '{category}'" if category else "")
+                key = "total_expenses"
+                label = ("Expenses paid (cash basis)" if cash_view else "Recognized expenses") + (f" matching '{category}'" if category else "")
             else:
-                total, key, label = pnl.totals["net_income"], "net_income", "Net income"
+                total, key, label = pnl.totals["net_income"], "net_income", ("Cash-basis net income" if cash_view else "Net income")
             return AskResult(question=question, intent=intent,
                 answer_text=f"{label} {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + pnl.to_text(),
                 data={**dates, key: str(total)})
@@ -1087,6 +1153,9 @@ def add_parser(subparsers: Any) -> None:
     pnl_p = report_sub.add_parser("pnl", help="Profit and loss statement")
     pnl_p.add_argument("--from", dest="from_date", required=True, help="Start date (YYYY-MM-DD)")
     pnl_p.add_argument("--to", dest="to_date", required=True, help="End date (YYYY-MM-DD)")
+    pnl_p.add_argument("--basis", choices=["cash", "accrual"], default=None,
+                       help="Basis to show. Default: the basis the books keep. Accrual books can show a derived cash view; "
+                            "cash books keep no data for an accrual view.")
     _common_args(pnl_p)
 
     # balance-sheet
@@ -1120,6 +1189,8 @@ def _coverage_failure(args: Any, exc: Exception) -> int:
     if first and command:
         parts = [f"books report {command} --entity {args.entity}"]
         if command in {"pnl", "general-ledger"}:
+            if command == "pnl" and getattr(args, "basis", None):
+                parts.append(f"--basis {args.basis}")
             from_date, to_date = args.from_date, args.to_date
             if field == "from":
                 from_date = first
@@ -1152,12 +1223,19 @@ def run(args: Any) -> int:
 
 def _run(args: Any) -> int:
     """Dispatch report or ask command."""
+    from ..accrual.reports import CoverageError
+    from .cashview import CashViewError
     cmd = getattr(args, "command", None)
 
     if cmd == "ask":
         entity = Path(args.entity)
         today_override = date.fromisoformat(args.today) if args.today else None
-        result = ask(entity, args.question, today=today_override)
+        try:
+            result = ask(entity, args.question, today=today_override)
+        except CoverageError as exc:
+            first = getattr(exc, "first_date", None)
+            print(f"Error: {exc}" + (f"\nThe first available date is {first}." if first else ""), file=sys.stderr)
+            return 1
         print(result.answer_text)
         return 0
 
@@ -1170,7 +1248,17 @@ def _run(args: Any) -> int:
         if rc == "pnl":
             from_date = date.fromisoformat(args.from_date)
             to_date = date.fromisoformat(args.to_date)
-            result = profit_and_loss(entity, from_date, to_date)
+            try:
+                result = profit_and_loss(entity, from_date, to_date, basis=getattr(args, "basis", None))
+            except CashViewError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+            except ValueError as exc:
+                from ..accrual.reports import CoverageError
+                if isinstance(exc, CoverageError):
+                    raise
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
             _write_output(result, output, fmt)
             return 0
 

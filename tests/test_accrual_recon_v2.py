@@ -110,17 +110,20 @@ class ReconV2Tests(AccrualFixture):
         self.assertIn("2026-01-01 through 2026-01-31, 2026-03-01 through 2026-03-31", text)
         self.assertIn("gap", text)
 
-    def test_ask_refuses_a_basis_the_books_do_not_keep_and_states_period(self):
-        self.post("sale", "2026-01-10", [(AR, "500.00"), (INCOME, "-500.00")])
+    def test_ask_answers_a_cash_question_from_the_cash_view_and_states_basis_and_period(self):
+        items.apply_item(self.entity, items.preview_item(self.entity, self.item(
+            operation_id="sale-create", id="sale", original_amount="500.00", as_of="2026-01-10",
+            origin={"mode": "new", "source_id": "sale-src", "counter_account": INCOME})))
         today = date(2026, 5, 31)
-        refused = statements.ask(self.root, "What is our cash-basis profit from January through May?", today=today)
-        self.assertEqual(refused.data["unavailable"], "basis_not_kept")
-        self.assertEqual((refused.data["from_date"], refused.data["to_date"]), ("2026-01-01", "2026-05-31"))
-        self.assertIn("accrual basis", refused.answer_text)
-        self.assertIn("books report general-ledger", refused.answer_text)
-        self.assertNotIn("Net income", refused.answer_text)
+        cash = statements.ask(self.root, "What is our cash-basis profit from January through May?", today=today)
+        self.assertEqual((cash.data["from_date"], cash.data["to_date"]), ("2026-01-01", "2026-05-31"))
+        self.assertTrue(cash.answer_text.startswith("Answer covers: cash basis (derived from accrual books), from 2026-01-01 to 2026-05-31."))
+        # The invoice is recorded but not collected, so the cash profit is 0.00 while the accrual profit is 500.00.
+        self.assertEqual(cash.data["net_income"], "0.00")
+        self.assertNotIn("unavailable", cash.data)
         answer = statements.ask(self.root, "What is our net income from January through May?", today=today)
         self.assertEqual((answer.data["from_date"], answer.data["to_date"]), ("2026-01-01", "2026-05-31"))
+        self.assertEqual(answer.data["net_income"], "500.00")
         self.assertTrue(answer.answer_text.startswith("Answer covers: accrual basis, from 2026-01-01 to 2026-05-31."))
         unnamed = statements.ask(self.root, "What is our net income?", today=today)
         self.assertIn("No period was named", unnamed.answer_text)

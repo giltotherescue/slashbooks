@@ -1,4 +1,35 @@
-Not available: you asked for the cash basis, but these books are kept on the accrual basis, so no cash-basis figure is computed. Period asked: from 2026-07-01 to 2026-07-31.
-- Bank movements for the period: books report general-ledger --entity <COMPANY> --from 2026-07-01 --to 2026-07-31 (read the Assets:Bank accounts).
-- The same period on the accrual basis: books ask --entity <COMPANY> "What was our net income from 2026-07-01 to 2026-07-31?"
-- Future cash only: books forecast <COMPANY>
+Answer covers: cash basis (derived from accrual books), from 2026-07-01 to 2026-07-31.
+
+Expenses paid (cash basis) matching 'operating costs' from 2026-07-01 to 2026-07-31: 0.00
+
+Profit and Loss - Cash basis (derived from accrual books)  2026-07-01  through  2026-07-31
+==========================================================================================
+Accounting basis: Cash basis (derived from accrual books); the books are kept on the accrual basis
+Activity cutover: 2026-07-01, opening balances as of 2026-06-30
+Imported activity summary: 2026-01-01 through 2026-06-30 (not included in this report)
+
+Revenue
+----------------------------------------
+  Collected from opening receivables               400.00
+  Total Revenue                                    400.00
+
+Expenses
+----------------------------------------
+  Expenses › Operating-Costs                       640.00
+  Paid on opening payables                         200.00
+  Total Expenses                                   840.00
+
+--------------------------------------------------------
+Net Income                                        -440.00
+
+Credit cards: A credit card charge counts as paid on the charge date (cash-basis tax rule). Paying the card balance later is not an expense.
+
+Tie-out to the accrual books
+  Accrual net income                              -640.00
+  Cash net income                                 -440.00
+  Difference                                      -200.00
+  The difference is explained by these changes in the period:
+    Prepaid expenses: paid and not yet used                   -100.00
+    Deferred revenue: received and not yet earned              100.00
+    Opening receivables collected and opening payables paid      -200.00
+  Reconciling items total                         -200.00  (ties to the cent)

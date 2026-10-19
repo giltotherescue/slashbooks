@@ -55,9 +55,12 @@ documented payment deadline, not the item's accounting `as_of` date. Aging group
 receivables and payables by recorded due date; missing dates remain unknown and
 credits remain separate unapplied credits. Generic accrual estimates are excluded.
 Use engine summaries, not agent-calculated totals. Every `books ask` answer begins
-with the basis and the dates it covers. Accrual books refuse a cash-basis profit and
-loss question and name the nearest valid report: read the bank accounts in
-`books report general-ledger` for cash movements. Never answer it from accrual numbers. Accrual reports accept
+with the basis and the dates it covers. A cash-basis question on accrual books is
+answered from the derived cash view (`books report pnl --basis cash`, "Cash basis
+(derived from accrual books)"). It has a tie-out to the accrual result and starts at the
+cutover. Say which basis you show, and never present an accrual figure as a cash figure.
+Read the bank accounts in `books report general-ledger` for per-account cash movements.
+Accrual reports accept
 `--format text` for readable inspection or `--format json` for structured results.
 
 Summarize a proposed action with its date, business effect, whether payment is

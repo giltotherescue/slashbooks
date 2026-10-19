@@ -146,7 +146,8 @@ includes journals backed by a supporting document or an estimate, prepaid, defer
 and straight-line depreciation schedules, outstanding balances and settlement,
 deposits and credits applied to invoices, accrued estimates that reverse or are
 trued up, write-offs, corrections, external support, opening balances, and
-coverage-aware reporting. Accrual books do not produce a cash-basis profit and loss.
+coverage-aware reporting. Accrual books can show a cash-basis profit and loss derived from the accrual records
+(`books report pnl --basis cash`), with a tie-out to the accrual result.
 See [accrual books](accrual.md) for limits, [accrual recipes](accrual-recipes.md) for
 worked requests, and [source-neutral intake](accrual-intake.md) for contracts. It does
 not calculate payroll, tax, tax depreciation methods, inventory costing, or complex

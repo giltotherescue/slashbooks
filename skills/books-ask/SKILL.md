@@ -97,10 +97,14 @@ owner rephrase them for `ask`:
 | What is blocking month end? | `readiness --entity <entity-path> --period <YYYY-MM> --as-of <evaluation-date>` |
 
 Every `books ask` answer begins with a line that names the basis and the dates it
-covers; repeat it to the owner. Accrual books do not compute a cash-basis profit
-and loss. A question that asks for one is refused with the nearest valid report; for
-bank movements, read the bank accounts in `report general-ledger`. Never answer a cash-basis
-question from accrual numbers.
+covers; repeat it to the owner. On accrual books, a cash-basis question ("cash profit",
+"how much cash did we receive") is answered from the derived cash view, and the first line
+says "cash basis (derived from accrual books)". Repeat that wording to the owner and
+never present an accrual figure as a cash figure. The cash view covers profit and loss
+only; for a balance or a per-account cash movement, read `report general-ledger`.
+Cash books keep no data for an accrual view, so an accrual question on cash books is
+refused with the reason. For a full report, run `report pnl --basis cash`: it ends with a
+tie-out to the accrual result.
 
 Use the requested date or period. If none was given, state the current date used;
 ask only when choosing a date would materially change the answer. Use recorded
