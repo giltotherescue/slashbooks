@@ -327,9 +327,10 @@ def _capture_state(capture: Capture, kind: str, root: Path, work: Path) -> None:
         # The migration bundle a host receives: manifest only (no SQLite file bytes).
         bundle = work / f"{kind}-bundle.zip"
         result = migration_bundle.build_bundle(root, bundle)
+        # total_bytes includes the SQLite file size, which varies with the SQLite build.
         # bundle_sha256 and manifest_sha256 are hashes of bytes that hold the temp path; the manifest below
         # carries the same facts with per-file hashes taken over the path-normalized content.
-        result = {k: v for k, v in result.items() if k not in {"bundle_sha256", "manifest_sha256"}}
+        result = {k: v for k, v in result.items() if k not in {"bundle_sha256", "manifest_sha256", "total_bytes"}}
         capture.data("bundle/export_result", result)
         if bundle.exists():
             loaded = migration_bundle.load_bundle(bundle)
