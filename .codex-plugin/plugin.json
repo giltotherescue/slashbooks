@@ -30,6 +30,12 @@
     "longDescription": "Your AI agent keeps local books current, collects and validates QuickBooks Online reports for migrations and backtests, helps review transactions, answers questions from deterministic reports, and prepares accountant-ready exports.",
     "developerName": "Gil Hildebrand",
     "category": "Productivity",
+    "websiteURL": "https://slashbooks.org/",
+    "privacyPolicyURL": "https://slashbooks.org/privacy/",
+    "termsOfServiceURL": "https://slashbooks.org/terms/",
+    "screenshots": [
+      "./docs/images/slashbooks-hero.png"
+    ],
     "capabilities": [
       "Books",
       "Ledger validation",

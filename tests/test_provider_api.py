@@ -126,7 +126,7 @@ class ConnectorCLITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "ingestion" / "mercury" / "mercury.json"
             stdout = StringIO()
-            with patch.dict(os.environ, {"MERCURY_API_KEY": "mercury_secret"}):
+            with patch.dict(os.environ, {"MERCURY_API_KEY": "example-key-here"}):
                 with patch.object(cli_module, "MercuryClient", StubMercuryClient):
                     with redirect_stdout(stdout):
                         exit_code = cli_module.main(
@@ -177,7 +177,7 @@ class ConnectorCLITests(unittest.TestCase):
                 return [{"id": "treasury_1", "name": "Treasury", "status": "active"}]
 
         stdout = StringIO()
-        with patch.dict(os.environ, {"MERCURY_API_KEY": "mercury_secret"}):
+        with patch.dict(os.environ, {"MERCURY_API_KEY": "example-key-here"}):
             with patch.object(cli_module, "MercuryClient", StubMercuryClient):
                 with redirect_stdout(stdout):
                     exit_code = cli_module.main(["connector", "mercury", "accounts"])
@@ -233,7 +233,7 @@ class ProviderClientTests(unittest.TestCase):
                 return 200, json.dumps({"id": "acct_stripe", "country": "US", "default_currency": "usd"})
             return 200, json.dumps({"data": [{"id": parsed.path.rsplit("/", 1)[-1] + "_1"}], "has_more": False})
 
-        client = StripeClient(api_key="sk_test_secret", stripe_account="acct_connected", transport=transport)
+        client = StripeClient(api_key="example-key-here", stripe_account="acct_connected", transport=transport)
         self.assertEqual(client.retrieve_account()["id"], "acct_stripe")
         self.assertEqual(len(client.list_balance_transactions(from_date="2026-01-01", to_date="2026-01-31")), 1)
         self.assertEqual(len(client.list_payouts(from_date="2026-01-01", to_date="2026-01-31")), 1)
@@ -241,7 +241,7 @@ class ProviderClientTests(unittest.TestCase):
         self.assertEqual(calls[0]["path"], "/v1/account")
         self.assertEqual(calls[1]["path"], "/v1/balance_transactions")
         self.assertEqual(calls[2]["path"], "/v1/payouts")
-        self.assertEqual(calls[0]["headers"]["Authorization"], "Bearer sk_test_secret")
+        self.assertEqual(calls[0]["headers"]["Authorization"], "Bearer example-key-here")
         self.assertEqual(calls[0]["headers"]["Stripe-Account"], "acct_connected")
         self.assertIn("created[gte]", calls[1]["query"])
         self.assertIn("created[lte]", calls[1]["query"])
@@ -268,7 +268,7 @@ class ProviderClientTests(unittest.TestCase):
                 return 200, json.dumps({"data": [{"id": "treasury_1"}]})
             return 200, json.dumps({"transactions": [{"id": "txn_1"}]})
 
-        client = MercuryClient(api_key="mercury_secret", transport=transport)
+        client = MercuryClient(api_key="example-key-here", transport=transport)
         self.assertEqual(len(client.list_accounts()), 1)
         self.assertEqual(len(client.list_credit_accounts()), 1)
         self.assertEqual(len(client.list_treasury_accounts()), 1)
@@ -283,7 +283,7 @@ class ProviderClientTests(unittest.TestCase):
         self.assertEqual(calls[2]["path"], "/api/v1/treasury")
         self.assertEqual(calls[3]["path"], "/api/v1/transactions")
         self.assertEqual(calls[4]["path"], "/api/v1/account/acct_1/transactions")
-        self.assertEqual(calls[4]["headers"]["Authorization"], "Bearer mercury_secret")
+        self.assertEqual(calls[4]["headers"]["Authorization"], "Bearer example-key-here")
         self.assertEqual(calls[4]["query"]["postedStart"], ["2026-01-01"])
         self.assertEqual(calls[4]["query"]["postedEnd"], ["2026-01-31"])
 

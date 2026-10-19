@@ -1,0 +1,14 @@
+.env
+.secrets/
+.slashbooks-remote.json
+scratch/remote-context/
+.slashbooks-remote-downloads/
+.slashbooks-remote-receipts/
+hosted-receipts/
+cache*.sqlite
+staging/*.tmp
+*.tmp
+ledger.sqlite
+entity.json
+reports/
+ingestion/

@@ -22,7 +22,7 @@ from bookkeeping import cli, hosted, hosted_adoption as adoption, migration_bund
 from bookkeeping import hosted_migration as capture
 from tests import test_hosted_migration as fixtures
 
-TOKEN = "synthetic-adoption-token-never-print"
+TOKEN = "example-token-here"
 
 
 class LocalAPI:
