@@ -291,7 +291,8 @@ acme-co/
 By default, Slashbooks stores company data locally in the company directory you
 choose, and the plugin does not host your books. Optionally, during onboarding you can
 connect a folder to Slashbooks Cloud, a hosted service where you and your
-accountant share the same books. The plugin, commands and accounting rules are the
+accountant share the same books. Cloud is free during the beta, with at least
+30 days' notice before any charge. The plugin, commands and accounting rules are the
 same in both cases. See [Local books and Slashbooks Cloud](docs/cloud.md).
 
 Context and preferences live there too:
