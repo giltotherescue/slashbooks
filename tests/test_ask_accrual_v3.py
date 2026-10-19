@@ -73,13 +73,16 @@ class AskRoutingTests(AccrualFixture):
         self.assertIn("Balance sheet as of 2026-03-31", result.answer_text)
         self.assertTrue(result.answer_text.startswith("Answer covers: accrual basis"))
 
-    def test_cash_flow_question_never_gets_an_accrual_figure(self):
-        for question in ("How much cash did we spend on software in March?", "How much cash did we receive from customers in March?"):
-            with self.subTest(question=question):
-                result = self.ask(question)
-                self.assertEqual(result.data["unavailable"], "basis_not_kept")
-                self.assertIn("books report general-ledger", result.answer_text)
-                self.assertNotIn("Recognized", result.answer_text)
+    def test_cash_flow_question_is_answered_from_the_cash_view_never_the_accrual_figure(self):
+        spent = self.ask("How much cash did we spend on software in March?")
+        self.assertTrue(spent.answer_text.startswith("Answer covers: cash basis (derived from accrual books), from 2026-03-01 to 2026-03-31."))
+        # March cash out for software: the 100.00 bank expense. The 1,200.00 prepaid was paid in January.
+        self.assertEqual(spent.data["total_expenses"], "100.00")
+        self.assertNotIn("Recognized", spent.answer_text)
+        received = self.ask("How much cash did we receive from customers in March?")
+        # The 500.00 invoice was recorded in January and never collected.
+        self.assertEqual(received.data["total_revenue"], "0.00")
+        self.assertEqual(received.data["basis"], "cash")
 
     def test_unknown_question_lists_what_can_be_answered(self):
         result = self.ask("What is the meaning of life?")

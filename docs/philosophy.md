@@ -40,8 +40,9 @@ company policy, not a report toggle. For the cash workflow:
 - Accountants can still review the output before tax filing.
 
 Accrual books are opt-in and limited to one company, in USD, for services and SaaS
-businesses. They produce accrual reports. They do not produce a cash-basis profit
-and loss; bank movements are in the general ledger.
+businesses. They produce accrual reports, and a cash-basis profit and loss derived
+from them on request, with a tie-out to the accrual result. Bank movements are in the
+general ledger.
 
 The engine spreads a cost or revenue you describe over time, including straight-line
 depreciation from the cost, salvage value, and dates you give. It does not calculate

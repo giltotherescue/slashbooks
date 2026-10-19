@@ -197,9 +197,9 @@ Ask `/books-ask` questions such as:
 Income and expense reports describe business performance. Bank movements describe
 cash received and paid. The agent should say which one it is answering. Every
 `/books-ask` answer starts with a line that names the basis and the dates it
-covers. Accrual books do not produce a cash-basis profit and loss: a question that
-asks for one is refused, with the nearest valid answer. For cash received and paid,
-read the bank accounts in the general ledger
+covers. A question that asks for a cash-basis profit on accrual books is answered
+from the derived [cash view](#cash-view) and says so. For cash received and paid by
+account, read the bank accounts in the general ledger
 (`books report general-ledger --entity . --from DATE --to DATE`). A missing
 historical period is unavailable, rather than a zero amount. Aging reports use
 actual due dates; balances with unknown due dates and unapplied credits are shown
@@ -242,6 +242,84 @@ Export needs a saved bank reconciliation for each period, so run `books reconcil
 for each bank account first (see recipe 16, step 4). The Excel workbook needs the
 optional extra, `pip install 'agent-books[xlsx]'`; without it, export writes the
 same data as CSV files.
+
+## Cash view
+
+Accrual books record income when you earn it. Some owners, lenders and tax preparers
+also want the same period on a cash basis. Slashbooks derives that view from the
+accrual books on request. The books stay accrual: the cash view writes nothing, and it
+never changes a published statement or a period lock.
+
+```sh
+books report pnl --entity . --from 2026-03-01 --to 2026-03-31 --basis cash
+books report pnl --entity . --from 2026-03-01 --to 2026-03-31 --basis cash --format json
+```
+
+`--basis accrual` is the default on accrual books. On cash books, `--basis cash` is
+the ordinary report, and `--basis accrual` fails with a clear message: cash books
+keep no invoices, bills, prepaid or deferred records to build an accrual view from.
+The text, the JSON (`meta.view_label`) and a file written with `--output` all say
+"Cash basis (derived from accrual books)". The JSON `meta.method` block lists the
+rules below, and `meta.tie_out` carries the proof.
+
+You can also ask: "What was our cash-basis profit for March?" or "How much cash did
+we receive from customers in March?". The answer starts with
+"Answer covers: cash basis (derived from accrual books), from DATE to DATE." and uses
+the same view. The cash view covers profit and loss only; it is not a balance sheet.
+
+### How each event is shown
+
+| Event in the accrual books | Cash view |
+|---|---|
+| Invoice or bill (receivable or payable item) | Income or expense when cash settles it, on the settlement date, split across the item's lines (`origin.lines`, or its one counter account) in proportion to the amount settled. |
+| Rounding of a split | Each line's cumulative share is floored to the cent, and the last line takes the leftover cents. When cash fully settles an item, the cumulative amount on every line equals the line exactly. |
+| Credit memo, credit offset, write-off, credit or true-up (`item adjust`) | No cash moves, so no effect. A credit memo applied to an invoice lowers the cash view only through the smaller payment. |
+| Customer deposit or overpayment (`excess`) | Income on the receipt date, on the line "Customer payments not yet applied to an invoice" (no category). When you apply it to an invoice, the amount moves from that line to the invoice's lines on the application date. This is how common cash reports such as QuickBooks show an unapplied payment. A refund of the credit reverses the line. |
+| Supplier prepayment | The same rule on the expense side: the line "Supplier prepayments not yet applied to a bill". |
+| Prepaid schedule | Expense in full on the funding date. The monthly recognition entries are ignored. |
+| Deferred revenue schedule | Income in full on the receipt date. The monthly recognition entries are ignored. |
+| Terminate, cancel or refund of a schedule | Cash refunded or paid back reverses the expense or income on that date. A release to a write-off account moves no cash and has no effect. |
+| Depreciation | Shown as recorded, as in QuickBooks cash reports. The equipment purchase stays an asset and is not expense. |
+| Accrued estimate (journal with `estimate_basis` or `reversal_date`, accrual item), its reversal and its true-up | Excluded. The actual bill follows the invoice and bill rule. |
+| Journal or bank transaction that touches no registered control account | Included as recorded. Card charges are expense when charged. |
+| Opening receivable or payable | It has no income or expense account. Its collection or payment shows on the lines "Collected from opening receivables" and "Paid on opening payables", with no category. Net income includes them. |
+| Cash that moves through a registered control account with nothing to explain it | Shown on the line "Unclassified cash movements (review needed)" and listed in the report issues. It is never dropped. |
+
+A registered control account is an account that holds receivable, payable, accrual or
+credit items, prepaid or deferred schedules, or estimate journals. An account with no
+registered detail is `ledger_only` and its entries are shown as recorded.
+
+### Tie-out
+
+Every cash view proves itself. Accrual net income minus cash net income must equal the
+reconciling items, to the cent:
+
+```
+accrual net income - cash net income = sum of the reconciling items
+```
+
+Each reconciling item is the net change, in the period, of one group of registered
+control accounts, read from the ledger postings: receivables, payables, prepaid
+expenses, deferred revenue, accrued liabilities and estimates, customer deposits and
+credits, write-offs and true-ups (no cash), credits applied (no cash), and opening items
+collected or paid. A positive amount means accrual income is higher than cash income by
+that amount. The text report ends with the tie-out, and the JSON has
+`meta.tie_out`. If the two sides do not agree, the report fails with an error and shows
+no figures.
+
+### Limits
+
+- The cash view starts at the accrual cutover. A range that starts earlier fails and names
+  the first available date, as other reports do.
+- It does not change the books. To have a company on a cash basis, keep cash books.
+  Moving between bases needs a separate conversion.
+- Hand-built accruals in an account with no registered item, schedule or estimate
+  journal (for example loan interest in a plain `Accrued-Interest` account) are shown as
+  recorded. Register the amount as an accrual item or an estimate journal to have it
+  follow the cash rules.
+- The balance sheet, tax mapping and accountant workbook sheets stay on the accrual basis in this release.
+- Per-vendor and per-customer cash totals need linked bank movements. Use the general
+  ledger for them.
 
 ## Starting accrual books
 

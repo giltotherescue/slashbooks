@@ -840,7 +840,11 @@ def _statement_to_rows(result: StatementResult) -> list[list[str]]:
 
 
 def _with_statement_metadata(rows, result):
-    if result.meta.get("basis") == "accrual":
+    if result.meta.get("view_label"):
+        rows.extend([[], ["Report metadata", "Basis", result.meta["view_label"]],
+                     ["Report metadata", "Tie-out", json.dumps(result.meta.get("tie_out"), sort_keys=True)],
+                     ["Report metadata", "Unresolved issues", json.dumps(result.meta.get("unresolved_issues", []), sort_keys=True)]])
+    elif result.meta.get("basis") == "accrual":
         rows.extend([[], ["Report metadata", "Basis", "Accrual basis"],
                      ["Report metadata", "Coverage", json.dumps(result.meta.get("coverage"), sort_keys=True)],
                      ["Report metadata", "Unresolved issues", json.dumps(result.meta.get("unresolved_issues", []), sort_keys=True)]])

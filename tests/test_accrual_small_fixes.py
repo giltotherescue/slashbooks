@@ -59,15 +59,24 @@ class OpeningDraftRoundTripTests(unittest.TestCase):
 
 
 class AskBasisRefusalTests(unittest.TestCase):
-    def test_suggested_question_is_grammatical(self):
+    def test_cash_wording_is_removed_grammatically(self):
+        from bookkeeping.reports.statements import _without_cash_wording
+        for question, expected in [("What is my profit on a cash basis?", "What is my profit?"),
+                                   ("What is my cash basis profit this year?", "What is my profit this year?"),
+                                   ("Show cash profit for 2026", "Show profit for 2026"),
+                                   ("How much did we make using the cash method this year?", "How much did we make this year?")]:
+            self.assertEqual(_without_cash_wording(question), expected)
+
+    def test_cash_books_refuse_an_accrual_question_with_a_grammatical_suggestion(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp).resolve() / "acc"
-            init_entity(root, name="Synthetic", basis="accrual", cutover_date="2026-01-01")
-            for question, expected in [("What is my profit on a cash basis?", "What is my profit?"),
-                                       ("What is my cash basis profit this year?", "What is my profit this year?"),
-                                       ("Show cash profit for 2026", "Show profit for 2026"),
-                                       ("How much did we make using the cash method this year?", "How much did we make this year?")]:
+            root = Path(tmp).resolve() / "cash"
+            init_entity(root, name="Synthetic", basis="cash")
+            for question, expected in [("What is my profit on an accrual basis?", "What is my profit?"),
+                                       ("What is my accrual basis profit this year?", "What is my profit this year?"),
+                                       ("Show accrual profit for 2026", "Show profit for 2026"),
+                                       ("How much did we make using the accrual method this year?", "How much did we make this year?")]:
                 text = ask(root, question).answer_text
+                self.assertIn("Cash books keep no invoices, bills, prepaid or deferred records", text)
                 suggestion = re.search(r'books ask --entity \S+ "([^"]*)"', text).group(1)
                 self.assertEqual(suggestion, expected)
                 self.assertNotIn("on a ?", text)
