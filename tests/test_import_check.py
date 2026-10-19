@@ -206,6 +206,11 @@ class ImportCheckTests(unittest.TestCase):
         self.assertEqual((result["status"], result["checks"][0]["detail_code"]),
                          ("not_checkable", "books_unreadable"))
 
+    def test_stored_import_id_is_validated(self):
+        for bad in ("../entity", "a/b", "..", "", "a b"):
+            code, result = run_cli("import", "check", bad, "--entity", str(self.entity), "--stored")
+            self.assertEqual((code, result["error"]["code"]), (1, "invalid_import_id"), bad)
+
     def test_row_on_the_period_start_day_is_in_the_books_movement(self):
         path = self.csv("jan.csv", "01/01/2026,TEST A,-10.00", "01/15/2026,TEST B,100.00")
         entry = self.import_csv(path, "jan", period_start="2026-01-01", period_end="2026-01-31",

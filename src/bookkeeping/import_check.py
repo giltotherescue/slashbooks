@@ -58,6 +58,7 @@ from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
+import re
 import sqlite3
 import sys
 from typing import Any, Mapping, Sequence
@@ -93,14 +94,20 @@ def _now() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_IMPORT_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
 def stored_path(entity_path: Path | str, import_id: str) -> Path:
+    if not _IMPORT_ID.fullmatch(import_id) or import_id in {".", ".."}:
+        raise ImportCheckError("invalid_import_id", "An import ID has letters, digits, dots, hyphens and underscores only.")
     return Path(entity_path) / CHECKS_DIR / f"{import_id}.json"
 
 
 def load_stored(entity_path: Path | str, import_id: str) -> JsonObject | None:
     """The result stored when the import ran, or None. Never recomputes."""
+    path = stored_path(entity_path, import_id)
     try:
-        data = json.loads(stored_path(entity_path, import_id).read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
