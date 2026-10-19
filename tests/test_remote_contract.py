@@ -16,6 +16,43 @@ class RemoteContractTests(unittest.TestCase):
         self.assertTrue(command_spec(base)["mutates"])
         self.assertFalse(command_spec(base + ["--dry-run"])["mutates"])
 
+    def test_statement_reports_are_reads_with_one_output_field(self):
+        cases = [
+            ["report", "pnl", "--entity", "ent", "--from", "2026-01-01", "--to", "2026-01-31"],
+            ["report", "pnl", "--entity", "ent", "--from", "2026-01-01", "--to", "2026-01-31",
+             "--format", "json", "--structure", "--compare", "prior_year"],
+            ["report", "balance-sheet", "--entity", "ent", "--as-of", "2026-01-31", "--compare", "previous"],
+            ["report", "cashflow", "--entity", "ent", "--from", "2026-01-01", "--to", "2026-01-31"],
+            ["report", "cashflow", "--entity", "ent", "--from", "2026-01-01", "--to", "2026-01-31",
+             "--format", "json", "--compare", "previous", "--output", "out/cashflow.json"],
+        ]
+        for argv in cases:
+            with self.subTest(argv=argv):
+                spec = command_spec(argv)
+                self.assertEqual(spec["path"][0], "report")
+                self.assertFalse(spec["mutates"])
+                self.assertFalse(spec["network"])
+                self.assertEqual(spec["entity_fields"], ["entity"])
+                self.assertEqual(spec["input_fields"], [])
+                self.assertEqual(spec["output_fields"], ["output"])
+        self.assertEqual(command_spec(cases[3])["path"], ("report", "cashflow"))
+
+    def test_report_flags_survive_path_rewriting(self):
+        argv = ["report", "cashflow", "--entity", "ent", "--from", "2026-01-01", "--to", "2026-01-31",
+                "--compare", "prior_year", "--output", "out/c.json", "--format", "json"]
+        rewritten = rewrite_paths(argv, {"ent": "/run/ent", "out/c.json": "/run/out.json"})
+        self.assertIn("--compare=prior_year", rewritten)
+        self.assertIn("--entity=/run/ent", rewritten)
+        self.assertIn("--output=/run/out.json", rewritten)
+        pnl = rewrite_paths(["report", "pnl", "--entity", "ent", "--from", "2026-01-01", "--to", "2026-01-31",
+                             "--structure"], {"ent": "/run/ent"})
+        self.assertIn("--structure", pnl)
+
+    def test_invalid_compare_value_is_a_contract_error(self):
+        with self.assertRaises(ContractError):
+            command_spec(["report", "pnl", "--entity", "ent", "--from", "2026-01-01", "--to", "2026-01-31",
+                          "--compare", "quarter"])
+
     def test_every_ordinary_parser_leaf_has_complete_metadata(self):
         seen = set()
 

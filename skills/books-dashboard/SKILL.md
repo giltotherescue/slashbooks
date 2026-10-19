@@ -99,6 +99,18 @@ scripts/books report pnl --entity <entity-path> --from <start-date> --to <end-da
 scripts/books report balance-sheet --entity <entity-path> --as-of <end-date> --format json
 ```
 
+For a statement of cash flows, or a view against an earlier period, use:
+
+```sh
+scripts/books report cashflow --entity <entity-path> --from <start-date> --to <end-date> --format json
+scripts/books report pnl --entity <entity-path> --from <start-date> --to <end-date> --compare prior_year --format json
+```
+
+`--compare previous|prior_year` also works on `balance-sheet` and `cashflow`. `--structure` adds subtotal and
+total rows (Gross Profit, Total Liabilities and Equity) to the P&L and balance sheet JSON. If the cash flow
+statement lists a "Needs classification" group or does not tie to the balance sheet cash, report that to the owner.
+See `docs/statements.md`.
+
 If the owner asks for transaction-level support, use:
 
 ```sh

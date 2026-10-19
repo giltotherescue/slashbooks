@@ -82,6 +82,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     network = path[0] == "connector" and path[1] != "csv"
     statement_read = path in {("statement", "inspect"), ("statement", "list"), ("statement", "validate")} or (
         path in {("statement", "import"), ("statement", "import-extracted")} and args.dry_run)
+    # Every ``report`` subcommand is a read (pnl, balance-sheet, cashflow, trial-balance,
+    # general-ledger), including with --compare and --structure; --output is its only file field.
     read = statement_read or (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast",
                            "work"}
             or path in {("qb", "inventory"), ("qb", "agreement", "run"), ("entity", "related-entity", "list"),
