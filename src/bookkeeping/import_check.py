@@ -128,16 +128,23 @@ def store_result(entity_path: Path | str, result: Mapping[str, Any]) -> Path:
 # Books side (read only)
 # ---------------------------------------------------------------------------
 
-def books_revision(entity: Any) -> str:
-    """A short digest of the books state a check read: ledger size and review files."""
+def books_digest(entity: Any) -> str:
+    """A short digest of the books state a check read: ledger postings and review files.
+
+    It is not the hosted service's integer ``books_revision``. It changes when
+    any posting amount, date, account or source ID changes, or a review file changes.
+    """
     digest = hashlib.sha256()
     store_path = default_store_path(Path(entity.path))
     if store_path.is_file():
         try:
             with LedgerStore(store_path).connection() as conn:
-                for table in ("entries", "postings", "source_transactions"):
-                    count, top = conn.execute(f"SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM {table}").fetchone()
-                    digest.update(f"{table}:{count}:{top};".encode())
+                for row in conn.execute(
+                        "SELECT e.id, e.date, e.source_id, p.account, p.amount FROM postings p "
+                        "JOIN entries e ON e.id = p.entry_id ORDER BY e.id, p.rowid"):
+                    digest.update(("|".join(str(v) for v in row) + ";").encode())
+                for (source_id,) in conn.execute("SELECT id FROM source_transactions ORDER BY id"):
+                    digest.update(f"s:{source_id};".encode())
         except sqlite3.DatabaseError:
             digest.update(b"ledger:unreadable;")
     for name in ("pending-categorization.json", "duplicate-candidates.json", "source-id-aliases.json"):
@@ -264,7 +271,7 @@ def check_statement(entity: Any, record: Mapping[str, Any], rows: Sequence[Mappi
             "checks": checks,
             "counts": {"in_source": len(rows) + len(outside_boundary) + pending_skipped + in_file_duplicates,
                        "recorded": 0, "queued": 0, "duplicate": 0, "pending_skipped": pending_skipped},
-            "waiting_rows": 0, "computed_at": ts or _now(), "books_revision": books_revision(entity),
+            "waiting_rows": 0, "computed_at": ts or _now(), "books_digest": books_digest(entity),
         }
     held = {str(c.get("source_id")) for c in candidates if c.get("status") == "duplicate-candidate"}
     confirmed_duplicate = {str(a.get("source_id")) for a in aliases if a.get("status") == "confirmed-duplicate"}
@@ -345,7 +352,7 @@ def check_statement(entity: Any, record: Mapping[str, Any], rows: Sequence[Mappi
         "counts": counts,
         "waiting_rows": waiting_rows,
         "computed_at": ts or _now(),
-        "books_revision": books_revision(entity),
+        "books_digest": books_digest(entity),
     }
 
 

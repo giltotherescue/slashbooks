@@ -248,7 +248,7 @@ hosted product can show one status line from the stored file.
   "counts": {"in_source": 6, "recorded": 0, "queued": 6, "duplicate": 0, "pending_skipped": 0},
   "waiting_rows": 6,
   "computed_at": "2026-02-01T00:00:00Z",
-  "books_revision": "sha256:23d7ff0628a3570b"
+  "books_digest": "sha256:23d7ff0628a3570b"
 }
 ```
 
@@ -256,8 +256,9 @@ hosted product can show one status line from the stored file.
 can use the same shape later. `status` is `matches` (every check matches),
 `differs` (one check differs), `partial` (some checks match and some are
 `not_checkable`) or `not_checkable` (no check could run). `computed_at` is the
-time of the run and `books_revision` is a short digest of the ledger and review
-files that the run read, so a later run shows whether the books changed.
+time of the run and `books_digest` is a short digest of the ledger postings and review
+files that the run read, so a later run shows whether the books changed. It is
+not the hosted service's integer `books_revision`.
 
 | Check | What it compares |
 | --- | --- |

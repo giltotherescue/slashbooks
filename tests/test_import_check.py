@@ -114,7 +114,7 @@ class ImportCheckTests(unittest.TestCase):
                                             "pending_skipped": 0})
         self.assertEqual(result["waiting_rows"], 6)
         self.assertEqual(result["computed_at"], TS)
-        self.assertTrue(result["books_revision"].startswith("sha256:"))
+        self.assertTrue(result["books_digest"].startswith("sha256:"))
         c = self.checks(result)
         self.assertEqual((c["count"]["status"], c["count"]["source"], c["count"]["books"], c["count"]["difference"]),
                          ("matches", "6", "6", "0"))
@@ -205,6 +205,18 @@ class ImportCheckTests(unittest.TestCase):
         result = import_check.check_statement(loaded, record, [{"id": "x", "amount": "-1.00"}], ts=TS)
         self.assertEqual((result["status"], result["checks"][0]["detail_code"]),
                          ("not_checkable", "books_unreadable"))
+
+    def test_digest_changes_when_a_posting_amount_changes(self):
+        entry = self.import_chase()
+        queue = json.loads(self.queue_path().read_text())
+        self.record_rows({queue[0]["id"]})
+        sid = entry["import_check"]["import_id"]
+        before = import_check.check_import(self.entity, sid, ts=TS)["books_digest"]
+        self.assertEqual(import_check.check_import(self.entity, sid, ts=TS)["books_digest"], before)
+        import sqlite3
+        with sqlite3.connect(self.entity / "ledger.sqlite") as conn:
+            conn.execute("UPDATE postings SET amount = '99.00' WHERE rowid = 1")
+        self.assertNotEqual(import_check.check_import(self.entity, sid, ts=TS)["books_digest"], before)
 
     def test_stored_import_id_is_validated(self):
         for bad in ("../entity", "a/b", "..", "", "a b"):
