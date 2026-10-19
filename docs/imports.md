@@ -201,6 +201,107 @@ the balances with their dates and `balance_source`, and the net transaction
 total. Records are in `ingestion/statements/<statement_id>.json`, and a copy of
 each imported file is kept under `ingestion/statements/files/`.
 
+### Import check
+
+`books import check` answers one question about a statement import: does what
+the books hold agree with the file. It is read-only, deterministic and uses
+Decimal sums in Python. It writes nothing.
+
+```sh
+books import check st-69ff55d30830086e --entity ~/Documents/books/acme-co
+books import check st-69ff55d30830086e --entity ~/Documents/books/acme-co --stored
+books import check st-69ff55d30830086e --entity ~/Documents/books/acme-co --format text
+```
+
+The import ID is the `statement_id` from `books statement list`. The command
+reads the archived copy of the file again and compares it with the books as
+they are now. A file that is not a `books statement import` record, and a
+statement from `import-extracted`, cannot be checked (`unsupported_import`).
+`--stored` prints the result saved when the file was imported and does not
+recompute it. The exit code is 0 for every result and 1 for an error.
+
+Each `books statement import` runs the same check after the write and stores the
+result in `ingestion/statements/checks/<import_id>.json`. The result is also the
+`import_check` of each statement in the import result. A dry run has none. The
+hosted product can show one status line from the stored file.
+
+```json
+{
+  "schema_version": 1,
+  "import_id": "st-69ff55d30830086e",
+  "kind": "statement",
+  "status": "matches",
+  "account": "Assets:Bank:Checking",
+  "period": {"from": "2026-01-01", "to": "2026-01-31"},
+  "checks": [
+    {"id": "count", "status": "matches", "source": "6", "books": "6", "difference": "0",
+     "detail_code": "all_rows_accounted"},
+    {"id": "debits", "status": "matches", "source": "358.99", "books": "358.99",
+     "difference": "0.00", "detail_code": "totals_agree"},
+    {"id": "credits", "status": "matches", "source": "2501.25", "books": "2501.25",
+     "difference": "0.00", "detail_code": "totals_agree"},
+    {"id": "closing", "status": "matches", "source": "3142.26", "books": "3142.26",
+     "difference": "0.00", "detail_code": "queued_rows_included"},
+    {"id": "opening", "status": "not_checkable", "source": null, "books": null,
+     "difference": null, "detail_code": "first_statement"}
+  ],
+  "counts": {"in_source": 6, "recorded": 0, "queued": 6, "duplicate": 0, "pending_skipped": 0},
+  "waiting_rows": 6,
+  "computed_at": "2026-02-01T00:00:00Z",
+  "books_revision": "sha256:23d7ff0628a3570b"
+}
+```
+
+`kind` is `statement`. Other kinds (Stripe, bank feed, QuickBooks, migration)
+can use the same shape later. `status` is `matches` (every check matches),
+`differs` (one check differs), `partial` (some checks match and some are
+`not_checkable`) or `not_checkable` (no check could run). `computed_at` is the
+time of the run and `books_revision` is a short digest of the ledger and review
+files that the run read, so a later run shows whether the books changed.
+
+| Check | What it compares |
+| --- | --- |
+| `count` | Rows in the file against rows recorded + queued + duplicate + pending skipped. A row in none of these is unaccounted: `differs`, `rows_unaccounted`. |
+| `debits`, `credits` | Money out (charges, withdrawals) and money in (payments, deposits) in the file against the books. Posted rows use their ledger postings and queued rows use their queued amount. Both totals are positive, for an asset and for a card. |
+| `closing` | The opening balance plus the books movement in the period against the closing balance (the same sums as `coverage check`). Queued rows count in the books. The rows of the file are also added to the opening balance, and a mismatch there is `differs`, `file_rows_differ`. |
+| `opening` | The opening balance against the closing balance of a recorded statement for the same account that ends the day before this one begins (`prior_statement_closing`). |
+
+`counts` uses these rules:
+
+- `recorded` rows are in the ledger. `queued` rows wait in the review queue.
+- `duplicate` rows are held duplicate candidates, rows a person confirmed as
+  duplicates, rows that the profile boundary leaves to another source, and
+  repeated rows inside the file. Their money is held by another entry, so the
+  money checks count them at the file amount (`duplicates_at_file_amount`).
+- `pending_skipped` rows are pending rows in the file. The importer skips them
+  and their amounts are not in any total.
+- `waiting_rows` is the number of rows that wait for a person: queued rows and
+  held duplicates that no one has resolved.
+
+A check is `not_checkable` with a `detail_code`, and never a guess:
+
+- `foreign_currency`: the statement is not USD. The money checks stop; `count`
+  still runs.
+- `no_balances`: the file has no opening or closing balance. `count`, `debits`
+  and `credits` still run. Most CSV files are like this, so their status is
+  `partial`.
+- `period_unconfirmed`: nobody confirmed the statement period, so the books
+  movement cannot be selected. Pass `--period-start` and `--period-end`.
+- `not_aligned`: another recorded statement for the same account overlaps the
+  period (for example a partial-month statement beside a full month), so the
+  books movement in the period cannot be tied to this file alone. This is the
+  same rule that `coverage check` uses for a month.
+- `no_prior_statement`: an earlier statement exists but none ends the day
+  before this one begins. `first_statement`: there is no earlier statement,
+  so the opening has nothing to compare with. It does not lower `status`.
+- `no_prior_balance`: the prior statement has no closing balance.
+
+Balances are in the statement presentation (money owed is positive for a card),
+so a card with `opening` 1000.00 and a 130.01 difference reads the same as in
+the tie-out above. A `differs` result is a signal for a person, not a block:
+the import has already happened. Use `--require-tieout` to stop an import
+before any write.
+
 ### Bank balance against the books
 
 `books balance check` compares a balance that a bank feed reported with the

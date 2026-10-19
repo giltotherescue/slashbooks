@@ -73,6 +73,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import sys
 from collections import Counter
 from datetime import date, datetime, timezone
@@ -986,6 +987,24 @@ def _tieout_blocked(path: Path, fmt: str, selected: list[JsonObject], profiles: 
             "statements": entries}
 
 
+def _run_import_check(entity: Any, record: JsonObject, prof: JsonObject, statement: JsonObject,
+                      ts: str, entry: JsonObject) -> JsonObject | None:
+    """Check the finished import against the books and store the result next to its record.
+
+    The check is read-only apart from that stored file. A failure of the check
+    never undoes the import; it is reported as a warning.
+    """
+    from . import import_check
+
+    try:
+        result = import_check.check_parsed(entity, record, prof, statement, ts=ts)
+        import_check.store_result(entity.path, result)
+        return result
+    except (OSError, ValueError, ArithmeticError, sqlite3.Error) as exc:
+        entry["warnings"].append(f"The import check could not run: {exc}")
+        return None
+
+
 def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dry_run: bool = False,
                 intake_only: bool = False, session_id: str | None = None,
                 ts: str | None = None, output: Path | None = None,
@@ -1130,6 +1149,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                 record["imported_at"] = ts
                 record["import_session"] = session_id
                 _store_record(entity.path, record)
+                entry["import_check"] = _run_import_check(entity, record, prof, statement, ts, entry)
             all_txns.extend(plan["import"])
             results.append(entry)
 
