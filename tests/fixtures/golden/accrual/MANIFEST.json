@@ -848,7 +848,7 @@
     ],
     "exit": 0,
     "question": "How much cash did we spend on software in March?",
-    "stdout_sha256": "5e67a32be3553c4caa8fcfc377b73bf6c6458ad98ed908432c5800007aab1f65"
+    "stdout_sha256": "c66ee4d2f95f5e87e5f9c261da8eb6ddefa9bd49fecd9ae72344d003bbdc21f6"
   },
   "ask/q12.txt": {
     "argv": [

@@ -810,7 +810,7 @@
     ],
     "exit": 0,
     "question": "How much cash did we spend on operating costs in July?",
-    "stdout_sha256": "43e8f1eed033c00667c7095fa51edb9dd42cb49531f9a08d6d0c2cf9ebee61d6"
+    "stdout_sha256": "b47cdbd404bbd1bbef31f50af1f39117b0f40d4871c145f9cf7f796a39ac93fc"
   },
   "coverage/check_json.json": {
     "argv": [

@@ -1,4 +1,36 @@
-Not available: you asked for the cash basis, but these books are kept on the accrual basis, so no cash-basis figure is computed. Period asked: from 2026-03-01 to 2026-03-31.
-- Bank movements for the period: books report general-ledger --entity <COMPANY> --from 2026-03-01 --to 2026-03-31 (read the Assets:Bank accounts).
-- The same period on the accrual basis: books ask --entity <COMPANY> "What was our net income from 2026-03-01 to 2026-03-31?"
-- Future cash only: books forecast <COMPANY>
+Answer covers: cash basis (derived from accrual books), from 2026-03-01 to 2026-03-31.
+
+Expenses paid (cash basis) matching 'software' from 2026-03-01 to 2026-03-31: 0.00
+
+Profit and Loss - Cash basis (derived from accrual books)  2026-03-01  through  2026-03-31
+==========================================================================================
+Accounting basis: Cash basis (derived from accrual books); the books are kept on the accrual basis
+Activity cutover: 2026-01-01, opening balances as of 2025-12-31
+
+Revenue
+----------------------------------------
+  Income › Consulting                            2,500.00
+  Total Revenue                                  2,500.00
+
+Expenses
+----------------------------------------
+  Expenses › Bonus                                 700.00
+  Expenses › Depreciation                          200.00
+  Total Expenses                                   900.00
+
+--------------------------------------------------------
+Net Income                                       1,600.00
+
+Credit cards: A credit card charge counts as paid on the charge date (cash-basis tax rule). Paying the card balance later is not an expense.
+
+Tie-out to the accrual books
+  Accrual net income                              -170.00
+  Cash net income                                1,600.00
+  Difference                                    -1,770.00
+  The difference is explained by these changes in the period:
+    Receivables: invoices recorded and not yet collected    -2,500.00
+    Prepaid expenses: paid and not yet used                   -200.00
+    Deferred revenue: received and not yet earned              700.00
+    Accrued liabilities and estimates                         -470.00
+    Write-offs, credits and true-ups (no cash)                 700.00
+  Reconciling items total                       -1,770.00  (ties to the cent)
