@@ -159,6 +159,35 @@ class ImportCheckTests(unittest.TestCase):
         self.assertEqual((c["credits"]["status"], c["credits"]["detail_code"]), ("differs", "totals_differ"))
         self.assertEqual((c["closing"]["status"], c["closing"]["detail_code"]), ("differs", "books_differ"))
 
+    def test_a_failing_check_never_undoes_the_import(self):
+        from unittest import mock
+
+        card = (FIXTURES / "card.qfx").read_text()
+        block = card[card.index("<CREDITCARDMSGSRSV1>"):card.index("</CREDITCARDMSGSRSV1>") + len("</CREDITCARDMSGSRSV1>")]
+        both = (FIXTURES / "checking.ofx").read_text().replace("</OFX>", block + "\n</OFX>")
+        path = Path(self._tmp.name) / "both.ofx"
+        path.write_text(both)
+        si.save_profile(self.entity, path, name="chk", ledger_account=CHECKING, overrides={}, ofx_account="0017")
+        si.save_profile(self.entity, path, name="card", ledger_account=CARD, overrides={}, ofx_account="0042")
+        real = import_check.check_parsed
+        calls = []
+
+        def flaky(*args, **kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("boom")
+            return real(*args, **kwargs)
+
+        with mock.patch.object(import_check, "check_parsed", flaky):
+            result = si.import_file(self.entity, path, ts=TS)
+        self.assertEqual(result["status"], "imported")
+        first, second = result["statements"]
+        self.assertIsNone(first["import_check"])
+        self.assertTrue(any("could not run: boom" in w for w in first["warnings"]))
+        self.assertEqual(second["import_check"]["kind"], "statement")
+        self.assertTrue(first["counts"]["queued_for_review"] > 0 and second["counts"]["queued_for_review"] > 0)
+        self.assertFalse(import_check.stored_path(self.entity, first["statement"]["statement_id"]).exists())
+
     def test_row_on_the_period_start_day_is_in_the_books_movement(self):
         path = self.csv("jan.csv", "01/01/2026,TEST A,-10.00", "01/15/2026,TEST B,100.00")
         entry = self.import_csv(path, "jan", period_start="2026-01-01", period_end="2026-01-31",

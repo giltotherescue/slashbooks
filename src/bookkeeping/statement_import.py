@@ -73,7 +73,6 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import sys
 from collections import Counter
 from datetime import date, datetime, timezone
@@ -1000,7 +999,7 @@ def _run_import_check(entity: Any, record: JsonObject, prof: JsonObject, stateme
         result = import_check.check_parsed(entity, record, prof, statement, ts=ts)
         import_check.store_result(entity.path, result)
         return result
-    except (OSError, ValueError, ArithmeticError, sqlite3.Error) as exc:
+    except Exception as exc:  # The import is already written; a check failure must not undo it.
         entry["warnings"].append(f"The import check could not run: {exc}")
         return None
 
