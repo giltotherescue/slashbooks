@@ -1004,8 +1004,13 @@ def _effective_source_postings(
     entity: Entity,
     from_date: date,
     to_date: date,
+    alias_out: Optional[dict[str, str]] = None,
 ) -> list[tuple[date, str, Optional[str], str, Decimal, str, str]]:
     """Return postings for the latest non-empty entry per logical source ID.
+
+    When *alias_out* is given, it is filled with every source ID in a
+    correction chain mapped to the source ID of the effective entry, so a
+    caller that holds the original bank ID can find the corrected entry.
 
     Empty-source reversal rows are accounting mechanics, so they cannot be
     matched to an imported bank/card transaction. A corrected entry identifies
@@ -1051,6 +1056,10 @@ def _effective_source_postings(
             root = root_source_id(row[4])
             if root not in effective_entries or row[0] > effective_entries[root][0]:
                 effective_entries[root] = row
+
+        if alias_out is not None:
+            for row in rows:
+                alias_out[row[4]] = effective_entries[root_source_id(row[4])][4]
 
         entry_ids = [
             row[0]
@@ -1466,6 +1475,165 @@ def compare_period(
         pass  # Best-effort persistence
 
     return report
+
+
+# ---------------------------------------------------------------------------
+# Category accuracy against a ground-truth file
+# ---------------------------------------------------------------------------
+
+def _rate(numerator: int, denominator: int) -> Optional[float]:
+    """Return numerator/denominator rounded to 4 places, or None for 0."""
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
+def load_truth_categories(truth_csv: Path) -> list[tuple[str, str]]:
+    """Read a ground-truth file with the columns ``source_id,account``.
+
+    Extra columns are ignored. Blank lines are skipped. A repeated source_id
+    is an error because it makes the truth ambiguous.
+    """
+    import csv
+
+    with Path(truth_csv).open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = [(name or "").strip().lower() for name in (reader.fieldnames or [])]
+        if "source_id" not in fields or "account" not in fields:
+            raise ValueError(
+                f"Truth file {Path(truth_csv).name} needs the columns source_id and account."
+            )
+        rows: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for raw in reader:
+            row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items()}
+            source_id, account = row.get("source_id", ""), row.get("account", "")
+            if not source_id and not account:
+                continue
+            if not source_id or not account:
+                raise ValueError(
+                    f"Truth file row {reader.line_num} needs both source_id and account."
+                )
+            if source_id in seen:
+                raise ValueError(f"Truth file repeats source_id {source_id!r}.")
+            seen.add(source_id)
+            rows.append((source_id, account))
+    return rows
+
+
+def compare_categories(
+    entity: Entity,
+    truth_csv: Path,
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+) -> dict:
+    """Score the books' categories against a ground-truth file.
+
+    The truth file maps ``source_id`` to the correct category account. Each
+    truth row is joined on source_id to the effective ledger postings (the
+    latest entry in any correction chain). The category side of a transaction
+    is the posting that is not on a bank or card account.
+
+    Every truth row gets one status:
+
+    - ``agree`` / ``disagree``: auto-posted, so the category can be compared.
+    - ``pending``: the transaction waits in the review list, so it has no
+      category yet. This is a coverage gap, not an error.
+    - ``missing``: the transaction is neither posted nor waiting.
+    - ``not_comparable``: the posted entry has no single category posting
+      (for example a split or a transfer between two bank accounts).
+
+    Agreement is computed only over compared rows. ``coverage`` states how many
+    truth rows were compared at all, so a rate is never read without its n.
+    """
+    truth = load_truth_categories(truth_csv)
+    aliases: dict[str, str] = {}
+    postings = _effective_source_postings(
+        entity, from_date or date.min, to_date or date.max, alias_out=aliases,
+    )
+
+    category_by_source: dict[str, list[str]] = {}
+    seen_source: set[str] = set()
+    for _d, _narr, _payee, account, _amount, _cur, source_id in postings:
+        seen_source.add(source_id)
+        if not _is_our_bank_card_account(account):
+            category_by_source.setdefault(source_id, []).append(account)
+
+    pending_ids = {
+        str(item.get("id")) for item in _load_staging_pending(entity)
+        if isinstance(item, dict) and item.get("id")
+    }
+
+    per_transaction: list[dict] = []
+    confusion: dict[tuple[str, str], int] = {}
+    per_account: dict[str, dict] = {}
+    counts = {"agree": 0, "disagree": 0, "pending": 0, "missing": 0, "not_comparable": 0}
+
+    for source_id, truth_account in truth:
+        ours: Optional[str] = None
+        effective_id = aliases.get(source_id, source_id)
+        if effective_id in seen_source:
+            accounts = category_by_source.get(effective_id, [])
+            if len(set(accounts)) == 1:
+                ours = accounts[0]
+                status = "agree" if ours == truth_account else "disagree"
+            else:
+                status = "not_comparable"
+        elif source_id in pending_ids:
+            status = "pending"
+        else:
+            status = "missing"
+        counts[status] += 1
+        per_transaction.append(
+            {"source_id": source_id, "truth": truth_account, "ours": ours, "status": status}
+        )
+        row = per_account.setdefault(
+            truth_account,
+            {"account": truth_account, "truth_rows": 0, "compared": 0, "agree": 0,
+             "pending": 0, "missing": 0, "not_comparable": 0},
+        )
+        row["truth_rows"] += 1
+        if status in ("agree", "disagree"):
+            row["compared"] += 1
+            confusion[(truth_account, ours or "")] = confusion.get((truth_account, ours or ""), 0) + 1
+        if status == "agree":
+            row["agree"] += 1
+        elif status in ("pending", "missing", "not_comparable"):
+            row[status] += 1
+
+    truth_rows = len(truth)
+    compared = counts["agree"] + counts["disagree"]
+    per_account_rows = []
+    for name in sorted(per_account):
+        row = per_account[name]
+        row["agreement_rate"] = _rate(row["agree"], row["compared"])
+        per_account_rows.append(row)
+
+    return {
+        "truth_rows": truth_rows,
+        "coverage": {
+            "truth_rows": truth_rows,
+            "auto_posted": compared + counts["not_comparable"],
+            "compared": compared,
+            "pending": counts["pending"],
+            "missing": counts["missing"],
+            "not_comparable": counts["not_comparable"],
+            "compared_rate": _rate(compared, truth_rows),
+        },
+        "agreement": {
+            "compared": compared,
+            "agree": counts["agree"],
+            "disagree": counts["disagree"],
+            "rate": _rate(counts["agree"], compared),
+            "end_to_end_rate": _rate(counts["agree"], truth_rows),
+        },
+        "per_account": per_account_rows,
+        "confusion": [
+            {"truth": t, "ours": o, "count": n, "agree": t == o}
+            for (t, o), n in sorted(confusion.items(), key=lambda kv: (kv[0][0], -kv[1], kv[0][1]))
+        ],
+        "per_transaction": per_transaction,
+    }
 
 
 # ---------------------------------------------------------------------------
