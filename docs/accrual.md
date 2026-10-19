@@ -281,6 +281,7 @@ the same view. The cash view covers profit and loss only; it is not a balance sh
 | Terminate, cancel or refund of a schedule | Cash refunded or paid back reverses the expense or income on that date. A release to a write-off account moves no cash and has no effect. |
 | Depreciation | Shown as recorded, as in QuickBooks cash reports. The equipment purchase stays an asset and is not expense. |
 | Accrued estimate (journal with `estimate_basis` or `reversal_date`, accrual item), its reversal and its true-up | Excluded. The actual bill follows the invoice and bill rule. |
+| Credit card charge | A credit card charge counts as paid on the charge date (cash-basis tax rule). Paying the card balance later is not an expense. |
 | Journal or bank transaction that touches no registered control account | Included as recorded. Card charges are expense when charged. A journal that moves income or expense against an accrued, prepaid, deferred, receivable, payable or deposit account that has no registered detail is also included, and is flagged under "Entries that may not be cash". |
 | Opening receivable or payable | It has no income or expense account. Its collection or payment shows on the lines "Collected from opening receivables" and "Paid on opening payables", with no category. Net income includes them. |
 | Cash that moves through a registered control account with nothing to explain it | Shown on the line "Unclassified cash movements (review needed)" and listed in the report issues. It is never dropped. |

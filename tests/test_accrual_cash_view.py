@@ -578,6 +578,7 @@ class CoverageAndOutputTests(CashViewFixture):
         self.assertEqual(rc, 0)
         self.assertIn("Profit and Loss - Cash basis (derived from accrual books)", text.splitlines()[0])
         self.assertIn("Tie-out to the accrual books", text)
+        self.assertIn("A credit card charge counts as paid on the charge date (cash-basis tax rule). Paying the card balance later is not an expense.", text)
         self.assertIn("ties to the cent", text)
         rc, raw, _ = self.run_cli(*args, "--format", "json")
         document = json.loads(raw)
@@ -585,7 +586,7 @@ class CoverageAndOutputTests(CashViewFixture):
         self.assertTrue(document["meta"]["tie_out"]["ties"])
         self.assertEqual(document["totals"]["net_income"], "500.00")
         ids = [rule["id"] for rule in document["meta"]["method"]["rules"]]
-        for rule in ("invoices_and_bills", "rounding", "deposits", "prepaid", "deferred", "depreciation", "estimates", "opening_items"):
+        for rule in ("invoices_and_bills", "rounding", "deposits", "prepaid", "deferred", "depreciation", "estimates", "opening_items", "credit_card"):
             self.assertIn(rule, ids)
         target = Path(self.tmp.name) / "cash-pnl.txt"
         rc, _, _ = self.run_cli(*args, "--output", str(target))

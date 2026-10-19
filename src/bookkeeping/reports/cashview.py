@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 CASH_VIEW_LABEL = "Cash basis (derived from accrual books)"
+CARD_RULE = "A credit card charge counts as paid on the charge date (cash-basis tax rule). Paying the card balance later is not an expense."
 
 OPENING_RECEIVABLES = "Collected from opening receivables"
 OPENING_PAYABLES = "Paid on opening payables"
@@ -86,6 +87,7 @@ METHOD = {
         {"id": "prepaid", "rule": "A prepaid schedule is expense in full on the funding date. Its monthly recognition entries are ignored."},
         {"id": "deferred", "rule": "A deferred revenue schedule is income in full on the receipt date. Its recognition entries are ignored."},
         {"id": "refunds", "rule": "Cash refunded for a prepaid or deferred schedule reverses the expense or income on the refund date."},
+        {"id": "credit_card", "rule": "A credit card charge counts as paid on the charge date (cash-basis tax rule). Paying the card balance later is not an expense."},
         {"id": "depreciation", "rule": "Depreciation is shown as recorded, as in QuickBooks cash reports. The equipment purchase stays an asset."},
         {"id": "estimates", "rule": "Accrued estimates (journals with a reversal date or estimate basis, and accrual items), their reversals and their true-ups are excluded. The real bill follows the invoice and bill rule."},
         {"id": "plain_journals", "rule": "Journals and bank transactions that touch no registered control account are included as recorded. A hand-built accrual in an account that has no registered item, schedule or estimate journal is also included as recorded."},
@@ -504,7 +506,7 @@ def noncash_lines(issues: list[dict[str, Any]]) -> list[str]:
 
 def tie_out_lines(tie_out: dict[str, Any]) -> list[str]:
     """Plain-text footer for the tie-out."""
-    lines = ["", "Tie-out to the accrual books",
+    lines = ["", "Credit cards: " + CARD_RULE, "", "Tie-out to the accrual books",
              f"  Accrual net income                       {Decimal(tie_out['accrual_net_income']):>14,.2f}",
              f"  Cash net income                          {Decimal(tie_out['cash_net_income']):>14,.2f}",
              f"  Difference                               {Decimal(tie_out['difference']):>14,.2f}",
