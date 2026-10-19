@@ -43,6 +43,11 @@ def resolve_basis(config: dict[str, Any], *, authoritative_basis: str | None = N
     return basis
 
 
+# The value this resolves is the default report view. For capability and
+# discipline use bookkeeping.accrual.scope.
+resolve_view = resolve_basis
+
+
 def require_accrual(entity_or_config: Any) -> None:
     """Admit accrual writes only after explicit basis and version opt-in."""
     config = getattr(entity_or_config, "entity_config", entity_or_config)

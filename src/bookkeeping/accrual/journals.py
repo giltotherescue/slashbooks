@@ -10,7 +10,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..entity import Entity, load_entity, require_accrual
+from ..entity import Entity, load_entity
+from .scope import accrual_active, require_write_scope
 from ..ledger.importer import _atomic_ledger_write, _entity_write_lock
 from ..ledger.model import Entry, Posting, Open
 from ..ledger.store import LedgerStore
@@ -31,7 +32,7 @@ class JournalError(ValueError):
 
 
 def _store(entity: Entity) -> LedgerStore:
-    require_accrual(entity)
+    require_write_scope(entity)
     store = LedgerStore(entity.path / "ledger.sqlite")
     if store.schema_version() != 2:
         raise JournalError("upgrade_required", "Accrual writes require an explicit ledger schema upgrade.")
@@ -41,7 +42,7 @@ def _store(entity: Entity) -> LedgerStore:
 def _read_store(entity: Entity) -> LedgerStore:
     """Read supported accrual state even when the company has disabled writes."""
     entity = load_entity(entity.path)
-    if entity.basis != "accrual":
+    if not accrual_active(entity):
         raise JournalError("accrual_basis_required", "Accrual records require accrual-basis books.")
     store = LedgerStore(entity.path / "ledger.sqlite")
     if store.schema_version() != 2:

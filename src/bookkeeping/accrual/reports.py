@@ -13,7 +13,8 @@ from pathlib import Path
 import re
 from typing import Any, Mapping
 
-from ..entity import Entity, load_entity, resolve_basis
+from ..entity import Entity, load_entity
+from .scope import accrual_active
 from ..ledger.importer import _entity_write_lock
 from ..ledger.store import LedgerStore
 from .intake import canonical_hash, normalize_amount
@@ -38,10 +39,12 @@ def _records(conn, table):
     return [json.loads(row[0]) for row in conn.execute(f"SELECT payload_json FROM accrual_{table} ORDER BY id")]
 
 
-def basis(conn):
-    from ..entity import resolve_basis
-    values = dict(conn.execute("SELECT key,value FROM meta WHERE key IN ('basis','accounting_basis')"))
-    return resolve_basis(values)
+def default_view(conn):
+    from .scope import default_view as _default_view
+    return _default_view(conn)
+
+
+basis = default_view  # kept for callers that read the report label
 
 
 def opening_coverage(conn):
@@ -50,11 +53,11 @@ def opening_coverage(conn):
 
 def coverage_metadata(conn, kind, start, end):
     """Validate coverage without pretending a partial imported period is known."""
-    result = {"basis": basis(conn), "currency": "USD", "coverage": None,
+    result = {"basis": default_view(conn), "currency": "USD", "coverage": None,
               "requested_from": start.isoformat() if start else None, "requested_to": end.isoformat(),
               "unresolved_issues": []}
     opening = opening_coverage(conn)
-    if result["basis"] != "accrual" or not opening:
+    if not accrual_active(conn) or not opening:
         return result
     result["coverage"] = deepcopy(opening)
     source_as_of = date.fromisoformat(opening["source_as_of"])
@@ -77,7 +80,7 @@ def coverage_metadata(conn, kind, start, end):
 
 def financial_metadata(conn, kind, start, end):
     result = coverage_metadata(conn, kind, start, end)
-    if result["basis"] == "accrual":
+    if accrual_active(conn):
         result["unresolved_issues"].extend(unresolved(conn, end))
     return result
 
@@ -571,7 +574,7 @@ def aging_totals(rows):
 
 def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
     entity = load_entity(entity.path) if isinstance(entity, Entity) else load_entity(entity)
-    if resolve_basis(entity.entity_config) != "accrual":
+    if not accrual_active(entity):
         raise ValueError("Accrual supporting reports require an accrual company.")
     if entity.entity_config.get("accrual_capability_version") not in {0, 1}:
         raise ValueError("Unsupported accrual capability; use a compatible reader.")
