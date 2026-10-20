@@ -13,12 +13,13 @@ from decimal import Decimal
 
 from . import queue
 from .entity import flat_bank_account_mappings
-from .ledger.importer import (_atomic_ledger_write_unlocked, _entity_write_lock,
+from .ledger.importer import (_atomic_ledger_write_unlocked, _entity_write_lock, _find_live_entry,
                              _load_pending_categorization, import_transactions)
 from .ledger.model import Entry, Posting
 from .ledger.staging import StagingStore
 from .ledger.store import LedgerStore, default_store_path
 from .routine import _state, routine_source_digest
+from .source_ids import source_id_variants
 
 
 def _digest(value):
@@ -820,6 +821,21 @@ def stripe_dismiss_held(entity, source_id, *, note, session_id='stripe-dismiss',
         store = LedgerStore(default_store_path(entity.path))
         if not store.source_exists(source_id):
             raise ValueError('The row is not posted; confirm it or leave it in Review instead.')
+        try:
+            _find_live_entry(store, source_id)
+        except ValueError as exc:
+            raise ValueError(f'The posted entry for this source is not live ({exc}); '
+                             'a person must reconcile it before the row is dismissed.') from exc
+        if store.verify_audit_chain():
+            raise ValueError('The audit chain is not intact, so the dismissal is not written. Restore the ledger first.')
+        spellings = source_id_variants(source_id)
+        for item in queue.list_queue_items(entity):
+            if item.get('status') not in queue.ACTIONABLE_QUEUE_STATUSES:
+                continue
+            named = {str(value) for value in (item.get('source_ids') or []) + [item.get('source_id')] if value}
+            if any(source_id_variants(value) & spellings for value in named):
+                raise ValueError(f"Queue item {item.get('source_id')} is {item.get('status')} for this source. "
+                                 'Withdraw the item before the row is dismissed.')
         with store.transaction() as conn:
             store.append_audit_event('stripe-cleanup-dismissed', dict(
                 source_id=source_id, note=note, session_id=session_id, pending_digest=_digest(_without_hold(row))),

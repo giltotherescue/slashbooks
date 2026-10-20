@@ -158,4 +158,9 @@ A person resolves the row in one of two ways:
 - If the posted entry is correct and the evidence cannot be restored, check the entry,
   then call `stripe_dismiss_held(entity, source_id, note=...)`. It removes the row from
   Review, writes an audit event with the note, and does not change the ledger entry.
-  It refuses a row that is not held with this reason or not posted.
+  It refuses a row that is not held with this reason or not posted. It also refuses in
+  these three cases:
+  - The posted entry was reversed, so it is not live.
+  - The audit chain is not intact. Restore the ledger first.
+  - A queue item for the source is still actionable (`open`, `reopened` or
+    `requires-reproposal`). The error names the item. Withdraw the item first.

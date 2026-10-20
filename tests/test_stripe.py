@@ -228,6 +228,49 @@ class StripeTests(unittest.TestCase):
         self.assertEqual(self.store.verify_audit_chain(), [])
         self.assertEqual(len(self.store.load_entries()), 2)
 
+    def test_dismiss_refuses_a_reversed_entry(self):
+        from bookkeeping.ledger.importer import reverse_entry
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        reverse_entry(self.entity, row['id'], 'reverse-session')
+        with self.assertRaisesRegex(ValueError, 'not live'):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+        self.assertIn(row['id'], [r['id'] for r in json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())])
+
+    def test_dismiss_refuses_a_damaged_audit_chain(self):
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        with self.store.transaction() as conn:
+            self.store.append_audit_event('test-event', dict(note='Original.'), conn)
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        with self.store.transaction() as conn:
+            conn.execute("UPDATE audit_events SET payload_json = REPLACE(payload_json, 'Original.', 'Changed.')")
+        self.assertTrue(self.store.verify_audit_chain())
+        before = len(self.store.load_audit_events())
+        with self.assertRaisesRegex(ValueError, 'audit chain'):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+        self.assertEqual(len(self.store.load_audit_events()), before)
+        self.assertIn(row['id'], [r['id'] for r in json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())])
+
+    def test_dismiss_refuses_while_a_queue_item_is_open(self):
+        from bookkeeping import queue
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        queue.propose(self.entity, row['id'], INCOME, 'A person proposes a category.')
+        with self.assertRaisesRegex(ValueError, row['id']):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+        queue.withdraw(self.entity, row['id'])
+        self.assertEqual(stripe_dismiss_held(self.entity, row['id'], note='Checked.')['dismissed'], row['id'])
+
+    def test_dismiss_refuses_when_a_group_item_names_the_source(self):
+        from bookkeeping import queue
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        queue._save_item(self.entity, {'source_id': 'group-1', 'source_ids': [row['id']],
+                                       'status': 'requires-reproposal', 'amount': '0.00'})
+        with self.assertRaisesRegex(ValueError, 'group-1'):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+
     def test_held_row_cleans_up_when_the_original_policy_returns(self):
         self._held_row()
         self.policy['version'] -= 1
