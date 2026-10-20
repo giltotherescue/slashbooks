@@ -20,6 +20,9 @@ Three checks
   Staged rows that are not yet in the ledger are counted as ``waiting_rows``.
 - ``balance_check``: a balance that a bank feed reported agrees with the books
   balance for the mapped ledger account on the same day.
+
+``feed_proof`` (``books balance prove``) uses the same books side to say when a
+feed balance proves a month-end balance for a checking or savings account.
 """
 
 from __future__ import annotations
@@ -333,11 +336,16 @@ def add_parser(subparsers: Any) -> None:
                        help='JSON list of {"account_id", "balance", "as_of", "data_through"}; '
                             'optional "retrieved_at" and "sign" ("presentation" or "ledger")')
     check.add_argument("--format", choices=["json", "text"], default="json", dest="fmt")
+    from . import feed_proof
+    feed_proof.add_parser(sub)
 
 
 def run(args: Any) -> int:
     import sys
 
+    if getattr(args, "balance_command", None) == "prove":
+        from . import feed_proof
+        return feed_proof.run(args)
     try:
         payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
         items = payload.get("accounts") if isinstance(payload, dict) else payload

@@ -253,6 +253,15 @@ used for those figures. Do not invent it or derive its verification fingerprint
 from a newly uploaded/model-authored file; in a scheduled run the authenticated
 host supplies that attestation from previously verified source evidence.
 
+For a checking or savings account that a bank feed covers, a statement is not
+always needed. `scripts/books balance prove --entity <entity-path> --input <readings.json> --as-of <today>`
+says, for each finished month, whether the feed balance proves the month end, and
+gives the exact `reconcile` figures for a proven month. It proves a month only when
+the feed covers every day from the month start through the day of a balance
+reading, nothing waits in review, and the books equal the bank on that day. Cards,
+loans and other account types stay on the statement path. The command is
+read-only; record the result with `reconcile` and the stored reading as evidence.
+
 For each duplicate candidate, show the existing and new source IDs, date, amount,
 and description. After the owner decides, record the decision explicitly:
 
