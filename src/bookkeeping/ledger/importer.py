@@ -394,7 +394,7 @@ def import_transactions(
     """Import transactions while serializing staging, queue, and ledger writes.
 
     ``cutover_hold_ids`` names rows dated on or before their account's cutover
-    date. With ``legacy_duplicate_guard`` they are never posted or queued: each
+    date. They are never posted or queued, with or without the guard: each
     goes to the duplicate-review hold, so a late row the old source never sent is
     seen by a person instead of being dropped.
     """
@@ -503,13 +503,19 @@ def _import_transactions_unlocked(
 
     # Connected-feed rows are checked against posted entries and review items
     # with the same plan a statement import uses (see ``_plan_feed_holds``).
-    feed_holds = (_plan_feed_holds(entity, normalized_txns, cutover_hold_ids)
-                  if legacy_duplicate_guard else {})
+    # A row dated on or before a cutover date is held even when the guard is off (a
+    # generic ingest), so no learned rule can post it. Without the guard only those rows
+    # are planned; every other row follows the unguarded path.
+    guarded = bool(legacy_duplicate_guard or cutover_hold_ids)
+    feed_holds = (_plan_feed_holds(
+        entity, normalized_txns if legacy_duplicate_guard else
+        [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids)
+        if guarded else {})
     # A row that is already held for review stays held on every later sync, under
     # either spelling of its ID, until a person resolves it.
     open_hold_ids = ({str(c.get("source_id") or "") for c in _load_json_list(
         entity.staging_dir / _DUPLICATE_CANDIDATES_FILE) if c.get("status") == "duplicate-candidate"}
-        if legacy_duplicate_guard else set())
+        if guarded else set())
 
     # Accumulate entries to write in this session.
     entries_to_write: list[Entry] = []
@@ -553,7 +559,7 @@ def _import_transactions_unlocked(
             txn, entity.entity_config.get("bank_account_mappings"),
             entity.entity_config.get("csv_account_mappings"),
         )
-        if legacy_duplicate_guard:
+        if legacy_duplicate_guard or source_id in cutover_hold_ids:
             if spellings & open_hold_ids:
                 result.skipped_duplicate += 1
                 continue

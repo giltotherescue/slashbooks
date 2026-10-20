@@ -201,3 +201,10 @@ cutover date with `books entity bank-account-map ... --clear-cutover-date`.
 Every connected feed needs a mapping. `books ingest` stops, and posts nothing,
 when a row's account ID is not mapped, instead of opening a new
 `Assets:Bank:<name>` account.
+
+**Moving from a generic or Mercury ingest to BankSync.** Rows imported by a
+generic `books ingest` (or from Mercury) keep their raw IDs and have no provider.
+When the same ledger account then gets a BankSync feed, only an exact same-day
+match (date, amount and description) is held against those rows. Set a
+`cutover_date` on the BankSync mapping, the last day the earlier source owns, so
+that every earlier BankSync row goes to review and is not posted.

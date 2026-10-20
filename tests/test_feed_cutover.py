@@ -85,6 +85,35 @@ class CutoverTests(unittest.TestCase):
             resolve_duplicate_candidate(load_entity(root), "plaid:late", "distinct")
             self.assertEqual(_queued(root), ["plaid:late"])
 
+    def test_a_generic_ingest_never_posts_a_pre_cutover_row_even_with_a_learned_rule(self) -> None:
+        from bookkeeping.ledger.importer import import_transactions
+        from bookkeeping.ledger.store import LedgerStore, default_store_path
+        from bookkeeping.queue import list_duplicate_candidates, set_taught
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            add_account(root, "Expenses:Services", open_date="2025-01-01")
+            set_taught(load_entity(root), "GENERIC VENDOR", "Expenses:Services", by="owner", by_name="Owner",
+                       ts="2026-01-01T00:00:00Z")
+            path = root.parent / "feed.json"
+            rows = [_row("g1", "2026-01-30", description="GENERIC VENDOR"),
+                    _row("g2", "2026-02-02", description="GENERIC VENDOR", amount="-31.00")]
+            path.write_text(json.dumps({"transactions": rows}), encoding="utf-8")
+            out = io.StringIO()
+            with redirect_stdout(out), redirect_stderr(io.StringIO()):
+                code = main(["ingest", str(path), "--entity", str(root), "--source", "ingest", "--no-feed-window"])
+            self.assertEqual(code, 0)
+            posted = sorted(e.source_id for e in LedgerStore(default_store_path(root)).load_entries())
+            self.assertNotIn("g1", posted)               # the early row is never posted
+            self.assertNotIn("g1", _queued(root))
+            self.assertEqual(_queued(root) + [x for x in posted if x == "g2"], ["g2"])  # the later row follows the normal path
+            self.assertEqual([c["source_id"] for c in list_duplicate_candidates(load_entity(root))], ["g1"])
+            self.assertIn("go to review, none are posted", out.getvalue())  # and the message is true
+            # The importer itself, with the guard off.
+            result = import_transactions(
+                load_entity(root), [_row("g3", "2026-01-29", description="GENERIC VENDOR")], "s",
+                lambda t: ("Expenses:Services", "high"), cutover_hold_ids=frozenset({"g3"}))
+            self.assertEqual((result.new_entries, result.pending_categorization, result.duplicate_candidates), (0, 0, 1))
+
     def test_cutover_date_can_be_cleared(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _company(tmp)
