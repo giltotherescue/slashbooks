@@ -83,7 +83,8 @@ class FeedProofTests(unittest.TestCase):
                            source="feed-chk")
 
     def proof(self, readings, account_id="feed-chk", account_type="checking", as_of=date(2026, 10, 20), **kw):
-        extra = {key: kw.pop(key) for key in ("currency", "time_zone") if key in kw}
+        extra = {"time_zone": "UTC", **{key: kw.pop(key) for key in ("currency", "time_zone") if key in kw}}
+        extra = {key: value for key, value in extra.items() if value is not None}
         document = prove(self.company, [{"account_id": account_id, "account_type": account_type,
                                          "readings": readings, **extra}], as_of=as_of, **kw)
         return {row["month"]: row for row in document["months"]}
@@ -105,6 +106,8 @@ class FeedProofTests(unittest.TestCase):
         intraday = {**reading("1300.00", "2026-09-30"), "retrieved_at": "2026-09-30T09:00:00Z"}
         self.assertEqual(self.proof([intraday])["2026-09"]["reason"], "no_balance_after_month_end")
         next_day = {**reading("1300.00", "2026-09-30"), "retrieved_at": "2026-10-01T06:00:00Z"}
+        early = {**next_day, "retrieved_at": "2026-10-01T05:59:59Z"}
+        self.assertEqual(self.proof([early])["2026-09"]["reason"], "no_balance_after_month_end", "inside the margin")
         months = self.proof([next_day, reading("1250.00")])
         self.assertEqual(months["2026-09"]["reason"], "proven")
         self.assertEqual(months["2026-09"]["reading"]["day"], "2026-09-30")
@@ -114,18 +117,47 @@ class FeedProofTests(unittest.TestCase):
                    "partial": False}
         self.assertEqual(self.proof([undated])["2026-09"]["reason"], "proven")
 
-    def test_days_use_the_reference_time_zone(self):
-        # 09-30T23:30-07:00 is 10-01 in UTC, but still September 30 at the bank.
-        late = {"balance": "1300.00", "retrieved_at": "2026-09-30T23:30:00-07:00", "data_through": "2026-10-01",
-                "partial": False}
-        self.assertEqual(self.proof([late])["2026-09"]["reason"], "no_balance_after_month_end")
-        utc = {**late, "retrieved_at": "2026-10-01T06:30:00Z"}
-        self.assertEqual(self.proof([utc])["2026-09"]["reason"], "proven", "in UTC the month end is over")
-        self.assertEqual(self.proof([utc], time_zone="America/Los_Angeles")["2026-09"]["reason"],
-                         "no_balance_after_month_end", "the bank's time zone wins over the offset")
-        self.assertEqual(self.proof([late], time_zone="America/New_York")["2026-09"]["reason"], "proven")
-        [row] = self.proof([utc], time_zone="Mars/Olympus").values()
+    def test_the_bank_time_zone_is_required_and_decides_when_the_month_end_is_over(self):
+        undated = lambda at: {"balance": "1300.00", "retrieved_at": at, "data_through": "2026-10-01", "partial": False}
+        [row] = self.proof([undated("2026-10-01T12:00:00Z")], time_zone=None).values()
+        self.assertEqual(row["reason"], "time_zone_required")
+        [row] = self.proof([undated("2026-10-01T12:00:00Z")], time_zone="Mars/Olympus").values()
         self.assertEqual(row["reason"], "unknown_time_zone")
+        ny = "America/New_York"
+        # 02:00 UTC on 10-01 is 22:00 on 09-30 in New York: the bank day is not over.
+        self.assertEqual(self.proof([undated("2026-10-01T02:00:00Z")], time_zone=ny)["2026-09"]["reason"],
+                         "no_balance_after_month_end")
+        # 09:30 UTC is 05:30 in New York: inside the six-hour margin.
+        self.assertEqual(self.proof([undated("2026-10-01T09:30:00Z")], time_zone=ny)["2026-09"]["reason"],
+                         "no_balance_after_month_end")
+        self.assertEqual(self.proof([undated("2026-10-01T10:30:00Z")], time_zone=ny)["2026-09"]["reason"], "proven")
+        # 09-30T23:30-07:00 is 10-01 in UTC, but still September 30 at a Los Angeles bank.
+        late = {**undated("2026-09-30T23:30:00-07:00")}
+        self.assertEqual(self.proof([late], time_zone="America/Los_Angeles")["2026-09"]["reason"], "no_balance_after_month_end")
+        self.assertEqual(self.proof([late], time_zone="UTC")["2026-09"]["reason"], "proven", "06:30 UTC on 10-01")
+
+    def test_a_balance_as_of_a_time_after_it_was_read_is_not_used(self):
+        item = {**reading("1250.00"), "as_of": "2026-10-05T10:00:00+00:00", "retrieved_at": "2026-10-05T09:00:00Z"}
+        self.assertEqual(self.proof([item])["2026-09"]["reason"], "no_balance_after_month_end")
+        item = {**item, "as_of": "2026-10-05T05:00:00-04:00"}  # 09:00 UTC, the same instant
+        self.assertEqual(self.proof([item])["2026-09"]["reason"], "proven")
+
+    def test_unreadable_waiting_rows_block_the_proof(self):
+        path = self.company / "staging" / "pending-categorization.json"
+        path.write_text("{not json")
+        [row] = self.proof([reading("1250.00")]).values()
+        self.assertEqual(row["reason"], "waiting_unreadable")
+        for rows in ([{"id": "w", "date": "someday", "amount": "-9.00", "accountId": "feed-chk"}],
+                     [{"id": "w", "date": "2026-10-03", "amount": "nine", "accountId": "feed-chk"}],
+                     [{"id": "w", "date": "2026-10-03", "accountId": "feed-chk"}],
+                     ["not an object"],
+                     [{"id": "csv:1", "date": "2026-10-03", "amount": "-9.00", "accountId": CHECKING, "csvMappingKey": "unknown"}]):
+            stage(self.company, rows)
+            [row] = self.proof([reading("1250.00")]).values()
+            self.assertEqual(row["reason"], "waiting_unreadable", rows)
+        # A broken row of another account does not block this one.
+        stage(self.company, [{"id": "w", "date": "someday", "amount": "-9.00", "accountId": "feed-sav"}])
+        self.assertEqual(self.proof([reading("1250.00")])["2026-09"]["reason"], "proven")
 
     def test_a_missing_or_extra_transaction_leaves_the_month_unproven(self):
         months = self.proof([reading("1240.00")])
@@ -182,6 +214,17 @@ class FeedProofTests(unittest.TestCase):
                                         "opening_balance": "0.00", "closing_balance": "40.00"})
         months = self.proof([reading("1290.00")])
         self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("proven", "proven"))
+
+    def test_an_opening_balance_entry_inside_the_first_month_needs_a_statement(self):
+        post(self.company, CHECKING, "2026-08-01", "40.00", source=False)
+        months = self.proof([reading("1290.00")])
+        self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("opening_unproven", "opening_unproven"))
+
+    def test_the_zero_opening_applies_only_to_the_first_feed_month(self):
+        record_feed_window(self.company, account=SAVINGS, start=date(2026, 8, 1), end=date(2026, 10, 5), source="feed-sav")
+        post(self.company, SAVINGS, "2026-09-15", "40.00")
+        months = self.proof([reading("40.00")], account_id="feed-sav", account_type="savings")
+        self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("opening_unproven", "opening_unproven"))
 
     def test_a_quiet_zero_month_with_no_feed_rows_is_not_proven(self):
         record_feed_window(self.company, account=SAVINGS, start=date(2026, 8, 1), end=date(2026, 10, 5), source="feed-sav")
@@ -272,7 +315,8 @@ class FeedProofTests(unittest.TestCase):
     def test_cli_is_read_only_and_classified_as_read(self):
         input_path = Path(self._tmp.name) / "readings.json"
         input_path.write_text(json.dumps({"accounts": [{"account_id": "feed-chk", "account_type": "Checking",
-                                                        "currency": "USD", "readings": [reading("1250.00")]}]}))
+                                                        "currency": "USD", "time_zone": "America/New_York",
+                                                        "readings": [reading("1250.00")]}]}))
         files = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.company.rglob("*") if p.is_file()}
         out = io.StringIO()
         with redirect_stdout(out):

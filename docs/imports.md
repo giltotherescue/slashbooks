@@ -340,30 +340,41 @@ read-only. For a proven month it prints the exact figures for `books reconcile`.
 books balance prove --entity ~/Documents/books/acme-co --input readings.json --as-of 2026-10-20
 ```
 
-The input is `{"accounts": [{"account_id", "account_type", "currency", "time_zone",
+The input is `{"accounts": [{"account_id", "account_type", "time_zone", "currency",
 "readings": [{"balance", "as_of", "retrieved_at", "data_through", "partial"}]}]}`.
-`currency` and `time_zone` (an IANA name for the bank) are optional. `balance` is
-the current balance that the bank reported when it was read, not a statement
-balance. A reading is used only when `partial` is `false`. The day it was read
-must be after the month end in the bank's time zone (or in the offset of
-`retrieved_at` when no time zone is given), and `data_through` must reach the
-balance day.
+`time_zone` (the IANA name of the bank's time zone) is required; `currency` is
+optional. `balance` is the current balance that the bank reported when it was
+read, not a statement balance. A reading is used only when `partial` is `false`,
+`as_of` is not later than `retrieved_at`, it was read at least 6 hours after the
+bank's midnight that ends the month, and `data_through` reaches the balance day.
 
 A month is proven only when feed windows cover every day from the month start
-through the balance day, nothing waits in review, the books equal the bank on
-that day, and the opening balance is proven: it comes from the reconciliation or
-statement of the month before, or it is zero in the first month of the feed and
-that month has rows from a source. Cards, loans and other types are never
-proven. Each row has `status` (`proven` or `not_proven`) and `reason`, one of
-`proven`, `already_reconciled`, `existing_record`, `unmapped`,
-`shared_ledger_account`, `not_checking_or_savings`, `unknown_time_zone`,
-`currency_mismatch`, `other_currency`, `unreadable_postings`,
+through the balance day, nothing waits in review (and the review file can be
+read), the books equal the bank on that day, and the opening balance is proven.
+The opening comes from the reconciliation or statement of the month before. In
+the first month of the feed windows it is zero only when nothing in the books is
+dated earlier and every posting of the month came from a source; an
+opening-balance entry dated inside that month needs a statement. Cards, loans and
+other types are never proven. Each row has `status` (`proven` or `not_proven`)
+and `reason`, one of `proven`, `already_reconciled`, `existing_record`,
+`unmapped`, `shared_ledger_account`, `not_checking_or_savings`,
+`time_zone_required`, `unknown_time_zone`, `currency_mismatch`,
+`other_currency`, `unreadable_postings`, `waiting_unreadable`,
 `no_balance_after_month_end`, `feed_incomplete`, `waiting_in_review`,
 `books_differ`, `opening_unproven` or `opening_differs`.
 
-Limit: a transaction that the books date on the other side of the month end than
-the bank does is not found when the bank and the books agree on a later reading
-day and no reading falls on the month end itself. A statement finds it.
+Limits that remain:
+
+- A transaction that the books date on the other side of the month end than the
+  bank does is not found when the two agree again on the reading day and no
+  reading falls on the month end. A statement finds it.
+- Errors that cancel each other inside one month are not found. Across a month
+  end, the opening chain finds them.
+- The proof shows balances, not categories: a wrong category is not found.
+- The balance used is the current balance. When the bank counts pending items in
+  it, the month waits.
+- The readings, dates, time zone and feed windows are facts from the host. The
+  engine checks them against each other and against the books, not against the bank.
 
 ## PDF and image statements
 

@@ -8,20 +8,22 @@ that command with them.
 
 Input
 -----
-``{"accounts": [{"account_id", "account_type", "currency"?, "time_zone"?,
+``{"accounts": [{"account_id", "account_type", "time_zone", "currency"?,
 "readings": [{"balance", "as_of", "retrieved_at", "data_through", "partial"}]}]}``
 
 - ``balance`` is the current balance the bank reported when it was read (not an
   available balance and not a statement balance), as money held.
 - ``retrieved_at`` is a full ISO time with an offset. ``as_of`` is optional: a
-  date, or a full ISO time with an offset. ``data_through`` is a date.
+  date, or a full ISO time with an offset that is not later than
+  ``retrieved_at``. ``data_through`` is a date.
   ``partial`` must be the JSON value ``false``. Any other value, or no value,
   means the read was incomplete, and the reading is not used.
 - ``currency`` is optional. When it is given it must equal the currency of the
   ledger account.
-- ``time_zone`` is optional, an IANA name such as ``America/New_York`` for the
-  bank. It is the reference time zone for every day of that account's readings.
-  Without it, each time is read in its own offset (``Z`` is UTC).
+- ``time_zone`` is required: an IANA name such as ``America/New_York`` for the
+  bank. Every day of that account's readings is a day in this time zone. An
+  account without it is ``time_zone_required``; an unknown name is
+  ``unknown_time_zone``.
 
 The rule
 --------
@@ -33,15 +35,19 @@ proven when every condition is true:
    savings. A card, loan, treasury or other account is never proven here.
 2. The month is over: ``end`` is before the day of the check.
 3. A usable balance reading exists. Its balance day ``D`` (the ``as_of`` day,
-   else the day it was read) is on or after ``end``. The day it was read is
-   strictly after ``end``, so the bank day of the month end was over, and on or
+   else the day it was read) is on or after ``end``. It was read at least
+   ``SAFETY_MARGIN_HOURS`` (6) hours after the bank's midnight that starts the
+   day after ``end``, so the bank day of the month end was over, and on or
    before the day of the check. The reading is not partial, and when it was read
    the feed already had every transaction through ``D`` (``data_through`` on or
-   after ``D``). All days use the reference time zone above.
+   after ``D``). All days are days in the bank time zone.
 4. Feed windows (``feed_sync`` coverage records) cover every day from
    ``start`` through ``D`` with no gap. A feed that started in the month, or
    a missing window, leaves the month unproven.
-5. No bank row for the account waits in review on or before ``D``.
+5. No bank row for the account waits in review on or before ``D``. When the
+   review file does not parse, or a row of the account (or a row whose account
+   cannot be decided) has a date or amount that cannot be read, the account is
+   ``waiting_unreadable``.
 6. The books balance through ``D`` equals the bank balance on ``D``. Only
    postings in the account's currency count. A posting in another currency, or
    a posting whose date or amount cannot be read, leaves the account unproven.
@@ -49,8 +55,10 @@ proven when every condition is true:
    before, from a reconciliation record (clean or resolved), a statement record
    that ends on the day before ``start``, or a month this check proved before
    it. The books balance on the day before ``start`` must equal it. With none
-   of these (the first month of the feed), the opening is accepted only when it
-   is zero in the books and the month has at least one posting from a source.
+   of these, the opening is zero only in the first month of the feed windows,
+   when nothing in the books is dated before that month, and when the month
+   has postings and every one came from a source. An opening-balance entry
+   dated inside that month has no source, so that month needs a statement.
 
 The earliest reading that meets conditions 4 to 6 is used. A reading whose
 balance day is the month end itself is decisive: when it differs, a later
@@ -62,11 +70,26 @@ activity after ``end`` through ``D``, and the activity of the month is that
 balance less the proven opening. A missing, extra or wrong transaction from
 ``start`` through ``D`` makes condition 6 or 7 fail.
 
-The limit that remains: a transaction that the books date on the other side of
-the month end than the bank does is not found when the bank and the books still
-agree on the later reading day and no reading falls on the month end itself.
-The month end is then off by that transaction, and the next month's opening
-is off by the same amount.
+Limits that remain (a statement finds the first three):
+
+- A transaction that the books date on the other side of the month end than the
+  bank does is not found when the bank and the books agree again on the reading
+  day and no reading falls on the month end itself. The month end is then off by
+  that transaction, and the next month's opening by the same amount.
+- Errors that cancel each other inside the checked span (for example a missing
+  deposit and a duplicated deposit of the same amount) are found only when a
+  proven month end falls between them, through the opening chain. When both fall
+  between two month ends, every month end is still right, but the transaction
+  detail is not.
+- The proof shows balances, not transactions: a transaction posted to the wrong
+  category, or two rows swapped between accounts that are not checked, is not
+  found.
+- The balance used is the current balance the host read from the bank. A bank
+  that includes pending items in it makes the reading differ, and the month
+  waits (it does not prove a wrong figure).
+- The readings, ``data_through``, ``partial``, the time zone and the feed windows
+  are facts from the host. The engine checks that they agree with each other and
+  with the books; it cannot check them against the bank.
 
 A month that already has a clean reconciliation record that still agrees with
 the books is ``already_reconciled``. A month with any other record that a
@@ -76,7 +99,7 @@ an earlier feed proof made is checked again.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 from decimal import Decimal, InvalidOperation
 import json
 from pathlib import Path
@@ -85,20 +108,23 @@ import sqlite3
 from typing import Any, Mapping, Sequence
 
 from .ledger.store import LedgerStore, default_store_path
-from .tieout import Series, _dec, _fmt, load_waiting
+from .tieout import Series, _dec, _fmt, load_waiting_checked
 
 DEPOSITORY_TYPES = frozenset({"checking", "savings"})
 FEED_EVIDENCE_PREFIX = "evidence:feed-balance-"
 MAX_MONTHS = 36
 REASONS = (
     "proven", "already_reconciled", "existing_record", "unmapped", "shared_ledger_account",
-    "not_checking_or_savings", "unknown_time_zone", "currency_mismatch", "other_currency",
-    "unreadable_postings", "no_balance_after_month_end", "feed_incomplete", "waiting_in_review",
+    "not_checking_or_savings", "time_zone_required", "unknown_time_zone", "currency_mismatch", "other_currency",
+    "unreadable_postings", "waiting_unreadable", "no_balance_after_month_end", "feed_incomplete", "waiting_in_review",
     "books_differ", "opening_unproven", "opening_differs",
 )
 _TYPE_CLEAN = re.compile(r"[_\- ]")
 _CURRENCY = re.compile(r"[A-Z]{3}")
 _ZERO = Decimal("0.00")
+#: A reading proves a month only when it was read at least this many hours after the bank's midnight that ends the
+#: month. Late postings and a host that reads a little early cannot then turn an open bank day into a closed one.
+SAFETY_MARGIN_HOURS = 6
 _CENT = Decimal("0.01")
 
 
@@ -128,10 +154,8 @@ def _local_day(moment: datetime, zone: tzinfo | None) -> date:
 
 
 def _zone(value: Any) -> tuple[tzinfo | None, bool]:
-    """The reference time zone, and whether the value was usable (no value is usable)."""
-    if value in (None, ""):
-        return None, True
-    if not isinstance(value, str) or len(value) > 64:
+    """The bank's time zone, and whether the value was usable. The caller refuses a missing value first."""
+    if not isinstance(value, str) or not value or len(value) > 64:
         return None, False
     try:
         from zoneinfo import ZoneInfo
@@ -174,7 +198,7 @@ def _covers(intervals: list[tuple[date, date]], start: date, end: date) -> bool:
     return any(first <= start and end <= last for first, last in intervals)
 
 
-def _readings(raw: Any, zone: tzinfo | None) -> list[dict[str, Any]]:
+def _readings(raw: Any, zone: tzinfo) -> list[dict[str, Any]]:
     """Usable balance readings, earliest balance day first."""
     readings: list[dict[str, Any]] = []
     for item in raw if isinstance(raw, list) else []:
@@ -191,6 +215,8 @@ def _readings(raw: Any, zone: tzinfo | None) -> list[dict[str, Any]]:
             on = read_day
         else:
             moment = _instant(raw_as_of)
+            if moment is not None and moment > retrieved:
+                continue  # A balance cannot be as of a time after it was read.
             on = _local_day(moment, zone) if moment is not None else _day_only(raw_as_of)
             if on is None:
                 continue
@@ -208,6 +234,7 @@ class _Books:
     def __init__(self) -> None:
         self.items: list[tuple[date, Decimal]] = []
         self.sourced: list[date] = []
+        self.unsourced: list[date] = []
         self.unreadable = False
         self.other_currency = False
         self.currency: str | None = None
@@ -246,8 +273,7 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
             item.unreadable = True
             continue
         item.items.append((day, amount.quantize(_CENT)))
-        if source_id:
-            item.sourced.append(day)
+        (item.sourced if source_id else item.unsourced).append(day)
     for item in books.values():
         item.series = Series(item.items)
     return books
@@ -311,11 +337,14 @@ def prove(entity_path: Path | str, accounts: Sequence[Mapping[str, Any]], *, as_
 
     ledgers = sorted({ledger for _, ledger, _ in candidates})
     books = _load_books(entity.path, ledgers)
-    waiting = load_waiting(entity, ledgers)
+    waiting, waiting_unreadable = load_waiting_checked(entity, ledgers)
     for account_id, ledger, item in candidates:
         side = books[ledger]
         zone, zone_ok = _zone(item.get("time_zone"))
         currency = item.get("currency")
+        if item.get("time_zone") in (None, ""):
+            rows.append(_row(account_id, ledger, None, "time_zone_required"))
+            continue
         if not zone_ok:
             rows.append(_row(account_id, ledger, None, "unknown_time_zone"))
             continue
@@ -329,6 +358,9 @@ def prove(entity_path: Path | str, accounts: Sequence[Mapping[str, Any]], *, as_
         if side.unreadable:
             rows.append(_row(account_id, ledger, None, "unreadable_postings"))
             continue
+        if waiting_unreadable[ledger]:
+            rows.append(_row(account_id, ledger, None, "waiting_unreadable"))
+            continue
         windows = _merged([(r.period_start, r.period_end) for r in records
                            if r.account == ledger and r.kind == "feed_sync"])
         if not windows:
@@ -341,7 +373,7 @@ def prove(entity_path: Path | str, accounts: Sequence[Mapping[str, Any]], *, as_
         proven_closings: dict[date, Decimal] = {}
         for month, start, end in _months(start_from, as_of - timedelta(days=1)):
             row = _month(account_id, ledger, month, start, end, readings, windows, side, waiting[ledger],
-                         reconciliations, statement_closings, proven_closings)
+                         reconciliations, statement_closings, proven_closings, zone)
             if row["status"] == "proven":
                 proven_closings[end] = Decimal(row["reconcile"]["source_balance"])
             rows.append(row)
@@ -362,8 +394,8 @@ def _shown(reading: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _opening(ledger: str, start: date, end: date, side: _Books, reconciliations: Any,
-             statement_closings: Mapping[date, Decimal],
-             proven_closings: Mapping[date, Decimal]) -> tuple[Decimal | None, str]:
+             statement_closings: Mapping[date, Decimal], proven_closings: Mapping[date, Decimal],
+             windows_start: date | None) -> tuple[Decimal | None, str]:
     """The proven bank opening of a month, or None with the reason."""
     before = start - timedelta(days=1)
     if before in proven_closings:
@@ -376,15 +408,22 @@ def _opening(ledger: str, start: date, end: date, side: _Books, reconciliations:
         return None, "opening_unproven"
     if before in statement_closings:
         return statement_closings[before], ""
+    # The first month of the feed: the account starts at zero only when nothing in the books is dated before this
+    # month, the feed starts in this month, and every posting of the month came from a source. An opening-balance
+    # entry dated inside the month has no source, so that month needs a statement.
+    first_feed_month = windows_start is not None and windows_start.replace(day=1) == start
+    earlier = any(day < start for day in side.sourced) or any(day < start for day in side.unsourced)
     sourced_in_month = any(start <= day <= end for day in side.sourced)
-    if side.series.through(before) == _ZERO and sourced_in_month:
+    unsourced_in_month = any(start <= day <= end for day in side.unsourced)
+    if first_feed_month and not earlier and sourced_in_month and not unsourced_in_month:
         return _ZERO, ""
     return None, "opening_unproven"
 
 
 def _month(account_id: str, ledger: str, month: str, start: date, end: date, readings: list[dict[str, Any]],
            windows: list[tuple[date, date]], side: _Books, waiting: Any, reconciliations: Any,
-           statement_closings: Mapping[date, Decimal], proven_closings: Mapping[date, Decimal]) -> dict[str, Any]:
+           statement_closings: Mapping[date, Decimal], proven_closings: Mapping[date, Decimal],
+           zone: tzinfo) -> dict[str, Any]:
     postings = side.series
     existing = _existing(reconciliations, ledger, end)
     if existing is not None:
@@ -393,7 +432,10 @@ def _month(account_id: str, ledger: str, month: str, start: date, end: date, rea
             return _row(account_id, ledger, month, "already_reconciled")
         if not _from_feed(existing):
             return _row(account_id, ledger, month, "existing_record")
-    after_end = [r for r in readings if r["day"] >= end and r["read_day"] > end]
+    # The bank day of the month end must be over, with a margin: read at least SAFETY_MARGIN_HOURS after the bank's
+    # midnight that starts the next day.
+    closed = datetime.combine(end + timedelta(days=1), time(0), tzinfo=zone) + timedelta(hours=SAFETY_MARGIN_HOURS)
+    after_end = [r for r in readings if r["day"] >= end and r["instant"] >= closed]
     if not after_end:
         return _row(account_id, ledger, month, "no_balance_after_month_end")
     first: dict[str, Any] | None = None
@@ -427,7 +469,8 @@ def _month(account_id: str, ledger: str, month: str, start: date, end: date, rea
     reading = chosen
     day = reading["day"]
     shown = _shown(reading)
-    opening, reason = _opening(ledger, start, end, side, reconciliations, statement_closings, proven_closings)
+    opening, reason = _opening(ledger, start, end, side, reconciliations, statement_closings, proven_closings,
+                               windows[0][0] if windows else None)
     if opening is None:
         return _row(account_id, ledger, month, reason, reading=shown)
     books_opening = postings.through(start - timedelta(days=1))
