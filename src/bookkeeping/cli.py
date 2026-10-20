@@ -33,6 +33,7 @@ from bookkeeping.connectors.stripe import (
 )
 from bookkeeping import compare as compare_module
 from bookkeeping import cashflow as cashflow_module
+from bookkeeping import bank_accounts as bank_accounts_module
 from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
 from bookkeeping import hosted as hosted_module
@@ -131,6 +132,8 @@ def _dispatch(
             return entity_module.run(args)
         if args.command == "accrual":
             return accrual_module.run(args)
+        if args.command == "bank":
+            return bank_accounts_module.run(args)
         if args.command == "ingest":
             return ingest_module.run(args)
         if args.command == "statement":
@@ -325,6 +328,7 @@ def build_parser() -> argparse.ArgumentParser:
     demo_module.add_parser(subcommands)
     hosted_module.add_parser(subcommands)
     entity_module.add_parser(subcommands)
+    bank_accounts_module.add_parser(subcommands)
     ingest_module.add_parser(subcommands)
     statement_import_module.add_parser(subcommands)
     ledger_migrate_module.add_parser(subcommands)

@@ -59,7 +59,7 @@ from typing import Any, Callable, Sequence, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..accrual.store import SupportingMutation
 
-from ..entity import Entity, load_entity
+from ..entity import Entity, bank_mapping_account, load_entity
 from .migrate import migrate_beancount_to_store
 from .model import Entry, Open, Posting
 from .staging import StagingStore
@@ -766,7 +766,7 @@ def _legacy_alias_status(entity: Entity, source_id: str) -> str:
 
 def _ledger_account_for_txn(
     txn: dict,
-    mappings: dict[str, str] | None = None,
+    mappings: dict[str, Any] | None = None,
     csv_mappings: dict[str, dict] | None = None,
 ) -> str:
     """Derive a beancount-safe account name for the bank side of the posting.
@@ -807,11 +807,13 @@ def _ledger_account_for_txn(
 
     mapped_account = None
     if mappings:
+        # A mapping value is the account name (flat) or an object with a
+        # ``ledger_account`` (rich); the key is the provider's account ID.
         if account_id and account_id in mappings:
-            mapped_account = mappings[account_id]
+            mapped_account = bank_mapping_account(mappings[account_id])
         account_name_key = str(txn.get("accountName") or "")
         if mapped_account is None and account_name_key and account_name_key in mappings:
-            mapped_account = mappings[account_name_key]
+            mapped_account = bank_mapping_account(mappings[account_name_key])
     if csv_account is not None:
         if mapped_account is not None and mapped_account != csv_account:
             raise ValueError("Confirmed CSV and bank account mappings conflict; resolve the mappings before posting.")

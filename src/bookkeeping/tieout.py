@@ -251,10 +251,10 @@ def balance_check(entity_path: Path | str, items: Sequence[Mapping[str, Any]]) -
     account are summed into one row, because the books hold one balance for
     that account. The books balance is every posting through the compare date.
     """
-    from .entity import load_entity
+    from .entity import flat_bank_account_mappings, load_entity
 
     entity = load_entity(entity_path)
-    mappings = entity.entity_config.get("bank_account_mappings") or {}
+    mappings = flat_bank_account_mappings(entity.entity_config)
     rows: list[dict[str, Any]] = []
     groups: dict[str, list[Mapping[str, Any]]] = {}
     for item in items:

@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Mapping
 
-from ..entity import Entity
+from ..entity import Entity, flat_bank_account_mappings
 from ..ledger.importer import _find_live_entry, _load_pending_categorization, _ledger_account_for_txn
 from .intake import canonical_hash, normalize_amount
 from .journals import JournalError, _day, _evidence, _existing_receipt, _id, _preview_operation, _source_claims, _store, _text
@@ -181,7 +181,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("invalid_settlement_source", "Settlement source needs mode, source_id, bank_account and signed amount.")
     source_id = _id(source["source_id"])
     bank = _account(store, source["bank_account"], "bank_account", ("Assets:", "Liabilities:CreditCard"))
-    mapped_banks = {v for v in (entity.entity_config.get("bank_account_mappings") or {}).values() if isinstance(v, str)}
+    mapped_banks = set(flat_bank_account_mappings(entity.entity_config).values())
     if not bank.startswith(("Assets:Bank:", "Assets:Cash", "Assets:Processors:", "Liabilities:CreditCard")) and bank not in mapped_banks:
         raise JournalError("invalid_bank_account", "Settlement source must be an explicitly mapped bank, cash, processor, or credit-card account.")
     cash = Decimal(normalize_amount(source["amount"]))

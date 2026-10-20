@@ -587,12 +587,98 @@ def add_account(
     }
 
 
-def map_bank_account(entity_path: Path, feed_account_id: str, account: str) -> dict[str, str]:
-    """Persist a BankSync provider-ID to an existing ledger account mapping."""
+# Fields a mapped bank account can carry besides the ledger account. The key of
+# the mapping stays the provider's account ID, so a flat ``{id: account}`` entry
+# and a rich entry are both found by the same lookup.
+BANK_IDENTITY_FIELDS = (
+    "provider", "provider_account_id", "institution_id", "institution_name",
+    "last4", "account_type", "currency", "cutover_date",
+)
+
+
+def bank_mapping_account(value: Any) -> str | None:
+    """Ledger account of one ``bank_account_mappings`` value, in either form.
+
+    The flat form is the account name. The rich form is an object with a
+    ``ledger_account``. Anything else is not a usable mapping.
+    """
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, dict):
+        account = value.get("ledger_account")
+        return account if isinstance(account, str) and account else None
+    return None
+
+
+def flat_bank_account_mappings(config: Any) -> dict[str, str]:
+    """``{provider account ID: ledger account}`` for either mapping form.
+
+    Read code that only needs the ledger account uses this, so a rich entry is
+    never mistaken for a missing one.
+    """
+    raw = config.get("bank_account_mappings") if isinstance(config, dict) else None
+    if not isinstance(raw, dict):
+        return {}
+    flat: dict[str, str] = {}
+    for key, value in raw.items():
+        account = bank_mapping_account(value)
+        if account:
+            flat[str(key)] = account
+    return flat
+
+
+def bank_mapping_details(value: Any) -> dict[str, Any]:
+    """Identity fields of one mapping value. A flat value has none."""
+    if not isinstance(value, dict):
+        return {}
+    return {name: value[name] for name in BANK_IDENTITY_FIELDS if value.get(name) not in (None, "")}
+
+
+def _clean_identity(fields: dict[str, Any]) -> dict[str, Any]:
+    """Validate and normalise the identity fields a caller gave."""
+    clean: dict[str, Any] = {}
+    for name, value in fields.items():
+        if name not in BANK_IDENTITY_FIELDS:
+            raise ValueError(f"Unknown bank account field '{name}'.")
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        if name == "last4":
+            if not re.fullmatch(r"[A-Za-z0-9]{4}", text):
+                raise ValueError("last4 must be exactly four letters or digits.")
+            text = text.upper()
+        elif name == "currency":
+            if not re.fullmatch(r"[A-Za-z]{3}", text):
+                raise ValueError("currency must be a three-letter code such as USD.")
+            text = text.upper()
+        elif name == "account_type":
+            text = text.lower().replace("-", "_").replace(" ", "_")
+        elif name == "cutover_date":
+            try:
+                text = date.fromisoformat(text).isoformat()
+            except ValueError:
+                raise ValueError("cutover_date must be a date in YYYY-MM-DD form.") from None
+        clean[name] = text
+    return clean
+
+
+def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
+                     **identity: Any) -> dict[str, str]:
+    """Persist a provider-account-ID to an existing ledger account mapping.
+
+    With no identity fields the mapping is written in the flat form, exactly as
+    before. With any of ``BANK_IDENTITY_FIELDS`` it is written as an object that
+    also carries the account identity (provider, institution, last four digits,
+    type, currency, cutover date). Re-mapping a rich entry without new fields
+    keeps its identity and changes only the ledger account.
+    """
     entity = load_entity(entity_path)
     stable_id = str(feed_account_id).strip()
     if not stable_id:
         raise ValueError("Feed account ID is required.")
+    fields = _clean_identity(identity)
 
     from .ledger.store import LedgerStore, default_store_path
 
@@ -603,7 +689,13 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str) -> d
         )
     mappings = dict(entity.entity_config.get("bank_account_mappings") or {})
     previous = mappings.get(stable_id)
-    mappings[stable_id] = account
+    previous_fields = bank_mapping_details(previous)
+    if fields or previous_fields:
+        merged = {**previous_fields, **fields}
+        merged.setdefault("provider_account_id", stable_id)
+        mappings[stable_id] = {"ledger_account": account, **merged}
+    else:
+        mappings[stable_id] = account
     entity.entity_config["bank_account_mappings"] = mappings
     destination = entity.path / "entity.json"
     tmp = destination.with_suffix(".json.tmp")
@@ -994,6 +1086,14 @@ def add_parser(subparsers: Any) -> None:
     map_parser.add_argument("path", type=Path, help="Path to the entity directory")
     map_parser.add_argument("--feed-account-id", required=True, help="Stable provider account ID")
     map_parser.add_argument("--account", required=True, help="Existing ledger account to use")
+    map_parser.add_argument("--provider", default=None, help="Bank data provider, e.g. banksync or plaid")
+    map_parser.add_argument("--institution-id", default=None, help="Provider's institution ID")
+    map_parser.add_argument("--institution-name", default=None, help="Institution name as the person knows it")
+    map_parser.add_argument("--last4", default=None, help="Last four characters of the account number")
+    map_parser.add_argument("--account-type", default=None, help="checking, savings or credit_card")
+    map_parser.add_argument("--currency", default=None, help="Three-letter currency code")
+    map_parser.add_argument("--cutover-date", default=None,
+                            help="YYYY-MM-DD. A feed import skips rows on or before this day unless --backfill")
 
     coverage_parser = entity_sub.add_parser(
         "source-coverage",
@@ -1099,7 +1199,12 @@ def run(args: Any) -> int:
     if args.entity_command == "bank-account-map":
         target = _resolve_target(args.path)
         try:
-            report = map_bank_account(target, args.feed_account_id, args.account)
+            report = map_bank_account(
+                target, args.feed_account_id, args.account,
+                provider=args.provider, institution_id=args.institution_id,
+                institution_name=args.institution_name, last4=args.last4,
+                account_type=args.account_type, currency=args.currency,
+                cutover_date=args.cutover_date)
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
