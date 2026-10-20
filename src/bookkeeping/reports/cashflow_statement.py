@@ -527,7 +527,7 @@ def cash_flow(entity_path: Path | str, from_date: date, to_date: date) -> Cashfl
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        pnl = _compute_pnl(conn, from_date, to_date, coverage_view=journal_coverage_view(conn, to_date))  # recorded income
+        pnl = _compute_pnl(conn, from_date, to_date, coverage_view=journal_coverage_view())  # recorded income
     finally:
         conn.close()
     if pnl.meta.get("summary_included"):

@@ -331,15 +331,27 @@ def profit_and_loss(
     return cash_view(entity_path, from_date, to_date)
 
 
-def journal_coverage_view(conn: Any, to_date: date) -> Optional[str]:
-    """The coverage rule for a reader of the journal when no accrual view was named.
+def journal_coverage_view() -> str:
+    """The coverage rule for an output that reads the journal: the cash view, which never refuses.
 
-    A range that ends on or after the tracking start never refuses: before the start the journal is the cash books.
-    A range that ends before the start keeps the default view's rule.
+    Journal outputs are the general ledger, the statement of cash flows, the accountant package and the tax handoff.
+    Before the tracking start the journal is the cash books, so the tracking start never refuses them, whatever the
+    default view and whatever the range. View outputs (profit and loss, balance sheet, trial balance, answers) keep the
+    rule of their view and refuse a date before the start in the accrual view.
     """
+    return "cash"
+
+
+def _metadata_for(conn: Any, kind: str, start: Optional[date], end: date, view: Optional[str],
+                  coverage_view: Optional[str]) -> dict[str, Any]:
+    """Coverage metadata of a statement. A journal output of a period that ends before the tracking start says it is cash basis."""
+    from ..accrual.reports import financial_metadata
     from ..accrual.scope import tracking_start
+    metadata = _stamp_view(financial_metadata(conn, kind, start, end, coverage_view or view), view)
     first = tracking_start(conn)
-    return None if first and to_date.isoformat() < first else "cash"
+    if coverage_view == "cash" and not view and first and end.isoformat() < first:
+        metadata["basis"] = "cash"
+    return metadata
 
 
 def recorded_profit_and_loss(entity_path: Path | str, from_date: date, to_date: date) -> StatementResult:
@@ -349,7 +361,7 @@ def recorded_profit_and_loss(entity_path: Path | str, from_date: date, to_date: 
     """
     conn = open_cache(Path(entity_path))
     try:
-        return _compute_pnl(conn, from_date, to_date, coverage_view=journal_coverage_view(conn, to_date))
+        return _compute_pnl(conn, from_date, to_date, coverage_view=journal_coverage_view())
     finally:
         conn.close()
 
@@ -434,10 +446,9 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] 
     """``coverage_view`` is the view whose coverage rule applies. Readers of the journal (the cash flow statement,
     the package) pass "cash": before the tracking start the journal is the cash books, so they never refuse a range
     that crosses it."""
-    from ..accrual.reports import financial_metadata
     if from_date > to_date:
         raise ValueError("Report start date must be on or before end date.")
-    metadata = _stamp_view(financial_metadata(conn, "pnl", from_date, to_date, coverage_view or view), view)
+    metadata = _metadata_for(conn, "pnl", from_date, to_date, view, coverage_view)
     balances = _account_balances_in_range(conn, from_date, to_date)
 
     # Income: credit-normal → positive balance means credit → income positive
@@ -495,19 +506,23 @@ def balance_sheet(
     entity_path: Path | str,
     as_of: date,
     view: Optional[str] = None,
+    journal: bool = False,
 ) -> StatementResult:
-    """Compute balance sheet as of *as_of* (end-of-day). ``view`` is None (the default view) or a view to show."""
+    """Compute balance sheet as of *as_of* (end-of-day). ``view`` is None (the default view) or a view to show.
+
+    ``journal`` is for a reader of the journal such as the package: the tracking start never refuses it."""
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        return _compute_balance_sheet(conn, as_of, _statement_view(conn, "balance sheet", view))
+        return _compute_balance_sheet(conn, as_of, _statement_view(conn, "balance sheet", view),
+                                      coverage_view=journal_coverage_view() if journal and view != "accrual" else None)
     finally:
         conn.close()
 
 
-def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None) -> StatementResult:
-    from ..accrual.reports import financial_metadata
-    metadata = _stamp_view(financial_metadata(conn, "balance_sheet", None, as_of, view), view)
+def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
+                           coverage_view: Optional[str] = None) -> StatementResult:
+    metadata = _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view)
     balances = _account_balances_as_of(conn, as_of)
 
     # Also compute net income from inception through as_of for equity section
@@ -614,19 +629,23 @@ def trial_balance(
     entity_path: Path | str,
     as_of: date,
     view: Optional[str] = None,
+    journal: bool = False,
 ) -> StatementResult:
-    """Compute trial balance as of *as_of*. ``view`` is None (the default view) or a view to show."""
+    """Compute trial balance as of *as_of*. ``view`` is None (the default view) or a view to show.
+
+    ``journal`` is for a reader of the journal such as the package: the tracking start never refuses it."""
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        return _compute_trial_balance(conn, as_of, _statement_view(conn, "trial balance", view))
+        return _compute_trial_balance(conn, as_of, _statement_view(conn, "trial balance", view),
+                                      coverage_view=journal_coverage_view() if journal and view != "accrual" else None)
     finally:
         conn.close()
 
 
-def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None) -> StatementResult:
-    from ..accrual.reports import financial_metadata
-    metadata = _stamp_view(financial_metadata(conn, "trial_balance", None, as_of, view), view)
+def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
+                           coverage_view: Optional[str] = None) -> StatementResult:
+    metadata = _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view)
     balances = _account_balances_as_of(conn, as_of)
 
     rows = []
@@ -691,15 +710,14 @@ def general_ledger(
     try:
         # The general ledger is the journal. Only an explicit accrual view refuses a range before the tracking start.
         return _compute_general_ledger(conn, from_date, to_date, _statement_view(conn, "general ledger", view),
-                                       coverage_view="accrual" if view == "accrual" else journal_coverage_view(conn, to_date))
+                                       coverage_view="accrual" if view == "accrual" else journal_coverage_view())
     finally:
         conn.close()
 
 
 def _compute_general_ledger(conn: Any, from_date: date, to_date: date, view: Optional[str] = None,
                             coverage_view: Optional[str] = None) -> StatementResult:
-    from ..accrual.reports import financial_metadata
-    metadata = _stamp_view(financial_metadata(conn, "general_ledger", from_date, to_date, coverage_view or view), view)
+    metadata = _metadata_for(conn, "general_ledger", from_date, to_date, view, coverage_view)
     rows_by_account: dict[str, list[dict]] = {}
 
     from ..accrual.reports import settlement_details

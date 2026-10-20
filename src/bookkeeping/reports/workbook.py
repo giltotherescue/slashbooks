@@ -323,7 +323,7 @@ def _count_open_queue_items(entity_path: Path) -> int:
 def _run_equity_check(entity_path: Path, to_date: date) -> SanityCheck:
     """Check: assets == liabilities + equity on the balance sheet."""
     try:
-        bs = balance_sheet(entity_path, to_date)
+        bs = balance_sheet(entity_path, to_date, journal=True)
         total_assets = bs.totals.get("total_assets", Decimal("0.00"))
         total_le = bs.totals.get("total_liabilities_and_equity", Decimal("0.00"))
         diff = abs(total_assets - total_le)
@@ -746,7 +746,10 @@ def run_sanity_checks(
         _run_queue_empty_check(entity_path),
         _run_reconciliation_clean_check(entity_path),
     ]
-    if load_entity(entity_path).basis == "accrual" or _keeps_accrual_records(entity_path):
+    from ..accrual import scope
+    started = scope.tracking_start(load_entity(entity_path))
+    before_start = bool(started and to_date.isoformat() < started)  # a plain cash period: no accrual record exists yet
+    if not before_start and (load_entity(entity_path).basis == "accrual" or _keeps_accrual_records(entity_path)):
         from ..accrual.reports import report
         try:
             issues = report(load_entity(entity_path), "reconciliation", as_of=to_date)["issues"]
@@ -834,6 +837,10 @@ def _cover_basis(entity_path: Path, to_date: date) -> str:
         label = book_basis(conn, entity.entity_config, to_date)[1]
     finally:
         conn.close()
+    from ..accrual.scope import tracking_start
+    started = tracking_start(entity.entity_config)
+    if started and to_date.isoformat() < started:
+        return "Cash basis"  # a period that ends before the tracking start is a plain cash period
     return label or entity.basis.title() + " basis"
 
 
@@ -1496,6 +1503,8 @@ def _build_summary_rows(
     open_question_rows: Optional[list[list[str]]] = None,
     formulas: bool = True,
     closing_cumulative_net_income: Decimal | None = None,
+    accounting_basis_text: Optional[str] = None,
+    tracking_start: Optional[str] = None,
 ) -> list[list[str]]:
     """Build accountant summary rows.
 
@@ -1544,8 +1553,13 @@ def _build_summary_rows(
         ["Business", entity_name],
         ["Produced by", "Slashbooks"],
         ["Project link", "https://github.com/giltotherescue/slashbooks"],
-        ["Accounting basis", str(entity_config.get("basis", entity_config.get("accounting_basis", "cash"))).title() + " basis"],
-        ["Bookkeeping scope", "Accrual bookkeeping foundations export" if entity_config.get("basis", entity_config.get("accounting_basis")) == "accrual" else "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
+        ["Accounting basis", accounting_basis_text or str(entity_config.get("basis", entity_config.get("accounting_basis", "cash"))).title() + " basis"],
+        *([["Basis before tracking start", f"Cash basis: entries before {tracking_start} are cash entries, and the opening income is the recorded net income"]]
+          if tracking_start and from_date.isoformat() < tracking_start else []),
+        ["Bookkeeping scope", "Accrual bookkeeping foundations export"
+         if entity_config.get("basis", entity_config.get("accounting_basis")) == "accrual"
+         and not (tracking_start and to_date.isoformat() < tracking_start)
+         else "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
         ["Tax prep scope", "Handoff support only; tax treatment and filing positions remain preparer-reviewed"],
         ["Legal structure", str(entity_config.get("legal_structure", ""))],
         ["Country", str(entity_config.get("country", ""))],
@@ -1976,7 +1990,8 @@ def generate_accountant_package(
                                  error=f"The cash view has no {names} sheet: receivables, payables, prepaid and deferred balances exist only on "
                                        "the accrual basis. Remove those sheets, or export with --basis accrual.")
         selected_sheet_keys = [key for key in selected_sheet_keys if key not in _DERIVED_CASH_EXCLUDED]
-    elif not sheets and plan.view == "accrual" and (plan.override or load_entity(entity_path).basis == "accrual"):
+    elif (not sheets and plan.view == "accrual" and (plan.override or load_entity(entity_path).basis == "accrual")
+          and not (view is None and plan.tracking_start and to_date.isoformat() < plan.tracking_start)):
         excluded = {_sheet_key(item) for item in _split_sheet_names(exclude_sheets)}
         selected_sheet_keys.extend(key for key in _ACCRUAL_SHEETS if key not in excluded)
     selected_set = set(selected_sheet_keys)
@@ -2104,9 +2119,9 @@ def generate_accountant_package(
                 return _statement_rows("pnl", lambda: recorded_profit_and_loss(entity_path, from_date, to_date))
             return _statement_rows("pnl", lambda: profit_and_loss(entity_path, from_date, to_date, basis=plan.view))
         elif key == "balance-sheet":
-            return _statement_rows("balance-sheet", lambda: balance_sheet(entity_path, to_date, view=plan.override))
+            return _statement_rows("balance-sheet", lambda: balance_sheet(entity_path, to_date, view=plan.override, journal=view is None))
         elif key == "trial-balance":
-            return _statement_rows("trial-balance", lambda: trial_balance(entity_path, to_date, view=plan.override))
+            return _statement_rows("trial-balance", lambda: trial_balance(entity_path, to_date, view=plan.override, journal=view is None))
         elif key == "general-ledger":
             rows_cache[key] = _build_general_ledger_rows(
                 entity_path,
@@ -2197,9 +2212,9 @@ def generate_accountant_package(
         cache_key = "summary:xlsx" if formulas else "summary:csv"
         if cache_key not in rows_cache:
             from ..accrual.reports import CoverageError
-            closing_bs = balance_sheet(entity_path, to_date, view=plan.override)
+            closing_bs = balance_sheet(entity_path, to_date, view=plan.override, journal=view is None)
             try:
-                prior_bs = balance_sheet(entity_path, from_date - timedelta(days=1), view=plan.override)
+                prior_bs = balance_sheet(entity_path, from_date - timedelta(days=1), view=plan.override, journal=view is None)
                 prior_bs_rows = _statement_to_rows(prior_bs)
                 opening_income = Decimal(prior_bs.meta.get("cumulative_net_income", str(_find_amount(prior_bs_rows, label_col=1, amount_col=2, label="Net Income (current period)"))))
             except CoverageError:
@@ -2229,6 +2244,9 @@ def generate_accountant_package(
                 open_question_rows=_rows("open-questions") if "open-questions" in selected_set else None,
                 formulas=formulas,
                 closing_cumulative_net_income=Decimal(closing_bs.meta["cumulative_net_income"]) if closing_bs.meta.get("basis") == "accrual" else None,
+                accounting_basis_text=_cover_basis(entity_path, to_date),
+                # Turning tracking on alone changes no export: name the start only when the books can differ from cash.
+                tracking_start=plan.tracking_start if (plan.default == "accrual" or _keeps_accrual_records(entity_path)) else None,
             )
         return rows_cache[cache_key]
 

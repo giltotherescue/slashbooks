@@ -354,13 +354,17 @@ class AccrualViewStartsAtTheTrackingDate(Fixture):
         for argv in (["report", "pnl", "--from", "2026-01-01", "--to", "2026-03-31"],
                      ["report", "pnl", "--from", "2026-03-15", "--to", "2026-04-30"],  # straddles the start
                      ["report", "balance-sheet", "--as-of", "2026-03-31"],
-                     ["report", "trial-balance", "--as-of", "2026-03-31"],
-                     ["report", "general-ledger", "--from", "2026-01-01", "--to", "2026-03-31"]):
+                     ["report", "trial-balance", "--as-of", "2026-03-31"]):
             with self.subTest(argv=argv):
                 code, out, err = books(*argv, "--entity", str(self.root))
                 self.assertEqual(code, 1, out)
                 self.assertIn("2026-04-01", err)
                 self.assertIn("Accrual figures start on 2026-04-01", err)
+                self.assertIn("--basis cash", err)
+        # The general ledger is a journal output: the tracking start never refuses it, and before the start it is cash basis.
+        code, out, err = books("report", "general-ledger", "--from", "2026-01-01", "--to", "2026-03-31", "--entity", str(self.root))
+        self.assertEqual(code, 0, err)
+        self.assertIn("Accounting basis: cash", out)
         code, out, err = books("report", "pnl", "--from", D, "--to", "2026-04-30", "--entity", str(self.root))
         self.assertEqual(code, 0, err)
         self.assertIn("Accounting basis: accrual", out)

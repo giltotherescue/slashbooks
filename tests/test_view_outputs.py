@@ -264,6 +264,50 @@ class AccrualDefaultCrossesTheTrackingStart(TrackedCompany):
         self.assertIn("use the cash view", err)
         self.assertIn("--basis cash", err)
 
+    def test_a_range_that_ends_before_the_start_is_a_plain_cash_period_for_every_journal_output(self) -> None:
+        self.make("accrual")
+        entity = str(self.root)
+        F, T = "2025-01-01", "2026-03-31"
+        code, out, err = books("report", "general-ledger", "--from", F, "--to", T, "--entity", entity)
+        self.assertEqual(code, 0, err)
+        self.assertIn("Accounting basis: cash", out)
+        code, out, err = books("report", "cashflow", "--from", F, "--to", T, "--format", "json", "--entity", entity)
+        self.assertEqual(code, 0, err)
+        self.assertTrue(out["reconciliation"]["ties"], out["reconciliation"])
+        self.assertEqual(out["meta"]["basis"], "cash")
+        books("tax", "set", "--entity", entity, "--return-form", "schc")
+        tax = self.work / "tax"
+        code, text, err = books("tax", "export", "--entity", entity, "--from", F, "--to", T, "--output-dir", str(tax))
+        self.assertEqual(code, 0, err)
+        self.assertIn("Basis: Cash basis book balances", (tax / "README.txt").read_text())
+        package = self.work / "export"
+        code, text, err = books("export", "--entity", entity, "--from", F, "--to", T, "--override", "--output-dir", str(package))
+        self.assertEqual(code, 0, err)
+        cover = (package / "csv" / "Cover.csv").read_text()
+        summary = (package / "csv" / "Summary.csv").read_text()
+        self.assertIn("Accounting basis,Cash basis\n", cover)
+        self.assertIn("Accounting basis,Cash basis\n", summary)
+        self.assertIn("Basis before tracking start,\"Cash basis: entries before 2026-04-01", summary)
+        self.assertFalse((package / "csv" / "Outstanding-Balances.csv").exists())
+        # View outputs refuse the same dates in the accrual view and name the cash view.
+        for argv in (["report", "pnl", "--from", F, "--to", T], ["report", "balance-sheet", "--as-of", T],
+                     ["report", "trial-balance", "--as-of", T]):
+            with self.subTest(argv=argv):
+                code, out, err = books(*argv, "--entity", entity)
+                self.assertEqual((code, out), (1, ""))
+                self.assertIn("Accrual figures start on 2026-04-01", err)
+                self.assertIn("--basis cash", err)
+
+    def test_the_package_summary_and_cover_agree_for_a_range_across_the_start(self) -> None:
+        self.make("accrual")
+        package = self.work / "export"
+        code, text, err = books("export", "--entity", str(self.root), "--from", self.FROM, "--to", self.TO, "--override", "--output-dir", str(package))
+        self.assertEqual(code, 0, err)
+        label = "Cash basis, with accrual tracking for selected accounts from 2026-04-01. Book balances as recorded, not a tax cash-basis view; the preparer adjusts."
+        for name in ("Cover.csv", "Summary.csv"):
+            self.assertIn(label, (package / "csv" / name).read_text())
+        self.assertIn("Basis before tracking start,\"Cash basis: entries before 2026-04-01", (package / "csv" / "Summary.csv").read_text())
+
     def test_an_explicit_accrual_view_of_the_general_ledger_still_refuses(self) -> None:
         self.make("accrual")
         code, out, err = books("report", "general-ledger", "--from", self.FROM, "--to", self.TO, "--basis", "accrual", "--entity", str(self.root))
