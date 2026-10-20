@@ -121,7 +121,7 @@ A3=Assets:Bank:Checking	B3=2026-02-28	C3=27468.87	D3=27468.87	E3=0.00	F3=clean	G
 A4=Liabilities:CreditCard:Company	B4=2026-01-31	C4=-80.00	D4=-80.00	E4=0.00	F4=clean	G4=PASS	H4=	I4=
 A5=Liabilities:CreditCard:Company	B5=2026-02-28	C5=-81.00	D5=-81.00	E5=0.00	F5=clean	G5=PASS	H5=	I5=
 === sheet: Vendor 1099
-A1=Vendor	B1=Net Paid	C1=1099 Candidate (if >= 600.00)	D1=Gross Paid	E1=Adjustments	F1=Review Notes
+A1=Vendor	B1=Net Paid	C1=1099 Candidate (if >= 2000.00)	D1=Gross Paid	E1=Adjustments	F1=Review Notes
 A2=(no vendor payments in expense accounts for this period)	B2=	C2=	D2=	E2=	F2=
 === sheet: Adjustment Log
 A1=Original ID	B1=Original Date	C1=Original Counterparty	D1=Original Amount	E1=Reversal ID	F1=Reversal Date	G1=Corrected ID	H1=Corrected Category	I1=Corrected Amount	J1=Trace Status	K1=Note

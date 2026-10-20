@@ -109,7 +109,7 @@ A32=	B32=Liabilities › Payable › Accounts-Payable	C32=	D32=	E32=	F32=Account
 A1=Account	B1=As Of	C1=Ledger Balance	D1=Source Balance	E1=Difference	F1=Reconciliation Status	G1=Review Status	H1=Source	I1=Notes
 A2=Assets:Bank:Checking	B2=2026-07-31	C2=9600.00	D2=9600.00	E2=0.00	F2=clean	G2=PASS	H2=	I2=
 === sheet: Vendor 1099
-A1=Vendor	B1=Net Paid	C1=1099 Candidate (if >= 600.00)	D1=Gross Paid	E1=Adjustments	F1=Review Notes
+A1=Vendor	B1=Net Paid	C1=1099 Candidate (if >= 2000.00)	D1=Gross Paid	E1=Adjustments	F1=Review Notes
 A2=(no vendor payments in expense accounts for this period)	B2=	C2=	D2=	E2=	F2=
 === sheet: Adjustment Log
 A1=Original ID	B1=Original Date	C1=Original Counterparty	D1=Original Amount	E1=Reversal ID	F1=Reversal Date	G1=Corrected ID	H1=Corrected Category	I1=Corrected Amount	J1=Trace Status	K1=Note
