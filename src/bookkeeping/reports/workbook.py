@@ -32,7 +32,7 @@ Sheets (in order)
 4. Trial Balance  — trial_balance as of to_date
 5. General Ledger — period transactions with review-friendly filter columns
 6. Reconciliations — list_discrepancies (all records with raw and review status)
-7. Vendor-1099    — per-payee totals from GL expense postings; flag >= threshold
+7. Vendor-1099    — per-payee totals from GL expense postings; flag >= the threshold for the payment year
 8. Adjustment Log  — original/reversal/correction trace rows
 9. Open Questions  — structured rows from reports/open-questions.json when present
 
@@ -79,8 +79,40 @@ XLSX_EXTRA_MESSAGE = (
 _ACCT_NUM_FMT = "#,##0.00;(#,##0.00)"
 _HEADER_BG_COLOR = "#D9E1F2"
 
-# Default 1099 threshold; overridable via entity.json key vendor_1099_threshold
-_DEFAULT_1099_THRESHOLD = Decimal("600.00")
+# Federal reporting threshold for Form 1099-NEC and the threshold-based boxes of
+# Form 1099-MISC, by the calendar year the payment was made. Each row is
+# (first year the amount applies, amount). A year uses the last row whose first
+# year is on or before it. To add a year, add one row.
+#
+# Sources:
+# - Public Law 119-21 (the "One Big Beautiful Bill Act"), section 70433: the
+#   threshold is $2,000 for payments made after December 31, 2025, and may be
+#   adjusted for inflation beginning in calendar year 2027.
+# - IRS, "Am I required to file a Form 1099 or other information return?":
+#   "For payments made before 2026, the reporting threshold is $600. For payments
+#   made in 2026, the reporting threshold is $2,000." For later payments, see
+#   IRS Publication 1099 for the inflation-adjusted amount.
+#   https://www.irs.gov/businesses/small-businesses-self-employed/am-i-required-to-file-a-form-1099-or-other-information-return
+# - IRS, General Instructions for Certain Information Returns (Forms 1099, 1098,
+#   3921, 3922, 5498, and W-2G), "What's New".
+#   https://www.irs.gov/instructions/i1099gi
+# Royalties ($10), gross proceeds to attorneys and fish purchases ($600) and
+# direct sales ($5,000) use other amounts and are not covered by this sheet.
+# Card and third-party network payments are reported by the payment processor on
+# Form 1099-K, not on Form 1099-NEC or 1099-MISC, so they do not use this table.
+_1099_THRESHOLDS_BY_YEAR: tuple[tuple[int, Decimal], ...] = (
+    (1, Decimal("600.00")),
+    (2026, Decimal("2000.00")),
+)
+
+
+def threshold_1099_for_year(year: int) -> Decimal:
+    """Return the federal 1099 reporting threshold for payments made in `year`."""
+    amount = _1099_THRESHOLDS_BY_YEAR[0][1]
+    for first_year, value in _1099_THRESHOLDS_BY_YEAR:
+        if year >= first_year:
+            amount = value
+    return amount
 
 _DEFAULT_SHEETS: tuple[str, ...] = (
     "cover",
@@ -1008,10 +1040,25 @@ def _build_vendor_1099_rows(
     entity_path: Path,
     from_date: date,
     to_date: date,
-    threshold: Decimal,
+    threshold: Optional[Decimal] = None,
     entries: Optional[list[Any]] = None,
 ) -> list[list[str]]:
-    """Build vendor 1099 sheet rows from GL expense postings."""
+    """Build vendor 1099 sheet rows from GL expense postings.
+
+    Each payment counts toward the calendar year of its date, and each year is
+    compared with that year's threshold. A non-None `threshold` replaces the
+    table for every year (the entity.json override).
+    """
+    def _threshold_for(year: int) -> Decimal:
+        return threshold if threshold is not None else threshold_1099_for_year(year)
+
+    period_years = range(from_date.year, to_date.year + 1)
+    period_thresholds = sorted({_threshold_for(y) for y in period_years})
+    if len(period_thresholds) == 1:
+        candidate_header = "1099 Candidate (if >= " + str(period_thresholds[0]) + ")"
+    else:
+        candidate_header = "1099 Candidate (if >= the threshold for the payment year)"
+
     try:
         period_entries = entries if entries is not None else _parse_entries_for_period(entity_path, from_date, to_date)
     except Exception:
@@ -1030,8 +1077,12 @@ def _build_vendor_1099_rows(
     def _vendor_bucket(vendor: str) -> dict[str, Any]:
         return vendor_totals.setdefault(
             vendor,
-            {"gross": Decimal("0.00"), "adjustments": Decimal("0.00"), "accounts": set()},
+            {"gross": Decimal("0.00"), "adjustments": Decimal("0.00"), "accounts": set(), "by_year": {}},
         )
+
+    def _add_year(bucket: dict[str, Any], entry: Any, amount: Decimal) -> None:
+        by_year = bucket["by_year"]
+        by_year[entry.date.year] = by_year.get(entry.date.year, Decimal("0.00")) + amount
 
     def _add_expense_accounts(bucket: dict[str, Any], entry: Any) -> None:
         accounts = bucket["accounts"]
@@ -1053,6 +1104,7 @@ def _build_vendor_1099_rows(
                 )
                 bucket = _vendor_bucket(vendor)
                 bucket["adjustments"] = bucket["adjustments"] + expense_amount
+                _add_year(bucket, entry, expense_amount)
                 _add_expense_accounts(bucket, entry)
             continue
         vendor = (entry.payee or "").strip()
@@ -1071,10 +1123,11 @@ def _build_vendor_1099_rows(
             bucket["adjustments"] = bucket["adjustments"] + expense_amount
         else:
             bucket["gross"] = bucket["gross"] + expense_amount
+        _add_year(bucket, entry, expense_amount)
         _add_expense_accounts(bucket, entry)
 
     rows: list[list[str]] = [
-        ["Vendor", "Net Paid", "1099 Candidate (if >= " + str(threshold) + ")", "Gross Paid", "Adjustments", "Review Notes"],
+        ["Vendor", "Net Paid", candidate_header, "Gross Paid", "Adjustments", "Review Notes"],
     ]
     if not vendor_totals:
         rows.append(["(no vendor payments in expense accounts for this period)", "", "", "", "", ""])
@@ -1092,7 +1145,14 @@ def _build_vendor_1099_rows(
         account_note = ""
         if isinstance(accounts, set) and accounts:
             account_note = "Accounts: " + "; ".join(sorted(accounts))
-        candidate = "Yes" if net >= threshold else "No"
+        by_year: dict[int, Decimal] = values["by_year"]
+        flagged_years = sorted(y for y, total in by_year.items() if total >= _threshold_for(y))
+        candidate = "Yes" if flagged_years else "No"
+        if len(period_thresholds) > 1:
+            year_note = "; ".join(
+                f"{y}: {by_year[y]} vs {_threshold_for(y)}" for y in sorted(by_year)
+            )
+            account_note = "; ".join(part for part in (account_note, "1099 by year " + year_note) if part)
         rows.append([vendor, str(net), candidate, str(gross), str(adjustments), account_note])
 
     rows.append([])
@@ -1815,11 +1875,12 @@ def generate_accountant_package(
     # --- Load entity config ---
     entity_json_path = entity_path / "entity.json"
     entity_name = "Unknown Entity"
-    threshold_1099 = _DEFAULT_1099_THRESHOLD
+    threshold_1099: Optional[Decimal] = None
     if entity_json_path.exists():
         try:
             ecfg = json.loads(entity_json_path.read_text(encoding="utf-8"))
             entity_name = str(ecfg.get("name", entity_name))
+            # Optional override of the by-year table, applied to every year.
             raw_thresh = ecfg.get("vendor_1099_threshold")
             if raw_thresh is not None:
                 threshold_1099 = Decimal(str(raw_thresh))

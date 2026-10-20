@@ -680,7 +680,7 @@ Build the agenda:
   `transfers`, `vendors`, `documents`. `order` increases down the list and groups
   never go backward.
 - **Every point has a reason.** `reason` is one line, at most 200 characters, that a
-  bookkeeper would say aloud: "There are three payments to Atlas over $600; I need
+  bookkeeper would say aloud: "Three payments to Atlas add up to more than the 1099 threshold for the year; I need
   to know if they are contractors, because that decides the 1099." No jargon, no cheer.
 - **Priority.** `must` only for a point that blocks correct books (what the business
   does, how it is paid, owner pay, an unexplained large or recurring payee, an
