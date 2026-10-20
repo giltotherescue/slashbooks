@@ -103,7 +103,7 @@ from .reports.statements import (
     trial_balance as stmt_tb,
     general_ledger as stmt_gl,
 )
-from .entity import Entity, load_entity
+from .entity import Entity, _locked_entity_operation, load_entity
 
 # ---------------------------------------------------------------------------
 # Bank/card account type keys (used to filter GL sections for matching)
@@ -2427,6 +2427,7 @@ def accept_diff(entity: Entity, key: str, note: str = "") -> bool:
     return False
 
 
+@_locked_entity_operation
 def set_qbo_account_crosswalk(
     entity_path: Path,
     qb_account: str,

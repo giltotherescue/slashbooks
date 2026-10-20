@@ -358,6 +358,97 @@ class HandoffTests(unittest.TestCase):
                       "UltraTax CS Import"):
             self.assertIn(f'name="{sheet}"', workbook)
 
+    def _large_accounting(self, accounts=400):
+        chart = [{"account": f"Expenses:Category-{n:04d}", "account_type": "Expenses", "currency": "USD",
+                  "detail_type": "", "open_date": "2025-12-31", "source_account": f"Expenses:Category-{n:04d}"}
+                 for n in range(accounts)]
+        return {"basis": "accrual", "currency": "USD", "requested_from": "2026-01-01", "requested_to": "2026-12-31",
+                "summary_included": False, "unresolved_issues": [],
+                "coverage": {"basis": "accrual", "chart": chart, "cutover_date": "2026-01-01", "id": "opening",
+                             "summary_from": None, "summary_to": None, "mapping_hash": "0" * 64}}
+
+    def test_read_me_shows_a_short_coverage_summary_and_manifest_keeps_the_full_block(self):
+        from unittest.mock import patch
+
+        accounting = self._large_accounting()
+        out = Path(self.temp.name) / "big"
+        with patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
+            manifest = export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
+        text = (out / "README.txt").read_text(encoding="utf-8")
+        self.assertNotIn("Category-0001", text)
+        self.assertNotIn("mapping_hash", text)
+        self.assertLess(len(text), 4000)
+        line = next(row for row in text.splitlines() if row.startswith("Accounting coverage:"))
+        self.assertIn("accrual basis", line)
+        self.assertIn("cutover 2026-01-01", line)
+        self.assertIn("historical detail available", line)
+        self.assertEqual(manifest["accounting"], accounting)
+        self.assertEqual(json.loads((out / "manifest.json").read_text())["accounting"], accounting)
+
+    @unittest.skipUnless(importlib.util.find_spec("xlsxwriter"), "xlsx extra not installed")
+    def test_xlsx_read_me_cell_stays_short_for_a_large_chart(self):
+        import zipfile
+        from unittest.mock import patch
+
+        accounting = self._large_accounting(accounts=600)
+        self.assertGreater(len(json.dumps(accounting)), 32767)
+        out = Path(self.temp.name) / "bigx"
+        with patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
+            export_handoff(self.company, *YEAR, output_dir=out, formats=["xlsx"])
+        with zipfile.ZipFile(out / "tax-handoff-1120s-2026-01-01_2026-12-31.xlsx") as archive:
+            strings = archive.read("xl/sharedStrings.xml").decode()
+        self.assertNotIn("Category-0001", strings)
+        self.assertIn("Accounting coverage", strings)
+        self.assertLess(max(len(piece) for piece in re.findall(r"<t[^>]*>([^<]*)</t>", strings)), 2000)
+
+    def test_per_account_company_gets_a_per_account_basis_label(self):
+        from unittest.mock import patch
+
+        out = Path(self.temp.name) / "pa"
+        accounting = {"basis": "accrual", "currency": "USD", "coverage": None, "requested_from": "2026-01-01",
+                      "requested_to": "2026-12-31", "unresolved_issues": []}
+        with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
+                patch("bookkeeping.taxmap.tracking_start", return_value="2026-04-01"), \
+                patch("bookkeeping.reports.statements.has_accrual_records", return_value=True), \
+                patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
+            handoff = build_handoff(self.company, *YEAR)
+            export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
+        self.assertEqual(handoff["basis_label"], "Cash basis, with accrual tracking for selected accounts from 2026-04-01. "
+                         "Book balances as recorded, not a tax cash-basis view; the preparer adjusts.")
+        # Item 2: a mixed company never shows a plain "Accrual basis" label.
+        self.assertEqual(handoff["accounting_basis"], "accrual")
+        self.assertIsNotNone(handoff["basis_label"])
+        text = (out / "README.txt").read_text(encoding="utf-8")
+        self.assertIn("Basis: Cash basis, with accrual tracking for selected accounts from 2026-04-01. Book balances as recorded, not a tax cash-basis view; the preparer adjusts.", text)
+        self.assertNotIn("Accrual basis book balances", text)
+
+    def test_per_account_label_has_a_fallback_when_the_start_date_is_missing(self):
+        from unittest.mock import patch
+
+        accounting = {"basis": "accrual", "currency": "USD", "coverage": None, "requested_from": "2026-01-01",
+                      "requested_to": "2026-12-31", "unresolved_issues": []}
+        with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
+                patch("bookkeeping.taxmap.tracking_start", return_value=None), \
+                patch("bookkeeping.reports.statements.has_accrual_records", return_value=True), \
+                patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
+            handoff = build_handoff(self.company, *YEAR)
+        self.assertNotIn("None", handoff["basis_label"])
+        self.assertIn("from a start date that is not recorded", handoff["basis_label"])
+
+    def test_per_account_company_without_accrual_records_keeps_the_plain_label(self):
+        from unittest.mock import patch
+
+        # Turning tracking on, with no accrual record yet, changes no export.
+        with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
+                patch("bookkeeping.taxmap.tracking_start", return_value="2026-04-01"):
+            handoff = build_handoff(self.company, *YEAR)
+        self.assertEqual(handoff["accounting_basis"], "cash")
+        self.assertIsNone(handoff["basis_label"])
+
+    def test_cash_company_keeps_the_plain_basis_label(self):
+        handoff = build_handoff(self.company, *YEAR)
+        self.assertIsNone(handoff["basis_label"])
+
     def test_each_supported_form_exports_a_balanced_trial_balance(self):
         for form in FORMS:
             with self.subTest(form=form):
@@ -404,6 +495,60 @@ class TaxCliTests(unittest.TestCase):
         self.assertFalse(command_spec(["tax", "export", "--entity", "@entity", "--year", "2026"])["mutates"])
         self.assertFalse(command_spec(["tax", "map", "--entity", "@entity"])["mutates"])
         self.assertTrue(command_spec(["tax", "set", "--entity", "@entity", "--return-form", "1065"])["mutates"])
+
+
+class MixedCompanyRealPathTests(unittest.TestCase):
+    """No mock: a company that turned accrual on at 2026-04-01 and holds accrual records. The Read Me, the manifest and the
+    package cover agree. A period that ends before the start is a plain cash period."""
+
+    LABEL = ("Cash basis, with accrual tracking for selected accounts from 2026-04-01. "
+             "Book balances as recorded, not a tax cash-basis view; the preparer adjusts.")
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import test_view_outputs
+        fixture = test_view_outputs.TrackedCompany()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.make("cash")
+        self.fixture = fixture
+
+    def _export(self, start, end, name):
+        from bookkeeping.reports import workbook
+        root, work = self.fixture.root, self.fixture.work
+        handoff = build_handoff(root, start, end, form="1120s")
+        manifest = export_handoff(root, start, end, form="1120s", output_dir=work / f"tax-{name}", formats=("csv",))
+        readme = (work / f"tax-{name}" / "README.txt").read_text(encoding="utf-8")
+        package = workbook.generate_accountant_package(root, start, end, output_dir=work / f"pkg-{name}", override=True)
+        self.assertFalse(package.error, package.error)
+        cover = (package.output_dir / "csv" / "Cover.csv").read_text(encoding="utf-8")
+        return handoff, manifest, readme, cover
+
+    def test_a_period_that_ends_before_the_start_is_a_plain_cash_period(self):
+        handoff, manifest, readme, cover = self._export(date(2026, 1, 1), date(2026, 3, 31), "before")
+        self.assertEqual(handoff["accounting_basis"], "cash")
+        self.assertIsNone(handoff["basis_label"])
+        self.assertEqual(manifest["accounting_basis"], "cash")
+        self.assertIn("Basis: Cash basis book balances computed by the Slashbooks engine", readme)
+        self.assertNotIn("accrual tracking", readme)
+        self.assertIn("Accounting basis,Cash basis", cover)
+        self.assertNotIn("accrual tracking", cover)
+
+    def test_a_period_that_crosses_the_start_has_the_mixed_label_everywhere(self):
+        handoff, manifest, readme, cover = self._export(date(2026, 1, 1), date(2026, 6, 30), "cross")
+        self.assertEqual(handoff["accounting_basis"], "accrual")
+        self.assertEqual(handoff["basis_label"], self.LABEL)
+        self.assertEqual(manifest["accounting_basis"], "accrual")
+        self.assertIn("Basis: " + self.LABEL, readme)
+        self.assertNotIn("Accrual basis book balances", readme)
+        self.assertIn(self.LABEL, cover)
+
+    def test_a_per_account_company_never_shows_a_plain_accrual_label(self):
+        for start, end in ((date(2026, 1, 1), date(2026, 3, 31)), (date(2026, 1, 1), date(2026, 6, 30)),
+                           (date(2026, 4, 1), date(2026, 6, 30))):
+            handoff = build_handoff(self.fixture.root, start, end, form="1120s")
+            if handoff["accounting_basis"] == "accrual":
+                self.assertIsNotNone(handoff["basis_label"])
 
 
 if __name__ == "__main__":

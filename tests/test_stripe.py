@@ -81,6 +81,217 @@ class StripeTests(unittest.TestCase):
         import_transactions(self.entity, [bank], 'bank-intake', intake_only=True)
         return [dict(payout_id='po_one', bank_source_id=bank['id'], bank_source_digest=routine_source_digest([bank]), approved_ledger_account=BANK)]
 
+    def _interrupted_sale_then_expanded_capture(self):
+        from unittest.mock import patch
+        from bookkeeping.ledger.staging import StagingStore
+        self.stage()
+        with patch.object(StagingStore, 'bulk_mark_seen', side_effect=OSError('after canonical commit')):
+            with self.assertRaises(OSError):
+                self.apply()
+        transaction = copy.deepcopy(self.raw['balanceTransactions'][0])
+        transaction.update(id='txn_new', source='ch_new', created=transaction['created'] + 86400)
+        charge = copy.deepcopy(self.raw['charges'][0])
+        charge.update(id='ch_new', balance_transaction='txn_new')
+        self.raw['balanceTransactions'].append(transaction)
+        self.raw['charges'].append(charge)
+        # Unrelated discovered objects must not alter an existing movement's authority.
+        self.raw['products'] = [{'id': 'prod_unrelated', 'metadata': {'stream': 'other'}}]
+        self.stage()
+
+    def test_recovery_accepts_expanded_capture_and_posts_only_new_sale(self):
+        self._interrupted_sale_then_expanded_capture()
+        result = self.apply()
+        self.assertEqual((result['posted'], result['skipped'], result['held']), (1, 1, 0))
+        self.assertEqual(len(self.store.load_entries()), 2)
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        self.assertEqual(self.apply()['posted'], 0)
+
+    def test_recovery_resolves_expanded_and_separate_charge_evidence_equivalently(self):
+        self._interrupted_sale_then_expanded_capture()
+        self.raw['balanceTransactions'][0]['source'] = copy.deepcopy(self.raw['charges'][0])
+        self.assertEqual(self.apply()['posted'], 1)
+        self.assertEqual(len(self.store.load_entries()), 2)
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+
+    def test_recovery_holds_changed_original_charge_authority_without_raising(self):
+        self._interrupted_sale_then_expanded_capture()
+        self.raw['charges'][0]['metadata']['stream'] = 'changed-authority'
+        result = self.apply()
+        self.assertEqual(result['posted'], 1)  # The unrelated new sale still posts.
+        self.assertEqual(result['held'], 1)
+        self.assertEqual(len(self.store.load_entries()), 2)
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual([row['id'] for row in pending], ['stripe:acct_test:txn_sale'])
+
+    def test_recovery_holds_changed_policy_for_review_even_with_exact_original_source(self):
+        self._interrupted_sale_then_expanded_capture()
+        self.policy['version'] += 1
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (1, 1))
+        self.assertEqual(len(self.store.load_entries()), 2)
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual([row['id'] for row in pending], ['stripe:acct_test:txn_sale'])
+
+    def _old_engine_interrupted_sale(self):
+        """Post a sale the way an older engine did: no receipt, cleanup never ran."""
+        from unittest.mock import patch
+        from bookkeeping import stripe as stripe_module
+        from bookkeeping.ledger.staging import StagingStore
+        real = stripe_module._atomic_ledger_write_unlocked
+        self.stage()
+        with patch.object(stripe_module, '_atomic_ledger_write_unlocked',
+                          lambda *a, **k: real(*a, **{**k, 'finalization_receipt': None})), \
+                patch.object(StagingStore, 'bulk_mark_seen', side_effect=OSError('after canonical commit')):
+            with self.assertRaises(OSError):
+                self.apply()
+        self.assertFalse([e for e in self.store.load_audit_events() if e['type'] == 'queue-finalization-intent'])
+
+    def _add_unrelated_sale(self):
+        transaction = copy.deepcopy(self.raw['balanceTransactions'][0])
+        transaction.update(id='txn_new', source='ch_new', created=transaction['created'] + 86400)
+        charge = copy.deepcopy(self.raw['charges'][0])
+        charge.update(id='ch_new', balance_transaction='txn_new')
+        self.raw['balanceTransactions'].append(transaction)
+        self.raw['charges'].append(charge)
+        self.stage()
+
+    def test_old_engine_row_without_receipt_is_cleaned_when_it_matches_the_plan(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (1, 0))
+        self.assertEqual(len(self.store.load_entries()), 2)
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+        self.assertEqual(self.store.verify_audit_chain(), [])
+
+    def test_old_engine_row_with_changed_policy_is_held_and_new_sales_still_post(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        self.policy['version'] += 1
+        result = self.apply()
+        # The new sale posts; the old row waits for review under its own reason.
+        self.assertEqual((result['posted'], result['held']), (1, 1))
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual([row['id'] for row in pending], ['stripe:acct_test:txn_sale'])
+        self.assertEqual([row['reason'] for row in self._plan_after_review()], ['cleanup_needs_review'])
+
+    def _plan_after_review(self):
+        from bookkeeping.stripe import _recover_stripe_cleanup
+        plan = stripe_plan(self.entity, self.raw, self.policy)
+        return _recover_stripe_cleanup(self.entity, plan)[1]
+
+    def test_apply_returns_the_held_rows_with_their_reasons(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        self.policy['version'] += 1
+        result = self.apply()
+        self.assertEqual(result['held'], 1)
+        self.assertEqual([(row['source_id'], row['reason']) for row in result['needs_review']],
+                         [('stripe:acct_test:txn_sale', 'cleanup_needs_review')])
+        self.assertIn(('stripe:acct_test:txn_sale', 'cleanup_needs_review'),
+                      [(row['source_id'], row['reason']) for row in result['unresolved']])
+        self.assertTrue(all('detail' in row for row in result['needs_review']))
+
+    def _held_row(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        self.policy['version'] += 1
+        self.apply()
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        return next(row for row in pending if row['id'] == 'stripe:acct_test:txn_sale')
+
+    def test_held_row_carries_a_review_hold_reason_and_confirm_names_it(self):
+        from bookkeeping import queue
+        row = self._held_row()
+        self.assertEqual(row['review_hold_reason'], 'cleanup_needs_review')
+        queue.propose(self.entity, row['id'], INCOME, 'A person proposes a category.')
+        with self.assertRaisesRegex(ValueError, 'cleanup_needs_review') as raised:
+            queue.confirm(self.entity, row['id'], 'person-session')
+        self.assertIn('already posted', str(raised.exception))
+        self.assertNotIn('different queue operation', str(raised.exception))
+        self.assertEqual(len(self.store.load_entries()), 2)
+
+    def test_held_row_can_be_dismissed_with_a_note_and_leaves_review(self):
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        with self.assertRaises(ValueError):
+            stripe_dismiss_held(self.entity, row['id'], note='')
+        with self.assertRaises(ValueError):
+            stripe_dismiss_held(self.entity, 'stripe:acct_test:txn_new', note='Not held.')
+        result = stripe_dismiss_held(self.entity, row['id'], note='Checked the posted entry against the charge.')
+        self.assertEqual(result['dismissed'], row['id'])
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertNotIn(row['id'], [r['id'] for r in pending])
+        events = [e for e in self.store.load_audit_events() if e['type'] == 'stripe-cleanup-dismissed']
+        self.assertEqual(events[0]['payload']['source_id'], row['id'])
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        self.assertEqual(len(self.store.load_entries()), 2)
+
+    def test_dismiss_refuses_a_reversed_entry(self):
+        from bookkeeping.ledger.importer import reverse_entry
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        reverse_entry(self.entity, row['id'], 'reverse-session')
+        with self.assertRaisesRegex(ValueError, 'not live'):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+        self.assertIn(row['id'], [r['id'] for r in json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())])
+
+    def test_dismiss_refuses_a_damaged_audit_chain(self):
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        with self.store.transaction() as conn:
+            self.store.append_audit_event('test-event', dict(note='Original.'), conn)
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        with self.store.transaction() as conn:
+            conn.execute("UPDATE audit_events SET payload_json = REPLACE(payload_json, 'Original.', 'Changed.')")
+        self.assertTrue(self.store.verify_audit_chain())
+        before = len(self.store.load_audit_events())
+        with self.assertRaisesRegex(ValueError, 'audit chain'):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+        self.assertEqual(len(self.store.load_audit_events()), before)
+        self.assertIn(row['id'], [r['id'] for r in json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())])
+
+    def test_dismiss_refuses_while_a_queue_item_is_open(self):
+        from bookkeeping import queue
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        queue.propose(self.entity, row['id'], INCOME, 'A person proposes a category.')
+        with self.assertRaisesRegex(ValueError, row['id']):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+        queue.withdraw(self.entity, row['id'])
+        self.assertEqual(stripe_dismiss_held(self.entity, row['id'], note='Checked.')['dismissed'], row['id'])
+
+    def test_dismiss_refuses_when_a_group_item_names_the_source(self):
+        from bookkeeping import queue
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        queue._save_item(self.entity, {'source_id': 'group-1', 'source_ids': [row['id']],
+                                       'status': 'requires-reproposal', 'amount': '0.00'})
+        with self.assertRaisesRegex(ValueError, 'group-1'):
+            stripe_dismiss_held(self.entity, row['id'], note='Checked.')
+
+    def test_held_row_cleans_up_when_the_original_policy_returns(self):
+        self._held_row()
+        self.policy['version'] -= 1
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (0, 0))
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertNotIn('stripe:acct_test:txn_sale', [r['id'] for r in pending])
+
+    def test_old_engine_row_with_a_changed_staged_row_is_held_without_raising(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        pending_path = self.entity.staging_dir / 'pending-categorization.json'
+        rows = json.loads(pending_path.read_text())
+        for row in rows:
+            if row['id'] == 'stripe:acct_test:txn_sale':
+                row['stripe_financial_digest'] = 'changed'
+        pending_path.write_text(json.dumps(rows))
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (1, 1))
+        self.assertEqual(len(self.store.load_entries()), 2)
+
     def test_sale_fee_refund_payout_bank_transfer_post_once_with_exact_roles(self):
         matches = self.full_flow()
         plan = self.stage(bank_matches=matches)
@@ -95,6 +306,24 @@ class StripeTests(unittest.TestCase):
         self.assertEqual((0, 4, 0), (result['posted'], result['skipped'], result['held']))
         self.assertEqual(before, self.files())
         self.assertFalse((self.entity.path / 'learned-context').exists())
+
+    def test_recovery_with_a_payout_to_bank_binding_cleans_every_posted_source(self):
+        from unittest.mock import patch
+        from bookkeeping.ledger.staging import StagingStore
+        matches = self.full_flow()
+        self.stage(bank_matches=matches)
+        with patch.object(StagingStore, 'bulk_mark_seen', side_effect=OSError('after canonical commit')):
+            with self.assertRaises(OSError):
+                self.apply(bank_matches=matches)
+        self.assertEqual(len(self.store.load_entries()), 4)
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual(len(pending), 4)  # The three Stripe rows and the bank row still wait.
+        result = self.apply(bank_matches=matches)
+        self.assertEqual((result['posted'], result['held']), (0, 0))
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+        self.assertEqual(len(self.store.load_entries()), 4)
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        self.assertEqual(self.apply(bank_matches=matches)['posted'], 0)
 
     def test_row_above_the_ask_first_amount_is_staged_held_and_never_applied(self):
         self.entity.trust_policy['ask_first_above'] = '50.00'

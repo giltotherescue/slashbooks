@@ -32,6 +32,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any, Mapping, Sequence
 
+from .entity import _locked_entity_operation
 from .ledger.store import LedgerStore, default_store_path
 
 _CENT = Decimal("0.01")
@@ -39,7 +40,7 @@ _ZERO = Decimal("0.00")
 
 TIEOUT_STATUSES = ("matches", "differs", "no_balances", "not_aligned")
 BALANCE_STATUSES = ("matches", "waiting_in_review", "differs", "bank_newer",
-                    "unmapped", "no_bank_balance")
+                    "unmapped", "no_bank_balance", "not_aligned")
 
 
 def presentation_sign(ledger_account: str) -> int:
@@ -118,6 +119,7 @@ class Series:
     """Dated amounts with cumulative sums, so a period sum is two lookups."""
 
     def __init__(self, items: Sequence[tuple[date, Decimal]] = ()) -> None:
+        self.opening_states: dict[date, Series] = {}
         ordered = sorted(items, key=lambda item: item[0])
         self._days = [day for day, _ in ordered]
         self._cumulative: list[Decimal] = []
@@ -146,24 +148,78 @@ class Series:
         return max(0, high - low)
 
 
+def _known_spelling(source_id: str | None, by_source: Mapping[str, Any]) -> str | None:
+    """The spelling of a source ID that the ledger holds, when another spelling is named."""
+    if source_id is None or source_id in by_source:
+        return source_id
+    from .source_ids import source_id_variants
+    for variant in sorted(source_id_variants(source_id)):
+        if variant in by_source:
+            return variant
+    return source_id
+
+
+def source_root(metadata: Mapping[str, str], by_source: Mapping[str, Mapping[str, str]]) -> str | None:
+    """Original source identity through corrections and source-less reversals.
+
+    A link may name a source ID in another spelling than the one the ledger
+    holds (see ``source_ids.source_id_variants``). The result is the ledger's spelling.
+    """
+    current = _known_spelling(metadata.get("reverses") or metadata.get("correction-of") or metadata.get("source-id"), by_source)
+    seen: set[str] = set()
+    while current in by_source:
+        if current in seen:
+            raise ValueError("Cyclic entry correction lineage.")
+        seen.add(current)
+        parent = by_source[current].get("correction-of")
+        if not parent:
+            break
+        current = _known_spelling(parent, by_source)
+    return current
+
+
+class LedgerUnreadableError(ValueError):
+    """The ledger file is damaged or is not a ledger. Error code: ledger_unreadable."""
+
+    code = "ledger_unreadable"
+
+    def __init__(self, detail: str = "") -> None:
+        message = ("ledger_unreadable: the ledger file cannot be read. Restore it from a backup "
+                   "or check that the file is a Slashbooks ledger.")
+        super().__init__(f"{message} ({detail})" if detail else message)
+
+
 def load_postings(entity_path: Path | str, accounts: Sequence[str]) -> dict[str, Series]:
-    """Ledger postings per account (ledger sign), every entry including reversals."""
+    """All postings, with opening state retained separately from period flow."""
     items: dict[str, list[tuple[date, Decimal]]] = {account: [] for account in accounts}
+    openings: dict[str, dict[date, list[tuple[date, Decimal]]]] = {account: {} for account in accounts}
     store_path = default_store_path(Path(entity_path))
     if store_path.is_file() and accounts:
         placeholders = ",".join("?" for _ in accounts)
         try:
             with LedgerStore(store_path).connection() as conn:
+                entries = {str(sid): (date.fromisoformat(day), dict(json.loads(meta)))
+                           for sid, day, meta in conn.execute(
+                               "SELECT source_id,date,metadata_json FROM entries WHERE source_id IS NOT NULL")}
+                metadata = {sid: facts[1] for sid, facts in entries.items()}
                 rows = conn.execute(
-                    f"SELECT p.account, e.date, p.amount FROM postings p JOIN entries e ON e.id = p.entry_id "
+                    f"SELECT p.account,e.date,p.amount,e.metadata_json FROM postings p JOIN entries e ON e.id=p.entry_id "
                     f"WHERE p.account IN ({placeholders})", list(accounts)).fetchall()
-        except sqlite3.DatabaseError:
-            rows = []
-        for account, raw_day, raw_amount in rows:
+        except sqlite3.DatabaseError as exc:
+            raise LedgerUnreadableError(type(exc).__name__) from exc
+        for account, raw_day, raw_amount, raw_meta in rows:
             day, amount = _day(raw_day), _dec(raw_amount)
             if day is not None and amount is not None:
                 items[str(account)].append((day, amount))
-    return {account: Series(values) for account, values in items.items()}
+                root = source_root(dict(json.loads(raw_meta)), metadata)
+                opening = entries.get(root)
+                if opening and opening[1].get("import-source") in {
+                        "quickbooks-opening", "accrual-opening", "accrual-tracking-opening"}:
+                    openings[str(account)].setdefault(opening[0], []).append((day, amount))
+    result = {account: Series(values) for account, values in items.items()}
+    for account, states in openings.items():
+        result[account].opening_states = {day: Series(values) for day, values in states.items()}
+    return result
 
 
 def load_waiting(entity: Any, accounts: Sequence[str]) -> dict[str, Series]:
@@ -223,7 +279,9 @@ def period_tieout(*, account: str, statement_id: str, start: date, end: date,
     }
     if opening is None or closing is None:
         return result
-    books = opening + postings.between(start, end) * sign
+    state = postings.opening_states.get(start)
+    movement = postings.between(start, end) - (state.between(start, end) if state else _ZERO)
+    books = opening + movement * sign
     difference = closing - books
     result.update(status="matches" if difference == 0 else "differs",
                   books_balance_through=_fmt(books), difference=_fmt(difference))
@@ -240,6 +298,7 @@ def not_aligned(statement_id: str | None = None) -> dict[str, Any]:
 # Bank balance against books
 # ---------------------------------------------------------------------------
 
+@_locked_entity_operation(shared=True)
 def balance_check(entity_path: Path | str, items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Compare balances that a bank feed reported with the books.
 
@@ -253,7 +312,10 @@ def balance_check(entity_path: Path | str, items: Sequence[Mapping[str, Any]]) -
     """
     from .entity import flat_bank_account_mappings, load_entity
 
-    entity = load_entity(entity_path)
+    try:
+        entity = load_entity(entity_path)
+    except sqlite3.DatabaseError as exc:
+        raise LedgerUnreadableError(type(exc).__name__) from exc
     mappings = flat_bank_account_mappings(entity.entity_config)
     rows: list[dict[str, Any]] = []
     groups: dict[str, list[Mapping[str, Any]]] = {}
@@ -286,6 +348,14 @@ def _compare(ledger: str, members: Sequence[Mapping[str, Any]], postings: Series
              waiting: Series) -> dict[str, Any]:
     sign = presentation_sign(ledger)
     ids = sorted(str(m.get("account_id") or "") for m in members)
+    if len(set(ids)) != len(ids):
+        return _row(status="not_aligned", account_ids=ids, ledger_account=ledger,
+                    reason="duplicate_account_id")
+    effective_days = [(_day(m.get("as_of")) or _day(m.get("retrieved_at")) or _day(m.get("data_through")))
+                      for m in members]
+    if len(members) > 1 and (None in effective_days or len(set(effective_days)) != 1):
+        return _row(status="not_aligned", account_ids=ids, ledger_account=ledger,
+                    reason="balance_dates_not_aligned")
     total = _ZERO
     for member in members:
         balance = _dec(member.get("balance"))

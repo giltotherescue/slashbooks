@@ -119,11 +119,18 @@ def _entry_document(entry: Entry) -> dict[str, Any]:
             "totals": _journal_totals([entry])}
 
 
-def _journal_totals(entries: Sequence[Entry]) -> dict[str, str]:
+def journal_totals(entries: Sequence[Entry]) -> dict[str, str]:
+    """Debits, credits and their difference for entries, as two-decimal strings.
+
+    This is the public helper. Callers outside this module use it, not ``_journal_totals``.
+    """
     debit = sum((p.amount for entry in entries for p in entry.postings if p.amount > 0), Decimal(0))
     credit = sum((-p.amount for entry in entries for p in entry.postings if p.amount < 0), Decimal(0))
     return {"debits": f"{debit:.2f}", "credits": f"{credit:.2f}",
             "difference": f"{debit - credit:.2f}", "currency": "USD"}
+
+
+_journal_totals = journal_totals  # Private name kept as an alias for existing callers.
 
 
 def _posting_amount(row: Mapping[str, Any]) -> str:
@@ -188,9 +195,9 @@ def _evidence(store: LedgerStore, ids: Iterable[str], pending: Sequence[Supporti
     return result
 
 
-def _authority(entity: Entity, dates: Sequence[str], records: Sequence[dict[str, Any]], entries: Sequence[Entry]) -> dict[str, Any]:
+def _authority(entity: Entity, dates: Sequence[str], records: Sequence[dict[str, Any]], entries: Sequence[Entry], mutations: Sequence[SupportingMutation] = ()) -> dict[str, Any]:
     from ..preparation_runtime import authorize_accrual_operation
-    return authorize_accrual_operation(entity, dates, records, entries)
+    return authorize_accrual_operation(entity, dates, records, entries, mutations)
 
 
 def _check_entries(store: LedgerStore, entries: Sequence[Entry], opens: Sequence[Open]) -> None:
@@ -232,7 +239,7 @@ def _preview_operation(entity: Entity, *, operation_id: str, kind: str, request:
     dates = sorted(set(affected_dates) | {entry.date.isoformat() for entry in entries})
     _check_dates(entity, store, dates, kind)
     records = _evidence(store, evidence_ids, mutations)
-    authority = _authority(entity, dates, records, entries)
+    authority = _authority(entity, dates, records, entries, mutations)
     body = {"schema_version": 1, "kind": kind, "id": operation_id, "request": dict(request),
             "ledger_digest": store.content_digest(), "configuration_hash": _configuration(entity),
             "authority": authority, "affected_dates": dates,
@@ -300,7 +307,7 @@ def _apply_operation(entity: Entity, plan: Mapping[str, Any], *, entries: Sequen
             raise JournalError("stale_preview", "Company configuration changed after preview.")
         _check_dates(current, store, plan["affected_dates"], plan["kind"])
         records = _evidence(store, [row["id"] for row in plan["evidence"]], mutations)
-        if _authority(current, plan["affected_dates"], records, entries) != plan["authority"]:
+        if _authority(current, plan["affected_dates"], records, entries, mutations) != plan["authority"]:
             raise JournalError("authority_changed", "Current trusted authority differs from the preview.")
         receipt = {"status": "applied", "id": operation_id, "kind": plan["kind"],
                    "request_hash": plan["request_hash"], "plan_hash": plan["plan_hash"],

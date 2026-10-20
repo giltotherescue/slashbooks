@@ -128,3 +128,39 @@ The accountant can choose **Load agent draft** in Stripe categories, inspect and
 edit the suggestions, and approve once. Drafts do not activate any rule. Use only
 selectors present in the Stripe preview and current chart accounts. Read the prior
 file before revising it, and preserve categories the accountant still wants.
+
+An approved apply stores an immutable finalization receipt with the financial
+entries. If a local failure interrupts marking sources seen or removing Review
+rows, repeat the same captured evidence and policy with a fresh plan. The retry
+verifies the receipt, posted entry, canonical source and unchanged staged row,
+then completes cleanup without posting again. A newer capture may contain
+additional movements: recovery compares the original movement's referenced
+authority objects, not the whole capture. Changes to that source's charge,
+invoice, refund, payout or other relevant authority evidence still block cleanup. Changed or unproven evidence
+requires reconciliation before cleanup. This holds the one row, not the batch: the
+row is reported as unresolved with the reason `cleanup_needs_review`, it stays in
+Review, and the other rows in the batch still post. A source that an older engine
+posted without a receipt is cleaned up only when its saved source digest, its policy
+digest and its staged row all match the current plan; if they do not match, it gets
+the same reason.
+
+`stripe_apply` returns the held rows. `unresolved` lists every held row as
+`{source_id, reason}`, and `needs_review` lists only the cleanup rows as
+`{source_id, reason: "cleanup_needs_review", detail}`; `held` is the length of
+`unresolved`. Each cleanup row also gets `review_hold_reason: "cleanup_needs_review"`
+in Review. If a person proposes a category for it, the confirm is refused with a
+message that names this reason, because the source is already posted.
+
+A person resolves the row in one of two ways:
+
+- Restore the original evidence or policy and repeat the same `stripe_apply`. The
+  engine verifies the row again, cleans it up and removes the hold.
+- If the posted entry is correct and the evidence cannot be restored, check the entry,
+  then call `stripe_dismiss_held(entity, source_id, note=...)`. It removes the row from
+  Review, writes an audit event with the note, and does not change the ledger entry.
+  It refuses a row that is not held with this reason or not posted. It also refuses in
+  these three cases:
+  - The posted entry was reversed, so it is not live.
+  - The audit chain is not intact. Restore the ledger first.
+  - A queue item for the source is still actionable (`open`, `reopened` or
+    `requires-reproposal`). The error names the item. Withdraw the item first.

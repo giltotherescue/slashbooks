@@ -310,6 +310,19 @@ class CoverageTieoutTests(unittest.TestCase):
         self.assertEqual(files, after)
 
 
+class SourceRootTests(unittest.TestCase):
+    def test_source_root_follows_links_named_in_another_spelling(self):
+        by_source = {"banksync:abc": {"source-id": "banksync:abc"},
+                     "banksync:xyz": {"source-id": "banksync:xyz", "correction-of": "abc"}}
+        # A reversal names the legacy spelling; the ledger holds the prefixed one.
+        self.assertEqual(tieout.source_root({"reverses": "abc"}, by_source), "banksync:abc")
+        self.assertEqual(tieout.source_root({"correction-of": "xyz"}, by_source), "banksync:abc")
+        self.assertEqual(tieout.source_root({"source-id": "banksync:abc"}, by_source), "banksync:abc")
+        # An unknown or alias-free ID returns itself.
+        self.assertEqual(tieout.source_root({"reverses": "plaid:q"}, by_source), "plaid:q")
+        self.assertIsNone(tieout.source_root({}, by_source))
+
+
 class BalanceCheckTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -346,6 +359,46 @@ class BalanceCheckTests(unittest.TestCase):
                          ("waiting_in_review", "40.00", 2, "40.00"))
         [row] = self.check(self.item("845.00"))
         self.assertEqual((row["status"], row["difference"]), ("differs", "45.00"))
+
+    def test_two_feeds_on_the_same_day_align_whether_dated_by_as_of_or_retrieved_at(self):
+        # One feed reports as_of; the other reports only the retrieval time of the same day.
+        rows = self.check(
+            {"account_id": "feed-chk", "balance": "500.00", "as_of": "2026-01-31", "data_through": "2026-01-31"},
+            {"account_id": "feed-chk-2", "balance": "300.00", "retrieved_at": "2026-01-31T10:00:00Z"})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["status"], rows[0]["bank_balance"], rows[0]["books_balance"]),
+                         ("matches", "800.00", "800.00"))
+        self.assertEqual(rows[0]["account_ids"], ["feed-chk", "feed-chk-2"])
+
+    def test_two_feeds_on_different_days_are_not_aligned(self):
+        [row] = self.check(
+            {"account_id": "feed-chk", "balance": "500.00", "as_of": "2026-01-31", "data_through": "2026-01-31"},
+            {"account_id": "feed-chk-2", "balance": "300.00", "retrieved_at": "2026-02-01T10:00:00Z"})
+        self.assertEqual(row["status"], "not_aligned")
+
+    def test_damaged_ledger_gives_a_clear_error_code_not_a_traceback(self):
+        (self.company / "ledger.sqlite").write_bytes(b"this is not a database" * 100)
+        with self.assertRaises(tieout.LedgerUnreadableError) as raised:
+            self.check(self.item("800.00"))
+        self.assertEqual(raised.exception.code, "ledger_unreadable")
+        self.assertIn("ledger_unreadable", str(raised.exception))
+        import contextlib
+        import io
+        path = Path(self._tmp.name) / "items.json"
+        path.write_text(json.dumps([self.item("800.00")]))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = main(["balance", "check", "--entity", str(self.company), "--input", str(path)])
+        self.assertEqual(code, 1)
+        self.assertIn("ledger_unreadable", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
+    def test_ledger_with_a_missing_table_gives_the_same_error_code(self):
+        import sqlite3
+        with sqlite3.connect(self.company / "ledger.sqlite") as conn:
+            conn.execute("DROP TABLE postings")
+        with self.assertRaises(tieout.LedgerUnreadableError):
+            self.check(self.item("800.00"))
 
     def test_bank_newer_and_date_fallbacks(self):
         [row] = self.check(self.item("800.00", as_of="2026-02-03", data_through="2026-01-31"))
@@ -388,6 +441,9 @@ class BalanceCheckTests(unittest.TestCase):
     def test_cli_is_read_only_and_classified_as_read(self):
         input_path = Path(self._tmp.name) / "balances.json"
         input_path.write_text(json.dumps([self.item("800.00")]))
+        # A first coherent read may create only the shared empty operational lock.
+        # The dedicated concurrency regression also asserts every accounting byte stays unchanged.
+        tieout.balance_check(self.company, [self.item("800.00")])
         files = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.company.rglob("*") if p.is_file()}
         code, result = run_cli("balance", "check", "--entity", str(self.company), "--input", str(input_path))
         self.assertEqual((code, result["accounts"][0]["status"]), (0, "matches"))

@@ -50,8 +50,9 @@ import re
 import sys
 from typing import Any, Iterable, Mapping, Sequence
 
-from .entity import load_entity
+from .entity import _locked_entity_operation, load_entity
 from .safe_cells import neutralize_rows
+from .accrual.scope import DISCIPLINE_ALL, DISCIPLINE_PER_ACCOUNT, discipline, tracking_start
 
 
 FORMS: dict[str, str] = {
@@ -462,6 +463,7 @@ def resolve_form(config: Mapping[str, Any], requested: str | None = None) -> tup
     )
 
 
+@_locked_entity_operation
 def update_settings(
     entity_path: Path | str,
     *,
@@ -629,6 +631,48 @@ def _catalog_accounts(entity_path: Path) -> set[str]:
     return LedgerStore(path).load_account_names() if path.is_file() else set()
 
 
+def _coverage_metadata(conn: Any, from_date: date, to_date: date) -> dict[str, Any]:
+    """Coverage facts for a handoff. The journal before the tracking start is the cash books, so the cash view is
+    checked: a period that crosses the start is never refused here. Other coverage checks still apply."""
+    from .accrual.reports import financial_metadata
+    return financial_metadata(conn, "tax_handoff", from_date, to_date, view="cash")
+
+
+_MIXED_LABEL_NO_START = ("Cash basis, accrual tracking for selected accounts from a start date that is not recorded; "
+                         "book balances computed by the Slashbooks engine")
+
+
+def book_basis(conn: Any, config: Mapping[str, Any], to_date: date) -> tuple[str, str | None]:
+    """Return (basis of the recorded books, label of a mixed company), whatever the default report view is.
+
+    Every entry is an accrual entry when accrual rules apply to all transactions. A company that turned accrual on
+    later (per-account rules) records accrual entries only from its tracking start, and only once it holds accrual
+    records. Such a company is "accrual" only for a period that ends on or after the start, and then it always has the
+    mixed label, so a reader never sees a plain "Accrual basis" for a mixed company. Before that, it is a plain cash period.
+    """
+    from .reports.statements import has_accrual_records
+    kind = discipline(config)
+    if kind == DISCIPLINE_ALL:
+        return "accrual", None
+    if kind != DISCIPLINE_PER_ACCOUNT or not has_accrual_records(conn):
+        return "cash", None
+    started = tracking_start(config)
+    if started and to_date.isoformat() < started:
+        return "cash", None
+    # The second text is defensive: per-account rules apply only when a tracking start is set.
+    if started:
+        return "accrual", (f"Cash basis, with accrual tracking for selected accounts from {started}. "
+                           "Book balances as recorded, not a tax cash-basis view; the preparer adjusts.")
+    return "accrual", _MIXED_LABEL_NO_START
+
+
+def _accounting_metadata(conn: Any, config: Mapping[str, Any], from_date: date, to_date: date) -> dict[str, Any]:
+    """Coverage facts plus the basis of the recorded books (see ``book_basis``)."""
+    result = _coverage_metadata(conn, from_date, to_date)
+    result["basis"] = book_basis(conn, config, to_date)[0]
+    return result
+
+
 def period_balances(entity_path: Path | str, from_date: date, to_date: date) -> list[dict[str, Any]]:
     """Fiscal-period trial balance rows.
 
@@ -647,6 +691,7 @@ def period_balances(entity_path: Path | str, from_date: date, to_date: date) -> 
     prior_earnings = _ZERO
     conn = open_cache(entity_path)
     try:
+        _coverage_metadata(conn, from_date, to_date)
         accounts = {item["name"] for item in list_accounts(conn)}
         for row in iter_postings(conn, to_date=to_date):
             day, account, amount = str(row[0])[:10], row[3], row[4]
@@ -761,7 +806,18 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
         raise ValueError("The period start must not be after its end.")
     entity = load_entity(entity_path)
     resolved, form_basis = resolve_form(entity.entity_config, form)
+    from .reports.cache import open_cache
+    conn = open_cache(entity.path)
+    try:
+        accounting = _accounting_metadata(conn, entity.entity_config, from_date, to_date)
+        basis_label = book_basis(conn, entity.entity_config, to_date)[1]
+    finally:
+        conn.close()
     settings = _settings(entity.entity_config)
+    if (accounting["basis"] == "accrual" and basis_label is None
+            and discipline(entity.entity_config) == DISCIPLINE_PER_ACCOUNT):
+        # Defensive: a mixed company always shows the mixed label, never a plain "Accrual basis".
+        basis_label = _MIXED_LABEL_NO_START
     rows = [r for r in period_balances(entity.path, from_date, to_date)
             if r["balance"] != _ZERO or (r["beginning"] not in (None, _ZERO))]
     mapping = {m.account: m for m in build_mapping(entity.entity_config, (r["account"] for r in rows), resolved)}
@@ -809,22 +865,11 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     order = {code: index for index, code in enumerate(CATALOG)}
     summary_rows = sorted(summary.values(), key=lambda s: (order[s["line"].code], s["detail"]))
     unmapped = [row for row in tb_rows if row["mapping"].line is None]
-    from .accrual.scope import DISCIPLINE_PER_ACCOUNT, discipline, tracking_start
-    # A company that turned accrual on later and now holds accrual records keeps cash entries before its tracking start and
-    # accrual records from it, so one label for the whole period would be wrong. Other companies keep the original label.
-    mixed = None
-    if discipline(entity) == DISCIPLINE_PER_ACCOUNT:
-        from .reports.cache import open_cache
-        from .reports.statements import has_accrual_records
-        conn = open_cache(entity.path)
-        try:
-            mixed = tracking_start(entity) if has_accrual_records(conn) else None
-        finally:
-            conn.close()
     return {
-        **({"book_basis_note": f"Book balances as recorded: cash entries before {mixed}, accrual records from {mixed}. "
-                               "Not a tax cash-basis view; the preparer adjusts"} if mixed else {}),
         "entity_name": entity.name,
+        "accounting_basis": accounting["basis"],
+        "basis_label": basis_label,
+        "accounting": accounting,
         "form": resolved,
         "form_basis": form_basis,
         "from": from_date,
@@ -929,6 +974,20 @@ def _ultratax_table(handoff: Mapping[str, Any]) -> list[list[str]]:
     return rows
 
 
+def _coverage_summary(accounting: Mapping[str, Any]) -> str:
+    """A short Read Me line. The full accounting block stays in manifest.json."""
+    coverage = accounting.get("coverage")
+    if not coverage:
+        return ""
+    parts = [f"{accounting.get('basis', 'cash')} basis", f"cutover {coverage.get('cutover_date') or 'not set'}"]
+    if coverage.get("summary_from") and coverage.get("summary_to"):
+        parts.append(f"summary period {coverage['summary_from']} to {coverage['summary_to']}"
+                     + (" (included)" if accounting.get("summary_included") else " (not included)"))
+    detail = accounting.get("historical_detail_available", True)
+    parts.append("historical detail " + ("available" if detail else "not available before the cutover"))
+    return "; ".join(parts) + ". Full details are in manifest.json."
+
+
 def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[list[str]]:
     totals = handoff["totals"]
     rows = [
@@ -938,13 +997,16 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
         ["Return", f"{FORMS[handoff['form']]} ({handoff['form']}, chosen by {handoff['form_basis']})"],
         ["Line numbers", f"Tax year {TAX_YEAR_BASIS} federal forms; confirm against the current year's form"],
         ["Period", f"{handoff['from'].isoformat()} to {handoff['to'].isoformat()}"],
-        ["Basis", handoff.get("book_basis_note") or "Cash basis book balances computed by the Slashbooks engine"],
+        ["Basis", handoff.get("basis_label") or handoff["accounting_basis"].title() + " basis book balances computed by the Slashbooks engine"],
         ["Total debits", _money(totals["debit"])],
         ["Total credits", _money(totals["credit"])],
         ["Unmapped accounts", str(len(handoff["unmapped"]))],
         ["Sign convention", "Balance columns are debit-positive and credit-negative"],
         ["Tax computation", "None. Book amounts only; the preparer makes all tax adjustments"],
     ]
+    summary = _coverage_summary(handoff.get("accounting") or {})
+    if summary:
+        rows.append(["Accounting coverage", summary])
     for name, path in files.items():
         rows.append([name, path])
     return rows
@@ -1026,6 +1088,8 @@ def export_handoff(
         "form": handoff["form"],
         "form_name": FORMS[handoff["form"]],
         "form_basis": handoff["form_basis"],
+        "accounting_basis": handoff["accounting_basis"],
+        "accounting": handoff["accounting"],
         "line_numbers": f"Tax year {TAX_YEAR_BASIS} federal forms",
         "from": from_date.isoformat(),
         "to": to_date.isoformat(),

@@ -399,6 +399,8 @@ when entries exist on or after the start.
 
 The default view decides what `books report`, `books ask` and exports show when you do not
 say. After the step above the default stays **cash**, so nothing a person sees changes.
+Unpaid invoices and bills appear only in the accrual profit and loss view; their later payments
+appear in the cash view.
 
 ```sh
 books entity set-view PATH --view accrual          # preview
@@ -423,11 +425,12 @@ Every output names the view it shows.
 | `compare period --basis` | Profit and loss only. The balance sheet and trial balance are reported as not compared. The QuickBooks reports must be on the cash basis. | All grains, against QuickBooks accrual reports. |
 
 - A company with no accrual records has one view, the recorded books. Its `--basis cash` output is the ordinary report.
-- With accrual on and accrual records present, the cash view is always the derived view, whatever the default view. `books report pnl` and `books export` name the default view, so a person gets it without a flag. The engine's own readers (the statement of cash flows, which must tie to the bank) call the profit and loss with no view and get the recorded books.
-- The tax handoff README says "Cash basis book balances" for a company with no accrual records. For a company that turned accrual on and holds accrual records it says that the balances are as recorded: cash entries before the tracking start and accrual records from it, not a tax cash-basis view.
+- With accrual on and accrual records present, the cash view is always the derived view, whatever the default view. `books report pnl` (also with `--structure` or `--compare`) and `books export` name the default view, so a person gets it without a flag. The engine's own readers (the statement of cash flows, which must tie to the bank) call the profit and loss with no view and get the recorded books.
+- The tax handoff README says "Cash basis book balances" for a company with no accrual records. For a company that turned accrual on and holds accrual records, and a period that ends on or after the tracking start, the README, the manifest and the package cover agree: "Cash basis, with accrual tracking for selected accounts from <date>. Book balances as recorded, not a tax cash-basis view; the preparer adjusts." A period that ends before the tracking start is a plain cash period.
 - A comparison on a view other than the default does not read or change the saved differences of the default comparison.
 - `--basis` with `--structure` or `--compare` is refused when it names a view other than the default, so a different view is never shown without its label.
 - The accrual view of a company that turned accrual on later refuses every range that starts before the tracking start and names that date.
+- One rule for each kind of output. **Journal outputs** (the general ledger, the statement of cash flows, the tax handoff and the accountant package) never refuse because of the tracking start, whatever the default view and whatever the range. Before the start the journal is the cash books, so a period that ends before the start is a plain cash period and is labelled cash. **View outputs** (the profit and loss, the balance sheet, the trial balance and `books ask`) refuse a range or an as-of date before the start in the accrual view, and an explicit `--basis accrual` refuses it for any report. The error names the tracking start and the cash view command (`--basis cash`). In the package, the Cover and the Summary sheet show the same basis text, the Summary says that the part before the start is cash basis, and the accrual sheets start on the tracking start.
 
 **Questions.** `books ask` follows the same rule. Plain wording such as "cash net income" or "accrual revenue" picks the view for a company that turned accrual on later and holds accrual records or has the accrual default view. With no view wording, the default view answers. Balance questions ("What do we owe?") answer from the accrual records, because balances have no cash form. A company that never turned accrual on, and a company that only turned it on, keep the original wording rules and answers.
 
@@ -475,3 +478,11 @@ For developers and agents implementing an integration, the
 [supporting document and request reference](accrual-intake.md) describes exact
 amounts, dates, identity, preview/apply, and authority requirements. Those
 contracts remain the source of truth for machine inputs.
+
+Opening schedules begin recognition on the later of the cutover and the first
+service date. Future service never recognizes early. The opening preview applies
+the same service-date checks as a new schedule: `equal_month` requires whole
+calendar months, including the remaining recognition interval. Use `actual_day`
+when the remaining service starts partway through a month. The error for a mid-month
+`equal_month` opening names `actual_day`. An older request that an earlier engine
+accepted with a mid-month `service_start` is now refused with this message.

@@ -140,7 +140,7 @@ def books_digest(entity: Any) -> str:
         try:
             with LedgerStore(store_path).connection() as conn:
                 for row in conn.execute(
-                        "SELECT e.id, e.date, e.source_id, p.account, p.amount FROM postings p "
+                        "SELECT e.id, e.date, e.source_id, e.metadata_json, p.account, p.amount FROM postings p "
                         "JOIN entries e ON e.id = p.entry_id ORDER BY e.id, p.rowid"):
                     digest.update(("|".join(str(v) for v in row) + ";").encode())
                 for (source_id,) in conn.execute("SELECT id FROM source_transactions ORDER BY id"):
@@ -164,14 +164,39 @@ def _ledger_rows(entity: Any, account: str) -> tuple[dict[str, Decimal], set[str
         return sums, known
     try:
         with LedgerStore(store_path).connection() as conn:
-            for source_id, raw in conn.execute(
-                    "SELECT e.source_id, p.amount FROM entries e JOIN postings p ON p.entry_id = e.id "
-                    "WHERE p.account = ? AND e.source_id IS NOT NULL", (account,)):
+            metadata = {str(sid): dict(json.loads(raw)) for sid, raw in conn.execute(
+                "SELECT source_id,metadata_json FROM entries WHERE source_id IS NOT NULL")}
+            sources = {str(sid): json.loads(raw) for sid, raw in conn.execute(
+                "SELECT id,payload_json FROM source_transactions")}
+            known = set(sources)
+            from .statement_import import _txn_amount
+            for raw_meta, raw in conn.execute(
+                    "SELECT e.metadata_json,p.amount FROM entries e JOIN postings p ON p.entry_id=e.id "
+                    "WHERE p.account=?", (account,)):
+                meta = dict(json.loads(raw_meta))
+                root = tieout.source_root(meta, metadata)
+                if root is None:
+                    continue
                 amount = tieout._dec(raw)
-                if amount is not None:
-                    sums[str(source_id)] = sums.get(str(source_id), _ZERO) + amount
-            known = {str(row[0]) for row in conn.execute("SELECT id FROM source_transactions")}
-    except sqlite3.DatabaseError as exc:
+                if amount is None:
+                    continue
+                original_meta = metadata.get(root, {})
+                paired = original_meta.get("paired-source-id")
+                ids = [root, paired] if paired else [root]
+                for sid in ids:
+                    if paired:
+                        source = sources.get(sid)
+                        if not source:
+                            raise _Unreadable
+                        # The posting is on this account already. Attribute it to
+                        # the side of the pair whose amount has the same sign (a
+                        # reversal flips the sign). Do not read the current account
+                        # mapping: it can change after the posting.
+                        direction = -1 if meta.get("reverses") else 1
+                        if amount * _txn_amount(source) * direction <= 0:
+                            continue
+                    sums[sid] = sums.get(sid, _ZERO) + amount
+    except (sqlite3.DatabaseError, ValueError, TypeError, ArithmeticError) as exc:
         raise _Unreadable from exc
     return sums, known
 
@@ -305,7 +330,7 @@ def check_statement(entity: Any, record: Mapping[str, Any], rows: Sequence[Mappi
         add(amount, "source")
         if sid in ledger_sums or sid in ledger_known:
             counts["recorded"] += 1
-            add(ledger_sums.get(sid, amount), "books")
+            add(ledger_sums.get(sid, _ZERO), "books")
         elif sid in queued:
             counts["queued"] += 1
             waiting_rows += 1

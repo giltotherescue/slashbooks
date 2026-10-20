@@ -4,12 +4,13 @@ Company: Pinecone Advisory Accrual
 Return: Form 1120-S (1120s, chosen by workspace)
 Line numbers: Tax year 2025 federal forms; confirm against the current year's form
 Period: 2026-01-01 to 2026-03-31
-Basis: Cash basis book balances computed by the Slashbooks engine
+Basis: Accrual basis book balances computed by the Slashbooks engine
 Total debits: 49970.00
 Total credits: 49970.00
 Unmapped accounts: 1
 Sign convention: Balance columns are debit-positive and credit-negative
 Tax computation: None. Book amounts only; the preparer makes all tax adjustments
+Accounting coverage: accrual basis; cutover 2026-01-01; historical detail available. Full details are in manifest.json.
 
 Files:
   tax-trial-balance-1120s-2026-01-01_2026-03-31.csv (Trial Balance)

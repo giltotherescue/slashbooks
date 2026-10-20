@@ -13,12 +13,13 @@ from decimal import Decimal
 
 from . import queue
 from .entity import flat_bank_account_mappings
-from .ledger.importer import (_atomic_ledger_write_unlocked, _entity_write_lock,
+from .ledger.importer import (_atomic_ledger_write_unlocked, _entity_write_lock, _find_live_entry,
                              _load_pending_categorization, import_transactions)
 from .ledger.model import Entry, Posting
 from .ledger.staging import StagingStore
 from .ledger.store import LedgerStore, default_store_path
 from .routine import _state, routine_source_digest
+from .source_ids import source_id_variants
 
 
 def _digest(value):
@@ -409,6 +410,71 @@ def _bank_action(match, payout, net, pending, posted, owned, opens, entity, cuto
                 dict(account=transit, amount=_amount(net), currency='USD')], normalized_source=dict(bank))
 
 
+def _source_capture_digest(bt, objects):
+    """Bind this movement's authority graph without unrelated captured objects.
+
+    Expanded and separately captured references resolve through the same rules
+    as allocation. Reverse invoice-payment/session relations matter too: adding
+    another relation to this payment can make its original authority ambiguous.
+    """
+    captured = {'movement': {**_financial(bt, '', False), 'status': bt.get('status')}, 'objects': {}}
+
+    def remember(kind, ref, fields=None):
+        identity = _object_id(ref)
+        doc = ref if isinstance(ref, dict) else objects[kind].get(identity)
+        value = dict(doc) if isinstance(doc, dict) else doc
+        if isinstance(doc, dict):
+            if fields is not None:
+                value = {key: doc.get(key) for key in fields}
+            for key in ('invoice', 'payment_intent', 'balance_transaction', 'charge', 'product'):
+                if key in value:
+                    value[key] = _object_id(value[key])
+        captured['objects'][kind + ':' + str(identity)] = value
+        return doc or {}
+
+    def lines(document, field):
+        for line in (document.get(field) or {}).get('data', []):
+            raw = line.get('price') or (line.get('pricing') or {}).get('price_details') or {}
+            identity = raw if isinstance(raw, str) else raw.get('id') or raw.get('price')
+            price = remember('prices', objects['prices'].get(identity) or raw)
+            product_id = _object_id(price.get('product'))
+            if product_id:
+                remember('products', product_id)
+
+    def charge(ref):
+        doc = remember('charges', ref, ('id', 'livemode', 'status', 'paid', 'captured', 'amount',
+            'currency', 'balance_transaction', 'invoice', 'payment_intent', 'metadata'))
+        intent_id = _object_id(doc.get('payment_intent'))
+        if intent_id:
+            remember('paymentIntents', doc['payment_intent'], ('id', 'metadata'))
+        related = [row for row in objects['invoicePayments'].values() if intent_id
+                   and (row.get('payment') or {}).get('type') == 'payment_intent'
+                   and _object_id((row.get('payment') or {}).get('payment_intent')) == intent_id]
+        invoice_ref = doc.get('invoice')
+        for payment in sorted(related, key=lambda row: row['id']):
+            remember('invoicePayments', payment)
+            invoice_ref = payment.get('invoice')
+        if invoice_ref:
+            invoice = remember('invoices', invoice_ref)
+            lines(invoice, 'lines')
+        else:
+            sessions = [row for row in objects['checkoutSessions'].values()
+                        if intent_id and _object_id(row.get('payment_intent')) == intent_id]
+            for session in sorted(sessions, key=lambda row: row['id']):
+                remember('checkoutSessions', session)
+                lines(session, 'line_items')
+
+    kind, source = bt.get('type'), bt.get('source')
+    if kind in {'charge', 'payment'}:
+        charge(source)
+    elif kind in {'refund', 'payment_refund'}:
+        refund = remember('refunds', source)
+        charge(refund.get('charge'))
+    elif kind == 'payout':
+        remember('payouts', source)
+    return _digest(captured)
+
+
 def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=None,
                 limit=50, after_source_id=''):
     """Read-only bounded plan. All rules and bank bindings come from trusted host.
@@ -471,12 +537,22 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             raise ValueError('A payout and bank source can each be matched only once.')
         by_payout[po] = match; claimed.add(sid)
     result = dict(actions=[], normalized_sources=[], unresolved=[], skipped=[], next_cursor=None,
+                  source_capture_digests={},
                   policy_digest=_digest(policy), evidence_digest=_digest(evidence), ledger_digest=store.content_digest())
+    objects = dict(charges=charges, refunds=refunds, invoices=invoices, payouts=payouts, prices=prices,
+                   products=products, paymentIntents=intents, invoicePayments=invoice_payments,
+                   checkoutSessions=sessions)
     all_ids = sorted(sid for sid in validated if sid > after_source_id)
     selected = all_ids[:limit]
     result['next_cursor'] = selected[-1] if len(all_ids) > limit else None
     for sid in selected:
         bt, normalized = validated[sid]
+        try:
+            result['source_capture_digests'][sid] = _source_capture_digest(bt, objects)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            # Ordinary validation below holds malformed new movements. A changed
+            # posted movement must not match its previously valid authority graph.
+            result['source_capture_digests'][sid] = _digest({'invalid_source': sid})
         if sid in reversed_ids:
             result['skipped'].append(dict(source_id=sid, reason='reversed')); continue
         previous = pending.get(sid) or saved.get(sid)
@@ -574,6 +650,8 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         payout = _object_id(bt.get('source'))
         if bt.get('type') != 'payout' or payout not in by_payout:
             continue
+        result['source_capture_digests'][by_payout[payout]['bank_source_id']] = _digest({
+            'payout_capture': result['source_capture_digests'][sid], 'binding': by_payout[payout]})
         original = saved.get(sid)
         already_applied = (sid in posted and sid not in reversed_ids and original
                            and original.get('stripe_financial_digest') == normalized['stripe_financial_digest']
@@ -609,37 +687,159 @@ def stripe_stage(entity, evidence, policy, **kwargs):
                 plan=stripe_plan(entity, evidence, policy, **kwargs))
 
 
+def _entry_fingerprint(entry):
+    return _digest(dict(date=entry.date.isoformat(), narration=entry.narration, meta=list(entry.meta),
+                       postings=[(p.account, str(p.amount), p.currency) for p in entry.postings]))
+
+
+def _without_hold(row):
+    """A staged row as it was before a review hold marker was added."""
+    return {key: value for key, value in row.items() if key != 'review_hold_reason'}
+
+
+def _recover_stripe_cleanup(entity, plan):
+    """Clean only exact sources bound to a canonical, intact Stripe receipt."""
+    eligible = {row['source_id'] for row in plan['skipped'] if row['reason'] == 'already_posted'}
+    pending = {row['id']: _without_hold(row) for row in _load_pending_categorization(entity)}
+    eligible &= set(pending)
+    if not eligible:
+        return [], []
+    store = LedgerStore(default_store_path(entity.path))
+    if store.verify_audit_chain():
+        raise ValueError('Cannot recover Stripe cleanup from an invalid audit chain.')
+    entries = {entry.source_id: entry for entry in store.load_entries() if entry.source_id}
+    with store.connection() as conn:
+        saved = {sid: json.loads(raw) for sid, raw in conn.execute('SELECT id,payload_json FROM source_transactions')}
+    recovered = set()
+    covered = set()  # Sources named by a receipt for this policy, exact or not.
+    review = {}
+    for event in store.load_audit_events():
+        receipt = event['payload']
+        if (event['type'] != 'queue-finalization-intent' or not isinstance(receipt, dict)
+                or receipt.get('kind') != 'stripe-finalization'
+                or receipt.get('policy_digest') != plan['policy_digest']):
+            continue
+        body = {key: value for key, value in receipt.items() if key != 'operation_hash'}
+        if receipt.get('operation_hash') != _digest(body):
+            raise ValueError('Stripe finalization receipt changed.')
+        for source in receipt['sources']:
+            sid = source['id']
+            if sid not in eligible:
+                continue
+            covered.add(sid)
+            capture_matches = (source.get('capture_digest') == plan['source_capture_digests'].get(sid)
+                               if source.get('capture_digest') is not None else
+                               receipt.get('evidence_digest') == plan['evidence_digest'])
+            if (not capture_matches or _digest(pending[sid]) != source['pending_digest']
+                    or sid not in entries or _entry_fingerprint(entries[sid]) != source['entry_digest']
+                    or sid not in saved or _digest(saved[sid]) != source['source_digest']):
+                review[sid] = 'receipt does not match the current evidence'
+                continue
+            recovered.add(sid)
+    for sid in sorted(eligible - covered):
+        # No receipt: an older engine posted this source. Clean up only when the
+        # posted entry, the saved source and the staged row all match the plan.
+        entry, meta = entries.get(sid), dict(entries[sid].meta) if sid in entries else {}
+        if (entry is not None and sid in saved
+                and meta.get('stripe-policy-digest') == plan['policy_digest']
+                and meta.get('stripe-source-digest') == _digest(saved[sid])
+                and pending[sid].get('stripe_financial_digest') == saved[sid].get('stripe_financial_digest')
+                and _same_source(pending[sid], saved[sid])):
+            recovered.add(sid)
+        else:
+            review[sid] = 'no receipt and the posted entry does not match the current plan'
+    recovered -= set(review)
+    return sorted(recovered), [dict(source_id=sid, reason='cleanup_needs_review', detail=review[sid])
+                               for sid in sorted(review)]
+
+
 def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches=None,
                  closed_through=None, limit=50, after_source_id='', session_id='stripe-approved', ts=None):
-    """Apply an exact recomputed approved batch through the ordinary atomic writer.
-
-    The host authenticates policy/bank bindings and rechecks financial head CAS
-    at publication. This API does not accept arbitrary journal postings.
-    """
-    plan = stripe_plan(entity, evidence, policy, bank_matches=bank_matches, closed_through=closed_through,
-                       limit=limit, after_source_id=after_source_id)
-    if plan['plan_digest'] != expected_plan_digest:
+    """Apply an approved batch and recover exact post-commit cleanup under one lock."""
+    # Refuse an unstaged/changed proposal before creating even a lock file.
+    preview = stripe_plan(entity, evidence, policy, bank_matches=bank_matches, closed_through=closed_through,
+                          limit=limit, after_source_id=after_source_id)
+    if preview['plan_digest'] != expected_plan_digest:
         raise ValueError('Stripe plan changed; refresh the captured plan before applying.')
-    pending = {row['id']: row for row in _load_pending_categorization(entity)}
-    if any(action['source_id'] not in pending for action in plan['actions']):
+    staged = {row['id'] for row in _load_pending_categorization(entity)}
+    if any(action['source_id'] not in staged for action in preview['actions']):
         raise ValueError('Stage every selected source before applying the approved Stripe plan.')
-    entries = [Entry(date=date.fromisoformat(action['normalized_source']['date']),
-        narration=action['normalized_source']['description'],
-        meta=(('source-id', action['source_id']), ('import-session', session_id),
-              ('stripe-policy-digest', plan['policy_digest']), ('stripe-authority', action['authority_id']),
-              ('stripe-source-digest', action['source_digest'])),
-        postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
-        for action in plan['actions']]
-    if entries:
-        with _entity_write_lock(entity.path):
-            current = stripe_plan(entity, evidence, policy, bank_matches=bank_matches, closed_through=closed_through,
-                                  limit=limit, after_source_id=after_source_id)
-            if current['plan_digest'] != expected_plan_digest:
-                raise ValueError('Stripe state changed before atomic apply.')
+    with _entity_write_lock(entity.path):
+        plan = stripe_plan(entity, evidence, policy, bank_matches=bank_matches, closed_through=closed_through,
+                           limit=limit, after_source_id=after_source_id)
+        if plan['plan_digest'] != expected_plan_digest:
+            raise ValueError('Stripe plan changed; refresh the captured plan before applying.')
+        recovered, needs_review = _recover_stripe_cleanup(entity, plan)
+        plan['unresolved'] = [*plan['unresolved'], *needs_review]  # After the digest; not part of it.
+        if needs_review:
+            queue._set_pending_hold_reason(entity, [row['source_id'] for row in needs_review], queue.STRIPE_CLEANUP_HOLD_REASON)
+        pending = {row['id']: row for row in _load_pending_categorization(entity)}
+        if any(action['source_id'] not in pending for action in plan['actions']):
+            raise ValueError('Stage every selected source before applying the approved Stripe plan.')
+        entries = [Entry(date=date.fromisoformat(action['normalized_source']['date']),
+            narration=action['normalized_source']['description'],
+            meta=(('source-id', action['source_id']), ('import-session', session_id),
+                  ('stripe-policy-digest', plan['policy_digest']), ('stripe-authority', action['authority_id']),
+                  ('stripe-source-digest', action['source_digest'])),
+            postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
+            for action in plan['actions']]
+        if entries:
+            actions = {action['source_id']: action for action in plan['actions']}
+            body = dict(schema_version=1, kind='stripe-finalization', policy_digest=plan['policy_digest'],
+                        evidence_digest=plan['evidence_digest'], sources=[
+                            dict(id=entry.source_id, pending_digest=_digest(pending[entry.source_id]),
+                                 entry_digest=_entry_fingerprint(entry),
+                                 source_digest=_digest(actions[entry.source_id]['normalized_source']),
+                                 capture_digest=plan['source_capture_digests'][entry.source_id]) for entry in entries])
+            receipt = {**body, 'operation_hash': _digest(body)}
             _atomic_ledger_write_unlocked(entity, [], entries, session_id, ts, 'Apply approved Stripe clearing batch',
-                                         [action['normalized_source'] for action in plan['actions']])
-        ids = [action['source_id'] for action in plan['actions']]
-        StagingStore(entity.staging_dir).bulk_mark_seen(ids)
-        queue._remove_many_from_pending_categorization(entity, ids)
-    return dict(posted=len(entries), skipped=len(plan['skipped']), held=len(plan['unresolved']),
-                next_cursor=plan['next_cursor'], plan_digest=plan['plan_digest'])
+                                         [action['normalized_source'] for action in plan['actions']],
+                                         finalization_receipt=receipt)
+        ids = sorted({*recovered, *(action['source_id'] for action in plan['actions'])})
+        if ids:
+            StagingStore(entity.staging_dir).bulk_mark_seen(ids)
+            queue._remove_many_from_pending_categorization(entity, ids)
+        return dict(posted=len(entries), skipped=len(plan['skipped']), held=len(plan['unresolved']),
+                    next_cursor=plan['next_cursor'], plan_digest=plan['plan_digest'],
+                    unresolved=[dict(row) for row in plan['unresolved']],
+                    needs_review=[dict(row) for row in needs_review])
+
+
+def stripe_dismiss_held(entity, source_id, *, note, session_id='stripe-dismiss', ts=None):
+    """Remove one held, already posted Stripe row from Review after a person checks the posted entry.
+
+    Only a row marked ``cleanup_needs_review`` whose source is already in the ledger can be dismissed.
+    The ledger entry is not changed. The dismissal is written to the audit log with the note.
+    """
+    note = ' '.join(str(note or '').split())[:500]
+    if not note:
+        raise ValueError('A note that says what the person checked is required to dismiss a held Stripe row.')
+    with _entity_write_lock(entity.path):
+        row = next((r for r in _load_pending_categorization(entity) if r.get('id') == source_id), None)
+        if row is None or row.get('review_hold_reason') != queue.STRIPE_CLEANUP_HOLD_REASON:
+            raise ValueError('Only a Stripe row held with cleanup_needs_review can be dismissed.')
+        store = LedgerStore(default_store_path(entity.path))
+        if not store.source_exists(source_id):
+            raise ValueError('The row is not posted; confirm it or leave it in Review instead.')
+        try:
+            _find_live_entry(store, source_id)
+        except ValueError as exc:
+            raise ValueError(f'The posted entry for this source is not live ({exc}); '
+                             'a person must reconcile it before the row is dismissed.') from exc
+        if store.verify_audit_chain():
+            raise ValueError('The audit chain is not intact, so the dismissal is not written. Restore the ledger first.')
+        spellings = source_id_variants(source_id)
+        for item in queue.list_queue_items(entity):
+            if item.get('status') not in queue.ACTIONABLE_QUEUE_STATUSES:
+                continue
+            named = {str(value) for value in (item.get('source_ids') or []) + [item.get('source_id')] if value}
+            if any(source_id_variants(value) & spellings for value in named):
+                raise ValueError(f"Queue item {item.get('source_id')} is {item.get('status')} for this source. "
+                                 'Withdraw the item before the row is dismissed.')
+        with store.transaction() as conn:
+            store.append_audit_event('stripe-cleanup-dismissed', dict(
+                source_id=source_id, note=note, session_id=session_id, pending_digest=_digest(_without_hold(row))),
+                conn, ts=ts)
+        StagingStore(entity.staging_dir).bulk_mark_seen([source_id])
+        queue._remove_many_from_pending_categorization(entity, [source_id])
+        return dict(dismissed=source_id, note=note)

@@ -79,6 +79,9 @@ _LOCK_FILE = ".books.lock"
 _held_entity_locks: ContextVar[tuple[Path, ...]] = ContextVar(
     "books_held_entity_locks", default=()
 )
+_held_shared_locks: ContextVar[tuple[Path, ...]] = ContextVar(
+    "books_held_shared_entity_locks", default=()
+)
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -130,6 +133,9 @@ def _entity_write_lock(entity_path: Path):
     if resolved in held:
         yield
         return
+    if resolved in _held_shared_locks.get():
+        # Waiting for an exclusive lock while this context holds a shared one would never end.
+        raise RuntimeError("A read operation cannot start a write on the same company.")
     lock_path = resolved / _LOCK_FILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a", encoding="utf-8") as fh:
@@ -142,6 +148,42 @@ def _entity_write_lock(entity_path: Path):
         finally:
             _held_entity_locks.reset(token)
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def _entity_read_lock(entity_path: Path):
+    """Share the entity lock between readers; a writer still waits for them.
+
+    A read never needs write access. If the folder is read-only, the lock file
+    cannot be opened for append, so open it for reading, or read without a lock
+    when no lock file exists (no writer can have used this folder).
+    """
+    resolved = entity_path.resolve()
+    if resolved in _held_entity_locks.get() or resolved in _held_shared_locks.get():
+        yield
+        return
+    import fcntl
+
+    lock_path = resolved / _LOCK_FILE
+    handle = None
+    try:
+        handle = lock_path.open("a", encoding="utf-8")
+    except OSError:
+        try:
+            handle = lock_path.open("r", encoding="utf-8")
+        except OSError:
+            handle = None
+    if handle is None:
+        yield
+        return
+    with handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+        token = _held_shared_locks.set((*_held_shared_locks.get(), resolved))
+        try:
+            yield
+        finally:
+            _held_shared_locks.reset(token)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _now_iso() -> str:

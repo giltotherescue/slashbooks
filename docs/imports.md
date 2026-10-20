@@ -311,6 +311,14 @@ before any write.
 
 `books balance check` compares a balance that a bank feed reported with the
 books balance for the mapped ledger account on the same day. It is read-only.
+Balance, coverage and review-readiness checks hold a shared lock on the company
+through all ledger, staging and evidence reads. Two checks can run together and a
+check needs no write access to the company folder. Local imports, confirmations
+and configuration updates wait until the snapshot is complete. The first
+check may create the empty operational file `.books.lock`; it changes no
+accounting records. Hosted workspace manifests exclude this lock file. If the
+ledger file is damaged, `books balance check` stops with the error code
+`ledger_unreadable`.
 The host supplies the bank facts:
 
 ```sh
@@ -322,13 +330,16 @@ The input is a JSON list of `{"account_id", "balance", "as_of", "data_through"}`
 statement presentation (money held; money owed, positive, for a card). Set
 `"sign": "ledger"` for a card balance that is negative when money is owed.
 `account_id` is looked up in `bank_account_mappings`. Feeds that map to one
-ledger account are added together into one row. Each row has `status`,
+ledger account are added together into one row only when each provider account
+appears once and every balance has the same effective date. Each row has `status`,
 `account_ids`, `ledger_account`, `bank_balance`, `books_balance`, `difference`,
 `waiting_rows`, `waiting_total`, `compared_through` and `compared_basis`
 (`as_of`, `retrieved_at`, `data_through` or `latest`). `status` is `matches`,
 `waiting_in_review` (the difference equals the staged rows), `differs`,
 `bank_newer` (the bank date is after `data_through`), `unmapped` or
-`no_bank_balance`.
+`no_bank_balance`. A repeated provider account or mixed/missing dates in a
+combined balance returns `not_aligned`, with `reason` of `duplicate_account_id`
+or `balance_dates_not_aligned`; no combined balance or difference is claimed.
 
 ## PDF and image statements
 
@@ -635,3 +646,13 @@ PDF statements can still be useful as supporting records, especially for year-en
 review, audits, loan applications, or when a bank feed has a gap. Slashbooks does
 not currently require entrepreneurs to download monthly statements as part of the
 normal close.
+
+OFX, QFX and QBO readers validate every transaction amount and statement balance
+inside each bank and card statement (`STMTRS` and `CCSTMTRS`) as finite exact
+cents before importing any row or retaining the file. An empty balance amount is
+skipped. Investment sections are not read; an investment file still returns
+`unsupported_statement`. Import
+checks include reversal and correction lineage when comparing file totals with
+the books. A first statement adds period movements to its supplied opening
+balance once; an imported opening journal on that first date supplies state,
+not an additional transaction. Cumulative bank balance checks still include it.

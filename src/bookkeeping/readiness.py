@@ -19,7 +19,7 @@ from typing import Any, Mapping
 
 from .coverage import check_coverage, readiness_items as coverage_readiness_items
 from .accrual.scope import DISCIPLINE_PER_ACCOUNT, accrual_active, default_view, discipline
-from .entity import load_entity
+from .entity import _locked_entity_operation, load_entity
 from .ledger.projections import render_store_ledger
 from .ledger.store import LedgerStore, default_store_path
 from .ledger.validator import validate
@@ -333,6 +333,7 @@ def _annotate_blockers(blockers: list[dict[str, Any]], path: Path, period: str, 
                               "--account <ledger account>")
 
 
+@_locked_entity_operation(shared=True)
 def assess_review_readiness(entity_path: Path | str, period: str,
                             dependencies: DependencyVersions, *, as_of: date) -> ReadinessAssessment:
     """Assess one immutable period snapshot without writing company state."""

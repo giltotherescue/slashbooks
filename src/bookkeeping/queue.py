@@ -108,6 +108,7 @@ _QUARANTINE_DIR = "review-queue/quarantine"
 _QUEUE_TRANSACTION_DIR = "review-queue/.transactions"
 _LEARNED_CONTEXT_FILE = "learned-context/counterparties.json"
 _PENDING_CATEGORIZATION_FILE = "staging/pending-categorization.json"
+STRIPE_CLEANUP_HOLD_REASON = "cleanup_needs_review"
 _DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
 _LEGACY_MATCH_RULE = "legacy_id_same_account_date_amount_description"
 ACTIONABLE_QUEUE_STATUSES = frozenset({"open", "reopened", "requires-reproposal"})
@@ -1277,6 +1278,25 @@ def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[st
         os.replace(str(tmp), str(path))
 
 
+def _set_pending_hold_reason(entity: Entity, source_ids: list[str], reason: str) -> None:
+    """Mark staged rows with a review_hold_reason, so Review and confirm can say why they wait."""
+    with _queue_mutation(entity):
+        path = entity.staging_dir / "pending-categorization.json"
+        if not path.exists():
+            return
+        wanted = {str(source_id) for source_id in source_ids}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        changed = False
+        for item in data:
+            if str(item.get("id", "")) in wanted and item.get("review_hold_reason") != reason:
+                item["review_hold_reason"] = reason
+                changed = True
+        if changed:
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(str(tmp), str(path))
+
+
 def _document_hash(value: Any) -> str:
     return hashlib.sha256(json.dumps(
         value, sort_keys=True, separators=(",", ":"), allow_nan=False, default=str
@@ -1341,7 +1361,7 @@ def _finalization_identity(item: dict, source_ids: list[str], session_id: str,
 
 def _finalization_receipt(item: dict, sources: list[dict], session_id: str,
                           final_status: str, confirmed_category: str,
-                          completed_at: str) -> dict[str, Any]:
+                          completed_at: str, *, learn: bool | None = None) -> dict[str, Any]:
     from .automation_policy import PreparationDenied
     from .preparation_runtime import active_preparation_identity, evidence_hash
 
@@ -1367,6 +1387,8 @@ def _finalization_receipt(item: dict, sources: list[dict], session_id: str,
     body = {"schema_version": 1, **identity,
             "source_hashes": {key: source_hashes[key] for key in sorted(source_hashes)},
             "completed_at": completed_at}
+    if learn is not None:
+        body["learn"] = learn
     return {**body, "operation_hash": _document_hash(body)}
 
 
@@ -1419,6 +1441,14 @@ def _recover_finalization(entity: Entity, item: dict, source_ids: list[str],
         return receipt
     if active:
         raise PreparationDenied(0, "posted_source_requires_reconciliation")
+    for source_id in source_ids:
+        staged = _get_pending_txn(entity, source_id)
+        reason = staged.get("review_hold_reason") if staged else None
+        if reason == STRIPE_CLEANUP_HOLD_REASON:
+            raise ValueError(
+                f"Source {source_id} is already posted by an approved Stripe apply, but its cleanup needs review "
+                f"({reason}). It cannot be confirmed again. Repeat the Stripe apply with the original evidence and "
+                "policy to finish cleanup, or dismiss the row after a person checks the posted entry.")
     raise ValueError("Posted sources belong to a different queue operation.")
 
 
@@ -2446,7 +2476,7 @@ def confirm(
         from .ledger.staging import StagingStore
         StagingStore(entity.staging_dir).mark_seen(source_id)
         _remove_from_pending_categorization(entity, source_id, strict=True)
-        if item.get("proposal_type") not in {"related-entity", "intercompany"}:
+        if learn and recovered.get("learn", False) and item.get("proposal_type") not in {"related-entity", "intercompany"}:
             cp_key = str(item.get("counterparty") or _counterparty_key(
                 item.get("description", ""), ""
             ))
@@ -2465,7 +2495,7 @@ def confirm(
 
     completed_at = ts or _now_iso()
     receipt = _finalization_receipt(
-        item, [txn], session_id, "confirmed", category, completed_at
+        item, [txn], session_id, "confirmed", category, completed_at, learn=learn
     )
     _write_confirmed_entry(
         entity, txn, category, session_id, ts=ts, finalization_receipt=receipt, accrual_treatment=accrual_treatment

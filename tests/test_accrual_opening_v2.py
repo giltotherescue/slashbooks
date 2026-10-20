@@ -82,6 +82,20 @@ class OpeningV2Tests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "start_date"):
             opening.preview_opening(self.entity, request)
 
+    def test_equal_month_opening_with_a_mid_month_start_names_actual_day(self):
+        request = json.loads(json.dumps(self.request))
+        request["lines"][3]["amount"] = "-31400.00"
+        request["lines"].append({"account": "Assets:Other:Prepaid-Expenses", "amount": "1200.00"})
+        request["schedules"] = [{"id": "prepaid-mid", "kind": "prepaid", "account": "Assets:Other:Prepaid-Expenses",
+            "recognition_account": "Expenses:Software", "amount": "1200.00", "recognized_amount": "0.00",
+            "service_start": "2026-01-15", "service_end": "2026-12-31", "method": "equal_month"}]
+        with self.assertRaisesRegex(Exception, "actual_day") as raised:
+            opening.preview_opening(self.entity, request)
+        self.assertIn("prepaid-mid", str(raised.exception))
+        self.assertIn("whole calendar months", str(raised.exception))
+        request["schedules"][0]["method"] = "actual_day"
+        self.assertEqual(opening.preview_opening(self.entity, request)["status"], "ready")
+
     def test_opening_schedule_jan_to_dec_recognizes_twelve_full_months(self):
         from bookkeeping.accrual import schedules
         request = json.loads(json.dumps(self.request))

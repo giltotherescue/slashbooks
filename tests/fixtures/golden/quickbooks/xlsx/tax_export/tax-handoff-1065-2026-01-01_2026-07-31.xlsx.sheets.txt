@@ -5,12 +5,13 @@ A3=Company	B3=Synthetic Acceptance Services
 A4=Return	B4=Form 1065 (1065, chosen by workspace)
 A5=Line numbers	B5=Tax year 2025 federal forms; confirm against the current year's form
 A6=Period	B6=2026-01-01 to 2026-07-31
-A7=Basis	B7=Cash basis book balances computed by the Slashbooks engine
+A7=Basis	B7=Accrual basis book balances computed by the Slashbooks engine
 A8=Total debits	B8=22640.00
 A9=Total credits	B9=22640.00
 A10=Unmapped accounts	B10=1
 A11=Sign convention	B11=Balance columns are debit-positive and credit-negative
 A12=Tax computation	B12=None. Book amounts only; the preparer makes all tax adjustments
+A13=Accounting coverage	B13=accrual basis; cutover 2026-07-01; summary period 2026-01-01 to 2026-06-30 (included); historical detail not available before the cutover. Full details are in manifest.json.
 === sheet: Trial Balance
 A1=Account Number	B1=Account	C1=Account Type	D1=Beginning Balance	E1=Debit	F1=Credit	G1=Balance	H1=Tax Form	I1=Schedule	J1=Form Line	K1=Tax Line Code	L1=Tax Line	M1=Statement Detail	N1=On Return	O1=Mapping Basis	P1=Needs Review	Q1=Note
 A2=1010	B2=Assets › Bank › Checking	C2=Assets	D2=0.00	E2=9600.00	F2=0.00	G2=9600.00	H2=Form 1065	I2=L	J2=1	K2=1065/L/1	L2=Cash	M2=	N2=yes	O2=name	P2=yes	Q2=

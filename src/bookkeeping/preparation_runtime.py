@@ -148,7 +148,47 @@ def active_preparation_identity() -> tuple[str, str, dict[str, str]] | None:
     return bound.context.entity_key, bound.context.execution_id, dict(bound.source_hashes)
 
 
-def authorize_accrual_operation(entity: Entity, dates: Any, records: Any, entries: Any) -> dict[str, Any]:
+def _enforce_financial_ceiling(entity: Entity, entries: Any, mutations: Any = ()) -> None:
+    """Size each validated journal by its debit side, never its net balance.
+
+    Supporting-only changes can commit future financial obligations without a
+    current posting, so managed item/schedule amounts use the same ceiling.
+    """
+    from .queue import _refuse_above_ask_first
+    for entry in entries:
+        _refuse_above_ask_first(entity, sum((p.amount for p in entry.postings if p.amount > 0), Decimal(0)))
+    from .accrual.store import load_record
+    store = LedgerStore(entity.path / "ledger.sqlite")
+    for mutation in mutations:
+        if mutation.table not in {"items", "schedules"}:
+            continue
+        previous = load_record(store, mutation.table, mutation.record_id) or {}
+        for key in ("amount", "original_amount", "remaining_amount", "recognized_amount"):
+            if key not in mutation.payload:
+                continue
+            # One rule for a new record and an existing one: size the full new
+            # commitment whenever it is new or grows. Small steps cannot add up
+            # past the limit, because each growth is sized in full. An unchanged
+            # or smaller amount (a settlement) is not sized again, and neither is
+            # the running recognized total of a commitment that was already sized.
+            if previous and key == "recognized_amount":
+                continue
+            amount = _readable_amount(mutation.payload[key])
+            before = _readable_amount(previous.get(key, "0")) if previous else None
+            if amount is not None and before is not None and amount <= before:
+                continue
+            _refuse_above_ask_first(entity, amount)  # None (unreadable) gets the same refusal.
+
+
+def _readable_amount(value: Any) -> Decimal | None:
+    try:
+        amount = Decimal(str(value))
+    except (ArithmeticError, ValueError, TypeError):
+        return None
+    return amount if amount.is_finite() else None
+
+
+def authorize_accrual_operation(entity: Entity, dates: Any, records: Any, entries: Any, mutations: Any = ()) -> dict[str, Any]:
     """Derive adjustment authority from validated dates and canonical evidence.
 
     Called only by accounting domain code. Workspace policies and JSON authority
@@ -159,6 +199,7 @@ def authorize_accrual_operation(entity: Entity, dates: Any, records: Any, entrie
         return {"mode": "local_operator"}
     if bound.action != "adjust" or entity.path.resolve() != bound.entity_path:
         raise PreparationDenied(0, "adjustment_context_required")
+    _enforce_financial_ceiling(entity, entries, mutations)
     expected = dict(bound.source_hashes)
     actual = {row["id"]: row["evidence_hash"] for row in records}
     if actual != expected and not (bound.accrual_batch and all(expected.get(key) == value for key, value in actual.items())):
@@ -814,6 +855,8 @@ def _correction_intent(bound: _Boundary, store: LedgerStore, conn: sqlite3.Conne
         if ancestor_id not in by_source or ancestor_id not in reversed_ids:
             raise PreparationDenied(0, "correction_lineage_changed")
         current = by_source[ancestor_id]
+    from .entity import load_entity
+    _enforce_financial_ceiling(load_entity(bound.entity_path), [*lineage, replacement])
     source_ids = {value for entry in lineage + [replacement] for key, value in entry.meta
                   if key in {"source-id", "paired-source-id"}}
     return PreparationIntent("correct",

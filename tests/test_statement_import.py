@@ -202,6 +202,25 @@ class OfxTests(unittest.TestCase):
         self.assertEqual(self._bad(base.replace("<TRNAMT>-49.99", "<TRNAMT>abc")), "malformed_ofx")
         self.assertEqual(self._bad("<OFX></OFX>"), "malformed_ofx")
 
+    def test_empty_available_balance_and_investment_amounts_keep_importing(self):
+        base = fixture("card.qfx").read_text(encoding="utf-8")
+        # An empty AVAILBAL amount is skipped, as it was before the amount check.
+        text = base.replace("</LEDGERBAL>", "</LEDGERBAL><AVAILBAL><BALAMT></BALAMT><DTASOF>20260131</DTASOF></AVAILBAL>", 1) \
+            if "</LEDGERBAL>" in base else base
+        self.assertIn("AVAILBAL", text)
+        [stmt] = ofx.parse_ofx(text)
+        self.assertEqual(stmt.kind, "creditcard")
+        # A filled AVAILBAL amount still has to be a clean amount.
+        bad = text.replace("<AVAILBAL><BALAMT></BALAMT>", "<AVAILBAL><BALAMT>12.345</BALAMT>")
+        self.assertEqual(self._bad(bad), "malformed_ofx")
+
+    def test_investment_file_with_a_subcent_value_is_unsupported_not_malformed(self):
+        text = ("<OFX><INVSTMTMSGSRSV1><INVSTMTTRNRS><INVSTMTRS><CURDEF>USD</CURDEF>"
+                "<INVPOSLIST><POSMF><UNITS>1.5</UNITS><UNITPRICE>10.123456</UNITPRICE></POSMF></INVPOSLIST>"
+                "<INVBAL><AVAILCASH>1.0</AVAILCASH><BALLIST><BAL><NAME>x</NAME><BALAMT>1.2345</BALAMT></BAL></BALLIST></INVBAL>"
+                "</INVSTMTRS></INVSTMTTRNRS></INVSTMTMSGSRSV1></OFX>")
+        self.assertEqual(self._bad(text), "unsupported_statement")
+
 
 class ImportTests(unittest.TestCase):
     def setUp(self):

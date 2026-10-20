@@ -7,8 +7,8 @@ The engine starts from the period net income of the profit and loss statement an
 adds the effect on cash of every change in a balance sheet account.  All math uses
 ``Decimal``.  The sign rule is one rule for every account: a ledger balance is
 debit-positive, so the cash effect of a change in any non-cash account is
-``-(ending balance - beginning balance)``.  An asset that grows uses cash.  A
-liability that grows supplies cash.
+``-(ending balance - beginning balance)``.  Journal-level adjustments remove noncash asset funding and classify explicitly linked
+capital-payable settlements before activity subtotals are calculated.
 
 Groups
 ------
@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .cache import get_account_balance, open_cache
-from .statements import _SEP, _account_balances_as_of, profit_and_loss
+from .statements import _SEP, _account_balances_as_of, _compute_pnl, journal_coverage_view
 from .structure import SCHEMA_VERSION
 
 ZERO = Decimal("0.00")
@@ -183,6 +183,7 @@ class CashflowResult:
             "reconciliation": self.reconciliation,
             "needs_classification": self.needs_classification,
             "warnings": self.warnings,
+            "noncash_events": self.meta.get("noncash_events", []),
             "cash_definition": CASH_DEFINITION,
             "structure": {"version": SCHEMA_VERSION, "lines": self.lines},
             "meta": self.meta,
@@ -212,6 +213,10 @@ class CashflowResult:
                 if line["type"] in {"account", "computed"} and line.get("section"):
                     pad = "  " * max(line.get("indent", 1), 1)
                 out.append(f"{pad}{line['label']:<{42 - len(pad)}} {Decimal(line['amount']):>14,.2f}")
+        if self.meta.get("noncash_events"):
+            out += ["", "Noncash investing and financing activities", "-" * 40]
+            for event in self.meta["noncash_events"]:
+                out.append(f"  {event['date']}  {event['amount']}  {event['description']}")
         rec = self.reconciliation
         out += ["", "Ledger integrity check", "-" * 40,
                 f"  Beginning cash {rec['beginning_cash']} + net change {rec['net_change_in_cash']} = {rec['ending_cash_per_statement']}",
@@ -240,6 +245,8 @@ def build_cash_flow(
     subtypes: dict[str, str],
     meta: Optional[dict[str, Any]] = None,
     independent_ending_cash: Optional[Decimal] = None,
+    balance_adjustments: Optional[dict[str, Decimal]] = None,
+    activity_adjustments: Optional[list[dict]] = None,
 ) -> CashflowResult:
     """Pure builder: balances in, statement out.  No I/O."""
     groups: dict[str, list[tuple[str, Decimal, str, str]]] = {k: [] for k in GROUP_LABELS}
@@ -261,9 +268,12 @@ def build_cash_flow(
             ending_cash += after
             cash_accounts.append({"account": account, "beginning": _money(before), "ending": _money(after)})
             continue
-        effect = -(after - before)
+        effect = -(after - before) + (balance_adjustments or {}).get(account, ZERO)
         if effect:
             groups[group].append((account, effect, subtypes.get(account, ""), reason))
+
+    for adjustment in activity_adjustments or []:
+        groups[adjustment["group"]].append((adjustment["account"], adjustment["amount"], "settlement", adjustment["reason"]))
 
     def rendered(account: str) -> str:
         return account.replace(":", _SEP)
@@ -281,7 +291,9 @@ def build_cash_flow(
                           "indent": 1, "section": group})
             total += net_income
         for account, effect, subtype, reason in groups[group]:
-            if subtype == "accumulated_depreciation":
+            if subtype == "settlement":
+                text = reason
+            elif subtype == "accumulated_depreciation":
                 text = f"Depreciation and amortization ({rendered(account)})"
             else:
                 text = f"Change in {rendered(account)}"
@@ -379,6 +391,126 @@ def _opening_balances(conn: Any, entry_ids: list[int]) -> dict[str, Decimal]:
     return totals
 
 
+def _journal_adjustments(conn: Any, from_date: date, to_date: date, subtypes: dict[str, str],
+                         opening_ids: set[int]) -> tuple[dict, list, list, list]:
+    """Remove evidenced noncash asset funding; classify linked capital settlements.
+
+    Balance deltas alone cannot distinguish equipment acquired on account from an
+    operating payable. Journal legs establish the noncash event; item allocations
+    establish which later payment settles it. No shared-payable FIFO is invented.
+    """
+    from .cashview import _load_entries, _cumulative, _cents, _dec
+    from ..accrual.reports import _records
+    from collections import defaultdict
+
+    entries = _load_entries(conn, to_date)
+    sources = {entry["source_id"]: entry for entry in entries if entry["source_id"]}
+    offsets: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    flows, events, issues = [], [], []
+    for entry in entries:
+        if entry["id"] in opening_ids or not (from_date.isoformat() <= entry["date"] <= to_date.isoformat()):
+            continue
+        postings = entry["postings"]
+        # A mixed cash purchase/expense needs explicit purpose allocation; a
+        # wholly noncash mixed bill is still unambiguous about its capital part.
+        mixed_cash = any(subtypes.get(a) in _CASH_SUBTYPES and n for a, n in postings)
+        mixed_income = any(a.startswith(("Income:", "Expenses:")) and n for a, n in postings)
+        if mixed_cash and mixed_income and any(subtypes.get(a) == "fixed_asset" and n for a, n in postings):
+            # The journal establishes total cash but cannot say whether the
+            # cash or the payable funded its expense versus capital portion.
+            # Keep that actual cash visible without inventing group subtotals.
+            for account, amount in postings:
+                if _is_balance_sheet(account) and subtypes.get(account) not in _CASH_SUBTYPES:
+                    offsets[account] += amount
+            income_expense = sum((n for a, n in postings if a.startswith(("Income:", "Expenses:"))), ZERO)
+            cash_change = sum((n for a, n in postings if subtypes.get(a) in _CASH_SUBTYPES), ZERO)
+            flows.extend([
+                {"group": "operating", "account": "mixed-purpose-income:" + str(entry["id"]),
+                 "amount": income_expense, "reason": "Remove income or expense awaiting cash-purpose classification"},
+                {"group": "needs_classification", "account": "mixed-purpose-cash:" + str(entry["id"]),
+                 "amount": cash_change, "reason": "Mixed capital and operating payment needs an explicit cash-purpose split"},
+            ])
+            issues.append({"code": "cash_flow_mixed_purchase_allocation", "source_id": entry["source_id"],
+                           "message": "A mixed capital and operating cash entry needs an explicit cash-purpose split: "
+                                      + (entry["narration"] or entry["date"])})
+            continue
+        for direction in (Decimal(1), Decimal(-1)):
+            assets = [(a, n) for a, n in postings if subtypes.get(a) == "fixed_asset" and n * direction > 0]
+            funding = [(a, n) for a, n in postings if _is_balance_sheet(a)
+                       and subtypes.get(a) not in _CASH_SUBTYPES | {"fixed_asset"} and n * direction < 0]
+            remaining = sum((abs(n) for _, n in funding), ZERO)
+            for asset, amount in assets:
+                allocated = min(abs(amount), remaining)
+                if not allocated:
+                    continue
+                offsets[asset] += direction * allocated
+                left = allocated
+                for index, (account, value) in enumerate(funding):
+                    part = min(left, abs(value))
+                    offsets[account] -= direction * part
+                    funding[index] = (account, value + direction * part)
+                    left -= part
+                    if not left:
+                        break
+                remaining -= allocated
+                events.append({"date": entry["date"], "source_id": entry["source_id"], "account": asset,
+                               "amount": _money(direction * allocated),
+                               "description": entry["narration"] or "Noncash asset transfer"})
+
+    items = {item["id"]: item for item in _records(conn, "items")}
+    settled: dict[str, int] = defaultdict(int)
+    allocations = _records(conn, "allocations")
+    for allocation in sorted(allocations, key=lambda row: (row.get("date", ""), row["id"])):
+        item = items.get(allocation.get("item_id"))
+        if allocation.get("kind") != "settlement" or not item or item.get("kind") != "payable":
+            continue
+        origin = item.get("origin", {})
+        if origin.get("mode") == "opening":
+            # Opening items have no supported purchase-purpose detail.
+            continue
+        if origin.get("lines"):
+            weights = [(row["account"], _cents(row["amount"])) for row in origin["lines"]]
+        elif origin.get("counter_account"):
+            weights = [(origin["counter_account"], _cents(item["original_amount"]))]
+        else:
+            source = sources.get(origin.get("source_id"), {})
+            weights = [(a, _cents(n)) for a, n in source.get("postings", []) if a != item["account"] and n > 0]
+        if not weights or any(n < 0 for _, n in weights) or sum(n for _, n in weights) != _cents(item["original_amount"]):
+            continue
+        amount = _cents(allocation["amount"])
+        before = _cumulative(weights, settled[item["id"]])
+        after = _cumulative(weights, settled[item["id"]] + amount)
+        settled[item["id"]] += amount
+        if not (from_date.isoformat() <= allocation.get("date", "") <= to_date.isoformat()):
+            continue
+        # Only bank/cash settlements are cash flows. A card-funded payment
+        # remains noncash until a bank/cash payment is explicitly linked.
+        if subtypes.get(allocation.get("bank_account")) not in _CASH_SUBTYPES:
+            continue
+        changed_purpose = (len({account for account, _ in weights}) > 1
+                           and any(subtypes.get(account) == "fixed_asset" for account, _ in weights)
+                           and any(row.get("item_id") == item["id"] and row.get("kind") in {"credit", "writeoff", "reversal", "application"}
+                                   and row.get("date", "9999-12-31") <= allocation["date"] for row in allocations))
+        if changed_purpose:
+            # Credits, writeoffs and offsets can change which original lines
+            # remain payable. Never apply the original ratio to that new debt.
+            moved = _dec(amount)
+            offsets[item["account"]] += moved
+            flows.append({"group": "needs_classification", "account": "adjusted-capital-settlement:" + allocation["id"],
+                          "amount": -moved, "reason": "Payment of an adjusted mixed capital bill needs a reviewed purpose split"})
+            issues.append({"code": "cash_flow_adjusted_bill_allocation", "item_id": item["id"],
+                           "message": "A payment of an adjusted mixed capital bill needs a reviewed split between capital and operating costs."})
+            continue
+        for (account, _), was, now in zip(weights, before, after):
+            if subtypes.get(account) != "fixed_asset" or now == was:
+                continue
+            moved = _dec(now - was)
+            offsets[item["account"]] += moved
+            flows.append({"group": "investing", "account": "capital-settlement:" + allocation["id"] + ":" + account,
+                          "amount": -moved, "reason": "Payment for " + account.replace(":", _SEP)})
+    return dict(offsets), flows, events, issues
+
+
 def cash_flow(entity_path: Path | str, from_date: date, to_date: date) -> CashflowResult:
     """Compute the statement of cash flows for [from_date, to_date] inclusive.
 
@@ -393,7 +525,11 @@ def cash_flow(entity_path: Path | str, from_date: date, to_date: date) -> Cashfl
     from ..accrual.reports import CoverageError
 
     entity_path = Path(entity_path)
-    pnl = profit_and_loss(entity_path, from_date, to_date)  # validates dates and coverage
+    conn = open_cache(entity_path)
+    try:
+        pnl = _compute_pnl(conn, from_date, to_date, coverage_view=journal_coverage_view())  # recorded income
+    finally:
+        conn.close()
     if pnl.meta.get("summary_included"):
         cutover = (pnl.meta.get("coverage") or {}).get("cutover_date")
         raise CoverageError(
@@ -415,8 +551,9 @@ def cash_flow(entity_path: Path | str, from_date: date, to_date: date) -> Cashfl
         subtypes = classify_accounts(conn, set(begin) | set(end))
         # A second, independent read: sum the bank and cash accounts straight from the postings.
         independent = sum((get_account_balance(conn, a, to_date) for a, t in subtypes.items() if t in _CASH_SUBTYPES), ZERO)
+        offsets, flows, noncash, issues = _journal_adjustments(conn, from_date, to_date, subtypes, {o["id"] for o in openings})
     finally:
         conn.close()
-    meta = dict(pnl.meta)
+    meta = {**pnl.meta, "noncash_events": noncash, "unresolved_issues": [*pnl.meta.get("unresolved_issues", []), *issues]}
     return build_cash_flow(from_date, to_date, pnl.totals["net_income"], begin, end, subtypes, meta,
-                           independent_ending_cash=independent)
+                           independent_ending_cash=independent, balance_adjustments=offsets, activity_adjustments=flows)
