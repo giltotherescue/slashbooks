@@ -195,6 +195,15 @@ class RichMappingConsumersTests(unittest.TestCase):
                              {CHECKING, SAVINGS})
 
 
+class RemoteContractTests(unittest.TestCase):
+    def test_match_account_is_a_read_and_bank_account_map_is_a_write(self) -> None:
+        from bookkeeping.remote_contract import command_spec
+        read = command_spec(["bank", "match-account", "--entity", "/tmp/x", "--last4", "0021", "--json"])
+        self.assertFalse(read["mutates"])
+        write = command_spec(["entity", "bank-account-map", "/tmp/x", "--feed-account-id", "a", "--account", "b"])
+        self.assertTrue(write["mutates"])
+
+
 class BankSyncInstitutionTests(unittest.TestCase):
     def test_normalize_account_keeps_the_institution_when_sent(self) -> None:
         from bookkeeping.connectors.banksync import normalize_account
