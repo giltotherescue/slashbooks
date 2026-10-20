@@ -154,18 +154,26 @@ def identity_hash(institution: str, account_id: str, account_type: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
 
 
+def _check_amounts(stmt: Node) -> None:
+    """Validate every amount in a bank or card statement, used or not (for example
+    AVAILBAL), before a caller can stage transactions or archive this statement.
+    Investment and other sections are not read. An empty balance amount is skipped."""
+    for node in stmt.walk("TRNAMT"):
+        _ofx_amount(node.text, "TRNAMT")
+    for tag in ("LEDGERBAL", "AVAILBAL"):
+        for balance in stmt.walk(tag):
+            if balance.value("BALAMT"):
+                _ofx_amount(balance.value("BALAMT"), "BALAMT")
+
+
 def parse_ofx(text: str) -> list[OfxStatement]:
     """Parse every bank and card statement in an OFX/QFX/QBO document."""
     ofx = _tree(text)
-    # Validate even unused monetary fields (for example AVAILBAL) before any
-    # caller can stage transactions or archive this statement.
-    for name in ("TRNAMT", "BALAMT"):
-        for node in ofx.walk(name):
-            _ofx_amount(node.text, name)
     statements: list[OfxStatement] = []
     for kind, wrapper, acct_tag in (("bank", "STMTRS", "BANKACCTFROM"),
                                     ("creditcard", "CCSTMTRS", "CCACCTFROM")):
         for stmt in ofx.walk(wrapper):
+            _check_amounts(stmt)
             statements.append(_statement(stmt, kind, acct_tag))
     if not statements:
         if ofx.walk("INVSTMTRS"):

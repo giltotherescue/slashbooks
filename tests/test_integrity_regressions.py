@@ -250,7 +250,7 @@ class IntegrityRegressions(unittest.TestCase):
                 self.assertEqual(len(f.store.load_entries()), 1)
                 self.assertEqual(f.store.verify_audit_chain(), [])
 
-    def test_stripe_recovery_refuses_changed_pending_evidence(self):
+    def test_stripe_recovery_holds_changed_pending_evidence_for_review(self):
         f = self.fixture(stripe_fixtures.StripeTests)
         f.stage()
         with patch.object(StagingStore, 'bulk_mark_seen', side_effect=OSError('after commit')):
@@ -259,8 +259,8 @@ class IntegrityRegressions(unittest.TestCase):
         path = f.entity.staging_dir / 'pending-categorization.json'
         pending = json.loads(path.read_text()); pending[0]['description'] = 'Changed description'
         path.write_text(json.dumps(pending))
-        with self.assertRaisesRegex(ValueError, 'evidence changed'):
-            f.apply()
+        result = f.apply()  # No error: the row waits for review and nothing else changes.
+        self.assertEqual((result['posted'], result['held']), (0, 1))
         self.assertEqual(len(json.loads(path.read_text())), 1)
         self.assertEqual(len(f.store.load_entries()), 1)
 
