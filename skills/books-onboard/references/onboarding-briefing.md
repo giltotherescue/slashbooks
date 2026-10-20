@@ -51,7 +51,7 @@ Field rules:
 
 - `patterns`: what the data shows in broad strokes. These are statements, not questions.
 - `odd_vendors`: payees that need the owner. Give the observable reason ("Three payments
-  over $600 with no invoice on file"), never a guess about what they are.
+  add up to more than the 1099 threshold for the year, with no invoice on file"), never a guess about what they are.
 - `transfers`: movements between the company's own accounts, with the note "Looks like ..."
   when the summaries say `transfer_like`.
 - `known_profile`: what the saved profile already tells us, so the live agent does not ask.
@@ -74,7 +74,7 @@ Agenda points:
 
 Good:
 
-- "Three payments are over $600, and I need to know if they are contractors, because that decides the 1099."
+- "Three payments add up to more than the 1099 threshold for the year, and I need to know if they are contractors, because that decides the 1099."
 - "Regular transfers go to your personal account, and I need to know if they are pay or loans."
 
 Not good (a form field, a vague reason, or advice):
@@ -107,7 +107,7 @@ Agenda (12 points, 4 `must`):
 | p5 | owner_pay | must | How you pay yourself | Regular transfers go to your personal account, and I need to know if they are pay or loans. |
 | p6 | owner_pay | should | Personal costs on the business card | A few card purchases look personal, and I want to keep them out of business costs. |
 | p7 | transfers | should | Payments from checking to the card | Nine payments look like card payments, and I need to be sure they are your own accounts. |
-| p8 | vendors | must | Atlas Contractors | Three payments are over $600, and I need to know if they are contractors, because that decides the 1099. |
+| p8 | vendors | must | Atlas Contractors | Three payments add up to more than the 1099 threshold for the year, and I need to know if they are contractors, because that decides the 1099. |
 | p9 | vendors | should | Northwind Print | A one-time $2,400 payment could be a client project cost or an asset. |
 | p10 | vendors | should | Amazon and Venmo | Small payments with no clear payee are the ones I cannot sort without you. |
 | p11 | documents | should | W-9 and invoices for Atlas and Northwind | I have no paperwork for these payees, and a W-9 is easiest to get now. |
@@ -117,7 +117,7 @@ One point shown in full:
 
 ```json
 { "id": "p8", "order": 8, "group": "vendors", "title": "Atlas Contractors",
-  "reason": "Three payments are over $600, and I need to know if they are contractors, because that decides the 1099.",
+  "reason": "Three payments add up to more than the 1099 threshold for the year, and I need to know if they are contractors, because that decides the 1099.",
   "priority": "must", "counterparty_keys": ["atlas contractors"], "may_settle_with": ["p11"] }
 ```
 

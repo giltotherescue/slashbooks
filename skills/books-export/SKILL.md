@@ -199,7 +199,8 @@ server path or metadata-only listing. Do not claim delivery before bytes arrive:
 - **The workbook** (`.xlsx` file) — "This is the main file to send your accountant.
   It has separate tabs for income and expenses (P&L), the balance sheet, the full
   trial balance, every transaction (general ledger), reconciliation results, a list
-  of vendors who may need a 1099, any corrections we made to the books, and
+  of vendors who may need a 1099 (checked against the federal threshold for the year
+  of each payment: $600 for payments made through 2025, $2,000 for payments made in 2026), any corrections we made to the books, and
   structured open questions for owner/accountant follow-up. If requested, it also
   includes an audit-log tab showing the hash-chained write history." Only if the
   result reports a missing workbook dependency, say: "The CSV export was created,
