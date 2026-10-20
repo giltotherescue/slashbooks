@@ -366,7 +366,7 @@
       "counts": {
         "duplicates": 1
       },
-      "fingerprint": "c8fb8ba95f0b63f2f6ca38c5b6df29bd49eda0a938a38c05454a0d472f98840a",
+      "fingerprint": "f80e1cc6fd848db049df001fdead7ec37430e5f76a2aea9a07ab4cb5f943945a",
       "kind": "flagged",
       "period": {
         "from": "2026-10-08",
@@ -375,7 +375,7 @@
       "schema_version": 1,
       "subjects": [
         {
-          "id": "feed-legacy-001",
+          "id": "banksync:feed-legacy-001",
           "type": "source"
         }
       ]

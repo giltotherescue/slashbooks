@@ -65,6 +65,7 @@ from .model import Entry, Open, Posting
 from .staging import StagingStore
 from .store import LedgerStore, default_store_path
 from .normalize import normalize_description
+from ..source_ids import source_id_variants
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -347,8 +348,8 @@ def _add_pending_categorization(entity: Entity, txn: dict) -> bool:
     with _entity_write_lock(entity.path):
         items = _load_pending_categorization(entity)
         txn_id = txn.get("id")
-        if txn_id and any(i.get("id") == txn_id for i in items):
-            return False  # Already queued.
+        if txn_id and any(i.get("id") in source_id_variants(txn_id) for i in items):
+            return False  # Already queued, under either spelling of a BankSync ID.
         items.append(dict(txn))
         _save_pending_categorization(entity, items)
         return True
@@ -513,11 +514,14 @@ def _import_transactions_unlocked(
         # Posted transaction.
 
         # Source IDs deduplicate both posted entries and existing review work.
+        # A BankSync row has two spellings (``abc`` and ``banksync:abc``); every
+        # lookup tries both.
+        spellings = source_id_variants(source_id)
         if (
-            staging.is_seen(source_id)
-            or (source_id and source_id in source_ids_in_batch)
-            or (source_id and store.source_exists(source_id))
-            or (source_id and source_id in queued_source_ids)
+            any(staging.is_seen(s) for s in spellings)
+            or (source_id and spellings & source_ids_in_batch)
+            or (source_id and any(store.source_exists(s) for s in spellings))
+            or (source_id and spellings & queued_source_ids)
         ):
             result.skipped_duplicate += 1
             continue

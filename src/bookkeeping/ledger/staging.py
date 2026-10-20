@@ -46,6 +46,7 @@ from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ..source_ids import source_id_variants
 from .normalize import normalize_description
 
 # ---------------------------------------------------------------------------
@@ -175,8 +176,8 @@ class StagingStore:
         the existing record is left unchanged (no duplicate staging).
         """
         txn_id = txn.get("id")
-        if txn_id and any(p.get("id") == txn_id for p in self._pending):
-            return  # Already staged.
+        if txn_id and any(p.get("id") in source_id_variants(txn_id) for p in self._pending):
+            return  # Already staged, under either spelling of a BankSync ID.
         self._pending.append(dict(txn))
         self._save_pending()
 
@@ -198,7 +199,7 @@ class StagingStore:
         # Pass 1: match by pendingTransactionId.
         if pending_txn_id:
             for idx, staged in enumerate(self._pending):
-                if staged.get("id") == pending_txn_id:
+                if staged.get("id") in source_id_variants(pending_txn_id):
                     removed = self._pending.pop(idx)
                     self._save_pending()
                     return removed

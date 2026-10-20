@@ -66,6 +66,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping
 
+from ..source_ids import source_id_variants
 from . import scope
 
 _FILLER = frozenset({
@@ -138,7 +139,7 @@ def treatment_checker(entity: Any):
         if "records" not in state:
             state["records"], state["sources"] = _open_records(entity), _all_sources(entity)
         source_id = str(txn.get("id") or txn.get("source_id") or "")
-        if source_id and source_id in state["sources"]:
+        if source_id and source_id_variants(source_id) & state["sources"]:
             return True
         amount = _money(txn.get("amount"))
         txn_words = _words(txn.get("counterparty"), txn.get("description"))
