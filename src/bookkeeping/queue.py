@@ -96,6 +96,7 @@ from typing import Any, Callable, Optional
 from functools import wraps
 
 from .entity import Entity, load_entity
+from .source_ids import source_id_variants
 from .ledger.normalize import normalize_description
 
 # ---------------------------------------------------------------------------
@@ -1380,7 +1381,8 @@ def _recover_finalization(entity: Entity, item: dict, source_ids: list[str],
     from .preparation_runtime import active_preparation_identity
 
     store = LedgerStore(default_store_path(entity.path))
-    posted = [source_id for source_id in source_ids if store.source_exists(source_id)]
+    posted = [source_id for source_id in source_ids
+              if any(store.source_exists(s) for s in source_id_variants(source_id))]
     if not posted:
         return None
     active = active_preparation_identity()
@@ -2242,7 +2244,7 @@ def _require_accrual_cash_treatment(entity: Entity, item: dict, treatment: str |
     from .ledger.store import LedgerStore
     store = LedgerStore(entity.path / "ledger.sqlite")
     source_id = str(item.get("source_id") or "")
-    if any(row.get("origin", {}).get("source_id") == source_id for table in ("items", "schedules")
+    if any(row.get("origin", {}).get("source_id") in source_id_variants(source_id) for table in ("items", "schedules")
            for row in list_records(store, table)):
         raise ValueError("This source already owns an accrual item/schedule; link its existing financial effect instead of posting a new cash event.")
     item["accrual_treatment"] = treatment

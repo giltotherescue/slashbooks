@@ -59,12 +59,13 @@ from typing import Any, Callable, Sequence, TYPE_CHECKING
 if TYPE_CHECKING:
     from ..accrual.store import SupportingMutation
 
-from ..entity import Entity, load_entity
+from ..entity import Entity, bank_mapping_account, load_entity
 from .migrate import migrate_beancount_to_store
 from .model import Entry, Open, Posting
 from .staging import StagingStore
 from .store import LedgerStore, default_store_path
 from .normalize import normalize_description
+from ..source_ids import source_id_variants
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -347,8 +348,8 @@ def _add_pending_categorization(entity: Entity, txn: dict) -> bool:
     with _entity_write_lock(entity.path):
         items = _load_pending_categorization(entity)
         txn_id = txn.get("id")
-        if txn_id and any(i.get("id") == txn_id for i in items):
-            return False  # Already queued.
+        if txn_id and any(i.get("id") in source_id_variants(txn_id) for i in items):
+            return False  # Already queued, under either spelling of a BankSync ID.
         items.append(dict(txn))
         _save_pending_categorization(entity, items)
         return True
@@ -388,13 +389,20 @@ def import_transactions(
     session_date: date | None = None,
     legacy_duplicate_guard: bool = False,
     intake_only: bool = False,
+    cutover_hold_ids: frozenset[str] = frozenset(),
 ) -> ImportResult:
-    """Import transactions while serializing staging, queue, and ledger writes."""
+    """Import transactions while serializing staging, queue, and ledger writes.
+
+    ``cutover_hold_ids`` names rows dated on or before their account's cutover
+    date. They are never posted or queued, with or without the guard: each
+    goes to the duplicate-review hold, so a late row the old source never sent is
+    seen by a person instead of being dropped.
+    """
     _validate_normalized_transactions(normalized_txns)
     with _entity_write_lock(entity.path):
         result = _import_transactions_unlocked(
             entity, normalized_txns, session_id, categorizer, ts, session_date,
-            legacy_duplicate_guard, intake_only,
+            legacy_duplicate_guard, intake_only, cutover_hold_ids,
         )
     from ..work import observe_import
     observe_import(result.skipped_duplicate)
@@ -410,6 +418,7 @@ def _import_transactions_unlocked(
     session_date: date | None = None,
     legacy_duplicate_guard: bool = False,
     intake_only: bool = False,
+    cutover_hold_ids: frozenset[str] = frozenset(),
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -492,6 +501,22 @@ def _import_transactions_unlocked(
             if missing:
                 staging.bulk_mark_seen(missing)
 
+    # Connected-feed rows are checked against posted entries and review items
+    # with the same plan a statement import uses (see ``_plan_feed_holds``).
+    # A row dated on or before a cutover date is held even when the guard is off (a
+    # generic ingest), so no learned rule can post it. Without the guard only those rows
+    # are planned; every other row follows the unguarded path.
+    guarded = bool(legacy_duplicate_guard or cutover_hold_ids)
+    feed_holds = (_plan_feed_holds(
+        entity, normalized_txns if legacy_duplicate_guard else
+        [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids)
+        if guarded else {})
+    # A row that is already held for review stays held on every later sync, under
+    # either spelling of its ID, until a person resolves it.
+    open_hold_ids = ({str(c.get("source_id") or "") for c in _load_json_list(
+        entity.staging_dir / _DUPLICATE_CANDIDATES_FILE) if c.get("status") == "duplicate-candidate"}
+        if guarded else set())
+
     # Accumulate entries to write in this session.
     entries_to_write: list[Entry] = []
     # Track accounts that need open directives.
@@ -513,11 +538,14 @@ def _import_transactions_unlocked(
         # Posted transaction.
 
         # Source IDs deduplicate both posted entries and existing review work.
+        # A BankSync row has two spellings (``abc`` and ``banksync:abc``); every
+        # lookup tries both.
+        spellings = source_id_variants(source_id)
         if (
-            staging.is_seen(source_id)
-            or (source_id and source_id in source_ids_in_batch)
-            or (source_id and store.source_exists(source_id))
-            or (source_id and source_id in queued_source_ids)
+            any(staging.is_seen(s) for s in spellings)
+            or (source_id and spellings & source_ids_in_batch)
+            or (source_id and any(store.source_exists(s) for s in spellings))
+            or (source_id and spellings & queued_source_ids)
         ):
             result.skipped_duplicate += 1
             continue
@@ -531,15 +559,16 @@ def _import_transactions_unlocked(
             txn, entity.entity_config.get("bank_account_mappings"),
             entity.entity_config.get("csv_account_mappings"),
         )
-        if legacy_duplicate_guard:
+        if legacy_duplicate_guard or source_id in cutover_hold_ids:
+            if spellings & open_hold_ids:
+                result.skipped_duplicate += 1
+                continue
             alias_status = _legacy_alias_status(entity, source_id)
             if alias_status == "confirmed-duplicate":
                 result.skipped_duplicate += 1
                 continue
             if alias_status != "confirmed-distinct":
-                candidate_state = _record_legacy_duplicate_candidate(
-                    entity, store, txn, bank_account
-                )
+                candidate_state = _record_feed_hold(entity, feed_holds.get(source_id))
                 if candidate_state:
                     if candidate_state == "new":
                         result.duplicate_candidates += 1
@@ -694,79 +723,104 @@ def _save_json_list(path: Path, items: list[dict[str, Any]]) -> None:
     os.replace(tmp, path)
 
 
-def _record_legacy_duplicate_candidate(
-    entity: Entity,
-    store: LedgerStore,
-    txn: dict[str, Any],
-    bank_account: str,
-) -> str | None:
-    """Persist a guarded legacy-ID match and return ``new``/``existing``.
+# The match rule name that earlier releases wrote for a same-date, same-amount,
+# same-description hold. It stays so existing review items read the same.
+_SAME_DAY_RULE = "legacy_id_same_account_date_amount_description"
 
-    The match includes the canonical cash account, date, signed amount and a
-    normalized merchant/reference.  It is intentionally a review candidate,
-    not a substitute for the provider's source ID.
+
+def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
+                     cutover_hold_ids: frozenset[str] = frozenset()) -> dict[str, dict[str, Any]]:
+    """Rows of a connected-feed batch that may repeat activity already recorded.
+
+    This is the statement-import duplicate plan (``plan_duplicates``): a row is
+    held when a posted entry or a queued review item on the same ledger account
+    has the same date, amount and description, or the same amount within three
+    days from a different source. A held row is never posted; it goes to the
+    "To check" list for a person to decide. Rows on the same feed are not held
+    against each other by the near-date rule, so two real purchases of one
+    amount are not mistaken for one.
     """
-    source_id = str(txn.get("id") or "")
-    if not source_id:
+    from ..source_ids import source_family
+    from ..statement_import import _txn_amount, plan_duplicates
+
+    mappings = entity.entity_config.get("bank_account_mappings")
+    csv_mappings = entity.entity_config.get("csv_account_mappings")
+    originals: dict[str, dict[str, Any]] = {}
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for txn in txns:
+        source_id = str(txn.get("id") or "")
+        if txn.get("pending") or not source_id:
+            continue
+        try:
+            account = _ledger_account_for_txn(txn, mappings, csv_mappings)
+            day = _parse_date(str(txn.get("date") or "")).isoformat()
+            if txn.get("amount") is None:
+                _ = Decimal(str(txn.get("creditAmount") or "0")) - Decimal(str(txn.get("debitAmount") or "0"))
+            else:
+                _ = Decimal(str(txn["amount"]))
+        except (ValueError, TypeError, ArithmeticError):
+            continue  # The main loop reports a row it cannot read.
+        text = str(txn.get("reference") or txn.get("description") or "")
+        originals[source_id] = txn
+        groups.setdefault((account, source_family(source_id)), []).append(
+            {**txn, "id": source_id, "date": day, "description": text})
+    holds: dict[str, dict[str, Any]] = {}
+    for (account, family), rows in groups.items():
+        plan = plan_duplicates(entity, rows, account, family)
+        for row in plan["import"]:
+            # Dated on or before the cutover and not matched to anything: a late row the old
+            # source may never have sent. A person decides; it is never dropped or posted.
+            if row["id"] in cutover_hold_ids and _legacy_alias_status(entity, row["id"]) != "confirmed-distinct":
+                holds[row["id"]] = {
+                    "source_id": row["id"], "existing_source_id": "", "account": account,
+                    "date": row["date"], "amount": format(_txn_amount(row), "f"),
+                    "description": str(originals[row["id"]].get("description") or ""),
+                    "transaction": dict(originals[row["id"]]), "match_rule": "before_cutover_not_in_books",
+                    "status": "duplicate-candidate"}
+        for held in plan["held"]:
+            source_id = held["source_id"]
+            record = {**held, "transaction": dict(originals[source_id]),
+                      "description": str(originals[source_id].get("description") or "")}
+            if record["match_rule"] == "same_date_amount_description":
+                record["match_rule"] = _SAME_DAY_RULE
+            holds[source_id] = record
+    return holds
+
+
+def _record_feed_hold(entity: Entity, hold: dict[str, Any] | None) -> str | None:
+    """Persist one planned hold. Returns ``new``, ``existing`` or ``None`` (no hold)."""
+    if not hold:
         return None
     candidate_path = entity.staging_dir / _DUPLICATE_CANDIDATES_FILE
     existing_candidates = _load_json_list(candidate_path)
-    if any(str(item.get("source_id") or "") == source_id for item in existing_candidates):
+    if any(str(item.get("source_id") or "") == hold["source_id"] for item in existing_candidates):
         return "existing"
-    try:
-        txn_date = _parse_date(str(txn.get("date") or ""))
-        amount = Decimal(str(txn.get("amount"))).quantize(Decimal("0.01"))
-    except Exception:
-        return None
-    needle = normalize_description(
-        str(txn.get("reference") or txn.get("description") or "")
-    )
-    if not needle:
-        return None
-    for entry in store.load_entries():
-        if entry.date != txn_date or not entry.source_id:
-            continue
-        if normalize_description(entry.narration) != needle:
-            continue
-        if any(posting.account == bank_account and posting.amount == amount for posting in entry.postings):
-            record = {
-                "source_id": source_id,
-                "existing_source_id": entry.source_id,
-                "account": bank_account,
-                "date": txn_date.isoformat(),
-                "amount": str(amount),
-                "description": str(txn.get("description") or ""),
-                "transaction": dict(txn),
-                "match_rule": "legacy_id_same_account_date_amount_description",
-                "status": "duplicate-candidate",
-                "created_at": _now_iso(),
-            }
-            existing_candidates.append(record)
-            _save_json_list(candidate_path, existing_candidates)
-            aliases_path = entity.staging_dir / _SOURCE_ID_ALIASES_FILE
-            aliases = _load_json_list(aliases_path)
-            aliases.append({
-                "source_id": source_id,
-                "canonical_source_id": entry.source_id,
-                "status": "candidate",
-            })
-            _save_json_list(aliases_path, aliases)
-            return "new"
-    return None
+    existing_candidates.append({**hold, "status": "duplicate-candidate", "created_at": _now_iso()})
+    _save_json_list(candidate_path, existing_candidates)
+    aliases_path = entity.staging_dir / _SOURCE_ID_ALIASES_FILE
+    aliases = _load_json_list(aliases_path)
+    aliases.append({
+        "source_id": hold["source_id"],
+        "canonical_source_id": hold["existing_source_id"],
+        "status": "candidate",
+    })
+    _save_json_list(aliases_path, aliases)
+    return "new"
 
 
 def _legacy_alias_status(entity: Entity, source_id: str) -> str:
-    """Return the latest reviewed legacy-ID decision for *source_id*."""
+    """Return the latest reviewed decision for *source_id*, under either spelling."""
+    spellings = source_id_variants(source_id)
     aliases = _load_json_list(entity.staging_dir / _SOURCE_ID_ALIASES_FILE)
     for alias in reversed(aliases):
-        if str(alias.get("source_id") or "") == source_id:
+        if str(alias.get("source_id") or "") in spellings:
             return str(alias.get("status") or "")
     return ""
 
 
 def _ledger_account_for_txn(
     txn: dict,
-    mappings: dict[str, str] | None = None,
+    mappings: dict[str, Any] | None = None,
     csv_mappings: dict[str, dict] | None = None,
 ) -> str:
     """Derive a beancount-safe account name for the bank side of the posting.
@@ -807,11 +861,13 @@ def _ledger_account_for_txn(
 
     mapped_account = None
     if mappings:
+        # A mapping value is the account name (flat) or an object with a
+        # ``ledger_account`` (rich); the key is the provider's account ID.
         if account_id and account_id in mappings:
-            mapped_account = mappings[account_id]
+            mapped_account = bank_mapping_account(mappings[account_id])
         account_name_key = str(txn.get("accountName") or "")
         if mapped_account is None and account_name_key and account_name_key in mappings:
-            mapped_account = mappings[account_name_key]
+            mapped_account = bank_mapping_account(mappings[account_name_key])
     if csv_account is not None:
         if mapped_account is not None and mapped_account != csv_account:
             raise ValueError("Confirmed CSV and bank account mappings conflict; resolve the mappings before posting.")
@@ -1086,11 +1142,13 @@ def reverse_and_correct(
 def _find_live_entry(store: LedgerStore, source_id: str) -> Entry:
     """Find the current non-reversal entry for a source ID."""
     entries = store.load_entries()
-    if any(dict(entry.meta).get("reverses") == source_id for entry in entries):
+    # A BankSync row has two spellings (``abc`` and ``banksync:abc``); either finds it.
+    spellings = source_id_variants(source_id)
+    if any(dict(entry.meta).get("reverses") in spellings for entry in entries):
         raise ValueError(f"Entry with source-id={source_id!r} has already been reversed")
     original: Entry | None = None
     for entry in entries:
-        if entry.source_id != source_id or "reverses" in {key for key, _ in entry.meta}:
+        if entry.source_id not in spellings or "reverses" in {key for key, _ in entry.meta}:
             continue
         original = entry
     if original is None:

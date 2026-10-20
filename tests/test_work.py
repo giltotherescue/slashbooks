@@ -257,7 +257,7 @@ class ScenarioTests(unittest.TestCase):
         events = self.steps["ingest_duplicate_candidate"]
         self.assertEqual(kinds(events), ["flagged"])
         self.assertEqual(events[0]["counts"], {"duplicates": 1})
-        self.assertEqual(events[0]["subjects"], [{"type": "source", "id": "feed-legacy-001"}])
+        self.assertEqual(events[0]["subjects"], [{"type": "source", "id": "banksync:feed-legacy-001"}])
 
     def test_events_never_contain_host_fields_and_money_stays_in_amounts(self) -> None:
         for events in self.steps.values():

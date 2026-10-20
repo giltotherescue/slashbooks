@@ -12,6 +12,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from . import queue
+from .entity import flat_bank_account_mappings
 from .ledger.importer import (_atomic_ledger_write_unlocked, _entity_write_lock,
                              _load_pending_categorization, import_transactions)
 from .ledger.model import Entry, Posting
@@ -354,7 +355,7 @@ def stripe_configure(entity, policy):
     from .entity import map_bank_account
     _, opens, _, _, _ = _state(entity)
     _policy(policy, opens)
-    mappings = entity.entity_config.get('bank_account_mappings') or {}
+    mappings = flat_bank_account_mappings(entity.entity_config)
     targets = {policy['clearing_account'], policy['payout_transit_account']}
     if any(key != policy['stripe_account_id'] and value in targets for key, value in mappings.items()):
         raise ValueError('Stripe processor/transit account is already mapped to another source account.')
@@ -391,7 +392,7 @@ def _bank_action(match, payout, net, pending, posted, owned, opens, entity, cuto
     if needs_treatment(entity, bank):
         raise ValueError('accrual_treatment_required')
     account = match['approved_ledger_account']
-    if ((entity.entity_config.get('bank_account_mappings') or {}).get(bank.get('accountId')) != account
+    if (flat_bank_account_mappings(entity.entity_config).get(bank.get('accountId')) != account
             or account not in opens or not account.startswith('Assets:Bank:')
             or bank.get('accountType') not in {'checking', 'savings'} or bank.get('pending')
             or bank.get('currency', 'USD') != 'USD' or Decimal(str(bank['amount'])) != Decimal(_amount(-net))):
@@ -498,7 +499,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         raise ValueError('Stripe account or live/test mode does not match approved policy.')
     if not isinstance(evidence.get('coverage'), dict) or evidence['coverage'].get('complete') is not True:
         raise ValueError('Captured Stripe cohort coverage must be explicitly complete.')
-    mapping = (entity.entity_config.get('bank_account_mappings') or {}).get(account)
+    mapping = flat_bank_account_mappings(entity.entity_config).get(account)
     if mapping != policy['clearing_account']:
         raise ValueError('Stripe account mapping changed; approve the current processor mapping.')
     cutoff = date.fromisoformat(closed_through) if closed_through else None

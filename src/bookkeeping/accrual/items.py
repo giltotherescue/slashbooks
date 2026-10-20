@@ -6,7 +6,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Mapping
 
-from ..entity import Entity
+from ..entity import Entity, flat_bank_account_mappings
+from ..source_ids import source_id_variants
 from ..ledger.importer import _find_live_entry, _load_pending_categorization, _ledger_account_for_txn
 from .intake import canonical_hash, normalize_amount
 from .journals import JournalError, _day, _evidence, _existing_receipt, _id, _preview_operation, _source_claims, _store, _text
@@ -91,8 +92,9 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("identity_conflict", "Item already exists; use an explicit adjustment.")
     entries = []
     if origin["mode"] == "new":
-        if store.source_exists(origin["source_id"]) or any(i.get("origin", {}).get("source_id") == origin["source_id"]
-                                                         for i in list_records(store, "items")):
+        spellings = source_id_variants(origin["source_id"])
+        if any(store.source_exists(s) for s in spellings) or any(i.get("origin", {}).get("source_id") in spellings
+                                                                 for i in list_records(store, "items")):
             raise JournalError("duplicate_origin", "The source already has a financial origin; link existing support or correct it.")
         if lines is None:
             counter = _account(store, origin.get("counter_account"), "origin.counter_account")
@@ -181,7 +183,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("invalid_settlement_source", "Settlement source needs mode, source_id, bank_account and signed amount.")
     source_id = _id(source["source_id"])
     bank = _account(store, source["bank_account"], "bank_account", ("Assets:", "Liabilities:CreditCard"))
-    mapped_banks = {v for v in (entity.entity_config.get("bank_account_mappings") or {}).values() if isinstance(v, str)}
+    mapped_banks = set(flat_bank_account_mappings(entity.entity_config).values())
     if not bank.startswith(("Assets:Bank:", "Assets:Cash", "Assets:Processors:", "Liabilities:CreditCard")) and bank not in mapped_banks:
         raise JournalError("invalid_bank_account", "Settlement source must be an explicitly mapped bank, cash, processor, or credit-card account.")
     cash = Decimal(normalize_amount(source["amount"]))
@@ -218,12 +220,18 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
     records = _evidence(store, ids)
     claims = []
     if source["mode"] == "new":
-        staged = next((t for t in _load_pending_categorization(entity) if t.get("id") == source_id), None)
+        staged = next((t for t in _load_pending_categorization(entity) if t.get("id") in source_id_variants(source_id)), None)
         if staged:
             staged_amount = Decimal(normalize_amount(staged.get("amount")))
             staged_bank = _ledger_account_for_txn(staged, entity.entity_config.get("bank_account_mappings"), entity.entity_config.get("csv_account_mappings"))
             if staged_amount != cash or str(staged.get("date"))[:10] != when.isoformat() or staged_bank != bank:
                 raise JournalError("staged_payment_mismatch", "Selected bank facts differ from the staged source.")
+            if str(staged.get("id")) != source_id:
+                # The same row under its other spelling: settling it here would leave the staged
+                # row open, and a later confirm would record the cash again.
+                raise JournalError("staged_source_id_differs",
+                                   f"The staged row is {staged.get('id')}; settle it with that source_id.",
+                                   f"Use source_id {staged.get('id')} and create a new preview.")
         # Provider/transport references cannot manufacture a second cash event.
         financial = {"kind": "item_settlement", "date": when.isoformat(), "bank_account": bank,
                      "amount": f"{cash:.2f}", "allocations": sorted(normalized_rows, key=lambda row: row["item_id"])}
@@ -324,7 +332,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
             "signed_amount": f"{excess_cash:.2f}", "date": when.isoformat(), "source_id": source_id,
             "source_mode": source["mode"], "bank_account": bank, "bank_amount": f"{cash:.2f}", "evidence_ids": ids}))
     if source["mode"] == "new":
-        if store.source_exists(source_id) or existing_sources:
+        if any(store.source_exists(s) for s in source_id_variants(source_id)) or existing_sources:
             raise JournalError("duplicate_payment", "The payment is already posted; select existing mode to allocate its remaining amount.")
         if total + excess_cash != cash:
             raise JournalError("unallocated_payment", "A new payment must be fully allocated or its remainder recorded as a credit.",

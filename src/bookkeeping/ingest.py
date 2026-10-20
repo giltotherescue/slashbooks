@@ -26,6 +26,21 @@ Normalized transaction shape (one JSON object per transaction)::
 The input file is either a JSON array of these objects, or an object with a
 ``"transactions"`` array.
 
+Connected bank feeds
+--------------------
+``--source banksync``, ``--source plaid``, ``--source stripe-financial-connections``
+and ``--feed-provider NAME`` mark the input as a connected bank feed. For a
+connected feed:
+
+- Every ``accountId`` must be in ``bank_account_mappings``; an unmapped account
+  stops the import before any row is written.
+- Each ``id`` becomes ``<provider>:<id>``. The old raw BankSync ID and
+  ``banksync:<id>`` name the same row (see ``source_ids.py``).
+- A posted row dated on or before an account's ``cutover_date`` is held for review
+  (never posted, never dropped), unless ``--backfill`` is given. A pending one is skipped.
+- Each row is checked against posted entries and queued review items with the
+  statement duplicate plan; a possible repeat is held for review, never posted.
+
 Feed windows for source coverage
 --------------------------------
 After a successful local import, ``books ingest`` records ``feed_sync``
@@ -56,14 +71,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .entity import load_entity
+from .bank_accounts import clip_windows_to_cutover, split_at_cutover
+from .entity import flat_bank_account_mappings, load_entity
 from . import queue as queue_module
 from .ledger.importer import import_transactions
+from .source_ids import CONNECTED_FEED_PROVIDERS, namespaced_feed_id
 
 
 def add_parser(subparsers: Any) -> None:
@@ -95,6 +113,16 @@ def add_parser(subparsers: Any) -> None:
         "--no-feed-window", dest="record_feed_window", action="store_false",
         help="Write no feed_sync coverage windows for this ingest. A host that reads a provider "
              "in chunks uses this and writes its own windows",
+    )
+    parser.add_argument(
+        "--backfill", action="store_true",
+        help="Import rows dated on or before an account's cutover date in the normal way. Without it, "
+             "a feed import sends such a row to review and never posts it",
+    )
+    parser.add_argument(
+        "--feed-provider", default=None, metavar="NAME",
+        help="Name the bank data provider of a connected feed that is not a built-in --source "
+             "(for example plaid). New source IDs become NAME:<id>",
     )
     parser.add_argument(
         "--session-id",
@@ -149,21 +177,27 @@ def _transactions_from_data(data: Any) -> list[dict]:
     return txns
 
 
-def _require_banksync_mappings(entity: Any, txns: list[dict], source: str) -> None:
-    """Refuse a BankSync close before every feed account has an ID mapping.
+def _require_feed_mappings(entity: Any, txns: list[dict], provider: str | None) -> None:
+    """Refuse a connected-feed import before every feed account has an ID mapping.
 
     Display-name fallback is useful for ad-hoc CSV imports, but unsafe for a
     connected feed: it silently opens a second cash account when a name changes
-    or an opening-balance account already exists.
+    or an opening-balance account already exists. This holds for every connected
+    provider, not only BankSync.
     """
-    if source != "banksync":
+    if not provider:
         return
-    mappings = entity.entity_config.get("bank_account_mappings") or {}
-    missing = sorted({str(txn.get("accountId") or "") for txn in txns if txn.get("accountId") and not mappings.get(str(txn.get("accountId")))})
+    mappings = flat_bank_account_mappings(entity.entity_config)
+    missing = sorted({str(txn.get("accountId") or "") for txn in txns
+                      if txn.get("accountId") and not mappings.get(str(txn.get("accountId")))})
+    if provider != "banksync" and any(not txn.get("accountId") for txn in txns):
+        # A row with no provider account ID cannot be mapped, so it would take the fallback account.
+        missing.append("(rows without an accountId)")
     if missing:
         joined = ", ".join(missing)
+        label = "BankSync" if provider == "banksync" else provider
         raise ValueError(
-            "BankSync account mapping required before ingesting connected activity "
+            f"{label} account mapping required before ingesting connected activity "
             f"for: {joined}. Record each stable feed ID with 'books entity bank-account-map'."
         )
 
@@ -186,7 +220,7 @@ def coverage_windows(data: Any, entity: Any, *, today: date,
     """
     if not isinstance(data, dict) or not record_feed_window:
         return []
-    mappings = entity.entity_config.get("bank_account_mappings") or {}
+    mappings = flat_bank_account_mappings(entity.entity_config)
     windows: list[dict[str, Any]] = []
     if data.get("source") == "banksync" and isinstance(data.get("banks"), list):
         requested = data.get("dateRange") if isinstance(data.get("dateRange"), dict) else {}
@@ -268,6 +302,41 @@ def _is_banksync_download(path: Path) -> bool:
     return isinstance(data, dict) and data.get("source") == "banksync" and isinstance(data.get("banks"), list)
 
 
+_PROVIDER_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
+
+
+def feed_provider(source: str, explicit: str | None, is_banksync: bool) -> str | None:
+    """The connected-feed provider of this ingest, or ``None`` for a generic one.
+
+    ``--feed-provider`` names it. A BankSync download, ``--source banksync`` and
+    the other built-in provider names (``CONNECTED_FEED_PROVIDERS``) imply it.
+    """
+    if explicit:
+        name = explicit.strip().lower()
+        if not _PROVIDER_NAME.fullmatch(name):
+            raise ValueError("--feed-provider must be lowercase letters, digits, '-' or '_'.")
+        return name
+    if is_banksync:
+        return "banksync"
+    return source if source in CONNECTED_FEED_PROVIDERS else None
+
+
+def namespace_feed_ids(txns: list[dict], provider: str) -> list[dict]:
+    """Copies of *txns* with ``<provider>:<id>`` source IDs.
+
+    A pending link (``pendingTransactionId``) names another feed row, so it gets
+    the same prefix. The input rows are not changed.
+    """
+    shaped: list[dict] = []
+    for txn in txns:
+        row = dict(txn)
+        for key in ("id", "pendingTransactionId"):
+            if row.get(key):
+                row[key] = namespaced_feed_id(provider, row[key])
+        shaped.append(row)
+    return shaped
+
+
 def run(args: argparse.Namespace) -> int:
     entity = load_entity(args.entity)
     try:
@@ -284,9 +353,21 @@ def run(args: argparse.Namespace) -> int:
         else:
             txns, verified_banksync = prepared
             is_banksync = args.source == "banksync" or verified_banksync
-        _require_banksync_mappings(
-            entity, txns, "banksync" if is_banksync else args.source
-        )
+        provider = feed_provider(args.source, getattr(args, "feed_provider", None), is_banksync)
+        _require_feed_mappings(entity, txns, provider)
+        # A host-prepared snapshot is verified row by row against the host's own
+        # fingerprints, so the engine must not change its IDs. The host writes
+        # ``<provider>:<id>`` into the snapshot itself.
+        if provider and prepared is None:
+            txns = namespace_feed_ids(txns, provider)
+        before_cutover: dict[str, dict[str, Any]] = {}
+        cutover_hold_ids: frozenset[str] = frozenset()
+        if not getattr(args, "backfill", False):
+            kept, hold_ids, before_cutover = split_at_cutover(entity, txns)
+            if prepared is None:  # A prepared snapshot keeps every row.
+                txns = kept
+            cutover_hold_ids = frozenset(hold_ids)
+            windows = clip_windows_to_cutover(entity, windows)
 
         session_id = args.session_id or (
             f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
@@ -298,8 +379,9 @@ def run(args: argparse.Namespace) -> int:
             session_id=session_id,
             categorizer=categorizer,
             ts=None,
-            legacy_duplicate_guard=is_banksync,
+            legacy_duplicate_guard=provider is not None,
             intake_only=getattr(args, "intake_only", False),
+            cutover_hold_ids=cutover_hold_ids,
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -312,6 +394,11 @@ def run(args: argparse.Namespace) -> int:
     print(f"  posted to ledger:    {result.new_entries}")
     print(f"  queued for review:   {result.pending_categorization}")
     print(f"  duplicates skipped:  {result.skipped_duplicate}")
+    for account, item in sorted(before_cutover.items()):
+        print(f"  before cutover:      {account}: {item['held']} row(s) on or before {item['cutover_date']} "
+              "go to review, none are posted"
+              + (f"; {item['pending_skipped']} pending skipped" if item["pending_skipped"] else "")
+              + " (--backfill imports them normally)")
     if result.duplicate_candidates:
         print(f"  duplicate candidates:{result.duplicate_candidates}")
     if result.late_arrivals:

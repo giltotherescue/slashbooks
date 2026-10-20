@@ -342,8 +342,22 @@ def normalize_bank(bank: Mapping[str, Any]) -> JsonObject:
     return normalized
 
 
+def _account_institution(account: Mapping[str, Any]) -> JsonObject:
+    """Institution identity, only for the fields the provider sent.
+
+    The institution ID and name let a later provider switch find the same bank.
+    A provider that does not send them adds nothing, so older output is unchanged.
+    """
+    institution = account.get("institution") if isinstance(account.get("institution"), Mapping) else {}
+    found = {
+        "institutionId": account.get("institutionId") or institution.get("id"),
+        "institutionName": account.get("institutionName") or institution.get("name"),
+    }
+    return {key: value for key, value in found.items() if value}
+
+
 def normalize_account(account: Mapping[str, Any]) -> JsonObject:
-    return {
+    normalized: JsonObject = {
         "id": account.get("id"),
         "bankId": account.get("bankId"),
         "accountName": account.get("accountName"),
@@ -355,6 +369,8 @@ def normalize_account(account: Mapping[str, Any]) -> JsonObject:
         "createdAt": account.get("createdAt"),
         "updatedAt": account.get("updatedAt"),
     }
+    normalized.update(_account_institution(account))
+    return normalized
 
 
 def normalize_transaction(transaction: Mapping[str, Any]) -> JsonObject:

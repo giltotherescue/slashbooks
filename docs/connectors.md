@@ -81,6 +81,10 @@ array. Each transaction has:
 - `amount` is a signed decimal string; negative means money out. You can instead
   supply `creditAmount` and `debitAmount`.
 - `accountId` is matched against the entity's `bank_account_mappings`.
+  A connected bank feed (`--source banksync`, `--source plaid` or
+  `--feed-provider NAME`) must map every `accountId`; the name fallback below
+  applies only to a generic ingest. New feed rows get the source ID
+  `<provider>:<id>`. See [Switching bank data providers](banksync.md#switching-bank-data-providers).
 - `accountName` and `accountType` (`checking`, `savings`, `credit_card`) are
   optional fallbacks used when `accountId` is not mapped.
 - `pending` is optional; pending transactions are staged, not posted.
