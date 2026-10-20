@@ -209,6 +209,24 @@ class StripeTests(unittest.TestCase):
         self.assertEqual(before, self.files())
         self.assertFalse((self.entity.path / 'learned-context').exists())
 
+    def test_recovery_with_a_payout_to_bank_binding_cleans_every_posted_source(self):
+        from unittest.mock import patch
+        from bookkeeping.ledger.staging import StagingStore
+        matches = self.full_flow()
+        self.stage(bank_matches=matches)
+        with patch.object(StagingStore, 'bulk_mark_seen', side_effect=OSError('after canonical commit')):
+            with self.assertRaises(OSError):
+                self.apply(bank_matches=matches)
+        self.assertEqual(len(self.store.load_entries()), 4)
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual(len(pending), 4)  # The three Stripe rows and the bank row still wait.
+        result = self.apply(bank_matches=matches)
+        self.assertEqual((result['posted'], result['held']), (0, 0))
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+        self.assertEqual(len(self.store.load_entries()), 4)
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        self.assertEqual(self.apply(bank_matches=matches)['posted'], 0)
+
     def test_row_above_the_ask_first_amount_is_staged_held_and_never_applied(self):
         self.entity.trust_policy['ask_first_above'] = '50.00'
         plan = self.stage()
