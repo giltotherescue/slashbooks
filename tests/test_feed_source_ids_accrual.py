@@ -76,6 +76,38 @@ class FeedIdAliasAccrualTests(AccrualFixture):
         self.assertTrue(treatment_checker(entity)(row))
         self.assertFalse(treatment_checker(entity)({**row, "id": "other-id"}))
 
+    def _settlement(self, source_id: str, amount: str) -> dict:
+        return {"operation_id": "wrong-" + source_id.replace(":", "-"), "date": "2026-01-15", "source": {
+            "mode": "new", "source_id": source_id, "bank_account": BANK, "amount": amount},
+            "allocations": [{"item_id": "invoice", "amount": amount}],
+            "evidence_ids": [self.evidence("wrong-" + source_id.replace(":", "-"))]}
+
+    def test_staged_prefixed_row_still_checks_a_settlement_that_uses_the_old_id(self) -> None:
+        self._invoice()
+        import_transactions(self.entity, [bank_row("banksync:abc", amount="400.00")], "new")
+        with self.assertRaises(Exception) as caught:
+            preview_settlement(self.entity, self._settlement("abc", "300.00"))
+        self.assertEqual(getattr(caught.exception, "code", ""), "staged_payment_mismatch")
+
+    def test_staged_old_row_still_checks_a_settlement_that_uses_the_prefixed_id(self) -> None:
+        self._invoice()
+        import_transactions(self.entity, [bank_row("abc", amount="400.00")], "old")
+        with self.assertRaises(Exception) as caught:
+            preview_settlement(self.entity, self._settlement("banksync:abc", "300.00"))
+        self.assertEqual(getattr(caught.exception, "code", ""), "staged_payment_mismatch")
+
+    def test_correct_amount_still_previews_with_either_spelling(self) -> None:
+        self._invoice()
+        import_transactions(self.entity, [bank_row("banksync:abc", amount="400.00")], "new")
+        preview_settlement(self.entity, self._settlement("abc", "400.00"))
+
+    def test_reversal_and_correction_find_a_row_by_either_spelling(self) -> None:
+        from bookkeeping.ledger.importer import _find_live_entry
+        self.post("banksync:abc", "2026-01-15", [(BANK, "5"), (INCOME, "-5")])
+        self.assertEqual(_find_live_entry(self.store, "abc").source_id, "banksync:abc")
+        self.post("old2", "2026-01-16", [(BANK, "6"), (INCOME, "-6")])
+        self.assertEqual(_find_live_entry(self.store, "banksync:old2").source_id, "old2")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1108,11 +1108,13 @@ def reverse_and_correct(
 def _find_live_entry(store: LedgerStore, source_id: str) -> Entry:
     """Find the current non-reversal entry for a source ID."""
     entries = store.load_entries()
-    if any(dict(entry.meta).get("reverses") == source_id for entry in entries):
+    # A BankSync row has two spellings (``abc`` and ``banksync:abc``); either finds it.
+    spellings = source_id_variants(source_id)
+    if any(dict(entry.meta).get("reverses") in spellings for entry in entries):
         raise ValueError(f"Entry with source-id={source_id!r} has already been reversed")
     original: Entry | None = None
     for entry in entries:
-        if entry.source_id != source_id or "reverses" in {key for key, _ in entry.meta}:
+        if entry.source_id not in spellings or "reverses" in {key for key, _ in entry.meta}:
             continue
         original = entry
     if original is None:

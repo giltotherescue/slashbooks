@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any, Mapping
 
 from ..entity import Entity
+from ..source_ids import source_id_variants
 from ..ledger.importer import _find_live_entry
 from ..ledger.model import Entry, Posting
 from .intake import canonical_hash, normalize_amount
@@ -216,7 +217,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
     if mode == "new":
         when = when or _service(record)[0]
         record["origin_date"] = when.isoformat()
-        if store.source_exists(source_id):
+        if any(store.source_exists(s) for s in source_id_variants(source_id)):
             raise JournalError("duplicate_origin", "Funding source is already posted; link it as an existing origin.")
         bank = _account(store, origin.get("funding_account"), "origin.funding_account")
         card = bank == "Liabilities:CreditCard" or bank.startswith("Liabilities:CreditCard:")
@@ -225,7 +226,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
         if bank == account:
             raise JournalError("invalid_origin", "Funding and control accounts must differ.")
         from ..ledger.importer import _load_pending_categorization, _ledger_account_for_txn
-        staged = next((row for row in _load_pending_categorization(entity) if row.get("id") == source_id), None)
+        staged = next((row for row in _load_pending_categorization(entity) if row.get("id") in source_id_variants(source_id)), None)
         if staged:
             staged_bank = _ledger_account_for_txn(staged, entity.entity_config.get("bank_account_mappings"), entity.entity_config.get("csv_account_mappings"))
             if (Decimal(normalize_amount(staged.get("amount"))) != -sign * amount
