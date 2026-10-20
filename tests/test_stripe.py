@@ -114,23 +114,85 @@ class StripeTests(unittest.TestCase):
         self.assertEqual(len(self.store.load_entries()), 2)
         self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
 
-    def test_recovery_refuses_changed_original_charge_authority_in_expanded_capture(self):
+    def test_recovery_holds_changed_original_charge_authority_without_raising(self):
         self._interrupted_sale_then_expanded_capture()
         self.raw['charges'][0]['metadata']['stream'] = 'changed-authority'
-        before = self.files()
-        with self.assertRaisesRegex(ValueError, 'evidence changed'):
-            self.apply()
-        self.assertEqual(self.files(), before)
-        self.assertEqual(len(self.store.load_entries()), 1)
+        result = self.apply()
+        self.assertEqual(result['posted'], 1)  # The unrelated new sale still posts.
+        self.assertEqual(result['held'], 1)
+        self.assertEqual(len(self.store.load_entries()), 2)
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual([row['id'] for row in pending], ['stripe:acct_test:txn_sale'])
 
-    def test_recovery_refuses_changed_policy_even_with_exact_original_source(self):
+    def test_recovery_holds_changed_policy_for_review_even_with_exact_original_source(self):
         self._interrupted_sale_then_expanded_capture()
         self.policy['version'] += 1
-        before = self.files()
-        with self.assertRaisesRegex(ValueError, 'lack an exact finalization receipt'):
-            self.apply()
-        self.assertEqual(self.files(), before)
-        self.assertEqual(len(self.store.load_entries()), 1)
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (1, 1))
+        self.assertEqual(len(self.store.load_entries()), 2)
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual([row['id'] for row in pending], ['stripe:acct_test:txn_sale'])
+
+    def _old_engine_interrupted_sale(self):
+        """Post a sale the way an older engine did: no receipt, cleanup never ran."""
+        from unittest.mock import patch
+        from bookkeeping import stripe as stripe_module
+        from bookkeeping.ledger.staging import StagingStore
+        real = stripe_module._atomic_ledger_write_unlocked
+        self.stage()
+        with patch.object(stripe_module, '_atomic_ledger_write_unlocked',
+                          lambda *a, **k: real(*a, **{**k, 'finalization_receipt': None})), \
+                patch.object(StagingStore, 'bulk_mark_seen', side_effect=OSError('after canonical commit')):
+            with self.assertRaises(OSError):
+                self.apply()
+        self.assertFalse([e for e in self.store.load_audit_events() if e['type'] == 'queue-finalization-intent'])
+
+    def _add_unrelated_sale(self):
+        transaction = copy.deepcopy(self.raw['balanceTransactions'][0])
+        transaction.update(id='txn_new', source='ch_new', created=transaction['created'] + 86400)
+        charge = copy.deepcopy(self.raw['charges'][0])
+        charge.update(id='ch_new', balance_transaction='txn_new')
+        self.raw['balanceTransactions'].append(transaction)
+        self.raw['charges'].append(charge)
+        self.stage()
+
+    def test_old_engine_row_without_receipt_is_cleaned_when_it_matches_the_plan(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (1, 0))
+        self.assertEqual(len(self.store.load_entries()), 2)
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+        self.assertEqual(self.store.verify_audit_chain(), [])
+
+    def test_old_engine_row_with_changed_policy_is_held_and_new_sales_still_post(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        self.policy['version'] += 1
+        result = self.apply()
+        # The new sale posts; the old row waits for review under its own reason.
+        self.assertEqual((result['posted'], result['held']), (1, 1))
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertEqual([row['id'] for row in pending], ['stripe:acct_test:txn_sale'])
+        self.assertEqual([row['reason'] for row in self._plan_after_review()], ['cleanup_needs_review'])
+
+    def _plan_after_review(self):
+        from bookkeeping.stripe import _recover_stripe_cleanup
+        plan = stripe_plan(self.entity, self.raw, self.policy)
+        return _recover_stripe_cleanup(self.entity, plan)[1]
+
+    def test_old_engine_row_with_a_changed_staged_row_is_held_without_raising(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        pending_path = self.entity.staging_dir / 'pending-categorization.json'
+        rows = json.loads(pending_path.read_text())
+        for row in rows:
+            if row['id'] == 'stripe:acct_test:txn_sale':
+                row['stripe_financial_digest'] = 'changed'
+        pending_path.write_text(json.dumps(rows))
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (1, 1))
+        self.assertEqual(len(self.store.load_entries()), 2)
 
     def test_sale_fee_refund_payout_bank_transfer_post_once_with_exact_roles(self):
         matches = self.full_flow()

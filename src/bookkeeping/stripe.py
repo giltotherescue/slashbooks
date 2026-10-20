@@ -697,7 +697,7 @@ def _recover_stripe_cleanup(entity, plan):
     pending = {row['id']: row for row in _load_pending_categorization(entity)}
     eligible &= set(pending)
     if not eligible:
-        return []
+        return [], []
     store = LedgerStore(default_store_path(entity.path))
     if store.verify_audit_chain():
         raise ValueError('Cannot recover Stripe cleanup from an invalid audit chain.')
@@ -705,6 +705,8 @@ def _recover_stripe_cleanup(entity, plan):
     with store.connection() as conn:
         saved = {sid: json.loads(raw) for sid, raw in conn.execute('SELECT id,payload_json FROM source_transactions')}
     recovered = set()
+    covered = set()  # Sources named by a receipt for this policy, exact or not.
+    review = {}
     for event in store.load_audit_events():
         receipt = event['payload']
         if (event['type'] != 'queue-finalization-intent' or not isinstance(receipt, dict)
@@ -718,17 +720,31 @@ def _recover_stripe_cleanup(entity, plan):
             sid = source['id']
             if sid not in eligible:
                 continue
+            covered.add(sid)
             capture_matches = (source.get('capture_digest') == plan['source_capture_digests'].get(sid)
                                if source.get('capture_digest') is not None else
                                receipt.get('evidence_digest') == plan['evidence_digest'])
             if (not capture_matches or _digest(pending[sid]) != source['pending_digest']
                     or sid not in entries or _entry_fingerprint(entries[sid]) != source['entry_digest']
                     or sid not in saved or _digest(saved[sid]) != source['source_digest']):
-                raise ValueError('Stripe finalization evidence changed; reconcile the posted source.')
+                review[sid] = 'receipt does not match the current evidence'
+                continue
             recovered.add(sid)
-    if recovered != eligible:
-        raise ValueError('Posted Stripe sources lack an exact finalization receipt; reconcile them before cleanup.')
-    return sorted(recovered)
+    for sid in sorted(eligible - covered):
+        # No receipt: an older engine posted this source. Clean up only when the
+        # posted entry, the saved source and the staged row all match the plan.
+        entry, meta = entries.get(sid), dict(entries[sid].meta) if sid in entries else {}
+        if (entry is not None and sid in saved
+                and meta.get('stripe-policy-digest') == plan['policy_digest']
+                and meta.get('stripe-source-digest') == _digest(saved[sid])
+                and pending[sid].get('stripe_financial_digest') == saved[sid].get('stripe_financial_digest')
+                and _same_source(pending[sid], saved[sid])):
+            recovered.add(sid)
+        else:
+            review[sid] = 'no receipt and the posted entry does not match the current plan'
+    recovered -= set(review)
+    return sorted(recovered), [dict(source_id=sid, reason='cleanup_needs_review', detail=review[sid])
+                               for sid in sorted(review)]
 
 
 def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches=None,
@@ -747,7 +763,8 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
                            limit=limit, after_source_id=after_source_id)
         if plan['plan_digest'] != expected_plan_digest:
             raise ValueError('Stripe plan changed; refresh the captured plan before applying.')
-        recovered = _recover_stripe_cleanup(entity, plan)
+        recovered, needs_review = _recover_stripe_cleanup(entity, plan)
+        plan['unresolved'] = [*plan['unresolved'], *needs_review]  # After the digest; not part of it.
         pending = {row['id']: row for row in _load_pending_categorization(entity)}
         if any(action['source_id'] not in pending for action in plan['actions']):
             raise ValueError('Stage every selected source before applying the approved Stripe plan.')
