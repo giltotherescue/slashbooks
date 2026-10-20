@@ -163,6 +163,17 @@ def source_root(metadata: Mapping[str, str], by_source: Mapping[str, Mapping[str
     return current
 
 
+class LedgerUnreadableError(ValueError):
+    """The ledger file is damaged or is not a ledger. Error code: ledger_unreadable."""
+
+    code = "ledger_unreadable"
+
+    def __init__(self, detail: str = "") -> None:
+        message = ("ledger_unreadable: the ledger file cannot be read. Restore it from a backup "
+                   "or check that the file is a Slashbooks ledger.")
+        super().__init__(f"{message} ({detail})" if detail else message)
+
+
 def load_postings(entity_path: Path | str, accounts: Sequence[str]) -> dict[str, Series]:
     """All postings, with opening state retained separately from period flow."""
     items: dict[str, list[tuple[date, Decimal]]] = {account: [] for account in accounts}
@@ -170,14 +181,17 @@ def load_postings(entity_path: Path | str, accounts: Sequence[str]) -> dict[str,
     store_path = default_store_path(Path(entity_path))
     if store_path.is_file() and accounts:
         placeholders = ",".join("?" for _ in accounts)
-        with LedgerStore(store_path).connection() as conn:
-            entries = {str(sid): (date.fromisoformat(day), dict(json.loads(meta)))
-                       for sid, day, meta in conn.execute(
-                           "SELECT source_id,date,metadata_json FROM entries WHERE source_id IS NOT NULL")}
-            metadata = {sid: facts[1] for sid, facts in entries.items()}
-            rows = conn.execute(
-                f"SELECT p.account,e.date,p.amount,e.metadata_json FROM postings p JOIN entries e ON e.id=p.entry_id "
-                f"WHERE p.account IN ({placeholders})", list(accounts)).fetchall()
+        try:
+            with LedgerStore(store_path).connection() as conn:
+                entries = {str(sid): (date.fromisoformat(day), dict(json.loads(meta)))
+                           for sid, day, meta in conn.execute(
+                               "SELECT source_id,date,metadata_json FROM entries WHERE source_id IS NOT NULL")}
+                metadata = {sid: facts[1] for sid, facts in entries.items()}
+                rows = conn.execute(
+                    f"SELECT p.account,e.date,p.amount,e.metadata_json FROM postings p JOIN entries e ON e.id=p.entry_id "
+                    f"WHERE p.account IN ({placeholders})", list(accounts)).fetchall()
+        except sqlite3.DatabaseError as exc:
+            raise LedgerUnreadableError(type(exc).__name__) from exc
         for account, raw_day, raw_amount, raw_meta in rows:
             day, amount = _day(raw_day), _dec(raw_amount)
             if day is not None and amount is not None:
@@ -283,7 +297,10 @@ def balance_check(entity_path: Path | str, items: Sequence[Mapping[str, Any]]) -
     """
     from .entity import flat_bank_account_mappings, load_entity
 
-    entity = load_entity(entity_path)
+    try:
+        entity = load_entity(entity_path)
+    except sqlite3.DatabaseError as exc:
+        raise LedgerUnreadableError(type(exc).__name__) from exc
     mappings = flat_bank_account_mappings(entity.entity_config)
     rows: list[dict[str, Any]] = []
     groups: dict[str, list[Mapping[str, Any]]] = {}
