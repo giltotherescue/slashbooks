@@ -20,12 +20,15 @@ proven when every condition is true:
    before the day of the check. The reading is not marked partial, and when it
    was read the feed already had every transaction through ``D``
    (``data_through`` on or after ``D``), so the balance holds no pending item.
-   The earliest such reading is used. It needs a full read time with a time zone.
+   It needs a full read time with a time zone.
 4. Feed windows (``feed_sync`` coverage records) cover every day from
    ``start`` through ``D`` with no gap. A feed that started in the month, or
    a missing window, leaves the month unproven.
 5. No bank row for the account waits in review on or before ``D``.
 6. The books balance through ``D`` equals the bank balance on ``D``.
+
+The earliest reading that meets conditions 4 to 6 is used. When no reading
+does, the earliest reading after the month end gives the reason.
 
 Then the bank balance at month end is the balance on ``D`` less the posted
 activity after ``end`` through ``D``. Because the feed is complete for every day
@@ -218,6 +221,11 @@ def _row(account_id: str, ledger: str | None, month: str | None, reason: str, **
             "reconcile": None, "reading": None, **fields}
 
 
+def _shown(reading: Mapping[str, Any]) -> dict[str, Any]:
+    return {"balance": _fmt(reading["balance"]), "as_of": reading["as_of"], "day": reading["day"].isoformat(),
+            "retrieved_at": reading["retrieved_at"], "data_through": reading["data_through"].isoformat()}
+
+
 def _month(account_id: str, ledger: str, month: str, start: date, end: date, readings: list[dict[str, Any]],
            windows: list[tuple[date, date]], postings: Any, waiting: Any,
            existing: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -228,20 +236,34 @@ def _month(account_id: str, ledger: str, month: str, start: date, end: date, rea
             return _row(account_id, ledger, month, "already_reconciled")
         if not _from_feed(existing):
             return _row(account_id, ledger, month, "existing_record")
-    reading = next((r for r in readings if r["day"] >= end), None)
-    if reading is None:
+    after_end = [r for r in readings if r["day"] >= end]
+    if not after_end:
         return _row(account_id, ledger, month, "no_balance_after_month_end")
-    day = reading["day"]
-    if not _covers(windows, start, day):
-        return _row(account_id, ledger, month, "feed_incomplete")
-    if waiting.count_between(None, day):
-        return _row(account_id, ledger, month, "waiting_in_review")
-    shown = {"balance": _fmt(reading["balance"]), "as_of": reading["as_of"], "day": day.isoformat(),
-             "retrieved_at": reading["retrieved_at"], "data_through": reading["data_through"].isoformat()}
-    books_on_day = postings.through(day)
-    if books_on_day != reading["balance"]:
-        return _row(account_id, ledger, month, "books_differ", reading=shown,
+    first: dict[str, Any] | None = None
+    for reading in after_end:
+        day = reading["day"]
+        if not _covers(windows, start, day):
+            outcome = "feed_incomplete"
+        elif waiting.count_between(None, day):
+            outcome = "waiting_in_review"
+        elif postings.through(day) != reading["balance"]:
+            outcome = "books_differ"
+        else:
+            outcome = "proven"
+        if first is None:
+            first = {"reason": outcome, "reading": reading}
+        if outcome == "proven":
+            break
+    else:
+        reading = first["reading"]
+        if first["reason"] != "books_differ":
+            return _row(account_id, ledger, month, first["reason"])
+        books_on_day = postings.through(reading["day"])
+        return _row(account_id, ledger, month, "books_differ", reading=_shown(reading),
                     books_balance=_fmt(books_on_day), difference=_fmt(reading["balance"] - books_on_day))
+    day = reading["day"]
+    shown = _shown(reading)
+    books_on_day = postings.through(day)
     after = postings.between(end + timedelta(days=1), day) if day > end else _ZERO
     closing = reading["balance"] - after
     activity = postings.between(start, end)

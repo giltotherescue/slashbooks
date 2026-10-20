@@ -84,6 +84,12 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual((months["2026-09"]["reason"], months["2026-09"]["difference"]), ("books_differ", "-10.00"))
         self.assertIsNone(months["2026-09"]["reconcile"])
 
+    def test_a_later_matching_reading_proves_the_month_after_an_earlier_one_differs(self):
+        months = self.proof([reading("1290.00", "2026-10-01"), reading("1250.00")])
+        self.assertEqual(months["2026-09"]["reason"], "proven")
+        self.assertEqual(months["2026-09"]["reading"]["day"], "2026-10-05")
+        self.assertEqual(months["2026-09"]["reconcile"]["source_balance"], "1300.00")
+
     def test_cards_and_other_types_are_never_proven(self):
         post(self.company, CARD, "2026-09-05", "-80.00", other="Expenses:Software")
         for account_id, kind in (("feed-card", "credit"), ("feed-chk", "treasury"), ("feed-chk", "")):
