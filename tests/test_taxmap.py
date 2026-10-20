@@ -358,6 +358,66 @@ class HandoffTests(unittest.TestCase):
                       "UltraTax CS Import"):
             self.assertIn(f'name="{sheet}"', workbook)
 
+    def _large_accounting(self, accounts=400):
+        chart = [{"account": f"Expenses:Category-{n:04d}", "account_type": "Expenses", "currency": "USD",
+                  "detail_type": "", "open_date": "2025-12-31", "source_account": f"Expenses:Category-{n:04d}"}
+                 for n in range(accounts)]
+        return {"basis": "accrual", "currency": "USD", "requested_from": "2026-01-01", "requested_to": "2026-12-31",
+                "summary_included": False, "unresolved_issues": [],
+                "coverage": {"basis": "accrual", "chart": chart, "cutover_date": "2026-01-01", "id": "opening",
+                             "summary_from": None, "summary_to": None, "mapping_hash": "0" * 64}}
+
+    def test_read_me_shows_a_short_coverage_summary_and_manifest_keeps_the_full_block(self):
+        from unittest.mock import patch
+
+        accounting = self._large_accounting()
+        out = Path(self.temp.name) / "big"
+        with patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
+            manifest = export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
+        text = (out / "README.txt").read_text(encoding="utf-8")
+        self.assertNotIn("Category-0001", text)
+        self.assertNotIn("mapping_hash", text)
+        self.assertLess(len(text), 4000)
+        line = next(row for row in text.splitlines() if row.startswith("Accounting coverage:"))
+        self.assertIn("accrual basis", line)
+        self.assertIn("cutover 2026-01-01", line)
+        self.assertIn("historical detail available", line)
+        self.assertEqual(manifest["accounting"], accounting)
+        self.assertEqual(json.loads((out / "manifest.json").read_text())["accounting"], accounting)
+
+    @unittest.skipUnless(importlib.util.find_spec("xlsxwriter"), "xlsx extra not installed")
+    def test_xlsx_read_me_cell_stays_short_for_a_large_chart(self):
+        import zipfile
+        from unittest.mock import patch
+
+        accounting = self._large_accounting(accounts=600)
+        self.assertGreater(len(json.dumps(accounting)), 32767)
+        out = Path(self.temp.name) / "bigx"
+        with patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
+            export_handoff(self.company, *YEAR, output_dir=out, formats=["xlsx"])
+        with zipfile.ZipFile(out / "tax-handoff-1120s-2026-01-01_2026-12-31.xlsx") as archive:
+            strings = archive.read("xl/sharedStrings.xml").decode()
+        self.assertNotIn("Category-0001", strings)
+        self.assertIn("Accounting coverage", strings)
+        self.assertLess(max(len(piece) for piece in re.findall(r"<t[^>]*>([^<]*)</t>", strings)), 2000)
+
+    def test_per_account_company_gets_a_per_account_basis_label(self):
+        from unittest.mock import patch
+
+        out = Path(self.temp.name) / "pa"
+        with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
+                patch("bookkeeping.taxmap.tracking_start", return_value="2026-04-01"):
+            handoff = build_handoff(self.company, *YEAR)
+            export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
+        self.assertIn("Cash basis, accrual tracking for selected accounts from 2026-04-01", handoff["basis_label"])
+        text = (out / "README.txt").read_text(encoding="utf-8")
+        self.assertIn("Basis: Cash basis, accrual tracking for selected accounts from 2026-04-01", text)
+        self.assertNotIn("Accrual basis book balances", text)
+
+    def test_cash_company_keeps_the_plain_basis_label(self):
+        handoff = build_handoff(self.company, *YEAR)
+        self.assertIsNone(handoff["basis_label"])
+
     def test_each_supported_form_exports_a_balanced_trial_balance(self):
         for form in FORMS:
             with self.subTest(form=form):

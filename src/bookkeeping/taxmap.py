@@ -52,6 +52,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .entity import _locked_entity_operation, load_entity
 from .safe_cells import neutralize_rows
+from .accrual.scope import DISCIPLINE_PER_ACCOUNT, discipline, tracking_start
 
 
 FORMS: dict[str, str] = {
@@ -772,6 +773,10 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     finally:
         conn.close()
     settings = _settings(entity.entity_config)
+    basis_label = None
+    if discipline(entity.entity_config) == DISCIPLINE_PER_ACCOUNT:
+        basis_label = (f"Cash basis, accrual tracking for selected accounts from {tracking_start(entity.entity_config)}; "
+                       "book balances computed by the Slashbooks engine")
     rows = [r for r in period_balances(entity.path, from_date, to_date)
             if r["balance"] != _ZERO or (r["beginning"] not in (None, _ZERO))]
     mapping = {m.account: m for m in build_mapping(entity.entity_config, (r["account"] for r in rows), resolved)}
@@ -822,6 +827,7 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     return {
         "entity_name": entity.name,
         "accounting_basis": accounting["basis"],
+        "basis_label": basis_label,
         "accounting": accounting,
         "form": resolved,
         "form_basis": form_basis,
@@ -927,6 +933,20 @@ def _ultratax_table(handoff: Mapping[str, Any]) -> list[list[str]]:
     return rows
 
 
+def _coverage_summary(accounting: Mapping[str, Any]) -> str:
+    """A short Read Me line. The full accounting block stays in manifest.json."""
+    coverage = accounting.get("coverage")
+    if not coverage:
+        return ""
+    parts = [f"{accounting.get('basis', 'cash')} basis", f"cutover {coverage.get('cutover_date') or 'not set'}"]
+    if coverage.get("summary_from") and coverage.get("summary_to"):
+        parts.append(f"summary period {coverage['summary_from']} to {coverage['summary_to']}"
+                     + (" (included)" if accounting.get("summary_included") else " (not included)"))
+    detail = accounting.get("historical_detail_available", True)
+    parts.append("historical detail " + ("available" if detail else "not available before the cutover"))
+    return "; ".join(parts) + ". Full details are in manifest.json."
+
+
 def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[list[str]]:
     totals = handoff["totals"]
     rows = [
@@ -936,15 +956,16 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
         ["Return", f"{FORMS[handoff['form']]} ({handoff['form']}, chosen by {handoff['form_basis']})"],
         ["Line numbers", f"Tax year {TAX_YEAR_BASIS} federal forms; confirm against the current year's form"],
         ["Period", f"{handoff['from'].isoformat()} to {handoff['to'].isoformat()}"],
-        ["Basis", handoff["accounting_basis"].title() + " basis book balances computed by the Slashbooks engine"],
+        ["Basis", handoff.get("basis_label") or handoff["accounting_basis"].title() + " basis book balances computed by the Slashbooks engine"],
         ["Total debits", _money(totals["debit"])],
         ["Total credits", _money(totals["credit"])],
         ["Unmapped accounts", str(len(handoff["unmapped"]))],
         ["Sign convention", "Balance columns are debit-positive and credit-negative"],
         ["Tax computation", "None. Book amounts only; the preparer makes all tax adjustments"],
     ]
-    if handoff.get("accounting", {}).get("coverage"):
-        rows.append(["Accounting coverage", json.dumps(handoff["accounting"], sort_keys=True)])
+    summary = _coverage_summary(handoff.get("accounting") or {})
+    if summary:
+        rows.append(["Accounting coverage", summary])
     for name, path in files.items():
         rows.append([name, path])
     return rows
