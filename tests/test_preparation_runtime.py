@@ -12,6 +12,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -952,6 +954,42 @@ print('done', flush=True)
         replacement = next(entry for entry in self.store.load_entries() if entry.source_id == "source-a-equity")
         self.assertEqual([(p.account, str(p.amount)) for p in replacement.postings],
                          [("Assets:Bank:Checking", "-100.00"), ("Equity:Partner-A", "60.00"), ("Equity:Partner-B", "40.00")])
+
+
+class FinancialCeilingTests(unittest.TestCase):
+    """One amount-limit rule for managed items and schedules."""
+
+    def setUp(self):
+        self.limit = patch.object(queue, "_enforced_ask_first", return_value=Decimal("1000"))
+        self.limit.start()
+        self.addCleanup(self.limit.stop)
+
+    def check(self, payload, previous=None):
+        mutation = SimpleNamespace(table="items", record_id="item-1", payload=payload)
+        with patch("bookkeeping.accrual.store.load_record", return_value=previous):
+            preparation_runtime._enforce_financial_ceiling(SimpleNamespace(path=Path("/nonexistent")), [], [mutation])
+
+    def test_new_record_above_the_limit_is_refused(self):
+        with self.assertRaises(queue.AskFirstError):
+            self.check({"amount": "1500.00"})
+        self.check({"amount": "900.00"})
+
+    def test_small_increases_cannot_add_up_past_the_limit(self):
+        self.check({"amount": "900.00"}, {"amount": "800.00"})
+        with self.assertRaises(queue.AskFirstError):
+            self.check({"amount": "1050.00"}, {"amount": "1000.00"})  # +50 only, but 1050 in full
+
+    def test_settling_a_record_that_is_above_the_limit_is_not_blocked(self):
+        self.check({"amount": "5000.00", "remaining_amount": "2000.00"}, {"amount": "5000.00", "remaining_amount": "3000.00"})
+        self.check({"recognized_amount": "4000.00"}, {"recognized_amount": "3000.00"})
+
+    def test_an_unreadable_amount_gets_the_ask_first_refusal(self):
+        for bad in (None, "not a number", "NaN", "Infinity", {}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(queue.AskFirstError):
+                    self.check({"amount": bad})
+                with self.assertRaises(queue.AskFirstError):
+                    self.check({"amount": bad}, {"amount": "10.00"})
 
 
 if __name__ == "__main__":

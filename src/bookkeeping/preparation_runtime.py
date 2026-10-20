@@ -160,16 +160,32 @@ def _enforce_financial_ceiling(entity: Entity, entries: Any, mutations: Any = ()
     from .accrual.store import load_record
     store = LedgerStore(entity.path / "ledger.sqlite")
     for mutation in mutations:
-        if mutation.table in {"items", "schedules"}:
-            previous = load_record(store, mutation.table, mutation.record_id) or {}
-            for key in ("amount", "original_amount", "remaining_amount", "recognized_amount"):
-                if key in mutation.payload:
-                    amount = Decimal(str(mutation.payload[key]))
-                    # A regular recognition/settlement checks its current effect,
-                    # not the full previously approved lifetime commitment.
-                    if previous and entries:
-                        amount -= Decimal(str(previous.get(key, "0")))
-                    _refuse_above_ask_first(entity, amount)
+        if mutation.table not in {"items", "schedules"}:
+            continue
+        previous = load_record(store, mutation.table, mutation.record_id) or {}
+        for key in ("amount", "original_amount", "remaining_amount", "recognized_amount"):
+            if key not in mutation.payload:
+                continue
+            # One rule for a new record and an existing one: size the full new
+            # commitment whenever it is new or grows. Small steps cannot add up
+            # past the limit, because each growth is sized in full. An unchanged
+            # or smaller amount (a settlement) is not sized again, and neither is
+            # the running recognized total of a commitment that was already sized.
+            if previous and key == "recognized_amount":
+                continue
+            amount = _readable_amount(mutation.payload[key])
+            before = _readable_amount(previous.get(key, "0")) if previous else None
+            if amount is not None and before is not None and amount <= before:
+                continue
+            _refuse_above_ask_first(entity, amount)  # None (unreadable) gets the same refusal.
+
+
+def _readable_amount(value: Any) -> Decimal | None:
+    try:
+        amount = Decimal(str(value))
+    except (ArithmeticError, ValueError, TypeError):
+        return None
+    return amount if amount.is_finite() else None
 
 
 def authorize_accrual_operation(entity: Entity, dates: Any, records: Any, entries: Any, mutations: Any = ()) -> dict[str, Any]:
