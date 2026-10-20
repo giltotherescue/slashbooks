@@ -691,10 +691,15 @@ def _entry_fingerprint(entry):
                        postings=[(p.account, str(p.amount), p.currency) for p in entry.postings]))
 
 
+def _without_hold(row):
+    """A staged row as it was before a review hold marker was added."""
+    return {key: value for key, value in row.items() if key != 'review_hold_reason'}
+
+
 def _recover_stripe_cleanup(entity, plan):
     """Clean only exact sources bound to a canonical, intact Stripe receipt."""
     eligible = {row['source_id'] for row in plan['skipped'] if row['reason'] == 'already_posted'}
-    pending = {row['id']: row for row in _load_pending_categorization(entity)}
+    pending = {row['id']: _without_hold(row) for row in _load_pending_categorization(entity)}
     eligible &= set(pending)
     if not eligible:
         return [], []
@@ -765,6 +770,8 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
             raise ValueError('Stripe plan changed; refresh the captured plan before applying.')
         recovered, needs_review = _recover_stripe_cleanup(entity, plan)
         plan['unresolved'] = [*plan['unresolved'], *needs_review]  # After the digest; not part of it.
+        if needs_review:
+            queue._set_pending_hold_reason(entity, [row['source_id'] for row in needs_review], queue.STRIPE_CLEANUP_HOLD_REASON)
         pending = {row['id']: row for row in _load_pending_categorization(entity)}
         if any(action['source_id'] not in pending for action in plan['actions']):
             raise ValueError('Stage every selected source before applying the approved Stripe plan.')
@@ -792,4 +799,31 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
             StagingStore(entity.staging_dir).bulk_mark_seen(ids)
             queue._remove_many_from_pending_categorization(entity, ids)
         return dict(posted=len(entries), skipped=len(plan['skipped']), held=len(plan['unresolved']),
-                    next_cursor=plan['next_cursor'], plan_digest=plan['plan_digest'])
+                    next_cursor=plan['next_cursor'], plan_digest=plan['plan_digest'],
+                    unresolved=[dict(row) for row in plan['unresolved']],
+                    needs_review=[dict(row) for row in needs_review])
+
+
+def stripe_dismiss_held(entity, source_id, *, note, session_id='stripe-dismiss', ts=None):
+    """Remove one held, already posted Stripe row from Review after a person checks the posted entry.
+
+    Only a row marked ``cleanup_needs_review`` whose source is already in the ledger can be dismissed.
+    The ledger entry is not changed. The dismissal is written to the audit log with the note.
+    """
+    note = ' '.join(str(note or '').split())[:500]
+    if not note:
+        raise ValueError('A note that says what the person checked is required to dismiss a held Stripe row.')
+    with _entity_write_lock(entity.path):
+        row = next((r for r in _load_pending_categorization(entity) if r.get('id') == source_id), None)
+        if row is None or row.get('review_hold_reason') != queue.STRIPE_CLEANUP_HOLD_REASON:
+            raise ValueError('Only a Stripe row held with cleanup_needs_review can be dismissed.')
+        store = LedgerStore(default_store_path(entity.path))
+        if not store.source_exists(source_id):
+            raise ValueError('The row is not posted; confirm it or leave it in Review instead.')
+        with store.transaction() as conn:
+            store.append_audit_event('stripe-cleanup-dismissed', dict(
+                source_id=source_id, note=note, session_id=session_id, pending_digest=_digest(_without_hold(row))),
+                conn, ts=ts)
+        StagingStore(entity.staging_dir).bulk_mark_seen([source_id])
+        queue._remove_many_from_pending_categorization(entity, [source_id])
+        return dict(dismissed=source_id, note=note)

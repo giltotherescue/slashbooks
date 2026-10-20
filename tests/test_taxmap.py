@@ -417,6 +417,18 @@ class HandoffTests(unittest.TestCase):
         self.assertIn("Basis: Cash basis, accrual tracking for selected accounts from 2026-04-01", text)
         self.assertNotIn("Accrual basis book balances", text)
 
+    def test_per_account_label_has_a_fallback_when_the_start_date_is_missing(self):
+        from unittest.mock import patch
+
+        accounting = {"basis": "accrual", "currency": "USD", "coverage": None, "requested_from": "2026-01-01",
+                      "requested_to": "2026-12-31", "unresolved_issues": []}
+        with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
+                patch("bookkeeping.taxmap.tracking_start", return_value=None), \
+                patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
+            handoff = build_handoff(self.company, *YEAR)
+        self.assertNotIn("None", handoff["basis_label"])
+        self.assertIn("from a start date that is not recorded", handoff["basis_label"])
+
     def test_per_account_company_without_accrual_records_keeps_the_plain_label(self):
         from unittest.mock import patch
 

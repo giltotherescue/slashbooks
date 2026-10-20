@@ -776,7 +776,9 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     basis_label = None
     # Only once accrual records exist. Turning tracking on changes no export.
     if accounting["basis"] == "accrual" and discipline(entity.entity_config) == DISCIPLINE_PER_ACCOUNT:
-        basis_label = (f"Cash basis, accrual tracking for selected accounts from {tracking_start(entity.entity_config)}; "
+        started = tracking_start(entity.entity_config)
+        since = f"from {started}" if started else "from a start date that is not recorded"
+        basis_label = (f"Cash basis, accrual tracking for selected accounts {since}; "
                        "book balances computed by the Slashbooks engine")
     rows = [r for r in period_balances(entity.path, from_date, to_date)
             if r["balance"] != _ZERO or (r["beginning"] not in (None, _ZERO))]

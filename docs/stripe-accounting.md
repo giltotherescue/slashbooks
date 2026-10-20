@@ -143,3 +143,19 @@ Review, and the other rows in the batch still post. A source that an older engin
 posted without a receipt is cleaned up only when its saved source digest, its policy
 digest and its staged row all match the current plan; if they do not match, it gets
 the same reason.
+
+`stripe_apply` returns the held rows. `unresolved` lists every held row as
+`{source_id, reason}`, and `needs_review` lists only the cleanup rows as
+`{source_id, reason: "cleanup_needs_review", detail}`; `held` is the length of
+`unresolved`. Each cleanup row also gets `review_hold_reason: "cleanup_needs_review"`
+in Review. If a person proposes a category for it, the confirm is refused with a
+message that names this reason, because the source is already posted.
+
+A person resolves the row in one of two ways:
+
+- Restore the original evidence or policy and repeat the same `stripe_apply`. The
+  engine verifies the row again, cleans it up and removes the hold.
+- If the posted entry is correct and the evidence cannot be restored, check the entry,
+  then call `stripe_dismiss_held(entity, source_id, note=...)`. It removes the row from
+  Review, writes an audit event with the note, and does not change the ledger entry.
+  It refuses a row that is not held with this reason or not posted.

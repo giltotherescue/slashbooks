@@ -181,6 +181,61 @@ class StripeTests(unittest.TestCase):
         plan = stripe_plan(self.entity, self.raw, self.policy)
         return _recover_stripe_cleanup(self.entity, plan)[1]
 
+    def test_apply_returns_the_held_rows_with_their_reasons(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        self.policy['version'] += 1
+        result = self.apply()
+        self.assertEqual(result['held'], 1)
+        self.assertEqual([(row['source_id'], row['reason']) for row in result['needs_review']],
+                         [('stripe:acct_test:txn_sale', 'cleanup_needs_review')])
+        self.assertIn(('stripe:acct_test:txn_sale', 'cleanup_needs_review'),
+                      [(row['source_id'], row['reason']) for row in result['unresolved']])
+        self.assertTrue(all('detail' in row for row in result['needs_review']))
+
+    def _held_row(self):
+        self._old_engine_interrupted_sale()
+        self._add_unrelated_sale()
+        self.policy['version'] += 1
+        self.apply()
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        return next(row for row in pending if row['id'] == 'stripe:acct_test:txn_sale')
+
+    def test_held_row_carries_a_review_hold_reason_and_confirm_names_it(self):
+        from bookkeeping import queue
+        row = self._held_row()
+        self.assertEqual(row['review_hold_reason'], 'cleanup_needs_review')
+        queue.propose(self.entity, row['id'], INCOME, 'A person proposes a category.')
+        with self.assertRaisesRegex(ValueError, 'cleanup_needs_review') as raised:
+            queue.confirm(self.entity, row['id'], 'person-session')
+        self.assertIn('already posted', str(raised.exception))
+        self.assertNotIn('different queue operation', str(raised.exception))
+        self.assertEqual(len(self.store.load_entries()), 2)
+
+    def test_held_row_can_be_dismissed_with_a_note_and_leaves_review(self):
+        from bookkeeping.stripe import stripe_dismiss_held
+        row = self._held_row()
+        with self.assertRaises(ValueError):
+            stripe_dismiss_held(self.entity, row['id'], note='')
+        with self.assertRaises(ValueError):
+            stripe_dismiss_held(self.entity, 'stripe:acct_test:txn_new', note='Not held.')
+        result = stripe_dismiss_held(self.entity, row['id'], note='Checked the posted entry against the charge.')
+        self.assertEqual(result['dismissed'], row['id'])
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertNotIn(row['id'], [r['id'] for r in pending])
+        events = [e for e in self.store.load_audit_events() if e['type'] == 'stripe-cleanup-dismissed']
+        self.assertEqual(events[0]['payload']['source_id'], row['id'])
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        self.assertEqual(len(self.store.load_entries()), 2)
+
+    def test_held_row_cleans_up_when_the_original_policy_returns(self):
+        self._held_row()
+        self.policy['version'] -= 1
+        result = self.apply()
+        self.assertEqual((result['posted'], result['held']), (0, 0))
+        pending = json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text())
+        self.assertNotIn('stripe:acct_test:txn_sale', [r['id'] for r in pending])
+
     def test_old_engine_row_with_a_changed_staged_row_is_held_without_raising(self):
         self._old_engine_interrupted_sale()
         self._add_unrelated_sale()
