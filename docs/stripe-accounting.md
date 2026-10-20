@@ -137,4 +137,9 @@ then completes cleanup without posting again. A newer capture may contain
 additional movements: recovery compares the original movement's referenced
 authority objects, not the whole capture. Changes to that source's charge,
 invoice, refund, payout or other relevant authority evidence still block cleanup. Changed or unproven evidence
-requires reconciliation before cleanup.
+requires reconciliation before cleanup. This holds the one row, not the batch: the
+row is reported as unresolved with the reason `cleanup_needs_review`, it stays in
+Review, and the other rows in the batch still post. A source that an older engine
+posted without a receipt is cleaned up only when its saved source digest, its policy
+digest and its staged row all match the current plan; if they do not match, it gets
+the same reason.

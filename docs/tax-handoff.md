@@ -268,8 +268,11 @@ preparer makes those decisions.
 
 The handoff uses canonical book postings. For accrual-enabled books, unpaid invoices and bills
 remain accrual amounts even if the default profit and loss view is cash. The Read Me sheet,
-README.txt and manifest identify the accounting basis; `accounting_basis` and `accounting`
-carry that basis and coverage metadata in the manifest.
+README.txt and manifest identify the accounting basis. The Read Me shows a short coverage
+line (basis, cutover date, summary period and whether historical detail is available).
+The full `accounting` block, with the account chart and hashes, stays only in
+`manifest.json`, next to `accounting_basis`. A company that tracks accrual for selected
+accounts only is labeled "Cash basis, accrual tracking for selected accounts from <date>".
 
 A historical opening summary supports its complete fiscal period, not arbitrary earlier months.
 Unsupported pre-cutover subperiods or dates before the source balances are refused before any

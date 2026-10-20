@@ -459,4 +459,6 @@ Opening schedules begin recognition on the later of the cutover and the first
 service date. Future service never recognizes early. The opening preview applies
 the same service-date checks as a new schedule: `equal_month` requires whole
 calendar months, including the remaining recognition interval. Use `actual_day`
-when the remaining service starts partway through a month.
+when the remaining service starts partway through a month. The error for a mid-month
+`equal_month` opening names `actual_day`. An older request that an earlier engine
+accepted with a mid-month `service_start` is now refused with this message.

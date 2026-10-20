@@ -311,11 +311,14 @@ before any write.
 
 `books balance check` compares a balance that a bank feed reported with the
 books balance for the mapped ledger account on the same day. It is read-only.
-Balance, coverage and review-readiness checks hold the company's shared lock
-through all ledger, staging and evidence reads. Local imports, confirmations
-and configuration updates wait until that snapshot is complete. The first
+Balance, coverage and review-readiness checks hold a shared lock on the company
+through all ledger, staging and evidence reads. Two checks can run together and a
+check needs no write access to the company folder. Local imports, confirmations
+and configuration updates wait until the snapshot is complete. The first
 check may create the empty operational file `.books.lock`; it changes no
-accounting records. Hosted workspace manifests exclude this lock file.
+accounting records. Hosted workspace manifests exclude this lock file. If the
+ledger file is damaged, `books balance check` stops with the error code
+`ledger_unreadable`.
 The host supplies the bank facts:
 
 ```sh
@@ -645,7 +648,10 @@ not currently require entrepreneurs to download monthly statements as part of th
 normal close.
 
 OFX, QFX and QBO readers validate every transaction amount and statement balance
-as finite exact cents before importing any row or retaining the file. Import
+inside each bank and card statement (`STMTRS` and `CCSTMTRS`) as finite exact
+cents before importing any row or retaining the file. An empty balance amount is
+skipped. Investment sections are not read; an investment file still returns
+`unsupported_statement`. Import
 checks include reversal and correction lineage when comparing file totals with
 the books. A first statement adds period movements to its supplied opening
 balance once; an imported opening journal on that first date supplies state,
