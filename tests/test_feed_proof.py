@@ -136,6 +136,17 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual(self.proof([late], time_zone="America/Los_Angeles")["2026-09"]["reason"], "no_balance_after_month_end")
         self.assertEqual(self.proof([late], time_zone="UTC")["2026-09"]["reason"], "proven", "06:30 UTC on 10-01")
 
+    def test_the_margin_is_six_real_hours_on_a_daylight_saving_day(self):
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        from bookkeeping.feed_proof import day_closed_at
+        ny = ZoneInfo("America/New_York")
+        # March 8 2026 is the spring-forward day: its midnight is 05:00 UTC, so the margin ends at 11:00 UTC.
+        self.assertEqual(day_closed_at(date(2026, 3, 7), ny), datetime(2026, 3, 8, 11, 0, tzinfo=timezone.utc))
+        # November 1 2026 is the fall-back day: its midnight is 04:00 UTC.
+        self.assertEqual(day_closed_at(date(2026, 10, 31), ny), datetime(2026, 11, 1, 10, 0, tzinfo=timezone.utc))
+        self.assertEqual(day_closed_at(date(2026, 9, 30), ny), datetime(2026, 10, 1, 10, 0, tzinfo=timezone.utc))
+
     def test_a_balance_as_of_a_time_after_it_was_read_is_not_used(self):
         item = {**reading("1250.00"), "as_of": "2026-10-05T10:00:00+00:00", "retrieved_at": "2026-10-05T09:00:00Z"}
         self.assertEqual(self.proof([item])["2026-09"]["reason"], "no_balance_after_month_end")
@@ -151,7 +162,8 @@ class FeedProofTests(unittest.TestCase):
                      [{"id": "w", "date": "2026-10-03", "amount": "nine", "accountId": "feed-chk"}],
                      [{"id": "w", "date": "2026-10-03", "accountId": "feed-chk"}],
                      ["not an object"],
-                     [{"id": "csv:1", "date": "2026-10-03", "amount": "-9.00", "accountId": CHECKING, "csvMappingKey": "unknown"}]):
+                     [{"id": "csv:1", "date": "2026-10-03", "amount": "-9.00", "accountId": CHECKING, "csvMappingKey": "unknown"}],
+                     [{"id": "x", "date": "2026-10-03", "amount": "-9.00", "accountName": 123}]):
             stage(self.company, rows)
             [row] = self.proof([reading("1250.00")]).values()
             self.assertEqual(row["reason"], "waiting_unreadable", rows)

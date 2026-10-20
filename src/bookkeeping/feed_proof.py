@@ -87,6 +87,10 @@ Limits that remain (a statement finds the first three):
 - The balance used is the current balance the host read from the bank. A bank
   that includes pending items in it makes the reading differ, and the month
   waits (it does not prove a wrong figure).
+- Only rows waiting in review (``staging/pending-categorization.json``) count as
+  waiting. Rows in ``staging/pending.json`` and held duplicate candidates are not
+  checked. A transaction that is really missing from the books still shows as a
+  difference between the books and the bank, so it cannot prove a wrong month.
 - The readings, ``data_through``, ``partial``, the time zone and the feed windows
   are facts from the host. The engine checks that they agree with each other and
   with the books; it cannot check them against the bank.
@@ -99,7 +103,7 @@ an earlier feed proof made is checked again.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from decimal import Decimal, InvalidOperation
 import json
 from pathlib import Path
@@ -162,6 +166,16 @@ def _zone(value: Any) -> tuple[tzinfo | None, bool]:
         return ZoneInfo(value), True
     except Exception:  # noqa: BLE001 - an unknown or unloadable zone is not usable
         return None, False
+
+
+def day_closed_at(day: date, zone: tzinfo) -> datetime:
+    """The first instant at which a reading counts as read after ``day`` at the bank.
+
+    It is ``SAFETY_MARGIN_HOURS`` real hours after the bank's midnight that starts the next day. The midnight is
+    turned into UTC first, so a daylight-saving change does not make the margin shorter or longer.
+    """
+    midnight = datetime.combine(day + timedelta(days=1), time(0), tzinfo=zone).astimezone(timezone.utc)
+    return midnight + timedelta(hours=SAFETY_MARGIN_HOURS)
 
 
 def _account_type(value: Any) -> str:
@@ -434,7 +448,7 @@ def _month(account_id: str, ledger: str, month: str, start: date, end: date, rea
             return _row(account_id, ledger, month, "existing_record")
     # The bank day of the month end must be over, with a margin: read at least SAFETY_MARGIN_HOURS after the bank's
     # midnight that starts the next day.
-    closed = datetime.combine(end + timedelta(days=1), time(0), tzinfo=zone) + timedelta(hours=SAFETY_MARGIN_HOURS)
+    closed = day_closed_at(end, zone)
     after_end = [r for r in readings if r["day"] >= end and r["instant"] >= closed]
     if not after_end:
         return _row(account_id, ledger, month, "no_balance_after_month_end")

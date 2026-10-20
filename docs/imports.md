@@ -345,8 +345,9 @@ The input is `{"accounts": [{"account_id", "account_type", "time_zone", "currenc
 `time_zone` (the IANA name of the bank's time zone) is required; `currency` is
 optional. `balance` is the current balance that the bank reported when it was
 read, not a statement balance. A reading is used only when `partial` is `false`,
-`as_of` is not later than `retrieved_at`, it was read at least 6 hours after the
-bank's midnight that ends the month, and `data_through` reaches the balance day.
+`as_of` is not later than `retrieved_at`, it was read at least 6 real hours after
+the bank's midnight that starts the day after the month end, and `data_through`
+reaches the balance day.
 
 A month is proven only when feed windows cover every day from the month start
 through the balance day, nothing waits in review (and the review file can be
@@ -371,6 +372,9 @@ Limits that remain:
 - Errors that cancel each other inside one month are not found. Across a month
   end, the opening chain finds them.
 - The proof shows balances, not categories: a wrong category is not found.
+- Only rows waiting in review count as waiting. Rows in `staging/pending.json` and
+  held duplicate candidates are not checked; a transaction that is really missing
+  still shows as a difference between the books and the bank.
 - The balance used is the current balance. When the bank counts pending items in
   it, the month waits.
 - The readings, dates, time zone and feed windows are facts from the host. The

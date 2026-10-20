@@ -210,7 +210,7 @@ def load_waiting_checked(entity: Any, accounts: Sequence[str]) -> tuple[dict[str
         try:
             account = _ledger_account_for_txn(
                 txn, config.get("bank_account_mappings"), config.get("csv_account_mappings"))
-        except ValueError:
+        except Exception:  # noqa: BLE001 - any row whose account cannot be decided counts against every account
             everywhere()
             continue
         if account not in items:
