@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from bookkeeping import __version__, cli, hosted  # noqa: E402
 
 
-TOKEN = "synthetic-hosted-token-never-print"
+TOKEN = "example-token-here"
 
 
 class LocalAPI:

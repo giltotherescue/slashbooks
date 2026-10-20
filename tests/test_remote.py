@@ -25,7 +25,7 @@ from bookkeeping.ledger.store import LedgerStore
 from bookkeeping.remote_contract import command_spec, parse_command
 
 
-TOKEN = "synthetic-remote-token"
+TOKEN = "example-token-here"
 LEGACY_LEDGER = b'''option "title" "Synthetic remote migration"
 option "operating_currency" "USD"
 2026-01-01 open Assets:Bank:Checking USD

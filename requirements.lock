@@ -1,0 +1,3 @@
+# Slashbooks core has no required runtime dependencies (see pyproject.toml).
+# This lockfile pins the optional [xlsx] extra for reproducible installs.
+xlsxwriter==3.2.9

@@ -152,7 +152,7 @@ class TestDotenvLoading(unittest.TestCase):
                 "\n".join(
                     [
                         "# local credentials",
-                        "BANKSYNC_API_KEY='from-file'",
+                        "BANKSYNC_API_KEY='example-key-here'",
                         'OTHER_KEY="quoted"',
                         "export THIRD_KEY=plain",
                     ]
@@ -298,7 +298,7 @@ class MidPaginationErrorTransport:
 class BankSyncTests(unittest.TestCase):
     def test_client_sends_api_key_header_and_date_filters(self) -> None:
         transport = FakeBankSyncTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         client.list_transactions(
             "bank_mercury",
@@ -308,12 +308,12 @@ class BankSyncTests(unittest.TestCase):
         )
 
         call = transport.calls[0]
-        self.assertEqual(call["headers"]["X-API-Key"], "test_key")
+        self.assertEqual(call["headers"]["X-API-Key"], "example-key-here")
         self.assertEqual(call["query"], {"from": ["2026-01-01"], "to": ["2026-01-31"]})
 
     def test_collect_bank_data_and_stats_sanitize_accounts(self) -> None:
         transport = FakeBankSyncTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         collected = collect_bank_data(
             client,
@@ -372,7 +372,7 @@ class BankSyncTests(unittest.TestCase):
                 ]
 
         stdout = StringIO()
-        with patch.dict(os.environ, {"BANKSYNC_API_KEY": "test_key"}):
+        with patch.dict(os.environ, {"BANKSYNC_API_KEY": "example-key-here"}):
             with patch.object(cli_module, "BankSyncClient", StubClient):
                 with redirect_stdout(stdout):
                     exit_code = cli_module.main(["connector", "banksync", "accounts", "--bank-id", "bank_mercury"])
@@ -396,7 +396,7 @@ class PaginationTests(unittest.TestCase):
             self.assertLessEqual(len(calls), len(pages), "Unexpected extra page request")
             return 200, json.dumps(pages[len(calls) - 1])
 
-        return BankSyncClient(api_key="synthetic-key", transport=transport), calls
+        return BankSyncClient(api_key="example-key-here", transport=transport), calls
 
     def test_hosted_meta_cursor_fetches_two_rows_and_preserves_filters(self):
         client, calls = self.paged_client([
@@ -564,7 +564,7 @@ class PaginationTests(unittest.TestCase):
     def test_three_pages_returns_all_250_transactions_in_order(self) -> None:
         """Happy path: 3-page transport yields all 250 txns exactly once, in order."""
         transport = MultiPageTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         txns = client.list_transactions("bank_paged", "acct_ops")
 
@@ -576,7 +576,7 @@ class PaginationTests(unittest.TestCase):
     def test_three_pages_passes_cursors_correctly(self) -> None:
         """Each subsequent request carries the cursor from the previous response envelope."""
         transport = MultiPageTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         client.list_transactions("bank_paged", "acct_ops")
 
@@ -593,7 +593,7 @@ class PaginationTests(unittest.TestCase):
     def test_empty_page_with_cursor_continues_to_next_page(self) -> None:
         """An empty data array with a cursor present does not stop pagination."""
         transport = EmptyPageWithCursorTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         txns = client.list_transactions("bank_e", "acct_e")
 
@@ -603,7 +603,7 @@ class PaginationTests(unittest.TestCase):
     def test_single_page_response_unchanged(self) -> None:
         """A response with no cursor returns the same result as before pagination."""
         transport = FakeBankSyncTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         txns = client.list_transactions("bank_mercury", "acct_ops")
 
@@ -614,7 +614,7 @@ class PaginationTests(unittest.TestCase):
     def test_mid_pagination_http_500_raises_banksync_error(self) -> None:
         """A server error mid-pagination raises BankSyncError immediately (no partial silent success)."""
         transport = MidPaginationErrorTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         with self.assertRaises(BankSyncError) as ctx:
             client.list_transactions("bank_err", "acct_err")
@@ -627,7 +627,7 @@ class PaginationTests(unittest.TestCase):
     def test_collect_bank_data_benefits_from_pagination(self) -> None:
         """collect_bank_data automatically gets all pages via list_transactions."""
         transport = MultiPageTransport()
-        client = BankSyncClient(api_key="test_key", transport=transport)
+        client = BankSyncClient(api_key="example-key-here", transport=transport)
 
         # We need list_banks to work — stub it via a wrapper
         class BanksWrapper:
@@ -733,8 +733,8 @@ class ValidateSubcommandTests(unittest.TestCase):
         ]
         if extra_args:
             args.extend(extra_args)
-        with patch.dict(os.environ, {"BANKSYNC_API_KEY": "test_key"}):
-            with patch.object(cli_module, "BankSyncClient", lambda **kwargs: BankSyncClient(api_key="test_key", transport=transport)):
+        with patch.dict(os.environ, {"BANKSYNC_API_KEY": "example-key-here"}):
+            with patch.object(cli_module, "BankSyncClient", lambda **kwargs: BankSyncClient(api_key="example-key-here", transport=transport)):
                 with redirect_stdout(stdout):
                     exit_code = cli_module.main(args)
         self.assertEqual(exit_code, 0)
@@ -819,7 +819,7 @@ class ValidateSubcommandTests(unittest.TestCase):
         """API key must never appear in validate output."""
         transport = _make_validate_transport(stable=True)
         stdout = StringIO()
-        fake_token = "redacted-test-token"
+        fake_token = "example-token-here"
         with patch.dict(os.environ, {"BANKSYNC_API_KEY": fake_token}):
             with patch.object(cli_module, "BankSyncClient", lambda **kwargs: BankSyncClient(api_key=fake_token, transport=transport)):
                 with redirect_stdout(stdout):
