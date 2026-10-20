@@ -331,6 +331,29 @@ def profit_and_loss(
     return cash_view(entity_path, from_date, to_date)
 
 
+def journal_coverage_view(conn: Any, to_date: date) -> Optional[str]:
+    """The coverage rule for a reader of the journal when no accrual view was named.
+
+    A range that ends on or after the tracking start never refuses: before the start the journal is the cash books.
+    A range that ends before the start keeps the default view's rule.
+    """
+    from ..accrual.scope import tracking_start
+    first = tracking_start(conn)
+    return None if first and to_date.isoformat() < first else "cash"
+
+
+def recorded_profit_and_loss(entity_path: Path | str, from_date: date, to_date: date) -> StatementResult:
+    """Profit and loss of the recorded journal, for readers of the journal such as the accountant package.
+
+    Before the tracking start the journal is the cash books, so a range that crosses the start is not refused.
+    """
+    conn = open_cache(Path(entity_path))
+    try:
+        return _compute_pnl(conn, from_date, to_date, coverage_view=journal_coverage_view(conn, to_date))
+    finally:
+        conn.close()
+
+
 def _stamp_view(metadata: dict[str, Any], view: Optional[str]) -> dict[str, Any]:
     """Name the view on a statement rendered on a view other than the default."""
     if view:
@@ -406,11 +429,15 @@ def _kept_basis(entity_path: Path) -> Optional[str]:
         return None
 
 
-def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] = None) -> StatementResult:
+def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] = None,
+                 coverage_view: Optional[str] = None) -> StatementResult:
+    """``coverage_view`` is the view whose coverage rule applies. Readers of the journal (the cash flow statement,
+    the package) pass "cash": before the tracking start the journal is the cash books, so they never refuse a range
+    that crosses it."""
     from ..accrual.reports import financial_metadata
     if from_date > to_date:
         raise ValueError("Report start date must be on or before end date.")
-    metadata = _stamp_view(financial_metadata(conn, "pnl", from_date, to_date, view), view)
+    metadata = _stamp_view(financial_metadata(conn, "pnl", from_date, to_date, coverage_view or view), view)
     balances = _account_balances_in_range(conn, from_date, to_date)
 
     # Income: credit-normal → positive balance means credit → income positive
@@ -662,14 +689,17 @@ def general_ledger(
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        return _compute_general_ledger(conn, from_date, to_date, _statement_view(conn, "general ledger", view))
+        # The general ledger is the journal. Only an explicit accrual view refuses a range before the tracking start.
+        return _compute_general_ledger(conn, from_date, to_date, _statement_view(conn, "general ledger", view),
+                                       coverage_view="accrual" if view == "accrual" else journal_coverage_view(conn, to_date))
     finally:
         conn.close()
 
 
-def _compute_general_ledger(conn: Any, from_date: date, to_date: date, view: Optional[str] = None) -> StatementResult:
+def _compute_general_ledger(conn: Any, from_date: date, to_date: date, view: Optional[str] = None,
+                            coverage_view: Optional[str] = None) -> StatementResult:
     from ..accrual.reports import financial_metadata
-    metadata = _stamp_view(financial_metadata(conn, "general_ledger", from_date, to_date, view), view)
+    metadata = _stamp_view(financial_metadata(conn, "general_ledger", from_date, to_date, coverage_view or view), view)
     rows_by_account: dict[str, list[dict]] = {}
 
     from ..accrual.reports import settlement_details
@@ -1382,6 +1412,14 @@ def _coverage_failure(args: Any, exc: Exception) -> int:
         if getattr(args, "fmt", "text") != "text":
             parts.append(f"--format {args.fmt}")
         lines.append(f"The first available date is {first}. Run: {' '.join(parts)}")
+        if ("Accrual figures start on" in str(exc) and command in {"pnl", "general-ledger", "balance-sheet", "trial-balance"}
+                and getattr(args, "basis", None) != "cash"):
+            cash = [f"books report {command} --entity {args.entity}", "--basis cash"]
+            if command in {"pnl", "general-ledger"}:
+                cash.append(f"--from {args.from_date} --to {args.to_date}")
+            else:
+                cash.append(f"--as-of {args.as_of}")
+            lines.append(f"To keep the whole period, use the cash view. Run: {' '.join(cash)}")
     print("\n".join(lines), file=sys.stderr)
     return 1
 

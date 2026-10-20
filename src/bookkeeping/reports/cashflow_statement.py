@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .cache import get_account_balance, open_cache
-from .statements import _SEP, _account_balances_as_of, _compute_pnl
+from .statements import _SEP, _account_balances_as_of, _compute_pnl, journal_coverage_view
 from .structure import SCHEMA_VERSION
 
 ZERO = Decimal("0.00")
@@ -527,7 +527,7 @@ def cash_flow(entity_path: Path | str, from_date: date, to_date: date) -> Cashfl
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        pnl = _compute_pnl(conn, from_date, to_date)  # canonical income, independent of default view
+        pnl = _compute_pnl(conn, from_date, to_date, coverage_view=journal_coverage_view(conn, to_date))  # recorded income
     finally:
         conn.close()
     if pnl.meta.get("summary_included"):

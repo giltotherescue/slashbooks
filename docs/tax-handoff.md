@@ -272,8 +272,7 @@ README.txt and manifest identify the accounting basis. The Read Me shows a short
 line (basis, cutover date, summary period and whether historical detail is available).
 The full `accounting` block, with the account chart and hashes, stays only in
 `manifest.json`, next to `accounting_basis`. A company that tracks accrual for selected
-accounts only is labeled "Cash basis, accrual tracking for selected accounts from <date> (cash entries before <date>,
-accrual records from <date>) ... not a tax cash-basis view" once it has accrual records. Turning tracking on alone changes no export.
+accounts only is labeled "Cash basis, with accrual tracking for selected accounts from <date>. Book balances as recorded, not a tax cash-basis view; the preparer adjusts." once it has accrual records. Turning tracking on alone changes no export.
 
 A historical opening summary supports its complete fiscal period, not arbitrary earlier months.
 Unsupported pre-cutover subperiods or dates before the source balances are refused before any

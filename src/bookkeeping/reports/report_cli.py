@@ -47,9 +47,11 @@ def run_extended(args: Any, entity: Path, output: Optional[Path], fmt: str) -> O
     if compare and rc in {"pnl", "balance-sheet", "cashflow"}:
         return _run_compare(args, entity, output, fmt, rc, compare)
     if rc == "pnl" and structure and fmt == "json":
-        from .statements import profit_and_loss
+        from .statements import _kept_basis, profit_and_loss
         from .structure import structured_json
-        result = profit_and_loss(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), basis=getattr(args, "basis", None))
+        # The same view value as the plain report: a named view, else the default view, so the cash view is derived.
+        result = profit_and_loss(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date),
+                                 basis=getattr(args, "basis", None) or _kept_basis(entity))
         _emit(structured_json(result), output)
         return 0
     if rc == "balance-sheet" and structure and fmt == "json":
@@ -69,7 +71,9 @@ def _run_compare(args: Any, entity: Path, output: Optional[Path], fmt: str, rc: 
 
     try:
         if rc == "pnl":
-            result = comparative.compare_pnl(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), mode, basis=getattr(args, "basis", None))
+            from .statements import _kept_basis
+            result = comparative.compare_pnl(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), mode,
+                                             basis=getattr(args, "basis", None) or _kept_basis(entity))
         elif rc == "balance-sheet":
             result = comparative.compare_balance_sheet(entity, date.fromisoformat(args.as_of), mode)
         else:
