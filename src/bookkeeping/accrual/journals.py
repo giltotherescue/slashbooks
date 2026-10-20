@@ -119,11 +119,18 @@ def _entry_document(entry: Entry) -> dict[str, Any]:
             "totals": _journal_totals([entry])}
 
 
-def _journal_totals(entries: Sequence[Entry]) -> dict[str, str]:
+def journal_totals(entries: Sequence[Entry]) -> dict[str, str]:
+    """Debits, credits and their difference for entries, as two-decimal strings.
+
+    This is the public helper. Callers outside this module use it, not ``_journal_totals``.
+    """
     debit = sum((p.amount for entry in entries for p in entry.postings if p.amount > 0), Decimal(0))
     credit = sum((-p.amount for entry in entries for p in entry.postings if p.amount < 0), Decimal(0))
     return {"debits": f"{debit:.2f}", "credits": f"{credit:.2f}",
             "difference": f"{debit - credit:.2f}", "currency": "USD"}
+
+
+_journal_totals = journal_totals  # Private name kept as an alias for existing callers.
 
 
 def _posting_amount(row: Mapping[str, Any]) -> str:

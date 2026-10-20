@@ -465,5 +465,18 @@ class AccrualJournalTests(unittest.TestCase):
                 runtime._active.reset(token)
 
 
+class JournalTotalsHelperTests(unittest.TestCase):
+    def test_public_helper_and_private_alias_agree(self):
+        from datetime import date
+        from decimal import Decimal
+        from bookkeeping.ledger.model import Entry, Posting
+        entry = Entry(date=date(2026, 1, 2), narration="Synthetic", meta=(),
+                      postings=(Posting("Assets:Bank:Checking", Decimal("-30.00")),
+                                Posting("Expenses:Software", Decimal("30.00"))))
+        expected = {"debits": "30.00", "credits": "30.00", "difference": "0.00", "currency": "USD"}
+        self.assertEqual(journals.journal_totals([entry]), expected)
+        self.assertIs(journals._journal_totals, journals.journal_totals)
+
+
 if __name__ == "__main__":
     unittest.main()
