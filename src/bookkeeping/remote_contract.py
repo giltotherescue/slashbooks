@@ -94,7 +94,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                         ("queue", "transfer-exceptions"), ("queue", "duplicates"),
                         ("bank", "match-account")}  # A proposal; a person confirms before any mapping
             # Tax handoff: read-only checks and exports.
-            or path in {("coverage", "check"), ("coverage", "statement-list"), ("balance", "check"), ("import", "check"),
+            or path in {("coverage", "check"), ("coverage", "statement-list"), ("balance", "check"), ("balance", "prove"), ("import", "check"),
                         ("tax", "lines"), ("tax", "map"), ("tax", "export")})
     mutates = not read and not network
     if path[0] == "accrual":

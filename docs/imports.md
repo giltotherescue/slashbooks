@@ -341,6 +341,56 @@ appears once and every balance has the same effective date. Each row has `status
 combined balance returns `not_aligned`, with `reason` of `duplicate_account_id`
 or `balance_dates_not_aligned`; no combined balance or difference is claimed.
 
+### Month-end proof from a bank feed
+
+`books balance prove` says, for each finished month of a feed-connected checking
+or savings account, whether the feed balance proves the month-end balance. It is
+read-only. For a proven month it prints the exact figures for `books reconcile`.
+
+```sh
+books balance prove --entity ~/Documents/books/acme-co --input readings.json --as-of 2026-10-20
+```
+
+The input is `{"accounts": [{"account_id", "account_type", "time_zone", "currency",
+"readings": [{"balance", "as_of", "retrieved_at", "data_through", "partial"}]}]}`.
+`time_zone` (the IANA name of the bank's time zone) is required; `currency` is
+optional. `balance` is the current balance that the bank reported when it was
+read, not a statement balance. A reading is used only when `partial` is `false`,
+`as_of` is not later than `retrieved_at`, it was read at least 6 real hours after
+the bank's midnight that starts the day after the month end, and `data_through`
+reaches the balance day.
+
+A month is proven only when feed windows cover every day from the month start
+through the balance day, nothing waits in review (and the review file can be
+read), the books equal the bank on that day, and the opening balance is proven.
+The opening comes from the reconciliation or statement of the month before. In
+the first month of the feed windows it is zero only when nothing in the books is
+dated earlier and every posting of the month came from a source; an
+opening-balance entry dated inside that month needs a statement. Cards, loans and
+other types are never proven. Each row has `status` (`proven` or `not_proven`)
+and `reason`, one of `proven`, `already_reconciled`, `existing_record`,
+`unmapped`, `shared_ledger_account`, `not_checking_or_savings`,
+`time_zone_required`, `unknown_time_zone`, `currency_mismatch`,
+`other_currency`, `unreadable_postings`, `waiting_unreadable`,
+`no_balance_after_month_end`, `feed_incomplete`, `waiting_in_review`,
+`books_differ`, `opening_unproven` or `opening_differs`.
+
+Limits that remain:
+
+- A transaction that the books date on the other side of the month end than the
+  bank does is not found when the two agree again on the reading day and no
+  reading falls on the month end. A statement finds it.
+- Errors that cancel each other inside one month are not found. Across a month
+  end, the opening chain finds them.
+- The proof shows balances, not categories: a wrong category is not found.
+- Only rows waiting in review count as waiting. Rows in `staging/pending.json` and
+  held duplicate candidates are not checked; a transaction that is really missing
+  still shows as a difference between the books and the bank.
+- The balance used is the current balance. When the bank counts pending items in
+  it, the month waits.
+- The readings, dates, time zone and feed windows are facts from the host. The
+  engine checks them against each other and against the books, not against the bank.
+
 ## PDF and image statements
 
 The engine does not read a PDF or an image. A reader outside the engine, either a

@@ -20,6 +20,9 @@ Three checks
   Staged rows that are not yet in the ledger are counted as ``waiting_rows``.
 - ``balance_check``: a balance that a bank feed reported agrees with the books
   balance for the mapped ledger account on the same day.
+
+``feed_proof`` (``books balance prove``) uses the same books side to say when a
+feed balance proves a month-end balance for a checking or savings account.
 """
 
 from __future__ import annotations
@@ -224,33 +227,64 @@ def load_postings(entity_path: Path | str, accounts: Sequence[str]) -> dict[str,
 
 def load_waiting(entity: Any, accounts: Sequence[str]) -> dict[str, Series]:
     """Staged rows (not yet posted) per ledger account, in ledger sign."""
+    return load_waiting_checked(entity, accounts)[0]
+
+
+def load_waiting_checked(entity: Any, accounts: Sequence[str]) -> tuple[dict[str, Series], dict[str, int]]:
+    """Staged rows per ledger account, and how many rows could not be read for each account.
+
+    ``load_waiting`` leaves out a row it cannot read. A check that must know that
+    nothing waits uses this form. A file that exists but does not parse, a row
+    that is not an object, and a row whose account cannot be decided count
+    against every account. A row of one account with a date or an amount that
+    cannot be read counts against that account.
+    """
     from .ledger.importer import _ledger_account_for_txn
 
     items: dict[str, list[tuple[date, Decimal]]] = {account: [] for account in accounts}
+    unreadable = {account: 0 for account in accounts}
+
+    def everywhere() -> None:
+        for account in unreadable:
+            unreadable[account] += 1
+
     path = Path(entity.staging_dir) / "pending-categorization.json"
-    try:
-        staged = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    staged: Any = []
+    if path.exists():
+        try:
+            staged = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            staged = None
+    if not isinstance(staged, list):
+        everywhere()
         staged = []
     config = entity.entity_config
-    for txn in staged if isinstance(staged, list) else []:
+    for txn in staged:
         if not isinstance(txn, dict):
+            everywhere()
             continue
         try:
             account = _ledger_account_for_txn(
                 txn, config.get("bank_account_mappings"), config.get("csv_account_mappings"))
-        except ValueError:
+        except Exception:  # noqa: BLE001 - any row whose account cannot be decided counts against every account
+            everywhere()
             continue
         if account not in items:
             continue
         day = _day(txn.get("date"))
         if txn.get("amount") is None:
-            amount = (_dec(txn.get("creditAmount")) or _ZERO) - (_dec(txn.get("debitAmount")) or _ZERO)
+            sides = [txn.get("creditAmount"), txn.get("debitAmount")]
+            given = [value for value in sides if value not in (None, "")]
+            readable = bool(given) and all(_dec(value) is not None for value in given)
+            amount = (_dec(sides[0]) or _ZERO) - (_dec(sides[1]) or _ZERO)
         else:
             amount = _dec(txn.get("amount"))
+            readable = amount is not None
+        if day is None or not readable:
+            unreadable[account] += 1
         if day is not None and amount is not None:
             items[account].append((day, amount))
-    return {account: Series(values) for account, values in items.items()}
+    return {account: Series(values) for account, values in items.items()}, unreadable
 
 
 # ---------------------------------------------------------------------------
@@ -403,11 +437,16 @@ def add_parser(subparsers: Any) -> None:
                        help='JSON list of {"account_id", "balance", "as_of", "data_through"}; '
                             'optional "retrieved_at" and "sign" ("presentation" or "ledger")')
     check.add_argument("--format", choices=["json", "text"], default="json", dest="fmt")
+    from . import feed_proof
+    feed_proof.add_parser(sub)
 
 
 def run(args: Any) -> int:
     import sys
 
+    if getattr(args, "balance_command", None) == "prove":
+        from . import feed_proof
+        return feed_proof.run(args)
     try:
         payload = json.loads(Path(args.input).read_text(encoding="utf-8"))
         items = payload.get("accounts") if isinstance(payload, dict) else payload
