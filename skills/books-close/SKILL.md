@@ -257,10 +257,13 @@ For a checking or savings account that a bank feed covers, a statement is not
 always needed. `scripts/books balance prove --entity <entity-path> --input <readings.json> --as-of <today>`
 says, for each finished month, whether the feed balance proves the month end, and
 gives the exact `reconcile` figures for a proven month. It proves a month only when
-the feed covers every day from the month start through the day of a balance
-reading, nothing waits in review, and the books equal the bank on that day. Cards,
-loans and other account types stay on the statement path. The command is
-read-only; record the result with `reconcile` and the stored reading as evidence.
+the balance was read after the month end, the feed covers every day from the month
+start through the balance day, nothing waits in review, the books equal the bank on
+that day, and the opening balance is the proven closing of the month before. Cards,
+loans and other account types stay on the statement path. The command is read-only;
+record the result with `reconcile` and the stored reading as evidence. It cannot
+find a transaction that the books date in the wrong month when the bank and the
+books agree again by the reading day; a statement finds it. See `docs/imports.md`.
 
 For each duplicate candidate, show the existing and new source IDs, date, amount,
 and description. After the owner decides, record the decision explicitly:
