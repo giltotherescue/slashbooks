@@ -405,14 +405,27 @@ class HandoffTests(unittest.TestCase):
         from unittest.mock import patch
 
         out = Path(self.temp.name) / "pa"
+        accounting = {"basis": "accrual", "currency": "USD", "coverage": None, "requested_from": "2026-01-01",
+                      "requested_to": "2026-12-31", "unresolved_issues": []}
         with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
-                patch("bookkeeping.taxmap.tracking_start", return_value="2026-04-01"):
+                patch("bookkeeping.taxmap.tracking_start", return_value="2026-04-01"), \
+                patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
             handoff = build_handoff(self.company, *YEAR)
             export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
         self.assertIn("Cash basis, accrual tracking for selected accounts from 2026-04-01", handoff["basis_label"])
         text = (out / "README.txt").read_text(encoding="utf-8")
         self.assertIn("Basis: Cash basis, accrual tracking for selected accounts from 2026-04-01", text)
         self.assertNotIn("Accrual basis book balances", text)
+
+    def test_per_account_company_without_accrual_records_keeps_the_plain_label(self):
+        from unittest.mock import patch
+
+        # Turning tracking on, with no accrual record yet, changes no export.
+        with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
+                patch("bookkeeping.taxmap.tracking_start", return_value="2026-04-01"):
+            handoff = build_handoff(self.company, *YEAR)
+        self.assertEqual(handoff["accounting_basis"], "cash")
+        self.assertIsNone(handoff["basis_label"])
 
     def test_cash_company_keeps_the_plain_basis_label(self):
         handoff = build_handoff(self.company, *YEAR)
