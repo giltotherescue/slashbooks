@@ -333,7 +333,7 @@ def _annotate_blockers(blockers: list[dict[str, Any]], path: Path, period: str, 
                               "--account <ledger account>")
 
 
-@_locked_entity_operation
+@_locked_entity_operation(shared=True)
 def assess_review_readiness(entity_path: Path | str, period: str,
                             dependencies: DependencyVersions, *, as_of: date) -> ReadinessAssessment:
     """Assess one immutable period snapshot without writing company state."""

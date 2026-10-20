@@ -198,6 +198,63 @@ class WorkspaceConcurrencyTests(unittest.TestCase):
         self.assertEqual(after.pop(Path('.books.lock')), b'')
         self.assertEqual(after, before, 'acquiring the snapshot lock must not modify accounting state')
 
+    def test_reads_share_the_lock_and_do_not_block_each_other(self):
+        f = self.fixture(tieout_fixtures.BalanceCheckTests)
+        paused, release, second_done = Event(), Event(), Event()
+        original = tieout.load_postings
+        calls = []
+
+        def pause_first(*args, **kwargs):
+            value = original(*args, **kwargs)
+            if not calls:
+                calls.append(1)
+                paused.set()
+                release.wait(5)
+            return value
+
+        def read(done=None):
+            tieout.balance_check(f.company, [f.item('800.00')])
+            if done:
+                done.set()
+
+        with patch.object(tieout, 'load_postings', side_effect=pause_first):
+            first = Thread(target=read, daemon=True)
+            second = Thread(target=read, args=(second_done,), daemon=True)
+            try:
+                first.start()
+                self.assertTrue(paused.wait(5))
+                second.start()
+                self.assertTrue(second_done.wait(3), 'a second read must not wait for the first read')
+            finally:
+                release.set()
+                first.join(5)
+                second.join(5)
+
+    def test_reads_work_in_a_read_only_company_folder(self):
+        import os
+        if os.geteuid() == 0:
+            self.skipTest('root ignores file permissions')
+        f = self.fixture(tieout_fixtures.BalanceCheckTests)
+        for with_lock_file in (False, True):
+            with self.subTest(with_lock_file=with_lock_file):
+                lock = f.company / '.books.lock'
+                if with_lock_file:
+                    lock.touch()
+                else:
+                    lock.unlink(missing_ok=True)
+                paths = [f.company, *f.company.rglob('*')]
+                modes = {path: path.stat().st_mode for path in paths}
+                try:
+                    for path in paths:
+                        os.chmod(path, modes[path] & ~0o222)
+                    result = tieout.balance_check(f.company, [f.item('800.00')])
+                    self.assertEqual(result['accounts'][0]['status'], 'matches')
+                    check_coverage = coverage.check_coverage(f.company, date(2026, 1, 1), date(2026, 1, 31))
+                    self.assertIn('accounts', check_coverage)
+                finally:
+                    for path in reversed(paths):
+                        os.chmod(path, modes[path])
+
     def test_missing_company_read_does_not_scaffold_a_directory(self):
         f = self.fixture(tieout_fixtures.BalanceCheckTests)
         missing = f.company / 'missing-company'

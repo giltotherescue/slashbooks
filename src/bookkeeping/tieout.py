@@ -269,7 +269,7 @@ def not_aligned(statement_id: str | None = None) -> dict[str, Any]:
 # Bank balance against books
 # ---------------------------------------------------------------------------
 
-@_locked_entity_operation
+@_locked_entity_operation(shared=True)
 def balance_check(entity_path: Path | str, items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Compare balances that a bank feed reported with the books.
 

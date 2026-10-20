@@ -562,7 +562,7 @@ def _month_tieout(records: Sequence[StatementRecord], ties: Mapping[str, dict[st
     return tieout_module.not_aligned(overlapping[0].statement_id if len(overlapping) == 1 else None)
 
 
-@_locked_entity_operation
+@_locked_entity_operation(shared=True)
 def check_coverage(
     entity_path: Path | str,
     from_date: date,

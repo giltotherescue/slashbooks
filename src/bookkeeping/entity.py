@@ -24,18 +24,24 @@ from urllib.parse import urlsplit
 ACCRUAL_CAPABILITY_VERSION = 1
 
 
-def _locked_entity_operation(function: Callable[..., Any]) -> Callable[..., Any]:
-    """Keep a complete workspace read or configuration update under its common lock."""
-    @wraps(function)
-    def wrapped(entity_path: Path | str, *args: Any, **kwargs: Any) -> Any:
-        from .ledger.importer import _entity_write_lock
+def _locked_entity_operation(function: Callable[..., Any] | None = None, *, shared: bool = False) -> Callable[..., Any]:
+    """Keep a complete workspace read or configuration update under its common lock.
 
-        # Preserve a missing company's read/validation error without scaffolding a directory.
-        if not (Path(entity_path) / "entity.json").exists():
-            return function(entity_path, *args, **kwargs)
-        with _entity_write_lock(Path(entity_path)):
-            return function(entity_path, *args, **kwargs)
-    return wrapped
+    A writer takes the exclusive lock. A read passes ``shared=True``: readers share
+    the lock, so a read needs no write access and does not block another read.
+    """
+    def decorate(function: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(function)
+        def wrapped(entity_path: Path | str, *args: Any, **kwargs: Any) -> Any:
+            from .ledger.importer import _entity_read_lock, _entity_write_lock
+
+            # Preserve a missing company's read/validation error without scaffolding a directory.
+            if not (Path(entity_path) / "entity.json").exists():
+                return function(entity_path, *args, **kwargs)
+            with (_entity_read_lock if shared else _entity_write_lock)(Path(entity_path)):
+                return function(entity_path, *args, **kwargs)
+        return wrapped
+    return decorate(function) if function is not None else decorate
 
 
 def resolve_basis(config: dict[str, Any], *, authoritative_basis: str | None = None) -> str:
