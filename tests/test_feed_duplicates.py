@@ -152,6 +152,82 @@ class ProviderSwitchOverlapTests(unittest.TestCase):
             self.assertEqual(_queued(root), ["plaid:a", "plaid:b"])
 
 
+class ResyncAndSpellingTests(unittest.TestCase):
+    """A held row stays held; a decision made under one ID spelling is reused under the other."""
+
+    def _history(self, root: Path) -> None:
+        import_transactions(load_entity(root), [_row("old1")], "old", POST)
+
+    def _guarded(self, root: Path, row: dict, session: str):
+        return import_transactions(load_entity(root), [row], session, POST, legacy_duplicate_guard=True)
+
+    def test_a_held_row_is_not_posted_by_the_next_sync(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            self._history(root)
+            first = self._guarded(root, _row("recovered"), "s0")
+            again = self._guarded(root, _row("recovered"), "s1")
+            self.assertEqual((first.new_entries, first.duplicate_candidates), (0, 1))
+            self.assertEqual((again.new_entries, again.pending_categorization, again.skipped_duplicate), (0, 0, 1))
+            self.assertEqual(_posted(root), ["old1"])
+            self.assertEqual(_queued(root), [])
+
+    def test_an_open_raw_id_hold_also_holds_the_prefixed_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            self._history(root)
+            self._guarded(root, _row("recovered"), "s0")
+            result = self._guarded(root, _row("banksync:recovered"), "s1")
+            self.assertEqual((result.new_entries, result.pending_categorization, result.skipped_duplicate), (0, 0, 1))
+            self.assertEqual(_posted(root), ["old1"])
+            self.assertEqual(len(list_duplicate_candidates(load_entity(root))), 1)
+
+    def test_a_duplicate_decision_under_the_raw_id_is_reused_for_the_prefixed_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            self._history(root)
+            self._guarded(root, _row("recovered"), "s0")
+            resolve_duplicate_candidate(load_entity(root), "recovered", "duplicate")
+            _ingest(root, [_row("recovered")], "banksync")
+            self.assertEqual((_posted(root), _queued(root), _held(root)), (["old1"], [], {}))
+
+    def test_a_distinct_decision_under_the_raw_id_is_reused_for_the_prefixed_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            self._history(root)
+            self._guarded(root, _row("recovered"), "s0")
+            resolve_duplicate_candidate(load_entity(root), "recovered", "distinct")
+            self.assertEqual(_queued(root), ["recovered"])
+            _ingest(root, [_row("recovered")], "banksync")  # the same row again: already queued, not held again
+            self.assertEqual((_queued(root), _held(root)), (["recovered"], {}))
+
+    def test_a_distinct_decision_makes_a_plaid_resync_import_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            self._history(root)
+            _ingest(root, [_row("p1", account="plaid_1")], "plaid")
+            resolve_duplicate_candidate(load_entity(root), "plaid:p1", "distinct")
+            _ingest(root, [_row("p1", account="plaid_1")], "plaid")
+            self.assertEqual((_queued(root), _held(root)), (["plaid:p1"], {}))
+
+    def test_a_row_with_no_description_still_goes_to_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            import_transactions(load_entity(root), [_row("old1", description="")], "old", POST)
+            _ingest(root, [_row("p1", description="", account="plaid_1")], "plaid")
+            self.assertEqual(list(_held(root)), ["plaid:p1"])
+            self.assertEqual(_queued(root), [])
+
+    def test_old_raw_id_rows_count_as_banksync_only_for_a_banksync_feed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            import_transactions(load_entity(root), [_row("raw-old", "2026-01-15", "-4.50", "COFFEE")], "old", POST)
+            _ingest(root, [_row("b1", "2026-01-16", "-4.50", "CAFE ROASTERS")], "banksync")
+            self.assertEqual(_held(root), {})  # same feed: two real purchases
+            _ingest(root, [_row("p9", "2026-01-16", "-4.50", "CAFE ROASTERS", "plaid_1")], "plaid")
+            self.assertEqual(list(_held(root)), ["plaid:p9"])  # another provider: held for review
+
+
 class MappingRequiredTests(unittest.TestCase):
     def test_unmapped_account_from_any_connected_feed_is_refused(self) -> None:
         for source, extra in (("plaid", ()), ("my-sync", ("--feed-provider", "teller"))):

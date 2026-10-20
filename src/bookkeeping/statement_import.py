@@ -84,7 +84,7 @@ from .connectors import bankcsv, ofx
 from .connectors.bankcsv import StatementFileError
 from .ledger.normalize import normalize_description
 from .tieout import presentation_sign, statement_tieout
-from .source_ids import source_family, source_id_variants
+from .source_ids import same_family, source_family, source_id_variants
 from .work import observe_import
 
 JsonObject = dict[str, Any]
@@ -673,6 +673,11 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
     for alias in _load_list(entity.staging_dir / "source-id-aliases.json"):
         aliases[str(alias.get("source_id") or "")] = str(alias.get("status") or "")
 
+    def decision(sid: str) -> str:
+        """The latest reviewed decision under any spelling of the ID."""
+        return next((aliases[s] for s in sorted(source_id_variants(sid), key=lambda v: v != sid)
+                     if aliases.get(s)), "")
+
     batch_ids = {spelling for t in txns for spelling in source_id_variants(t["id"])}
     pool = [p for p in _existing_pool(entity, ledger_account) if p["source_id"] not in batch_ids]
     used: set[int] = set()
@@ -687,7 +692,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
         if spellings & held_ids:
             plan["skipped"]["already_held_for_review"] += 1
             continue
-        status = aliases.get(sid, "")
+        status = decision(sid)
         if status == "confirmed-duplicate":
             plan["skipped"]["confirmed_duplicate"] += 1
             continue
@@ -704,7 +709,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                 break
         if match is None:
             near = [(abs((item["date"] - day).days), index) for index, item in enumerate(pool)
-                    if index not in used and item["amount"] == amount and item["family"] != mapping_key
+                    if index not in used and item["amount"] == amount and not same_family(item["family"], mapping_key)
                     and abs((item["date"] - day).days) <= NEAR_DATE_DAYS]
             if near:
                 match, rule = min(near)[1], f"same_amount_within_{NEAR_DATE_DAYS}_days_other_source"

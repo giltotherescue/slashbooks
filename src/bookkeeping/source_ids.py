@@ -51,16 +51,30 @@ def source_id_variants(source_id: Any) -> frozenset[str]:
     return frozenset({text})
 
 
+UNPREFIXED_FAMILY = "unprefixed"
+
+
 def source_family(source_id: Any) -> str:
     """Which source produced *source_id*, for the duplicate plan.
 
-    A connected feed names itself in the ID prefix (``plaid``, ``banksync``). A
-    raw ID with no prefix is an old BankSync row. Statement and CSV IDs are
-    ``other``. The duplicate plan holds a same-amount row within a few days only
-    when it comes from a different family, so two real purchases from one feed
-    are never held against each other.
+    A connected feed names itself in the ID prefix (``plaid``, ``banksync``).
+    Statement and CSV IDs are ``other``. An ID with no prefix could come from
+    any connector, so it is ``unprefixed``; it counts as BankSync only when a
+    BankSync feed is the one being checked (see ``same_family``).
     """
     head, separator, _ = str(source_id or "").partition(":")
     if not separator:
-        return LEGACY_UNPREFIXED_PROVIDER
+        return UNPREFIXED_FAMILY
     return "other" if head in {"stmt", "ofx", "csv"} else head
+
+
+def same_family(existing: str, incoming: str) -> bool:
+    """Whether an existing row and an incoming row come from the same source.
+
+    The old raw-ID rows are treated as BankSync only for an incoming BankSync
+    feed. For any other provider they are a different source, so overlap with
+    them is held for review.
+    """
+    if existing == incoming:
+        return True
+    return {existing, incoming} == {UNPREFIXED_FAMILY, LEGACY_UNPREFIXED_PROVIDER}

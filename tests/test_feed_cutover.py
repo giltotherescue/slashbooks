@@ -56,14 +56,45 @@ class CutoverTests(unittest.TestCase):
     ROWS = [_row("old1", "2026-01-30"), _row("edge", "2026-01-31"), _row("new1", "2026-02-01"),
             _row("sav1", "2026-01-05", account="acct_2")]
 
-    def test_rows_on_or_before_the_cutover_are_skipped_and_counted(self) -> None:
+    def test_rows_on_or_before_the_cutover_go_to_review_and_are_never_posted(self) -> None:
+        from bookkeeping.queue import list_duplicate_candidates
         with tempfile.TemporaryDirectory() as tmp:
             root = _company(tmp)
             code, out = _ingest(root, self.ROWS)
             self.assertEqual(code, 0)
             self.assertEqual(_queued(root), ["plaid:new1", "plaid:sav1"])
-            self.assertIn("before cutover:      2 skipped", out)
-            self.assertIn(f"{CHECKING}: 2 on or before 2026-01-31", out)
+            held = {c["source_id"]: c["match_rule"] for c in list_duplicate_candidates(load_entity(root))}
+            self.assertEqual(held, {"plaid:old1": "before_cutover_not_in_books",
+                                    "plaid:edge": "before_cutover_not_in_books"})
+            self.assertIn(f"{CHECKING}: 2 row(s) on or before 2026-01-31 go to review", out)
+
+    def test_a_late_row_the_old_provider_never_sent_is_not_lost(self) -> None:
+        """A row dated on the cutover day that the old source never delivered reaches a person."""
+        from bookkeeping.ledger.importer import import_transactions
+        from bookkeeping.queue import list_duplicate_candidates, resolve_duplicate_candidate
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            import_transactions(load_entity(root), [_row("old-a", "2026-01-31", description="KNOWN")], "old",
+                                lambda t: ("Expenses:Services", "high"))
+            add_account(root, "Expenses:Services", open_date="2025-01-01")
+            _ingest(root, [_row("late", "2026-01-31", description="NEVER SENT BY OLD PROVIDER", amount="-81.00")])
+            self.assertEqual([c["source_id"] for c in list_duplicate_candidates(load_entity(root))], ["plaid:late"])
+            self.assertEqual(_queued(root), [])
+            _ingest(root, [_row("late", "2026-01-31", description="NEVER SENT BY OLD PROVIDER", amount="-81.00")])
+            self.assertEqual(_queued(root), [])  # a resync does not release it
+            resolve_duplicate_candidate(load_entity(root), "plaid:late", "distinct")
+            self.assertEqual(_queued(root), ["plaid:late"])
+
+    def test_cutover_date_can_be_cleared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            self.assertEqual(main(["entity", "bank-account-map", str(root), "--feed-account-id", "acct_1",
+                                   "--account", CHECKING, "--clear-cutover-date"]), 0)
+            entry = json.loads((root / "entity.json").read_text())["bank_account_mappings"]["acct_1"]
+            self.assertNotIn("cutover_date", entry)
+            self.assertEqual(entry["provider"], "plaid")
+            _ingest(root, self.ROWS)
+            self.assertEqual(len(_queued(root)), 4)
 
     def test_backfill_imports_the_earlier_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -90,8 +121,8 @@ class CutoverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             entity = load_entity(_company(tmp))
             rows = [_row("bad-date", "not-a-date"), _row("none", "2026-01-01", account="other")]
-            kept, skipped = split_at_cutover(entity, rows)
-            self.assertEqual((len(kept), skipped), (2, {}))
+            kept, hold_ids, report = split_at_cutover(entity, rows)
+            self.assertEqual((len(kept), hold_ids, report), (2, set(), {}))
 
     def test_coverage_windows_start_after_the_cutover(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -108,18 +139,19 @@ class CutoverTests(unittest.TestCase):
                 (CHECKING, date(2026, 3, 1), date(2026, 3, 31)),
                 (SAVINGS, date(2026, 1, 1), date(2026, 1, 20))])
 
-    def test_a_prepared_snapshot_with_early_rows_is_refused_not_trimmed(self) -> None:
+    def test_a_prepared_snapshot_keeps_every_row_and_early_posted_rows_are_held(self) -> None:
+        from bookkeeping.queue import list_duplicate_candidates
         with tempfile.TemporaryDirectory() as tmp:
             root = _company(tmp)
             path = root.parent / "feed.json"
             path.write_text(json.dumps({"transactions": self.ROWS}), encoding="utf-8")
-            err = io.StringIO()
+            snapshot = [dict(r, id="plaid:" + r["id"]) for r in self.ROWS]
             with mock.patch("bookkeeping.preparation_runtime.prepared_ingest_transactions",
-                            return_value=(self.ROWS, False)), redirect_stderr(err), redirect_stdout(io.StringIO()):
+                            return_value=(snapshot, False)), redirect_stdout(io.StringIO()):
                 code = main(["ingest", str(path), "--entity", str(root), "--source", "plaid", "--no-feed-window"])
-            self.assertEqual(code, 1)
-            self.assertIn("cutover", err.getvalue())
-            self.assertEqual(_queued(root), [])
+            self.assertEqual(code, 0)
+            self.assertEqual(_queued(root), ["plaid:new1", "plaid:sav1"])
+            self.assertEqual(len(list_duplicate_candidates(load_entity(root))), 2)
 
 
 if __name__ == "__main__":

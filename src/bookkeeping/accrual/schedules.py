@@ -232,6 +232,10 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
             if (Decimal(normalize_amount(staged.get("amount"))) != -sign * amount
                     or str(staged.get("date"))[:10] != when.isoformat() or staged_bank != bank):
                 raise JournalError("staged_payment_mismatch", "Schedule funding differs from the exact staged bank source.")
+            if str(staged.get("id")) != source_id:
+                raise JournalError("staged_source_id_differs",
+                                   f"The staged row is {staged.get('id')}; use that source_id for the funding source.",
+                                   f"Use source_id {staged.get('id')} and create a new preview.")
         return [_entry(when, source_id, _funding_narration(record),
                        [(account, sign * amount), (bank, -sign * amount)], schedule_id=record["id"])]
     original = _find_live_entry(store, source_id)

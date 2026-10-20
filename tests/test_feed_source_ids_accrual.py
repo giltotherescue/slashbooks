@@ -96,10 +96,34 @@ class FeedIdAliasAccrualTests(AccrualFixture):
             preview_settlement(self.entity, self._settlement("banksync:abc", "300.00"))
         self.assertEqual(getattr(caught.exception, "code", ""), "staged_payment_mismatch")
 
-    def test_correct_amount_still_previews_with_either_spelling(self) -> None:
+    def test_settlement_under_the_other_spelling_is_refused_and_cash_is_recorded_once(self) -> None:
         self._invoice()
         import_transactions(self.entity, [bank_row("banksync:abc", amount="400.00")], "new")
-        preview_settlement(self.entity, self._settlement("abc", "400.00"))
+        with self.assertRaises(Exception) as caught:
+            apply_settlement(self.entity, preview_settlement(self.entity, {
+                **self._settlement("abc", "400.00"), "operation_id": "other-spelling"}))
+        self.assertEqual(getattr(caught.exception, "code", ""), "staged_source_id_differs")
+        self.assertIn("banksync:abc", str(caught.exception))
+        # Settle with the staged ID, then confirm the queue item: the cash is counted once.
+        self._settle("banksync:abc")
+        before = self.balances()
+        self.assertEqual(before[BANK], 400)
+        self.assertEqual(_load_pending_categorization(self.entity), [])
+        again = import_transactions(self.entity, [bank_row("abc", amount="400.00")], "again")
+        self.assertEqual((again.new_entries, again.pending_categorization, again.skipped_duplicate), (0, 0, 1))
+        self.assertEqual(self.balances(), before)
+
+    def test_confirm_checks_every_spelling_for_an_already_posted_source(self) -> None:
+        from bookkeeping.queue import _recover_finalization
+        self.post("abc", "2026-01-15", [(BANK, "400"), (INCOME, "-400")])
+        item = {"source_id": "banksync:abc"}
+        with self.assertRaises(ValueError):  # posted under the other spelling: not a clean first confirm
+            _recover_finalization(self.entity, item, ["banksync:abc"], "s", "confirmed", INCOME)
+
+    def test_correct_amount_previews_with_the_staged_spelling(self) -> None:
+        self._invoice()
+        import_transactions(self.entity, [bank_row("banksync:abc", amount="400.00")], "new")
+        preview_settlement(self.entity, self._settlement("banksync:abc", "400.00"))
 
     def test_reversal_and_correction_find_a_row_by_either_spelling(self) -> None:
         from bookkeeping.ledger.importer import _find_live_entry

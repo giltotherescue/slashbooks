@@ -634,6 +634,15 @@ def bank_mapping_details(value: Any) -> dict[str, Any]:
     return {name: value[name] for name in BANK_IDENTITY_FIELDS if value.get(name) not in (None, "")}
 
 
+def normalize_last4(value: Any) -> str:
+    """Last four letters or digits of an account number or mask. ``****0021`` gives ``0021``.
+
+    Returns an empty string when fewer than four remain.
+    """
+    kept = re.sub(r"[^A-Za-z0-9]", "", str(value or ""))
+    return kept[-4:].upper() if len(kept) >= 4 else ""
+
+
 def _clean_identity(fields: dict[str, Any]) -> dict[str, Any]:
     """Validate and normalise the identity fields a caller gave."""
     clean: dict[str, Any] = {}
@@ -646,9 +655,9 @@ def _clean_identity(fields: dict[str, Any]) -> dict[str, Any]:
         if not text:
             continue
         if name == "last4":
-            if not re.fullmatch(r"[A-Za-z0-9]{4}", text):
-                raise ValueError("last4 must be exactly four letters or digits.")
-            text = text.upper()
+            text = normalize_last4(text)
+            if not text:
+                raise ValueError("last4 must be the last four letters or digits of the account number.")
         elif name == "currency":
             if not re.fullmatch(r"[A-Za-z]{3}", text):
                 raise ValueError("currency must be a three-letter code such as USD.")
@@ -665,14 +674,15 @@ def _clean_identity(fields: dict[str, Any]) -> dict[str, Any]:
 
 
 def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
-                     **identity: Any) -> dict[str, str]:
+                     clear: tuple[str, ...] = (), **identity: Any) -> dict[str, str]:
     """Persist a provider-account-ID to an existing ledger account mapping.
 
     With no identity fields the mapping is written in the flat form, exactly as
     before. With any of ``BANK_IDENTITY_FIELDS`` it is written as an object that
     also carries the account identity (provider, institution, last four digits,
     type, currency, cutover date). Re-mapping a rich entry without new fields
-    keeps its identity and changes only the ledger account.
+    keeps its identity and changes only the ledger account. ``clear`` names
+    identity fields to remove, for example ``("cutover_date",)``.
     """
     entity = load_entity(entity_path)
     stable_id = str(feed_account_id).strip()
@@ -690,6 +700,10 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     mappings = dict(entity.entity_config.get("bank_account_mappings") or {})
     previous = mappings.get(stable_id)
     previous_fields = bank_mapping_details(previous)
+    for name in clear:
+        if name not in BANK_IDENTITY_FIELDS or name in {"provider_account_id"}:
+            raise ValueError(f"Cannot clear '{name}'.")
+        previous_fields.pop(name, None)
     if fields or previous_fields:
         merged = {**previous_fields, **fields}
         merged.setdefault("provider_account_id", stable_id)
@@ -1092,8 +1106,10 @@ def add_parser(subparsers: Any) -> None:
     map_parser.add_argument("--last4", default=None, help="Last four characters of the account number")
     map_parser.add_argument("--account-type", default=None, help="checking, savings or credit_card")
     map_parser.add_argument("--currency", default=None, help="Three-letter currency code")
+    map_parser.add_argument("--clear-cutover-date", action="store_true",
+                            help="Remove the cutover date from this mapping")
     map_parser.add_argument("--cutover-date", default=None,
-                            help="YYYY-MM-DD. A feed import skips rows on or before this day unless --backfill")
+                            help="YYYY-MM-DD. A feed import sends rows on or before this day to review, not the books, unless --backfill")
 
     coverage_parser = entity_sub.add_parser(
         "source-coverage",
@@ -1204,7 +1220,8 @@ def run(args: Any) -> int:
                 provider=args.provider, institution_id=args.institution_id,
                 institution_name=args.institution_name, last4=args.last4,
                 account_type=args.account_type, currency=args.currency,
-                cutover_date=args.cutover_date)
+                cutover_date=args.cutover_date,
+                clear=("cutover_date",) if args.clear_cutover_date else ())
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1

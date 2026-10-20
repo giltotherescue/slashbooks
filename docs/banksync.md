@@ -113,7 +113,15 @@ the account name, or an object that also records who the account is:
 ```json
 {
   "bank_account_mappings": {
-    "acct_old": "Assets:Bank:Operating-Checking",
+    "acct_old": {
+      "ledger_account": "Assets:Bank:Operating-Checking",
+      "provider": "banksync",
+      "provider_account_id": "acct_old",
+      "institution_name": "Chase",
+      "last4": "0021",
+      "account_type": "checking",
+      "currency": "USD"
+    },
     "plaid_1": {
       "ledger_account": "Assets:Bank:Operating-Checking",
       "provider": "plaid",
@@ -138,6 +146,20 @@ books entity bank-account-map <company-dir> --feed-account-id plaid_1 \
   --institution-id ins_3 --institution-name Chase --last4 0021 \
   --account-type checking --currency USD --cutover-date 2026-03-01
 ```
+
+**Add identity to an old mapping first.** A company that mapped its accounts
+before this release has flat entries, such as `"acct_old": "Assets:Bank:Operating-Checking"`.
+A flat entry has no identity, so `match-account` cannot match it and returns
+`no_match`. Run `bank-account-map` again for the old ID with the same account and
+the identity. It keeps the account and adds the fields:
+
+```sh
+books entity bank-account-map <company-dir> --feed-account-id acct_old \
+  --account Assets:Bank:Operating-Checking --provider banksync \
+  --institution-name Chase --last4 0021 --account-type checking --currency USD
+```
+
+`--last4` accepts a mask such as `****0021` and keeps the last four characters.
 
 **Find the old account for the new connection.** When the new provider gives the
 same bank account a new ID, ask for a proposal:
@@ -169,9 +191,12 @@ other row came from a different source. Two purchases of one amount from the
 same feed are not held against each other. See `books queue duplicates`.
 
 **Set a cutover date.** `cutover_date` is the last day the old source owns. A
-feed import skips rows on or before it and prints how many it skipped. Pass
-`--backfill` to import them on purpose. Coverage windows start the day after
-the cutover date.
+feed import never posts a row dated on or before it. Each such row goes to "To
+check" (`books queue duplicates`), either matched to the row it repeats or marked
+`before_cutover_not_in_books`, so a late row that the old source never sent is
+seen by a person and not lost. Pass `--backfill` to import these rows in the
+normal way. Coverage windows start the day after the cutover date. Remove a
+cutover date with `books entity bank-account-map ... --clear-cutover-date`.
 
 Every connected feed needs a mapping. `books ingest` stops, and posts nothing,
 when a row's account ID is not mapped, instead of opening a new

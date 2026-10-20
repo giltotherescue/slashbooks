@@ -389,13 +389,20 @@ def import_transactions(
     session_date: date | None = None,
     legacy_duplicate_guard: bool = False,
     intake_only: bool = False,
+    cutover_hold_ids: frozenset[str] = frozenset(),
 ) -> ImportResult:
-    """Import transactions while serializing staging, queue, and ledger writes."""
+    """Import transactions while serializing staging, queue, and ledger writes.
+
+    ``cutover_hold_ids`` names rows dated on or before their account's cutover
+    date. With ``legacy_duplicate_guard`` they are never posted or queued: each
+    goes to the duplicate-review hold, so a late row the old source never sent is
+    seen by a person instead of being dropped.
+    """
     _validate_normalized_transactions(normalized_txns)
     with _entity_write_lock(entity.path):
         result = _import_transactions_unlocked(
             entity, normalized_txns, session_id, categorizer, ts, session_date,
-            legacy_duplicate_guard, intake_only,
+            legacy_duplicate_guard, intake_only, cutover_hold_ids,
         )
     from ..work import observe_import
     observe_import(result.skipped_duplicate)
@@ -411,6 +418,7 @@ def _import_transactions_unlocked(
     session_date: date | None = None,
     legacy_duplicate_guard: bool = False,
     intake_only: bool = False,
+    cutover_hold_ids: frozenset[str] = frozenset(),
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -495,7 +503,13 @@ def _import_transactions_unlocked(
 
     # Connected-feed rows are checked against posted entries and review items
     # with the same plan a statement import uses (see ``_plan_feed_holds``).
-    feed_holds = _plan_feed_holds(entity, normalized_txns) if legacy_duplicate_guard else {}
+    feed_holds = (_plan_feed_holds(entity, normalized_txns, cutover_hold_ids)
+                  if legacy_duplicate_guard else {})
+    # A row that is already held for review stays held on every later sync, under
+    # either spelling of its ID, until a person resolves it.
+    open_hold_ids = ({str(c.get("source_id") or "") for c in _load_json_list(
+        entity.staging_dir / _DUPLICATE_CANDIDATES_FILE) if c.get("status") == "duplicate-candidate"}
+        if legacy_duplicate_guard else set())
 
     # Accumulate entries to write in this session.
     entries_to_write: list[Entry] = []
@@ -540,6 +554,9 @@ def _import_transactions_unlocked(
             entity.entity_config.get("csv_account_mappings"),
         )
         if legacy_duplicate_guard:
+            if spellings & open_hold_ids:
+                result.skipped_duplicate += 1
+                continue
             alias_status = _legacy_alias_status(entity, source_id)
             if alias_status == "confirmed-duplicate":
                 result.skipped_duplicate += 1
@@ -705,7 +722,8 @@ def _save_json_list(path: Path, items: list[dict[str, Any]]) -> None:
 _SAME_DAY_RULE = "legacy_id_same_account_date_amount_description"
 
 
-def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
+                     cutover_hold_ids: frozenset[str] = frozenset()) -> dict[str, dict[str, Any]]:
     """Rows of a connected-feed batch that may repeat activity already recorded.
 
     This is the statement-import duplicate plan (``plan_duplicates``): a row is
@@ -717,7 +735,7 @@ def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]]) -> dict[str, di
     amount are not mistaken for one.
     """
     from ..source_ids import source_family
-    from ..statement_import import plan_duplicates
+    from ..statement_import import _txn_amount, plan_duplicates
 
     mappings = entity.entity_config.get("bank_account_mappings")
     csv_mappings = entity.entity_config.get("csv_account_mappings")
@@ -737,14 +755,23 @@ def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]]) -> dict[str, di
         except (ValueError, TypeError, ArithmeticError):
             continue  # The main loop reports a row it cannot read.
         text = str(txn.get("reference") or txn.get("description") or "")
-        if not normalize_description(text):
-            continue
         originals[source_id] = txn
         groups.setdefault((account, source_family(source_id)), []).append(
             {**txn, "id": source_id, "date": day, "description": text})
     holds: dict[str, dict[str, Any]] = {}
     for (account, family), rows in groups.items():
-        for held in plan_duplicates(entity, rows, account, family)["held"]:
+        plan = plan_duplicates(entity, rows, account, family)
+        for row in plan["import"]:
+            # Dated on or before the cutover and not matched to anything: a late row the old
+            # source may never have sent. A person decides; it is never dropped or posted.
+            if row["id"] in cutover_hold_ids and _legacy_alias_status(entity, row["id"]) != "confirmed-distinct":
+                holds[row["id"]] = {
+                    "source_id": row["id"], "existing_source_id": "", "account": account,
+                    "date": row["date"], "amount": format(_txn_amount(row), "f"),
+                    "description": str(originals[row["id"]].get("description") or ""),
+                    "transaction": dict(originals[row["id"]]), "match_rule": "before_cutover_not_in_books",
+                    "status": "duplicate-candidate"}
+        for held in plan["held"]:
             source_id = held["source_id"]
             record = {**held, "transaction": dict(originals[source_id]),
                       "description": str(originals[source_id].get("description") or "")}
@@ -776,10 +803,11 @@ def _record_feed_hold(entity: Entity, hold: dict[str, Any] | None) -> str | None
 
 
 def _legacy_alias_status(entity: Entity, source_id: str) -> str:
-    """Return the latest reviewed legacy-ID decision for *source_id*."""
+    """Return the latest reviewed decision for *source_id*, under either spelling."""
+    spellings = source_id_variants(source_id)
     aliases = _load_json_list(entity.staging_dir / _SOURCE_ID_ALIASES_FILE)
     for alias in reversed(aliases):
-        if str(alias.get("source_id") or "") == source_id:
+        if str(alias.get("source_id") or "") in spellings:
             return str(alias.get("status") or "")
     return ""
 

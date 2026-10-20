@@ -36,8 +36,8 @@ connected feed:
   stops the import before any row is written.
 - Each ``id`` becomes ``<provider>:<id>``. The old raw BankSync ID and
   ``banksync:<id>`` name the same row (see ``source_ids.py``).
-- Rows dated on or before an account's ``cutover_date`` are skipped and counted,
-  unless ``--backfill`` is given.
+- A posted row dated on or before an account's ``cutover_date`` is held for review
+  (never posted, never dropped), unless ``--backfill`` is given. A pending one is skipped.
 - Each row is checked against posted entries and queued review items with the
   statement duplicate plan; a possible repeat is held for review, never posted.
 
@@ -116,8 +116,8 @@ def add_parser(subparsers: Any) -> None:
     )
     parser.add_argument(
         "--backfill", action="store_true",
-        help="Import rows dated on or before an account's cutover date. Without it, a feed "
-             "import skips them and reports how many",
+        help="Import rows dated on or before an account's cutover date in the normal way. Without it, "
+             "a feed import sends such a row to review and never posts it",
     )
     parser.add_argument(
         "--feed-provider", default=None, metavar="NAME",
@@ -355,21 +355,19 @@ def run(args: argparse.Namespace) -> int:
             is_banksync = args.source == "banksync" or verified_banksync
         provider = feed_provider(args.source, getattr(args, "feed_provider", None), is_banksync)
         _require_feed_mappings(entity, txns, provider)
-        before_cutover: dict[str, dict[str, Any]] = {}
-        if not getattr(args, "backfill", False):
-            kept, before_cutover = split_at_cutover(entity, txns)
-            if before_cutover and prepared is not None:
-                # A host-prepared snapshot is verified row by row, so the engine cannot drop rows.
-                raise ValueError(
-                    "The prepared snapshot has rows on or before an account's cutover date. "
-                    "Remove them from the snapshot, or run with --backfill.")
-            txns = kept
-            windows = clip_windows_to_cutover(entity, windows)
         # A host-prepared snapshot is verified row by row against the host's own
         # fingerprints, so the engine must not change its IDs. The host writes
         # ``<provider>:<id>`` into the snapshot itself.
         if provider and prepared is None:
             txns = namespace_feed_ids(txns, provider)
+        before_cutover: dict[str, dict[str, Any]] = {}
+        cutover_hold_ids: frozenset[str] = frozenset()
+        if not getattr(args, "backfill", False):
+            kept, hold_ids, before_cutover = split_at_cutover(entity, txns)
+            if prepared is None:  # A prepared snapshot keeps every row.
+                txns = kept
+            cutover_hold_ids = frozenset(hold_ids)
+            windows = clip_windows_to_cutover(entity, windows)
 
         session_id = args.session_id or (
             f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
@@ -383,6 +381,7 @@ def run(args: argparse.Namespace) -> int:
             ts=None,
             legacy_duplicate_guard=provider is not None,
             intake_only=getattr(args, "intake_only", False),
+            cutover_hold_ids=cutover_hold_ids,
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -395,11 +394,11 @@ def run(args: argparse.Namespace) -> int:
     print(f"  posted to ledger:    {result.new_entries}")
     print(f"  queued for review:   {result.pending_categorization}")
     print(f"  duplicates skipped:  {result.skipped_duplicate}")
-    if before_cutover:
-        print(f"  before cutover:      {sum(item['count'] for item in before_cutover.values())} skipped "
-              "(use --backfill to import them)")
-        for account, item in sorted(before_cutover.items()):
-            print(f"    {account}: {item['count']} on or before {item['cutover_date']}")
+    for account, item in sorted(before_cutover.items()):
+        print(f"  before cutover:      {account}: {item['held']} row(s) on or before {item['cutover_date']} "
+              "go to review, none are posted"
+              + (f"; {item['pending_skipped']} pending skipped" if item["pending_skipped"] else "")
+              + " (--backfill imports them normally)")
     if result.duplicate_candidates:
         print(f"  duplicate candidates:{result.duplicate_candidates}")
     if result.late_arrivals:

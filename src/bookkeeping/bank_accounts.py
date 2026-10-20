@@ -17,12 +17,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
-from .entity import BANK_IDENTITY_FIELDS, bank_mapping_account, bank_mapping_details, load_entity
+from .entity import BANK_IDENTITY_FIELDS, bank_mapping_account, bank_mapping_details, load_entity, normalize_last4
 
 # Account types that providers spell differently. Equal after this table means equal.
 _TYPE_ALIASES = {
@@ -42,7 +43,7 @@ def _type_key(value: Any) -> str:
 
 
 def _last4_key(value: Any) -> str:
-    return str(value or "").strip().upper()
+    return normalize_last4(value)
 
 
 def _currency_key(value: Any) -> str:
@@ -138,15 +139,16 @@ def propose_account_match(entity: Any, new_account: dict[str, Any]) -> dict[str,
 
 
 def _confirm_command(entity: Any, new_account: dict[str, Any], ledger: str) -> str:
-    parts = ["books entity bank-account-map", f'"{entity.path}"',
-             f'--feed-account-id "{new_account.get("provider_account_id") or "<provider account id>"}"',
-             f'--account "{ledger}"']
+    """The command a person runs to confirm a proposal. Every value is shell-quoted."""
+    parts = ["books", "entity", "bank-account-map", shlex.quote(str(entity.path)),
+             "--feed-account-id", shlex.quote(str(new_account.get("provider_account_id") or "<provider account id>")),
+             "--account", shlex.quote(ledger)]
     flags = {"provider": "--provider", "institution_id": "--institution-id",
              "institution_name": "--institution-name", "last4": "--last4",
              "account_type": "--account-type", "currency": "--currency"}
     for name in BANK_IDENTITY_FIELDS:
         if name in flags and new_account.get(name):
-            parts.append(f'{flags[name]} "{new_account[name]}"')
+            parts += [flags[name], shlex.quote(str(new_account[name]))]
     return " ".join(parts)
 
 
@@ -169,17 +171,22 @@ def _cutover(value: Any) -> date | None:
         return None
 
 
-def split_at_cutover(entity: Any, txns: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-    """Separate feed rows dated on or before their account's cutover date.
+def split_at_cutover(entity: Any, txns: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], set[str], dict[str, dict[str, Any]]]:
+    """Find feed rows dated on or before their account's cutover date.
 
-    Returns ``(rows to import, skipped)``. ``skipped`` maps each ledger account
-    to ``{"cutover_date": ..., "count": ...}``. An account with no cutover date,
-    and a row with no readable date, are never skipped here.
+    Returns ``(rows, hold_ids, report)``. A posted early row stays in ``rows`` and
+    its ID goes into ``hold_ids``: the importer sends it to review (matched to an
+    existing row, or "not in the books") and never posts it, so a late row that
+    the old source never sent is not lost. A pending early row is removed; a
+    pending row is only a preview and its posted form is checked on its own.
+    ``report`` maps each ledger account to ``{"cutover_date", "held", "pending_skipped"}``.
+    An account with no cutover date, and a row with no readable date, are untouched.
     """
     mappings = entity.entity_config.get("bank_account_mappings")
     mappings = mappings if isinstance(mappings, dict) else {}
     kept: list[dict[str, Any]] = []
-    skipped: dict[str, dict[str, Any]] = {}
+    hold_ids: set[str] = set()
+    report: dict[str, dict[str, Any]] = {}
     for txn in txns:
         found = _mapping_for_row(mappings, txn)
         cutover = _cutover(found[1]) if found else None
@@ -187,13 +194,18 @@ def split_at_cutover(entity: Any, txns: list[dict[str, Any]]) -> tuple[list[dict
             day = date.fromisoformat(str(txn.get("date") or "")[:10])
         except ValueError:
             day = None
-        if found and cutover and day and day <= cutover:
-            ledger = bank_mapping_account(found[1]) or found[0]
-            item = skipped.setdefault(ledger, {"cutover_date": cutover.isoformat(), "count": 0})
-            item["count"] += 1
+        if not (found and cutover and day and day <= cutover):
+            kept.append(txn)
             continue
+        ledger = bank_mapping_account(found[1]) or found[0]
+        item = report.setdefault(ledger, {"cutover_date": cutover.isoformat(), "held": 0, "pending_skipped": 0})
+        if txn.get("pending"):
+            item["pending_skipped"] += 1
+            continue
+        item["held"] += 1
+        hold_ids.add(str(txn.get("id") or ""))
         kept.append(txn)
-    return kept, skipped
+    return kept, hold_ids - {""}, report
 
 
 def clip_windows_to_cutover(entity: Any, windows: list[dict[str, Any]]) -> list[dict[str, Any]]:

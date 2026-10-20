@@ -114,7 +114,7 @@ class MatchAccountTests(unittest.TestCase):
             self.assertEqual(result["candidates"][0]["existing_provider_account_ids"], ["bs_chk"])
             self.assertIn("matched_on", result["candidates"][0])
             self.assertIn("bank-account-map", result["confirm_command"])
-            self.assertIn('--feed-account-id "plaid_1"', result["confirm_command"])
+            self.assertIn("--feed-account-id plaid_1", result["confirm_command"])
 
     def test_same_institution_id_matches_when_names_differ(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -174,6 +174,47 @@ class MatchAccountTests(unittest.TestCase):
             document = json.loads(out.getvalue())
             self.assertEqual((document["kind"], document["status"]), ("bank_account_match", "proposal"))
             self.assertEqual(document["ledger_account"], CHECKING)
+
+
+class OldMappingAndQuotingTests(unittest.TestCase):
+    def test_a_mask_is_normalized_to_the_last_four(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _entity(tmp)
+            map_bank_account(root, "a1", CHECKING, last4="****0021")
+            self.assertEqual(_read_mappings(root)["a1"]["last4"], "0021")
+            with self.assertRaises(ValueError):
+                map_bank_account(root, "a2", CHECKING, last4="12")
+            result = propose_account_match(load_entity(root), {
+                "provider": "plaid", "provider_account_id": "p1", "institution_name": "x", "last4": "xxxx0021",
+                "account_type": "checking", "currency": "USD"})
+            self.assertEqual(result["status"], "no_match")  # institution unknown on the old entry
+
+    def test_identity_can_be_added_to_an_old_flat_mapping_and_then_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _entity(tmp)
+            map_bank_account(root, "old_id", CHECKING)  # a company mapped before identity existed
+            new = {"provider": "plaid", "provider_account_id": "p1", "institution_name": "Chase",
+                   "last4": "0021", "account_type": "checking", "currency": "USD"}
+            self.assertEqual(propose_account_match(load_entity(root), new)["status"], "no_match")
+            # The documented step: run bank-account-map again for the old ID with the identity.
+            map_bank_account(root, "old_id", CHECKING, provider="banksync", institution_name="Chase",
+                             last4="****0021", account_type="checking", currency="USD")
+            result = propose_account_match(load_entity(root), new)
+            self.assertEqual((result["status"], result["ledger_account"]), ("proposal", CHECKING))
+
+    def test_confirm_command_is_shell_quoted(self) -> None:
+        import shlex
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _entity(tmp)
+            map_bank_account(root, "bs", CHECKING, institution_name="Chase", last4="0021",
+                             account_type="checking", currency="USD")
+            result = propose_account_match(load_entity(root), {
+                "provider": "plaid; touch /tmp/pwned", "provider_account_id": "p1'; echo x",
+                "institution_name": "Chase", "last4": "0021", "account_type": "checking", "currency": "USD"})
+            words = shlex.split(result["confirm_command"])
+            self.assertIn("plaid; touch /tmp/pwned", words)
+            self.assertIn("p1'; echo x", words)
+            self.assertNotIn(";", [w for w in words if w in {";"}])
 
 
 class RichMappingConsumersTests(unittest.TestCase):

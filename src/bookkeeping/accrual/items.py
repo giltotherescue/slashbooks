@@ -226,6 +226,12 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
             staged_bank = _ledger_account_for_txn(staged, entity.entity_config.get("bank_account_mappings"), entity.entity_config.get("csv_account_mappings"))
             if staged_amount != cash or str(staged.get("date"))[:10] != when.isoformat() or staged_bank != bank:
                 raise JournalError("staged_payment_mismatch", "Selected bank facts differ from the staged source.")
+            if str(staged.get("id")) != source_id:
+                # The same row under its other spelling: settling it here would leave the staged
+                # row open, and a later confirm would record the cash again.
+                raise JournalError("staged_source_id_differs",
+                                   f"The staged row is {staged.get('id')}; settle it with that source_id.",
+                                   f"Use source_id {staged.get('id')} and create a new preview.")
         # Provider/transport references cannot manufacture a second cash event.
         financial = {"kind": "item_settlement", "date": when.isoformat(), "bank_account": bank,
                      "amount": f"{cash:.2f}", "allocations": sorted(normalized_rows, key=lambda row: row["item_id"])}
