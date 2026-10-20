@@ -235,6 +235,68 @@ def _account_balances_as_of(conn: Any, as_of: date) -> dict[str, Decimal]:
 # ---------------------------------------------------------------------------
 
 
+NO_ACCRUAL_VIEW = ("Cash books keep no data for an accrual view: there are no invoices, bills, prepaid or deferred records. "
+                   "Run books report pnl without --basis, or with --basis cash.")
+
+
+def _view_facts(conn: Any) -> tuple[str, int, Optional[str]]:
+    """Return (default view, capability, tracking start) from a ledger connection."""
+    from ..accrual import scope
+    return scope.default_view(conn), scope.capability(conn), scope.tracking_start(conn)
+
+
+def has_accrual_records(conn: Any) -> bool:
+    """True when the ledger holds any accrual record, so the cash view can differ from the recorded books.
+
+    The enable receipt is not a record. Without records every entry is a cash event and the
+    cash view equals the recorded books.
+    """
+    for table in ("items", "schedules", "allocations", "coverage"):
+        name = "accrual_" + table
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() \
+                and conn.execute(f"SELECT 1 FROM {name} LIMIT 1").fetchone():
+            return True
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='accrual_intents'").fetchone():
+        for (payload,) in conn.execute("SELECT payload_json FROM accrual_intents"):
+            try:
+                kind = json.loads(payload).get("kind")
+            except ValueError:
+                kind = None
+            if kind != "accrual_enable":
+                return True
+    return False
+
+
+def _check_view(view: Optional[str]) -> None:
+    if view not in (None, "cash", "accrual"):
+        raise ValueError("basis must be cash or accrual.")
+
+
+def _statement_view(conn: Any, statement: str, view: Optional[str]) -> Optional[str]:
+    """Return the view to render when it differs from the default view, else None.
+
+    Only the profit and loss has a derived cash view. Receivables, payables, prepaid and
+    deferred balances have no cash form, so a balance statement is refused on the cash view
+    instead of being shown on the wrong basis.
+    """
+    _check_view(view)
+    if view is None:
+        return None
+    default, capable, _ = _view_facts(conn)
+    refusal = (f"The {statement} has no cash view: receivables, payables, prepaid and deferred balances exist only on the "
+               f"accrual basis. Use the accrual view, or ask for the profit and loss with --basis cash.")
+    if view == "cash":
+        # Whatever the default view, a company that keeps accrual records has balances with no cash form.
+        if default == "accrual" or (capable and has_accrual_records(conn)):
+            raise ValueError(refusal)
+        return None
+    if view == default:
+        return None
+    if not capable:
+        raise ValueError(NO_ACCRUAL_VIEW)
+    return "accrual"
+
+
 def profit_and_loss(
     entity_path: Path | str,
     from_date: date,
@@ -243,77 +305,112 @@ def profit_and_loss(
 ) -> StatementResult:
     """Compute profit and loss for the period [from_date, to_date] inclusive.
 
-    ``basis`` is None (the default P&L view), ``"cash"`` or ``"accrual"``. Accrual books
-    can show a derived cash view; cash books keep no data for an accrual view.
+    ``basis`` is the view to show: None (the books as recorded), ``"cash"`` or ``"accrual"``. A company
+    that keeps accrual records shows its cash view as a derived report that ties out to the
+    accrual books. A company with no accrual records has one view: the recorded books.
+    An accrual view starts on the tracking start date of a company that turned accrual on later.
     """
     entity_path = Path(entity_path)
-    if basis not in (None, "cash", "accrual"):
-        raise ValueError("basis must be cash or accrual.")
+    _check_view(basis)
     conn = open_cache(entity_path)
     try:
-        from ..accrual.scope import accrual_active, default_view, tracking_start
-        view = basis or default_view(conn)
-        active = accrual_active(conn)
-        first = tracking_start(conn)
-        unchanged_cash = first and not _has_accrual_records(conn)
-        if active and view == "cash" and not (basis is None and first and (to_date.isoformat() < first or unchanged_cash)):
-            from .cashview import profit_and_loss as cash_view
-            return cash_view(entity_path, from_date, to_date)
-        if not active and view == "accrual":
-            raise ValueError("Cash books keep no data for an accrual view: there are no invoices, bills, prepaid or deferred records. "
-                             "Run books report pnl without --basis, or with --basis cash.")
-        return _compute_pnl(conn, from_date, to_date, basis=view)
+        default, capable, _ = _view_facts(conn)
+        view = basis or default
+        if view == "accrual" and not capable and default != "accrual":
+            raise ValueError(NO_ACCRUAL_VIEW)
+        # No ``basis`` argument means the books as recorded: the cash flow statement, comparisons and the
+        # other readers inside the engine need recorded net income. A named cash view is derived whenever the
+        # company keeps accrual records (or the books are accrual books). The command line and exports name the
+        # default view explicitly, so a person still gets the derived cash view by default.
+        derive = basis == "cash" and (default == "accrual" or (capable and has_accrual_records(conn)))
+        if not derive:
+            return _compute_pnl(conn, from_date, to_date, view=basis if basis and basis != default else None)
     finally:
         conn.close()
+    from .cashview import profit_and_loss as cash_view
+    return cash_view(entity_path, from_date, to_date)
 
 
-def _has_accrual_records(conn: Any) -> bool:
-    """Whether optional accrual tracking has introduced any financial records."""
-    from ..accrual.reports import _records
-    return (bool(_records(conn, "items") or _records(conn, "schedules"))
-            or conn.execute("SELECT 1 FROM entries WHERE source_id LIKE 'accrual:%' LIMIT 1").fetchone() is not None)
+def _stamp_view(metadata: dict[str, Any], view: Optional[str]) -> dict[str, Any]:
+    """Name the view on a statement rendered on a view other than the default."""
+    if view:
+        metadata["basis"] = view
+        metadata["view"] = view
+    return metadata
 
 
-def _canonical_profit_and_loss(entity_path: Path | str, from_date: date, to_date: date) -> StatementResult:
-    """Canonical journal income for accountant handoffs, independent of P&L view."""
-    conn = open_cache(Path(entity_path))
+def _month_windows(from_date: date, to_date: date) -> list[tuple[date, date]]:
+    windows, start = [], from_date
+    while start <= to_date:
+        following = date(start.year + (start.month == 12), start.month % 12 + 1, 1)
+        windows.append((start, min(to_date, following - timedelta(days=1))))
+        start = following
+    return windows
+
+
+def profit_and_loss_by_month(
+    entity_path: Path | str,
+    from_date: date,
+    to_date: date,
+    view: Optional[str] = None,
+    pre_tracking: str = "refuse",
+) -> list[dict[str, Any]]:
+    """Profit and loss for each calendar month of a range, on one view, never mixing views silently.
+
+    Every item names the view it shows. A month that the requested view cannot answer is handled by ``pre_tracking``:
+
+    * ``"refuse"`` (default): the first such month raises the coverage error, which names the first available date.
+    * ``"label"``: the series continues. A month that ends before accrual tracking began on the accrual view is shown on
+      the cash view and says so (``view`` "cash", ``requested_view`` "accrual"), because before that date the recorded books
+      are the cash books. Any other month the view cannot answer, such as a month inside an imported summary period or a
+      month that contains the tracking start, has ``available`` False and the reason. No figure is guessed.
+    """
+    from ..accrual.reports import CoverageError
+    from ..accrual.scope import tracking_start
+    if pre_tracking not in ("refuse", "label"):
+        raise ValueError("pre_tracking must be refuse or label.")
+    entity_path = Path(entity_path)
+    conn = open_cache(entity_path)
     try:
-        return _compute_pnl(conn, from_date, to_date)
+        default = _view_facts(conn)[0]
+        first_tracked = tracking_start(conn)
     finally:
         conn.close()
+    wanted = view or default
+    series: list[dict[str, Any]] = []
+    for start, end in _month_windows(from_date, to_date):
+        item: dict[str, Any] = {"month": start.strftime("%Y-%m"), "from_date": start.isoformat(), "to_date": end.isoformat(),
+                                "view": wanted, "available": True, "statement": None, "reason": None}
+        try:
+            item["statement"] = profit_and_loss(entity_path, start, end, basis=view)
+        except CoverageError as exc:
+            if pre_tracking == "refuse":
+                raise
+            before_tracking = wanted == "accrual" and first_tracked and end.isoformat() < first_tracked
+            if before_tracking:
+                item.update(view="cash", requested_view="accrual",
+                            statement=profit_and_loss(entity_path, start, end, basis="cash"),
+                            reason=f"Accrual figures start on {first_tracked}. This month is shown on the cash view, which equals the recorded books.")
+            else:
+                subject = "The cash view" if wanted == "cash" else "The accrual view"
+                item.update(available=False, reason=f"{subject} is unavailable for {item['month']}: {exc} No figure is guessed.")
+        series.append(item)
+    return series
 
 
-def _recorded_basis(source: Any, as_of: Optional[date] = None) -> str:
-    """The canonical journal basis, independent of the preferred P&L view."""
-    from ..accrual.scope import accrual_active, tracking_start, default_view
-    first = tracking_start(source)
-    if first and default_view(source) == "cash":
-        if as_of and as_of.isoformat() < first:
-            return "cash"
-        if hasattr(source, "execute") and not _has_accrual_records(source):
-            return "cash"
-        if hasattr(source, "path"):
-            conn = open_cache(Path(source.path))
-            try:
-                if not _has_accrual_records(conn):
-                    return "cash"
-            finally:
-                conn.close()
-    return "accrual" if accrual_active(source) else "cash"
+def _kept_basis(entity_path: Path) -> Optional[str]:
+    from ..entity import load_entity, resolve_basis
+    try:
+        return resolve_basis(load_entity(entity_path).entity_config)
+    except Exception:
+        return None
 
 
-def _canonical_metadata(conn: Any, kind: str, start: Optional[date], end: date) -> dict:
-    from ..accrual.reports import financial_metadata
-    basis = _recorded_basis(conn, end)
-    return {**financial_metadata(conn, kind, start, end, view=basis), "basis": basis}
-
-
-def _compute_pnl(conn: Any, from_date: date, to_date: date, basis: Optional[str] = None) -> StatementResult:
+def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] = None) -> StatementResult:
     from ..accrual.reports import financial_metadata
     if from_date > to_date:
         raise ValueError("Report start date must be on or before end date.")
-    view = basis or _recorded_basis(conn, to_date)
-    metadata = {**financial_metadata(conn, "pnl", from_date, to_date, view=view), "basis": view}
+    metadata = _stamp_view(financial_metadata(conn, "pnl", from_date, to_date, view), view)
     balances = _account_balances_in_range(conn, from_date, to_date)
 
     # Income: credit-normal → positive balance means credit → income positive
@@ -370,18 +467,20 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date, basis: Optional[str]
 def balance_sheet(
     entity_path: Path | str,
     as_of: date,
+    view: Optional[str] = None,
 ) -> StatementResult:
-    """Compute balance sheet as of *as_of* (end-of-day)."""
+    """Compute balance sheet as of *as_of* (end-of-day). ``view`` is None (the default view) or a view to show."""
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        return _compute_balance_sheet(conn, as_of)
+        return _compute_balance_sheet(conn, as_of, _statement_view(conn, "balance sheet", view))
     finally:
         conn.close()
 
 
-def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
-    metadata = _canonical_metadata(conn, "balance_sheet", None, as_of)
+def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = _stamp_view(financial_metadata(conn, "balance_sheet", None, as_of, view), view)
     balances = _account_balances_as_of(conn, as_of)
 
     # Also compute net income from inception through as_of for equity section
@@ -487,18 +586,20 @@ def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
 def trial_balance(
     entity_path: Path | str,
     as_of: date,
+    view: Optional[str] = None,
 ) -> StatementResult:
-    """Compute trial balance as of *as_of*."""
+    """Compute trial balance as of *as_of*. ``view`` is None (the default view) or a view to show."""
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        return _compute_trial_balance(conn, as_of)
+        return _compute_trial_balance(conn, as_of, _statement_view(conn, "trial balance", view))
     finally:
         conn.close()
 
 
-def _compute_trial_balance(conn: Any, as_of: date) -> StatementResult:
-    metadata = _canonical_metadata(conn, "trial_balance", None, as_of)
+def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = _stamp_view(financial_metadata(conn, "trial_balance", None, as_of, view), view)
     balances = _account_balances_as_of(conn, as_of)
 
     rows = []
@@ -555,18 +656,20 @@ def general_ledger(
     entity_path: Path | str,
     from_date: date,
     to_date: date,
+    view: Optional[str] = None,
 ) -> StatementResult:
-    """Compute general ledger for [from_date, to_date] inclusive."""
+    """Compute general ledger for [from_date, to_date] inclusive. ``view`` is None (the default view) or a view to show."""
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
-        return _compute_general_ledger(conn, from_date, to_date)
+        return _compute_general_ledger(conn, from_date, to_date, _statement_view(conn, "general ledger", view))
     finally:
         conn.close()
 
 
-def _compute_general_ledger(conn: Any, from_date: date, to_date: date) -> StatementResult:
-    metadata = _canonical_metadata(conn, "general_ledger", from_date, to_date)
+def _compute_general_ledger(conn: Any, from_date: date, to_date: date, view: Optional[str] = None) -> StatementResult:
+    from ..accrual.reports import financial_metadata
+    metadata = _stamp_view(financial_metadata(conn, "general_ledger", from_date, to_date, view), view)
     rows_by_account: dict[str, list[dict]] = {}
 
     from ..accrual.reports import settlement_details
@@ -770,6 +873,10 @@ def _extract_vendor(question: str) -> Optional[str]:
 
 _CASH_VIEW = re.compile(r"\bcash[- ]?(?:basis|view|method|based|accounting)\b|\bon a cash\b|\bcash[- ]profit\b|\bcash[- ]income\b|\bcash[- ]p&l\b")
 _ACCRUAL_VIEW = re.compile(r"\baccrual[- ]?(?:basis|view|method|based|accounting)\b|\bon an accrual\b|\baccrual[- ](?:profit|income|p&l)\b")
+# Wording that names a view without the word "basis". Used only for a company that turned accrual on later, so that
+# the answers of existing companies do not change.
+_CASH_WORDS = re.compile(r"\bcash[- ](?:net|revenues?|expenses?|earnings|receipts|spending|costs?)\b")
+_ACCRUAL_WORDS = re.compile(r"\baccrual[- ](?:net|revenues?|expenses?|earnings|spending|costs?)\b")
 
 
 def _without_cash_wording(question: str) -> str:
@@ -808,33 +915,40 @@ def ask(
     if today is None:
         today = date.today()
     entity_path = Path(entity_path)
+    capable, tracking = 0, None
     try:
         config = load_entity(entity_path).entity_config
-        preferred = resolve_basis(config)
-        kept = _recorded_basis(config)
+        kept = resolve_basis(config)
+        from ..accrual import scope
+        capable, tracking = scope.capability(config), scope.tracking_start(config)
     except Exception:
-        kept = preferred = None
+        kept = None
+    # The new routing applies only where a second view can differ from the books: the default view is accrual on a
+    # company that turned accrual on later, or the company keeps accrual records. Turning accrual on alone changes no
+    # answer, and existing companies keep the original routing.
+    records = False
+    if capable and kept == "cash":
+        conn = open_cache(entity_path)
+        try:
+            records = has_accrual_records(conn)
+        finally:
+            conn.close()
+    extended = bool(capable and ((tracking and kept == "accrual") or records))
     q_lower = question.lower()
     from .. import ask_intents
     cash_flow = bool(ask_intents.CASH_FLOW.search(q_lower))
     wanted = "cash" if _CASH_VIEW.search(q_lower) or cash_flow else "accrual" if _ACCRUAL_VIEW.search(q_lower) else None
+    if extended:
+        wanted = "cash" if wanted == "cash" or _CASH_WORDS.search(q_lower) else "accrual" if wanted == "accrual" or _ACCRUAL_WORDS.search(q_lower) else None
     from_date, to_date = _parse_period(question, today)
     named = from_date is not None
     if from_date is None:
         from_date, to_date = date(today.year, 1, 1), today
     span = f"from {from_date} to {to_date}"
-    from ..accrual.scope import tracking_start
-    first = tracking_start(config) if kept else None
-    conn = open_cache(entity_path)
-    try:
-        unchanged_cash = bool(first and preferred == "cash" and wanted != "accrual" and not _has_accrual_records(conn))
-    finally:
-        conn.close()
-    historical_default_cash = wanted is None and preferred == "cash" and first and to_date.isoformat() < first
-    cash_view = kept == "accrual" and (wanted or preferred) == "cash" and not (historical_default_cash or unchanged_cash)
-    if historical_default_cash or unchanged_cash:
-        kept = "cash"
-    if kept == "cash" and wanted == "accrual":
+    view = wanted or kept
+    cash_view = (kept == "accrual" and wanted == "cash") or (extended and kept == "cash" and view == "cash" and records)
+    accrual_override = "accrual" if extended and kept == "cash" and view == "accrual" else None
+    if kept == "cash" and wanted == "accrual" and not extended:
         options = [f"- The same period on the cash basis these books keep: books ask --entity {entity_path} \"" + _without_accrual_wording(question) + "\"",
                    "- To keep accrual books, start an accrual company at a cutover date: see docs/accrual.md."]
         text = (f"Not available: you asked for the accrual basis, but these books are kept on the cash basis. Cash books keep no invoices, bills, "
@@ -853,27 +967,31 @@ def ask(
     routed = None
     if names:
         as_of = to_date if named else today
-        routed = ask_intents.answer(entity_path, question, names, kept, as_of)
+        # A question about balances has no cash form. A company that keeps accrual records answers it from them.
+        routed = ask_intents.answer(entity_path, question, names, "accrual" if extended and records else kept, as_of, view=accrual_override)
     if routed is not None:
         result = AskResult(question=question, intent=routed.intent, answer_text=routed.text, data=routed.data)
         note = "" if named else " No period was named in the question, so this uses today's date."
-        result.answer_text = f"Answer covers: {kept or 'unknown'} basis, from {routed.data['from_date']} to {routed.data['to_date']}.{note}\n\n" + result.answer_text
-        result.data.setdefault("basis", kept)
+        covered = (accrual_override or ("accrual" if extended and records else kept)) if extended else kept
+        result.answer_text = f"Answer covers: {covered or 'unknown'} basis, from {routed.data['from_date']} to {routed.data['to_date']}.{note}\n\n" + result.answer_text
+        result.data.setdefault("basis", covered)
         return result
-    result = _ask_core(entity_path, question, today=today, cash_view=cash_view, basis=wanted or preferred, plain_cash=unchanged_cash)
+    result = _ask_core(entity_path, question, today=today, cash_view=cash_view, view=accrual_override)
     if result.intent == "unknown":
         return result
     answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
     note = "" if named else " No period was named in the question, so this covers the year to date."
-    covered = "cash basis (derived from accrual books)" if cash_view else f"{kept or 'unknown'} basis"
+    covered = "cash basis (derived from accrual books)" if cash_view else f"{(view if extended else kept) or 'unknown'} basis"
     result.answer_text = (f"Answer covers: {covered}, from {answered_from} to {answered_to}.{note}\n\n"
                           + result.answer_text)
     if cash_view:
-        result.data.update(basis="cash", books_basis="accrual", derived_from="accrual")
+        result.data.update(basis="cash", books_basis=kept, derived_from="accrual")
         total = Decimal(((result.data.get("meta") or {}).get("noncash_entries_total")) or "0")
         if total:
             result.answer_text = result.answer_text.replace("\n\n", f"\nNote: this includes ${total:,.2f} of entries that may not be cash. They are listed under \"Entries that may not be cash\" below.\n\n", 1)
-    result.data.setdefault("basis", kept)
+    result.data.setdefault("basis", view if extended else kept)
+    if extended:
+        result.data["view"] = "cash" if cash_view else view
     result.data.setdefault("from_date", answered_from)
     result.data.setdefault("to_date", answered_to)
     return result
@@ -885,8 +1003,7 @@ def _ask_core(
     *,
     today: Optional[date] = None,
     cash_view: bool = False,
-    basis: Optional[str] = None,
-    plain_cash: bool = False,
+    view: Optional[str] = None,
 ) -> AskResult:
     """Dispatch a plain-English question to deterministic statement/cache queries.
 
@@ -940,8 +1057,10 @@ def _ask_core(
     conn = open_cache(entity_path)
     try:
         from ..accrual.reports import CoverageError, financial_metadata
-        from ..accrual.scope import accrual_active
-        if not plain_cash and accrual_active(conn) and (cash_view or basis == "accrual" or _recorded_basis(conn, to_date) == "accrual") and intent != "unknown":
+        from ..accrual.scope import default_view
+        # The answer's shape follows the default view, not the capability: a cash-view company that turned accrual on
+        # later answers exactly as before.
+        if (default_view(conn) == "accrual" or cash_view or view == "accrual") and intent != "unknown":
             if is_net and not is_draws and not is_vendor:
                 intent = "net_income"
             # Use the same coverage checks and recognition totals as statements.
@@ -953,7 +1072,7 @@ def _ask_core(
                 metadata = derived.meta
                 context = derived.to_text()
             else:
-                metadata = {**financial_metadata(conn, "pnl", from_date, to_date, view="accrual"), "basis": "accrual"}
+                metadata = _stamp_view(financial_metadata(conn, "pnl", from_date, to_date, view), view)
                 context = StatementResult("pnl", from_date, to_date, meta=metadata).to_text()
             dates = {"from_date": str(from_date), "to_date": str(to_date), "meta": metadata}
             if intent == "vendor" or (not cash_view and intent in {"revenue", "spend"} and re.search(r"\b(paid|pay|payments?|receipts)\b", q_lower)):
@@ -968,7 +1087,7 @@ def _ask_core(
                 return AskResult(question=question, intent=intent,
                     answer_text=f"Recorded owner draws {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + context,
                     data={**dates, "total_draws": str(total)})
-            pnl = derived or _compute_pnl(conn, from_date, to_date, basis="accrual")
+            pnl = derived or _compute_pnl(conn, from_date, to_date, view=view)
             if intent == "revenue":
                 total, key, label = pnl.sections[0]["total"], "total_revenue", ("Revenue received (cash basis)" if cash_view else "Recognized revenue")
             elif intent == "spend":
@@ -1203,8 +1322,8 @@ def add_parser(subparsers: Any) -> None:
     pnl_p.add_argument("--from", dest="from_date", required=True, help="Start date (YYYY-MM-DD)")
     pnl_p.add_argument("--to", dest="to_date", required=True, help="End date (YYYY-MM-DD)")
     pnl_p.add_argument("--basis", choices=["cash", "accrual"], default=None,
-                       help="Basis to show. Default: the basis the books keep. Accrual books can show a derived cash view; "
-                            "cash books keep no data for an accrual view.")
+                       help="View to show. Default: the company's default view. A company that keeps accrual records can show a derived cash view; "
+                            "a company with no accrual records keeps no data for an accrual view.")
     _common_args(pnl_p)
 
     # balance-sheet
@@ -1223,6 +1342,11 @@ def add_parser(subparsers: Any) -> None:
     gl_p.add_argument("--to", dest="to_date", required=True, help="End date (YYYY-MM-DD)")
     _common_args(gl_p)
 
+    for _p in (bs_p, tb_p, gl_p):
+        _p.add_argument("--basis", choices=["cash", "accrual"], default=None,
+                        help="View to show. Default: the company's default view. The accrual view starts on the date accrual was turned on. "
+                             "Balances have no cash view.")
+
     from .report_cli import extend_parser
     extend_parser(report_sub, _common_args, pnl_p, bs_p)
 
@@ -1240,9 +1364,9 @@ def _coverage_failure(args: Any, exc: Exception) -> int:
     lines = [f"Error: {exc}"]
     if first and command:
         parts = [f"books report {command} --entity {args.entity}"]
+        if getattr(args, "basis", None) and command in {"pnl", "general-ledger", "balance-sheet", "trial-balance"}:
+            parts.append(f"--basis {args.basis}")
         if command in {"pnl", "general-ledger"}:
-            if command == "pnl" and getattr(args, "basis", None):
-                parts.append(f"--basis {args.basis}")
             from_date, to_date = args.from_date, args.to_date
             if field == "from":
                 from_date = first
@@ -1297,6 +1421,12 @@ def _run(args: Any) -> int:
         fmt = getattr(args, "fmt", "text")
         rc = getattr(args, "report_command", None)
 
+        explicit = getattr(args, "basis", None)
+        if explicit and rc in {"pnl", "balance-sheet"} and (getattr(args, "structure", False) or getattr(args, "compare", None)) \
+                and explicit != _kept_basis(entity):
+            print("Error: --basis cannot be combined with --structure or --compare. Those outputs use the company's default view, "
+                  "so a different view would be shown without its label. Run the report without those flags to choose a view.", file=sys.stderr)
+            return 1
         from .report_cli import run_extended
         handled = run_extended(args, entity, output, fmt)
         if handled is not None:
@@ -1306,7 +1436,7 @@ def _run(args: Any) -> int:
             from_date = date.fromisoformat(args.from_date)
             to_date = date.fromisoformat(args.to_date)
             try:
-                result = profit_and_loss(entity, from_date, to_date, basis=getattr(args, "basis", None))
+                result = profit_and_loss(entity, from_date, to_date, basis=getattr(args, "basis", None) or _kept_basis(entity))
             except CashViewError as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
@@ -1321,20 +1451,38 @@ def _run(args: Any) -> int:
 
         if rc == "balance-sheet":
             as_of = date.fromisoformat(args.as_of)
-            result = balance_sheet(entity, as_of)
+            try:
+                result = balance_sheet(entity, as_of, view=explicit)
+            except ValueError as exc:
+                if isinstance(exc, CoverageError):
+                    raise
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
             _write_output(result, output, fmt)
             return 0
 
         if rc == "trial-balance":
             as_of = date.fromisoformat(args.as_of)
-            result = trial_balance(entity, as_of)
+            try:
+                result = trial_balance(entity, as_of, view=explicit)
+            except ValueError as exc:
+                if isinstance(exc, CoverageError):
+                    raise
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
             _write_output(result, output, fmt)
             return 0
 
         if rc == "general-ledger":
             from_date = date.fromisoformat(args.from_date)
             to_date = date.fromisoformat(args.to_date)
-            result = general_ledger(entity, from_date, to_date)
+            try:
+                result = general_ledger(entity, from_date, to_date, view=explicit)
+            except ValueError as exc:
+                if isinstance(exc, CoverageError):
+                    raise
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
             _write_output(result, output, fmt)
             return 0
 

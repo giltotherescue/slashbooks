@@ -397,11 +397,10 @@ when entries exist on or after the start.
 
 ### Choose the default view
 
-The default view chooses the profit and loss view for `books report pnl` and profit or spending
-questions in `books ask`. After the step above the default stays **cash**. Unpaid invoices and
-bills appear only in the accrual profit and loss view; their later payments appear in the cash view.
-Balance sheets, trial balances, general ledgers, tax handoffs and accountant packages use the
-recorded journal basis and supporting records. Changing the default does not convert those exports.
+The default view decides what `books report`, `books ask` and exports show when you do not
+say. After the step above the default stays **cash**, so nothing a person sees changes.
+Unpaid invoices and bills appear only in the accrual profit and loss view; their later payments
+appear in the cash view.
 
 ```sh
 books entity set-view PATH --view accrual          # preview
@@ -410,9 +409,33 @@ books entity set-view PATH --view accrual --apply  # change it
 
 - `accrual` is refused while accrual is off for the company.
 - It changes only the default. No entry, lock, report file or published statement changes, and an audit event records the change.
-- Pass `--basis cash` or `--basis accrual` to `report pnl` to pick the other view for one command.
-  Structured JSON and comparative statements preserve that choice.
+- Pass `--basis cash` or `--basis accrual` to a report to pick the other view for one command.
 - **The accrual view starts on the tracking start.** A report or answer for a period that starts earlier is refused and names the first available date. The cash view is available for every period.
+
+### Every output on either view
+
+The default view picks the view of every report output. `--basis cash|accrual` picks the other one for one command.
+Every output names the view it shows.
+
+| Output | Cash view | Accrual view |
+|---|---|---|
+| `report pnl` | The recorded books, or the derived cash view when accrual records exist. | Recognition on the accrual basis. Starts on the tracking start. |
+| `report balance-sheet`, `trial-balance`, `general-ledger` (`--basis`) | Balances have no cash view. A cash request on a company that keeps accrual records is refused and names the profit and loss. | Labelled accrual. Starts on the tracking start. |
+| `books export --basis` | The P&L and the General Ledger sheets only. The cover says "Cash view (derived ...)" and lists what is not shown. Asking for a balance sheet, trial balance, summary, checks or accrual sheet by name is refused. | The full accrual export, with the accrual sheets. The cover says "Accrual view (accrual figures start on DATE)". |
+| `compare period --basis` | Profit and loss only. The balance sheet and trial balance are reported as not compared. The QuickBooks reports must be on the cash basis. | All grains, against QuickBooks accrual reports. |
+
+- A company with no accrual records has one view, the recorded books. Its `--basis cash` output is the ordinary report.
+- With accrual on and accrual records present, the cash view is always the derived view, whatever the default view. `books report pnl` and `books export` name the default view, so a person gets it without a flag. The engine's own readers (the statement of cash flows, which must tie to the bank) call the profit and loss with no view and get the recorded books.
+- The tax handoff README says "Cash basis book balances" for a company with no accrual records. For a company that turned accrual on and holds accrual records it says that the balances are as recorded: cash entries before the tracking start and accrual records from it, not a tax cash-basis view.
+- A comparison on a view other than the default does not read or change the saved differences of the default comparison.
+- `--basis` with `--structure` or `--compare` is refused when it names a view other than the default, so a different view is never shown without its label.
+- The accrual view of a company that turned accrual on later refuses every range that starts before the tracking start and names that date.
+
+**Questions.** `books ask` follows the same rule. Plain wording such as "cash net income" or "accrual revenue" picks the view for a company that turned accrual on later and holds accrual records or has the accrual default view. With no view wording, the default view answers. Balance questions ("What do we owe?") answer from the accrual records, because balances have no cash form. A company that never turned accrual on, and a company that only turned it on, keep the original wording rules and answers.
+
+**Series.** `profit_and_loss_by_month(entity, from, to, view, pre_tracking)` returns one item per month with its `view`. A series that crosses the tracking start on the accrual view is refused with the coverage error (`pre_tracking="refuse"`, the default). With `"label"`, a month that ends before the start is shown on the cash view and says so (`requested_view` is "accrual"), and a month the view cannot answer is `available: false` with the reason. A month inside an imported QuickBooks summary period has no cash view; the item says so and no figure is guessed.
+
+**Migration bundles.** The bundle carries the default view (`basis`), the capability (`accrual_capability_version`) and the tracking start (`accrual_tracking_start`) together. A bundle is refused when the capability is not 0 or 1, when capability 1 has no accrual ledger, when the tracking start is not a date or has no capability, or when the company file and the ledger disagree about the tracking start. A company that never turned accrual on has the same bundle identity as before.
 
 ## Moving existing accrual books from QuickBooks
 

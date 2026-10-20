@@ -372,7 +372,7 @@ class HandoffTests(unittest.TestCase):
 
         accounting = self._large_accounting()
         out = Path(self.temp.name) / "big"
-        with patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
+        with patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
             manifest = export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
         text = (out / "README.txt").read_text(encoding="utf-8")
         self.assertNotIn("Category-0001", text)
@@ -393,7 +393,7 @@ class HandoffTests(unittest.TestCase):
         accounting = self._large_accounting(accounts=600)
         self.assertGreater(len(json.dumps(accounting)), 32767)
         out = Path(self.temp.name) / "bigx"
-        with patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
+        with patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
             export_handoff(self.company, *YEAR, output_dir=out, formats=["xlsx"])
         with zipfile.ZipFile(out / "tax-handoff-1120s-2026-01-01_2026-12-31.xlsx") as archive:
             strings = archive.read("xl/sharedStrings.xml").decode()
@@ -409,7 +409,8 @@ class HandoffTests(unittest.TestCase):
                       "requested_to": "2026-12-31", "unresolved_issues": []}
         with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
                 patch("bookkeeping.taxmap.tracking_start", return_value="2026-04-01"), \
-                patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
+                patch("bookkeeping.reports.statements.has_accrual_records", return_value=True), \
+                patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
             handoff = build_handoff(self.company, *YEAR)
             export_handoff(self.company, *YEAR, output_dir=out, formats=["csv"])
         self.assertIn("Cash basis, accrual tracking for selected accounts from 2026-04-01", handoff["basis_label"])
@@ -424,7 +425,8 @@ class HandoffTests(unittest.TestCase):
                       "requested_to": "2026-12-31", "unresolved_issues": []}
         with patch("bookkeeping.taxmap.discipline", return_value="per_account"), \
                 patch("bookkeeping.taxmap.tracking_start", return_value=None), \
-                patch("bookkeeping.reports.statements._canonical_metadata", return_value=accounting):
+                patch("bookkeeping.reports.statements.has_accrual_records", return_value=True), \
+                patch("bookkeeping.taxmap._accounting_metadata", return_value=accounting):
             handoff = build_handoff(self.company, *YEAR)
         self.assertNotIn("None", handoff["basis_label"])
         self.assertIn("from a start date that is not recorded", handoff["basis_label"])

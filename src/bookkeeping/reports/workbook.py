@@ -55,10 +55,9 @@ from typing import Any, Callable, Optional
 from ..safe_cells import neutralize_row
 from .statements import (
     StatementResult,
-    _recorded_basis,
     balance_sheet,
     general_ledger,
-    _canonical_profit_and_loss as profit_and_loss,
+    profit_and_loss,
     trial_balance,
 )
 from ..reconcile import list_discrepancies
@@ -697,6 +696,34 @@ def _run_yoy_pnl_check(
     )
 
 
+def _recorded_net_income_through(entity_path: Path, day: date) -> Decimal:
+    """Cumulative net income of the recorded ledger through ``day``."""
+    from .cache import open_cache
+    from .statements import _account_balances_as_of, _is_expense, _is_income
+    conn = open_cache(entity_path)
+    try:
+        balances = _account_balances_as_of(conn, day)
+    finally:
+        conn.close()
+    return sum((-bal for acc, bal in balances.items() if _is_income(acc)), Decimal("0.00")) \
+        - sum((bal for acc, bal in balances.items() if _is_expense(acc)), Decimal("0.00"))
+
+
+def _keeps_accrual_records(entity_path: Path) -> bool:
+    """True for a cash-default company that turned accrual on and now holds accrual records."""
+    from ..accrual import scope
+    entity = load_entity(entity_path)
+    if scope.capability(entity) != 1:
+        return False
+    from .cache import open_cache
+    from .statements import has_accrual_records
+    conn = open_cache(entity_path)
+    try:
+        return has_accrual_records(conn)
+    finally:
+        conn.close()
+
+
 def run_sanity_checks(
     entity_path: Path | str,
     from_date: date,
@@ -718,7 +745,7 @@ def run_sanity_checks(
         _run_queue_empty_check(entity_path),
         _run_reconciliation_clean_check(entity_path),
     ]
-    if _recorded_basis(load_entity(entity_path), to_date) == "accrual":
+    if load_entity(entity_path).basis == "accrual" or _keeps_accrual_records(entity_path):
         from ..accrual.reports import report
         try:
             issues = report(load_entity(entity_path), "reconciliation", as_of=to_date)["issues"]
@@ -734,6 +761,67 @@ def run_sanity_checks(
 # ---------------------------------------------------------------------------
 
 
+_DERIVED_CASH_EXCLUDED = ("balance-sheet", "trial-balance", "summary", "checks", *_ACCRUAL_SHEETS)
+
+
+@dataclass
+class ViewPlan:
+    """Which view an export shows, and how each statement sheet is produced."""
+
+    view: str  # the view the export shows
+    default: str  # the company's default view
+    derived_cash: bool = False  # the cash view is derived from accrual records (profit and loss only)
+    override: Optional[str] = None  # accrual view on a company whose default view is cash
+    tracking_start: Optional[str] = None
+    labelled: bool = False  # the cover names the view (a company that turned accrual on later, or a non-default view)
+    error: Optional[str] = None
+
+
+def _plan_view(entity_path: Path, view: Optional[str]) -> ViewPlan:
+    """Decide the view of an export. A company with no accrual capability keeps its one view and its exact output."""
+    from ..accrual import scope
+    from .cache import open_cache
+    from .statements import NO_ACCRUAL_VIEW, has_accrual_records
+    if view not in (None, "cash", "accrual"):
+        return ViewPlan(view="", default="", error="--basis must be cash or accrual.")
+    entity = load_entity(entity_path)
+    default = scope.default_view(entity)
+    capable = scope.capability(entity) == 1
+    tracking = scope.tracking_start(entity)
+    effective = view or default
+    if not capable:
+        if effective == "accrual" and default != "accrual":
+            return ViewPlan(view=effective, default=default, error=NO_ACCRUAL_VIEW)
+        return ViewPlan(view=effective, default=default, derived_cash=effective == "cash" and default == "accrual",
+                        labelled=effective != default)
+    conn = open_cache(entity_path)
+    try:
+        records = has_accrual_records(conn)
+    finally:
+        conn.close()
+    derived = effective == "cash" and (default == "accrual" or records)
+    override = "accrual" if effective == "accrual" and default == "cash" else None
+    # Turning accrual on alone changes nothing a person sees, so the cover names the view only when it can differ from the recorded books.
+    labelled = bool(derived or override or effective != default or (tracking and default == "accrual"))
+    return ViewPlan(view=effective, default=default, derived_cash=derived, override=override, tracking_start=tracking, labelled=labelled)
+
+
+def _view_cover_rows(plan: ViewPlan) -> list[list[str]]:
+    if not plan.labelled:
+        return []
+    if plan.derived_cash:
+        rows = [["Report view", "Cash view (derived from the accrual records; income and expense when money moves)"],
+                ["Default view", plan.default.title() + " view"],
+                ["Not shown on the cash view", "Balance Sheet, Trial Balance, Summary, Checks and the accrual sheets: balances such as "
+                                               "receivables and payables have no cash form"]]
+    elif plan.view == "accrual":
+        since = f" (accrual figures start on {plan.tracking_start})" if plan.tracking_start else ""
+        rows = [["Report view", "Accrual view" + since], ["Default view", plan.default.title() + " view"]]
+    else:
+        rows = [["Report view", "Cash view (the recorded books)"], ["Default view", plan.default.title() + " view"]]
+    return [[], *rows]
+
+
 def _build_cover_rows(
     entity_path: Path,
     entity_name: str,
@@ -741,6 +829,7 @@ def _build_cover_rows(
     to_date: date,
     sanity: SanityResult,
     override_used: bool,
+    view_rows: Optional[list[list[str]]] = None,
 ) -> list[list[str]]:
     """Build cover/README sheet rows."""
     rows: list[list[str]] = [
@@ -750,7 +839,7 @@ def _build_cover_rows(
         ["Period end", str(to_date)],
         ["Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
         ["Source", str(entity_path)],
-        ["Accounting basis", _recorded_basis(load_entity(entity_path), to_date).title() + " basis"],
+        ["Accounting basis", load_entity(entity_path).basis.title() + " basis"],
         [],
         ["Sheet index", ""],
         ["1. Cover", "This sheet"],
@@ -767,6 +856,7 @@ def _build_cover_rows(
     ]
     for c in sanity.checks:
         rows.append([c.check, f"[{c.status.upper()}] {c.detail}"])
+    rows.extend(view_rows or [])
     if override_used:
         rows.append([])
         rows.append([
@@ -1391,13 +1481,11 @@ def _build_summary_rows(
     open_question_rows: Optional[list[list[str]]] = None,
     formulas: bool = True,
     closing_cumulative_net_income: Decimal | None = None,
-    accounting_basis: Optional[str] = None,
 ) -> list[list[str]]:
     """Build accountant summary rows.
 
     XLSX uses formulas for reviewability; CSV uses static values for portability.
     """
-    accounting_basis = accounting_basis or _recorded_basis(entity_config, to_date)
     status = "PASS"
     if sanity.has_failures:
         status = "OVERRIDE" if override_used else "FAIL"
@@ -1441,8 +1529,8 @@ def _build_summary_rows(
         ["Business", entity_name],
         ["Produced by", "Slashbooks"],
         ["Project link", "https://github.com/giltotherescue/slashbooks"],
-        ["Accounting basis", accounting_basis.title() + " basis"],
-        ["Bookkeeping scope", "Accrual bookkeeping foundations export" if accounting_basis == "accrual" else "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
+        ["Accounting basis", str(entity_config.get("basis", entity_config.get("accounting_basis", "cash"))).title() + " basis"],
+        ["Bookkeeping scope", "Accrual bookkeeping foundations export" if entity_config.get("basis", entity_config.get("accounting_basis")) == "accrual" else "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
         ["Tax prep scope", "Handoff support only; tax treatment and filing positions remain preparer-reviewed"],
         ["Legal structure", str(entity_config.get("legal_structure", ""))],
         ["Country", str(entity_config.get("country", ""))],
@@ -1839,6 +1927,7 @@ def generate_accountant_package(
     exclude_sheets: str | list[str] | tuple[str, ...] | None = None,
     gl_from_date: date | None = None,
     gl_to_date: date | None = None,
+    view: Optional[str] = None,
 ) -> PackageResult:
     """Generate the full accountant export (CSV exports + optional XLSX).
 
@@ -1846,8 +1935,16 @@ def generate_accountant_package(
     ``override=False``, returns early with an error message.
 
     The ``override`` flag is recorded in the cover sheet when used.
+
+    ``view`` is None (the company's default view), ``"cash"`` or ``"accrual"``. The cash view of a company that
+    keeps accrual records is the derived profit and loss only: balances have no cash form, so those sheets are left
+    out of the default export and refused when a sheet list asks for them. The cover names the view.
     """
     entity_path = Path(entity_path)
+    default_output = Path(output_dir) if output_dir is not None else entity_path / "reports" / "accountant-export" / f"{from_date}_{to_date}"
+    plan = _plan_view(entity_path, view)
+    if plan.error:
+        return PackageResult(output_dir=default_output, sanity=SanityResult(checks=[]), error=plan.error)
     try:
         selected_sheet_keys = _resolve_sheet_keys(sheets, exclude_sheets)
     except ValueError as exc:
@@ -1856,7 +1953,15 @@ def generate_accountant_package(
             sanity=SanityResult(checks=[]),
             error=str(exc),
         )
-    if not sheets and _recorded_basis(load_entity(entity_path), to_date) == "accrual":
+    if plan.derived_cash:
+        asked = [key for key in selected_sheet_keys if key in _DERIVED_CASH_EXCLUDED]
+        if sheets and asked:
+            names = ", ".join(_SHEET_NAMES[key] for key in asked)
+            return PackageResult(output_dir=default_output, sanity=SanityResult(checks=[]),
+                                 error=f"The cash view has no {names} sheet: receivables, payables, prepaid and deferred balances exist only on "
+                                       "the accrual basis. Remove those sheets, or export with --basis accrual.")
+        selected_sheet_keys = [key for key in selected_sheet_keys if key not in _DERIVED_CASH_EXCLUDED]
+    elif not sheets and plan.view == "accrual" and (plan.override or load_entity(entity_path).basis == "accrual"):
         excluded = {_sheet_key(item) for item in _split_sheet_names(exclude_sheets)}
         selected_sheet_keys.extend(key for key in _ACCRUAL_SHEETS if key not in excluded)
     selected_set = set(selected_sheet_keys)
@@ -1976,13 +2081,13 @@ def generate_accountant_package(
         if key in rows_cache:
             return rows_cache[key]
         if key == "cover":
-            rows_cache[key] = _build_cover_rows(entity_path, entity_name, from_date, to_date, sanity, override_used)
+            rows_cache[key] = _build_cover_rows(entity_path, entity_name, from_date, to_date, sanity, override_used, _view_cover_rows(plan))
         elif key == "pnl":
-            return _statement_rows("pnl", lambda: profit_and_loss(entity_path, from_date, to_date))
+            return _statement_rows("pnl", lambda: profit_and_loss(entity_path, from_date, to_date, basis=plan.view))
         elif key == "balance-sheet":
-            return _statement_rows("balance-sheet", lambda: balance_sheet(entity_path, to_date))
+            return _statement_rows("balance-sheet", lambda: balance_sheet(entity_path, to_date, view=plan.override))
         elif key == "trial-balance":
-            return _statement_rows("trial-balance", lambda: trial_balance(entity_path, to_date))
+            return _statement_rows("trial-balance", lambda: trial_balance(entity_path, to_date, view=plan.override))
         elif key == "general-ledger":
             rows_cache[key] = _build_general_ledger_rows(
                 entity_path,
@@ -2069,16 +2174,21 @@ def generate_accountant_package(
         cache_key = "summary:xlsx" if formulas else "summary:csv"
         if cache_key not in rows_cache:
             from ..accrual.reports import CoverageError
-            closing_bs = balance_sheet(entity_path, to_date)
+            closing_bs = balance_sheet(entity_path, to_date, view=plan.override)
             try:
-                prior_bs = balance_sheet(entity_path, from_date - timedelta(days=1))
+                prior_bs = balance_sheet(entity_path, from_date - timedelta(days=1), view=plan.override)
                 prior_bs_rows = _statement_to_rows(prior_bs)
                 opening_income = Decimal(prior_bs.meta.get("cumulative_net_income", str(_find_amount(prior_bs_rows, label_col=1, amount_col=2, label="Net Income (current period)"))))
             except CoverageError:
                 coverage = closing_bs.meta.get("coverage") or {}
-                if from_date.isoformat() != (coverage.get("summary_from") or coverage.get("fiscal_start")):
+                if plan.tracking_start and from_date.isoformat() == plan.tracking_start:
+                    # Accrual figures start on this date. Every earlier entry is a recorded cash entry, so the recorded
+                    # cumulative net income is the opening figure.
+                    opening_income = _recorded_net_income_through(entity_path, from_date - timedelta(days=1))
+                elif from_date.isoformat() != (coverage.get("summary_from") or coverage.get("fiscal_start")):
                     raise
-                opening_income = Decimal(0)
+                else:
+                    opening_income = Decimal(0)
             rows_cache[cache_key] = _build_summary_rows(
                 entity_name,
                 _entity_config(),
@@ -2094,7 +2204,6 @@ def generate_accountant_package(
                 vendor_rows=_rows("vendor-1099") if "vendor-1099" in selected_set else None,
                 open_question_rows=_rows("open-questions") if "open-questions" in selected_set else None,
                 formulas=formulas,
-                accounting_basis=closing_bs.meta["basis"],
                 closing_cumulative_net_income=Decimal(closing_bs.meta["cumulative_net_income"]) if closing_bs.meta.get("basis") == "accrual" else None,
             )
         return rows_cache[cache_key]
@@ -2286,6 +2395,13 @@ def add_parser(subparsers: Any) -> None:
         help="Comma-separated sheet list to omit from the default export, e.g. general-ledger",
     )
     cp_p.add_argument(
+        "--basis",
+        choices=["cash", "accrual"],
+        default=None,
+        help="View to export. Default: the company's default view. The cash view of a company that keeps accrual records "
+             "shows the profit and loss only; the accrual view starts on the date accrual was turned on.",
+    )
+    cp_p.add_argument(
         "--gl-from",
         dest="gl_from_date",
         default=None,
@@ -2334,6 +2450,7 @@ def run(args: Any) -> int:
             exclude_sheets=args.exclude_sheets,
             gl_from_date=gl_from_date,
             gl_to_date=gl_to_date,
+            view=getattr(args, "basis", None),
         )
         if not result.success:
             print(f"Error: {result.error}", file=sys.stderr)

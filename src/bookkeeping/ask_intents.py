@@ -79,12 +79,12 @@ def _side_text(label: str, side: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def answer(entity_path: Path, question: str, names: list[str], kept: Optional[str], as_of: date) -> Routed:
+def answer(entity_path: Path, question: str, names: list[str], kept: Optional[str], as_of: date, view: Optional[str] = None) -> Routed:
     """Answer one matched point-in-time question as of ``as_of``."""
     base = {"from_date": str(as_of), "to_date": str(as_of), "as_of": str(as_of)}
     if "balance_sheet" in names:
         from .reports.statements import balance_sheet
-        sheet = balance_sheet(entity_path, as_of)
+        sheet = balance_sheet(entity_path, as_of, view=view)
         return Routed(f"Balance sheet as of {as_of}.\n\n{sheet.to_text()}", "balance_sheet", base)
     if kept != "accrual":
         return Routed("Not available: these books are kept on the cash basis, which does not track bills, invoices, prepaid "

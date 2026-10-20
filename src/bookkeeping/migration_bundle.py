@@ -196,6 +196,11 @@ def _anchors(files, inventory=None):
     identity = {"entity_json_sha256": _sha(files["entity.json"]), "basis": basis, "currency": "USD"}
     if basis == "accrual":
         identity["accrual_capability_version"] = entity["accrual_capability_version"]
+    elif entity.get("accrual_capability_version") == 1:
+        # A cash default view with accrual turned on: the bundle names the capability it carries.
+        identity["accrual_capability_version"] = 1
+    if entity.get("accrual_tracking_start"):
+        identity["accrual_tracking_start"] = entity["accrual_tracking_start"]
     for field in ("id", "name", "legal_name", "business_type", "legal_structure", "cutover_date"):
         if field in entity:
             _require((field == "cutover_date" and entity[field] is None) or
@@ -247,6 +252,12 @@ def _anchors(files, inventory=None):
                 if coverage:
                     first = date.fromisoformat(coverage.get("summary_from") or coverage["cutover_date"])
                     last = max(last, first)
+                    start, end = first.isoformat(), last.isoformat()
+            if identity["basis"] == "accrual" and identity.get("accrual_tracking_start"):
+                # The accrual view starts on the tracking start date, so the fingerprints cover from that date.
+                tracked = date.fromisoformat(identity["accrual_tracking_start"])
+                if date.fromisoformat(start) < tracked:
+                    first, last = tracked, max(last, tracked)
                     start, end = first.isoformat(), last.isoformat()
             reports = [statements._compute_pnl(sql, first, last), statements._compute_balance_sheet(sql, last),
                        statements._compute_trial_balance(sql, last), statements._compute_general_ledger(sql, first, last)]

@@ -27,18 +27,22 @@ class ReportViewIntegrityTests(CashViewFixture):
 
     def test_default_cash_and_explicit_accrual_use_distinct_economic_events(self):
         self.cash_default()
-        for basis in (None, "cash"):
-            report = statements.profit_and_loss(self.root, *JAN, basis=basis)
-            self.assertEqual(report.totals["net_income"], D("0.00"))
-            self.assertEqual(report.meta["basis"], "cash")
+        # The library default is the books as recorded. A named cash view is the derived cash view.
+        recorded = statements.profit_and_loss(self.root, *JAN)
+        self.assertEqual(recorded.totals["net_income"], D("1000.00"))
+        report = statements.profit_and_loss(self.root, *JAN, basis="cash")
+        self.assertEqual(report.totals["net_income"], D("0.00"))
+        self.assertEqual(report.meta["basis"], "cash")
         accrual = statements.profit_and_loss(self.root, *JAN, basis="accrual")
         self.assertEqual(accrual.totals["net_income"], D("1000.00"))
         self.assertEqual(accrual.meta["basis"], "accrual")
         self.settle("receipt", "2026-02-05", "400", [("invoice", "400")])
-        feb = statements.profit_and_loss(self.root, date(2026, 2, 1), date(2026, 2, 28))
+        feb = statements.profit_and_loss(self.root, date(2026, 2, 1), date(2026, 2, 28), basis="cash")
         self.assertEqual(feb.totals["net_income"], D("400.00"))
+        # Balances exist only on the accrual books. The default cash view of a company that keeps accrual records shows them
+        # unchanged, and the accrual view names itself.
         for compute in (statements.balance_sheet, statements.trial_balance):
-            self.assertEqual(compute(self.root, JAN[1]).meta["basis"], "accrual")
+            self.assertEqual(compute(self.root, JAN[1], view="accrual").meta["basis"], "accrual")
 
     def test_ask_honors_cash_default_but_reads_recorded_support(self):
         self.cash_default()
@@ -57,21 +61,32 @@ class ReportViewIntegrityTests(CashViewFixture):
                     out, err = StringIO(), StringIO()
                     with redirect_stdout(out), redirect_stderr(err):
                         code = cli.main(["report", "pnl", "--entity", str(self.root), "--from", "2026-01-01", "--to", "2026-01-31", "--basis", basis, "--format", "json", *flags])
+                    if flags and basis == "accrual":
+                        # These outputs use the default view (cash here). A different view is refused, not shown unlabeled.
+                        self.assertEqual(code, 1)
+                        self.assertIn("--basis cannot be combined with --structure or --compare", err.getvalue())
+                        continue
                     self.assertEqual(code, 0, err.getvalue())
                     payload = json.loads(out.getvalue())
                     self.assertEqual(payload["totals"]["net_income"], expected)
                     self.assertEqual(payload["meta"]["basis"], basis)
 
-    def test_accountant_package_keeps_canonical_basis_and_support(self):
+    def test_accountant_package_names_the_view_and_keeps_accrual_support_on_the_accrual_view(self):
         self.cash_default()
+        # The default view is cash, so the package is the derived cash view: profit and loss only, and the cover says so.
         package = workbook.generate_accountant_package(self.root, *JAN, output_dir=self.root / "handoff", override=True)
         self.assertFalse(package.error, package.error)
-        files = {path.name: path for path in package.output_dir.rglob("*.csv")}
+        files = {path.name for path in package.output_dir.rglob("*.csv")}
+        self.assertFalse(any("Outstanding" in name for name in files), files)
+        self.assertIn("Cash view (derived", (package.output_dir / "csv" / "Cover.csv").read_text())
+        self.assertIn("Net Income,0.00", (package.output_dir / "csv" / "P-and-L.csv").read_text())
+        # The accrual view keeps the accrual sheets and the canonical income.
+        accrual = workbook.generate_accountant_package(self.root, *JAN, output_dir=self.root / "handoff-accrual", override=True, view="accrual")
+        self.assertFalse(accrual.error, accrual.error)
+        files = {path.name for path in accrual.output_dir.rglob("*.csv")}
         self.assertTrue(any("Outstanding" in name for name in files), files)
-        cover = (package.output_dir / "csv" / "Cover.csv").read_text()
-        self.assertIn("Accrual basis", cover)
-        pnl = (package.output_dir / "csv" / "P-and-L.csv").read_text()
-        self.assertIn("1000.00", pnl)
+        self.assertIn("Accrual view", (accrual.output_dir / "csv" / "Cover.csv").read_text())
+        self.assertIn("Net Income,1000.00", (accrual.output_dir / "csv" / "P-and-L.csv").read_text())
         checks = workbook.run_sanity_checks(self.root, *JAN)
         self.assertIn("accrual_support", [check.check for check in checks.checks])
 
@@ -162,7 +177,6 @@ class NoncashCashflowIntegrityTests(CashViewFixture):
         enable.apply_set_view(self.entity,"cash")
         result = self.check_totals(JAN)
         self.assertEqual(result.totals["net_income"],D("1000.00"))
-        self.assertEqual(result.meta["basis"],"accrual")
 
     def test_cash_downpayment_does_not_invent_loan_proceeds(self):
         self.journal("financed-purchase", "2026-01-05", [(EQUIPMENT,"1000"),(BANK,"-200"),(LOAN,"-800")])
@@ -201,9 +215,8 @@ class OptionalTrackingPackageIntegrityTests(unittest.TestCase):
         as_of=date(2026,4,30)
         conn=open_cache(fixture.root)
         try:
-            self.assertEqual(statements._recorded_basis(conn,as_of),"cash")
+            self.assertFalse(statements.has_accrual_records(conn))
         finally: conn.close()
-        self.assertEqual(statements._recorded_basis(load_entity(fixture.root),as_of),"cash")
         package=workbook.generate_accountant_package(fixture.root,date(2026,4,1),as_of,output_dir=fixture.work/"package",override=True)
         self.assertFalse(package.error,package.error)
         for name in ("Cover.csv","Summary.csv"):

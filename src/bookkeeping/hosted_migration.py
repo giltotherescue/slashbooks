@@ -300,6 +300,40 @@ def _schema(sql):
                     list(expected.execute(f'PRAGMA table_info("{table}")')), "unsupported_schema")
 
 
+def _tracking_start(value):
+    """Return a valid ISO tracking start date, or None when the key is absent. Raise ValueError when it is not a date."""
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        raise ValueError("accrual_tracking_start")
+    try:
+        if datetime.strptime(value, "%Y-%m-%d").date().isoformat() != value:
+            raise ValueError
+    except ValueError:
+        raise ValueError("accrual_tracking_start") from None
+    return value
+
+
+def _carried_accrual_facts(config, version=None, ledger_tracking=None, ledger_known=False):
+    """Check that capability, tracking start and default view can be carried together.
+
+    The default view is the ``basis`` value. Capability is ``accrual_capability_version`` (1 needs the accrual ledger
+    schema). The tracking start must be a date, needs capability 1, and must equal the ledger's own record of it.
+    A combination that cannot be carried is refused here, never rewritten.
+    """
+    capability = config.get("accrual_capability_version")
+    require(capability is None or (type(capability) is int and capability in {0, 1}), "unsupported_capability")
+    if ledger_known and capability == 1:
+        require(version == ACCRUAL_SCHEMA_VERSION, "unsupported_schema")
+    try:
+        tracking = _tracking_start(config.get("accrual_tracking_start"))
+    except ValueError:
+        raise Rejected("unsupported_tracking_start") from None
+    require(tracking is None or capability == 1, "unsupported_tracking_start")
+    if ledger_known:
+        require((ledger_tracking or None) == tracking, "tracking_start_mismatch")
+
+
 def _ledger(files, report, references, blockers):
     # SQLite never opens the source path. WAL recovery/index writes occur only
     # on private copies, after the whole source capture passed stability checks.
@@ -341,6 +375,8 @@ def _ledger(files, report, references, blockers):
                         resolve_basis(config, authoritative_basis=resolve_basis(recorded))
                 except ValueError:
                     raise Rejected("unsupported_basis") from None
+                row = sql.execute("SELECT value FROM meta WHERE key='accrual_tracking_start'").fetchone()
+                _carried_accrual_facts(config, version, row[0] if row else None, ledger_known=True)
             require(store.get_meta("canonical") == "true", "noncanonical_ledger")
             require(store.get_meta("account_catalog") == "sqlite", "external_catalog_requires_review")
             report["checks"]["canonical_schema"] = True
@@ -504,6 +540,7 @@ def _capture(entity_dir, *, for_export=False):
                                     require(value.get("accrual_capability_version") in {0, 1}, "unsupported_basis")
                             except ValueError:
                                 raise Rejected("unsupported_basis") from None
+                            _carried_accrual_facts(value)
                             require(value.get("currency", "USD") == "USD", "unsupported_currency")
                             for key in ("bank_account_mappings", "csv_account_mappings", "source_coverage"):
                                 require(key not in value or isinstance(value[key], dict), "invalid_context")

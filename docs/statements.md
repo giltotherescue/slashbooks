@@ -45,8 +45,8 @@ Each line has:
 ## Statement of cash flows
 
 `books report cashflow --from DATE --to DATE` is the indirect method. It starts from net income and adds the
-effect on cash of each balance sheet change. On accrual-enabled books it starts from canonical
-accrual net income even when the default profit and loss view is cash. The cash forecast in `books forecast` is a different report.
+effect on cash of each balance sheet change. On accrual-enabled books it starts from the net income of
+the recorded books, whatever the default profit and loss view is. The cash forecast in `books forecast` is a different report.
 
 The engine puts each account in a group from its account `subtype`, the same value that `books accrual accounts`
 reports. A cash book with no accrual records uses the account-name prefix.

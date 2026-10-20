@@ -52,7 +52,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .entity import _locked_entity_operation, load_entity
 from .safe_cells import neutralize_rows
-from .accrual.scope import DISCIPLINE_PER_ACCOUNT, discipline, tracking_start
+from .accrual.scope import DISCIPLINE_ALL, DISCIPLINE_PER_ACCOUNT, discipline, tracking_start
 
 
 FORMS: dict[str, str] = {
@@ -631,6 +631,29 @@ def _catalog_accounts(entity_path: Path) -> set[str]:
     return LedgerStore(path).load_account_names() if path.is_file() else set()
 
 
+def _coverage_metadata(conn: Any, from_date: date, to_date: date) -> dict[str, Any]:
+    """Coverage facts for a handoff. The journal before the tracking start is the cash books, so the cash view is
+    checked: a period that crosses the start is never refused here. Other coverage checks still apply."""
+    from .accrual.reports import financial_metadata
+    return financial_metadata(conn, "tax_handoff", from_date, to_date, view="cash")
+
+
+def _accounting_metadata(conn: Any, config: Mapping[str, Any], from_date: date, to_date: date) -> dict[str, Any]:
+    """Coverage facts plus the basis of the recorded books, whatever the default report view is.
+
+    Every entry is an accrual entry when accrual rules apply to all transactions. A company that turned accrual on later
+    records accrual entries only from its tracking start, and only once it holds accrual records.
+    """
+    from .reports.statements import has_accrual_records
+    result = _coverage_metadata(conn, from_date, to_date)
+    kind = discipline(config)
+    started = tracking_start(config)
+    mixed = (kind == DISCIPLINE_PER_ACCOUNT and has_accrual_records(conn)
+             and (not started or to_date.isoformat() >= started))
+    result["basis"] = "accrual" if kind == DISCIPLINE_ALL or mixed else "cash"
+    return result
+
+
 def period_balances(entity_path: Path | str, from_date: date, to_date: date) -> list[dict[str, Any]]:
     """Fiscal-period trial balance rows.
 
@@ -649,8 +672,7 @@ def period_balances(entity_path: Path | str, from_date: date, to_date: date) -> 
     prior_earnings = _ZERO
     conn = open_cache(entity_path)
     try:
-        from .reports.statements import _canonical_metadata
-        _canonical_metadata(conn, "tax_handoff", from_date, to_date)
+        _coverage_metadata(conn, from_date, to_date)
         accounts = {item["name"] for item in list_accounts(conn)}
         for row in iter_postings(conn, to_date=to_date):
             day, account, amount = str(row[0])[:10], row[3], row[4]
@@ -766,20 +788,27 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     entity = load_entity(entity_path)
     resolved, form_basis = resolve_form(entity.entity_config, form)
     from .reports.cache import open_cache
-    from .reports.statements import _canonical_metadata
+    from .reports.statements import has_accrual_records
     conn = open_cache(entity.path)
     try:
-        accounting = _canonical_metadata(conn, "tax_handoff", from_date, to_date)
+        accounting = _accounting_metadata(conn, entity.entity_config, from_date, to_date)
+        # A company that turned accrual on later and now holds accrual records keeps cash entries before its tracking
+        # start and accrual records from it, so one label for the whole period would be wrong.
+        records = discipline(entity.entity_config) == DISCIPLINE_PER_ACCOUNT and has_accrual_records(conn)
     finally:
         conn.close()
     settings = _settings(entity.entity_config)
     basis_label = None
     # Only once accrual records exist. Turning tracking on changes no export.
-    if accounting["basis"] == "accrual" and discipline(entity.entity_config) == DISCIPLINE_PER_ACCOUNT:
+    if records:
         started = tracking_start(entity.entity_config)
-        since = f"from {started}" if started else "from a start date that is not recorded"
-        basis_label = (f"Cash basis, accrual tracking for selected accounts {since}; "
-                       "book balances computed by the Slashbooks engine")
+        if started:
+            basis_label = (f"Cash basis, accrual tracking for selected accounts from {started} "
+                           f"(cash entries before {started}, accrual records from {started}). "
+                           "Book balances computed by the Slashbooks engine, not a tax cash-basis view; the preparer adjusts")
+        else:
+            basis_label = ("Cash basis, accrual tracking for selected accounts from a start date that is not recorded; "
+                           "book balances computed by the Slashbooks engine")
     rows = [r for r in period_balances(entity.path, from_date, to_date)
             if r["balance"] != _ZERO or (r["beginning"] not in (None, _ZERO))]
     mapping = {m.account: m for m in build_mapping(entity.entity_config, (r["account"] for r in rows), resolved)}

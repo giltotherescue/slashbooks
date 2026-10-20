@@ -360,6 +360,10 @@ def derive(conn: Any, through: date) -> CashLedger:
 
     for entry in entries:
         day, source, entry_postings = entry["date"], entry["source_id"], entry["postings"]
+        if str(entry["meta"].get("accrual-tracking-opening", "")).lower() == "true":
+            # The opening of tracked items at the tracking start moves receivable and payable balances against equity.
+            # It carries no income, expense or cash, so it has no place in the cash view or in its tie-out.
+            continue
         for account, amount in entry_postings:
             if _is_ie(account):
                 accrual.append((day, account, amount))
