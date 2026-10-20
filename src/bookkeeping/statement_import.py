@@ -84,6 +84,7 @@ from .connectors import bankcsv, ofx
 from .connectors.bankcsv import StatementFileError
 from .ledger.normalize import normalize_description
 from .tieout import presentation_sign, statement_tieout
+from .source_ids import source_family, source_id_variants
 from .work import observe_import
 
 JsonObject = dict[str, Any]
@@ -617,9 +618,9 @@ def _existing_pool(entity: Any, ledger_account: str) -> list[JsonObject]:
         with store.connection() as conn:
             for source_id, payload in conn.execute("SELECT id, payload_json FROM source_transactions"):
                 try:
-                    families[source_id] = str(json.loads(payload).get("csvMappingKey") or "other")
+                    families[source_id] = str(json.loads(payload).get("csvMappingKey") or source_family(source_id))
                 except (ValueError, AttributeError):
-                    families[source_id] = "other"
+                    families[source_id] = source_family(source_id)
         for entry in store.load_entries():
             if not entry.source_id or "reverses" in {k for k, _ in entry.meta}:
                 continue
@@ -628,7 +629,7 @@ def _existing_pool(entity: Any, ledger_account: str) -> list[JsonObject]:
                     pool.append({"source_id": entry.source_id, "date": entry.date,
                                  "amount": posting.amount.quantize(bankcsv.MONEY),
                                  "desc": normalize_description(entry.narration),
-                                 "family": families.get(entry.source_id, "other")})
+                                 "family": families.get(entry.source_id) or source_family(entry.source_id)})
                     break
     mappings = entity.entity_config.get("bank_account_mappings")
     csv_mappings = entity.entity_config.get("csv_account_mappings")
@@ -639,7 +640,7 @@ def _existing_pool(entity: Any, ledger_account: str) -> list[JsonObject]:
             pool.append({"source_id": str(txn["id"]), "date": date.fromisoformat(str(txn["date"])[:10]),
                          "amount": _txn_amount(txn),
                          "desc": normalize_description(str(txn.get("description") or "")),
-                         "family": str(txn.get("csvMappingKey") or "other")})
+                         "family": str(txn.get("csvMappingKey") or source_family(txn["id"]))})
         except (ValueError, KeyError, ArithmeticError):
             continue
     return pool
@@ -672,16 +673,18 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
     for alias in _load_list(entity.staging_dir / "source-id-aliases.json"):
         aliases[str(alias.get("source_id") or "")] = str(alias.get("status") or "")
 
-    batch_ids = {t["id"] for t in txns}
+    batch_ids = {spelling for t in txns for spelling in source_id_variants(t["id"])}
     pool = [p for p in _existing_pool(entity, ledger_account) if p["source_id"] not in batch_ids]
     used: set[int] = set()
     plan: JsonObject = {"import": [], "held": [], "skipped": Counter()}
     for txn in sorted(txns, key=lambda t: (t["date"], t["id"])):
         sid = txn["id"]
-        if staging.is_seen(sid) or sid in queued or (store is not None and store.source_exists(sid)):
+        spellings = source_id_variants(sid)
+        if (any(staging.is_seen(s) for s in spellings) or spellings & queued
+                or (store is not None and any(store.source_exists(s) for s in spellings))):
             plan["skipped"]["already_imported"] += 1
             continue
-        if sid in held_ids:
+        if spellings & held_ids:
             plan["skipped"]["already_held_for_review"] += 1
             continue
         status = aliases.get(sid, "")

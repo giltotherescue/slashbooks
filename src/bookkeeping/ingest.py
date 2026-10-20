@@ -26,6 +26,21 @@ Normalized transaction shape (one JSON object per transaction)::
 The input file is either a JSON array of these objects, or an object with a
 ``"transactions"`` array.
 
+Connected bank feeds
+--------------------
+``--source banksync``, ``--source plaid``, ``--source stripe-financial-connections``
+and ``--feed-provider NAME`` mark the input as a connected bank feed. For a
+connected feed:
+
+- Every ``accountId`` must be in ``bank_account_mappings``; an unmapped account
+  stops the import before any row is written.
+- Each ``id`` becomes ``<provider>:<id>``. The old raw BankSync ID and
+  ``banksync:<id>`` name the same row (see ``source_ids.py``).
+- Rows dated on or before an account's ``cutover_date`` are skipped and counted,
+  unless ``--backfill`` is given.
+- Each row is checked against posted entries and queued review items with the
+  statement duplicate plan; a possible repeat is held for review, never posted.
+
 Feed windows for source coverage
 --------------------------------
 After a successful local import, ``books ingest`` records ``feed_sync``
@@ -162,21 +177,27 @@ def _transactions_from_data(data: Any) -> list[dict]:
     return txns
 
 
-def _require_banksync_mappings(entity: Any, txns: list[dict], source: str) -> None:
-    """Refuse a BankSync close before every feed account has an ID mapping.
+def _require_feed_mappings(entity: Any, txns: list[dict], provider: str | None) -> None:
+    """Refuse a connected-feed import before every feed account has an ID mapping.
 
     Display-name fallback is useful for ad-hoc CSV imports, but unsafe for a
     connected feed: it silently opens a second cash account when a name changes
-    or an opening-balance account already exists.
+    or an opening-balance account already exists. This holds for every connected
+    provider, not only BankSync.
     """
-    if source != "banksync":
+    if not provider:
         return
     mappings = flat_bank_account_mappings(entity.entity_config)
-    missing = sorted({str(txn.get("accountId") or "") for txn in txns if txn.get("accountId") and not mappings.get(str(txn.get("accountId")))})
+    missing = sorted({str(txn.get("accountId") or "") for txn in txns
+                      if txn.get("accountId") and not mappings.get(str(txn.get("accountId")))})
+    if provider != "banksync" and any(not txn.get("accountId") for txn in txns):
+        # A row with no provider account ID cannot be mapped, so it would take the fallback account.
+        missing.append("(rows without an accountId)")
     if missing:
         joined = ", ".join(missing)
+        label = "BankSync" if provider == "banksync" else provider
         raise ValueError(
-            "BankSync account mapping required before ingesting connected activity "
+            f"{label} account mapping required before ingesting connected activity "
             f"for: {joined}. Record each stable feed ID with 'books entity bank-account-map'."
         )
 
@@ -332,10 +353,8 @@ def run(args: argparse.Namespace) -> int:
         else:
             txns, verified_banksync = prepared
             is_banksync = args.source == "banksync" or verified_banksync
-        _require_banksync_mappings(
-            entity, txns, "banksync" if is_banksync else args.source
-        )
         provider = feed_provider(args.source, getattr(args, "feed_provider", None), is_banksync)
+        _require_feed_mappings(entity, txns, provider)
         before_cutover: dict[str, dict[str, Any]] = {}
         if not getattr(args, "backfill", False):
             kept, before_cutover = split_at_cutover(entity, txns)
@@ -362,7 +381,7 @@ def run(args: argparse.Namespace) -> int:
             session_id=session_id,
             categorizer=categorizer,
             ts=None,
-            legacy_duplicate_guard=is_banksync,
+            legacy_duplicate_guard=provider is not None,
             intake_only=getattr(args, "intake_only", False),
         )
     except ValueError as exc:

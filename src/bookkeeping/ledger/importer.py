@@ -493,6 +493,10 @@ def _import_transactions_unlocked(
             if missing:
                 staging.bulk_mark_seen(missing)
 
+    # Connected-feed rows are checked against posted entries and review items
+    # with the same plan a statement import uses (see ``_plan_feed_holds``).
+    feed_holds = _plan_feed_holds(entity, normalized_txns) if legacy_duplicate_guard else {}
+
     # Accumulate entries to write in this session.
     entries_to_write: list[Entry] = []
     # Track accounts that need open directives.
@@ -541,9 +545,7 @@ def _import_transactions_unlocked(
                 result.skipped_duplicate += 1
                 continue
             if alias_status != "confirmed-distinct":
-                candidate_state = _record_legacy_duplicate_candidate(
-                    entity, store, txn, bank_account
-                )
+                candidate_state = _record_feed_hold(entity, feed_holds.get(source_id))
                 if candidate_state:
                     if candidate_state == "new":
                         result.duplicate_candidates += 1
@@ -698,65 +700,79 @@ def _save_json_list(path: Path, items: list[dict[str, Any]]) -> None:
     os.replace(tmp, path)
 
 
-def _record_legacy_duplicate_candidate(
-    entity: Entity,
-    store: LedgerStore,
-    txn: dict[str, Any],
-    bank_account: str,
-) -> str | None:
-    """Persist a guarded legacy-ID match and return ``new``/``existing``.
+# The match rule name that earlier releases wrote for a same-date, same-amount,
+# same-description hold. It stays so existing review items read the same.
+_SAME_DAY_RULE = "legacy_id_same_account_date_amount_description"
 
-    The match includes the canonical cash account, date, signed amount and a
-    normalized merchant/reference.  It is intentionally a review candidate,
-    not a substitute for the provider's source ID.
+
+def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Rows of a connected-feed batch that may repeat activity already recorded.
+
+    This is the statement-import duplicate plan (``plan_duplicates``): a row is
+    held when a posted entry or a queued review item on the same ledger account
+    has the same date, amount and description, or the same amount within three
+    days from a different source. A held row is never posted; it goes to the
+    "To check" list for a person to decide. Rows on the same feed are not held
+    against each other by the near-date rule, so two real purchases of one
+    amount are not mistaken for one.
     """
-    source_id = str(txn.get("id") or "")
-    if not source_id:
+    from ..source_ids import source_family
+    from ..statement_import import plan_duplicates
+
+    mappings = entity.entity_config.get("bank_account_mappings")
+    csv_mappings = entity.entity_config.get("csv_account_mappings")
+    originals: dict[str, dict[str, Any]] = {}
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for txn in txns:
+        source_id = str(txn.get("id") or "")
+        if txn.get("pending") or not source_id:
+            continue
+        try:
+            account = _ledger_account_for_txn(txn, mappings, csv_mappings)
+            day = _parse_date(str(txn.get("date") or "")).isoformat()
+            if txn.get("amount") is None:
+                _ = Decimal(str(txn.get("creditAmount") or "0")) - Decimal(str(txn.get("debitAmount") or "0"))
+            else:
+                _ = Decimal(str(txn["amount"]))
+        except (ValueError, TypeError, ArithmeticError):
+            continue  # The main loop reports a row it cannot read.
+        text = str(txn.get("reference") or txn.get("description") or "")
+        if not normalize_description(text):
+            continue
+        originals[source_id] = txn
+        groups.setdefault((account, source_family(source_id)), []).append(
+            {**txn, "id": source_id, "date": day, "description": text})
+    holds: dict[str, dict[str, Any]] = {}
+    for (account, family), rows in groups.items():
+        for held in plan_duplicates(entity, rows, account, family)["held"]:
+            source_id = held["source_id"]
+            record = {**held, "transaction": dict(originals[source_id]),
+                      "description": str(originals[source_id].get("description") or "")}
+            if record["match_rule"] == "same_date_amount_description":
+                record["match_rule"] = _SAME_DAY_RULE
+            holds[source_id] = record
+    return holds
+
+
+def _record_feed_hold(entity: Entity, hold: dict[str, Any] | None) -> str | None:
+    """Persist one planned hold. Returns ``new``, ``existing`` or ``None`` (no hold)."""
+    if not hold:
         return None
     candidate_path = entity.staging_dir / _DUPLICATE_CANDIDATES_FILE
     existing_candidates = _load_json_list(candidate_path)
-    if any(str(item.get("source_id") or "") == source_id for item in existing_candidates):
+    if any(str(item.get("source_id") or "") == hold["source_id"] for item in existing_candidates):
         return "existing"
-    try:
-        txn_date = _parse_date(str(txn.get("date") or ""))
-        amount = Decimal(str(txn.get("amount"))).quantize(Decimal("0.01"))
-    except Exception:
-        return None
-    needle = normalize_description(
-        str(txn.get("reference") or txn.get("description") or "")
-    )
-    if not needle:
-        return None
-    for entry in store.load_entries():
-        if entry.date != txn_date or not entry.source_id:
-            continue
-        if normalize_description(entry.narration) != needle:
-            continue
-        if any(posting.account == bank_account and posting.amount == amount for posting in entry.postings):
-            record = {
-                "source_id": source_id,
-                "existing_source_id": entry.source_id,
-                "account": bank_account,
-                "date": txn_date.isoformat(),
-                "amount": str(amount),
-                "description": str(txn.get("description") or ""),
-                "transaction": dict(txn),
-                "match_rule": "legacy_id_same_account_date_amount_description",
-                "status": "duplicate-candidate",
-                "created_at": _now_iso(),
-            }
-            existing_candidates.append(record)
-            _save_json_list(candidate_path, existing_candidates)
-            aliases_path = entity.staging_dir / _SOURCE_ID_ALIASES_FILE
-            aliases = _load_json_list(aliases_path)
-            aliases.append({
-                "source_id": source_id,
-                "canonical_source_id": entry.source_id,
-                "status": "candidate",
-            })
-            _save_json_list(aliases_path, aliases)
-            return "new"
-    return None
+    existing_candidates.append({**hold, "status": "duplicate-candidate", "created_at": _now_iso()})
+    _save_json_list(candidate_path, existing_candidates)
+    aliases_path = entity.staging_dir / _SOURCE_ID_ALIASES_FILE
+    aliases = _load_json_list(aliases_path)
+    aliases.append({
+        "source_id": hold["source_id"],
+        "canonical_source_id": hold["existing_source_id"],
+        "status": "candidate",
+    })
+    _save_json_list(aliases_path, aliases)
+    return "new"
 
 
 def _legacy_alias_status(entity: Entity, source_id: str) -> str:

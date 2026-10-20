@@ -79,7 +79,7 @@ class IngestNamespaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _company(tmp)
             self.assertEqual(_ingest(root, [_row("p1")], source="plaid"), 0)
-            self.assertEqual(_ingest(root, [_row("c1", description="Other vendor")], "--feed-provider", "custom-bank",
+            self.assertEqual(_ingest(root, [_row("c1", description="Other vendor", amount="-77.00")], "--feed-provider", "custom-bank",
                                      source="my-sync"), 0)
             self.assertEqual(_queued_ids(root), ["custom-bank:c1", "plaid:p1"])
 
@@ -134,7 +134,7 @@ class IngestNamespaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = _company(tmp)
             import_transactions(load_entity(root), [_row("same")], "s", lambda t: ("Expenses:Services", "high"))
-            _ingest(root, [_row("same", description="Different merchant")], source="plaid")
+            _ingest(root, [_row("same", description="Different merchant", amount="-90.00")], source="plaid")
             self.assertEqual(_queued_ids(root), ["plaid:same"])
 
     def test_pending_link_survives_the_prefix(self) -> None:

@@ -49,3 +49,18 @@ def source_id_variants(source_id: Any) -> frozenset[str]:
     if text and ":" not in text:
         return frozenset({text, prefix + text})
     return frozenset({text})
+
+
+def source_family(source_id: Any) -> str:
+    """Which source produced *source_id*, for the duplicate plan.
+
+    A connected feed names itself in the ID prefix (``plaid``, ``banksync``). A
+    raw ID with no prefix is an old BankSync row. Statement and CSV IDs are
+    ``other``. The duplicate plan holds a same-amount row within a few days only
+    when it comes from a different family, so two real purchases from one feed
+    are never held against each other.
+    """
+    head, separator, _ = str(source_id or "").partition(":")
+    if not separator:
+        return LEGACY_UNPREFIXED_PROVIDER
+    return "other" if head in {"stmt", "ofx", "csv"} else head
