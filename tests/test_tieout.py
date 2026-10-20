@@ -310,6 +310,19 @@ class CoverageTieoutTests(unittest.TestCase):
         self.assertEqual(files, after)
 
 
+class SourceRootTests(unittest.TestCase):
+    def test_source_root_follows_links_named_in_another_spelling(self):
+        by_source = {"banksync:abc": {"source-id": "banksync:abc"},
+                     "banksync:xyz": {"source-id": "banksync:xyz", "correction-of": "abc"}}
+        # A reversal names the legacy spelling; the ledger holds the prefixed one.
+        self.assertEqual(tieout.source_root({"reverses": "abc"}, by_source), "banksync:abc")
+        self.assertEqual(tieout.source_root({"correction-of": "xyz"}, by_source), "banksync:abc")
+        self.assertEqual(tieout.source_root({"source-id": "banksync:abc"}, by_source), "banksync:abc")
+        # An unknown or alias-free ID returns itself.
+        self.assertEqual(tieout.source_root({"reverses": "plaid:q"}, by_source), "plaid:q")
+        self.assertIsNone(tieout.source_root({}, by_source))
+
+
 class BalanceCheckTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

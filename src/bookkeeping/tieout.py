@@ -148,9 +148,24 @@ class Series:
         return max(0, high - low)
 
 
+def _known_spelling(source_id: str | None, by_source: Mapping[str, Any]) -> str | None:
+    """The spelling of a source ID that the ledger holds, when another spelling is named."""
+    if source_id is None or source_id in by_source:
+        return source_id
+    from .source_ids import source_id_variants
+    for variant in sorted(source_id_variants(source_id)):
+        if variant in by_source:
+            return variant
+    return source_id
+
+
 def source_root(metadata: Mapping[str, str], by_source: Mapping[str, Mapping[str, str]]) -> str | None:
-    """Original source identity through corrections and source-less reversals."""
-    current = metadata.get("reverses") or metadata.get("correction-of") or metadata.get("source-id")
+    """Original source identity through corrections and source-less reversals.
+
+    A link may name a source ID in another spelling than the one the ledger
+    holds (see ``source_ids.source_id_variants``). The result is the ledger's spelling.
+    """
+    current = _known_spelling(metadata.get("reverses") or metadata.get("correction-of") or metadata.get("source-id"), by_source)
     seen: set[str] = set()
     while current in by_source:
         if current in seen:
@@ -159,7 +174,7 @@ def source_root(metadata: Mapping[str, str], by_source: Mapping[str, Mapping[str
         parent = by_source[current].get("correction-of")
         if not parent:
             break
-        current = parent
+        current = _known_spelling(parent, by_source)
     return current
 
 
