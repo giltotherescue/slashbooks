@@ -91,6 +91,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from bookkeeping.entity import _locked_entity_operation
 from bookkeeping.ledger.normalize import normalize_description
 
 JsonObject = dict[str, Any]
@@ -385,6 +386,7 @@ def resolve_mapping(
     return _propose_mapping(csv_path)
 
 
+@_locked_entity_operation
 def write_confirmed_mapping(
     entity_path: str | Path,
     csv_path: str | Path,

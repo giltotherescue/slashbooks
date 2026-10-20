@@ -50,7 +50,7 @@ import re
 import sys
 from typing import Any, Iterable, Mapping, Sequence
 
-from .entity import load_entity
+from .entity import _locked_entity_operation, load_entity
 from .safe_cells import neutralize_rows
 
 
@@ -462,6 +462,7 @@ def resolve_form(config: Mapping[str, Any], requested: str | None = None) -> tup
     )
 
 
+@_locked_entity_operation
 def update_settings(
     entity_path: Path | str,
     *,
@@ -647,6 +648,8 @@ def period_balances(entity_path: Path | str, from_date: date, to_date: date) -> 
     prior_earnings = _ZERO
     conn = open_cache(entity_path)
     try:
+        from .reports.statements import _canonical_metadata
+        _canonical_metadata(conn, "tax_handoff", from_date, to_date)
         accounts = {item["name"] for item in list_accounts(conn)}
         for row in iter_postings(conn, to_date=to_date):
             day, account, amount = str(row[0])[:10], row[3], row[4]
@@ -761,6 +764,13 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
         raise ValueError("The period start must not be after its end.")
     entity = load_entity(entity_path)
     resolved, form_basis = resolve_form(entity.entity_config, form)
+    from .reports.cache import open_cache
+    from .reports.statements import _canonical_metadata
+    conn = open_cache(entity.path)
+    try:
+        accounting = _canonical_metadata(conn, "tax_handoff", from_date, to_date)
+    finally:
+        conn.close()
     settings = _settings(entity.entity_config)
     rows = [r for r in period_balances(entity.path, from_date, to_date)
             if r["balance"] != _ZERO or (r["beginning"] not in (None, _ZERO))]
@@ -811,6 +821,8 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     unmapped = [row for row in tb_rows if row["mapping"].line is None]
     return {
         "entity_name": entity.name,
+        "accounting_basis": accounting["basis"],
+        "accounting": accounting,
         "form": resolved,
         "form_basis": form_basis,
         "from": from_date,
@@ -924,13 +936,15 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
         ["Return", f"{FORMS[handoff['form']]} ({handoff['form']}, chosen by {handoff['form_basis']})"],
         ["Line numbers", f"Tax year {TAX_YEAR_BASIS} federal forms; confirm against the current year's form"],
         ["Period", f"{handoff['from'].isoformat()} to {handoff['to'].isoformat()}"],
-        ["Basis", "Cash basis book balances computed by the Slashbooks engine"],
+        ["Basis", handoff["accounting_basis"].title() + " basis book balances computed by the Slashbooks engine"],
         ["Total debits", _money(totals["debit"])],
         ["Total credits", _money(totals["credit"])],
         ["Unmapped accounts", str(len(handoff["unmapped"]))],
         ["Sign convention", "Balance columns are debit-positive and credit-negative"],
         ["Tax computation", "None. Book amounts only; the preparer makes all tax adjustments"],
     ]
+    if handoff.get("accounting", {}).get("coverage"):
+        rows.append(["Accounting coverage", json.dumps(handoff["accounting"], sort_keys=True)])
     for name, path in files.items():
         rows.append([name, path])
     return rows
@@ -1012,6 +1026,8 @@ def export_handoff(
         "form": handoff["form"],
         "form_name": FORMS[handoff["form"]],
         "form_basis": handoff["form_basis"],
+        "accounting_basis": handoff["accounting_basis"],
+        "accounting": handoff["accounting"],
         "line_numbers": f"Tax year {TAX_YEAR_BASIS} federal forms",
         "from": from_date.isoformat(),
         "to": to_date.isoformat(),

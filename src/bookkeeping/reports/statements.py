@@ -243,40 +243,77 @@ def profit_and_loss(
 ) -> StatementResult:
     """Compute profit and loss for the period [from_date, to_date] inclusive.
 
-    ``basis`` is None (the basis the books keep), ``"cash"`` or ``"accrual"``. Accrual books
+    ``basis`` is None (the default P&L view), ``"cash"`` or ``"accrual"``. Accrual books
     can show a derived cash view; cash books keep no data for an accrual view.
     """
     entity_path = Path(entity_path)
     if basis not in (None, "cash", "accrual"):
         raise ValueError("basis must be cash or accrual.")
-    if basis:
-        kept = _kept_basis(entity_path)
-        if kept == "accrual" and basis == "cash":
+    conn = open_cache(entity_path)
+    try:
+        from ..accrual.scope import accrual_active, default_view, tracking_start
+        view = basis or default_view(conn)
+        active = accrual_active(conn)
+        first = tracking_start(conn)
+        unchanged_cash = first and not _has_accrual_records(conn)
+        if active and view == "cash" and not (basis is None and first and (to_date.isoformat() < first or unchanged_cash)):
             from .cashview import profit_and_loss as cash_view
             return cash_view(entity_path, from_date, to_date)
-        if kept == "cash" and basis == "accrual":
+        if not active and view == "accrual":
             raise ValueError("Cash books keep no data for an accrual view: there are no invoices, bills, prepaid or deferred records. "
                              "Run books report pnl without --basis, or with --basis cash.")
-    conn = open_cache(entity_path)
+        return _compute_pnl(conn, from_date, to_date, basis=view)
+    finally:
+        conn.close()
+
+
+def _has_accrual_records(conn: Any) -> bool:
+    """Whether optional accrual tracking has introduced any financial records."""
+    from ..accrual.reports import _records
+    return (bool(_records(conn, "items") or _records(conn, "schedules"))
+            or conn.execute("SELECT 1 FROM entries WHERE source_id LIKE 'accrual:%' LIMIT 1").fetchone() is not None)
+
+
+def _canonical_profit_and_loss(entity_path: Path | str, from_date: date, to_date: date) -> StatementResult:
+    """Canonical journal income for accountant handoffs, independent of P&L view."""
+    conn = open_cache(Path(entity_path))
     try:
         return _compute_pnl(conn, from_date, to_date)
     finally:
         conn.close()
 
 
-def _kept_basis(entity_path: Path) -> Optional[str]:
-    from ..entity import load_entity, resolve_basis
-    try:
-        return resolve_basis(load_entity(entity_path).entity_config)
-    except Exception:
-        return None
+def _recorded_basis(source: Any, as_of: Optional[date] = None) -> str:
+    """The canonical journal basis, independent of the preferred P&L view."""
+    from ..accrual.scope import accrual_active, tracking_start, default_view
+    first = tracking_start(source)
+    if first and default_view(source) == "cash":
+        if as_of and as_of.isoformat() < first:
+            return "cash"
+        if hasattr(source, "execute") and not _has_accrual_records(source):
+            return "cash"
+        if hasattr(source, "path"):
+            conn = open_cache(Path(source.path))
+            try:
+                if not _has_accrual_records(conn):
+                    return "cash"
+            finally:
+                conn.close()
+    return "accrual" if accrual_active(source) else "cash"
 
 
-def _compute_pnl(conn: Any, from_date: date, to_date: date) -> StatementResult:
+def _canonical_metadata(conn: Any, kind: str, start: Optional[date], end: date) -> dict:
+    from ..accrual.reports import financial_metadata
+    basis = _recorded_basis(conn, end)
+    return {**financial_metadata(conn, kind, start, end, view=basis), "basis": basis}
+
+
+def _compute_pnl(conn: Any, from_date: date, to_date: date, basis: Optional[str] = None) -> StatementResult:
     from ..accrual.reports import financial_metadata
     if from_date > to_date:
         raise ValueError("Report start date must be on or before end date.")
-    metadata = financial_metadata(conn, "pnl", from_date, to_date)
+    view = basis or _recorded_basis(conn, to_date)
+    metadata = {**financial_metadata(conn, "pnl", from_date, to_date, view=view), "basis": view}
     balances = _account_balances_in_range(conn, from_date, to_date)
 
     # Income: credit-normal → positive balance means credit → income positive
@@ -344,8 +381,7 @@ def balance_sheet(
 
 
 def _compute_balance_sheet(conn: Any, as_of: date) -> StatementResult:
-    from ..accrual.reports import financial_metadata
-    metadata = financial_metadata(conn, "balance_sheet", None, as_of)
+    metadata = _canonical_metadata(conn, "balance_sheet", None, as_of)
     balances = _account_balances_as_of(conn, as_of)
 
     # Also compute net income from inception through as_of for equity section
@@ -462,8 +498,7 @@ def trial_balance(
 
 
 def _compute_trial_balance(conn: Any, as_of: date) -> StatementResult:
-    from ..accrual.reports import financial_metadata
-    metadata = financial_metadata(conn, "trial_balance", None, as_of)
+    metadata = _canonical_metadata(conn, "trial_balance", None, as_of)
     balances = _account_balances_as_of(conn, as_of)
 
     rows = []
@@ -531,8 +566,7 @@ def general_ledger(
 
 
 def _compute_general_ledger(conn: Any, from_date: date, to_date: date) -> StatementResult:
-    from ..accrual.reports import financial_metadata
-    metadata = financial_metadata(conn, "general_ledger", from_date, to_date)
+    metadata = _canonical_metadata(conn, "general_ledger", from_date, to_date)
     rows_by_account: dict[str, list[dict]] = {}
 
     from ..accrual.reports import settlement_details
@@ -775,9 +809,11 @@ def ask(
         today = date.today()
     entity_path = Path(entity_path)
     try:
-        kept = resolve_basis(load_entity(entity_path).entity_config)
+        config = load_entity(entity_path).entity_config
+        preferred = resolve_basis(config)
+        kept = _recorded_basis(config)
     except Exception:
-        kept = None
+        kept = preferred = None
     q_lower = question.lower()
     from .. import ask_intents
     cash_flow = bool(ask_intents.CASH_FLOW.search(q_lower))
@@ -787,7 +823,17 @@ def ask(
     if from_date is None:
         from_date, to_date = date(today.year, 1, 1), today
     span = f"from {from_date} to {to_date}"
-    cash_view = kept == "accrual" and wanted == "cash"
+    from ..accrual.scope import tracking_start
+    first = tracking_start(config) if kept else None
+    conn = open_cache(entity_path)
+    try:
+        unchanged_cash = bool(first and preferred == "cash" and wanted != "accrual" and not _has_accrual_records(conn))
+    finally:
+        conn.close()
+    historical_default_cash = wanted is None and preferred == "cash" and first and to_date.isoformat() < first
+    cash_view = kept == "accrual" and (wanted or preferred) == "cash" and not (historical_default_cash or unchanged_cash)
+    if historical_default_cash or unchanged_cash:
+        kept = "cash"
     if kept == "cash" and wanted == "accrual":
         options = [f"- The same period on the cash basis these books keep: books ask --entity {entity_path} \"" + _without_accrual_wording(question) + "\"",
                    "- To keep accrual books, start an accrual company at a cutover date: see docs/accrual.md."]
@@ -796,7 +842,7 @@ def ask(
         return AskResult(question=question, intent="unavailable_basis", answer_text=text,
                          data={"unavailable": "basis_not_kept", "requested_basis": wanted, "books_basis": kept,
                                "from_date": str(from_date), "to_date": str(to_date)})
-    if cash_view and ask_intents.match(question):
+    if cash_view and wanted == "cash" and ask_intents.match(question):
         text = (f"Not available: the cash-basis view covers profit and loss only. Balances such as receivables, payables, prepaid expenses and "
                 f"the balance sheet are kept on the accrual basis. Period asked: {span}.\n"
                 f"- Ask the same question without cash wording: books ask --entity {entity_path} \"{_without_cash_wording(question)}\"")
@@ -814,7 +860,7 @@ def ask(
         result.answer_text = f"Answer covers: {kept or 'unknown'} basis, from {routed.data['from_date']} to {routed.data['to_date']}.{note}\n\n" + result.answer_text
         result.data.setdefault("basis", kept)
         return result
-    result = _ask_core(entity_path, question, today=today, cash_view=cash_view)
+    result = _ask_core(entity_path, question, today=today, cash_view=cash_view, basis=wanted or preferred, plain_cash=unchanged_cash)
     if result.intent == "unknown":
         return result
     answered_from, answered_to = result.data.get("from_date", str(from_date)), result.data.get("to_date", str(to_date))
@@ -839,6 +885,8 @@ def _ask_core(
     *,
     today: Optional[date] = None,
     cash_view: bool = False,
+    basis: Optional[str] = None,
+    plain_cash: bool = False,
 ) -> AskResult:
     """Dispatch a plain-English question to deterministic statement/cache queries.
 
@@ -892,10 +940,8 @@ def _ask_core(
     conn = open_cache(entity_path)
     try:
         from ..accrual.reports import CoverageError, financial_metadata
-        from ..accrual.scope import default_view
-        # The answer's shape follows the default view, not the capability: a cash-view company that turned accrual on
-        # later answers exactly as before.
-        if default_view(conn) == "accrual" and intent != "unknown":
+        from ..accrual.scope import accrual_active
+        if not plain_cash and accrual_active(conn) and (cash_view or basis == "accrual" or _recorded_basis(conn, to_date) == "accrual") and intent != "unknown":
             if is_net and not is_draws and not is_vendor:
                 intent = "net_income"
             # Use the same coverage checks and recognition totals as statements.
@@ -907,7 +953,7 @@ def _ask_core(
                 metadata = derived.meta
                 context = derived.to_text()
             else:
-                metadata = financial_metadata(conn, "pnl", from_date, to_date)
+                metadata = {**financial_metadata(conn, "pnl", from_date, to_date, view="accrual"), "basis": "accrual"}
                 context = StatementResult("pnl", from_date, to_date, meta=metadata).to_text()
             dates = {"from_date": str(from_date), "to_date": str(to_date), "meta": metadata}
             if intent == "vendor" or (not cash_view and intent in {"revenue", "spend"} and re.search(r"\b(paid|pay|payments?|receipts)\b", q_lower)):
@@ -922,7 +968,7 @@ def _ask_core(
                 return AskResult(question=question, intent=intent,
                     answer_text=f"Recorded owner draws {_period_label(from_date, to_date)}: {_fmt(total)}\n\n" + context,
                     data={**dates, "total_draws": str(total)})
-            pnl = derived or _compute_pnl(conn, from_date, to_date)
+            pnl = derived or _compute_pnl(conn, from_date, to_date, basis="accrual")
             if intent == "revenue":
                 total, key, label = pnl.sections[0]["total"], "total_revenue", ("Revenue received (cash basis)" if cash_view else "Recognized revenue")
             elif intent == "spend":

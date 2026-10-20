@@ -142,9 +142,11 @@ def _ofx_amount(value: str, label: str) -> Decimal:
     text = value.strip().replace(",", ".") if value.count(",") == 1 and "." not in value else value.strip()
     try:
         amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise StatementFileError("malformed_ofx", f"{label} {value!r} is not a number.") from exc
-    return amount.quantize(MONEY)
+        if not amount.is_finite() or amount != amount.quantize(MONEY):
+            raise ValueError("Amounts must be finite and have exact cent precision.")
+        return amount.quantize(MONEY)
+    except (InvalidOperation, ValueError, OverflowError) as exc:
+        raise StatementFileError("malformed_ofx", f"{label} {value!r} must be a finite number with at most two decimal places.") from exc
 
 
 def identity_hash(institution: str, account_id: str, account_type: str) -> str:
@@ -155,6 +157,11 @@ def identity_hash(institution: str, account_id: str, account_type: str) -> str:
 def parse_ofx(text: str) -> list[OfxStatement]:
     """Parse every bank and card statement in an OFX/QFX/QBO document."""
     ofx = _tree(text)
+    # Validate even unused monetary fields (for example AVAILBAL) before any
+    # caller can stage transactions or archive this statement.
+    for name in ("TRNAMT", "BALAMT"):
+        for node in ofx.walk(name):
+            _ofx_amount(node.text, name)
     statements: list[OfxStatement] = []
     for kind, wrapper, acct_tag in (("bank", "STMTRS", "BANKACCTFROM"),
                                     ("creditcard", "CCSTMTRS", "CCACCTFROM")):

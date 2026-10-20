@@ -397,8 +397,11 @@ when entries exist on or after the start.
 
 ### Choose the default view
 
-The default view decides what `books report`, `books ask` and exports show when you do not
-say. After the step above the default stays **cash**, so nothing a person sees changes.
+The default view chooses the profit and loss view for `books report pnl` and profit or spending
+questions in `books ask`. After the step above the default stays **cash**. Unpaid invoices and
+bills appear only in the accrual profit and loss view; their later payments appear in the cash view.
+Balance sheets, trial balances, general ledgers, tax handoffs and accountant packages use the
+recorded journal basis and supporting records. Changing the default does not convert those exports.
 
 ```sh
 books entity set-view PATH --view accrual          # preview
@@ -407,7 +410,8 @@ books entity set-view PATH --view accrual --apply  # change it
 
 - `accrual` is refused while accrual is off for the company.
 - It changes only the default. No entry, lock, report file or published statement changes, and an audit event records the change.
-- Pass `--basis cash` or `--basis accrual` to a report to pick the other view for one command.
+- Pass `--basis cash` or `--basis accrual` to `report pnl` to pick the other view for one command.
+  Structured JSON and comparative statements preserve that choice.
 - **The accrual view starts on the tracking start.** A report or answer for a period that starts earlier is refused and names the first available date. The cash view is available for every period.
 
 ## Moving existing accrual books from QuickBooks
@@ -450,3 +454,9 @@ For developers and agents implementing an integration, the
 [supporting document and request reference](accrual-intake.md) describes exact
 amounts, dates, identity, preview/apply, and authority requirements. Those
 contracts remain the source of truth for machine inputs.
+
+Opening schedules begin recognition on the later of the cutover and the first
+service date. Future service never recognizes early. The opening preview applies
+the same service-date checks as a new schedule: `equal_month` requires whole
+calendar months, including the remaining recognition interval. Use `actual_day`
+when the remaining service starts partway through a month.

@@ -14,7 +14,12 @@ period close/reopen and authority changes cannot appear in a preparation policy.
 A policy can also carry an optional `ask_first_above` amount (a string or integer,
 non-negative, at most two decimal places). While the policy runs a command,
 a suggestion or approval above that absolute amount is refused so that a person
-decides. A policy without the field has the same fingerprint as before. See
+decides. Corrections check both the original and replacement journal; adjustments
+check the total debits of each entry, including split postings. Creating or
+changing a supporting-only item or schedule checks its managed commitment too.
+Regular recognition and settlement check their current change rather than the
+previously approved lifetime amount. The lower company or standing-policy limit
+applies. A policy without the field has the same fingerprint as before. See
 [caller controls](agent-controls.md).
 
 The integration must obtain the policy and current version from its authenticated

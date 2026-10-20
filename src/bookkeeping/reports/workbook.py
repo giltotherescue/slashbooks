@@ -55,9 +55,10 @@ from typing import Any, Callable, Optional
 from ..safe_cells import neutralize_row
 from .statements import (
     StatementResult,
+    _recorded_basis,
     balance_sheet,
     general_ledger,
-    profit_and_loss,
+    _canonical_profit_and_loss as profit_and_loss,
     trial_balance,
 )
 from ..reconcile import list_discrepancies
@@ -685,7 +686,7 @@ def run_sanity_checks(
         _run_queue_empty_check(entity_path),
         _run_reconciliation_clean_check(entity_path),
     ]
-    if load_entity(entity_path).basis == "accrual":
+    if _recorded_basis(load_entity(entity_path), to_date) == "accrual":
         from ..accrual.reports import report
         try:
             issues = report(load_entity(entity_path), "reconciliation", as_of=to_date)["issues"]
@@ -717,7 +718,7 @@ def _build_cover_rows(
         ["Period end", str(to_date)],
         ["Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
         ["Source", str(entity_path)],
-        ["Accounting basis", load_entity(entity_path).basis.title() + " basis"],
+        ["Accounting basis", _recorded_basis(load_entity(entity_path), to_date).title() + " basis"],
         [],
         ["Sheet index", ""],
         ["1. Cover", "This sheet"],
@@ -1330,11 +1331,13 @@ def _build_summary_rows(
     open_question_rows: Optional[list[list[str]]] = None,
     formulas: bool = True,
     closing_cumulative_net_income: Decimal | None = None,
+    accounting_basis: Optional[str] = None,
 ) -> list[list[str]]:
     """Build accountant summary rows.
 
     XLSX uses formulas for reviewability; CSV uses static values for portability.
     """
+    accounting_basis = accounting_basis or _recorded_basis(entity_config, to_date)
     status = "PASS"
     if sanity.has_failures:
         status = "OVERRIDE" if override_used else "FAIL"
@@ -1378,8 +1381,8 @@ def _build_summary_rows(
         ["Business", entity_name],
         ["Produced by", "Slashbooks"],
         ["Project link", "https://github.com/giltotherescue/slashbooks"],
-        ["Accounting basis", str(entity_config.get("basis", entity_config.get("accounting_basis", "cash"))).title() + " basis"],
-        ["Bookkeeping scope", "Accrual bookkeeping foundations export" if entity_config.get("basis", entity_config.get("accounting_basis")) == "accrual" else "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
+        ["Accounting basis", accounting_basis.title() + " basis"],
+        ["Bookkeeping scope", "Accrual bookkeeping foundations export" if accounting_basis == "accrual" else "Simple cash-basis bookkeeping export; not a tax return or assurance report"],
         ["Tax prep scope", "Handoff support only; tax treatment and filing positions remain preparer-reviewed"],
         ["Legal structure", str(entity_config.get("legal_structure", ""))],
         ["Country", str(entity_config.get("country", ""))],
@@ -1793,7 +1796,7 @@ def generate_accountant_package(
             sanity=SanityResult(checks=[]),
             error=str(exc),
         )
-    if not sheets and load_entity(entity_path).basis == "accrual":
+    if not sheets and _recorded_basis(load_entity(entity_path), to_date) == "accrual":
         excluded = {_sheet_key(item) for item in _split_sheet_names(exclude_sheets)}
         selected_sheet_keys.extend(key for key in _ACCRUAL_SHEETS if key not in excluded)
     selected_set = set(selected_sheet_keys)
@@ -2030,6 +2033,7 @@ def generate_accountant_package(
                 vendor_rows=_rows("vendor-1099") if "vendor-1099" in selected_set else None,
                 open_question_rows=_rows("open-questions") if "open-questions" in selected_set else None,
                 formulas=formulas,
+                accounting_basis=closing_bs.meta["basis"],
                 closing_cumulative_net_income=Decimal(closing_bs.meta["cumulative_net_income"]) if closing_bs.meta.get("basis") == "accrual" else None,
             )
         return rows_cache[cache_key]

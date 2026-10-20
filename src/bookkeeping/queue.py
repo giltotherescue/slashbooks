@@ -1340,7 +1340,7 @@ def _finalization_identity(item: dict, source_ids: list[str], session_id: str,
 
 def _finalization_receipt(item: dict, sources: list[dict], session_id: str,
                           final_status: str, confirmed_category: str,
-                          completed_at: str) -> dict[str, Any]:
+                          completed_at: str, *, learn: bool | None = None) -> dict[str, Any]:
     from .automation_policy import PreparationDenied
     from .preparation_runtime import active_preparation_identity, evidence_hash
 
@@ -1366,6 +1366,8 @@ def _finalization_receipt(item: dict, sources: list[dict], session_id: str,
     body = {"schema_version": 1, **identity,
             "source_hashes": {key: source_hashes[key] for key in sorted(source_hashes)},
             "completed_at": completed_at}
+    if learn is not None:
+        body["learn"] = learn
     return {**body, "operation_hash": _document_hash(body)}
 
 
@@ -2444,7 +2446,7 @@ def confirm(
         from .ledger.staging import StagingStore
         StagingStore(entity.staging_dir).mark_seen(source_id)
         _remove_from_pending_categorization(entity, source_id, strict=True)
-        if item.get("proposal_type") not in {"related-entity", "intercompany"}:
+        if learn and recovered.get("learn", False) and item.get("proposal_type") not in {"related-entity", "intercompany"}:
             cp_key = str(item.get("counterparty") or _counterparty_key(
                 item.get("description", ""), ""
             ))
@@ -2463,7 +2465,7 @@ def confirm(
 
     completed_at = ts or _now_iso()
     receipt = _finalization_receipt(
-        item, [txn], session_id, "confirmed", category, completed_at
+        item, [txn], session_id, "confirmed", category, completed_at, learn=learn
     )
     _write_confirmed_entry(
         entity, txn, category, session_id, ts=ts, finalization_receipt=receipt, accrual_treatment=accrual_treatment

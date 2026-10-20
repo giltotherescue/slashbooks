@@ -45,7 +45,8 @@ Each line has:
 ## Statement of cash flows
 
 `books report cashflow --from DATE --to DATE` is the indirect method. It starts from net income and adds the
-effect on cash of each balance sheet change. The cash forecast in `books forecast` is a different report.
+effect on cash of each balance sheet change. On accrual-enabled books it starts from canonical
+accrual net income even when the default profit and loss view is cash. The cash forecast in `books forecast` is a different report.
 
 The engine puts each account in a group from its account `subtype`, the same value that `books accrual accounts`
 reports. A cash book with no accrual records uses the account-name prefix.
@@ -61,6 +62,15 @@ reports. A cash book with no accrual records uses the account-name prefix.
 The engine does not guess. A "Needs classification" group is always visible and always counted in the net change in
 cash, so the statement still ties. A credit card is working capital, not cash: a card charge is an expense in net
 income and a larger card balance in the operating group. Opening balances are a starting point, never a cash flow (see below).
+
+Noncash asset acquisitions, such as equipment bought on account, financed directly by a loan, or
+contributed by an owner, are excluded from activity subtotals and listed separately under
+**Noncash investing and financing activities** (`noncash_events` in JSON). A later bank payment
+explicitly allocated to a recorded equipment bill is investing; a mixed equipment/expense bill
+splits each payment by its recorded lines, with cumulative cent rounding. If a credit, writeoff
+or offset changes a mixed capital bill, its payment is shown under Needs classification until its
+remaining capital and operating purpose is reviewed; the original ratio is not reused. The engine does not
+invent a purchase-purpose link for an unsupported opening payable or an unlinked payment.
 
 Definition of cash: cash means bank and cash accounts. Credit card balances are liabilities in operating working
 capital. The accrual cash view counts a card charge as paid on the charge date, so the two reports differ on purpose.

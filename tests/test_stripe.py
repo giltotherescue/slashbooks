@@ -81,6 +81,57 @@ class StripeTests(unittest.TestCase):
         import_transactions(self.entity, [bank], 'bank-intake', intake_only=True)
         return [dict(payout_id='po_one', bank_source_id=bank['id'], bank_source_digest=routine_source_digest([bank]), approved_ledger_account=BANK)]
 
+    def _interrupted_sale_then_expanded_capture(self):
+        from unittest.mock import patch
+        from bookkeeping.ledger.staging import StagingStore
+        self.stage()
+        with patch.object(StagingStore, 'bulk_mark_seen', side_effect=OSError('after canonical commit')):
+            with self.assertRaises(OSError):
+                self.apply()
+        transaction = copy.deepcopy(self.raw['balanceTransactions'][0])
+        transaction.update(id='txn_new', source='ch_new', created=transaction['created'] + 86400)
+        charge = copy.deepcopy(self.raw['charges'][0])
+        charge.update(id='ch_new', balance_transaction='txn_new')
+        self.raw['balanceTransactions'].append(transaction)
+        self.raw['charges'].append(charge)
+        # Unrelated discovered objects must not alter an existing movement's authority.
+        self.raw['products'] = [{'id': 'prod_unrelated', 'metadata': {'stream': 'other'}}]
+        self.stage()
+
+    def test_recovery_accepts_expanded_capture_and_posts_only_new_sale(self):
+        self._interrupted_sale_then_expanded_capture()
+        result = self.apply()
+        self.assertEqual((result['posted'], result['skipped'], result['held']), (1, 1, 0))
+        self.assertEqual(len(self.store.load_entries()), 2)
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        self.assertEqual(self.apply()['posted'], 0)
+
+    def test_recovery_resolves_expanded_and_separate_charge_evidence_equivalently(self):
+        self._interrupted_sale_then_expanded_capture()
+        self.raw['balanceTransactions'][0]['source'] = copy.deepcopy(self.raw['charges'][0])
+        self.assertEqual(self.apply()['posted'], 1)
+        self.assertEqual(len(self.store.load_entries()), 2)
+        self.assertEqual(json.loads((self.entity.staging_dir / 'pending-categorization.json').read_text()), [])
+
+    def test_recovery_refuses_changed_original_charge_authority_in_expanded_capture(self):
+        self._interrupted_sale_then_expanded_capture()
+        self.raw['charges'][0]['metadata']['stream'] = 'changed-authority'
+        before = self.files()
+        with self.assertRaisesRegex(ValueError, 'evidence changed'):
+            self.apply()
+        self.assertEqual(self.files(), before)
+        self.assertEqual(len(self.store.load_entries()), 1)
+
+    def test_recovery_refuses_changed_policy_even_with_exact_original_source(self):
+        self._interrupted_sale_then_expanded_capture()
+        self.policy['version'] += 1
+        before = self.files()
+        with self.assertRaisesRegex(ValueError, 'lack an exact finalization receipt'):
+            self.apply()
+        self.assertEqual(self.files(), before)
+        self.assertEqual(len(self.store.load_entries()), 1)
+
     def test_sale_fee_refund_payout_bank_transfer_post_once_with_exact_roles(self):
         matches = self.full_flow()
         plan = self.stage(bank_matches=matches)

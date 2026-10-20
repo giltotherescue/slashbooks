@@ -16,11 +16,26 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlsplit
 
 ACCRUAL_CAPABILITY_VERSION = 1
+
+
+def _locked_entity_operation(function: Callable[..., Any]) -> Callable[..., Any]:
+    """Keep a complete workspace read or configuration update under its common lock."""
+    @wraps(function)
+    def wrapped(entity_path: Path | str, *args: Any, **kwargs: Any) -> Any:
+        from .ledger.importer import _entity_write_lock
+
+        # Preserve a missing company's read/validation error without scaffolding a directory.
+        if not (Path(entity_path) / "entity.json").exists():
+            return function(entity_path, *args, **kwargs)
+        with _entity_write_lock(Path(entity_path)):
+            return function(entity_path, *args, **kwargs)
+    return wrapped
 
 
 def resolve_basis(config: dict[str, Any], *, authoritative_basis: str | None = None) -> str:
@@ -462,6 +477,7 @@ def init_entity(
     return {"created": created, "existed": existed}
 
 
+@_locked_entity_operation
 def configure_basis(entity_path: Path | str, basis: str) -> None:
     """Select the basis for an empty company; conversion is not supported.
 
@@ -587,6 +603,7 @@ def add_account(
     }
 
 
+@_locked_entity_operation
 def map_bank_account(entity_path: Path, feed_account_id: str, account: str) -> dict[str, str]:
     """Persist a BankSync provider-ID to an existing ledger account mapping."""
     entity = load_entity(entity_path)
@@ -647,6 +664,7 @@ def coverage_spans(bounds: Any, start: date, end: date) -> bool:
     return any(first <= start and last >= end for first, last in coverage_ranges(bounds))
 
 
+@_locked_entity_operation
 def record_source_coverage(
     entity_path: Path,
     source_name: str,
@@ -728,6 +746,7 @@ def _write_entity_config(entity: "Entity") -> None:
     os.replace(tmp, destination)
 
 
+@_locked_entity_operation
 def record_related_entity(
     entity_path: Path,
     name: str,
@@ -786,6 +805,7 @@ def record_related_entity(
     return {"name": related_name, "status": status, "authorization": "pending", "inbound_policy": inbound_policy, "outbound_policy": outbound_policy}
 
 
+@_locked_entity_operation
 def approve_related_entity(entity_path: Path, name: str, approval_note: str) -> dict[str, str]:
     """Activate a pending related-entity policy with explicit approval provenance."""
     entity = load_entity(entity_path)

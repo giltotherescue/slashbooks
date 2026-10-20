@@ -388,6 +388,9 @@ class BalanceCheckTests(unittest.TestCase):
     def test_cli_is_read_only_and_classified_as_read(self):
         input_path = Path(self._tmp.name) / "balances.json"
         input_path.write_text(json.dumps([self.item("800.00")]))
+        # A first coherent read may create only the shared empty operational lock.
+        # The dedicated concurrency regression also asserts every accounting byte stays unchanged.
+        tieout.balance_check(self.company, [self.item("800.00")])
         files = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in self.company.rglob("*") if p.is_file()}
         code, result = run_cli("balance", "check", "--entity", str(self.company), "--input", str(input_path))
         self.assertEqual((code, result["accounts"][0]["status"]), (0, "matches"))

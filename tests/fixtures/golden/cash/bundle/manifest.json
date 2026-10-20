@@ -35,7 +35,7 @@
     },
     {
       "path": "learned-context/counterparties.json",
-      "sha256": "0da24ed99b399b2bb9159f9e3dade33361a5d2b5864370ff0e32235205b6ab52",
+      "sha256": "c1648b8c98e334755275030f321325619eb19522952a19ff5c04e868f57a212f",
       "size": 5863
     },
     {
@@ -268,7 +268,7 @@
       },
       "audit_events": {
         "rows": 150,
-        "sha256": "7834b06298554662a1066c1c15802694774827b7f97011a0375f574eeef66fe9"
+        "sha256": "861c07bdb876b7ebfd8092442b40d2acda6ee950d86e8f36501d0ab1c11f0a78"
       },
       "balance_assertions": {
         "rows": 0,

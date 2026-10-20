@@ -284,13 +284,13 @@ def _attempt_prior(compute, entity: Path, start: Optional[date], end: date):
         return None, _prior_info(start, end, False, f"the prior period is outside the books' imported coverage ({exc}).")
 
 
-def compare_pnl(entity: Path | str, from_date: date, to_date: date, mode: str) -> ComparativeResult:
+def compare_pnl(entity: Path | str, from_date: date, to_date: date, mode: str, basis: Optional[str] = None) -> ComparativeResult:
     from .statements import profit_and_loss
 
     entity = Path(entity)
     pf, pt = prior_range(from_date, to_date, mode)
-    current = profit_and_loss(entity, from_date, to_date)
-    prior, info = _attempt_prior(lambda: profit_and_loss(entity, pf, pt), entity, pf, pt)
+    current = profit_and_loss(entity, from_date, to_date, basis=basis)
+    prior, info = _attempt_prior(lambda: profit_and_loss(entity, pf, pt, basis=basis), entity, pf, pt)
     force = any(l["key"] == "gross_profit" for r in (current, prior) if r is not None
                 for l in pnl_structure(r)["lines"])
     cur_lines = pnl_structure(current, force)["lines"]

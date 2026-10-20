@@ -27,3 +27,12 @@ A diff here means a user-visible change. Regenerate only on purpose:
     UPDATE_GOLDEN=1 .venv/bin/python -m unittest tests.test_golden_outputs
 
 Regenerating requires a written reason in the pull request.
+
+2026-10-19 review corrections: regenerated the affected expectations because
+confirmation receipts now persist the learning choice, so audit hashes and the
+learned-context operation hashes change while confirmation counts and financial
+amounts stay the same. Tax handoffs now identify their actual recording basis
+and include accounting coverage: accrual exports no longer claim cash basis.
+The cash manifest also records its cash basis explicitly. These are intended
+audit and export-description changes, with unchanged statement amounts. Carry
+this reason into the pull request when publishing these local fixes.

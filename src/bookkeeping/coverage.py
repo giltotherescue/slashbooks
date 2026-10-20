@@ -69,7 +69,7 @@ import sqlite3
 import sys
 from typing import Any, Iterable, Mapping, Sequence
 
-from .entity import load_entity
+from .entity import _locked_entity_operation, load_entity
 from .ledger.store import LedgerStore, default_store_path
 from . import tieout as tieout_module
 
@@ -333,6 +333,7 @@ CONTRACT_FIELDS = frozenset({
 })
 
 
+@_locked_entity_operation
 def record_statement(entity_path: Path | str, record: Mapping[str, Any], *, replace: bool = False,
                      extra: Mapping[str, Any] | None = None, check_catalog: bool = True) -> dict[str, Any]:
     """Validate and write one statement record under ``ingestion/statements``.
@@ -561,6 +562,7 @@ def _month_tieout(records: Sequence[StatementRecord], ties: Mapping[str, dict[st
     return tieout_module.not_aligned(overlapping[0].statement_id if len(overlapping) == 1 else None)
 
 
+@_locked_entity_operation
 def check_coverage(
     entity_path: Path | str,
     from_date: date,

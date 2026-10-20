@@ -263,3 +263,17 @@ The export maps and exports engine-computed book balances. It does not apply
 the meals limit, compute depreciation, compute cost of goods sold, make
 book-to-tax adjustments, or decide whether an amount is deductible. The
 preparer makes those decisions.
+
+### Accounting basis and historical coverage
+
+The handoff uses canonical book postings. For accrual-enabled books, unpaid invoices and bills
+remain accrual amounts even if the default profit and loss view is cash. The Read Me sheet,
+README.txt and manifest identify the accounting basis; `accounting_basis` and `accounting`
+carry that basis and coverage metadata in the manifest.
+
+A historical opening summary supports its complete fiscal period, not arbitrary earlier months.
+Unsupported pre-cutover subperiods or dates before the source balances are refused before any
+handoff files are written. A supported full-summary export identifies the included summary and
+states that historical transaction detail is unavailable. Periods entirely before optional accrual
+tracking began remain cash periods when cash is the default view; an accrual request must start
+on or after tracking began.

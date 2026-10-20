@@ -128,3 +128,13 @@ The accountant can choose **Load agent draft** in Stripe categories, inspect and
 edit the suggestions, and approve once. Drafts do not activate any rule. Use only
 selectors present in the Stripe preview and current chart accounts. Read the prior
 file before revising it, and preserve categories the accountant still wants.
+
+An approved apply stores an immutable finalization receipt with the financial
+entries. If a local failure interrupts marking sources seen or removing Review
+rows, repeat the same captured evidence and policy with a fresh plan. The retry
+verifies the receipt, posted entry, canonical source and unchanged staged row,
+then completes cleanup without posting again. A newer capture may contain
+additional movements: recovery compares the original movement's referenced
+authority objects, not the whole capture. Changes to that source's charge,
+invoice, refund, payout or other relevant authority evidence still block cleanup. Changed or unproven evidence
+requires reconciliation before cleanup.

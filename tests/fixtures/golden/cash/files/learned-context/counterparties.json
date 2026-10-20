@@ -3,7 +3,7 @@
     "canonical_category": "Expenses:Fees",
     "confirmed_count": 3,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "b78737cb3bb0914175bc21405944158f440037394775e4d72197e2b71fc7b58e",
+    "last_operation_hash": "03e8f6f3307f5283894e415f1ea9b4f4005cf3f4bf1bfebe0d5a2f8635bdbbcd",
     "notes": "",
     "reset": false
   },
@@ -11,7 +11,7 @@
     "canonical_category": "Expenses:Software",
     "confirmed_count": 3,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "b03aac431b65cc83e28b5d5307715918c1eaca33a7bf0d986816bae9420a9129",
+    "last_operation_hash": "e4c4de02c2cd2bd21250fd47a01edb6eca541db0427ff8ab1e2ba567a9656378",
     "notes": "",
     "reset": false
   },
@@ -19,7 +19,7 @@
     "canonical_category": "Expenses:Subcontractors",
     "confirmed_count": 3,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "c4a183e79b70b5ae4c342c79e12374ab986901ac4e7a2092566d2868d6835720",
+    "last_operation_hash": "c0f6f8288e4705ca41a5a1e8dc576380eb0368d931587fc4044dbe0779156b14",
     "notes": "",
     "reset": false
   },
@@ -27,7 +27,7 @@
     "canonical_category": "Expenses:Insurance",
     "confirmed_count": 2,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "b957f7c6e70d216218a0a3dc379ce0c1c09ff2be2849eee893058169d8440ac1",
+    "last_operation_hash": "7b0bb49370a3360a50e1335ce20ffc36a95691fd723a26cb16e334ab2be48509",
     "notes": "",
     "reset": false
   },
@@ -35,7 +35,7 @@
     "canonical_category": "Income:Consulting",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "00f2991f9887fa4460d9e413a4460b6a09a7e1b77344e388b8d0f81361589e53",
+    "last_operation_hash": "343884fe887c94f04a83fef935dca18ecd8051fcadb6a56d59d9f163774de0f5",
     "notes": "",
     "reset": false
   },
@@ -43,7 +43,7 @@
     "canonical_category": "Expenses:Software",
     "confirmed_count": 3,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "322bdde45d1b9c7e4fd34ed329e6ac2df690c0f67447fb091e1be4e051d7bdd9",
+    "last_operation_hash": "d7a75bf8eed32d6a9fe00575976ae4e4d17915edebe35bff054ba8af64fa2cd0",
     "notes": "",
     "reset": false
   },
@@ -51,7 +51,7 @@
     "canonical_category": "Expenses:Meals",
     "confirmed_count": 2,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "dba4ee0af705dd0d915d252fdf9ffdf8e5aff00d3a7c6a03f24b1b49c0fe1597",
+    "last_operation_hash": "f1265ab8503206790fd4cf3a456b0398e5b520f89a305b6ece183b0d46b8d551",
     "notes": "",
     "reset": false
   },
@@ -59,7 +59,7 @@
     "canonical_category": "Expenses:Meals",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "dc8eb3d5d459a5bdce638ce69cd7ebeb18db0d0dbaf6c3d8d6f05ed4753ebdb5",
+    "last_operation_hash": "fffc3ea1610f9c9444cf24107943e8659c3943a66c6c42d81b4d04a1a0fe9e53",
     "notes": "",
     "reset": false
   },
@@ -67,7 +67,7 @@
     "canonical_category": "Income:Consulting",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "8fa060474fed08040ecf525caa4bd2d56f6c5122ce0cf5ff41061d546e5bd9a0",
+    "last_operation_hash": "fc0d27475e3eb67e99b833228c37468d85987975e6ff6b1db050f4a46680a41d",
     "notes": "",
     "reset": false
   },
@@ -75,7 +75,7 @@
     "canonical_category": "Income:Consulting",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "9117151328adcaa47507625e49b3559f2957c6ecf510b48cca32b81e6924a095",
+    "last_operation_hash": "8e85daefeca1aa5ebd19c0de9764ee50b4518dc8e95c18b20db2ded58506778f",
     "notes": "",
     "reset": false
   },
@@ -83,7 +83,7 @@
     "canonical_category": "Expenses:Rent",
     "confirmed_count": 3,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "21e7fd061732b16f947cbb4c6a6a127d52725440381b2819c0dbe43f5ed2d1a5",
+    "last_operation_hash": "47330ec7ca0985565abc0e99da5394c7db42a3dcd9b74f12b61fee8c9202374f",
     "notes": "",
     "reset": false,
     "taught": {
@@ -98,7 +98,7 @@
     "canonical_category": "Income:Consulting",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "c87b09537856c26b0e723323cb3889d26bc2b86673ea3d365eda6cc64b5f5b21",
+    "last_operation_hash": "230a7d2585da20989b4965e0794860de25b9bb2682772ddc1b6852f2d09f99df",
     "notes": "",
     "reset": false
   },
@@ -106,7 +106,7 @@
     "canonical_category": "Income:Consulting",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "8b09fc3c21445e043352e8d0119ae77f596aa579ebba12537acf6f13674ce824",
+    "last_operation_hash": "6b1238703c4a3fe5f15d1d0f854952ed73f56ebdbd83fb0c97cb3a5248af25d4",
     "notes": "",
     "reset": false
   },
@@ -114,7 +114,7 @@
     "canonical_category": "Income:Consulting",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "6581eb8fcaec2678b9add2db12f60d7f57fdc97547878e32059ed860de2c043a",
+    "last_operation_hash": "60b9fe646c9cceb628f17504bba9bf49fd07249df66659c914ceb55be887d81e",
     "notes": "",
     "reset": false
   },
@@ -122,7 +122,7 @@
     "canonical_category": "Equity:Owner-Contributions",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "0eb535f0efff40db30f404bc70a926b1c21837c42673787f184359ad5fb5b983",
+    "last_operation_hash": "2a811aeafd0cbddd9eddc9b34ef32507bcbd34aa7ef8cbfb02d19d7a21226f58",
     "notes": "",
     "reset": false
   },
@@ -130,7 +130,7 @@
     "canonical_category": "Equity:Owner-Draws",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "a8de80493ba696ddcd53b3a64bee710485b96300c58ff1fcd0711f1c4a72b1ed",
+    "last_operation_hash": "581eb8001e7921cf4d7010bf16cdb8dba5143145f8b3e0a9af7e0f018e81b5ea",
     "notes": "",
     "reset": false
   },
@@ -138,7 +138,7 @@
     "canonical_category": "Expenses:Office",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "f9051ea3e6aee2e9ddbe080fb5243067a8ff9eab55085c0a0b0c7c16713d3861",
+    "last_operation_hash": "da8701237b114bd6c6fdf1cac4de9f8e66d3920ca0d9459c0172c393aa47226c",
     "notes": "",
     "reset": false
   },
@@ -146,7 +146,7 @@
     "canonical_category": "Expenses:Travel",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "8f21bab0423db695936cbc72be54aa908bae7fa3505f6abe33aea65a9e1e7a16",
+    "last_operation_hash": "c2892de9dd8dc692594327f92439b92c6bde8a4df6632bc4bf72e1438d6cbcdd",
     "notes": "",
     "reset": false
   },
@@ -154,7 +154,7 @@
     "canonical_category": "Expenses:Marketing",
     "confirmed_count": 2,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "0fa02ed544f097fe1f601a927859818e2f4fc772691a31bbddf0bd42e406965c",
+    "last_operation_hash": "71401d7e590ab9916986dd8be78b78a5c95e60e874ed7d1b3340315c753cd82a",
     "notes": "",
     "reset": false
   },
@@ -162,7 +162,7 @@
     "canonical_category": "Expenses:Taxes",
     "confirmed_count": 1,
     "last_confirmed_date": "2026-08-05",
-    "last_operation_hash": "c270ae6f6c448005a1ab4cd80fb6bc72ab0bc288bd292f8e2c894b6ce1ccb1fa",
+    "last_operation_hash": "e23b39d840fc1b1a8a03e426b1211bafad4ce12d4916b2c90926d813a104c57d",
     "notes": "",
     "reset": false
   }

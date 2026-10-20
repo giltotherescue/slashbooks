@@ -365,7 +365,11 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                     if not recognition.startswith(expected_root):
                         raise ValueError("Opening schedule recognition account conflicts with its kind.")
                     row["recognition_account"] = recognition
-                    row["recognition_start"] = cutover.isoformat()
+                    from .schedules import _check_service
+                    recognition_start = max(start, cutover)
+                    _check_service(row["method"], start, end, recognition_start, None,
+                                   amount - salvage, remaining)
+                    row["recognition_start"] = recognition_start.isoformat()
                     row["initial_remaining_amount"] = format(remaining, ".2f")
                     row["base_recognized_amount"] = format(recognized, ".2f")
                     row["status"] = "active"

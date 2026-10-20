@@ -49,7 +49,7 @@ def run_extended(args: Any, entity: Path, output: Optional[Path], fmt: str) -> O
     if rc == "pnl" and structure and fmt == "json":
         from .statements import profit_and_loss
         from .structure import structured_json
-        result = profit_and_loss(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date))
+        result = profit_and_loss(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), basis=getattr(args, "basis", None))
         _emit(structured_json(result), output)
         return 0
     if rc == "balance-sheet" and structure and fmt == "json":
@@ -69,7 +69,7 @@ def _run_compare(args: Any, entity: Path, output: Optional[Path], fmt: str, rc: 
 
     try:
         if rc == "pnl":
-            result = comparative.compare_pnl(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), mode)
+            result = comparative.compare_pnl(entity, date.fromisoformat(args.from_date), date.fromisoformat(args.to_date), mode, basis=getattr(args, "basis", None))
         elif rc == "balance-sheet":
             result = comparative.compare_balance_sheet(entity, date.fromisoformat(args.as_of), mode)
         else:
