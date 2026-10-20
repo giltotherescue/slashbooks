@@ -218,6 +218,59 @@ class ImportCheckTests(unittest.TestCase):
             conn.execute("UPDATE postings SET amount = '99.00' WHERE rowid = 1")
         self.assertNotEqual(import_check.check_import(self.entity, sid, ts=TS)["books_digest"], before)
 
+    # -- Transfer pairs: the posting's own account and the source sign decide the side.
+
+    def _post_transfer_pair(self, first_account, second_account, mappings=None):
+        """Post a transfer pair as confirm_transfer does: one entry per source date."""
+        config_path = self.entity / "entity.json"
+        config = json.loads(config_path.read_text())
+        config["bank_account_mappings"] = mappings or {}
+        config_path.write_text(json.dumps(config))
+        sources = [
+            {"id": "pair-out", "date": "2026-02-01", "amount": "-125.00", "accountId": "feed-a",
+             "description": "Transfer out"},
+            {"id": "pair-in", "date": "2026-02-03", "amount": "125.00", "accountId": "feed-b",
+             "description": "Transfer in"}]
+        clearing = "Assets:Transfers:Clearing"
+        store = LedgerStore(self.entity / "ledger.sqlite")
+        store.initialize()
+        with store.transaction() as conn:
+            store.insert_opens([Open(date(2026, 1, 1), n, ("USD",))
+                                for n in (first_account, second_account, clearing)], conn)
+            store.insert_source_transactions(sources, conn)
+            store.insert_entries([
+                Entry(date=date(2026, 2, 1), narration="Transfer",
+                      meta=(("source-id", "pair-out"), ("paired-source-id", "pair-in")),
+                      postings=(Posting(first_account, Decimal("-125.00")), Posting(clearing, Decimal("125.00")))),
+                Entry(date=date(2026, 2, 3), narration="Transfer",
+                      meta=(("source-id", "pair-in"), ("paired-source-id", "pair-out")),
+                      postings=(Posting(second_account, Decimal("125.00")), Posting(clearing, Decimal("-125.00")))),
+            ], conn)
+
+    def test_transfer_pair_with_two_dates_counts_each_side_on_its_own_account(self):
+        self._post_transfer_pair(CHECKING, CARD)
+        entity = load_entity(self.entity)
+        sums, known = import_check._ledger_rows(entity, CHECKING)
+        self.assertEqual(sums, {"pair-out": Decimal("-125.00")})
+        self.assertEqual(known, {"pair-out", "pair-in"})
+        self.assertEqual(import_check._ledger_rows(entity, CARD)[0], {"pair-in": Decimal("125.00")})
+
+    def test_transfer_pair_in_one_account_counts_each_side_once(self):
+        self._post_transfer_pair(CHECKING, CHECKING)
+        sums, _ = import_check._ledger_rows(load_entity(self.entity), CHECKING)
+        self.assertEqual(sums, {"pair-out": Decimal("-125.00"), "pair-in": Decimal("125.00")})
+
+    def test_mapping_changed_after_posting_does_not_drop_the_posting(self):
+        self._post_transfer_pair(CHECKING, CARD, mappings={"feed-a": CHECKING, "feed-b": CARD})
+        # The feed now points at another ledger account. The old posting stays where it was posted.
+        config_path = self.entity / "entity.json"
+        config = json.loads(config_path.read_text())
+        config["bank_account_mappings"] = {"feed-a": "Assets:Bank:Savings", "feed-b": "Assets:Bank:Savings"}
+        config_path.write_text(json.dumps(config))
+        entity = load_entity(self.entity)
+        self.assertEqual(import_check._ledger_rows(entity, CHECKING)[0], {"pair-out": Decimal("-125.00")})
+        self.assertEqual(import_check._ledger_rows(entity, CARD)[0], {"pair-in": Decimal("125.00")})
+
     def test_stored_import_id_is_validated(self):
         for bad in ("../entity", "a/b", "..", "", "a b"):
             code, result = run_cli("import", "check", bad, "--entity", str(self.entity), "--stored")

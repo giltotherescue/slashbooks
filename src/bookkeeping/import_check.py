@@ -169,8 +169,7 @@ def _ledger_rows(entity: Any, account: str) -> tuple[dict[str, Decimal], set[str
             sources = {str(sid): json.loads(raw) for sid, raw in conn.execute(
                 "SELECT id,payload_json FROM source_transactions")}
             known = set(sources)
-            from .ledger.importer import _ledger_account_for_txn
-            config = entity.entity_config
+            from .statement_import import _txn_amount
             for raw_meta, raw in conn.execute(
                     "SELECT e.metadata_json,p.amount FROM entries e JOIN postings p ON p.entry_id=e.id "
                     "WHERE p.account=?", (account,)):
@@ -189,22 +188,15 @@ def _ledger_rows(entity: Any, account: str) -> tuple[dict[str, Decimal], set[str
                         source = sources.get(sid)
                         if not source:
                             raise _Unreadable
-                        mapped = _ledger_account_for_txn(source, config.get("bank_account_mappings"),
-                                                         config.get("csv_account_mappings"))
-                        if mapped != account:
+                        # The posting is on this account already. Attribute it to
+                        # the side of the pair whose amount has the same sign (a
+                        # reversal flips the sign). Do not read the current account
+                        # mapping: it can change after the posting.
+                        direction = -1 if meta.get("reverses") else 1
+                        if amount * _txn_amount(source) * direction <= 0:
                             continue
-                        # Same-account paired transfers have opposing postings.
-                        # Attribute each posting to its own side, including its reversal.
-                        other = sources.get(paired if sid == root else root)
-                        if other and _ledger_account_for_txn(other, config.get("bank_account_mappings"),
-                                                           config.get("csv_account_mappings")) == account:
-                            from .statement_import import _txn_amount
-                            original_amount = _txn_amount(source)
-                            direction = -1 if meta.get("reverses") else 1
-                            if amount * original_amount * direction <= 0:
-                                continue
                     sums[sid] = sums.get(sid, _ZERO) + amount
-    except (sqlite3.DatabaseError, ValueError, TypeError) as exc:
+    except (sqlite3.DatabaseError, ValueError, TypeError, ArithmeticError) as exc:
         raise _Unreadable from exc
     return sums, known
 
