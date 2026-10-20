@@ -115,6 +115,11 @@ show the owner the proposed account choice. Record it only after they confirm:
 scripts/books entity bank-account-map <entity-path> --feed-account-id <provider-account-id> --account <existing-ledger-account>
 ```
 
+When the owner has changed bank data provider, first run
+`scripts/books bank match-account --entity <entity-path> --provider <provider> --provider-account-id <id> --institution-name <name> --last4 <last4> --account-type <type> --currency <currency> --json`.
+A `proposal` is only a suggestion: show it to the owner and map the new ID after
+they confirm. See `docs/banksync.md` ("Switching bank data providers").
+
 Then ingest the download directly. Do not reshape its JSON or rely on a display
 name to choose a cash account:
 
