@@ -62,6 +62,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .bank_accounts import clip_windows_to_cutover, split_at_cutover
 from .entity import flat_bank_account_mappings, load_entity
 from . import queue as queue_module
 from .ledger.importer import import_transactions
@@ -97,6 +98,11 @@ def add_parser(subparsers: Any) -> None:
         "--no-feed-window", dest="record_feed_window", action="store_false",
         help="Write no feed_sync coverage windows for this ingest. A host that reads a provider "
              "in chunks uses this and writes its own windows",
+    )
+    parser.add_argument(
+        "--backfill", action="store_true",
+        help="Import rows dated on or before an account's cutover date. Without it, a feed "
+             "import skips them and reports how many",
     )
     parser.add_argument(
         "--feed-provider", default=None, metavar="NAME",
@@ -330,6 +336,16 @@ def run(args: argparse.Namespace) -> int:
             entity, txns, "banksync" if is_banksync else args.source
         )
         provider = feed_provider(args.source, getattr(args, "feed_provider", None), is_banksync)
+        before_cutover: dict[str, dict[str, Any]] = {}
+        if not getattr(args, "backfill", False):
+            kept, before_cutover = split_at_cutover(entity, txns)
+            if before_cutover and prepared is not None:
+                # A host-prepared snapshot is verified row by row, so the engine cannot drop rows.
+                raise ValueError(
+                    "The prepared snapshot has rows on or before an account's cutover date. "
+                    "Remove them from the snapshot, or run with --backfill.")
+            txns = kept
+            windows = clip_windows_to_cutover(entity, windows)
         # A host-prepared snapshot is verified row by row against the host's own
         # fingerprints, so the engine must not change its IDs. The host writes
         # ``<provider>:<id>`` into the snapshot itself.
@@ -360,6 +376,11 @@ def run(args: argparse.Namespace) -> int:
     print(f"  posted to ledger:    {result.new_entries}")
     print(f"  queued for review:   {result.pending_categorization}")
     print(f"  duplicates skipped:  {result.skipped_duplicate}")
+    if before_cutover:
+        print(f"  before cutover:      {sum(item['count'] for item in before_cutover.values())} skipped "
+              "(use --backfill to import them)")
+        for account, item in sorted(before_cutover.items()):
+            print(f"    {account}: {item['count']} on or before {item['cutover_date']}")
     if result.duplicate_candidates:
         print(f"  duplicate candidates:{result.duplicate_candidates}")
     if result.late_arrivals:
