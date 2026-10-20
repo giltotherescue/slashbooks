@@ -809,7 +809,21 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     order = {code: index for index, code in enumerate(CATALOG)}
     summary_rows = sorted(summary.values(), key=lambda s: (order[s["line"].code], s["detail"]))
     unmapped = [row for row in tb_rows if row["mapping"].line is None]
+    from .accrual.scope import DISCIPLINE_PER_ACCOUNT, discipline, tracking_start
+    # A company that turned accrual on later and now holds accrual records keeps cash entries before its tracking start and
+    # accrual records from it, so one label for the whole period would be wrong. Other companies keep the original label.
+    mixed = None
+    if discipline(entity) == DISCIPLINE_PER_ACCOUNT:
+        from .reports.cache import open_cache
+        from .reports.statements import has_accrual_records
+        conn = open_cache(entity.path)
+        try:
+            mixed = tracking_start(entity) if has_accrual_records(conn) else None
+        finally:
+            conn.close()
     return {
+        **({"book_basis_note": f"Book balances as recorded: cash entries before {mixed}, accrual records from {mixed}. "
+                               "Not a tax cash-basis view; the preparer adjusts"} if mixed else {}),
         "entity_name": entity.name,
         "form": resolved,
         "form_basis": form_basis,
@@ -924,7 +938,7 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
         ["Return", f"{FORMS[handoff['form']]} ({handoff['form']}, chosen by {handoff['form_basis']})"],
         ["Line numbers", f"Tax year {TAX_YEAR_BASIS} federal forms; confirm against the current year's form"],
         ["Period", f"{handoff['from'].isoformat()} to {handoff['to'].isoformat()}"],
-        ["Basis", "Cash basis book balances computed by the Slashbooks engine"],
+        ["Basis", handoff.get("book_basis_note") or "Cash basis book balances computed by the Slashbooks engine"],
         ["Total debits", _money(totals["debit"])],
         ["Total credits", _money(totals["credit"])],
         ["Unmapped accounts", str(len(handoff["unmapped"]))],
