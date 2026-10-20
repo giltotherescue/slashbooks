@@ -99,3 +99,112 @@ books connector banksync validate \
 
 That probe checks the practical ingestion assumptions Slashbooks relies on: stable
 IDs, historical depth, pending/posted behavior, and page-boundary completeness.
+
+## Switching bank data providers
+
+A company can move from one bank data provider (BankSync, Plaid, Stripe
+Financial Connections or another) without a second cash account and without the
+same transaction in the books twice. Four rules make this safe.
+
+**One ledger account per bank account.** `bank_account_mappings` in
+`entity.json` maps each provider account ID to a ledger account. The value is
+the account name, or an object that also records who the account is:
+
+```json
+{
+  "bank_account_mappings": {
+    "acct_old": {
+      "ledger_account": "Assets:Bank:Operating-Checking",
+      "provider": "banksync",
+      "provider_account_id": "acct_old",
+      "institution_name": "Chase",
+      "last4": "0021",
+      "account_type": "checking",
+      "currency": "USD"
+    },
+    "plaid_1": {
+      "ledger_account": "Assets:Bank:Operating-Checking",
+      "provider": "plaid",
+      "provider_account_id": "plaid_1",
+      "institution_id": "ins_3",
+      "institution_name": "Chase",
+      "last4": "0021",
+      "account_type": "checking",
+      "currency": "USD",
+      "cutover_date": "2026-03-01"
+    }
+  }
+}
+```
+
+The flat form still works and is still written when no identity field is given.
+Record the identity with `books entity bank-account-map`:
+
+```sh
+books entity bank-account-map <company-dir> --feed-account-id plaid_1 \
+  --account Assets:Bank:Operating-Checking --provider plaid \
+  --institution-id ins_3 --institution-name Chase --last4 0021 \
+  --account-type checking --currency USD --cutover-date 2026-03-01
+```
+
+**Add identity to an old mapping first.** A company that mapped its accounts
+before this release has flat entries, such as `"acct_old": "Assets:Bank:Operating-Checking"`.
+A flat entry has no identity, so `match-account` cannot match it and returns
+`no_match`. Run `bank-account-map` again for the old ID with the same account and
+the identity. It keeps the account and adds the fields:
+
+```sh
+books entity bank-account-map <company-dir> --feed-account-id acct_old \
+  --account Assets:Bank:Operating-Checking --provider banksync \
+  --institution-name Chase --last4 0021 --account-type checking --currency USD
+```
+
+`--last4` accepts a mask such as `****0021` and keeps the last four characters.
+
+**Find the old account for the new connection.** When the new provider gives the
+same bank account a new ID, ask for a proposal:
+
+```sh
+books bank match-account --entity <company-dir> --provider plaid \
+  --provider-account-id plaid_1 --institution-name Chase --last4 0021 \
+  --account-type checking --currency USD --json
+```
+
+The result `status` is `proposal` (one ledger account matches on institution,
+last four digits, type and currency), `already_mapped`, `ambiguous` or
+`no_match`. A proposal carries the `bank-account-map` command to run. The
+command changes nothing: a person confirms the proposal first, and only then is
+the new ID mapped. The old ID stays mapped, so old rows keep resolving.
+
+**New rows have a provider namespace.** `books ingest` writes `<provider>:<id>`
+as the source ID of each connected-feed row, such as `banksync:abc` or
+`plaid:abc`. `--source banksync`, `--source plaid` and a BankSync download name
+the provider; `--feed-provider NAME` names any other. Rows already in the books
+keep their old IDs. An old BankSync ID `abc` and `banksync:abc` are the same row
+in every duplicate check, so re-running a download never posts a row twice.
+
+**Overlap goes to review, never to the books.** Every connected-feed import
+checks each row against posted entries and queued review items on the same
+ledger account. A row is held in "To check" when the date, amount and
+description all match, or when the amount matches within three days and the
+other row came from a different source. Two purchases of one amount from the
+same feed are not held against each other. See `books queue duplicates`.
+
+**Set a cutover date.** `cutover_date` is the last day the old source owns. A
+feed import never posts a row dated on or before it. Each such row goes to "To
+check" (`books queue duplicates`), either matched to the row it repeats or marked
+`before_cutover_not_in_books`, so a late row that the old source never sent is
+seen by a person and not lost. Pass `--backfill` to import these rows in the
+normal way. Coverage windows start the day after the cutover date. Remove a
+cutover date with `books entity bank-account-map ... --clear-cutover-date`.
+
+Every connected feed needs a mapping. `books ingest` stops, and posts nothing,
+when a row's account ID is not mapped, instead of opening a new
+`Assets:Bank:<name>` account.
+
+**Moving from a generic or Mercury ingest to BankSync.** Rows imported by a
+generic `books ingest` (or from Mercury) keep their raw IDs and have no provider.
+When the same ledger account then gets a BankSync feed, only an exact same-day
+match (date, amount and description) is held against those rows. Set a
+`cutover_date` on the BankSync mapping, the last day the earlier source owns, so
+that every earlier BankSync row goes to review and is not posted.

@@ -91,7 +91,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),
                         ("queue", "list"), ("queue", "show"), ("queue", "summary"),
                         ("queue", "split-template-list"), ("queue", "taught"), ("queue", "transfer-candidates"),
-                        ("queue", "transfer-exceptions"), ("queue", "duplicates")}
+                        ("queue", "transfer-exceptions"), ("queue", "duplicates"),
+                        ("bank", "match-account")}  # A proposal; a person confirms before any mapping
             # Tax handoff: read-only checks and exports.
             or path in {("coverage", "check"), ("coverage", "statement-list"), ("balance", "check"), ("import", "check"),
                         ("tax", "lines"), ("tax", "map"), ("tax", "export")})

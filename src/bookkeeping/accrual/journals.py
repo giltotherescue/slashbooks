@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..entity import Entity, load_entity
+from ..entity import Entity, flat_bank_account_mappings, load_entity
 from .scope import accrual_active, require_write_scope
 from ..ledger.importer import _atomic_ledger_write, _entity_write_lock
 from ..ledger.model import Entry, Posting, Open
@@ -480,7 +480,7 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
         if original is None:
             raise JournalError("missing_origin", "The linked payment/journal is missing.")
         # A reclassification of existing activity cannot introduce cash again.
-        cash_accounts = set(entity.entity_config.get("bank_account_mappings", {}).values())
+        cash_accounts = set(flat_bank_account_mappings(entity.entity_config).values())
         cash_accounts |= {o.account for o in _store(entity).load_opens() if o.account.startswith(("Assets:Bank:", "Assets:Cash"))}
         if any(p.account in cash_accounts for p in postings):
             raise JournalError("duplicate_cash_effect", "An existing-origin reclassification must not repost cash.")

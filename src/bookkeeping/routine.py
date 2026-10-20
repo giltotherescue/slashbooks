@@ -12,6 +12,7 @@ import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from .entity import flat_bank_account_mappings
 from .ledger.importer import _ledger_account_for_txn, _load_pending_categorization, _validate_normalized_transactions
 from .ledger.store import LedgerStore, default_store_path
 from .queue import _counterparty_key, taught_for, txn_is_above_ask_first
@@ -107,7 +108,7 @@ def _state(entity):
 def _mapping(entity, txn, opens):
     account_id = txn.get('accountId')
     mappings = entity.entity_config.get('bank_account_mappings') or {}
-    ledger_account = mappings.get(account_id)
+    ledger_account = flat_bank_account_mappings(entity.entity_config).get(account_id)
     if not isinstance(ledger_account, str) or ledger_account not in opens:
         raise ValueError('mapping_required')
     try:
@@ -142,7 +143,7 @@ def routine_context(entity):
     """
     pending, opens, posted, _, _ = _state(entity)
     accounts, counterparties = {}, {}
-    mappings = entity.entity_config.get('bank_account_mappings') or {}
+    mappings = flat_bank_account_mappings(entity.entity_config)
     for sid, account in mappings.items():
         if not isinstance(sid, str) or not sid or not isinstance(account, str) or account not in opens:
             continue

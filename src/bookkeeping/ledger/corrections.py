@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from ..entity import load_entity
+from ..source_ids import source_id_variants
 from .importer import _ensure_ledger_store, _find_live_entry, reverse_and_correct, reverse_entry
 from .model import Entry, Posting
 
@@ -76,12 +77,13 @@ def _require_unmanaged_entry(entity: Any, source_id: str) -> None:
     original = _find_live_entry(store, source_id)
     metadata = dict(original.meta)
     managed = bool(metadata.get("accrual-intent") or metadata.get("accrual-opening"))
-    managed |= any(source_id in record.get("receipt", {}).get("entry_source_ids", [])
+    spellings = source_id_variants(source_id)
+    managed |= any(spellings & set(record.get("receipt", {}).get("entry_source_ids", []))
                    for record in list_records(store, "intents"))
-    managed |= any(record.get("origin", {}).get("source_id") == source_id
+    managed |= any(record.get("origin", {}).get("source_id") in spellings
                    for table in ("items", "schedules") for record in list_records(store, table))
-    managed |= any(record.get("source_id") == source_id for record in list_records(store, "allocations"))
-    managed |= any(record.get("opening_source_id") == source_id for record in list_records(store, "coverage"))
+    managed |= any(record.get("source_id") in spellings for record in list_records(store, "allocations"))
+    managed |= any(record.get("opening_source_id") in spellings for record in list_records(store, "coverage"))
     if managed:
         raise ValueError("This entry has managed accrual accounting or supporting balances. Use the reviewed accrual journal correction/reversal, item adjustment/reversal, or schedule change route so financial and supporting lineage remain consistent.")
 
