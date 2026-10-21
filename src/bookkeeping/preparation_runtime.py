@@ -75,7 +75,8 @@ def supported_preparation_command(argv: list[str]) -> PreparationCommandSpec:
         # `enable apply` and `entity set-view` stay unsupported here on purpose: turning accrual on and choosing the
         # default view are person-only writes that standing posting authority never covers.
         # `schedule tax-treatment` and `entity set-tax-method` stay unsupported too: a tax method and a tax treatment
-        # are decisions for the owner or the tax preparer, never for standing posting authority.
+        # are decisions for the owner or the tax preparer, never for standing posting authority. The same holds for
+        # `schedule deposit-kind`, `item deposit-kind` and `entity set-tax-profile`.
         # `rules set-apply` and `rules clear-apply` stay unsupported here on purpose. A saved rule only
         # changes what is proposed, so standing posting authority does not cover it.
         if path[1:] in {("intake",), ("journal", "preview"), ("journal", "apply"),

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add an audited fiscal-year setting; use it for prepaid tax defaults and annual earnings. Preserve mixed prepaid assets and guard tax-policy writes against invalid ledger integrity and standing-authority changes.
+- Tax method view: record facts for the tax preparer and list missing inputs. New `books entity set-tax-profile PATH [--prior-return-method cash|accrual|unknown|none] [--entity-type sole_proprietor|single_member_llc|partnership|s_corp|c_corp|nonprofit|other|unknown] [--apply] [--plan-hash H]` (audit event `tax-profile-set`). New `books accrual schedule deposit-kind` and `books accrual item deposit-kind --entity PATH --id ID --deposit-kind advance_payment|refundable [--apply] [--plan-hash H]` (audit event `deposit-kind-set`). In the cash view for tax, a deposit recorded as refundable stays a liability until it is applied or forfeited; unset means advance payment, income on receipt. The tax export adds `tax_view.tax_profile`, `tax_view.deposits` (with "assumed advance payment" when no kind is recorded), `tax_view.fixed_assets` (purchase date, cost, account, vendor, book depreciation; no tax depreciation), the "Fixed Assets" and "Deposits" sheets, and the flags `deposit_kind_not_recorded`, `deposit_refundable` and `prepaid_tax_treatment_not_recorded`. Readiness adds the note `deposit_kind_missing`. All writes are person-only. The engine applies no tax rule to these facts; the agent checklist is in the books-export skill. Without the tax-method view every output is unchanged.
 
 ## 0.7.0 — 2026-10-21
 

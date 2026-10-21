@@ -304,13 +304,20 @@ class CashLedger:
                 "ties": difference == total}
 
 
-def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = frozenset()) -> CashLedger:
+def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = frozenset(),
+           refundable: frozenset[str] | set[str] = frozenset()) -> CashLedger:
     """Derive the cash-basis ledger from the accrual books for every entry dated on or before ``through``.
 
-    ``capitalized`` names prepaid schedules that a cash-method filer must capitalize for tax (see
-    ``taxview``). Their entries are kept as recorded: the payment stays an asset and the recognition
-    entries are the expense. The default (empty) is the report cash view, where a prepaid is expense
-    in full on the funding date.
+    ``capitalized`` names schedules whose entries the tax view keeps as recorded (see ``taxview``): a
+    prepaid schedule that a cash-method filer capitalizes (the payment stays an asset and the recognition
+    entries are the expense), or a deferred schedule that a person recorded as a refundable deposit (the
+    receipt stays a liability and the recognition entries are the income). The default (empty) is the
+    report cash view, where a prepaid is expense in full on the funding date.
+
+    ``refundable`` names customer deposit items (credit items) that a person recorded as refundable.
+    The view treats their receipt and refund as no income, an application to an invoice as income on the
+    application date, and a forfeiture (an adjustment of the deposit) as recorded. The default (empty)
+    is the report cash view, which treats a deposit as income on receipt.
     """
     from ..accrual.accounts import _subtype, _usage_subtypes
     from ..accrual.reports import _records
@@ -329,7 +336,38 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
             source = entries_by_source.get(item["origin"].get("source_id", ""))
             if source and any(not _is_ie(a) and a not in control for a, _ in source["postings"]):
                 cash_backed.add(item["id"])
-    events = _allocation_events(allocations, items, _ItemLines(items, entries_by_source), cash_backed)
+    # The view treats an opening-balance deposit recorded as refundable like a cash-backed one: applying it to an
+    # invoice places the income on the invoice lines. Any other deposit that no cash created
+    # (a credit memo) cannot be a refundable deposit, and the view refuses rather than guess.
+    backed = set(cash_backed)
+    for item_id in refundable:
+        item = items.get(item_id)
+        if item is None or item_id in cash_backed:
+            continue
+        if item.get("origin", {}).get("mode") != "opening":
+            raise CashViewError(f"refundable_deposit_not_cash_backed: deposit {item_id} is recorded as refundable, but no cash receipt or "
+                                "opening balance created it, so the cash view cannot place it. Nothing was exported. Record it as "
+                                "advance_payment, or record the deposit from its cash receipt.")
+        backed.add(item_id)
+    events = _allocation_events(allocations, items, _ItemLines(items, entries_by_source), backed)
+    # Net income that a refundable deposit removes from an allocation's events, keyed by allocation id,
+    # with the reconciling group that keeps the tie-out exact. Empty unless ``refundable`` is given.
+    withheld: dict[str, tuple[Decimal, str]] = {}
+    for allocation in allocations:
+        rows = events.get(allocation["id"])
+        if not rows or not refundable:
+            continue
+        if allocation.get("item_id") in refundable and allocation.get("kind") in {"unapplied_receipt", "settlement"}:
+            kept_rows, removed = [], rows                       # receipt or refund: no income
+            holder = items[allocation["item_id"]]
+        elif allocation.get("kind") == "application" and allocation.get("linked_item_id") in refundable:
+            kept_rows = [r for r in rows if r[0] not in {_K_UNAPPLIED_IN, _K_UNAPPLIED_OUT}]
+            removed = [r for r in rows if r[0] in {_K_UNAPPLIED_IN, _K_UNAPPLIED_OUT}]  # the invoice lines are the income
+            holder = items[allocation["linked_item_id"]]
+        else:
+            continue
+        events[allocation["id"]] = kept_rows
+        withheld[allocation["id"]] = (sum((n for _, n in removed), Decimal(0)), holder["account"])
     settlements_by_source: dict[str, list[dict]] = defaultdict(list)
     for allocation in allocations:
         if allocation.get("kind") in {"settlement", "unapplied_receipt"} and allocation.get("source_id"):
@@ -356,6 +394,11 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
         applied.add(allocation_id)
         for account, net in rows:
             emit(day, account, -net, rule, source)
+        if allocation_id in withheld:
+            # Removing net income from the cash view moves the same amount into the reconciling items.
+            amount, account = withheld[allocation_id]
+            reconciling.append((day, _SUBTYPE_GROUPS.get(_subtype(account, usage), "other_control"), amount))
+            return sum((n for _, n in rows), Decimal(0)) + amount
         return sum((n for _, n in rows), Decimal(0))
 
     def unclassified(entry: dict, amount: Decimal, why: str) -> None:
@@ -382,6 +425,12 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
                         emit(day, account, amount, "capitalized_schedule", source)
                 continue
         touched = [(a, n) for a, n in entry_postings if a in control]
+        if refundable and source.startswith("adjustment:") and entry["meta"].get("item-id") in refundable:
+            # A refundable deposit that is forfeited (or otherwise adjusted into income or expense) counts as recorded.
+            for account, amount in entry_postings:
+                if _is_ie(account):
+                    emit(day, account, amount, "refundable_deposit_adjustment", source)
+                    reconciling.append((day, "writeoffs", amount))
         if not touched:
             for account, amount in entry_postings:
                 if _is_ie(account):
@@ -416,6 +465,9 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
                 unclassified(entry, cash - net, "cash from this payment is not matched to an invoice, bill or credit")
         elif schedule:
             emit(day, schedule["recognition_account"], -cash, "schedule_cash", source)
+        elif credit and credit["id"] in refundable:
+            # A deposit recorded as refundable: the view keeps it a liability and places no income.
+            reconciling.append((day, _SUBTYPE_GROUPS.get(_subtype(credit["account"], usage), "other_control"), cash))
         elif credit:
             emit(day, _K_UNAPPLIED_IN if _item_sign(credit) < 0 else _K_UNAPPLIED_OUT, -cash, "deposit", source)
         else:

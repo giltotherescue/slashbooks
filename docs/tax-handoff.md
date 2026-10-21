@@ -335,6 +335,72 @@ produce a cash view, or a cash view that does not tie to the accrual books.
   `receivables_payables_excluded`, `opening_items_on_receipt`.
 - `prepaid_capitalized` and `prepaid_expensed_by_default`, with `treatment_source` `recorded` or `default`.
 - `cash_view_unclassified` and `cash_view_noncash_entry`: entries the cash view cannot explain.
+- `prepaid_tax_treatment_not_recorded`: the prepaid schedules with no recorded `tax_treatment`.
+- `deposit_kind_not_recorded`: the deposits with no recorded `deposit_kind` (the view assumes
+  advance payment). `deposit_refundable`: one per deposit recorded as refundable.
+
+These flags only list missing inputs and recorded facts. Slashbooks does not apply a tax rule to
+the tax profile or to the asset list. It does not block, warn or decide from them.
+
+### Tax profile
+
+A person records two facts for the preparer. The tax export lists them in `tax_view.tax_profile`
+and in the Read Me:
+
+```sh
+books entity set-tax-profile PATH --prior-return-method cash --entity-type single_member_llc          # preview
+books entity set-tax-profile PATH --prior-return-method cash --entity-type single_member_llc --apply  # record it
+```
+
+- `prior_return_method`: the method of the last tax return filed: `cash`, `accrual`, `unknown`,
+  or `none` for a first-year business.
+- `entity_type`: `sole_proprietor`, `single_member_llc`, `partnership`, `s_corp`, `c_corp`,
+  `nonprofit`, `other` or `unknown`.
+- Give one field or both. A field that is left out keeps its value.
+- Preview unless `--apply`; `--plan-hash` refuses a changed company; an exact repeat returns
+  `already_applied`; the audit log gets a `tax-profile-set` event. It is a person-only write.
+
+### Deposits: advance payment or refundable
+
+A deferred schedule or a customer deposit item (a credit item on a liability account) can carry
+`deposit_kind`. The item must come from a customer payment (`settle-apply` with `excess`), a posted
+payment (origin `existing`) or an opening balance; a credit memo is refused. Only a person records it:
+
+```sh
+books accrual item deposit-kind --entity PATH --id DEPOSIT --deposit-kind refundable              # preview
+books accrual schedule deposit-kind --entity PATH --id SCHEDULE --deposit-kind refundable --apply  # record it
+```
+
+The cash view for tax treats them so:
+
+- `advance_payment` (also when nothing is recorded): income on the receipt date, as before.
+- `refundable`: no income on receipt and no expense on refund. It stays a liability in the tax
+  trial balance. The view places income when it is applied to an invoice (on the application
+  date, also for an opening-balance deposit) or forfeited (an adjustment of the deposit into
+  income). A refundable deferred schedule is income as its recognition entries post.
+- If a deposit recorded as refundable has no cash receipt and no opening balance behind it, the
+  view refuses with `refundable_deposit_not_cash_backed`.
+
+The view keeps its tie-out to the accrual books to the cent. `tax_view.deposits` and the
+"Deposits" sheet list every deposit with its kind. A deposit with no recorded kind shows
+"assumed advance payment". The books, the reports and the report cash view never change.
+
+### Fixed assets worksheet
+
+`tax_view.fixed_assets` and the "Fixed Assets" sheet list, as data only:
+
+- each depreciation schedule: purchase date (placed in service), cost, account, vendor (the payee
+  of the purchase entry, when known), reference and book depreciation to the end of the period;
+- each entry with no depreciation schedule whose postings to `Assets:Fixed` accounts are a net
+  debit, on the account it debits most. A move between two fixed-asset accounts nets to zero and
+  is left out. Accounts whose name contains "Accumulated" and depreciation contra accounts are
+  left out. An opening-balance entry has `source` `opening`.
+
+`in_period` says whether the purchase date is in the export period. Slashbooks computes no tax
+depreciation and does not choose an expensing election or a safe harbor. The preparer does. For
+reference only: the de minimis safe harbor for a taxpayer without audited financial statements
+was $2,500 per invoice or item for 2026 (Treas. Reg. 1.263(a)-1(f) and IRS guidance; verify
+before use).
 
 The defaults need review by a tax professional: the configured fiscal year, the 12-month rule for
 prepaid expenses, and the treatment of opening receivables collected after the change.

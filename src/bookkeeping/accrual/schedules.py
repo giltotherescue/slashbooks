@@ -834,6 +834,9 @@ def apply_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any, plan_h
     from ..entity import load_entity
     from .enable import _seal
     from .store import apply_mutations
+    from ..preparation_runtime import is_preparation
+    if is_preparation():
+        raise JournalError("tax_treatment_person_only", "Recording a tax treatment requires the owner or tax preparer.")
     with _entity_write_lock(entity.path):
         entity = load_entity(entity.path)
         fresh = preview_tax_treatment(entity, schedule_id, treatment)
@@ -851,4 +854,114 @@ def apply_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any, plan_h
                                                                     "to": request["tax_treatment"], "plan_hash": fresh["plan_hash"]}, conn)
             _seal(store, conn, "schedule-tax-treatment")
         return {"status": "applied", "kind": TAX_TREATMENT_KIND, **request, "from": fresh["effects"]["from"],
+                "request_hash": fresh["request_hash"], "plan_hash": fresh["plan_hash"], "entries_changed": 0}
+
+
+# ---------------------------------------------------------------------------
+# Deposit kind of a deferred schedule or a customer deposit item (cash-method tax view)
+# ---------------------------------------------------------------------------
+
+# Stored only when a person sets it. Unset means advance_payment, and the tax outputs say so.
+DEPOSIT_KINDS = ("advance_payment", "refundable")
+DEPOSIT_KIND_KIND = "deposit_kind_set"
+_DEPOSIT_TABLES = {"schedules": "schedule", "items": "item"}
+
+
+def is_deposit(record: Mapping[str, Any], table: str) -> bool:
+    """A deferred schedule, or a credit item that the company holds for a customer (a liability credit)."""
+    if table == "schedules":
+        return record.get("kind") == "deferred"
+    return (record.get("kind") == "credit" and str(record.get("account", "")).startswith("Liabilities:")
+            and record.get("direction") == "credit")
+
+
+def deposit_kind(value: Any, record: Mapping[str, Any], table: str) -> str:
+    if value not in DEPOSIT_KINDS:
+        raise JournalError("invalid_deposit_kind", "deposit_kind must be advance_payment or refundable.",
+                           "Use advance_payment for money that is the customer's payment, or refundable for money the company must give back.")
+    if not is_deposit(record, table):
+        raise JournalError("deposit_kind_deposits_only",
+                           "deposit_kind applies only to deferred schedules and customer deposit items (credit items on a liability account).",
+                           "Choose a deferred schedule or a customer deposit item.")
+    return value
+
+
+def _check_deposit_source(store: Any, record: Mapping[str, Any], table: str) -> None:
+    """A deposit item must come from a cash receipt, an existing posted payment or an opening balance. A credit memo is not a deposit."""
+    if table != "items":
+        return
+    mode = (record.get("origin") or {}).get("mode")
+    received = any(a.get("kind") == "unapplied_receipt" and a.get("item_id") == record["id"] for a in list_records(store, "allocations"))
+    if not received and mode not in {"existing", "opening"}:
+        raise JournalError("deposit_kind_credit_memo",
+                           "This credit item was not created by a customer payment or an opening balance, so it is a credit memo, not a deposit.",
+                           "Record deposit_kind only on a deposit received with books accrual item settle-apply (excess), "
+                           "on a posted payment (origin existing), or on an opening deposit.")
+
+
+def effective_deposit_kind(record: Mapping[str, Any], table: str) -> tuple[str, str]:
+    """Return (kind, source): source is "recorded" when a person set it, else "assumed" (advance_payment)."""
+    if "deposit_kind" in record:
+        return deposit_kind(record["deposit_kind"], record, table), "recorded"
+    return "advance_payment", "assumed"
+
+
+def preview_deposit_kind(entity: Entity, table: str, record_id: Any, kind: Any) -> dict[str, Any]:
+    """Preview recording the deposit kind of one deferred schedule or customer deposit item. Writes nothing."""
+    from .journals import _read_store
+    from ..entity import load_entity
+    from .enable import _integrity
+    if table not in _DEPOSIT_TABLES:
+        raise JournalError("unsupported_operation", "deposit_kind is recorded on schedules or items.")
+    entity = load_entity(entity.path)
+    _integrity(entity, "record the deposit kind")
+    store = _read_store(entity)
+    record_id = _id(record_id)
+    record = load_record(store, table, record_id)
+    if record is None:
+        raise JournalError(f"{_DEPOSIT_TABLES[table]}_not_found", f"No {_DEPOSIT_TABLES[table]} has id {record_id}.",
+                           f"Run `books accrual {_DEPOSIT_TABLES[table]} list --entity PATH`.")
+    kind = deposit_kind(kind, record, table)
+    _check_deposit_source(store, record, table)
+    current, source = effective_deposit_kind(record, table)
+    body = {"schema_version": 1, "kind": DEPOSIT_KIND_KIND, "request": {"table": table, "id": record_id, "deposit_kind": kind},
+            "changes": record.get("deposit_kind") != kind, "ledger_digest": store.content_digest(),
+            "configuration_hash": canonical_hash(entity.entity_config),
+            "record_revision": record_revision(store, table, record_id),
+            "effects": {"from": record.get("deposit_kind"), "current_effective": current, "current_source": source, "to": kind,
+                        "entries_changed": 0, "published_statements_changed": False,
+                        "note": ("Only the cash-method tax outputs change (`books tax map` and `books tax export` with the tax method view on). "
+                                 "The cash view treats advance_payment as income on receipt, and refundable as a liability until it is applied "
+                                 "to an invoice or forfeited. The books, the reports and the recorded entries stay as they are.")}}
+    body["request_hash"] = canonical_hash({"kind": DEPOSIT_KIND_KIND, "request": body["request"]})
+    body["plan_hash"] = canonical_hash(body)
+    return body
+
+
+def apply_deposit_kind(entity: Entity, table: str, record_id: Any, kind: Any, plan_hash: str | None = None) -> dict[str, Any]:
+    """Record the deposit kind (person-only). Repeating the same value returns already_applied."""
+    from ..ledger.importer import _entity_write_lock
+    from ..entity import load_entity
+    from ..preparation_runtime import is_preparation
+    from .enable import _seal
+    from .store import apply_mutations
+    if is_preparation():
+        raise JournalError("deposit_kind_person_only", "Recording a deposit kind requires the owner or tax preparer.")
+    with _entity_write_lock(entity.path):
+        entity = load_entity(entity.path)
+        fresh = preview_deposit_kind(entity, table, record_id, kind)
+        if plan_hash is not None and plan_hash != fresh["plan_hash"]:
+            raise JournalError("stale_preview", "The company changed after the preview.", "Run the preview again.")
+        request = fresh["request"]
+        if not fresh["changes"]:
+            return {"status": "already_applied", "kind": DEPOSIT_KIND_KIND, **request, "request_hash": fresh["request_hash"]}
+        store = _store(entity)
+        record = load_record(store, table, request["id"])
+        updated = {**record, "deposit_kind": request["deposit_kind"]}
+        with store.transaction(immediate=True) as conn:
+            apply_mutations(store, [SupportingMutation(table, request["id"], updated, fresh["record_revision"])], conn)
+            store.append_audit_event("deposit-kind-set", {"table": table, "id": request["id"], "from": fresh["effects"]["from"],
+                                                         "to": request["deposit_kind"], "plan_hash": fresh["plan_hash"]}, conn)
+            _seal(store, conn, "deposit-kind")
+        return {"status": "applied", "kind": DEPOSIT_KIND_KIND, **request, "from": fresh["effects"]["from"],
                 "request_hash": fresh["request_hash"], "plan_hash": fresh["plan_hash"], "entries_changed": 0}

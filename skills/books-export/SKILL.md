@@ -271,6 +271,7 @@ If the books still need a year of statement files, follow
    If `manifest.json` has `tax_method`, say which method and view the files use and read
    each `tax_view.flags` message to the owner. Do not choose a tax method or a prepaid tax
    treatment; the owner or the tax preparer records it with `books entity set-tax-method`.
+   Then follow "Tax method: what you decide and what you do not" below.
 
    Explain the files: the tax trial balance, the tax-line summary for manual
    entry (Drake Tax, ProConnect Tax), the Lacerte Trial Balance Utility file, the
@@ -279,6 +280,63 @@ If the books still need a year of statement files, follow
    Give the draft disclaimer above. The Lacerte and UltraTax files start with
    their import header, so `README.txt` in the same folder carries the
    disclaimer. Never compute tax, deduction limits or depreciation yourself.
+
+## Tax method: what you decide and what you do not
+
+The engine stores facts, does the mechanical cash-view math and lists missing inputs. It does
+not apply tax rules. You read the stored facts, explain them and propose. A person decides.
+
+You may:
+
+- Ask the owner the intake questions: the method of the last tax return (cash, accrual, unknown,
+  or none for a first-year business); the entity type; whether the company holds deposits it must
+  give back (security deposits, retainers held for a client); whether it bought equipment,
+  vehicles or software this year; whether it keeps inventory.
+- Read contracts, invoices and statements to propose a `deposit_kind` for each deposit or a
+  `tax_treatment` for each prepaid schedule.
+- Spot an auto-renewal, a trust or escrow retainer, or insurance or interest inside a prepaid.
+- Explain each `tax_view.flags` message and the checklist below to the owner in plain words.
+- Draft a short note for the tax preparer.
+
+You must not:
+
+- Apply `entity set-tax-method`, `entity set-tax-profile`, `accrual schedule deposit-kind`,
+  `accrual item deposit-kind` or `accrual schedule tax-treatment`. Run the preview, show it, and
+  let a person apply it (person-only writes).
+- Choose an expensing election, bonus depreciation or the de minimis safe harbor.
+- Say that a treatment is correct for tax, run a method change, or compute tax.
+
+Each proposal names its evidence (a document or the owner's answer) and says "for the preparer
+to confirm".
+
+Checklist. Read the company `entity.json` and the tax export (`tax_view.tax_profile`,
+`tax_view.flags`, `tax_view.deposits`, `tax_view.fixed_assets`). For each rule that applies, tell
+the owner, propose a value with its evidence, and note it for the preparer to confirm:
+
+1. Method change. `tax_method` is cash and `prior_return_method` is accrual or unknown: moving
+   from accrual to cash is a change in accounting method. The preparer files the change;
+   Slashbooks cannot prepare it (IRS Publication 538). Ask before the owner turns the tax view on.
+2. Accrual books from the first day. The tax method is cash and the books have no accrual
+   tracking start: the cash figures are derived from accrual records. Tell the preparer.
+3. Cash method eligibility. `entity_type` is c_corp (or a partnership with a C corporation
+   partner): eligibility for the cash method depends on the gross receipts test (Internal Revenue
+   Code section 448; IRS Publication 538). The preparer checks. Do not compute receipts.
+4. Tax year. `fiscal_year_start` is not 01-01 and the entity is a sole proprietor, a
+   single-member LLC, a partnership or an S corporation: the tax year may differ from the fiscal
+   year (IRS Publication 538).
+5. Prepaid exceptions. A prepaid schedule posts to an interest account or a fixed-asset account,
+   or covers a benefit with no fixed end or an expected renewal: the 12-month rule may not apply
+   (Treas. Reg. 1.263(a)-4(f)). Propose `capitalize` for the preparer to confirm.
+6. 12-month rule election. The taxpayer can elect out of the 12-month rule on the return for all
+   similar items (Treas. Reg. 1.263(a)-4(f)). Slashbooks does not make it. If the preparer elects
+   out, the preparer uses the capitalized figures.
+7. Inventory. An inventory account has a balance: the small business rules for inventory apply
+   (Internal Revenue Code section 471(c)). The preparer checks.
+8. Fixed assets. For each row of the fixed-asset worksheet, compare the cost per invoice or item
+   with the current de minimis safe harbor threshold (Treas. Reg. 1.263(a)-1(f); see
+   docs/tax-handoff.md for the amount and verify it before use). The preparer decides.
+9. Deposits. For each deposit marked "assumed advance payment", ask whether the company must give
+   the money back. A trust or escrow retainer is usually refundable. Propose a `deposit_kind`.
 
 ## Shared procedures
 
