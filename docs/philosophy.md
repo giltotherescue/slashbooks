@@ -27,19 +27,20 @@ expenses without the constant questions. You can run the monthly close on a
 schedule and have current books waiting, and at any time you can ask for an
 analysis of anything in the business, with every figure already at hand.
 
-## Cash by default, accrual opt-in
+## Cash by default, accrual by choice
 
 Cash is the default for small owner-operated businesses. Simple single-entity,
 single-currency services and SaaS companies can explicitly choose [accrual books](accrual.md),
-with recognition, payment, and supporting detail kept separate. The basis is a
-company policy, not a report toggle. For the cash workflow:
+with recognition, payment, and supporting detail kept separate, at setup or later
+from a tracking start date. The basis is a company policy, not a report toggle: a
+person chooses the default view, and earlier periods keep the basis they had. For the cash workflow:
 
 - Bank and card activity drive the books.
 - Owner review handles judgment calls.
 - Slashbooks generates reports from a local ledger store.
 - Accountants can still review the output before tax filing.
 
-Accrual books are opt-in and limited to one company, in one currency, for services and SaaS
+Accrual books are limited to one company, in one currency, for services and SaaS
 businesses. They produce accrual reports, and a cash-basis profit and loss derived
 from them on request, with a tie-out to the accrual result. Bank movements are in the
 general ledger.

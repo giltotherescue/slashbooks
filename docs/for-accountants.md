@@ -1,7 +1,7 @@
 # For accountants
 
 Slashbooks is not trying to replace professional review. It's a local bookkeeping
-system for cash-basis businesses and opt-in single-entity, single-currency services/SaaS
+system for cash-basis businesses and single-entity, single-currency services/SaaS
 accrual books, with an automated workflow on top of
 fixed, auditable accounting logic.
 
@@ -137,7 +137,10 @@ Before you prepare a return from Slashbooks books, ask for two outputs. See
   override with the company books.
 
 The mapping uses book amounts. It does not compute tax, depreciation, cost of
-goods sold or deduction limits.
+goods sold or deduction limits. When the owner records a cash tax method and turns
+the tax method view on, the tax outputs use the cash view of the books and flag
+what you must check. The owner can also record the prior return method, the entity
+type, the fiscal year and whether each deposit is refundable.
 
 ## Limits
 
@@ -148,7 +151,8 @@ and straight-line depreciation schedules, outstanding balances and settlement,
 deposits and credits applied to invoices, accrued estimates that reverse or are
 trued up, write-offs, corrections, external support, opening balances, and
 coverage-aware reporting. Accrual books can show a cash-basis profit and loss derived from the accrual records
-(`books report pnl --basis cash`), with a tie-out to the accrual result.
+(`books report pnl --basis cash`), with a tie-out to the accrual result. A cash
+company can turn accrual on from a tracking start date; earlier periods stay cash.
 See [accrual books](accrual.md) for limits, [accrual recipes](accrual-recipes.md) for
 worked requests, and [source-neutral intake](accrual-intake.md) for contracts. It does
 not calculate payroll, tax, tax depreciation methods, inventory costing, or complex

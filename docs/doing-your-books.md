@@ -1,9 +1,12 @@
 # How to do your books with Slashbooks
 
 This guide is for a founder, owner, or operator who wants to use Slashbooks for a
-simple cash-basis company or opt-in single-entity services/SaaS accrual books, in one currency.
+simple cash-basis company or single-entity services/SaaS accrual books.
 Cash is the default. Accrual separates income and expenses from their payments;
-it also tracks what customers owe, unpaid costs, and amounts paid in advance.
+it also tracks what customers owe, unpaid costs, and amounts paid in advance. A
+cash company can turn accrual on later from a date and keep its cash history.
+Each company keeps its books in one currency, USD by default; see
+[company currency](company-currency.md).
 The [accrual task guide](accrual.md) explains what to ask your agent and what the
 result should show. Developers can use the [supporting document reference](accrual-intake.md), and
 [accrual recipes](accrual-recipes.md) has a tested request for each pattern.
@@ -54,6 +57,8 @@ The agent will route to `/books-onboard` and ask for:
 - Fiscal year
 - Whether the existing books use cash or accrual accounting; for new books, the
   agent explains the choice before setup
+- The currency the books are kept in, if it is not USD; the agent can usually
+  read it from the first bank or QuickBooks file
 - Bank accounts and cards
 - CSV fallbacks for canceled, unsupported, disconnected, or intentionally
   unconnected accounts

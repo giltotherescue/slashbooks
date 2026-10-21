@@ -11,6 +11,29 @@ must not let the agent change them. They only add restrictions. The engine ignor
 | `SLASHBOOKS_FORBID_SELF_APPROVAL` | When set to `1`, a command that approves a suggestion refuses if `SLASHBOOKS_ACTOR` equals the suggestion's `created_by`. It also refuses (`invalid_actor`) when `SLASHBOOKS_ACTOR` is not set. |
 | `SLASHBOOKS_ENFORCE_ASK_FIRST` | When set to `1`, `queue propose*`, `confirm*` and `correct` refuse an item above the ask-first amount (`above_ask_first_amount`). |
 
+## Settings a person applies
+
+Some commands change a company setting, not a transaction. An agent can run the
+preview and show it. A person runs the apply step. Standing posting authority
+(see [standing policy](standing-policy.md)) never covers it, and the trusted
+preparation runtime refuses it.
+
+| Command | What it sets |
+|---|---|
+| `books entity set-currency PATH --currency CODE --apply` | The company currency, only while the company has no entries. See [company currency](company-currency.md). |
+| `books entity set-view PATH --view cash\|accrual --apply` | The default report view. |
+| `books accrual enable apply` | Accrual tracking from a tracking start date. `enable preview` is read-only. |
+| `books entity set-fiscal-year PATH --start MM-01 --apply` | The fiscal-year start. |
+| `books entity set-tax-method PATH --method cash\|accrual --apply` | The tax method and the tax method view. |
+| `books entity set-tax-profile PATH ... --apply` | The prior return method and the entity type. |
+| `books accrual schedule tax-treatment ... --apply` | How a cash-method filer deducts a prepaid schedule. |
+| `books accrual schedule\|item deposit-kind ... --apply` | Whether a deposit is an advance payment or refundable. |
+
+Without `--apply` these commands preview and write nothing. `books entity
+infer-currency` only reads files, so an agent can run it. Closing and reopening a
+period also need a person. See [the tax handoff](tax-handoff.md) for the tax
+settings and [accrual books](accrual.md) for accrual tracking and the default view.
+
 ## Who made a suggestion
 
 `books queue propose`, `propose-group`, `propose-split`, `propose-transfer`,
