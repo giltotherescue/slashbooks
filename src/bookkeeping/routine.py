@@ -273,6 +273,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
     ids = sorted(sid for sid in (pending if source_ids is None else source_ids) if sid > after_source_id)
     selected = ids[:limit]
     result = dict(actions=[], unresolved=[], skipped=[], next_cursor=selected[-1] if len(ids) > limit else None)
+    book = entity.currency
     for sid in selected:
         if sid in reversed_ids or sid in posted or sid not in pending:
             reason = 'reversed' if sid in reversed_ids else 'already_posted' if sid in posted else 'not_staged'
@@ -292,14 +293,14 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 raise ValueError('pending')
             if closed_date and date.fromisoformat(source['date']) <= closed_date:
                 raise ValueError('closed_period')
-            if source['currency'] != 'USD' or _money(source['amount']) == 0:
+            if str(txn.get('currency') or book).upper() != book or _money(source['amount']) == 0:
                 raise ValueError('unsupported_currency_or_zero_amount')
             mapped = _mapping(entity, txn, opens)
             detail['ledger_account'] = mapped
             if (stripe_accounting_managed and mapped.startswith('Assets:Bank:') and _money(source['amount']) > 0
                     and re.search(r'\bstripe\b', detail['description'] + ' ' + source['counterparty_key'], re.IGNORECASE)):
                 raise ValueError('suspected_processor_payout')
-            if opens[mapped].date > date.fromisoformat(source['date']) or (opens[mapped].currencies and 'USD' not in opens[mapped].currencies):
+            if opens[mapped].date > date.fromisoformat(source['date']) or (opens[mapped].currencies and book not in opens[mapped].currencies):
                 raise ValueError('source_catalog_conflict')
             if sid in owned:
                 raise ValueError('existing_review')
@@ -335,7 +336,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 raise ValueError('ambiguous_authority')
             if eligible:
                 category, authority_id = eligible[0]
-                if opens[category].date > date.fromisoformat(source['date']) or (opens[category].currencies and 'USD' not in opens[category].currencies):
+                if opens[category].date > date.fromisoformat(source['date']) or (opens[category].currencies and book not in opens[category].currencies):
                     raise ValueError('category_catalog_conflict')
                 result['actions'].append(dict(source_id=sid, category=category, authority_id=authority_id))
                 continue

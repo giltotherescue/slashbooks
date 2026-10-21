@@ -44,7 +44,7 @@ def add_parser(subparsers: Any) -> None:
     split.add_argument("--session", default="ledger-correction")
 
 
-def _postings(values: list[str], *, require_balanced: bool = True) -> tuple[Posting, ...]:
+def _postings(values: list[str], *, require_balanced: bool = True, currency: str = "USD") -> tuple[Posting, ...]:
     postings: list[Posting] = []
     for value in values:
         if "=" not in value:
@@ -56,7 +56,7 @@ def _postings(values: list[str], *, require_balanced: bool = True) -> tuple[Post
             raise ValueError(f"Invalid posting amount: {raw_amount!r}") from exc
         if not account or not amount:
             raise ValueError("Posting account and non-zero amount are required.")
-        postings.append(Posting(account=account, amount=amount, currency="USD"))
+        postings.append(Posting(account=account, amount=amount, currency=currency))
     if require_balanced and sum((posting.amount for posting in postings), Decimal("0")) != Decimal("0"):
         raise ValueError("Correcting postings must balance to zero.")
     return tuple(postings)
@@ -99,7 +99,7 @@ def run(args: argparse.Namespace) -> int:
         if args.ledger_command == "correct":
             corrected = Entry(
                 date=date.fromisoformat(args.date), narration=args.description, flag="*",
-                meta=(("source-id", args.new_source_id),), postings=_postings(args.posting),
+                meta=(("source-id", args.new_source_id),), postings=_postings(args.posting, currency=entity.currency),
             )
             _correct(entity, args.source_id, args.new_source_id, corrected, args.session)
             print(f"Corrected: {args.source_id} → {args.new_source_id}")
@@ -122,7 +122,7 @@ def run(args: argparse.Namespace) -> int:
             print(f"Reclassified: {args.source_id} → {args.to_account}")
             return 0
         if args.ledger_command == "split-equity":
-            equity = _postings(args.equity_posting, require_balanced=False)
+            equity = _postings(args.equity_posting, require_balanced=False, currency=entity.currency)
             if any(not posting.account.startswith("Equity:") for posting in equity):
                 raise ValueError("Every --equity-posting account must start with Equity:.")
             retained = tuple(posting for posting in original.postings if not posting.account.startswith("Equity:"))

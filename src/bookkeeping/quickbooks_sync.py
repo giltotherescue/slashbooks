@@ -401,12 +401,22 @@ def sync_import(entity, input_path: Path) -> dict:
     multi = currency_prefs.get("MultiCurrencyEnabled")
     if not isinstance(multi, bool):
         raise ValueError("CurrencyPrefs requires boolean MultiCurrencyEnabled")
-    if currency != "USD" or multi:
-        warnings.append("Multicurrency/non-USD snapshots are evidence only; opening application blocked")
-    if snapshot["accounting_basis"] != "Cash":
-        warnings.append("Accrual source evidence retained; current opening and comparison operations support cash basis only")
     source_bytes = _json_bytes(snapshot)
     snapshot_id = hashlib.sha256(source_bytes).hexdigest()
+    # One company, one currency. A company with no entries can take the QuickBooks home currency; this
+    # only checks. The opening apply adopts it in the same ledger transaction as the opening entry.
+    from . import currency as currency_mod
+    company = book = currency_mod.company_currency(entity.entity_config)
+    if isinstance(currency, str) and currency != book and not multi:
+        try:
+            book = currency_mod.resolve_import_currency(entity, {currency}, "QuickBooks company (home currency)",
+                                                        adopt=False, exclude=(f"sources/quickbooks/{snapshot_id}",))
+        except currency_mod.CurrencyError as exc:
+            warnings.append(str(exc))
+    if currency != book or multi:
+        warnings.append(f"Multicurrency/non-{book} snapshots are evidence only; opening application blocked")
+    if snapshot["accounting_basis"] != "Cash":
+        warnings.append("Accrual source evidence retained; current opening and comparison operations support cash basis only")
     root = entity.path / "sources" / "quickbooks" / snapshot_id
     counts = {"accounts": len(accounts), "customers": len(snapshot["customers"]),
               "vendors": len(snapshot["vendors"]),
@@ -483,8 +493,10 @@ def sync_import(entity, input_path: Path) -> dict:
                          "OpeningTrialBalance", "OpeningBalanceSheet"):
             coverage.setdefault(required, {"status": "missing", "reason": "Report was not included in snapshot"})
         relative_reference = str(Path("sources") / "quickbooks" / snapshot_id / "reference")
-        opening_supported = snapshot["accounting_basis"] == "Cash" and currency == "USD" and not multi
-        consistency_error = _opening_consistency(entity, reference, start) if opening_supported else None
+        opening_supported = snapshot["accounting_basis"] == "Cash" and currency == book and not multi
+        from .currency import report_currency
+        with report_currency(book):
+            consistency_error = _opening_consistency(entity, reference, start) if opening_supported else None
         if consistency_error:
             warnings.append(consistency_error)
         opening_ready = opening_supported and not consistency_error and any(
@@ -493,12 +505,14 @@ def sync_import(entity, input_path: Path) -> dict:
                   "reference_complete": all(coverage[k]["status"] == "ready" for k in (
                       "ProfitAndLoss", "BalanceSheet", "TrialBalance", "GeneralLedger",
                       "OpeningTrialBalance", "OpeningBalanceSheet")),
-                  "comparison_ready": qb.inventory(reference, from_date=start, to_date=end).is_ready()
-                                      and currency == "USD" and not multi,
-                  "comparison_supported": snapshot["accounting_basis"] == "Cash" and currency == "USD" and not multi,
+                  "comparison_ready": _inventory_in(book, reference, from_date=start, to_date=end).is_ready()
+                                      and currency == book and not multi,
+                  "comparison_supported": snapshot["accounting_basis"] == "Cash" and currency == book and not multi,
                   "counts": counts, "coverage": coverage, "warnings": sorted(set(warnings)),
                   "opening_supported": opening_supported, "opening_ready": opening_ready,
                   "accounts": accounts, "rule_suggestions": suggest_rules(snapshot, accounts)}
+        if book != company:
+            result["adopts_currency"] = book  # Applying the opening sets this company currency.
         (stage / "manifest.json").write_bytes(_json_bytes(result))
         if root.exists():
             expected_files = {p.relative_to(stage) for p in stage.rglob("*") if p.is_file()}
@@ -516,17 +530,24 @@ def sync_import(entity, input_path: Path) -> dict:
     return result
 
 
+def _inventory_in(code, reference, **kwargs):
+    from .currency import report_currency
+    with report_currency(code):
+        return qb.inventory(reference, **kwargs)
+
+
 def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False) -> dict:
     result = sync_import(entity, input_path)
     if not result["opening_supported"]:
-        raise ValueError("Only cash-basis single-currency USD opening balances are supported")
+        from .currency import company_currency
+        raise ValueError(f"Only cash-basis single-currency {company_currency(entity.entity_config)} opening balances are supported")
     if not result["opening_ready"]:
         raise ValueError("Opening source reports are missing, invalid, or inconsistent; refresh and review source warnings")
     snapshot = _load(input_path)
     if date.fromisoformat(snapshot["from"]) != cutover:
         raise ValueError("Opening cutover must match snapshot start date")
     reference = entity.path / result["reference_path"]
-    readiness = qb.inventory(reference, cutover=cutover)
+    readiness = _inventory_in(result.get("adopts_currency") or entity.currency, reference, cutover=cutover)
     selected = {s.report_key: s for s in readiness.slots}
     source = "trial-balance"
     slot = selected.get("trial_balance")
@@ -536,7 +557,8 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
     if not slot or slot.status != "present" or not coa or coa.status != "present":
         raise ValueError("Opening requires cash-basis accounts and a valid prior-day Trial Balance or Balance Sheet")
     # Reuse the exact existing opening constructor and validator in preview mode.
-    opening = qb.import_opening(entity, reference, cutover, source=source, _preview=True)
+    target = result.get("adopts_currency")
+    opening = qb.import_opening(entity, reference, cutover, source=source, _preview=True, currency=target)
     if not opening.success:
         return dict(result, applied=False, opening=asdict(opening))
     from .ledger.store import LedgerStore, default_store_path
@@ -567,7 +589,15 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         opening.errors.append("Existing accounting entries on or before cutover would overlap opening balances; use the explicit correction/adoption workflow")
         return dict(result, applied=False, opening=asdict(opening))
     if apply:
-        opening = qb.import_opening(entity, reference, cutover, source=source)
+        from .ledger.importer import _entity_write_lock
+        with _entity_write_lock(entity.path):
+            if target:
+                from . import currency as currency_mod
+                # Check again under the lock; the opening transaction then adopts the currency.
+                currency_mod.resolve_import_currency(entity, {target}, "QuickBooks company (home currency)", adopt=False,
+                                                     exclude=(result["reference_path"].rsplit("/", 1)[0],))
+            opening = qb.import_opening(entity, reference, cutover, source=source, currency=target,
+                                        adopt_currency=bool(target))
     return dict(result, applied=apply and opening.success, opening=asdict(opening))
 
 

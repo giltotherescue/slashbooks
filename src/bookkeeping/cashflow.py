@@ -87,17 +87,18 @@ def _schedule(items, opening, start, weeks, delay):
 
 
 def cash_schedule(entity, assumptions, *, as_of, weeks=13):
-    """Compute a bounded USD schedule without changing any company file.
+    """Compute a bounded schedule in the company currency without changing any company file.
 
     Referencing a recorded receipt requires an explicit remaining-balance basis;
     this permits a deposit already in actual cash plus an outstanding balance.
     Source references establish provenance, not independent payment verification.
     """
     cutoff = _date(as_of)
+    book = entity.currency
     if type(weeks) is not int or not 1 <= weeks <= 13:
         raise ValueError('weeks must be between 1 and 13.')
-    if not isinstance(assumptions, dict) or assumptions.get('version') != 1 or type(assumptions.get('version')) is not int or assumptions.get('currency') != 'USD':
-        raise ValueError('Cash schedule assumptions require version 1 and USD.')
+    if not isinstance(assumptions, dict) or assumptions.get('version') != 1 or type(assumptions.get('version')) is not int or assumptions.get('currency') != book:
+        raise ValueError(f'Cash schedule assumptions require version 1 and {book}.')
     accounts = assumptions.get('cash_accounts')
     if (not isinstance(accounts, list) or not 1 <= len(accounts) <= 50
             or any(not isinstance(name, str) for name in accounts) or len(set(accounts)) != len(accounts)):
@@ -109,16 +110,16 @@ def cash_schedule(entity, assumptions, *, as_of, weeks=13):
         opens = {row.account: row for row in store.load_opens(conn)}
         for name in accounts:
             if (name not in opens or not _cash_account(name) or opens[name].date > cutoff
-                    or (opens[name].currencies and opens[name].currencies != ('USD',))):
-                raise ValueError('Selected accounts must be open USD bank/cash accounts; processor, transit, receivable and restricted assets are excluded.')
+                    or (opens[name].currencies and opens[name].currencies != (book,))):
+                raise ValueError(f'Selected accounts must be open {book} bank/cash accounts; processor, transit, receivable and restricted assets are excluded.')
         entries = store.load_entries(conn=conn)
         ledger_digest = store.content_digest(conn)
     opening = Decimal(0); history = Decimal(0); history_from = cutoff - timedelta(days=90)
     recorded_ids = set(); future_count = 0
     for entry in entries:
         legs = [posting for posting in entry.postings if posting.account in accounts]
-        if any(posting.currency != 'USD' for posting in legs):
-            raise ValueError('Selected cash contains non-USD postings.')
+        if any(posting.currency != book for posting in legs):
+            raise ValueError(f'Selected cash contains non-{book} postings.')
         if entry.date > cutoff:
             future_count += bool(legs); continue
         if entry.source_id: recorded_ids.add(entry.source_id)
@@ -172,7 +173,7 @@ def cash_schedule(entity, assumptions, *, as_of, weeks=13):
                 'Future items are supplied timing assumptions, not predicted revenue; actual profit is not cash.']
     if future_count: warnings.append('Future-dated recorded cash entries are excluded from opening cash; review overlap with supplied assumptions.')
     if excluded or base['outside_horizon']: warnings.append('Some supplied items are excluded from the base horizon; inspect exclusions before relying on the schedule.')
-    return dict(currency='USD', as_of=as_of, horizon=dict(from_date=start.isoformat(), to_date=(start + timedelta(days=weeks * 7 - 1)).isoformat(), weeks=weeks),
+    return dict(currency=book, as_of=as_of, horizon=dict(from_date=start.isoformat(), to_date=(start + timedelta(days=weeks * 7 - 1)).isoformat(), weeks=weeks),
                 actual=dict(label='recorded cash as of', as_of=as_of, cash_accounts=accounts, opening_cash=f'{opening:.2f}',
                             history_window=dict(from_date=history_from.isoformat(), to_date=as_of), history_cash_movements=f'{history:.2f}',
                             baseline_quality=dict(verified_bank_cash=False, warnings=warnings)),

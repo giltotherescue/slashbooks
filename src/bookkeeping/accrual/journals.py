@@ -126,8 +126,9 @@ def journal_totals(entries: Sequence[Entry]) -> dict[str, str]:
     """
     debit = sum((p.amount for entry in entries for p in entry.postings if p.amount > 0), Decimal(0))
     credit = sum((-p.amount for entry in entries for p in entry.postings if p.amount < 0), Decimal(0))
+    currency = next((p.currency for entry in entries for p in entry.postings), "USD")
     return {"debits": f"{debit:.2f}", "credits": f"{credit:.2f}",
-            "difference": f"{debit - credit:.2f}", "currency": "USD"}
+            "difference": f"{debit - credit:.2f}", "currency": currency}
 
 
 _journal_totals = journal_totals  # Private name kept as an alias for existing callers.
@@ -187,7 +188,7 @@ def _evidence(store: LedgerStore, ids: Iterable[str], pending: Sequence[Supporti
             record = next((m.payload for m in pending if m.table == "evidence" and m.record_id == record_id), None)
         if not record or record.get("id") != record_id:
             raise JournalError("missing_evidence", f"Stored supporting document {record_id} is missing.")
-        envelope = normalize_evidence(record["envelope"])
+        envelope = normalize_evidence(record["envelope"], None)
         if (canonical_hash(envelope) != record_id or source_identity(envelope) != record.get("source_identity")
                 or evidence_hash(envelope) != record.get("evidence_hash") or facts_hash(envelope) != record.get("facts_hash")):
             raise JournalError("evidence_changed", f"Stored supporting document {record_id} no longer matches its content hash.")
@@ -202,6 +203,7 @@ def _authority(entity: Entity, dates: Sequence[str], records: Sequence[dict[str,
 
 def _check_entries(store: LedgerStore, entries: Sequence[Entry], opens: Sequence[Open]) -> None:
     catalog = {o.account: o for o in [*store.load_opens(), *opens]}
+    book = store.get_meta("currency") or "USD"
     source_ids = set()
     for entry in entries:
         if not entry.source_id or entry.source_id in source_ids or store.source_exists(entry.source_id):
@@ -214,8 +216,8 @@ def _check_entries(store: LedgerStore, entries: Sequence[Entry], opens: Sequence
                 raise JournalError("unmapped_account", f"Posting account {posting.account} is not in the chart.")
             if entry.date < account.date:
                 raise JournalError("account_not_open", f"Account {posting.account} is not open on {entry.date}.")
-            if posting.currency != "USD" or (account.currencies and "USD" not in account.currencies):
-                raise JournalError("unsupported_currency", "Every posting and account must support USD.")
+            if posting.currency != book or (account.currencies and book not in account.currencies):
+                raise JournalError("unsupported_currency", f"Every posting and account must support {book}.")
             total += int(Decimal(normalize_amount(str(posting.amount))) * 100)
         if total != 0:
             raise JournalError("unbalanced", "Financial entries must balance exactly to the cent.")
@@ -347,7 +349,7 @@ def _check_intake_conflict(store: LedgerStore, incoming: Mapping[str, Any]) -> N
 
 def intake_evidence(entity: Entity, envelope: Mapping[str, Any]) -> dict[str, Any]:
     """Persist immutable supporting documents, retaining every distinct transport provenance."""
-    normalized = normalize_evidence(envelope)
+    normalized = normalize_evidence(envelope, entity.currency)
     record_id = canonical_hash(normalized)
     store = _store(entity)
     existing = load_record(store, "evidence", record_id)
@@ -454,24 +456,25 @@ def _journal(entity: Entity, request: Mapping[str, Any]) -> tuple[dict[str, Any]
     if not isinstance(raw, list) or not 2 <= len(raw) <= 1000:
         raise JournalError("invalid_postings", "A journal needs between 2 and 1000 explicit postings.")
     accounts = {o.account: o for o in _store(entity).load_opens()}
+    book = entity.currency
     postings, serialized = [], []
     for row in raw:
         if not isinstance(row, Mapping) or set(row) - {"account", "amount", "debit", "credit", "currency"}:
-            raise JournalError("invalid_posting", "A posting accepts account, signed amount or debit/credit, and USD currency.")
+            raise JournalError("invalid_posting", f"A posting accepts account, signed amount or debit/credit, and {book} currency.")
         account = _text(row.get("account"), "posting account")
         if account not in accounts:
             raise JournalError("unmapped_account", f"Posting account {account} is not in the chart.", "Map or add the account explicitly, then preview again.")
         if when < accounts[account].date:
             raise JournalError("account_not_open", f"Account {account} is not open on {when}.")
-        if accounts[account].currencies and "USD" not in accounts[account].currencies:
-            raise JournalError("unsupported_currency", f"Account {account} is not open for USD.")
-        if row.get("currency", "USD") != "USD":
-            raise JournalError("unsupported_currency", "Journal postings must use USD.")
+        if accounts[account].currencies and book not in accounts[account].currencies:
+            raise JournalError("unsupported_currency", f"Account {account} is not open for {book}.")
+        if row.get("currency", book) != book:
+            raise JournalError("unsupported_currency", f"Journal postings must use {book}.")
         amount = _posting_amount(row)
         if Decimal(amount) == 0:
             raise JournalError("zero_posting", "Zero-value postings are not supported.")
-        postings.append(Posting(account, Decimal(amount), "USD"))
-        serialized.append({"account": account, "amount": amount, "currency": "USD"})
+        postings.append(Posting(account, Decimal(amount), book))
+        serialized.append({"account": account, "amount": amount, "currency": book})
     if sum((p.amount for p in postings), Decimal(0)) != 0:
         raise JournalError("unbalanced", "Journal postings must balance exactly to zero.")
     normalized["postings"] = serialized

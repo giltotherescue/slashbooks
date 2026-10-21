@@ -13,6 +13,16 @@ Read the selected company basis first. For accrual books, follow
 categorization, QBO opening, reporting, or close steps below. Cash remains the
 default; existing basis and delegated authority are preserved.
 
+## Company currency
+
+Each company keeps its books in one currency: `currency` in `entity.json`, USD when
+absent. Read it before you describe amounts. Never convert amounts between currencies.
+You may run `scripts/books entity infer-currency --input FILE` and propose
+`scripts/books entity set-currency PATH --currency CODE` with the evidence; a person
+applies it, and only while the company has no entries. An import in another currency
+stops with `unsupported_currency`; tell the person both currencies and ask for a file
+in the company currency. See [company currency](../../docs/company-currency.md).
+
 ## Company workspace
 
 Before company discovery or file access, follow

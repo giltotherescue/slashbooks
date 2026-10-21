@@ -81,13 +81,13 @@ def _validate_meta_key(key: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def render_header(title: str) -> str:
+def render_header(title: str, currency: str = "USD") -> str:
     """Return the standard beancount v2 file header block (trailing newline)."""
     t = _sanitize(title)
     lines = [
         f'option "title" "{t}"',
-        'option "operating_currency" "USD"',
-        'option "inferred_tolerance_default" "USD:0.005"',
+        f'option "operating_currency" "{currency}"',
+        f'option "inferred_tolerance_default" "{currency}:0.005"',
         "",
     ]
     return "\n".join(lines)
@@ -183,6 +183,7 @@ def render_ledger(
     entries: Sequence[Entry],
     balances: Sequence[Balance],
     title: str = "Books",
+    currency: str = "USD",
 ) -> str:
     """Return the full text of a beancount v2 ledger file.
 
@@ -195,7 +196,7 @@ def render_ledger(
     parts: list[str] = []
 
     # Header
-    parts.append(render_header(title))
+    parts.append(render_header(title, currency))
 
     # Open directives: sort by (date, account)
     sorted_opens = sorted(opens, key=lambda o: (o.date, o.account))

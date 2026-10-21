@@ -5,7 +5,8 @@ them. Receiving or paying the money is a separate step. That helps you see both
 how the business performed and what customers still owe or you still need to pay.
 
 Accrual is opt-in. Slashbooks supports straightforward accrual books for one
-company, in USD, for services and SaaS businesses. An owner, bookkeeper,
+company, in one currency (USD unless the company sets another; see
+[company currency](company-currency.md)), for services and SaaS businesses. An owner, bookkeeper,
 accountant, or authorized agent can do the work. There is no separate mandatory
 accountant approval role. The accounting engine calculates the amounts; the agent
 collects the facts, explains the choices, and runs the work you have authorized.

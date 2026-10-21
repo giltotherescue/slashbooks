@@ -1351,6 +1351,19 @@ def compare_period(
     to_date: date,
     view: Optional[str] = None,
 ) -> ComparisonReport:
+    """Read the QuickBooks reports in the company currency; see ``_compare_period``."""
+    from .currency import report_currency
+    with report_currency(entity.currency):
+        return _compare_period(entity, qb_folder, from_date, to_date, view)
+
+
+def _compare_period(
+    entity: Entity,
+    qb_folder: Path,
+    from_date: date,
+    to_date: date,
+    view: Optional[str] = None,
+) -> ComparisonReport:
     """Multi-grain generated-vs-reference comparison.
 
     ``view`` is None (the company's default view) or the view to compare. The reference reports must be on the same
@@ -1880,7 +1893,9 @@ def confidence_package(
 
     Returns the full package dict.
     """
-    readiness = inventory(qb_folder, from_date=from_date, to_date=to_date)
+    from .currency import report_currency
+    with report_currency(entity.currency):
+        readiness = inventory(qb_folder, from_date=from_date, to_date=to_date)
     comparison = compare_period(entity, qb_folder, from_date, to_date)
     diffs = load_differences(entity)
     spot_sample = _spot_audit_sample(entity, from_date, to_date)

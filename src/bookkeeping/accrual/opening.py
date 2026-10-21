@@ -72,7 +72,7 @@ def _line_amount(line: Mapping[str, Any], where: str) -> Decimal:
     return debit - credit
 
 
-def normalize_request(request: Any, *, tracking_start: str | None = None) -> dict[str, Any]:
+def normalize_request(request: Any, *, tracking_start: str | None = None, currency: str = "USD") -> dict[str, Any]:
     """Validate an opening request. ``tracking_start`` selects the opening items of a company that turned accrual on later."""
     if not isinstance(request, Mapping):
         raise _err("invalid_request", "Opening request must be an object.", "Pass one JSON object; see `books accrual schema` request opening.")
@@ -114,7 +114,7 @@ def normalize_request(request: Any, *, tracking_start: str | None = None) -> dic
         raise _err("missing_lines", "lines is empty.", "Add opening balance lines (account and amount).")
     total = sum(Decimal(row["amount"]) for row in lines)
     if total and not tracking_start:
-        raise _err("unbalanced_opening", f"Opening lines do not balance; debits minus credits is {total:.2f} USD.",
+        raise _err("unbalanced_opening", f"Opening lines do not balance; debits minus credits is {total:.2f} {currency}.",
                    "Adjust lines so debits equal credits. Use Equity:Retained-Earnings or Equity:Opening-Balances for the difference only if it is real.")
     default_refs = {k: request.get(k, []) for k in ("evidence_refs", "evidence_ids")}
     normalized: dict[str, Any] = {"operation_id": request.get("operation_id") or f"opening-{cutover.isoformat()}",
@@ -133,7 +133,7 @@ def normalize_request(request: Any, *, tracking_start: str | None = None) -> dic
                     raise _err("missing_evidence", f"{where} has no supporting document.",
                                f"Set `{where}.evidence_refs` to a company-relative file path (or `evidence_ids` to a stored supporting document ID), or set request-level `evidence_refs`.")
                 row.update({k: v for k, v in default_refs.items() if v})
-            row.setdefault("currency", "USD")
+            row.setdefault("currency", currency)
             if name == "items":
                 if "open_amount" not in row:
                     raise _err("missing_open_amount", f"{where}.open_amount is required.", f"Set {where}.open_amount to the unpaid amount at cutover.")
@@ -206,7 +206,7 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
     start = tracking_start(entity)
     require_capability(entity)
     raw_request = json.loads(json.dumps(request))
-    request = normalize_request(request, tracking_start=start)
+    request = normalize_request(request, tracking_start=start, currency=entity.currency)
     cutover = date.fromisoformat(request["cutover"])
     as_of = cutover if start else cutover - timedelta(days=1)
     financial = {row["account"]: Decimal(row["amount"]) for row in request["lines"]}
@@ -234,12 +234,13 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
         except ValueError as exc:
             raise _err("invalid_account", f"{account}: {exc}", "Use a valid chart account name.") from None
         opened = existing.get(account)
-        if opened and opened.currencies and "USD" not in opened.currencies:
-            raise _err("unsupported_currency", f"Account {account} does not support USD.", "Use a USD account.")
+        if opened and opened.currencies and entity.currency not in opened.currencies:
+            raise _err("unsupported_currency", f"Account {account} does not support {entity.currency}.",
+                       f"Use a {entity.currency} account.")
         # Opening the account as of the opening date lets the opening entry post.
         effective = min(as_of, opened.date) if opened else as_of
         chart.append({"source_account": account, "account": account, "account_type": account.split(":")[0],
-                      "detail_type": "", "open_date": effective.isoformat(), "currency": "USD"})
+                      "detail_type": "", "open_date": effective.isoformat(), "currency": entity.currency})
     try:
         return _build_plan(
             entity, store, operation="accrual-opening",

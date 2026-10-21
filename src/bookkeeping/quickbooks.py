@@ -196,8 +196,9 @@ def parse_amount(s: str) -> Decimal:
     s = s.strip().strip('"')
     if not s:
         return Decimal("0.00")
-    # Remove $ sign
-    s = s.replace("$", "")
+    # Remove the company currency's own sign ($ for USD); refuse an amount in another currency.
+    from .currency import strip_amount
+    s = strip_amount(s).strip()
     # Parentheses = negative
     paren_match = re.match(r'^\(([^)]+)\)$', s)
     if paren_match:
@@ -1678,8 +1679,14 @@ def import_opening(
     supporting=None,
     closed_position=False,
     _preview: bool = False,
+    currency=None,
+    adopt_currency: bool = False,
 ) -> ImportResult:
     """Post opening balances from a cash-basis trial balance.
+
+    ``currency`` is the currency of the postings (default the company currency).
+    With ``adopt_currency`` a company with no entries takes ``currency`` in the same
+    ledger transaction as the opening entry (QuickBooks home currency).
 
     Requires the TB in *folder* to be cash-basis; refuses otherwise.
     For each non-zero balance-sheet account in the TB:
@@ -1697,6 +1704,16 @@ def import_opening(
 
     Returns ImportResult.
     """
+    book = currency or entity.currency
+    from .currency import report_currency
+    with report_currency(book):
+        return _import_opening(entity, folder, cutover, source, _store=_store, _conn=_conn, fiscal_start=fiscal_start,
+                               supporting=supporting, closed_position=closed_position, _preview=_preview,
+                               book=book, adopt_currency=adopt_currency)
+
+
+def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_start, supporting, closed_position,
+                    _preview, book, adopt_currency) -> ImportResult:
     from .ledger.model import Entry, Open, Posting
     from .ledger.store import LedgerStore, default_store_path
     from .ledger.writer import render_ledger
@@ -1883,7 +1900,7 @@ def import_opening(
         postings.append(Posting(
             account=bc_account,
             amount=net,
-            currency="USD",
+            currency=book,
             meta=(("qb-name", entry.full_name),),
         ))
 
@@ -1919,7 +1936,7 @@ def import_opening(
     postings.append(Posting(
         account=opening_equity_account,
         amount=offset,
-        currency="USD",
+        currency=book,
     ))
 
     opening_entry = Entry(
@@ -1956,6 +1973,7 @@ def import_opening(
         entries=[opening_entry],
         balances=[],
         title="Opening Balances",
+        currency=book,
     )
 
     # Validate
@@ -2002,7 +2020,13 @@ def import_opening(
             success=True,
         )
 
+    previous_currency = entity.currency
+
     def _write_opening(conn) -> None:
+        if adopt_currency and book != previous_currency:
+            from .currency import currency_sql
+            currency_sql(store, conn, previous_currency, book, "inferred", "currency-inferred",
+                         {"from": previous_currency, "to": book, "source": "QuickBooks company (home currency)"})
         store.append_audit_event(
             "intent",
             {
@@ -2051,6 +2075,9 @@ def import_opening(
             success=False,
         )
 
+    if adopt_currency and book != previous_currency:
+        from .currency import write_config
+        write_config(entity, book, "inferred")
     coa_path = entity.coa_path
 
     return ImportResult(

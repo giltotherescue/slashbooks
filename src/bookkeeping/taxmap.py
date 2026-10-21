@@ -819,6 +819,7 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
                  "tax_view": tax_view.stamp() if tax_view else None}
     return {
         **stamp,
+        **currency_stamp(entity.entity_config),
         "schema_version": 1,
         "kind": "tax_line_mapping",
         "disclaimer": DISCLAIMER,
@@ -832,6 +833,26 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
         "unmapped": [item["account"] for item in unmapped],
         "needs_review": [item["account"] for item in accounts if item["review"] and item["line"]],
     }
+
+
+TAX_MAPPING_IS_US = "tax_mapping_is_us"
+
+
+def currency_stamp(config: Mapping[str, Any]) -> dict[str, Any]:
+    """The company currency, stamped on tax outputs when it is not USD.
+
+    A USD company (recorded or by default) gets nothing, so its outputs are unchanged.
+    When the currency is not USD, a flag says that the tax mapping follows US forms. The engine does not
+    decide what applies: it does not block, refuse or compute anything from it.
+    """
+    from .currency import company_currency
+    code = company_currency(config)
+    if code == "USD":
+        return {}  # USD, recorded or by default: the outputs stay exactly as they were.
+    return {"currency": code,
+            "flags": [{"code": TAX_MAPPING_IS_US,
+                       "message": f"The tax mapping follows US forms. The company currency is {code}. "
+                                  "The preparer decides what applies."}]}
 
 
 def _signed_amount(balance: Decimal, line: TaxLine | None) -> Decimal:
@@ -917,6 +938,7 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
         extra = {"tax_method": tax_view.tax_method, "view": tax_view.view, "tax_view": {**tax_view.stamp(), "flags": tax_flags, **tax_data}}
     return {
         **extra,
+        **currency_stamp(entity.entity_config),
         "entity_name": entity.name,
         "accounting_basis": accounting["basis"],
         "basis_label": basis_label,
@@ -1067,6 +1089,10 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
             if flag["code"] == "tax_method":
                 continue
             rows.append(["Flag: " + flag["code"], flag["message"]])
+    if handoff.get("currency"):
+        rows.append(["Currency", handoff["currency"]])
+    for flag in handoff.get("flags", []):
+        rows.append(["Flag: " + flag["code"], flag["message"]])
     for name, path in files.items():
         rows.append([name, path])
     return rows
@@ -1194,6 +1220,7 @@ def export_handoff(
     }
     if handoff.get("tax_view"):
         manifest.update(tax_method=handoff["tax_method"], view=handoff["view"], tax_view=handoff["tax_view"])
+    manifest.update({key: handoff[key] for key in ("currency", "flags") if key in handoff})
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
@@ -1268,6 +1295,10 @@ def _render_mapping_text(report: Mapping[str, Any]) -> str:
     lines.append("")
     lines.append(f"Unmapped: {len(report['unmapped'])}" + (": " + ", ".join(report["unmapped"]) if report["unmapped"] else ""))
     lines.append(f"Needs review: {len(report['needs_review'])}")
+    if report.get("currency"):
+        lines.append(f"Currency: {report['currency']}")
+    for flag in report.get("flags", []):
+        lines.append(f"Flag: {flag['message']}")
     return "\n".join(lines) + "\n"
 
 

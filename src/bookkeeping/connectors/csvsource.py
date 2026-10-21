@@ -446,9 +446,11 @@ def import_csv(
     entity_config: dict[str, Any],
     csv_path: str | Path,
     *,
-    currency: str = "USD",
+    currency: str | None = None,
 ) -> JsonObject:
     """Parse a CSV file using the confirmed entity mapping.
+
+    Rows carry *currency*, default the company currency in *entity_config* (USD unless set).
 
     Returns a dict with keys:
     - ``transactions``: list of normalized transaction dicts
@@ -461,6 +463,9 @@ def import_csv(
     returned and the caller should print the proposal and instructions.
     """
     csv_path = Path(csv_path)
+    if currency is None:
+        from ..currency import company_currency
+        currency = company_currency(entity_config)
     mapping = resolve_mapping(entity_config, csv_path)
 
     if mapping.get("proposed") or not mapping.get("confirmed"):

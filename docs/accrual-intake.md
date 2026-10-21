@@ -27,7 +27,8 @@ or free reference text is not a substitute for the returned `id`.
 
 ## Stable source facts
 
-An envelope requires `schema_version: 1`, `currency: USD`, and `source` containing
+An envelope requires `schema_version: 1`, `currency` (the company currency: USD
+unless `entity.json` sets another; see [company currency](company-currency.md)), and `source` containing
 `namespace`, `account_id`, `object_id`, and `version` or `content_hash`; `line_id`
 can identify a stable component. Use the provider's durable event identity rather
 than a new random ID for every download. A content hash binds original bytes,

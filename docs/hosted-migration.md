@@ -16,7 +16,7 @@ Use an authorized staff account to create a company through the hosted UI or
 create a company-scoped agent key with `books:read` and `books:write`.
 Do not borrow another company's key or a browser session to bypass a denial.
 
-The target must have `books_revision: 0`, matching cash- or accrual-basis USD books, no closed period,
+The target must have `books_revision: 0`, matching cash- or accrual-basis books in a matching currency, no closed period,
 and no existing engine workspace or bookkeeping records. A starter account
 catalog from company creation is allowed. Do not run `books entity init`, demo
 seeding, opening imports, or other bookkeeping writes against this target first.
@@ -163,7 +163,7 @@ with private evidence instead of creating a replacement write.
 
 ## Current Boundaries
 
-- Migration requires a supported canonical SQLite schema, matching basis, USD,
+- Migration requires a supported canonical SQLite schema, matching basis, a matching company currency (`migration_bundle.require_target_currency`),
   a valid core audit chain, and an empty remote target. It does not convert basis,
   currency, unsupported schema, or accounting policy.
 - Current file limits are 32 MiB per file and 64 MiB for captured workspace bytes,

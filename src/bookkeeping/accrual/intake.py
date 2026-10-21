@@ -171,8 +171,12 @@ def _date(value: Any, path: str) -> str:
     return value
 
 
-def normalize_evidence(envelope: Mapping[str, Any]) -> dict[str, Any]:
+def normalize_evidence(envelope: Mapping[str, Any], currency: str | None = "USD") -> dict[str, Any]:
     """Validate and return a detached normalized supporting document envelope.
+
+    ``currency`` is the company currency the document must be in (USD by default).
+    ``None`` accepts any currency this version supports; hash helpers use it for
+    documents that were already checked against the company currency.
 
     Absent service dates/amounts remain absent; operation previews decide which
     facts are required. No provider allowlist, account mapping, or permission
@@ -184,11 +188,23 @@ def normalize_evidence(envelope: Mapping[str, Any]) -> dict[str, Any]:
     if type(value.get("schema_version")) is not int or value["schema_version"] != SCHEMA_VERSION:
         _error("$.schema_version", "unsupported_schema_version", "Supported schema_version is 1.",
                "Translate the supporting document to the published version 1 schema.")
-    if value.get("currency") != "USD":
-        _error("$.currency", "unsupported_currency", "Only USD supporting documents are supported.",
+    found = value.get("currency")
+    if currency is None:
+        from ..currency import CurrencyError, require_supported
+        try:
+            found = require_supported(found) if found == str(found).upper() else None
+        except CurrencyError:
+            found = None
+        if found is None:
+            _error("$.currency", "unsupported_currency", "The supporting document currency is not a supported currency.",
+                   "Resolve unsupported currency before proposing a financial operation.")
+    elif found != currency:
+        message = ("Only USD supporting documents are supported." if currency == "USD" else
+                   f"Only supporting documents in the company currency, {currency}, are supported.")
+        _error("$.currency", "unsupported_currency", message,
                "Resolve unsupported currency before proposing a financial operation.")
     result: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "source": _source(value.get("source")),
-                              "currency": "USD"}
+                              "currency": found}
     for name in ("dates", "amounts"):
         if name in value:
             values = _object(value[name], f"$.{name}")
@@ -241,7 +257,7 @@ def normalize_evidence(envelope: Mapping[str, Any]) -> dict[str, Any]:
 
 def facts_hash(envelope: Mapping[str, Any]) -> str:
     """Hash source revisions and facts, independent of provenance and suggestions."""
-    value = normalize_evidence(envelope)
+    value = normalize_evidence(envelope, None)
     facts = {key: item for key, item in value.items()
              if key not in {"proposed_treatment", "provenance", "references"}}
     return canonical_hash(facts)
@@ -249,7 +265,7 @@ def facts_hash(envelope: Mapping[str, Any]) -> str:
 
 def evidence_hash(envelope: Mapping[str, Any]) -> str:
     """Bind facts and original reference content, excluding transport locations."""
-    value = normalize_evidence(envelope)
+    value = normalize_evidence(envelope, None)
     return canonical_hash({"facts_hash": facts_hash(value), "reference_content_hashes":
                            sorted({item["content_hash"] for item in value["references"]})})
 

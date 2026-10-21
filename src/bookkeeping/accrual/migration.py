@@ -71,7 +71,8 @@ def _source_folder(entity, folder):
 
 
 def _source_amount(value):
-    text = value.strip().strip('"').replace("$", "").replace(",", "")
+    from ..currency import strip_amount
+    text = strip_amount(value.strip().strip('"')).strip().replace(",", "")
     if text.startswith("(") and text.endswith(")"):
         text = "-" + text[1:-1]
     return _money(text or "0")
@@ -139,7 +140,7 @@ def _name(name, mapping):
     return matches[0]
 
 
-def _chart(accounts, mapping, store, as_of):
+def _chart(accounts, mapping, store, as_of, currency="USD"):
     """Retain every source account, including accounts absent from the TB.
 
     The export has no historical opening dates. Open mapped accounts no later
@@ -151,16 +152,16 @@ def _chart(accounts, mapping, store, as_of):
     for source in sorted(accounts, key=lambda account: account.name):
         account = mapping[source.name]
         opened = existing.get(account)
-        if opened and opened.currencies and "USD" not in opened.currencies:
+        if opened and opened.currencies and currency not in opened.currencies:
             raise ValueError(f"Opening chart conflicts with the existing account currency: {account}")
         effective_date = min(as_of, opened.date) if opened else as_of
         chart.append({"source_account": source.name, "account": account,
                       "account_type": source.account_type, "detail_type": source.detail_type,
-                      "open_date": effective_date.isoformat(), "currency": "USD"})
+                      "open_date": effective_date.isoformat(), "currency": currency})
     return chart
 
 
-def _tie_reports(tb, bs, pnl, mapping, *, closed_position=False):
+def _tie_reports(tb, bs, pnl, mapping, *, closed_position=False, currency="USD"):
     balances = {}
     for row in tb.entries:
         debit, credit = _money(row.debit), _money(row.credit)
@@ -197,7 +198,7 @@ def _tie_reports(tb, bs, pnl, mapping, *, closed_position=False):
         for account in set(expected_pl) | set(pl_actual):
             delta = pl_actual.get(account, Decimal(0)) - expected_pl.get(account, Decimal(0))
             if delta:
-                raise ValueError(f"P&L does not reconcile to trial balance: {account}; difference {delta:.2f} USD.")
+                raise ValueError(f"P&L does not reconcile to trial balance: {account}; difference {delta:.2f} {currency}.")
     actual_bs, current_earnings = {}, None
     for row in bs.rows:
         if row.name.strip().lower() in {"net income", "net profit", "current year earnings", "current-year earnings"}:
@@ -218,9 +219,9 @@ def _tie_reports(tb, bs, pnl, mapping, *, closed_position=False):
     for account in set(expected_bs) | set(actual_bs):
         delta = actual_bs.get(account, Decimal(0)) - expected_bs.get(account, Decimal(0))
         if delta:
-            raise ValueError(f"Balance sheet does not reconcile to trial balance: {account}; difference {delta:.2f} USD.")
+            raise ValueError(f"Balance sheet does not reconcile to trial balance: {account}; difference {delta:.2f} {currency}.")
     if (current_earnings or Decimal(0)) != earnings:
-        raise ValueError(f"Balance sheet current earnings differ from YTD P&L by {(current_earnings or Decimal(0)) - earnings:.2f} USD.")
+        raise ValueError(f"Balance sheet current earnings differ from YTD P&L by {(current_earnings or Decimal(0)) - earnings:.2f} {currency}.")
     # Current earnings are derived from the carried I/E accounts. They must not
     # also be embedded as an explicit equity balance in the source TB.
     if earnings and any(n and re.sub(r"[^a-z]", "", name.lower()) in
@@ -260,8 +261,8 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
             account = mapping.get(account, account)
             if account not in financial or account.startswith(("Income:", "Expenses:", "Equity:")):
                 raise ValueError(f"Opening support account is not a carried control balance: {account}")
-            if row.get("currency") != "USD":
-                raise ValueError("Opening support currency must be USD.")
+            if row.get("currency") != entity.currency:
+                raise ValueError(f"Opening support currency must be {entity.currency}.")
             refs = row.get("evidence_refs", [])
             canonical_ids = row.get("evidence_ids", [])
             if (not isinstance(refs, list) or not isinstance(canonical_ids, list)
@@ -286,12 +287,12 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                     raise ValueError(f"Opening supporting document file is missing or unsafe: {reference}")
                 raw = target.read_bytes()
                 digest = hashlib.sha256(raw).hexdigest()
-                envelope = normalize_evidence({"schema_version": 1, "currency": "USD",
+                envelope = normalize_evidence({"schema_version": 1, "currency": entity.currency,
                     "source": {"namespace": "accounting.opening.documents", "account_id": "opening",
                                "object_id": relative.as_posix(), "content_hash": digest},
                     "dates": {"as_of": as_of.isoformat()},
                     "references": [{"content_hash": digest, "uri": relative.as_posix()}],
-                    "observed_facts": {"source_path": relative.as_posix(), "opening_source_id": source_id}})
+                    "observed_facts": {"source_path": relative.as_posix(), "opening_source_id": source_id}}, entity.currency)
                 evidence_id = canonical_hash(envelope)
                 payload = {"id": evidence_id, "envelope": envelope, "source_identity": source_identity(envelope),
                            "facts_hash": facts_hash(envelope), "evidence_hash": evidence_hash(envelope)}
@@ -404,11 +405,11 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
             if delta:
                 differences.append({"account": account, "ledger": format(balance, ".2f"),
                                     "support": format(sums.get(account, Decimal(0)), ".2f"),
-                                    "difference": format(delta, ".2f"), "currency": "USD"})
+                                    "difference": format(delta, ".2f"), "currency": entity.currency})
     for account, total in sums.items():
         if total != financial[account] and not any(d["account"] == account for d in differences):
             differences.append({"account": account, "ledger": format(financial[account], ".2f"),
-                                "support": format(total, ".2f"), "difference": format(total - financial[account], ".2f"), "currency": "USD"})
+                                "support": format(total, ".2f"), "difference": format(total - financial[account], ".2f"), "currency": entity.currency})
     for identity, record in sorted(evidence.items()):
         if not record["existing"]:
             mutations.append({"table": "evidence", "id": identity, "payload": record["payload"]})
@@ -422,6 +423,13 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
     block application; report basis selection never sets company policy.
     """
     require_capability(entity)
+    from ..currency import report_currency
+    with report_currency(entity.currency):
+        return _preview(entity, folder, cutover, fiscal_start=fiscal_start, supporting=supporting,
+                        closed_position=closed_position)
+
+
+def _preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, closed_position=False):
     cutover = _day(cutover)
     if fiscal_start is None:
         raise ValueError("Supply the evidenced fiscal_start explicitly; fiscal policy cannot be inferred from report toggles.")
@@ -451,8 +459,10 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
                 raise ValueError(f"Opening report dates do not match exact cutover coverage: {kind}")
             _validate_source_rows(rows, kind)
         header = " ".join(" ".join(row) for row in rows[:8])
-        if re.search(r"\b(?:EUR|GBP|CAD|AUD|JPY)\b|€|£", header):
-            raise ValueError("Only USD opening source reports are supported.")
+        named = set(re.findall(r"\b(USD|EUR|GBP|CAD|AUD|JPY)\b", header))
+        named |= {code for mark, code in (("€", "EUR"), ("£", "GBP")) if mark in header}
+        if named - {"USD", entity.currency} or (entity.currency != "USD" and "USD" in named):
+            raise ValueError(f"Only {entity.currency} opening source reports are supported.")
         paths[kind] = path
     required = {"chart_of_accounts", "trial_balance", "balance_sheet", "profit_and_loss"}
     if set(paths) != required:
@@ -464,10 +474,10 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
     companies = {qb._normalize_company_name(r.company) for r in (tb, bs, pnl)}
     if len(companies) != 1 or not next(iter(companies)):
         raise ValueError("Opening source reports must identify one consistent company.")
-    financial = _tie_reports(tb, bs, pnl, mapping, closed_position=closed_position)
+    financial = _tie_reports(tb, bs, pnl, mapping, closed_position=closed_position, currency=entity.currency)
     source_id = f"quickbooks-opening-trial-balance-{cutover.isoformat()}"
     store = LedgerStore(default_store_path(entity.path))
-    chart = _chart(accounts, mapping, store, as_of)
+    chart = _chart(accounts, mapping, store, as_of, entity.currency)
     hashes = {kind: hashlib.sha256(path.read_bytes()).hexdigest() for kind, path in sorted(paths.items())}
     return _build_plan(
         entity, store, operation="quickbooks-opening", import_source="quickbooks-opening",
@@ -495,7 +505,7 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
     if tracking:
         narration = f"Opening items at accrual tracking start ({cutover.isoformat()})"
     mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
-    coverage = {"id": coverage_id, "basis": "accrual", "currency": "USD", "cutover_date": cutover.isoformat(),
+    coverage = {"id": coverage_id, "basis": "accrual", "currency": entity.currency, "cutover_date": cutover.isoformat(),
                 "source_as_of": as_of.isoformat(), "fiscal_start": fiscal_start.isoformat(),
                 "summary_from": None if closed_position else fiscal_start.isoformat(),
                 "summary_to": None if closed_position else as_of.isoformat(), "closed_position": closed_position,
@@ -546,7 +556,9 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
 def _effects(plan):
     coverage = plan["coverage"]
     opened = _day(coverage["source_as_of"])
-    postings = tuple(Posting(a, _money(n)) for a, n in sorted(plan["balances"].items()) if _money(n))
+    # The coverage record carries the company currency; a plan written before it existed is USD.
+    currency = coverage.get("currency", "USD")
+    postings = tuple(Posting(a, _money(n), currency) for a, n in sorted(plan["balances"].items()) if _money(n))
     tracking = coverage["id"] == TRACKING_COVERAGE_ID
     metadata = (("source-id", coverage["opening_source_id"]), ("import-source", plan.get("import_source", "quickbooks-opening")),
                         ("accrual-tracking-opening" if tracking else "accrual-opening", "true"), ("coverage-id", coverage["id"]),

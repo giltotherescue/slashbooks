@@ -14,12 +14,16 @@ def render_store_ledger(store_path: Path | str, conn: sqlite3.Connection | None 
     store = LedgerStore(store_path)
     if conn is None:
         title = store.get_meta("title") or "Books"
+        currency = store.get_meta("currency") or "USD"
     else:
         row = conn.execute("SELECT value FROM meta WHERE key = 'title'").fetchone()
         title = str(row[0]) if row else "Books"
+        row = conn.execute("SELECT value FROM meta WHERE key = 'currency'").fetchone()
+        currency = str(row[0]) if row else "USD"
     return render_ledger(
         opens=store.load_opens(conn),
         entries=store.load_entries(conn=conn),
         balances=store.load_balances(conn),
         title=title,
+        currency=currency,
     )

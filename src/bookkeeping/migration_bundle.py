@@ -192,8 +192,12 @@ def _anchors(files, inventory=None):
             _require(entity.get("accrual_capability_version") in {0, 1}, "unsupported_basis")
     except ValueError:
         raise BundleError("unsupported_basis") from None
-    _require(entity.get("currency", "USD") == "USD", "unsupported_currency")
-    identity = {"entity_json_sha256": _sha(files["entity.json"]), "basis": basis, "currency": "USD"}
+    from .currency import CurrencyError, require_supported
+    try:
+        currency = require_supported(entity.get("currency", "USD"))
+    except CurrencyError:
+        raise BundleError("unsupported_currency") from None
+    identity = {"entity_json_sha256": _sha(files["entity.json"]), "basis": basis, "currency": currency}
     if basis == "accrual":
         identity["accrual_capability_version"] = entity["accrual_capability_version"]
     elif entity.get("accrual_capability_version") == 1:
@@ -403,6 +407,24 @@ def _write_exclusive(destination, raw):
             except FileNotFoundError:
                 pass
             raise
+
+
+def require_target_currency(manifest, target_config):
+    """Refuse a bundle whose company currency differs from the target company currency.
+
+    *manifest* is a loaded bundle manifest; *target_config* is the target company's
+    entity.json (a dict). Slashbooks does not convert currencies.
+    """
+    from .currency import company_currency
+    bundle_currency = (manifest.get("source_entity") or {}).get("currency", "USD")
+    target = company_currency(target_config or {})
+    if bundle_currency != target:
+        error = BundleError("unsupported_currency")
+        error.message = (f"The bundle keeps its books in {bundle_currency}, but the target company keeps its books in "
+                         f"{target}. Slashbooks does not convert currencies.")
+        error.bundle_currency, error.target_currency = bundle_currency, target
+        raise error
+    return bundle_currency
 
 
 def build_bundle(entity_dir, destination):

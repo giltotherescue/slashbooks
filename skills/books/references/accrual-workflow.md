@@ -121,7 +121,8 @@ not as a command, and never as a reason to skip the preview.
 ## Apply the accounting contracts
 
 Read the selected company's basis and capability before choosing a workflow.
-Cash remains the default. Accrual is opt-in for a single USD services/SaaS entity;
+Cash remains the default. Accrual is opt-in for a single-currency services/SaaS entity
+(the company currency is `currency` in `entity.json`, USD when absent);
 ordinary accrual is supported, governmental modified accrual is not. Preserve
 existing basis. A report toggle or re-init cannot convert populated books. To keep a cash company's history and add
 accrual records from a date, a person runs `books accrual enable preview|apply --tracking-start DATE`

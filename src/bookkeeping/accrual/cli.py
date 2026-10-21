@@ -15,8 +15,12 @@ from .intake import IntakeValidationError, schema
 def add_parser(subparsers: Any) -> None:
     root = subparsers.add_parser("accrual", help="Inspect supporting document schemas and maintain reviewable accrual records")
     commands = root.add_subparsers(dest="accrual_command", required=True)
-    commands.add_parser("schema", help="Print the provider-neutral supporting document and journal contracts")
-    commands.add_parser("capabilities", help="Print available accrual operations")
+    schema_parser = commands.add_parser("schema", help="Print the provider-neutral supporting document and journal contracts")
+    # Optional company: currency fields then show the company currency instead of USD. It is left out of the
+    # command listing so that the published contract stays the same for every USD company.
+    schema_parser.add_argument("--entity", type=Path, default=None, help=argparse.SUPPRESS)
+    capabilities_parser = commands.add_parser("capabilities", help="Print available accrual operations")
+    capabilities_parser.add_argument("--entity", type=Path, default=None, help=argparse.SUPPRESS)
     intake = commands.add_parser("intake", help="Retain immutable source supporting documents")
     intake.add_argument("--entity", required=True, type=Path)
     intake.add_argument("--input", required=True, type=Path)
@@ -129,7 +133,7 @@ def _command_lines() -> tuple[list[str], dict[str, list[str]]]:
     def usage(parser: argparse.ArgumentParser) -> str:
         parts = []
         for action in parser._actions:
-            if not action.option_strings or isinstance(action, argparse._HelpAction):
+            if not action.option_strings or isinstance(action, argparse._HelpAction) or action.help == argparse.SUPPRESS:
                 continue
             flag = action.option_strings[0]
             if action.nargs == 0:
@@ -454,6 +458,20 @@ def _read_only_store(entity: Any) -> Any:
     return LedgerStore(entity.path / "ledger.sqlite")
 
 
+def _for_currency(value: Any, currency: str) -> Any:
+    """The contracts with every currency constant and example set to the company currency."""
+    if currency == "USD":
+        return value
+    if isinstance(value, dict):
+        return {key: (currency if key in {"const", "currency"} and item == "USD" else _for_currency(item, currency))
+                for key, item in value.items()}
+    if isinstance(value, list):
+        return [_for_currency(item, currency) for item in value]
+    if isinstance(value, str):
+        return value.replace("exact USD amount", f"exact {currency} amount").replace("Existing USD asset", f"Existing {currency} asset")
+    return value
+
+
 def _input(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -466,9 +484,12 @@ def run(args: argparse.Namespace) -> int:
         command = args.accrual_command
         if command == "schema":
             result = contracts()
+            if args.entity is not None:
+                result = _for_currency(result, load_entity(args.entity).currency)
         elif command == "capabilities":
             _, verbs = _command_lines()
-            result = {"capability_version": CAPABILITY_VERSION, "currency": "USD", "basis": "accrual",
+            book = load_entity(args.entity).currency if args.entity is not None else "USD"
+            result = {"capability_version": CAPABILITY_VERSION, "currency": book, "basis": "accrual",
                       "operations": ["intake", *verbs, "report", "accounts", "receipt"],
                       "rules_effect": "proposals_only",
                       "verbs": verbs, "authority_action": "adjust", "posting_requires_opt_in": True,
