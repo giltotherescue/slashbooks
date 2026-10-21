@@ -225,8 +225,8 @@ def request_schemas() -> dict[str, Any]:
         "reference": {**text, "maxLength": 2000, "description": "Human reference or description, separate from the stable machine ID."},
         "tax_treatment": {"enum": ["expense_when_paid", "capitalize"], "description":
             "Prepaid only. How a cash-method filer deducts it for tax: expense_when_paid (deduct on payment) or capitalize (deduct as used). "
-            "When absent, the tax outputs use a default: expense_when_paid only if the service lasts 12 months or less and ends by the end "
-            "of the tax year after the payment year; otherwise capitalize. Never changes the books."}},
+            "Set only by a person. When absent, the tax outputs keep the prepaid on the balance sheet as the books record it and list it "
+            "as not recorded. Never changes the books."}},
         examples=[{"operation_id": "synthetic-prepaid-create", "id": "synthetic-prepaid", "reference": "Annual software subscription #104", "kind": "prepaid",
             "account": "Assets:Other:Prepaid-Expenses", "recognition_account": "Expenses:Software", "currency": "USD",
             "amount": "1200.00", "service_start": "2026-01-01", "service_end": "2026-12-31", "method": "equal_month",

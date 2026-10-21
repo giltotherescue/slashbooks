@@ -838,17 +838,23 @@ def _cover_basis(entity_path: Path, to_date: date) -> str:
     """The cover basis. A company that turned accrual on later and holds accrual records shows the same mixed label
     as the tax Read Me and manifest; every other company keeps its basis text."""
     from .cache import open_cache
+    from .statements import has_accrual_records
+    from ..accrual.scope import capability, tracking_start
     from ..taxmap import book_basis
     entity = load_entity(entity_path)
     conn = open_cache(entity_path)
     try:
         label = book_basis(conn, entity.entity_config, to_date)[1]
+        # A cash-default company that keeps accrual records shows its recorded balances, not cash balances.
+        recorded = (not label and entity.basis == "cash" and capability(entity.entity_config) == 1
+                    and has_accrual_records(conn))
     finally:
         conn.close()
-    from ..accrual.scope import tracking_start
     started = tracking_start(entity.entity_config)
     if started and to_date.isoformat() < started:
         return "Cash basis"  # a period that ends before the tracking start is a plain cash period
+    if recorded:
+        return "As recorded (cash view default)"
     return label or entity.basis.title() + " basis"
 
 

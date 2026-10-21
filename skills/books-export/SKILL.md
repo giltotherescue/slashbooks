@@ -324,18 +324,29 @@ the owner, propose a value with its evidence, and note it for the preparer to co
 4. Tax year. `fiscal_year_start` is not 01-01 and the entity is a sole proprietor, a
    single-member LLC, a partnership or an S corporation: the tax year may differ from the fiscal
    year (IRS Publication 538).
-5. Prepaid exceptions. A prepaid schedule posts to an interest account or a fixed-asset account,
-   or covers a benefit with no fixed end or an expected renewal: the 12-month rule may not apply
-   (Treas. Reg. 1.263(a)-4(f)). Propose `capitalize` for the preparer to confirm.
-6. 12-month rule election. The taxpayer can elect out of the 12-month rule on the return for all
-   similar items (Treas. Reg. 1.263(a)-4(f)). Slashbooks does not make it. If the preparer elects
-   out, the preparer uses the capitalized figures.
-7. Inventory. An inventory account has a balance: the small business rules for inventory apply
+5. Prepaid schedules. The engine uses only a `tax_treatment` that a person recorded. Without one,
+   the tax figures keep the prepaid on the balance sheet as the books record it, and the flag
+   `prepaid_tax_treatment_not_recorded` lists the schedule. For each listed schedule, read its
+   `service_start`, `service_end`, payment date and documents, and apply the 12-month rule
+   (Treas. Reg. 1.263(a)-4(f)):
+   - A cash-method taxpayer can deduct the payment when paid if the benefit lasts no longer than
+     the earlier of 12 months after the benefit begins, or the end of the tax year after the
+     tax year of the payment. Use the company `fiscal_year_start` as the tax year unless the
+     owner says otherwise (see item 4).
+   - The rule does not apply to a benefit of indefinite duration, a financial interest, prepaid
+     interest, or depreciable property. If a renewal is reasonably expected, count the renewal
+     period in the duration.
+   - The taxpayer can elect out of the rule on the return, for all similar items. Slashbooks does
+     not make the election. If the preparer elects out, the preparer uses the capitalized figures.
+   Propose `expense_when_paid` when the rule applies and `capitalize` when it does not. Name the
+   dates and the document, and say "for the preparer to confirm". Show the preview of
+   `books accrual schedule tax-treatment`; a person applies it.
+6. Inventory. An inventory account has a balance: the small business rules for inventory apply
    (Internal Revenue Code section 471(c)). The preparer checks.
-8. Fixed assets. For each row of the fixed-asset worksheet, compare the cost per invoice or item
+7. Fixed assets. For each row of the fixed-asset worksheet, compare the cost per invoice or item
    with the current de minimis safe harbor threshold (Treas. Reg. 1.263(a)-1(f); see
    docs/tax-handoff.md for the amount and verify it before use). The preparer decides.
-9. Deposits. For each deposit marked "assumed advance payment", ask whether the company must give
+8. Deposits. For each deposit marked "assumed advance payment", ask whether the company must give
    the money back. A trust or escrow retainer is usually refundable. Propose a `deposit_kind`.
 
 ## Shared procedures
@@ -351,4 +362,4 @@ When the owner needs to correct the fiscal calendar, use
 `books entity set-fiscal-year PATH --start MM-01` to preview the change and show it.
 The owner applies the approved setting with `--apply --plan-hash HASH_FROM_PREVIEW`
 (person-only).
-Tax prepaid defaults follow that calendar; explicit export ranges stay unchanged.
+The fiscal calendar does not change a recorded prepaid tax treatment; explicit export ranges stay unchanged.

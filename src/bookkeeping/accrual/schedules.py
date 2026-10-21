@@ -772,37 +772,16 @@ def _tax_treatment(value: Any, kind: Any) -> str:
     return value
 
 
-def _add_months(day: date, months: int) -> date:
-    month = day.month - 1 + months
-    year, month = day.year + month // 12, month % 12 + 1
-    from calendar import monthrange
-    return date(year, month, min(day.day, monthrange(year, month)[1]))
+def effective_tax_treatment(record: Mapping[str, Any]) -> tuple[str | None, str]:
+    """Return (treatment, source) for a schedule.
 
-
-def default_tax_treatment(record: Mapping[str, Any], fiscal_year_start: str = "01-01") -> str | None:
-    """The default tax treatment of a prepaid schedule, or None for other kinds.
-
-    expense_when_paid only when the benefit lasts 12 months or less and ends by the end of the tax year
-    after the payment's tax year (the 12-month rule). Otherwise capitalize. The company fiscal year determines the next year end.
-    This default needs review by a tax professional.
+    The engine uses only a tax treatment that a person recorded (source "recorded"). When none is
+    recorded, a prepaid stays on the balance sheet as the books record it: treatment "capitalize",
+    source "not_recorded". Other kinds return (None, "not_recorded"). The engine applies no tax rule here.
     """
-    if record.get("kind") != "prepaid":
-        return None
-    start, end = _service(record)
-    paid_raw = record.get("origin_date") or (record.get("origin") or {}).get("date") or start.isoformat()
-    paid = _day(paid_raw, "origin date")
-    within_12_months = end < _add_months(start, 12)
-    from ..fiscal import year_start
-    anchor = year_start(paid, fiscal_year_start)
-    by_next_year_end = end < date(anchor.year + 2, anchor.month, anchor.day)
-    return "expense_when_paid" if within_12_months and by_next_year_end else "capitalize"
-
-
-def effective_tax_treatment(record: Mapping[str, Any], fiscal_year_start: str = "01-01") -> tuple[str | None, str]:
-    """Return (treatment, source): source is "recorded" when a person set it, else "default"."""
     if "tax_treatment" in record:
         return _tax_treatment(record["tax_treatment"], record.get("kind")), "recorded"
-    return default_tax_treatment(record, fiscal_year_start), "default"
+    return ("capitalize" if record.get("kind") == "prepaid" else None), "not_recorded"
 
 
 TAX_TREATMENT_KIND = "schedule_tax_treatment_set"
@@ -821,7 +800,7 @@ def preview_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any) -> d
     if record is None:
         raise JournalError("schedule_not_found", f"No schedule has id {schedule_id}.", "Run `books accrual schedule list --entity PATH`.")
     treatment = _tax_treatment(treatment, record.get("kind"))
-    current, source = effective_tax_treatment(record, entity.entity_config.get("fiscal_year_start", "01-01"))
+    current, source = effective_tax_treatment(record)
     body = {"schema_version": 1, "kind": TAX_TREATMENT_KIND, "request": {"id": schedule_id, "tax_treatment": treatment},
             "changes": record.get("tax_treatment") != treatment, "ledger_digest": store.content_digest(),
             "configuration_hash": canonical_hash(entity.entity_config),

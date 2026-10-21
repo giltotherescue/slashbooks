@@ -135,6 +135,8 @@ class StatementResult:
         lines.append("=" * len(_head))
         if self.meta.get("view_label"):
             lines.append(f"Accounting basis: {self.meta['view_label']}; the books are kept on the {self.meta.get('books_basis', 'accrual')} basis")
+        elif self.meta.get("basis_label"):
+            lines.append(f"Accounting basis: {self.meta['basis_label']}")
         elif self.meta.get("basis"):
             lines.append(f"Accounting basis: {self.meta['basis']}")
         coverage = self.meta.get("coverage")
@@ -368,6 +370,25 @@ def recorded_profit_and_loss(entity_path: Path | str, from_date: date, to_date: 
         conn.close()
 
 
+RECORDED_CASH_DEFAULT_LABEL = "as recorded (cash view default)"
+
+
+def _label_recorded_balances(conn: Any, metadata: dict[str, Any], as_of: date, view: Optional[str]) -> dict[str, Any]:
+    """Label a balance statement of a cash-default company that keeps accrual records.
+
+    Its balances are the recorded ones (receivables, payables, prepaid and deferred balances), so "cash" is the
+    default view, not the basis of these balances. ``basis`` keeps its value; ``basis_label`` carries the text.
+    Every other company, and a date before the tracking start, keeps its output unchanged.
+    """
+    if view or metadata.get("basis") != "cash":
+        return metadata
+    default, capable, first = _view_facts(conn)
+    if default != "cash" or not capable or (first and as_of.isoformat() < first) or not has_accrual_records(conn):
+        return metadata
+    metadata["basis_label"] = RECORDED_CASH_DEFAULT_LABEL
+    return metadata
+
+
 def _stamp_view(metadata: dict[str, Any], view: Optional[str]) -> dict[str, Any]:
     """Name the view on a statement rendered on a view other than the default."""
     if view:
@@ -526,7 +547,7 @@ def balance_sheet(
 
 def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
                            coverage_view: Optional[str] = None, fiscal_year_start: Optional[str] = None) -> StatementResult:
-    metadata = _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view)
+    metadata = _label_recorded_balances(conn, _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view), as_of, view)
     balances = _account_balances_as_of(conn, as_of)
 
     # Also compute net income from inception through as_of for equity section
@@ -655,7 +676,7 @@ def trial_balance(
 
 def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
                            coverage_view: Optional[str] = None) -> StatementResult:
-    metadata = _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view)
+    metadata = _label_recorded_balances(conn, _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view), as_of, view)
     balances = _account_balances_as_of(conn, as_of)
 
     rows = []

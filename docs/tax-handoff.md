@@ -324,9 +324,10 @@ The cash view for tax:
 - Receivable, payable, accrued, deferred revenue and customer deposit balances leave the trial
   balance. One computed row, `Equity:Accrual-To-Cash-Adjustment`, keeps the trial balance balanced.
 - Deferred revenue and customer deposits are income on receipt.
-- A prepaid schedule follows its `tax_treatment` (see `docs/accrual.md`). `expense_when_paid` is
+- A prepaid schedule follows its recorded `tax_treatment` (see `docs/accrual.md`). `expense_when_paid` is
   expense on the payment date. `capitalize` keeps the unused part on the balance sheet and
-  deducts the recognition entries as they post.
+  deducts the recognition entries as they post. With no recorded value, the view follows the
+  books: the same as `capitalize`.
 - Collected opening receivables and paid opening payables are income and expense on the cash date,
   on the rows `Income:Opening-Receivables-Collected` and `Expenses:Opening-Payables-Paid`.
 
@@ -342,7 +343,8 @@ produce a cash view, or a cash view that does not tie to the accrual books.
 - `difference_from_accrual_view`: cash-method net income minus accrual net income, with one row per group.
 - `deferred_revenue_on_receipt`, `bad_debt_not_deductible`, `accrued_liabilities_excluded`,
   `receivables_payables_excluded`, `opening_items_on_receipt`.
-- `prepaid_capitalized` and `prepaid_expensed_by_default`, with `treatment_source` `recorded` or `default`.
+- `prepaid_capitalized`, one per prepaid schedule kept on the balance sheet, with `treatment_source`
+  `recorded` (a person recorded `capitalize`) or `not_recorded` (no value is recorded).
 - `cash_view_unclassified` and `cash_view_noncash_entry`: entries the cash view cannot explain.
 - `prepaid_tax_treatment_not_recorded`: the prepaid schedules with no recorded `tax_treatment`.
 - `deposit_kind_not_recorded`: the deposits with no recorded `deposit_kind` (the view assumes
@@ -411,8 +413,10 @@ reference only: the de minimis safe harbor for a taxpayer without audited financ
 was $2,500 per invoice or item for 2026 (Treas. Reg. 1.263(a)-1(f) and IRS guidance; verify
 before use).
 
-The defaults need review by a tax professional: the configured fiscal year, the 12-month rule for
-prepaid expenses, and the treatment of opening receivables collected after the change.
+The defaults need review by a tax professional: the configured fiscal year and the treatment of
+opening receivables collected after the change. Slashbooks applies no prepaid tax rule. The
+books-export skill tells an agent how to propose a prepaid `tax_treatment` under the 12-month
+rule (Treas. Reg. 1.263(a)-4(f)) for the preparer to confirm; a person records it.
 
 A historical opening summary supports its complete fiscal period, not arbitrary earlier months.
 Unsupported pre-cutover subperiods or dates before the source balances are refused before any
@@ -440,8 +444,8 @@ It is an owner/preparer decision and is not covered by standing posting authorit
 An imported opening summary must agree with the chosen start; changing its
 historical coverage requires a separate reviewed correction.
 
-The prepaid 12-month default uses the end of the fiscal year following the
-payment's fiscal year. Tax-view metadata records `fiscal_year_start`. Accrual
+The fiscal year does not change a prepaid tax treatment: the engine uses only a recorded
+value. Tax-view metadata records `fiscal_year_start`. Accrual
 balance sheets use the calendar for current-year earnings; imported summaries
 retain their evidenced fiscal calendar. Explicit report/export date ranges remain
 as requested. `--year` remains the calendar-year shortcut; for July–June, use
@@ -450,5 +454,5 @@ as requested. `--year` remains the calendar-year shortcut; for July–June, use
 Capitalized prepaid balances remain assets even when an account also holds
 prepaids deducted on payment; only the capitalized portion appears in the tax view.
 
-The prepaid rule and calendar limitations follow [IRS Publication 538](https://www.irs.gov/publications/p538).
+The calendar limitations follow [IRS Publication 538](https://www.irs.gov/publications/p538).
 Confirm the company's established method and calendar with its preparer.
