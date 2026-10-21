@@ -92,6 +92,7 @@ class TaxView:
     label: str
     tracking_start: str | None = None
     capitalized: dict[str, str] = field(default_factory=dict)   # schedule id -> "recorded" or "default"
+    refundable: dict[str, str] = field(default_factory=dict)    # deposit id -> "schedules" or "items" (recorded refundable)
     ledger: Any = None
     control: set[str] = field(default_factory=set)
     fiscal_year_start: str = "01-01"
@@ -145,7 +146,7 @@ def plan(conn: Any, config: Mapping[str, Any], from_date: date, to_date: date) -
 
 
 def _derived(conn: Any, from_date: date, to_date: date, started: str | None, fiscal_year_start: str) -> TaxView:
-    from .accrual.schedules import effective_tax_treatment
+    from .accrual.schedules import effective_deposit_kind, effective_tax_treatment, is_deposit
     from .reports import cashview
     from .reports.cache import iter_postings
     raw_total = sum((row[4] for row in iter_postings(conn, to_date=to_date)), _ZERO)
@@ -159,7 +160,11 @@ def _derived(conn: Any, from_date: date, to_date: date, started: str | None, fis
         treatment, source = effective_tax_treatment(record, fiscal_year_start)
         if treatment == "capitalize":
             capitalized[record["id"]] = source
-    ledger = cashview.derive(conn, to_date, frozenset(capitalized))
+    # A deposit counts as refundable only when a person recorded it so. Unset means advance payment.
+    refundable = {record["id"]: table for table, records in (("schedules", schedules), ("items", _records(conn, "items")))
+                  for record in records if is_deposit(record, table) and effective_deposit_kind(record, table)[0] == "refundable"}
+    kept = frozenset(capitalized) | {key for key, table in refundable.items() if table == "schedules"}
+    ledger = cashview.derive(conn, to_date, kept, frozenset(key for key, table in refundable.items() if table == "items"))
     for start, end in ((_EARLIEST, to_date), (from_date, to_date)):
         tie = ledger.tie_out(start, end)
         if not tie["ties"]:
@@ -170,7 +175,7 @@ def _derived(conn: Any, from_date: date, to_date: date, started: str | None, fis
     items, intents = _records(conn, "items"), _records(conn, "intents")
     control, _ = cashview._registered_accounts(items, schedules, intents, cashview._load_entries(conn, to_date))
     return TaxView("cash", "cash", "derived", LABELS["derived"], tracking_start=started, capitalized=capitalized,
-                   ledger=ledger, control=set(control), fiscal_year_start=fiscal_year_start)
+                   refundable=refundable, ledger=ledger, control=set(control), fiscal_year_start=fiscal_year_start)
 
 
 def derived_balances(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict[str, Any]]:
@@ -193,16 +198,18 @@ def derived_balances(conn: Any, view: TaxView, from_date: date, to_date: date) -
         ending[account] = ending.get(account, _ZERO) + amount
         if day < start:
             opening[account] = opening.get(account, _ZERO) + amount
-    # Reconstruct only the capitalized schedules, including when their account
-    # also holds schedules deducted on payment. Never hide their assets in equity.
+    # Reconstruct only the capitalized schedules and the refundable deposits, including when their
+    # account also holds other records. Never hide their assets or liabilities in equity.
     from datetime import timedelta
     from .accrual.reports import _managed_support
     for boundary, balances in ((from_date - timedelta(days=1), opening), (to_date, ending)):
-        for record in _managed_support(conn, boundary.isoformat())[1]:
-            if record["id"] in view.capitalized:
-                account = record["account"]
-                accounts.add(account)
-                balances[account] = balances.get(account, _ZERO) + Decimal(record["signed_balance"])
+        support_items, support_schedules = _managed_support(conn, boundary.isoformat())
+        kept = [r for r in support_schedules if r["id"] in view.capitalized or view.refundable.get(r["id"]) == "schedules"]
+        kept += [r for r in support_items if view.refundable.get(r["id"]) == "items"]
+        for record in kept:
+            account = record["account"]
+            accounts.add(account)
+            balances[account] = balances.get(account, _ZERO) + Decimal(record["signed_balance"])
     derived: set[str] = set()
     for posting in view.ledger.postings:
         if posting.date > to_date.isoformat():
@@ -266,7 +273,8 @@ def flags(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict
     if groups.get("deferred_revenue") or groups.get("customer_deposits"):
         amount = -(groups.get("deferred_revenue", _ZERO) + groups.get("customer_deposits", _ZERO))
         result.append({"code": "deferred_revenue_on_receipt", "amount": _money(amount),
-                       "message": f"Deferred revenue and customer deposits are income when received on the cash method: {_money(amount)} more income than the accrual view."})
+                       "message": f"Deferred revenue and customer deposits are income when received on the cash method: {_money(amount)} more income than the accrual view."
+                                  + (" Deposits recorded as refundable are not included." if view.refundable else "")})
     if groups.get("writeoffs"):
         result.append({"code": "bad_debt_not_deductible", "amount": _money(groups["writeoffs"]),
                        "message": "Bad-debt write-offs, credits and true-ups are excluded: on the cash method, income that was never received is not deductible."})
@@ -290,6 +298,22 @@ def flags(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict
             result.append({"code": "prepaid_expensed_by_default", "refs": [record["id"]], "treatment_source": "default",
                            "message": (f"Prepaid schedule {record.get('reference') or record['id']} is deducted when paid by default (12-month rule). "
                                        "Record its tax treatment with books accrual schedule tax-treatment to confirm.")})
+    untreated = sorted(r["id"] for r in schedules if r.get("kind") == "prepaid" and "tax_treatment" not in r)
+    if untreated:
+        result.append({"code": "prepaid_tax_treatment_not_recorded", "refs": untreated,
+                       "message": ("These prepaid schedules have no recorded tax treatment, so the default above applies. "
+                                   "Record it with books accrual schedule tax-treatment.")})
+    held = deposits(conn, view, to_date)
+    for row in held:
+        if row["deposit_kind"] == "refundable":
+            result.append({"code": "deposit_refundable", "refs": [row["id"]],
+                           "message": (f"Deposit {row['reference'] or row['id']} is recorded as refundable: it stays a liability "
+                                       "until it is applied to an invoice or forfeited, so it is not income when received.")})
+    assumed = [row["id"] for row in held if row["deposit_kind_source"] == "assumed"]
+    if assumed:
+        result.append({"code": "deposit_kind_not_recorded", "refs": assumed,
+                       "message": ("These deposits have no recorded deposit kind. The cash view assumes advance payment: income when received. "
+                                   "Record the kind with books accrual schedule deposit-kind or books accrual item deposit-kind.")})
     issues = [i for i in view.ledger.issues if start <= i["date"] <= end]
     for issue in issues:
         result.append({"code": issue["code"], "amount": issue.get("amount"), "message": issue["message"]})
@@ -297,6 +321,91 @@ def flags(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict
                    "message": (f"{ADJUSTMENT_ACCOUNT} is computed. It removes the receivable, payable, deferred and accrued balances "
                                "that a cash-method return does not carry, so the trial balance stays balanced.")})
     return result
+
+
+ASSUMED_ADVANCE_PAYMENT = "assumed advance payment"
+
+
+def deposits(conn: Any, view: TaxView, to_date: date) -> list[dict[str, Any]]:
+    """Every deferred schedule and customer deposit item that exists on ``to_date``, with its deposit kind.
+
+    Data only. The kind is the recorded one, or advance payment ("assumed advance payment") when none is recorded.
+    """
+    if view.source != "derived":
+        return []
+    from .accrual.reports import _managed_support, opening_coverage, _origin_date
+    from .accrual.schedules import effective_deposit_kind, is_deposit
+    opening = opening_coverage(conn)
+    support_items, support_schedules = _managed_support(conn, to_date.isoformat())
+    rows = []
+    for table, records in (("schedules", support_schedules), ("items", support_items)):
+        for record in records:
+            if not is_deposit(record, table):
+                continue
+            kind, source = effective_deposit_kind(record, table)
+            rows.append({"id": record["id"], "record": table[:-1], "account": record["account"],
+                         "date": _origin_date(record, opening), "amount": f"{Decimal(record.get('original_amount') or record['amount']):.2f}",
+                         "balance_at_end": f"{abs(Decimal(record['signed_balance'])):.2f}",
+                         "counterparty": record.get("counterparty") or "", "reference": record.get("reference") or "",
+                         "deposit_kind": kind, "deposit_kind_source": source,
+                         "note": ASSUMED_ADVANCE_PAYMENT if source == "assumed" else "recorded"})
+    return sorted(rows, key=lambda r: (r["date"] or "", r["id"]))
+
+
+def _entry_rows(conn: Any, to_date: date) -> list[tuple]:
+    """(date, source_id, payee, metadata, account, amount) for postings through ``to_date``."""
+    import sqlite3
+    base = ("SELECT e.date, e.source_id, e.payee, {meta}, p.account, p.amount FROM entries e JOIN postings p ON p.entry_id = e.id "
+            "WHERE e.date <= ? ORDER BY e.date, e.id, p.id")
+    try:
+        return conn.execute(base.format(meta="e.metadata_json"), (to_date.isoformat(),)).fetchall()
+    except sqlite3.OperationalError:
+        return conn.execute(base.format(meta="'[]'"), (to_date.isoformat(),)).fetchall()
+
+
+def fixed_assets(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict[str, Any]]:
+    """The fixed-asset worksheet for the preparer: data only, no tax depreciation.
+
+    One row per depreciation schedule that exists on ``to_date``, and one row per purchase (a debit) posted to an
+    ``Assets:Fixed`` account through ``to_date`` that no depreciation schedule records. Book depreciation is as recorded.
+    """
+    import json
+    from .accrual.reports import _managed_support, opening_coverage, _origin_date
+    opening = opening_coverage(conn)
+    start, end = from_date.isoformat(), to_date.isoformat()
+    schedules = [r for r in _managed_support(conn, end)[1] if r.get("kind") == "depreciation" and r.get("role") != "accumulated_depreciation"]
+    all_depreciation = [r for r in _records(conn, "schedules") if r.get("kind") == "depreciation"]
+    scheduled_ids = {r["id"] for r in all_depreciation}
+    origin_sources = {(r.get("origin") or {}).get("source_id") for r in all_depreciation} - {None}
+    contra = {r.get("contra_account") for r in all_depreciation} - {None}
+    payees: dict[str, str] = {}
+    purchases = []
+    for day, source_id, payee, metadata, account, amount in _entry_rows(conn, to_date):
+        if source_id and payee:
+            payees.setdefault(source_id, payee)
+        try:
+            meta = {str(k): str(v) for k, v in json.loads(metadata or "[]")}
+        except (TypeError, ValueError):
+            meta = {}
+        amount = Decimal(amount)
+        if (not account.startswith("Assets:Fixed") or account in contra or amount <= 0
+                or source_id in origin_sources or meta.get("schedule-id") in scheduled_ids):
+            continue
+        purchases.append({"source": "purchase", "id": source_id or "", "account": account, "placed_in_service": str(day)[:10],
+                          "cost": f"{amount:.2f}", "vendor": payee or "", "reference": "",
+                          "book_depreciation_to_date": "", "depreciation_schedule": "none"})
+    rows = []
+    for record in schedules:
+        placed = _origin_date(record, opening)
+        source_id = (record.get("origin") or {}).get("source_id")
+        rows.append({"source": "depreciation_schedule", "id": record["id"], "account": record["account"], "placed_in_service": placed,
+                     "cost": f"{Decimal(record['amount']):.2f}", "vendor": payees.get(source_id or "", ""),
+                     "reference": record.get("reference") or "", "book_depreciation_to_date": f"{Decimal(record['recognized_amount']):.2f}",
+                     "depreciation_schedule": record["id"]})
+    rows += purchases
+    for row in rows:
+        row["in_period"] = start <= (row["placed_in_service"] or "") <= end
+    return sorted(rows, key=lambda r: (r["placed_in_service"] or "", r["account"], r["id"]))
 
 
 def readiness_notes(entity: Any) -> list[dict[str, Any]]:
@@ -309,13 +418,25 @@ def readiness_notes(entity: Any) -> list[dict[str, Any]]:
     path = default_store_path(entity.path)
     if not path.is_file():
         return []
-    missing = sorted(r["id"] for r in list_records(LedgerStore(path), "schedules")
+    store = LedgerStore(path)
+    missing = sorted(r["id"] for r in list_records(store, "schedules")
                      if r.get("kind") == "prepaid" and "tax_treatment" not in r)
-    if not missing:
-        return []
-    return [{"code": "schedule_tax_treatment_missing", "refs": missing,
-             "message": ("The company files on the cash method, and these prepaid schedules have no recorded tax treatment. "
-                         "A default applies (deduct when paid only under the 12-month rule). Record it with books accrual schedule tax-treatment.")}]
+    notes = []
+    if missing:
+        notes.append({"code": "schedule_tax_treatment_missing", "refs": missing,
+                      "message": ("The company files on the cash method, and these prepaid schedules have no recorded tax treatment. "
+                                  "A default applies (deduct when paid only under the 12-month rule). Record it with books accrual schedule tax-treatment.")})
+    if active_method(entity.entity_config) == "cash":
+        # Behind the tax-method view only, so a company without the view keeps its readiness output.
+        from .accrual.schedules import is_deposit
+        unset = sorted(r["id"] for table in ("schedules", "items") for r in list_records(store, table)
+                       if is_deposit(r, table) and "deposit_kind" not in r)
+        if unset:
+            notes.append({"code": "deposit_kind_missing", "refs": unset,
+                          "message": ("The tax view follows the cash method, and these deposits have no recorded deposit kind. "
+                                      "The cash view assumes advance payment (income when received). Record the kind with "
+                                      "books accrual schedule deposit-kind or books accrual item deposit-kind.")})
+    return notes
 
 
 # ---------------------------------------------------------------------------
@@ -408,5 +529,102 @@ def apply_set_tax_method(entity: Any, method: Any, tax_view: Any = None, plan_ha
         finally:
             temp.unlink(missing_ok=True)
         return {"status": "applied", "kind": SET_TAX_METHOD_KIND, **request, "from": fresh["effects"]["from"],
+                "request_hash": fresh["request_hash"], "plan_hash": fresh["plan_hash"], "entries_changed": 0,
+                "published_statements_changed": False}
+
+
+# ---------------------------------------------------------------------------
+# books entity set-tax-profile (person-only; preview, then --apply)
+# ---------------------------------------------------------------------------
+
+PRIOR_RETURN_METHOD_KEY = "prior_return_method"
+ENTITY_TYPE_KEY = "entity_type"
+PRIOR_RETURN_METHODS = ("cash", "accrual", "unknown", "none")
+ENTITY_TYPES = ("sole_proprietor", "single_member_llc", "partnership", "s_corp", "c_corp", "nonprofit", "other", "unknown")
+PROFILE_FIELDS = {PRIOR_RETURN_METHOD_KEY: PRIOR_RETURN_METHODS, ENTITY_TYPE_KEY: ENTITY_TYPES}
+SET_TAX_PROFILE_KIND = "tax_profile_set"
+PROFILE_NOTE = ("Records facts about the company for the tax preparer: the method of the last tax return filed "
+                f"({PRIOR_RETURN_METHOD_KEY}; none for a first-year business) and the kind of business entity ({ENTITY_TYPE_KEY}). "
+                "The tax export lists them. Slashbooks applies no tax rule to them: it does not decide, block or compute anything from them.")
+
+
+def tax_profile(config: Mapping[str, Any]) -> dict[str, str]:
+    """The recorded tax profile fields (only the ones that are set), validated."""
+    result = {}
+    for key, allowed in PROFILE_FIELDS.items():
+        if key in config:
+            if config[key] not in allowed:
+                raise ValueError(f"entity.json {key} must be one of {', '.join(allowed)}. Run books entity set-tax-profile to fix it.")
+            result[key] = config[key]
+    return result
+
+
+def preview_set_tax_profile(entity: Any, prior_return_method: Any = None, entity_type: Any = None) -> dict[str, Any]:
+    """Preview recording the tax profile. Writes nothing."""
+    from .accrual.enable import _integrity
+    from .accrual.intake import canonical_hash
+    from .accrual.journals import JournalError
+    from .entity import load_entity
+    from .ledger.store import LedgerStore, default_store_path
+    entity = load_entity(entity.path)
+    request = {}
+    for key, value in ((PRIOR_RETURN_METHOD_KEY, prior_return_method), (ENTITY_TYPE_KEY, entity_type)):
+        if value is None:
+            continue
+        if value not in PROFILE_FIELDS[key]:
+            raise JournalError(f"invalid_{key}", f"{key} must be one of {', '.join(PROFILE_FIELDS[key])}.",
+                               f"Use --{key.replace('_', '-')} with one of {', '.join(PROFILE_FIELDS[key])}.")
+        request[key] = value
+    if not request:
+        raise JournalError("nothing_to_set", "Give --prior-return-method, --entity-type or both.",
+                           "For example: books entity set-tax-profile PATH --prior-return-method cash --entity-type single_member_llc")
+    config = entity.entity_config
+    current = tax_profile(config)
+    _integrity(entity, "record the tax profile")
+    store = LedgerStore(default_store_path(entity.path))
+    target = {**current, **request}
+    body = {"schema_version": 1, "kind": SET_TAX_PROFILE_KIND, "request": request,
+            "changes": target != current, "ledger_digest": store.content_digest(),
+            "configuration_hash": canonical_hash(config),
+            "effects": {"from": current, "to": target, "entries_changed": 0, "period_locks_changed": 0,
+                        "published_statements_changed": False, "note": PROFILE_NOTE}}
+    body["request_hash"] = canonical_hash({"kind": SET_TAX_PROFILE_KIND, "request": request})
+    body["plan_hash"] = canonical_hash(body)
+    return body
+
+
+def apply_set_tax_profile(entity: Any, prior_return_method: Any = None, entity_type: Any = None,
+                          plan_hash: str | None = None) -> dict[str, Any]:
+    """Record the tax profile (person-only). Repeating the same values returns already_applied."""
+    import json
+    import os
+    from .accrual.enable import _seal
+    from .accrual.journals import JournalError
+    from .entity import load_entity
+    from .ledger.importer import _entity_write_lock
+    from .ledger.store import LedgerStore, default_store_path
+    from .preparation_runtime import is_preparation
+    if is_preparation():
+        raise JournalError("tax_profile_person_only", "Recording the tax profile requires the owner or tax preparer.")
+    with _entity_write_lock(entity.path):
+        fresh = preview_set_tax_profile(entity, prior_return_method, entity_type)
+        if plan_hash is not None and plan_hash != fresh["plan_hash"]:
+            raise JournalError("stale_preview", "The company changed after the preview.", "Run the preview again.")
+        if not fresh["changes"]:
+            return {"status": "already_applied", "kind": SET_TAX_PROFILE_KIND, **fresh["effects"]["to"], "request_hash": fresh["request_hash"]}
+        entity = load_entity(entity.path)
+        store = LedgerStore(default_store_path(entity.path))
+        config = {**entity.entity_config, **fresh["request"]}
+        temp = entity.path / "entity.json.tax-profile.tmp"
+        temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        try:
+            with store.transaction(immediate=True) as conn:
+                store.append_audit_event("tax-profile-set", {"from": fresh["effects"]["from"], "to": fresh["effects"]["to"],
+                                                              "plan_hash": fresh["plan_hash"]}, conn)
+                _seal(store, conn, "entity-set-tax-profile")
+                os.replace(temp, entity.path / "entity.json")
+        finally:
+            temp.unlink(missing_ok=True)
+        return {"status": "applied", "kind": SET_TAX_PROFILE_KIND, **fresh["effects"]["to"], "from": fresh["effects"]["from"],
                 "request_hash": fresh["request_hash"], "plan_hash": fresh["plan_hash"], "entries_changed": 0,
                 "published_statements_changed": False}

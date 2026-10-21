@@ -132,6 +132,17 @@ the tracking start and balances to `Equity:Opening-Balance-Adjustments`). `books
 `books entity set-tax-method PATH --method cash|accrual --tax-view on [--apply]` makes the tax outputs follow the tax
 method (person-only), and `books accrual schedule tax-treatment --entity PATH --id ID --treatment expense_when_paid|capitalize
 [--apply]` records how a cash-method filer deducts a prepaid schedule (person-only). Ask the owner or the tax preparer; never choose either value.
+`books entity set-tax-profile PATH [--prior-return-method cash|accrual|unknown|none] [--entity-type TYPE] [--apply]` records
+facts for the preparer, and `books accrual schedule|item deposit-kind --entity PATH --id ID --deposit-kind advance_payment|refundable
+[--apply]` records whether a deposit is refundable (both person-only; unset means advance payment).
+
+Tax method: what you decide and what you do not. The engine stores facts and lists missing inputs; it applies no
+tax rule. You may ask the intake questions, read documents to propose a `deposit_kind` or a `tax_treatment`, spot
+auto-renewals, trust or escrow retainers and interest or insurance in a prepaid, explain the flags, and draft a note
+for the preparer. You must not apply the person-only commands above, choose an expensing election, bonus depreciation
+or the de minimis safe harbor, say a treatment is correct for tax, run a method change, or compute tax. Run the preview,
+show it, and let a person apply it. Each proposal names its evidence and says "for the preparer to confirm". The rule
+checklist is in skills/books-export/SKILL.md.
 Otherwise start a new accrual company and use `books accrual opening draft`/`preview`/`apply` (see accrual-intake.md);
 prior periods stay in the cash company.
 The `draft` output is a wrapper: copy its `request` object into the file you preview.

@@ -436,6 +436,12 @@ books accrual schedule tax-treatment --entity PATH --id SCHEDULE --treatment cap
   cash, accrual is on, and a prepaid schedule has no recorded tax treatment.
 - It is a person-only write, like `entity set-view`.
 
+A deferred schedule or a customer deposit item can carry `deposit_kind`: `advance_payment` or
+`refundable`. Record it with `books accrual schedule deposit-kind` or `books accrual item
+deposit-kind --entity PATH --id ID --deposit-kind refundable [--apply]` (person-only). It changes
+only the cash-method tax outputs; unset means advance payment. See
+[the tax handoff](tax-handoff.md) ("Deposits: advance payment or refundable").
+
 ### Every output on either view
 
 The default view picks the view of every report output. `--basis cash|accrual` picks the other one for one command.

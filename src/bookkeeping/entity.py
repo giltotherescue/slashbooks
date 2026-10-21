@@ -1137,6 +1137,19 @@ def add_parser(subparsers: Any) -> None:
     tax_method_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     tax_method_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
 
+    profile_parser = entity_sub.add_parser(
+        "set-tax-profile",
+        help="Record the method of the last tax return and the entity type, for the tax preparer (person-only). Previews unless --apply is given",
+    )
+    profile_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    profile_parser.add_argument("--prior-return-method", choices=("cash", "accrual", "unknown", "none"), default=None,
+                                help="The method of the last tax return filed; none for a first-year business")
+    profile_parser.add_argument("--entity-type", default=None,
+                                choices=("sole_proprietor", "single_member_llc", "partnership", "s_corp", "c_corp", "nonprofit", "other", "unknown"),
+                                help="The kind of business entity")
+    profile_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    profile_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+
     map_parser = entity_sub.add_parser(
         "bank-account-map",
         help="Map a stable connected-bank account ID to an existing ledger account",
@@ -1277,6 +1290,22 @@ def run(args: Any) -> int:
                 result = taxview.apply_set_tax_method(entity, args.method, args.tax_view, args.plan_hash)
             else:
                 result = taxview.preview_set_tax_method(entity, args.method, args.tax_view)
+        except (FileNotFoundError, ValueError) as exc:
+            result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+
+    if args.entity_command == "set-tax-profile":
+        target = _resolve_target(args.path)
+        try:
+            from . import taxview
+            entity = load_entity(target)
+            if args.apply:
+                result = taxview.apply_set_tax_profile(entity, args.prior_return_method, args.entity_type, args.plan_hash)
+            else:
+                result = taxview.preview_set_tax_profile(entity, args.prior_return_method, args.entity_type)
         except (FileNotFoundError, ValueError) as exc:
             result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
             print(json.dumps(result, sort_keys=True, indent=2))

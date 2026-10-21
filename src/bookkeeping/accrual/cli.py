@@ -37,6 +37,14 @@ def add_parser(subparsers: Any) -> None:
         if domain in {"schedule", "item"}:
             listing = children.add_parser("list")
             listing.add_argument("--entity", required=True, type=Path)
+            holder = "a deferred schedule" if domain == "schedule" else "a customer deposit item"
+            deposit = children.add_parser("deposit-kind", help=f"Record whether {holder} is an advance payment or a refundable deposit "
+                                          "for the cash-method tax view (person-only). Previews unless --apply is given")
+            deposit.add_argument("--entity", required=True, type=Path)
+            deposit.add_argument("--id", required=True, dest="record_id")
+            deposit.add_argument("--deposit-kind", required=True, choices=("advance_payment", "refundable"))
+            deposit.add_argument("--apply", action="store_true")
+            deposit.add_argument("--plan-hash", default=None, dest="plan_hash")
         if domain == "journal":
             due = children.add_parser("due-reversals")
             due.add_argument("--entity", required=True, type=Path)
@@ -533,6 +541,9 @@ def run(args: argparse.Namespace) -> int:
                 verb = args.schedule_command
                 if verb == "list":
                     result = schedules.list_schedules(entity)
+                elif verb == "deposit-kind":
+                    result = (schedules.apply_deposit_kind(entity, "schedules", args.record_id, args.deposit_kind, args.plan_hash) if args.apply
+                              else schedules.preview_deposit_kind(entity, "schedules", args.record_id, args.deposit_kind))
                 elif verb == "due-preview":
                     result = schedules.preview_due(entity, args.through, operation_id=args.operation_id)
                 elif verb == "tax-treatment":
@@ -548,6 +559,10 @@ def run(args: argparse.Namespace) -> int:
                 verb = args.item_command
                 if verb == "list":
                     result = items.list_items(entity)
+                elif verb == "deposit-kind":
+                    from . import schedules
+                    result = (schedules.apply_deposit_kind(entity, "items", args.record_id, args.deposit_kind, args.plan_hash) if args.apply
+                              else schedules.preview_deposit_kind(entity, "items", args.record_id, args.deposit_kind))
                 else:
                     function = {"preview": items.preview_item, "apply": items.apply_item,
                         "settle-preview": items.preview_settlement, "settle-apply": items.apply_settlement,

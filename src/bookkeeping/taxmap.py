@@ -677,7 +677,7 @@ def _tax_view(entity: Any, from_date: date, to_date: date, *, with_flags: bool =
     """Plan the tax-method view (fail closed). With ``with_flags`` also return its flags and accounting metadata."""
     from .accrual.reports import financial_metadata
     from .reports.cache import open_cache
-    from .taxview import flags, plan
+    from .taxview import deposits, fixed_assets, flags, plan, tax_profile
     conn = open_cache(entity.path)
     try:
         view = plan(conn, entity.entity_config, from_date, to_date)
@@ -686,7 +686,9 @@ def _tax_view(entity: Any, from_date: date, to_date: date, *, with_flags: bool =
         accounting = financial_metadata(conn, "tax_handoff", from_date, to_date, view=view.view)
         accounting["basis"] = view.view
         accounting["tax_method"] = view.tax_method
-        return view, flags(conn, view, from_date, to_date), accounting
+        data = {"tax_profile": tax_profile(entity.entity_config), "fixed_assets": fixed_assets(conn, view, from_date, to_date),
+                "deposits": deposits(conn, view, to_date)}
+        return view, flags(conn, view, from_date, to_date), accounting, data
     finally:
         conn.close()
 
@@ -847,9 +849,9 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     resolved, form_basis = resolve_form(entity.entity_config, form)
     from .reports.cache import open_cache
     from .taxview import active_method
-    tax_view = tax_flags = None
+    tax_view = tax_flags = tax_data = None
     if active_method(entity.entity_config):
-        tax_view, tax_flags, accounting = _tax_view(entity, from_date, to_date, with_flags=True)
+        tax_view, tax_flags, accounting, tax_data = _tax_view(entity, from_date, to_date, with_flags=True)
         basis_label = tax_view.label
     else:
         conn = open_cache(entity.path)
@@ -912,7 +914,7 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     unmapped = [row for row in tb_rows if row["mapping"].line is None]
     extra = {}
     if tax_view is not None:
-        extra = {"tax_method": tax_view.tax_method, "view": tax_view.view, "tax_view": {**tax_view.stamp(), "flags": tax_flags}}
+        extra = {"tax_method": tax_view.tax_method, "view": tax_view.view, "tax_view": {**tax_view.stamp(), "flags": tax_flags, **tax_data}}
     return {
         **extra,
         "entity_name": entity.name,
@@ -936,7 +938,7 @@ DISCLAIMER = (
 )
 # Vendor import layouts (Lacerte, UltraTax) must start with their header row,
 # so they carry no note row; README.txt and the manifest carry the disclaimer.
-_NOTE_TABLES = frozenset({"Trial Balance", "Tax Line Summary", "Unmapped Accounts"})
+_NOTE_TABLES = frozenset({"Trial Balance", "Tax Line Summary", "Unmapped Accounts", "Fixed Assets", "Deposits"})
 
 
 def _readme_text(handoff: Mapping[str, Any], files: Mapping[str, str]) -> str:
@@ -1059,12 +1061,37 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
     if handoff.get("tax_view"):
         rows.append(["Tax method", handoff["tax_method"].title() + " method"])
         rows.append(["View", handoff["view"].title() + " view"])
+        for key, value in sorted(handoff["tax_view"].get("tax_profile", {}).items()):
+            rows.append(["Tax profile: " + key, value])
         for flag in handoff["tax_view"]["flags"]:
             if flag["code"] == "tax_method":
                 continue
             rows.append(["Flag: " + flag["code"], flag["message"]])
     for name, path in files.items():
         rows.append([name, path])
+    return rows
+
+
+_FIXED_ASSET_HEADER = ["Placed In Service (Purchase Date)", "In Period", "Account", "Cost", "Vendor", "Reference",
+                       "Book Depreciation To Date", "Depreciation Schedule", "Source", "ID"]
+_DEPOSIT_HEADER = ["Date Received", "Record", "ID", "Account", "Counterparty", "Reference", "Amount", "Balance At Period End",
+                   "Deposit Kind", "Kind Source"]
+
+
+def _fixed_asset_table(handoff: Mapping[str, Any]) -> list[list[str]]:
+    """Data for the preparer. No tax depreciation is computed; book depreciation is as recorded."""
+    rows = [list(_FIXED_ASSET_HEADER)]
+    for row in handoff["tax_view"]["fixed_assets"]:
+        rows.append([row["placed_in_service"] or "", "yes" if row["in_period"] else "no", row["account"], row["cost"], row["vendor"],
+                     row["reference"], row["book_depreciation_to_date"], row["depreciation_schedule"], row["source"], row["id"]])
+    return rows
+
+
+def _deposit_table(handoff: Mapping[str, Any]) -> list[list[str]]:
+    rows = [list(_DEPOSIT_HEADER)]
+    for row in handoff["tax_view"]["deposits"]:
+        rows.append([row["date"] or "", row["record"], row["id"], row["account"], row["counterparty"], row["reference"], row["amount"],
+                     row["balance_at_end"], row["deposit_kind"], row["note"]])
     return rows
 
 
@@ -1100,6 +1127,11 @@ def export_handoff(
         "Lacerte TBU": (f"lacerte-tbu-{stem}.csv", _lacerte_table(handoff)),
         "UltraTax CS Import": (f"ultratax-tb-import-{stem}.csv", _ultratax_table(handoff)),
     }
+    if handoff.get("tax_view"):
+        # Tax-method view only: the worksheets the preparer uses. Without the view the files are as before.
+        tables["Fixed Assets"] = (f"fixed-assets-{stem}.csv", _fixed_asset_table(handoff))
+        if handoff["tax_view"]["source"] == "derived":
+            tables["Deposits"] = (f"deposits-{stem}.csv", _deposit_table(handoff))
     written: dict[str, str] = {}
     unknown = set(formats) - {"csv", "xlsx"}
     if unknown:
@@ -1120,6 +1152,8 @@ def export_handoff(
                 "Unmapped Accounts": frozenset({3}),
                 "Lacerte TBU": frozenset({3}),
                 "UltraTax CS Import": frozenset({4}),
+                "Fixed Assets": frozenset({3, 6}),
+                "Deposits": frozenset({6, 7}),
             }
             sheets = [XlsxSheet(name="Read Me", rows=_readme_table(handoff, {}))]
             sheets += [XlsxSheet(name=sheet, rows=rows, numeric_columns=numeric[sheet],
