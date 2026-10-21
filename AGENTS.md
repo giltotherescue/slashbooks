@@ -17,6 +17,9 @@ repository root as a company books directory.
 - Claude Code metadata lives in `.claude-plugin/`.
 - Codex metadata lives in `.codex-plugin/`.
 - Native Codex repo marketplace metadata lives in `.agents/plugins/marketplace.json`.
+- Keep the root CLI launcher at `scripts/books`. Claude Desktop and Cowork
+  reject a plugin with a top-level `bin/` directory, even when Claude Code
+  accepts it. Keep the skill-local `scripts/books` wrappers portable too.
 - Shared skills live in `skills/*/SKILL.md` and should remain portable across
   Claude Code and Codex. Avoid tool-specific skill frontmatter unless both
   validators accept it.

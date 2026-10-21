@@ -3,7 +3,7 @@ tests/test_plugin.py — U11 plugin packaging assertions.
 
 Covers:
   (a) plugin.json and marketplace.json parse as JSON with required keys
-  (b) bin/books is executable, contains required exports, no session-hook refs
+  (b) scripts/books is executable, contains required exports, no session-hook refs
   (c) Every `scripts/books <subcommand>` referenced in SKILL.md bodies maps to a real
       CLI path (verified via `python3 -m bookkeeping.cli <tokens...> --help`)
   (d) Every SKILL.md has frontmatter with name+description and avoids
@@ -26,7 +26,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_DIR = REPO_ROOT / ".claude-plugin"
 CODEX_PLUGIN_DIR = REPO_ROOT / ".codex-plugin"
 CODEX_MARKETPLACE = REPO_ROOT / ".agents" / "plugins" / "marketplace.json"
-BIN_DIR = REPO_ROOT / "bin"
+SCRIPTS_DIR = REPO_ROOT / "scripts"
 SKILLS_DIR = REPO_ROOT / "skills"
 
 SKILL_NAMES = [
@@ -258,13 +258,20 @@ class TestManifests(unittest.TestCase):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# (b) bin/books wrapper
+# (b) scripts/books wrapper
 # ─────────────────────────────────────────────────────────────────────────────
 
-class TestBinWrapper(unittest.TestCase):
+class TestBooksWrapper(unittest.TestCase):
+
+    def test_plugin_has_no_top_level_bin_directory(self):
+        self.assertFalse(
+            (REPO_ROOT / "bin").exists(),
+            "Claude Desktop and Cowork reject plugins with a top-level bin/ directory; "
+            "keep executable entry points under scripts/ instead",
+        )
 
     def setUp(self):
-        self.wrapper = BIN_DIR / "books"
+        self.wrapper = SCRIPTS_DIR / "books"
 
     def test_wrapper_exists(self):
         self.assertTrue(self.wrapper.exists(), f"{self.wrapper} does not exist")
@@ -278,26 +285,26 @@ class TestBinWrapper(unittest.TestCase):
 
     def test_wrapper_exports_pythonpath(self):
         content = self.wrapper.read_text()
-        self.assertIn("PYTHONPATH", content, "bin/books does not export PYTHONPATH")
-        self.assertIn("src", content, "bin/books does not reference src/ in PYTHONPATH")
+        self.assertIn("PYTHONPATH", content, "scripts/books does not export PYTHONPATH")
+        self.assertIn("src", content, "scripts/books does not reference src/ in PYTHONPATH")
 
     def test_wrapper_exports_templates_dir(self):
         content = self.wrapper.read_text()
         self.assertIn(
             "BOOKKEEPING_TEMPLATES_DIR",
             content,
-            "bin/books does not export BOOKKEEPING_TEMPLATES_DIR",
+            "scripts/books does not export BOOKKEEPING_TEMPLATES_DIR",
         )
         self.assertIn(
             "skills/books-onboard/templates",
             content,
-            "bin/books should point at the books-onboard templates directory",
+            "scripts/books should point at the books-onboard templates directory",
         )
 
     def test_wrapper_sources_dotenv(self):
         content = self.wrapper.read_text()
-        self.assertNotIn(". ./.env", content, "bin/books should not execute .env as shell code")
-        self.assertNotIn("set -a", content, "bin/books should not shell-export .env")
+        self.assertNotIn(". ./.env", content, "scripts/books should not execute .env as shell code")
+        self.assertNotIn("set -a", content, "scripts/books should not shell-export .env")
 
     def test_wrapper_no_session_lifecycle_hooks(self):
         """
@@ -317,7 +324,7 @@ class TestBinWrapper(unittest.TestCase):
             self.assertNotIn(
                 hook_phrase,
                 content,
-                f"bin/books contains session-lifecycle hook reference: {hook_phrase!r}",
+                f"scripts/books contains session-lifecycle hook reference: {hook_phrase!r}",
             )
 
     def test_wrapper_exec_cli(self):
@@ -325,7 +332,7 @@ class TestBinWrapper(unittest.TestCase):
         self.assertIn(
             "bookkeeping.cli",
             content,
-            "bin/books does not invoke bookkeeping.cli",
+            "scripts/books does not invoke bookkeeping.cli",
         )
 
     def test_each_skill_has_executable_books_wrapper(self):

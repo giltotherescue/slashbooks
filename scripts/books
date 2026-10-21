@@ -1,5 +1,5 @@
 #!/bin/sh
-# bin/books — self-contained wrapper for the books CLI.
+# scripts/books — self-contained wrapper for the books CLI.
 # Resolves its own real path so it works from any working directory and
 # when invoked via symlink.  No session-lifecycle hook dependency.
 
