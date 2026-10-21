@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-10-21
+
+- Fix Claude Desktop and Cowork marketplace compatibility by moving the bundled CLI launcher from `bin/books` to `scripts/books`. The Python-installed `books` command and skill-local wrappers keep working. Packaging tests now reject a top-level `bin/` directory.
 
 - Review fixes for imports, tax exports, statements and recovery.
   - Tracking start. One rule for each kind of output. Journal outputs (the general ledger, the statement of cash flows, the accountant package and the tax handoff) never refuse because of the accrual tracking start, whatever the default view and whatever the range. Before the start the journal is the cash books, so a period that ends before the start is a plain cash period and is labelled cash (a prior-year general ledger is always available). View outputs (the profit and loss, the balance sheet, the trial balance and `books ask`) refuse a range or an as-of date before the start in the accrual view, with the coverage error that names the start and the `--basis cash` command; a report with an explicit `--basis accrual` refuses too. In the package, the Cover and the Summary sheet show the same basis text, the Summary says that the part before the start is cash basis, and the accrual sheets start on the tracking start. See `docs/accrual.md`.
