@@ -14,7 +14,7 @@ supporting records without creating duplicate financial roots.
 
 ## Approve the setup once
 
-Use an explicit historical opening date to prepare separate USD processor,
+Use an explicit historical opening date to prepare separate processor,
 payout-transit, payment-processing expense and contra-revenue refund accounts.
 Preparation adds audited catalog accounts only. It does not supply opening
 balances, approve revenue rules, or post journals. Processor and transit accounts
@@ -42,7 +42,7 @@ Coverage describes enrichment completeness for that cohort; a cursor can continu
 the period. Preview totals retain explicit currency minor units. Disjoint preview
 cohorts can be combined; overlapping balance transaction IDs are rejected.
 
-The engine stages captured USD processor sources without learned auto-posting,
+The engine stages captured processor sources in the company currency without learned auto-posting,
 then recomputes an exact plan against the current ledger, catalog, approved
 policy and closed period. Application requires the current plan digest, staged
 source identities and the ordinary atomic ledger writer. Hosted publication also
@@ -71,7 +71,12 @@ specific payout; unrelated approved routine items can continue.
 
 ## Explicit limits
 
-This slice posts USD only. Disputes, FX, unsupported balance types, unsettled
+This slice posts the company currency only (`currency` in `entity.json`, USD
+when absent; see [company currency](company-currency.md)). The policy `currency`
+must be the company currency. A Stripe account stays single-currency: balance
+transactions in more than one currency, or in another currency than a company
+with entries, stop the stage with `unsupported_currency`. A company with no
+entries takes the Stripe balance currency. Disputes, FX, unsupported balance types, unsettled
 charges/refunds, incomplete lines, partial/multiple invoice payments and
 unsupported tax, shipping, discounts, credits or prorations remain held.
 Refunds must also pass the original sale's evidence checks; mixed-line refunds

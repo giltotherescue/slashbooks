@@ -1,7 +1,7 @@
 # How to do your books with Slashbooks
 
 This guide is for a founder, owner, or operator who wants to use Slashbooks for a
-simple cash-basis company or opt-in single-entity USD services/SaaS accrual books.
+simple cash-basis company or opt-in single-entity services/SaaS accrual books, in one currency.
 Cash is the default. Accrual separates income and expenses from their payments;
 it also tracks what customers owe, unpaid costs, and amounts paid in advance.
 The [accrual task guide](accrual.md) explains what to ask your agent and what the

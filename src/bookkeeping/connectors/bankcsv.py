@@ -47,6 +47,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from .. import currency as currency_mod
+
 JsonObject = dict[str, Any]
 
 MONEY = Decimal("0.01")
@@ -102,9 +104,6 @@ _HEADER_ROLES: dict[str, tuple[str, ...]] = {
 _DIRECTION_IN = {"credit", "cr", "c", "deposit", "dslip", "in", "return", "refund"}
 _DIRECTION_OUT = {"debit", "dr", "d", "withdrawal", "check", "out", "sale", "purchase", "fee"}
 
-_FOREIGN_SYMBOLS = ("€", "£", "¥", "₹", "₩")
-_FOREIGN_CODES = re.compile(r"\b(EUR|GBP|CAD|AUD|JPY|MXN|INR|CHF|CNY|NZD|SEK|NOK|DKK|BRL)\b",
-                            re.IGNORECASE)
 _MONEY_HEADER = re.compile(r"^\s*(amount|debit|credit|balance|running bal|withdrawal|deposit)", re.IGNORECASE)
 
 _BALANCE_LINE = re.compile(
@@ -123,7 +122,7 @@ _INFLOW_WORDS = {
 
 
 class ForeignCurrencyError(ValueError):
-    """A money cell that is not in USD."""
+    """A money cell that is not in the expected currency."""
 
 
 class StatementFileError(ValueError):
@@ -216,6 +215,12 @@ def _header_role(cell: str) -> str | None:
     for role, names in _HEADER_ROLES.items():
         if name in {_norm_header(n) for n in names}:
             return role
+    # "Amount (EUR)" or "Balance GBP": a money header that names its currency.
+    head, _, tail = name.rpartition(" ")
+    if head and tail.upper() in currency_mod.CURRENCIES:
+        role = _header_role(head)
+        if role in {"amount", "debit", "credit", "balance"}:
+            return role
     return None
 
 
@@ -232,32 +237,107 @@ def parse_date(value: str, fmt: str) -> date:
     return datetime.strptime(value, fmt).date()
 
 
-def _foreign_currency(value: str) -> str | None:
-    for mark in _FOREIGN_SYMBOLS:
-        if mark in value:
-            return mark
-    match = _FOREIGN_CODES.search(value)
-    return match.group(1).upper() if match else None
+def _foreign_currency(value: str, currency: str = "USD") -> str | None:
+    """The first currency mark in *value* that is not *currency* ("$" counts for non-dollar currencies)."""
+    others = sorted(currency_mod.marks_in(value) - {currency})
+    if others:
+        return others[0]
+    if "$" in value and not currency_mod.dollar_allowed(currency):
+        return "$"
+    return None
 
 
-def check_currency_headers(rows: list[list[str]]) -> None:
-    """Refuse a file whose money columns name a currency other than USD."""
+def _mixed_error(found: set[str], what: str = "The file") -> StatementFileError:
+    return StatementFileError(
+        "unsupported_currency",
+        f"{what} has amounts in more than one currency ({', '.join(sorted(found))}). Each company keeps "
+        "its books in one currency and Slashbooks does not convert currencies. Ask for a separate file "
+        "for each currency, or a file already converted to the company currency.")
+
+
+def header_currencies(rows: list[list[str]]) -> set[str]:
+    """Currencies named by money column headers, such as "Amount (EUR)"."""
+    found: set[str] = set()
     for row in rows[:MAX_PREAMBLE_ROWS]:
         for cell in row:
-            if _MONEY_HEADER.search(cell) and len(cell) <= 25 and _foreign_currency(cell):
-                raise StatementFileError(
-                    "unsupported_currency",
-                    f"Column '{cell}' is not in USD. Slashbooks books only USD activity.")
+            if _MONEY_HEADER.search(cell) and len(cell) <= 25:
+                found |= currency_mod.marks_in(cell)
+    return found
 
 
-def parse_money(value: str, decimal: str = ".") -> Decimal | None:
-    """Parse one money cell. Empty cells return None; bad cells raise ValueError."""
+def check_currency_headers(rows: list[list[str]], currency: str | None = None) -> None:
+    """Refuse a file whose money columns name more than one currency, or a currency other than *currency*."""
+    found = header_currencies(rows)
+    if len(found) > 1:
+        raise _mixed_error(found)
+    if currency is not None and found - {currency}:
+        raise StatementFileError(
+            "unsupported_currency",
+            f"A money column is in {next(iter(found))}, not in {currency}. Slashbooks does not convert currencies.")
+
+
+def file_currencies(text: str, layout: JsonObject | None = None) -> set[str]:
+    """Currencies a CSV file names in money headers, money cells or a currency column.
+
+    A plain "$" is not counted: many currencies use it. Descriptions are not read.
+    """
+    rows, _ = read_rows(text)
+    found = header_currencies(rows)
+    if layout and layout.get("columns"):
+        columns = {k: int(v) for k, v in layout["columns"].items()}
+        try:
+            header_index = locate_header(rows, layout)
+        except StatementFileError:
+            header_index = None
+        body = rows[(header_index + 1) if header_index is not None else 0:]
+    else:
+        header_index, roles = _find_header(rows)
+        if header_index is None:
+            columns, _ = _infer_headerless(rows)
+            body = rows
+        else:
+            columns = dict(roles)
+            body = rows[header_index + 1:]
+    for role in ("amount", "debit", "credit", "balance"):
+        col = columns.get(role)
+        if col is not None:
+            for row in body:
+                if col < len(row) and row[col]:
+                    found |= currency_mod.marks_in(row[col])
+    col = columns.get("currency")
+    if col is not None:
+        found |= {row[col].strip().upper() for row in body if col < len(row) and row[col].strip()}
+    return found
+
+
+def parse_money(value: str, decimal: str = ".", currency: str | None = "USD") -> Decimal | None:
+    """Parse one money cell. Empty cells return None; bad cells raise ValueError.
+
+    A mark of another currency than *currency* raises ForeignCurrencyError. With
+    ``currency=None`` any one currency mark is accepted (detection only).
+    """
     raw = value.strip()
     if not raw:
         return None
-    if _foreign_currency(raw):
-        raise ForeignCurrencyError(f"non-USD value {raw!r}")
-    text = raw.replace("$", "").replace("USD", "").replace("−", "-").replace(" ", "")
+    marks = currency_mod.marks_in(raw)
+    if currency is None:
+        if len(marks) > 1:
+            raise ForeignCurrencyError(f"more than one currency in {raw!r}")
+        allowed = marks
+    else:
+        if _foreign_currency(raw, currency):
+            raise ForeignCurrencyError(f"value {raw!r} is not in {currency}")
+        allowed = {currency}
+    text = raw
+    for code in allowed:
+        symbol = currency_mod.CURRENCIES[code].symbol if code in currency_mod.CURRENCIES else None
+        if symbol:
+            text = text.replace(symbol, "")
+        text = re.sub(rf"(?i)(?<![A-Za-z]){code}(?![A-Za-z])", "", text)
+    for mark, code in currency_mod.UNAMBIGUOUS_SYMBOLS.items():
+        if code in allowed:
+            text = text.replace(mark, "")
+    text = text.replace("$", "").replace("USD", "").replace("−", "-").replace(" ", "")
     negative = False
     if text.startswith("(") and text.endswith(")"):
         negative, text = True, text[1:-1]
@@ -287,10 +367,10 @@ def parse_money(value: str, decimal: str = ".") -> Decimal | None:
 
 def _is_money(value: str) -> bool:
     try:
-        return parse_money(value, ".") is not None
+        return parse_money(value, ".", None) is not None
     except ValueError:
         try:
-            return parse_money(value, ",") is not None
+            return parse_money(value, ",", None) is not None
         except ValueError:
             return False
 
@@ -436,11 +516,14 @@ def account_kind(ledger_account: str | None) -> str | None:
         "A statement account must be an Assets: or Liabilities: ledger account.")
 
 
-def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
+def detect_layout(text: str, *, kind: str | None = None, default_currency: str = "USD") -> JsonObject:
     """Propose a layout for CSV *text*.
 
     Returns a dict with ``layout`` (the proposal), ``uncertain`` (fields the
-    caller must decide), ``evidence``, ``warnings`` and ``preview``.
+    caller must decide), ``evidence``, ``warnings`` and ``preview``. The layout
+    ``currency`` is the one currency the file names, or *default_currency* (the
+    company currency) when the file names none. A file that names more than one
+    currency is refused.
     """
     rows, delimiter = read_rows(text)
     check_currency_headers(rows)
@@ -513,23 +596,23 @@ def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
 
     money_cols = [columns[r] for r in ("amount", "debit", "credit", "balance") if r in columns]
     money_values = [row[c] for row in body for c in money_cols if c < len(row) and row[c]]
+    named = header_currencies(rows)
     for value in money_values:
-        if _foreign_currency(value):
+        named |= currency_mod.marks_in(value)
+    if "currency" in columns:
+        named |= {row[columns["currency"]].strip().upper() for row in body
+                  if columns["currency"] < len(row) and row[columns["currency"]].strip()}
+    if len(named) > 1:
+        raise _mixed_error(named)
+    file_currency = next(iter(named)) if named else default_currency
+    for value in money_values:
+        if _foreign_currency(value, file_currency):
             raise StatementFileError(
                 "unsupported_currency",
-                f"The file contains a non-USD amount ({value}). Slashbooks books only USD activity.")
+                f"The file contains an amount ({value}) that is not in {file_currency}. "
+                "Slashbooks does not convert currencies.")
     decimal, decimal_uncertain = _detect_decimal(money_values)
     uncertain += decimal_uncertain
-
-    if "currency" in columns:
-        currencies = {row[columns["currency"]].upper() for row in body
-                      if columns["currency"] < len(row) and row[columns["currency"]]}
-        currencies.discard("")
-        if currencies - {"USD"}:
-            raise StatementFileError(
-                "unsupported_currency",
-                "The file contains currencies other than USD "
-                f"({', '.join(sorted(currencies - {'USD'}))}). Slashbooks books only USD activity.")
 
     sign = None
     if "amount" not in columns and "debit" in columns and "credit" in columns:
@@ -539,7 +622,8 @@ def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
             values = []
             for row in body:
                 try:
-                    v = parse_money(row[columns[role]], decimal or ".") if columns[role] < len(row) else None
+                    v = (parse_money(row[columns[role]], decimal or ".", file_currency)
+                         if columns[role] < len(row) else None)
                 except ValueError:
                     v = None
                 if v:
@@ -549,7 +633,7 @@ def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
                 evidence["debit_credit_signs"] = (
                     f"The {role} column has both positive and negative values.")
     elif "amount" in columns and decimal:
-        sign, sign_evidence, conflict = _detect_sign(body, columns, date_format, decimal, kind)
+        sign, sign_evidence, conflict = _detect_sign(body, columns, date_format, decimal, kind, file_currency)
         evidence.update(sign_evidence)
         if sign is None:
             uncertain.append("sign")
@@ -567,7 +651,7 @@ def detect_layout(text: str, *, kind: str | None = None) -> JsonObject:
         "date_format": date_format,
         "decimal": decimal,
         "sign": sign,
-        "currency": "USD",
+        "currency": file_currency,
     }
     preview = []
     if date_col is not None:
@@ -605,14 +689,14 @@ def _try_date(value: str, fmt: str) -> bool:
 
 
 def _detect_sign(body: list[list[str]], columns: dict[str, int], date_format: str | None,
-                 decimal: str, kind: str | None) -> tuple[str | None, JsonObject, bool]:
+                 decimal: str, kind: str | None, currency: str = "USD") -> tuple[str | None, JsonObject, bool]:
     votes: dict[str, str] = {}
     amount_col = columns["amount"]
     amounts: list[Decimal | None] = []
     descriptions: list[str] = []
     for row in body:
         try:
-            amounts.append(parse_money(row[amount_col], decimal) if amount_col < len(row) else None)
+            amounts.append(parse_money(row[amount_col], decimal, currency) if amount_col < len(row) else None)
         except ValueError:
             amounts.append(None)
         desc_col = columns.get("description")
@@ -633,7 +717,7 @@ def _detect_sign(body: list[list[str]], columns: dict[str, int], date_format: st
         balances = []
         for row in body:
             try:
-                balances.append(parse_money(row[columns["balance"]], decimal)
+                balances.append(parse_money(row[columns["balance"]], decimal, currency)
                                 if columns["balance"] < len(row) else None)
             except ValueError:
                 balances.append(None)
@@ -687,7 +771,10 @@ def locate_header(rows: list[list[str]], layout: JsonObject) -> int | None:
         "Inspect the file again and save a new mapping if the bank changed its export.")
 
 
-def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None) -> ParsedCsv:
+def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None,
+               currency: str | None = None) -> ParsedCsv:
+    """Read rows with a confirmed layout. Amounts must be in *currency* (default: the layout currency, else USD)."""
+    currency = currency or layout.get("currency") or "USD"
     columns = {k: int(v) for k, v in (layout.get("columns") or {}).items()}
     date_format = layout.get("date_format")
     decimal = layout.get("decimal") or "."
@@ -717,7 +804,7 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None) -
         try:
             day = parse_date(raw_date, date_format)
         except ValueError:
-            marker = _balance_marker(row, decimal, date_format)
+            marker = _balance_marker(row, decimal, date_format, currency=currency)
             if marker:
                 balance_markers.append(marker)
                 parsed.non_transaction_rows.append({"line": line, "reason": "balance summary"})
@@ -726,14 +813,15 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None) -
             error_detail.append(f"line {line}: date {raw_date!r} does not match {date_format}")
             continue
         try:
-            if "currency" in columns and cell(row, "currency") and cell(row, "currency").upper() != "USD":
+            if "currency" in columns and cell(row, "currency") and cell(row, "currency").strip().upper() != currency:
                 raise StatementFileError(
                     "unsupported_currency",
-                    f"Line {line} is in {cell(row, 'currency')}. Slashbooks books only USD activity.",
+                    f"Line {line} is in {cell(row, 'currency')}, not in {currency}. "
+                    "Slashbooks does not convert currencies.",
                     [line])
             if sign == "debit_credit":
-                debit = parse_money(cell(row, "debit"), decimal)
-                credit = parse_money(cell(row, "credit"), decimal)
+                debit = parse_money(cell(row, "debit"), decimal, currency)
+                credit = parse_money(cell(row, "credit"), decimal, currency)
                 if debit and credit:
                     raise ValueError("both debit and credit are filled")
                 if debit is None and credit is None:
@@ -741,7 +829,7 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None) -
                 else:
                     amount = abs(credit or Decimal("0")) - abs(debit or Decimal("0"))
             else:
-                amount = parse_money(cell(row, "amount"), decimal)
+                amount = parse_money(cell(row, "amount"), decimal, currency)
                 if amount is not None:
                     if sign == "inverted":
                         amount = -amount
@@ -750,20 +838,20 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None) -
                         if direction is None:
                             raise ValueError(f"unknown direction {cell(row, 'direction')!r}")
                         amount = abs(amount) if direction == "in" else -abs(amount)
-            balance = parse_money(cell(row, "balance"), decimal) if "balance" in columns else None
+            balance = parse_money(cell(row, "balance"), decimal, currency) if "balance" in columns else None
         except StatementFileError:
             raise
         except ForeignCurrencyError as exc:
             raise StatementFileError(
                     "unsupported_currency",
-                    f"Line {line} has a non-USD amount. Slashbooks books only USD activity.",
+                    f"Line {line} has an amount that is not in {currency}. Slashbooks does not convert currencies.",
                     [line]) from exc
         except ValueError as exc:
             errors.append(line)
             error_detail.append(f"line {line}: {exc}")
             continue
         if amount is None:
-            marker = _balance_marker(row, decimal, date_format, day)
+            marker = _balance_marker(row, decimal, date_format, day, currency=currency)
             if marker or balance is not None:
                 balance_markers.append(marker or {"kind": "balance", "date": day.isoformat(),
                                                   "amount": balance})
@@ -792,7 +880,7 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None) -
         raise StatementFileError("no_transactions", "The file has no posted transactions to import.")
 
     for line_row in preamble:
-        marker = _balance_marker(line_row, decimal, date_format)
+        marker = _balance_marker(line_row, decimal, date_format, currency=currency)
         if marker:
             balance_markers.append(marker)
 
@@ -802,7 +890,7 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None) -
 
 
 def _balance_marker(row: list[str], decimal: str, date_format: str,
-                    row_date: date | None = None) -> JsonObject | None:
+                    row_date: date | None = None, *, currency: str = "USD") -> JsonObject | None:
     for index, cell in enumerate(row):
         match = _BALANCE_LINE.match(cell)
         if not match:
@@ -820,7 +908,7 @@ def _balance_marker(row: list[str], decimal: str, date_format: str,
         amount = None
         for other in reversed(row[index + 1:]):
             try:
-                amount = parse_money(other, decimal)
+                amount = parse_money(other, decimal, currency)
             except ValueError:
                 continue
             if amount is not None:

@@ -148,7 +148,9 @@ class StatementResult:
                 else:
                     lines.append(f"Retained fiscal summary coverage: {period}")
         if Decimal(self.meta.get("noncash_entries_total", "0")):
-            lines.append(f"Includes ${Decimal(self.meta['noncash_entries_total']):,.2f} of entries that may not be cash - see the list")
+            from ..currency import format_money
+            amount = format_money(Decimal(self.meta['noncash_entries_total']), self.meta.get("currency") or "USD")
+            lines.append(f"Includes {amount} of entries that may not be cash - see the list")
         issues = [i for i in self.meta.get("unresolved_issues", []) if i.get("code") != "cash_view_noncash_entry"]
         if issues:
             lines.append("Unresolved accounting issues:")
@@ -1044,7 +1046,9 @@ def ask(
         result.data.update(basis="cash", books_basis=kept, derived_from="accrual")
         total = Decimal(((result.data.get("meta") or {}).get("noncash_entries_total")) or "0")
         if total:
-            result.answer_text = result.answer_text.replace("\n\n", f"\nNote: this includes ${total:,.2f} of entries that may not be cash. They are listed under \"Entries that may not be cash\" below.\n\n", 1)
+            from ..currency import format_money
+            money = format_money(total, (result.data.get("meta") or {}).get("currency") or "USD")
+            result.answer_text = result.answer_text.replace("\n\n", f"\nNote: this includes {money} of entries that may not be cash. They are listed under \"Entries that may not be cash\" below.\n\n", 1)
     result.data.setdefault("basis", view if extended else kept)
     if extended:
         result.data["view"] = "cash" if cash_view else view

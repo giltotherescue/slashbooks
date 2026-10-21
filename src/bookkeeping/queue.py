@@ -1854,7 +1854,7 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
         entity.entity_config.get("csv_account_mappings"),
     )
     allocations = [
-        Posting(account=str(posting["account"]), amount=Decimal(str(posting["amount"])), currency="USD")
+        Posting(account=str(posting["account"]), amount=Decimal(str(posting["amount"])), currency=entity.currency)
         for posting in item.get("split_postings", [])
     ]
     entry = Entry(
@@ -1867,7 +1867,7 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
             ("review-workflow", "split"),
         ),
         tags=(f"import-{session_id}", "reviewed-split"),
-        postings=(Posting(account=bank_account, amount=amount, currency="USD"), *allocations),
+        postings=(Posting(account=bank_account, amount=amount, currency=entity.currency), *allocations),
     )
     existing_opens = _get_existing_opens(entity)
     needed = {bank_account, *(posting.account for posting in allocations)}
@@ -2126,14 +2126,14 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
             flag="*",
             meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta),
             tags=(f"import-{session_id}", "internal-transfer"),
-            postings=(Posting(account=first_account, amount=first_amount, currency="USD"), Posting(account=second_account, amount=-first_amount, currency="USD")),
+            postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=second_account, amount=-first_amount, currency=entity.currency)),
         )]
         needed_accounts = {first_account, second_account}
     else:
         clearing = "Assets:Transfers-Clearing"
         entries = [
-            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency="USD"), Posting(account=clearing, amount=-first_amount, currency="USD"))),
-            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency="USD"), Posting(account=clearing, amount=first_amount, currency="USD"))),
+            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=clearing, amount=-first_amount, currency=entity.currency))),
+            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency=entity.currency), Posting(account=clearing, amount=first_amount, currency=entity.currency))),
         ]
         needed_accounts = {first_account, second_account, clearing}
     existing_opens = _get_existing_opens(entity)
@@ -2331,8 +2331,8 @@ def _write_confirmed_entry(
     if accrual_treatment:
         meta.append(("accrual-treatment", accrual_treatment))
 
-    bank_posting = Posting(account=bank_account, amount=amount, currency="USD")
-    category_posting = Posting(account=category, amount=-amount, currency="USD")
+    bank_posting = Posting(account=bank_account, amount=amount, currency=entity.currency)
+    category_posting = Posting(account=category, amount=-amount, currency=entity.currency)
 
     entry = Entry(
         date=txn_date,
@@ -2879,7 +2879,7 @@ def quarterly_review(
 
             flag_reason = None
             if abs_delta > Decimal("500"):
-                flag_reason = f"changed by {_fmt_amount(abs_delta)}"
+                flag_reason = f"changed by {_fmt_amount(abs_delta, entity.currency)}"
             elif prev != Decimal("0.00"):
                 pct = abs_delta / abs(prev)
                 if pct > Decimal("0.25"):
@@ -2889,7 +2889,7 @@ def quarterly_review(
                 direction = "up" if delta > 0 else "down"
                 variance_flags.append(
                     f"{label}: {direction} {flag_reason} "
-                    f"(was {_fmt_amount(prev)}, now {_fmt_amount(cur)})"
+                    f"(was {_fmt_amount(prev, entity.currency)}, now {_fmt_amount(cur, entity.currency)})"
                 )
 
     # Auto-posted sample: up to 10 entries tagged with 'auto' in the quarter
@@ -2974,8 +2974,9 @@ def quarterly_review(
     return result
 
 
-def _fmt_amount(amount: Decimal) -> str:
-    return f"${amount:,.2f}"
+def _fmt_amount(amount: Decimal, currency: str = "USD") -> str:
+    from .currency import format_money
+    return format_money(amount, currency)
 
 
 def _fmt_pct(pct: Decimal) -> str:

@@ -88,6 +88,21 @@ class OfxStatement:
     ledger_balance_date: str | None
     transactions: list[OfxTransaction]
     in_file_duplicates: int = 0
+    # The currency the file names: CURDEF, or a single per-transaction CURSYM. None when the file names none.
+    declared_currency: str | None = None
+
+
+def statement_currencies(stmt: OfxStatement) -> set[str]:
+    """The currencies a statement names (CURDEF and per-transaction CURSYM). Empty when it names none."""
+    return set(stmt.declared_currency.split(",")) if stmt.declared_currency else set()
+
+
+def transaction_currencies(text: str) -> set[str]:
+    """Every currency the document names, over all its statements."""
+    found: set[str] = set()
+    for stmt in parse_ofx(text):
+        found |= statement_currencies(stmt)
+    return found
 
 
 def looks_like_ofx(text: str) -> bool:
@@ -185,10 +200,9 @@ def parse_ofx(text: str) -> list[OfxStatement]:
 
 
 def _statement(stmt: Node, kind: str, acct_tag: str) -> OfxStatement:
-    currency = stmt.value("CURDEF").upper() or "USD"
-    if currency != "USD":
-        raise StatementFileError("unsupported_currency",
-                                 f"The statement currency is {currency}. Slashbooks books only USD activity.")
+    declared = stmt.value("CURDEF").strip().upper()
+    currency = declared or "USD"
+    named: set[str] = {declared} if declared else set()
     acct = stmt.find(acct_tag)
     if acct is None:
         raise StatementFileError("malformed_ofx", f"The statement has no {acct_tag} account element.")
@@ -212,10 +226,8 @@ def _statement(stmt: Node, kind: str, acct_tag: str) -> OfxStatement:
             if not fitid:
                 raise StatementFileError("malformed_ofx", f"Transaction {index} has no FITID.")
             cur = node.find("CURRENCY")
-            if cur is not None and cur.value("CURSYM").upper() not in {"", "USD"}:
-                raise StatementFileError(
-                    "unsupported_currency",
-                    f"Transaction {fitid} is in {cur.value('CURSYM')}. Slashbooks books only USD activity.")
+            if cur is not None and cur.value("CURSYM").strip():
+                named.add(cur.value("CURSYM").strip().upper())
             name = node.value("NAME")
             payee = node.find("PAYEE")
             if not name and payee is not None:
@@ -257,4 +269,5 @@ def _statement(stmt: Node, kind: str, acct_tag: str) -> OfxStatement:
         ledger_balance_date=balance_date,
         transactions=transactions,
         in_file_duplicates=duplicates,
+        declared_currency=None if not named else (next(iter(named)) if len(named) == 1 else ",".join(sorted(named))),
     )

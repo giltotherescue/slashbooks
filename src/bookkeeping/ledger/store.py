@@ -360,10 +360,15 @@ class LedgerStore:
                      END""",
                 (
                     item.account,
-                    item.currencies[0] if item.currencies else "USD",
+                    item.currencies[0] if item.currencies else self.book_currency(conn),
                     item.date.isoformat(),
                 ),
             )
+
+    def book_currency(self, conn: sqlite3.Connection) -> str:
+        """The company currency recorded in meta (absent means USD, as before)."""
+        row = conn.execute("SELECT value FROM meta WHERE key='currency'").fetchone()
+        return row[0] if row else "USD"
 
     def load_account_names(self, conn: sqlite3.Connection | None = None) -> set[str]:
         """Return account names defined in the canonical account catalog."""

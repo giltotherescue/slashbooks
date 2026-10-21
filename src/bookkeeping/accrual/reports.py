@@ -47,6 +47,12 @@ def default_view(conn):
 basis = default_view  # kept for callers that read the report label
 
 
+def book_currency(conn):
+    """The company currency recorded in the ledger meta (absent means USD)."""
+    row = conn.execute("SELECT value FROM meta WHERE key='currency'").fetchone()
+    return row[0] if row else "USD"
+
+
 def opening_coverage(conn):
     return next((r for r in _records(conn, "coverage") if r.get("id") == "opening"), None)
 
@@ -56,7 +62,7 @@ def coverage_metadata(conn, kind, start, end, view=None):
 
     ``view`` is the view being rendered when it is not the default ("cash" never refuses on tracking start).
     """
-    result = {"basis": default_view(conn), "currency": "USD", "coverage": None,
+    result = {"basis": default_view(conn), "currency": book_currency(conn), "coverage": None,
               "requested_from": start.isoformat() if start else None, "requested_to": end.isoformat(),
               "unresolved_issues": []}
     opening = opening_coverage(conn)
@@ -302,12 +308,13 @@ def _unexplained_message(conn, account, as_of, financial, detail, managed_ids, s
     managed, unexplained = detail, financial - detail
     journals = _plain_journals(conn, account, as_of)
     named = "; ".join(f"journal {j['journal_id']} ({j['date']}, {j['amount']})" for j in journals[:5]) or "an entry with no registered item or schedule"
-    message = (f"{account} has registered items or schedules (supporting detail {managed:.2f} USD) but the ledger balance is "
-               f"{financial:.2f} USD, so {unexplained:.2f} USD is unexplained by supporting detail. Entries that posted to it without an item or schedule: {named}.")
+    book = book_currency(conn)
+    message = (f"{account} has registered items or schedules (supporting detail {managed:.2f} {book}) but the ledger balance is "
+               f"{financial:.2f} {book}, so {unexplained:.2f} {book} is unexplained by supporting detail. Entries that posted to it without an item or schedule: {named}.")
     if stale:
         message = (f"The supporting-detail snapshot {stale['id']} is dated {stale['as_of']} and supports {account} only on that date; "
                    f"the account posted again on {stale['next_posting']}. " + message)
-    request = {"operation_id": "<new-id>", "account": account, "as_of": as_of, "currency": "USD", "mode": "residual",
+    request = {"operation_id": "<new-id>", "account": account, "as_of": as_of, "currency": book, "mode": "residual",
                "managed_support_ids": managed_ids,
                "details": [{"id": "<detail-id>", "balance": f"{unexplained:.2f}", "description": "<what the balance is>"}],
                "evidence_ids": ["<supporting document id returned by books accrual intake>"]}
@@ -352,11 +359,11 @@ def reconciliation(conn, as_of):
         if account not in totals:
             rows.append({"account": account, "ledger_balance": f"{financial:.2f}", "support_balance": None, "difference": None,
                          "status": "ledger_only", "support_required": False,
-                         "note": "Ledger balance, no supporting detail required.", "support_ids": [], "currency": "USD"})
+                         "note": "Ledger balance, no supporting detail required.", "support_ids": [], "currency": book_currency(conn)})
             continue
         row = {"account": account, "ledger_balance": f"{financial:.2f}", "support_balance": f"{detail:.2f}",
                "difference": f"{detail - financial:.2f}", "status": "reconciled" if detail == financial else "unreconciled",
-               "support_required": True, "support_ids": sorted(refs.get(account, [])), "currency": "USD"}
+               "support_required": True, "support_ids": sorted(refs.get(account, [])), "currency": book_currency(conn)}
         if detail != financial:
             row["message"], row["action"] = _unexplained_message(
                 conn, account, as_of, financial, detail, sorted(managed_refs.get(account, [])), stale.get(account))
@@ -400,7 +407,7 @@ def unresolved(conn, as_of):
             for part in installments(row):
                 identity = f"recognition:{row['id']}:{row.get('generation', 0)}:{part['date']}"
                 if part["date"] <= as_of and identity not in allocated:
-                    issues.append({"code": "recognition_due", "message": f"Schedule {row['id']} has unposted recognition on {part['date']} ({part['amount']} USD).", "refs": [row["id"], identity],
+                    issues.append({"code": "recognition_due", "message": f"Schedule {row['id']} has unposted recognition on {part['date']} ({part['amount']} {row.get('currency', 'USD')}).", "refs": [row["id"], identity],
                                    "action": f"Run books accrual schedule due-preview --entity {_entity_arg(conn)} --through {as_of}, review it, then books accrual schedule due-apply --entity {_entity_arg(conn)} --input <saved preview>."})
         except ValueError as exc:
             issues.append({"code": "schedule_incomplete", "message": f"Schedule {row['id']}: {exc}", "refs": [row["id"]],
@@ -491,7 +498,7 @@ AGING_BUCKETS = {
 }
 
 
-def aging(items, as_of):
+def aging(items, as_of, currency="USD"):
     """Age supported open balances by explicit due date, never the cutover date.
 
     Credits remain separately identified and are not automatically allocated or
@@ -502,8 +509,8 @@ def aging(items, as_of):
     for item in items:
         if item.get("kind") not in {"receivable", "payable", "credit"}:
             continue
-        if item.get("currency") != "USD":
-            raise ValueError("Aging supports USD balances only; foreign currencies cannot be combined.")
+        if item.get("currency") != currency:
+            raise ValueError(f"Aging supports {currency} balances only; foreign currencies cannot be combined.")
         remaining = Decimal(normalize_amount(item["remaining_amount"]))
         if remaining < 0:
             raise ValueError("Aging requires nonnegative remaining item balances.")
@@ -532,7 +539,7 @@ def aging(items, as_of):
         rows.append(row)
         key = (item["kind"], item["account"], counterparty)
         group = groups.setdefault(key, {"kind": item["kind"], "account": item["account"],
-            "counterparty": counterparty, "currency": "USD", "item_count": 0,
+            "counterparty": counterparty, "currency": currency, "item_count": 0,
             "buckets": {name: Decimal(0) for name in AGING_BUCKETS}, "total": Decimal(0)})
         group["buckets"][bucket] += amount
         group["total"] += amount
@@ -591,7 +598,7 @@ def report(entity, kind, *, as_of=None, from_date=None, to_date=None):
         snapshot = support_snapshot(conn, end)
         extra = {}
         if kind == "aging":
-            rows, summary = aging(snapshot["items"], end)
+            rows, summary = aging(snapshot["items"], end, book_currency(conn))
             extra = {"summary": summary, "bucket_labels": dict(AGING_BUCKETS),
                      "aging_basis": "due_date", "credits_netted": False,
                      "totals": aging_totals(rows)}
@@ -631,8 +638,8 @@ def _support_effect(entity, payload):
     account = request.get("account")
     if account not in store.load_account_names() or not account.startswith(("Assets:", "Liabilities:")) or account.startswith(("Assets:Bank:", "Assets:Cash:")):
         raise ValueError("External support requires a mapped non-bank asset or liability control account.")
-    if request.get("currency") != "USD":
-        raise ValueError("External support currency must be USD.")
+    if request.get("currency") != entity.currency:
+        raise ValueError(f"External support currency must be {entity.currency}.")
     ids = request.get("evidence_ids")
     if not isinstance(ids, list) or not ids:
         raise ValueError("External support requires a canonical source supporting document.")
@@ -668,14 +675,14 @@ def _support_effect(entity, payload):
     if not managed_ids and request.get("managed_support_ids"):
         raise ValueError("External support names absent or settled managed balances.")
     if total + managed != financial:
-        raise ValueError(f"External support does not reconcile: ledger {financial:.2f}, managed {managed:.2f}, external {total:.2f}, difference {total + managed - financial:.2f} USD.")
+        raise ValueError(f"External support does not reconcile: ledger {financial:.2f}, managed {managed:.2f}, external {total:.2f}, difference {total + managed - financial:.2f} {entity.currency}.")
     previous_ids = sorted(r["id"] for r in previous)
     if request.get("supersedes") and request["supersedes"] not in previous_ids:
         raise ValueError("External support supersedes a stale or unrelated snapshot.")
     request.update(operation_id=operation_id, as_of=when.isoformat(), evidence_ids=sorted(ids), mode=mode, managed_support_ids=managed_ids)
     identity = "external-support:" + operation_id
     record = {"id": identity, "kind": "external_support_snapshot", "account": account, "as_of": when.isoformat(),
-              "balance": f"{total:.2f}", "currency": "USD", "details": details, "evidence_ids": sorted(ids),
+              "balance": f"{total:.2f}", "currency": entity.currency, "details": details, "evidence_ids": sorted(ids),
               "supersedes": previous_ids, "operation_id": operation_id}
     record.update(snapshot_revision=(latest.get("snapshot_revision", 0) + 1) if latest else 1,
                   mode=mode, managed_balance=f"{managed:.2f}", managed_support_ids=managed_ids)

@@ -539,10 +539,16 @@ def add_account(
     entity_path: Path,
     account: str,
     open_date: str = "",
-    currency: str = "USD",
+    currency: str | None = None,
 ) -> dict[str, str]:
-    """Add an account to the SQLite account catalog for an existing entity."""
+    """Add an account to the SQLite account catalog for an existing entity.
+
+    The currency defaults to the company currency (USD unless entity.json says otherwise).
+    """
     entity = load_entity(entity_path)
+    if currency is None:
+        from .currency import company_currency
+        currency = company_currency(entity.entity_config)
     normalized_open_date = _normalize_optional_date(open_date) or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat()
 
     from .ledger.model import Open
@@ -1004,6 +1010,12 @@ class Entity:
         return self.path / "reports"
 
     @property
+    def currency(self) -> str:
+        """The one currency the company keeps its books in (USD unless entity.json says otherwise)."""
+        from .currency import company_currency
+        return company_currency(self.entity_config)
+
+    @property
     def name(self) -> str:
         return str(self.entity_config.get("name", ""))
 
@@ -1107,7 +1119,7 @@ def add_parser(subparsers: Any) -> None:
         default="",
         help="Account open date in YYYY-MM-DD format; defaults to the starter catalog date",
     )
-    add_account_parser.add_argument("--currency", default="USD", help="Currency, default USD")
+    add_account_parser.add_argument("--currency", default=None, help="Currency, default the company currency (USD unless set)")
 
     set_view_parser = entity_sub.add_parser(
         "set-view",
@@ -1149,6 +1161,22 @@ def add_parser(subparsers: Any) -> None:
                                 help="The kind of business entity")
     profile_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     profile_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+
+    currency_parser = entity_sub.add_parser(
+        "set-currency",
+        help="Set the one currency the company keeps its books in (person-only; only while the company has no entries). Previews unless --apply is given",
+    )
+    currency_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    currency_parser.add_argument("--currency", required=True, help="ISO 4217 code, such as USD, EUR, GBP or CAD")
+    currency_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    currency_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+
+    infer_parser = entity_sub.add_parser(
+        "infer-currency",
+        help="Propose a company currency from files (OFX, bank CSV, Stripe, QuickBooks or BankSync JSON). Reads only; writes nothing",
+    )
+    infer_parser.add_argument("--input", action="append", type=Path, required=True,
+                              help="A file to read; repeat for more files")
 
     map_parser = entity_sub.add_parser(
         "bank-account-map",
@@ -1311,6 +1339,29 @@ def run(args: Any) -> int:
             print(json.dumps(result, sort_keys=True, indent=2))
             return 1
         print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+
+    if args.entity_command == "set-currency":
+        target = _resolve_target(args.path)
+        try:
+            from . import currency as currency_mod
+            entity = load_entity(target)
+            if args.apply:
+                result = currency_mod.apply_set_currency(entity, args.currency, args.plan_hash)
+            else:
+                result = currency_mod.preview_set_currency(entity, args.currency)
+        except (FileNotFoundError, ValueError) as exc:
+            result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            if hasattr(exc, "as_dict") and "errors" not in result:
+                result = {"status": "blocked", "errors": [result]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+
+    if args.entity_command == "infer-currency":
+        from . import currency as currency_mod
+        print(json.dumps(currency_mod.infer_from_files(args.input), sort_keys=True, indent=2))
         return 0
 
     if args.entity_command == "bank-account-map":

@@ -21,8 +21,12 @@ Supported files:
   statement in the file is read with its `FITID` values, statement period and
   ledger balance.
 
-Slashbooks books only USD activity. A file with another currency stops with
-the error code `unsupported_currency`.
+Each company keeps its books in one currency (`currency` in `entity.json`, USD
+when absent). A file in another currency, or a file with amounts in more than one
+currency, stops with the error code `unsupported_currency`. The message names
+both currencies. A company with no entries yet takes the currency of its first
+file that names one. Slashbooks does not convert currencies. See
+[company currency](company-currency.md).
 
 ### 1. Inspect the file
 
@@ -283,8 +287,8 @@ not the hosted service's integer `books_revision`.
 
 A check is `not_checkable` with a `detail_code`, and never a guess:
 
-- `foreign_currency`: the statement is not USD. The money checks stop; `count`
-  still runs.
+- `foreign_currency`: the statement is not in the company currency. The money
+  checks stop; `count` still runs.
 - `no_balances`: the file has no opening or closing balance. `count`, `debits`
   and `credits` still run. Most CSV files are like this, so their status is
   `partial`.

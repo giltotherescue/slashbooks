@@ -785,7 +785,7 @@ def _draft(entity: Entity, rule: Mapping[str, Any], facts: Mapping[str, Any]) ->
         derived(field, value, names, subtype.replace("_", " "))
 
     if scheduled:
-        request.update(kind=treatment, currency="USD", amount=facts["amount"])
+        request.update(kind=treatment, currency=entity.currency, amount=facts["amount"])
         recognition_root = "Income:" if treatment == "deferred" else "Expenses:"
         control_subtype = {"prepaid": "prepaid", "deferred": "deferred_revenue", "depreciation": "fixed_asset"}[treatment]
         if accounts:
@@ -845,7 +845,7 @@ def _draft(entity: Entity, rule: Mapping[str, Any], facts: Mapping[str, Any]) ->
             request["reference"] = facts.get("reference") or facts["counterparty"]
         command = "books accrual schedule preview --entity PATH --input FILE"
     else:
-        request.update(kind=_ITEM_KIND[treatment], currency="USD", original_amount=facts["amount"])
+        request.update(kind=_ITEM_KIND[treatment], currency=entity.currency, original_amount=facts["amount"])
         subtype = {"bill": "payable", "invoice": "receivable", "estimate": "accrued_liabilities"}[treatment]
         if accounts:
             request["account"], counter = accounts["account"], accounts["recognition_account"]

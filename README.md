@@ -70,7 +70,7 @@ choose internal record IDs or prepare accounting input files. See the
 ## Status
 
 Slashbooks is beta software. Cash basis is the default. Accrual is opt-in and covers
-one company, in USD, for services and SaaS businesses; see
+one company, in one currency, for services and SaaS businesses; see
 [accrual bookkeeping](docs/accrual.md). Accrual books can show a cash-basis profit and
 loss derived from the accrual records (`books report pnl --basis cash`); read bank
 movements from the general ledger.
@@ -96,6 +96,7 @@ To use Slashbooks for a company, read:
 - [Connectors](docs/connectors.md)
 - [BankSync setup](docs/banksync.md)
 - [CSV, QuickBooks, and file imports](docs/imports.md)
+- [Company currency](docs/company-currency.md)
 - [QuickBooks Online API reference sync and opening review](docs/quickbooks-sync.md)
 - [Work events](docs/work-events.md)
 - [Caller controls for connected agents](docs/agent-controls.md)

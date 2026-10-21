@@ -82,6 +82,7 @@ from typing import Any
 
 from .connectors import bankcsv, ofx
 from .connectors.bankcsv import StatementFileError
+from . import currency as currency_mod
 from .ledger.normalize import normalize_description
 from .tieout import presentation_sign, statement_tieout
 from .source_ids import same_family, source_family, source_id_variants
@@ -194,11 +195,14 @@ def inspect_file(path: Path, *, entity_config: JsonObject | None = None,
     path = Path(path)
     config = entity_config or {}
     profiles = _profiles(config)
+    company = currency_mod.company_currency(config)
     try:
         fmt, text = _load(path)
         result: JsonObject = {"file": path.name, "sha256": _file_sha256(path), "format": fmt}
         if fmt == "ofx":
             statements = ofx.parse_ofx(text)
+            named = set().union(*(ofx.statement_currencies(s) for s in statements)) if statements else set()
+            _currency_view(result, named, company, config)
             accounts = [_ofx_summary(s, profiles) for s in statements]
             result["accounts"] = accounts
             result["row_count"] = sum(a["transaction_count"] for a in accounts)
@@ -221,11 +225,13 @@ def inspect_file(path: Path, *, entity_config: JsonObject | None = None,
             kind = _kind(saved.get("ledger_account"))
             try:
                 rows, _ = bankcsv.read_rows(text)
-                parsed = bankcsv.parse_rows(rows, layout, kind=kind)
+                named = bankcsv.file_currencies(text, layout)
+                _currency_view(result, named, company, config)
+                parsed = bankcsv.parse_rows(rows, layout, kind=kind, currency=_single(named) or company)
             except StatementFileError as exc:
                 if exc.code != "layout_changed":
                     raise
-                detected = bankcsv.detect_layout(text, kind=kind)
+                detected = bankcsv.detect_layout(text, kind=kind, default_currency=company)
                 result.update(status="needs_mapping", reason=exc.as_dict(), **_detection_view(detected))
                 return result
             result.update(
@@ -237,7 +243,8 @@ def inspect_file(path: Path, *, entity_config: JsonObject | None = None,
                 next_step=f"books statement import FILE --entity ENTITY --profile {profile}")
             return result
 
-        detected = bankcsv.detect_layout(text, kind=_kind(ledger_account))
+        detected = bankcsv.detect_layout(text, kind=_kind(ledger_account), default_currency=company)
+        _currency_view(result, {detected["layout"]["currency"]}, company, config)
         result.update(_detection_view(detected))
         if detected["uncertain"]:
             result["status"] = "needs_mapping"
@@ -252,8 +259,28 @@ def inspect_file(path: Path, *, entity_config: JsonObject | None = None,
                                    "books statement map FILE --entity ENTITY --profile NAME "
                                    "--ledger-account ACCOUNT")
         return result
-    except (StatementFileError, StatementImportError) as exc:
+    except (StatementFileError, StatementImportError, currency_mod.CurrencyError) as exc:
         return {"file": path.name, "status": "error", "error": exc.as_dict()}
+
+
+def _single(named: set[str]) -> str | None:
+    if len(named) > 1:
+        raise bankcsv._mixed_error(named)
+    return next(iter(named)) if named else None
+
+
+def _currency_view(result: JsonObject, named: set[str], company: str, config: JsonObject) -> None:
+    """Say how a file's currency relates to the company currency. Adds nothing when they match."""
+    code = _single(named)
+    if code is None or code == company:
+        return
+    if currency_mod.currency_source(config) == "set":
+        raise currency_mod.mismatch_error(company, code, "file", source_set=True)
+    result["currency"] = {
+        "file": code, "company": company,
+        "note": (f"The file is in {code}. If the company has no entries yet, the import makes {code} the company "
+                 f"currency. If the company already has entries in {company}, the import refuses. "
+                 "Slashbooks does not convert currencies.")}
 
 
 def _detection_view(detected: JsonObject) -> JsonObject:
@@ -390,7 +417,8 @@ def save_profile(entity_path: Path, path: Path, *, name: str, ledger_account: st
             if fmt == "ofx":
                 spec, label = _ofx_spec(text, ofx_account, overrides, name, entity.entity_config)
             else:
-                detected = bankcsv.detect_layout(text, kind=_kind(ledger_account))
+                detected = bankcsv.detect_layout(text, kind=_kind(ledger_account),
+                                                 default_currency=currency_mod.company_currency(entity.entity_config))
                 missing = _unresolved(detected["uncertain"], overrides)
                 if missing:
                     raise StatementImportError(
@@ -443,7 +471,8 @@ def _ofx_spec(text: str, ofx_account: str | None, overrides: JsonObject, name: s
         raise StatementImportError("invalid_sign", "OFX profiles accept only standard or inverted signs.")
     spec = {"format": "ofx", "account_identity": stmt.account_identity, "account_kind": stmt.kind,
             "account_type": stmt.account_type, "institution": stmt.institution,
-            "account_last4": stmt.account_last4, "sign": sign, "currency": "USD"}
+            "account_last4": stmt.account_last4, "sign": sign,
+            "currency": _single(ofx.statement_currencies(stmt)) or currency_mod.company_currency(config)}
     label = f"{'Card' if stmt.kind == 'creditcard' else 'Account'} ending {stmt.account_last4}"
     return spec, label
 
@@ -465,7 +494,7 @@ def _hash(*parts: str) -> str:
 
 def _txn(*, txn_id: str, day: str, description: str, original: str, amount: Decimal,
          reference: str, profile_name: str, profile: JsonObject, last4: str | None,
-         statement_id: str, bank_id: str, extra: JsonObject | None = None) -> JsonObject:
+         statement_id: str, bank_id: str, extra: JsonObject | None = None, currency: str = "USD") -> JsonObject:
     ledger_account = profile["ledger_account"]
     account_type = "checking" if ledger_account.startswith("Assets:") else "credit_card"
     txn = {
@@ -476,7 +505,7 @@ def _txn(*, txn_id: str, day: str, description: str, original: str, amount: Deci
         "amount": format(amount, "f"),
         "creditAmount": format(amount, "f") if amount > 0 else None,
         "debitAmount": format(-amount, "f") if amount < 0 else None,
-        "currency": "USD",
+        "currency": currency,
         "category": None,
         "type": account_type,
         "accountType": account_type,
@@ -499,11 +528,14 @@ def _statement_id(mapping_key: str, file_sha: str, identity: str = "") -> str:
     return "st-" + _hash(mapping_key, file_sha, identity)[:16]
 
 
-def _csv_statement(path: Path, text: str, file_sha: str, name: str, profile: JsonObject) -> JsonObject:
+def _csv_statement(path: Path, text: str, file_sha: str, name: str, profile: JsonObject,
+                   company: str = "USD") -> JsonObject:
     layout = profile["statement_profile"]
     kind = _kind(profile["ledger_account"])
     rows, _ = bankcsv.read_rows(text)
-    parsed = bankcsv.parse_rows(rows, layout, kind=kind)
+    named = bankcsv.file_currencies(text, layout)
+    currency = _single(named) or company
+    parsed = bankcsv.parse_rows(rows, layout, kind=kind, currency=currency)
     statement_id = _statement_id(MAPPING_PREFIX + name, file_sha)
     occurrences: Counter[tuple] = Counter()
     txns = []
@@ -520,7 +552,7 @@ def _csv_statement(path: Path, text: str, file_sha: str, name: str, profile: Jso
         txns.append(_txn(txn_id=txn_id, day=row.date, description=row.description, original=original,
                          amount=row.amount, reference=row.reference, profile_name=name,
                          profile=profile, last4=None, statement_id=statement_id,
-                         bank_id="statement-csv"))
+                         bank_id="statement-csv", currency=currency))
     warnings = list(parsed.warnings)
     if identical_groups:
         warnings.append(f"{identical_groups} group(s) of identical rows were kept as separate "
@@ -531,12 +563,15 @@ def _csv_statement(path: Path, text: str, file_sha: str, name: str, profile: Jso
         "pending_rows": parsed.pending_rows, "non_transaction_rows": len(parsed.non_transaction_rows),
         "in_file_duplicates": 0, "identical_row_groups": identical_groups, "warnings": warnings,
         "account": {"identity": None, "institution": None, "account_type": None, "account_last4": None},
-        "metadata": meta,
+        "metadata": meta, "currency": currency, "named_currencies": sorted(named),
     }
 
 
-def _ofx_statement(stmt: ofx.OfxStatement, file_sha: str, name: str, profile: JsonObject) -> JsonObject:
+def _ofx_statement(stmt: ofx.OfxStatement, file_sha: str, name: str, profile: JsonObject,
+                   company: str = "USD") -> JsonObject:
     spec = profile["statement_profile"]
+    named = ofx.statement_currencies(stmt)
+    currency = _single(named) or company
     factor = -1 if spec.get("sign") == "inverted" else 1
     statement_id = _statement_id(MAPPING_PREFIX + name, file_sha, stmt.account_identity)
     txns = []
@@ -548,7 +583,7 @@ def _ofx_statement(stmt: ofx.OfxStatement, file_sha: str, name: str, profile: Js
             description=description, original=original, amount=factor * t.amount,
             reference=t.reference or t.fitid, profile_name=name, profile=profile,
             last4=stmt.account_last4, statement_id=statement_id, bank_id="statement-ofx",
-            extra={"fitid": t.fitid, "ofxType": t.trntype}))
+            extra={"fitid": t.fitid, "ofxType": t.trntype}, currency=currency))
     dates = sorted(t["date"] for t in txns)
     balance = factor * stmt.ledger_balance if stmt.ledger_balance is not None else None
     period_start = stmt.period_start or (dates[0] if dates else None)
@@ -589,7 +624,7 @@ def _ofx_statement(stmt: ofx.OfxStatement, file_sha: str, name: str, profile: Js
         "identical_row_groups": 0, "warnings": warnings,
         "account": {"identity": stmt.account_identity, "institution": stmt.institution,
                     "account_type": stmt.account_type, "account_last4": stmt.account_last4},
-        "metadata": meta,
+        "metadata": meta, "currency": currency, "named_currencies": sorted(named),
     }
 
 
@@ -944,7 +979,7 @@ def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, la
         "last_transaction_date": dates[-1] if dates else None,
         "transactions_total": format(total, "f"),
         "transaction_count": len(statement["transactions"]),
-        "currency": "USD",
+        "currency": statement.get("currency", "USD"),
         "tieout": tie,
     }
     if fmt == "ofx":
@@ -1037,6 +1072,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     path = Path(path)
     entity = load_entity(entity_path)
     profiles = _profiles(entity.entity_config)
+    company = currency_mod.company_currency(entity.entity_config)
     fmt, text = _load(path)
     file_sha = _file_sha256(path)
     confirmed_period = None
@@ -1059,7 +1095,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                 if name is None:
                     unmapped.append(_ofx_summary(stmt, profiles))
                 else:
-                    selected.append(_ofx_statement(stmt, file_sha, name, profiles[name]))
+                    selected.append(_ofx_statement(stmt, file_sha, name, profiles[name], company))
             if profile and not selected:
                 raise StatementImportError("profile_not_in_file",
                                            f"The file has no account for profile '{profile}'.")
@@ -1081,8 +1117,16 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             if profiles[profile]["statement_profile"].get("format") != "csv":
                 raise StatementImportError("profile_format_mismatch",
                                            f"Profile '{profile}' is for OFX files, and this file is a CSV.")
-            selected = [_csv_statement(path, text, file_sha, profile, profiles[profile])]
-    except StatementFileError as exc:
+            selected = [_csv_statement(path, text, file_sha, profile, profiles[profile], company)]
+        # One company, one currency: the file's currency must be the company currency, or a company with
+        # no entries adopts it (books entity set-currency explains). Nothing converts.
+        named = {code for statement in selected for code in statement["named_currencies"]}
+        resolved = currency_mod.resolve_import_currency(entity, named, "statement file", adopt=not dry_run)
+        for statement in selected:
+            statement["currency"] = resolved
+            for txn in statement["transactions"]:
+                txn["currency"] = resolved
+    except (StatementFileError, currency_mod.CurrencyError) as exc:
         status = "needs_mapping" if exc.code == "layout_changed" else "error"
         return {"status": status, "file": path.name, "error": exc.as_dict()}
     if (confirmed_period or any(b is not None for b in balances)) and len(selected) != 1:

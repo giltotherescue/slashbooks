@@ -5,7 +5,9 @@ It reads the ledger and an explicit assumption file. It does not post entries,
 predict sales, extrapolate a P&L, or verify a bank balance.
 
 The baseline is **recorded cash as of** the supplied date: all recorded postings
-through that date in the selected USD bank/cash accounts. Transfers between
+through that date in the selected bank/cash accounts in the company currency
+(`"currency"` in the assumptions must be the company currency; USD unless
+`entity.json` sets another). Transfers between
 selected accounts net to zero. Future-dated ledger entries are excluded and
 flagged. Missing opening balances, unimported activity and incomplete
 reconciliation can change that baseline. Selecting an account does not prove its

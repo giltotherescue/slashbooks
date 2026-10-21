@@ -41,13 +41,15 @@ def _account(store, value: Any, field: str, roots: tuple[str, ...] = (), purpose
         raise JournalError("wrong_account_direction", f"{field} {account} must be {wanted} account ({'/'.join(roots)}...)"
                            + (f" because {purpose}." if purpose else "."),
                            f"Set {field} to an existing {'/'.join(roots)} account.")
-    if catalog[account].currencies and catalog[account].currencies != ("USD",):
-        raise JournalError("unsupported_currency", f"{account} is not a USD account.")
+    book = store.get_meta("currency") or "USD"
+    if catalog[account].currencies and catalog[account].currencies != (book,):
+        raise JournalError("unsupported_currency", f"{account} is not a {book} account.")
     return account
 
 
-def _entry(when: date, source_id: str, description: str, postings: list[tuple[str, Decimal]], **meta: str) -> Entry:
-    return Entry(when, description, postings=tuple(Posting(a, n, "USD") for a, n in postings if n),
+def _entry(when: date, source_id: str, description: str, postings: list[tuple[str, Decimal]],
+           currency: str = "USD", **meta: str) -> Entry:
+    return Entry(when, description, postings=tuple(Posting(a, n, currency) for a, n in postings if n),
                  meta=(("source-id", source_id), *((k.replace("_", "-"), v) for k, v in meta.items())))
 
 
@@ -239,7 +241,8 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
                                    f"The staged row is {staged.get('id')}; use that source_id for the funding source.",
                                    f"Use source_id {staged.get('id')} and create a new preview.")
         return [_entry(when, source_id, _funding_narration(record),
-                       [(account, sign * amount), (bank, -sign * amount)], schedule_id=record["id"])]
+                       [(account, sign * amount), (bank, -sign * amount)], currency=record.get("currency", "USD"),
+                       schedule_id=record["id"])]
     original = _find_live_entry(store, source_id)
     # The posted payment date is when the control balance starts, whatever the service dates are.
     when = when or original.date
@@ -257,8 +260,9 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
     prior = [s for s in list_records(store, "schedules") if s.get("origin", {}).get("source_id") == source_id]
     if prior:
         raise JournalError("duplicate_origin", "This payment already funds a schedule; use a reviewed change.")
-    if len(original.postings) != 2 or any(p.currency != "USD" for p in original.postings):
-        raise JournalError("ambiguous_origin", "Existing funding needs an exact two-posting USD payment linkage.")
+    book = entity.currency
+    if len(original.postings) != 2 or any(p.currency != book for p in original.postings):
+        raise JournalError("ambiguous_origin", f"Existing funding needs an exact two-posting {book} payment linkage.")
     control = [p for p in original.postings if p.account == account and p.amount == sign * amount]
     if control:
         return []
@@ -268,7 +272,7 @@ def _origin_effect(entity: Entity, record: dict[str, Any], operation_id: str) ->
     if len(matched) != 1:
         raise JournalError("origin_amount_mismatch", "The existing payment's category amount does not match this schedule.")
     return [_entry(when, "schedule:" + operation_id + ":reclass", _reclass_narration(record),
-                   [(account, sign * amount), (old_account, -sign * amount)],
+                   [(account, sign * amount), (old_account, -sign * amount)], currency=record.get("currency", "USD"),
                    schedule_id=record["id"], origin_source_id=source_id)]
 
 
@@ -300,8 +304,9 @@ def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
         request["reference"] = _text(request["reference"], "reference")
     store = _store(entity)
     kind = request.get("kind")
-    if kind not in KINDS or request.get("currency", "USD") != "USD":
-        raise JournalError("invalid_schedule", "Schedules support kind prepaid, deferred or depreciation in USD.")
+    book = entity.currency
+    if kind not in KINDS or request.get("currency", book) != book:
+        raise JournalError("invalid_schedule", f"Schedules support kind prepaid, deferred or depreciation in {book}.")
     start, end = _day(request.get("service_start"), "service_start"), _day(request.get("service_end"), "service_end")
     method = request.get("method")
     recognition_start = _day(request.get("recognition_start", start.isoformat()), "recognition_start") if method in METHODS else start
@@ -350,7 +355,7 @@ def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("evidence_required", "New schedule funding requires a stored supporting document.")
     _supporting_period_check(_evidence(store, ids), start, end)
     request.update(operation_id=operation_id, id=schedule_id, kind=kind, account=account,
-                   recognition_account=recognition_account, currency="USD", amount=f"{amount:.2f}",
+                   recognition_account=recognition_account, currency=book, amount=f"{amount:.2f}",
                    recognized_amount=f"{recognized:.2f}", recognition_start=recognition_start.isoformat(), evidence_ids=ids)
     record = {key: deepcopy(value) for key, value in request.items() if key != "operation_id"}
     record.update(remaining_amount=f"{base - recognized:.2f}", base_remaining_amount=f"{base - recognized:.2f}",
@@ -460,7 +465,8 @@ def _recognition_entry(record: Mapping[str, Any], allocation_id: str, installmen
     amount, sign = _money(installment["amount"]), _normal_sign(record)
     source_id = "schedule:" + allocation_id
     entry = _entry(_day(installment["date"], "recognition date"), source_id, _recognition_narration(record, installment["date"]),
-                   [(record["recognition_account"], sign * amount), (_credit_account(record), -sign * amount)], schedule_id=record["id"])
+                   [(record["recognition_account"], sign * amount), (_credit_account(record), -sign * amount)],
+                   currency=record.get("currency", "USD"), schedule_id=record["id"])
     allocation = {"id": allocation_id, "kind": "recognition", "schedule_id": record["id"], **installment,
                   "source_id": source_id, "generation": generation, "evidence_ids": record.get("evidence_ids", [])}
     return entry, allocation
@@ -569,7 +575,8 @@ def _terminate(store, record: dict[str, Any], changed: dict[str, Any], request: 
         if offset == record["account"]:
             raise JournalError("invalid_offset", "Offset and control accounts must differ.")
         entries.append(_entry(when, "schedule:" + operation_id + ":terminate", "Ended early: " + _item_ref(record),
-                              [(record["account"], -sign * unearned), (offset, sign * unearned)], schedule_id=record["id"]))
+                              [(record["account"], -sign * unearned), (offset, sign * unearned)],
+                              currency=record.get("currency", "USD"), schedule_id=record["id"]))
     elif request.get("offset_account"):
         raise JournalError("offset_not_allowed", "Nothing is left unearned at effective_date, so offset_account is not allowed.", "Remove offset_account.")
     allocation_id = "schedule-change:" + operation_id
@@ -697,7 +704,7 @@ def _change_effect(entity: Entity, payload: Mapping[str, Any]):
             postings.append((recognized_account, -sign * recognized_refund))
         if amount:
             entries.append(_entry(when, "schedule:" + operation_id + ":" + action,
-                {"cancel": "Cancelled", "refund": "Refund"}.get(action, "Balance released") + ": " + _item_ref(record), postings, schedule_id=schedule_id))
+                {"cancel": "Cancelled", "refund": "Refund"}.get(action, "Balance released") + ": " + _item_ref(record), postings, currency=record.get("currency", "USD"), schedule_id=schedule_id))
         changed["remaining_amount"] = f"{remaining - remaining_refund:.2f}"
         changed["refunded_amount" if action == "refund" else "terminated_amount"] = f"{_money(changed.get('refunded_amount' if action == 'refund' else 'terminated_amount', '0.00'), positive=False) + remaining_refund:.2f}"
         changed["recognized_refund_amount"] = f"{previously_recognized_refund + recognized_refund:.2f}"

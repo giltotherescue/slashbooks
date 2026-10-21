@@ -39,8 +39,9 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
     operation_id, item_id = _id(request.get("operation_id")), _id(request.get("id"))
     store = _store(entity)
     kind = request.get("kind")
-    if kind not in {"receivable", "payable", "accrual", "credit"} or request.get("currency", "USD") != "USD":
-        raise JournalError("invalid_item", "Outstanding items support receivable, payable, accrual, or credit in USD.")
+    book = entity.currency
+    if kind not in {"receivable", "payable", "accrual", "credit"} or request.get("currency", book) != book:
+        raise JournalError("invalid_item", f"Outstanding items support receivable, payable, accrual, or credit in {book}.")
     if kind != "credit" and "direction" in request:
         raise JournalError("invalid_direction", "Only a credit item accepts an explicit debit/credit direction.")
     roots = ("Assets:",) if kind == "receivable" else ("Liabilities:",) if kind == "payable" else ("Assets:", "Liabilities:")
@@ -65,7 +66,7 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
         raise JournalError("evidence_required", "A new outstanding balance requires stored supporting documents or an estimate basis.",
                            "Set `evidence_ids` to stored supporting document IDs, or set `estimate_basis` to a short text that explains the estimate.")
     request.update(operation_id=operation_id, id=item_id, account=account, original_amount=f"{amount:.2f}",
-                   currency="USD", evidence_ids=ids)
+                   currency=book, evidence_ids=ids)
     lines = None
     if "lines" in origin:
         if "counter_account" in origin or origin["mode"] != "new":
@@ -105,7 +106,7 @@ def _item_effect(entity: Entity, payload: Mapping[str, Any]):
         meta = {"estimate_basis": request["estimate_basis"]} if "estimate_basis" in request else {}
         entries.append(_entry(when, "accrual:" + operation_id, _origin_narration(record),
                               [(account, sign * amount), *[(c, -sign * n) for c, n in lines]], item_id=item_id,
-                              origin_source_id=origin["source_id"], **meta))
+                              origin_source_id=origin["source_id"], **meta, currency=entity.currency))
     else:
         original = _find_live_entry(store, origin["source_id"])
         if original.date > when:
@@ -317,7 +318,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         direction = "credit" if cash > 0 else "debit"
         counterparties.add(who)
         refs.append(_human(excess.get("reference")) or "unapplied credit")
-        credit = {"id": excess["id"], "kind": "credit", "account": excess["account"], "currency": "USD",
+        credit = {"id": excess["id"], "kind": "credit", "account": excess["account"], "currency": entity.currency,
                   "original_amount": f"{abs(excess_cash):.2f}", "as_of": when.isoformat(), "direction": direction,
                   "counterparty": who, "origin": {"mode": source["mode"], "source_id": source_id}, "evidence_ids": ids,
                   "remaining_amount": f"{abs(excess_cash):.2f}", "base_remaining_amount": f"{abs(excess_cash):.2f}",
@@ -337,12 +338,12 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         if total + excess_cash != cash:
             raise JournalError("unallocated_payment", "A new payment must be fully allocated or its remainder recorded as a credit.",
                                "Add excess {id, account, counterparty} to the settlement request to record the remainder as an open customer or supplier credit, or raise the allocation amounts.")
-        entries.append(_entry(when, source_id, _payment_narration(cash, counterparties, refs), [(bank, cash), *control_postings], settlement_id=operation_id))
+        entries.append(_entry(when, source_id, _payment_narration(cash, counterparties, refs), [(bank, cash), *control_postings], settlement_id=operation_id, currency=entity.currency))
     else:
         original = _find_live_entry(store, source_id)
         if original.date != when or len(original.postings) != 2:
             raise JournalError("ambiguous_payment", "Existing settlement needs the exact date and a two-posting source.")
-        bank_postings = [p for p in original.postings if p.account == bank and p.amount == cash and p.currency == "USD"]
+        bank_postings = [p for p in original.postings if p.account == bank and p.amount == cash and p.currency == entity.currency]
         if len(bank_postings) != 1:
             raise JournalError("payment_mismatch", "Bank account or amount differs from the original payment.")
         other = next(p for p in original.postings if p.account != bank)
@@ -359,7 +360,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
             if not other.account.startswith(expected_root):
                 raise JournalError("ambiguous_existing_treatment", "Existing payment is neither the exact control settlement nor a simple cash income/expense needing reclassification.")
             entries.append(_entry(when, "settlement:" + operation_id + ":reclass", "Reclassified: " + _payment_narration(cash, counterparties, refs),
-                                  [(other.account, total + excess_cash), *control_postings], origin_source_id=source_id, settlement_id=operation_id))
+                                  [(other.account, total + excess_cash), *control_postings], origin_source_id=source_id, settlement_id=operation_id, currency=entity.currency))
     return request, entries, mutations, None
 
 
@@ -431,7 +432,7 @@ def _adjustment_effect(entity: Entity, payload: Mapping[str, Any]):
     label = {"credit": "Credit issued", "writeoff": "Written off", "true_up": "Estimate settled"}[action]
     detail = _item_ref(item) + (" (actual: " + _item_ref(actual) + ")" if actual else "") + " - " + _human(reason)
     entry = _entry(when, "adjustment:" + operation_id, label + ": " + detail,
-                   [(item["account"], -sign * amount), (counter, sign * amount)], item_id=item_id, origin_source_id=source_id)
+                   [(item["account"], -sign * amount), (counter, sign * amount)], item_id=item_id, origin_source_id=source_id, currency=entity.currency)
     changed = {**item, "base_remaining_amount": item.get("base_remaining_amount", item["remaining_amount"]),
                "remaining_amount": f"{remaining - amount:.2f}", "status": "settled" if amount == remaining else "open"}
     allocation_id = "adjustment:" + source_id
@@ -511,7 +512,7 @@ def _offset_effect(entity: Entity, payload: Mapping[str, Any]):
         entries.append(_entry(when, "offset:" + operation_id,
                               _offset_narration(credit, target),
                               [(target["account"], -sign * amount), (credit["account"], sign * amount)],
-                              item_id=target_id, credit_item_id=credit_id))
+                              item_id=target_id, credit_item_id=credit_id, currency=entity.currency))
     mutations = []
     for item, role, other in ((credit, "credit", target_id), (target, "target", credit_id)):
         remaining = _remaining(item, allocations)

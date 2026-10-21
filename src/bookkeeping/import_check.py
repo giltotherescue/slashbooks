@@ -350,8 +350,10 @@ def check_statement(entity: Any, record: Mapping[str, Any], rows: Sequence[Mappi
     period_start, period_end = tieout._day(record.get("period_start")), tieout._day(record.get("period_end"))
     confirmed = bool(record.get("period_confirmed")) and period_start is not None and period_end is not None
     opening, closing = tieout._dec(record.get("opening_balance")), tieout._dec(record.get("closing_balance"))
-    currency = str(record.get("currency") or "USD").upper()
-    foreign = currency != "USD" or any(str(r.get("currency") or "USD").upper() != "USD" for r in rows)
+    from .currency import company_currency
+    company = company_currency(entity.entity_config)
+    currency = str(record.get("currency") or company).upper()
+    foreign = currency != company or any(str(r.get("currency") or company).upper() != company for r in rows)
 
     if foreign:
         checks += [_unchecked(c, "foreign_currency") for c in ("debits", "credits", "closing", "opening")]

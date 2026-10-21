@@ -236,6 +236,15 @@ small related batch at a time, omitting facts already established:
    then apply the confirmed calendar with `--apply --plan-hash HASH_FROM_PREVIEW`.
    Do not infer it from transactions. Only month-start annual calendars are supported;
    this records the existing calendar and does not elect a tax year.
+   **Company currency** — Each company keeps its books in one currency; USD is the
+   default. Do not ask when the files answer it: run
+   `scripts/books entity infer-currency --input FILE` on the owner's bank exports,
+   OFX files or QuickBooks snapshot. It reads only. If it finds one currency that is
+   not USD, propose `scripts/books entity set-currency PATH --currency CODE` with the
+   evidence, and let the owner apply it (`--apply --plan-hash HASH_FROM_PREVIEW`)
+   before the first import. Otherwise the first import that names a currency sets
+   it. Slashbooks never converts currencies, and it supports two-decimal currencies
+   only. See [company currency](../../docs/company-currency.md).
 10. **Data sources** — What banks, credit cards, payment processors, or commerce
    platforms does this business use? List each one. Then explain BankSync before
     asking about it for local books: "BankSync is an optional third-party service that connects to

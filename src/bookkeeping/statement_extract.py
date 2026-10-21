@@ -601,7 +601,8 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
                                     str(occurrences[key]))
         txns.append(si._txn(txn_id=txn_id, day=row.day.isoformat(), description=row.description,
                             original=row.description, amount=ledger_amount, reference="", profile_name=profile,
-                            profile=prof, last4=None, statement_id=statement_id, bank_id="statement-extracted"))
+                            profile=prof, last4=None, statement_id=statement_id, bank_id="statement-extracted",
+                            currency=entity.currency))
     identical = sum(1 for n in occurrences.values() if n > 1)
     warnings: list[str] = []
     if identical:
@@ -623,7 +624,7 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
         "extraction_method": ext.source, "extraction_confidence": ext.confidence, "extractor": ext.extractor,
         "tieout": report["tieout"],
         "first_transaction_date": dates[0] if dates else None, "last_transaction_date": dates[-1] if dates else None,
-        "transactions_total": format(total, "f"), "transaction_count": len(txns), "currency": "USD",
+        "transactions_total": format(total, "f"), "transaction_count": len(txns), "currency": entity.currency,
     }
     if confirmed_by:
         record.update(confirmed_by=confirmed_by["name"], confirmed_at=confirmed_by.get("at") or ts)

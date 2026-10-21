@@ -325,7 +325,7 @@ def _reconcile_unlocked(
     status = "source-inconsistent" if source_inconsistent else ("clean" if is_clean else "discrepancy")
     causes: list[str] = []
     if control_support and control_support["status"] == "unreconciled":
-        causes.append(control_support.get("message") or f"Supporting register differs by {control_support['difference']} USD; journal balance alone is insufficient.")
+        causes.append(control_support.get("message") or f"Supporting register differs by {control_support['difference']} {control_support.get('currency', 'USD')}; journal balance alone is insufficient.")
 
     if not is_clean and not source_inconsistent:
         causes = _detect_causes(entity_path, account, as_of, discrepancy, source_balance, ledger_bal)

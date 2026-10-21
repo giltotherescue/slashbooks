@@ -25,16 +25,18 @@ The version 1 JSON snapshot contains `schema_version: 1`, `provider:
   `GeneralLedger`, optional `TransactionListByAccount`, `OpeningTrialBalance`,
   and `OpeningBalanceSheet`. Opening reports must end the day before `from`.
 
-Use a USD home currency and explicit boolean `CurrencyPrefs.MultiCurrencyEnabled`
-from Preferences. Evidence from other currencies can be saved, but cannot be
-applied as opening balances or certified by the existing cash-basis comparisons.
+Use a home currency that is the company currency and explicit boolean
+`CurrencyPrefs.MultiCurrencyEnabled` from Preferences. A company with no entries
+takes the QuickBooks home currency (see [company currency](company-currency.md)).
+Evidence from other currencies can be saved, but cannot be applied as opening
+balances or certified by the existing cash-basis comparisons.
 
 The result is JSON. `success` means the source evidence was saved, **not** that
 accounting data was posted or reconciliation passed. `coverage` marks every
 required reference report ready, blocked, or missing. `reference_complete` is
 false if requested reports are missing or unsafe. Source completeness is separate
 from accounting operation support: `opening_supported` and `comparison_supported`
-require cash-basis, single-currency USD. Accrual reports are still retained as
+require cash-basis, single-currency books in the company currency. Accrual reports are still retained as
 source evidence when structurally valid.
 No journal entries are inferred from transaction objects.
 
@@ -147,7 +149,7 @@ day is preferred; a cash-basis Balance Sheet is the supported fallback. When bot
 asset/liability opening lines must agree; otherwise `opening_ready` is false and
 application is blocked until a fresh snapshot reconciles them. Only
 asset and liability balances carry individually. Prior-period income, expenses
-and equity are consolidated into `Equity:Opening-Balances`. USD and a valid
+and equity are consolidated into `Equity:Opening-Balances`. The company currency and a valid
 Chart of Accounts are mandatory. Applying an already-imported opening is
 idempotent and does not replace previously posted opening balances. An active
 QuickBooks opening at another date, a changed opening, or existing ordinary

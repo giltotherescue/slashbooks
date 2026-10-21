@@ -60,20 +60,20 @@ def _objects(evidence, name):
     return result
 
 
-def _policy(policy, opens):
+def _policy(policy, opens, book='USD'):
     if not isinstance(policy, dict) or type(policy.get('version')) is not int or policy['version'] < 1 or type(policy.get('enabled')) is not bool:
         raise ValueError('Stripe policy requires a positive version and enabled boolean.')
     _id(policy.get('stripe_account_id'), 'Stripe account')
-    if type(policy.get('livemode')) is not bool or policy.get('currency') != 'USD':
-        raise ValueError('Stripe policy requires explicit mode and USD currency.')
+    if type(policy.get('livemode')) is not bool or policy.get('currency') != book:
+        raise ValueError(f'Stripe policy requires explicit mode and {book} currency.')
     roles = {'clearing_account': 'Assets:Processors:', 'payout_transit_account': 'Assets:Transfers:',
              'fee_account': 'Expenses:', 'refund_account': 'Income:'}
     for field, prefix in roles.items():
         account = policy.get(field)
         if not isinstance(account, str) or account not in opens or not account.startswith(prefix):
             raise ValueError(f'{field} must be a catalog {prefix[:-1]} account.')
-        if opens[account].currencies and 'USD' not in opens[account].currencies:
-            raise ValueError(f'{field} must support USD.')
+        if opens[account].currencies and book not in opens[account].currencies:
+            raise ValueError(f'{field} must support {book}.')
     if len({policy[field] for field in roles}) != len(roles):
         raise ValueError('Stripe clearing, transit, fees and refunds require distinct accounts.')
     if policy['clearing_account'].startswith('Assets:Bank:') or policy['payout_transit_account'].startswith('Assets:Bank:'):
@@ -122,7 +122,7 @@ def _revenue(item, policy, context=None):
     return matches[0]
 
 
-def _invoice_for_charge(charge, invoices, invoice_payments, gross, mode):
+def _invoice_for_charge(charge, invoices, invoice_payments, gross, mode, cur='usd'):
     ref = charge.get('invoice')
     intent_id = _object_id(charge.get('payment_intent'))
     related = [row for row in invoice_payments.values()
@@ -131,7 +131,7 @@ def _invoice_for_charge(charge, invoices, invoice_payments, gross, mode):
     if related:
         if (len(related) != 1 or related[0].get('status') != 'paid'
                 or related[0].get('amount_paid') != gross or related[0].get('amount_requested') != gross
-                or related[0].get('currency') != 'usd' or related[0].get('livemode') is not mode):
+                or related[0].get('currency') != cur or related[0].get('livemode') is not mode):
             raise ValueError('partial_or_multiple_invoice_payments')
         resolved = _object_id(related[0].get('invoice'))
         if not resolved or (ref and _object_id(ref) != resolved):
@@ -140,8 +140,8 @@ def _invoice_for_charge(charge, invoices, invoice_payments, gross, mode):
     return (ref if isinstance(ref, dict) else invoices.get(ref)), bool(ref)
 
 
-def _sale_document(charge, invoices, invoice_payments, sessions, gross, mode):
-    invoice, found = _invoice_for_charge(charge, invoices, invoice_payments, gross, mode)
+def _sale_document(charge, invoices, invoice_payments, sessions, gross, mode, cur='usd'):
+    invoice, found = _invoice_for_charge(charge, invoices, invoice_payments, gross, mode, cur)
     if found:
         return invoice, True
     intent = _object_id(charge.get('payment_intent'))
@@ -153,7 +153,7 @@ def _sale_document(charge, invoices, invoice_payments, sessions, gross, mode):
     session = matches[0]
     if (session.get('payment_status') != 'paid' or session.get('status') != 'complete'
             or session.get('amount_total') != gross or session.get('amount_subtotal') != gross
-            or session.get('currency') != 'usd'):
+            or session.get('currency') != cur):
         raise ValueError('partial_or_adjusted_checkout')
     if any((session.get('total_details') or {}).get(key) for key in ('amount_tax', 'amount_discount', 'amount_shipping')):
         raise ValueError('tax_discount_or_credit_requires_review')
@@ -175,9 +175,10 @@ def _sale_document(charge, invoices, invoice_payments, sessions, gross, mode):
 def _sale_allocations(charge, invoices, gross, policy, prices, products, intents, invoice_payments, sessions):
     if charge.get('status') != 'succeeded' or charge.get('paid') is not True or charge.get('captured') is not True:
         raise ValueError('unsettled_charge')
-    if _minor(charge.get('amount')) != gross or charge.get('currency') != 'usd':
+    cur = policy['currency'].lower()
+    if _minor(charge.get('amount')) != gross or charge.get('currency') != cur:
         raise ValueError('charge_amount_conflict')
-    invoice, has_invoice = _sale_document(charge, invoices, invoice_payments, sessions, gross, policy['livemode'])
+    invoice, has_invoice = _sale_document(charge, invoices, invoice_payments, sessions, gross, policy['livemode'], cur)
     intent = charge.get('payment_intent')
     context = {'charge': charge, 'payment_intent': intent if isinstance(intent, dict) else intents.get(intent, {})}
     if has_invoice:
@@ -193,7 +194,7 @@ def _sale_allocations(charge, invoices, gross, policy, prices, products, intents
             raise ValueError('tax_discount_or_credit_requires_review')
         allocations = []
         for line in lines['data']:
-            if not isinstance(line, dict) or line.get('currency') != 'usd' or _minor(line.get('amount')) <= 0:
+            if not isinstance(line, dict) or line.get('currency') != cur or _minor(line.get('amount')) <= 0:
                 raise ValueError('unsupported_invoice_line')
             if any(line.get(field) for field in ('discount_amounts', 'taxes', 'tax_amounts', 'pretax_credit_amounts')):
                 raise ValueError('tax_discount_or_credit_requires_review')
@@ -334,15 +335,16 @@ def stripe_prepare(entity, *, opening_date):
                     fee_account='Expenses:Payment-Processing:Stripe', refund_account='Income:Refunds:Stripe')
     store = LedgerStore(default_store_path(entity.path))
     opened = {item.account: item for item in store.load_opens()}
+    book = entity.currency
     for name in accounts.values():
-        if name in opened and ((opened[name].currencies and 'USD' not in opened[name].currencies) or opened[name].date > when):
+        if name in opened and ((opened[name].currencies and book not in opened[name].currencies) or opened[name].date > when):
             raise ValueError('Existing Stripe account currency/opening date conflicts; review the catalog explicitly.')
     created, existing = [], []
     for name in accounts.values():
         if name in opened:
             existing.append(name)
         else:
-            add_account(entity.path, name, open_date=opening_date, currency='USD'); created.append(name)
+            add_account(entity.path, name, open_date=opening_date, currency=book); created.append(name)
     return dict(accounts=accounts, created=created, existing=existing, opening_date=opening_date,
                 opening_balance_supplied=False, policy_approved=False)
 
@@ -355,7 +357,7 @@ def stripe_configure(entity, policy):
     """
     from .entity import map_bank_account
     _, opens, _, _, _ = _state(entity)
-    _policy(policy, opens)
+    _policy(policy, opens, entity.currency)
     mappings = flat_bank_account_mappings(entity.entity_config)
     targets = {policy['clearing_account'], policy['payout_transit_account']}
     if any(key != policy['stripe_account_id'] and value in targets for key, value in mappings.items()):
@@ -375,11 +377,12 @@ def _same_source(first, second):
 
 def _bank_action(match, payout, net, pending, posted, owned, opens, entity, cutoff, transit, saved, entries, reversed_ids):
     sid = match['bank_source_id']
+    book = entity.currency
     if sid in posted:
         original = saved.get(sid)
         entry = entries.get(sid)
-        expected = {(match['approved_ledger_account'], Decimal(_amount(-net)), 'USD'),
-                    (transit, Decimal(_amount(net)), 'USD')}
+        expected = {(match['approved_ledger_account'], Decimal(_amount(-net)), book),
+                    (transit, Decimal(_amount(net)), book)}
         if (sid not in reversed_ids and original and entry
                 and routine_source_digest([original]) == match['bank_source_digest']
                 and dict(entry.meta).get('stripe-authority') == payout
@@ -396,18 +399,18 @@ def _bank_action(match, payout, net, pending, posted, owned, opens, entity, cuto
     if (flat_bank_account_mappings(entity.entity_config).get(bank.get('accountId')) != account
             or account not in opens or not account.startswith('Assets:Bank:')
             or bank.get('accountType') not in {'checking', 'savings'} or bank.get('pending')
-            or bank.get('currency', 'USD') != 'USD' or Decimal(str(bank['amount'])) != Decimal(_amount(-net))):
+            or str(bank.get('currency') or book).upper() != book or Decimal(str(bank['amount'])) != Decimal(_amount(-net))):
         raise ValueError('bank_payout_match_conflict')
     when = date.fromisoformat(bank['date'])
     if cutoff and when <= cutoff:
         raise ValueError('closed_bank_period')
-    if opens[account].date > when or (opens[account].currencies and 'USD' not in opens[account].currencies):
+    if opens[account].date > when or (opens[account].currencies and book not in opens[account].currencies):
         raise ValueError('bank_account_catalog_conflict')
     if sid in owned:
         raise ValueError('existing_bank_review')
     return dict(source_id=sid, source_digest=routine_source_digest([bank]), kind='bank_payout',
-                authority_id=payout, postings=[dict(account=account, amount=f"{Decimal(str(bank['amount'])):.2f}", currency='USD'),
-                dict(account=transit, amount=_amount(net), currency='USD')], normalized_source=dict(bank))
+                authority_id=payout, postings=[dict(account=account, amount=f"{Decimal(str(bank['amount'])):.2f}", currency=book),
+                dict(account=transit, amount=_amount(net), currency=book)], normalized_source=dict(bank))
 
 
 def _source_capture_digest(bt, objects):
@@ -489,7 +492,9 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         raise ValueError('Cash-only Stripe posting is unavailable for accrual companies. Capture provider evidence with books accrual intake, then preview a journal/schedule/settlement with the explicit accounting treatment.')
     needs_treatment = treatment_checker(entity)
     pending, opens, posted, reversed_ids, owned = _state(entity)
-    _policy(policy, opens)
+    book = entity.currency
+    cur = book.lower()
+    _policy(policy, opens, book)
     if type(limit) is not int or not 1 <= limit <= 500 or not isinstance(after_source_id, str):
         raise ValueError('Invalid Stripe batch cursor.')
     if not isinstance(evidence, dict) or evidence.get('source') != 'stripe' or not isinstance(evidence.get('account'), dict):
@@ -566,7 +571,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                 raise ValueError('policy_disabled')
             if cutoff and date.fromisoformat(normalized['date']) <= cutoff:
                 raise ValueError('closed_period')
-            if bt['currency'] != 'usd':
+            if bt['currency'] != cur:
                 raise ValueError('unsupported_currency')
             if bt['status'] not in {'available', 'pending'}:
                 raise ValueError('invalid_balance_status')
@@ -597,7 +602,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                     postings.append((policy['fee_account'], bt['fee']))
             elif kind in {'refund', 'payment_refund'} and bt['amount'] < 0:
                 refund = source or refunds.get(source_id)
-                if (not refund or refund.get('status') != 'succeeded' or refund.get('currency') != 'usd'
+                if (not refund or refund.get('status') != 'succeeded' or refund.get('currency') != cur
                         or refund.get('amount') != -bt['amount'] or _object_id(refund.get('balance_transaction')) != bt['id']):
                     raise ValueError('missing_or_unsettled_refund')
                 charge_ref = refund.get('charge')
@@ -624,17 +629,17 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             elif kind == 'payout' and bt['amount'] < 0 and bt['fee'] == 0:
                 payout = source or payouts.get(source_id)
                 if (not payout or _object_id(payout.get('balance_transaction')) != bt['id'] or payout.get('amount') != -bt['amount']
-                        or payout.get('currency') != 'usd' or payout.get('status') not in {'paid', 'in_transit', 'pending'}):
+                        or payout.get('currency') != cur or payout.get('status') not in {'paid', 'in_transit', 'pending'}):
                     raise ValueError('missing_or_failed_payout')
                 postings.append((policy['payout_transit_account'], -bt['amount'])); authority = ['payout-transit-policy']
             else:
                 raise ValueError('unsupported_balance_type')
             if sum(amount for _, amount in postings) != 0:
                 raise ValueError('unbalanced_stripe_evidence')
-            posting_docs = [dict(account=acc, amount=_amount(amount), currency='USD') for acc, amount in postings if amount]
+            posting_docs = [dict(account=acc, amount=_amount(amount), currency=book) for acc, amount in postings if amount]
             for posting in posting_docs:
                 opened = opens[posting['account']]
-                if opened.date > date.fromisoformat(normalized['date']) or (opened.currencies and 'USD' not in opened.currencies):
+                if opened.date > date.fromisoformat(normalized['date']) or (opened.currencies and book not in opened.currencies):
                     raise ValueError('account_catalog_conflict')
             result['actions'].append(dict(source_id=sid, source_digest=_digest(normalized), kind=kind,
                 authority_id=','.join(authority), postings=posting_docs, normalized_source=normalized))
@@ -679,9 +684,17 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
 
 
 def stripe_stage(entity, evidence, policy, **kwargs):
-    """Stage validated USD sources only; returned proposals need trusted approval."""
+    """Stage validated sources in the company currency only; returned proposals need trusted approval.
+
+    Stripe stays single-currency: the balance transactions must all be in one currency. A company with no
+    entries adopts that currency; a company in another currency refuses. Nothing converts.
+    """
+    from .currency import resolve_import_currency
+    raw = evidence.get('balanceTransactions') if isinstance(evidence, dict) else None
+    found = {row['currency'].upper() for row in raw or [] if isinstance(row, dict) and isinstance(row.get('currency'), str)}
+    resolve_import_currency(entity, found, 'Stripe account (balance currency)')
     plan = stripe_plan(entity, evidence, policy, **kwargs)
-    rows = [row for row in plan['normalized_sources'] if row['currency'] == 'USD']
+    rows = [row for row in plan['normalized_sources'] if row['currency'] == entity.currency]
     imported = import_transactions(entity, rows, 'stripe-intake', intake_only=True)
     return dict(staged=imported.pending_categorization, duplicates=imported.skipped_duplicate,
                 plan=stripe_plan(entity, evidence, policy, **kwargs))

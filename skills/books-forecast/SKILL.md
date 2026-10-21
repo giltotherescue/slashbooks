@@ -21,7 +21,8 @@ read a stale local ledger when the remote command fails.
 Use the engine for all financial math. A profitable P&L does not establish cash
 availability or future receipt dates. Describe the baseline as **recorded cash
 as of** the selected date, with its reconciliation and coverage limits. Select
-only USD bank/cash accounts the owner treats as unrestricted. Processor
+only bank/cash accounts in the company currency (`currency` in `entity.json`,
+USD when absent) that the owner treats as unrestricted. Processor
 clearing, payout transit, receivables, restricted funds and card liabilities
 are outside this first schedule.
 
@@ -32,7 +33,7 @@ supporting documents. “Booked” is ambiguous: establish whether money has alr
 arrived, is contractually due, or is unconfirmed pipeline. Do not turn pipeline
 into confirmed receipts or derive future payments by extrapolating expenses.
 
-Save version-1 USD assumptions using the schema in
+Save version-1 assumptions in the company currency using the schema in
 [cash schedules](../../docs/cash-schedules.md). Preserve supplied evidence,
 author and date; never invent those fields. Amounts are remaining amounts after
 any received deposit. Mark settled items and unconfirmed pipeline explicitly.

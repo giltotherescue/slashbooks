@@ -197,7 +197,7 @@ def parse_amount(s: str) -> Decimal:
     if not s:
         return Decimal("0.00")
     # Remove $ sign
-    s = s.replace("$", "")
+    s = s.replace("$", "").replace("€", "").replace("£", "")
     # Parentheses = negative
     paren_match = re.match(r'^\(([^)]+)\)$', s)
     if paren_match:
@@ -1883,7 +1883,7 @@ def import_opening(
         postings.append(Posting(
             account=bc_account,
             amount=net,
-            currency="USD",
+            currency=entity.currency,
             meta=(("qb-name", entry.full_name),),
         ))
 
@@ -1919,7 +1919,7 @@ def import_opening(
     postings.append(Posting(
         account=opening_equity_account,
         amount=offset,
-        currency="USD",
+        currency=entity.currency,
     ))
 
     opening_entry = Entry(
@@ -1956,6 +1956,7 @@ def import_opening(
         entries=[opening_entry],
         balances=[],
         title="Opening Balances",
+        currency=entity.currency,
     )
 
     # Validate

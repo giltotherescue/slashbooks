@@ -487,6 +487,10 @@ def _import_transactions_unlocked(
     ImportResult
     """
     _validate_normalized_transactions(normalized_txns)
+    # One company, one currency. A company with no entries adopts the one currency the rows carry;
+    # rows in another currency are refused before any write. Nothing converts.
+    from ..currency import check_rows
+    book_currency = check_rows(entity, normalized_txns, "import")
     from ..accrual.treatment import treatment_checker
     from ..queue import txn_is_above_ask_first
     needs_treatment = treatment_checker(entity)
@@ -697,12 +701,12 @@ def _import_transactions_unlocked(
         bank_posting = Posting(
             account=bank_account,
             amount=raw_amount_dec,
-            currency="USD",
+            currency=book_currency,
         )
         category_posting = Posting(
             account=account,
             amount=-raw_amount_dec,
-            currency="USD",
+            currency=book_currency,
         )
 
         entry = Entry(

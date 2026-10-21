@@ -387,8 +387,16 @@ def _ledger(files, report, references, blockers):
             integrity = importer.check_store_integrity(store)
             require(integrity.status != "incomplete-write", "ledger_write_incomplete")
             require(integrity.status == "ok", "ledger_seal_invalid")
+            book = "USD"
+            if "entity.json" in files:
+                try:
+                    from .currency import require_supported
+                    book = require_supported(_json(files["entity.json"]).get("currency", "USD"))
+                except (ValueError, TypeError, AttributeError):
+                    raise Rejected("unsupported_currency") from None
             for table in ("accounts", "postings", "balance_assertions"):
-                require(not sql.execute(f"SELECT 1 FROM {table} WHERE currency <> 'USD' LIMIT 1").fetchone(), "unsupported_currency")
+                require(not sql.execute(f"SELECT 1 FROM {table} WHERE currency <> ? LIMIT 1", (book,)).fetchone(),
+                        "unsupported_currency")
             require(not validate(render_store_ledger(snapshot, conn=sql)), "core_ledger_invalid")
             report["checks"]["core_ledger"] = True
             if "entity.json" in files:
@@ -541,7 +549,11 @@ def _capture(entity_dir, *, for_export=False):
                             except ValueError:
                                 raise Rejected("unsupported_basis") from None
                             _carried_accrual_facts(value)
-                            require(value.get("currency", "USD") == "USD", "unsupported_currency")
+                            try:
+                                from .currency import require_supported
+                                require_supported(value.get("currency", "USD"))
+                            except ValueError:
+                                raise Rejected("unsupported_currency") from None
                             for key in ("bank_account_mappings", "csv_account_mappings", "source_coverage"):
                                 require(key not in value or isinstance(value[key], dict), "invalid_context")
                             for key in ("declared_sources", "provider_sources", "related_entities", "category_rules"):

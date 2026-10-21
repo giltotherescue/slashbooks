@@ -76,7 +76,8 @@ def supported_preparation_command(argv: list[str]) -> PreparationCommandSpec:
         # default view are person-only writes that standing posting authority never covers.
         # `schedule tax-treatment` and `entity set-tax-method` stay unsupported too: a tax method and a tax treatment
         # are decisions for the owner or the tax preparer, never for standing posting authority. The same holds for
-        # `schedule deposit-kind`, `item deposit-kind` and `entity set-tax-profile`.
+        # `schedule deposit-kind`, `item deposit-kind` and `entity set-tax-profile`. `entity set-currency` is
+        # person-only too: the company currency is the owner's decision.
         # `rules set-apply` and `rules clear-apply` stay unsupported here on purpose. A saved rule only
         # changes what is proposed, so standing posting authority does not cover it.
         if path[1:] in {("intake",), ("journal", "preview"), ("journal", "apply"),

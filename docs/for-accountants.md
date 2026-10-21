@@ -1,7 +1,7 @@
 # For accountants
 
 Slashbooks is not trying to replace professional review. It's a local bookkeeping
-system for cash-basis businesses and opt-in single-entity USD services/SaaS
+system for cash-basis businesses and opt-in single-entity, single-currency services/SaaS
 accrual books, with an automated workflow on top of
 fixed, auditable accounting logic.
 
@@ -141,7 +141,8 @@ goods sold or deduction limits.
 
 ## Limits
 
-The supported accrual scope is one company, in USD, for services and SaaS. It
+The supported accrual scope is one company, in one currency (USD unless the
+company sets another; no conversion), for services and SaaS. It
 includes journals backed by a supporting document or an estimate, prepaid, deferred
 and straight-line depreciation schedules, outstanding balances and settlement,
 deposits and credits applied to invoices, accrued estimates that reverse or are

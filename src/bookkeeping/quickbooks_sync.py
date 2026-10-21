@@ -401,8 +401,16 @@ def sync_import(entity, input_path: Path) -> dict:
     multi = currency_prefs.get("MultiCurrencyEnabled")
     if not isinstance(multi, bool):
         raise ValueError("CurrencyPrefs requires boolean MultiCurrencyEnabled")
-    if currency != "USD" or multi:
-        warnings.append("Multicurrency/non-USD snapshots are evidence only; opening application blocked")
+    # One company, one currency: a company with no entries adopts the QuickBooks home currency.
+    from . import currency as currency_mod
+    book = currency_mod.company_currency(entity.entity_config)
+    if isinstance(currency, str) and currency != book and not multi:
+        try:
+            book = currency_mod.resolve_import_currency(entity, {currency}, "QuickBooks company (home currency)")
+        except currency_mod.CurrencyError as exc:
+            warnings.append(str(exc))
+    if currency != book or multi:
+        warnings.append(f"Multicurrency/non-{book} snapshots are evidence only; opening application blocked")
     if snapshot["accounting_basis"] != "Cash":
         warnings.append("Accrual source evidence retained; current opening and comparison operations support cash basis only")
     source_bytes = _json_bytes(snapshot)
@@ -483,7 +491,7 @@ def sync_import(entity, input_path: Path) -> dict:
                          "OpeningTrialBalance", "OpeningBalanceSheet"):
             coverage.setdefault(required, {"status": "missing", "reason": "Report was not included in snapshot"})
         relative_reference = str(Path("sources") / "quickbooks" / snapshot_id / "reference")
-        opening_supported = snapshot["accounting_basis"] == "Cash" and currency == "USD" and not multi
+        opening_supported = snapshot["accounting_basis"] == "Cash" and currency == book and not multi
         consistency_error = _opening_consistency(entity, reference, start) if opening_supported else None
         if consistency_error:
             warnings.append(consistency_error)
@@ -494,8 +502,8 @@ def sync_import(entity, input_path: Path) -> dict:
                       "ProfitAndLoss", "BalanceSheet", "TrialBalance", "GeneralLedger",
                       "OpeningTrialBalance", "OpeningBalanceSheet")),
                   "comparison_ready": qb.inventory(reference, from_date=start, to_date=end).is_ready()
-                                      and currency == "USD" and not multi,
-                  "comparison_supported": snapshot["accounting_basis"] == "Cash" and currency == "USD" and not multi,
+                                      and currency == book and not multi,
+                  "comparison_supported": snapshot["accounting_basis"] == "Cash" and currency == book and not multi,
                   "counts": counts, "coverage": coverage, "warnings": sorted(set(warnings)),
                   "opening_supported": opening_supported, "opening_ready": opening_ready,
                   "accounts": accounts, "rule_suggestions": suggest_rules(snapshot, accounts)}
@@ -519,7 +527,8 @@ def sync_import(entity, input_path: Path) -> dict:
 def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False) -> dict:
     result = sync_import(entity, input_path)
     if not result["opening_supported"]:
-        raise ValueError("Only cash-basis single-currency USD opening balances are supported")
+        from .currency import company_currency
+        raise ValueError(f"Only cash-basis single-currency {company_currency(entity.entity_config)} opening balances are supported")
     if not result["opening_ready"]:
         raise ValueError("Opening source reports are missing, invalid, or inconsistent; refresh and review source warnings")
     snapshot = _load(input_path)

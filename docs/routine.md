@@ -76,7 +76,8 @@ conflicting bank/card roles, missing mappings, changed approved mappings,
 unsupported currencies, zero amounts, existing open review proposals, and periods
 at or before the trusted `closed_through`. It skips posted and reversed sources.
 Source and category accounts must exist in the catalog, be open by the source
-date, and permit USD. The current ordinary queue writer supports USD; other
+date, and permit the company currency. The current ordinary queue writer
+supports the company currency (USD unless `entity.json` sets another); other
 currencies remain held. Source bank/card accounts and Uncategorized cannot be
 offered as routine categories.
 

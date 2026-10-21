@@ -138,11 +138,24 @@ class DetectionTests(unittest.TestCase):
         self.assertIn("%m/%d/%Y", result["evidence"]["date_format"])
         self.assertEqual(result["preview"], [])
 
-    def test_foreign_currency_is_rejected(self):
-        for name in ("foreign_currency.csv", "foreign_header.csv"):
-            result = self.inspect(name)
-            self.assertEqual(result["status"], "error")
-            self.assertEqual(result["error"]["code"], "unsupported_currency")
+    def test_mixed_currency_file_is_rejected(self):
+        # One file, two currencies (USD and EUR): Slashbooks does not convert, so it refuses.
+        result = self.inspect("foreign_currency.csv")
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "unsupported_currency")
+        self.assertIn("more than one currency", result["error"]["message"])
+
+    def test_single_foreign_currency_file_names_its_currency(self):
+        # A file in one other currency is read in that currency; the import decides against the company.
+        result = self.inspect("foreign_header.csv")
+        self.assertNotEqual(result["status"], "error")
+        self.assertEqual(result["layout"]["currency"], "EUR")
+        self.assertEqual(result["currency"]["file"], "EUR")
+        refused = self.inspect("foreign_header.csv", entity_config={"currency": "USD", "currency_source": "set"})
+        self.assertEqual(refused["status"], "error")
+        self.assertEqual(refused["error"]["code"], "unsupported_currency")
+        self.assertIn("EUR", refused["error"]["message"])
+        self.assertIn("USD", refused["error"]["message"])
 
     def test_malformed_files_have_clear_errors(self):
         self.assertEqual(self.inspect("not_a_statement.csv")["error"]["code"], "not_delimited")
@@ -198,7 +211,9 @@ class OfxTests(unittest.TestCase):
         self.assertEqual(self._bad(base.replace("</OFX>", "")), "malformed_ofx")
         self.assertEqual(self._bad(base.replace("<FITID>C2</FITID>", "")), "malformed_ofx")
         self.assertEqual(self._bad(base.replace("<FITID>C2</FITID>", "<FITID>C1</FITID>")), "conflicting_fitid")
-        self.assertEqual(self._bad(base.replace("<CURDEF>USD", "<CURDEF>CAD")), "unsupported_currency")
+        # A statement in another currency is parsed and names its currency; the import checks it against the company.
+        [cad] = ofx.parse_ofx(base.replace("<CURDEF>USD", "<CURDEF>CAD"))
+        self.assertEqual(ofx.statement_currencies(cad), {"CAD"})
         self.assertEqual(self._bad(base.replace("<TRNAMT>-49.99", "<TRNAMT>abc")), "malformed_ofx")
         self.assertEqual(self._bad("<OFX></OFX>"), "malformed_ofx")
 
