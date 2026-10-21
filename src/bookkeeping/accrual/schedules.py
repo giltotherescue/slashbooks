@@ -292,6 +292,9 @@ def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
         "recognition_start", "recognized_amount", "reference", "tax_treatment"})
     operation_id, schedule_id = _id(request.get("operation_id")), _id(request.get("id"))
     if "tax_treatment" in request:
+        from ..preparation_runtime import is_preparation
+        if is_preparation():
+            raise JournalError("tax_treatment_person_only", "Recording a tax treatment requires the owner or tax preparer.")
         request["tax_treatment"] = _tax_treatment(request["tax_treatment"], request.get("kind"))
     if "reference" in request:
         request["reference"] = _text(request["reference"], "reference")
@@ -769,11 +772,11 @@ def _add_months(day: date, months: int) -> date:
     return date(year, month, min(day.day, monthrange(year, month)[1]))
 
 
-def default_tax_treatment(record: Mapping[str, Any]) -> str | None:
+def default_tax_treatment(record: Mapping[str, Any], fiscal_year_start: str = "01-01") -> str | None:
     """The default tax treatment of a prepaid schedule, or None for other kinds.
 
     expense_when_paid only when the benefit lasts 12 months or less and ends by the end of the tax year
-    after the payment's tax year (the 12-month rule). Otherwise capitalize. Tax years are calendar years.
+    after the payment's tax year (the 12-month rule). Otherwise capitalize. The company fiscal year determines the next year end.
     This default needs review by a tax professional.
     """
     if record.get("kind") != "prepaid":
@@ -782,15 +785,17 @@ def default_tax_treatment(record: Mapping[str, Any]) -> str | None:
     paid_raw = record.get("origin_date") or (record.get("origin") or {}).get("date") or start.isoformat()
     paid = _day(paid_raw, "origin date")
     within_12_months = end < _add_months(start, 12)
-    by_next_year_end = end <= date(paid.year + 1, 12, 31)
+    from ..fiscal import year_start
+    anchor = year_start(paid, fiscal_year_start)
+    by_next_year_end = end < date(anchor.year + 2, anchor.month, anchor.day)
     return "expense_when_paid" if within_12_months and by_next_year_end else "capitalize"
 
 
-def effective_tax_treatment(record: Mapping[str, Any]) -> tuple[str | None, str]:
+def effective_tax_treatment(record: Mapping[str, Any], fiscal_year_start: str = "01-01") -> tuple[str | None, str]:
     """Return (treatment, source): source is "recorded" when a person set it, else "default"."""
-    if record.get("tax_treatment") in TAX_TREATMENTS:
-        return record["tax_treatment"], "recorded"
-    return default_tax_treatment(record), "default"
+    if "tax_treatment" in record:
+        return _tax_treatment(record["tax_treatment"], record.get("kind")), "recorded"
+    return default_tax_treatment(record, fiscal_year_start), "default"
 
 
 TAX_TREATMENT_KIND = "schedule_tax_treatment_set"
@@ -799,15 +804,20 @@ TAX_TREATMENT_KIND = "schedule_tax_treatment_set"
 def preview_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any) -> dict[str, Any]:
     """Preview recording the tax treatment of one prepaid schedule. Writes nothing."""
     from .journals import _read_store
+    from ..entity import load_entity
+    from .enable import _integrity
+    entity = load_entity(entity.path)
+    _integrity(entity, "record the schedule tax treatment")
     store = _read_store(entity)
     schedule_id = _id(schedule_id)
     record = load_record(store, "schedules", schedule_id)
     if record is None:
         raise JournalError("schedule_not_found", f"No schedule has id {schedule_id}.", "Run `books accrual schedule list --entity PATH`.")
     treatment = _tax_treatment(treatment, record.get("kind"))
-    current, source = effective_tax_treatment(record)
+    current, source = effective_tax_treatment(record, entity.entity_config.get("fiscal_year_start", "01-01"))
     body = {"schema_version": 1, "kind": TAX_TREATMENT_KIND, "request": {"id": schedule_id, "tax_treatment": treatment},
             "changes": record.get("tax_treatment") != treatment, "ledger_digest": store.content_digest(),
+            "configuration_hash": canonical_hash(entity.entity_config),
             "record_revision": record_revision(store, "schedules", schedule_id),
             "effects": {"from": record.get("tax_treatment"), "current_effective": current, "current_source": source, "to": treatment,
                         "entries_changed": 0, "published_statements_changed": False,

@@ -430,7 +430,7 @@ books accrual schedule tax-treatment --entity PATH --id SCHEDULE --treatment cap
   recognition entries stay as they are.
 - If it is absent, a default applies: `expense_when_paid` only when the service lasts 12 months
   or less and ends by the end of the tax year after the payment year. Otherwise `capitalize`.
-  Tax years are calendar years. The default needs review by a tax professional.
+  Tax years follow the company fiscal-year setting (`01-01` by default). The default needs review by a tax professional.
 - The value is shown in `accrual schedule list` and in the schedules report when it is recorded.
 - Readiness adds the note `schedule_tax_treatment_missing` (never a blocker) when the tax method is
   cash, accrual is on, and a prepaid schedule has no recorded tax treatment.
@@ -510,3 +510,12 @@ calendar months, including the remaining recognition interval. Use `actual_day`
 when the remaining service starts partway through a month. The error for a mid-month
 `equal_month` opening names `actual_day`. An older request that an earlier engine
 accepted with a mid-month `service_start` is now refused with this message.
+
+
+Fiscal-year settings for tax views and annual earnings are managed with
+`books entity set-fiscal-year PATH --start MM-01` (preview, then `--apply` with
+`--plan-hash`). See [the fiscal-year workflow](tax-handoff.md#set-the-fiscal-year).
+Prepaid defaults use this calendar, including for a payment before fiscal year end.
+Recording a schedule's explicit tax treatment requires the owner/preparer even
+when the treatment is supplied during schedule creation. Tax-treatment previews
+are invalidated by company configuration changes, and writes refuse invalid ledger integrity.

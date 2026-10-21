@@ -287,3 +287,9 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 
 - `scripts/books procedures show catch-up` (version 2)
 - `scripts/books procedures show hard-rules` (version 2)
+
+
+When the owner needs to correct the fiscal calendar, use
+`books entity set-fiscal-year PATH --start MM-01` to preview the change, then
+apply the approved setting with `--apply --plan-hash HASH_FROM_PREVIEW`.
+Tax prepaid defaults follow that calendar; explicit export ranges stay unchanged.

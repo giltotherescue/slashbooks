@@ -368,5 +368,103 @@ class ScheduleTaxTreatment(CashViewFixture):
         self.assertNotIn("schedule_tax_treatment_missing", codes()[0])
 
 
+class ReviewRegressions(CashViewFixture):
+    handoff = CashFilerWithAccrualRecords.handoff
+    cash_filer = CashFilerWithAccrualRecords.cash_filer
+    def test_mixed_prepaids_keep_only_capitalized_asset(self):
+        self.schedule("long", "prepaid", PREPAID, INSURANCE, "2400.00", "2026-01-01", "2027-12-31", "equal_month", BANK)
+        self.schedule("short", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-07-01", "2027-06-30", "equal_month", BANK)
+        self.due("2026-12-31")
+        self.cash_filer()
+        result = self.handoff()
+        # Long policy: 1,200 used, 1,200 asset. Short policy: all 1,200 deducted.
+        self.assertEqual(tb(result)[PREPAID], D("1200.00"))
+        self.assertEqual(tb(result)[INSURANCE], D("2400.00"))
+        self.assertEqual(result["totals"]["difference"], D("0.00"))
+        self.due("2027-12-31")
+        # Later recognition must not change the prior year asset.
+        self.assertEqual(tb(self.handoff())[PREPAID], D("1200.00"))
+        rows = {r["account"]: r for r in self.handoff(Y2027)["trial_balance"]}
+        self.assertEqual(rows[PREPAID]["beginning_balance"], D("1200.00"))
+        self.assertEqual(rows[PREPAID]["balance"], D("0.00"))
+
+    def test_schedule_tax_change_refuses_unsealed_ledger(self):
+        self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", BANK)
+        with self.store.transaction(immediate=True) as conn:
+            conn.execute("UPDATE postings SET amount='999.00' WHERE account=?", (PREPAID,))
+        before = self.store.content_digest()
+        with self.assertRaises(JournalError) as caught:
+            schedules.apply_tax_treatment(self.entity, "ins", "capitalize")
+        self.assertEqual(caught.exception.code, "ledger_integrity")
+        self.assertEqual(self.store.content_digest(), before)
+        self.assertNotEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_schedule_creation_cannot_set_tax_policy_under_standing_authority(self):
+        from unittest.mock import patch
+        with patch("bookkeeping.preparation_runtime.is_preparation", return_value=True):
+            with self.assertRaises(JournalError) as caught:
+                self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", BANK,
+                              tax_treatment="expense_when_paid")
+        self.assertEqual(caught.exception.code, "tax_treatment_person_only")
+        self.assertEqual(schedules.list_schedules(self.entity), [])
+
+    def test_fiscal_year_changes_prepaid_default_and_stales_preview(self):
+        from bookkeeping import fiscal
+        # Paid before July year end; benefit ends after the following June year end.
+        self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-08-01", "2027-07-31", "equal_month", BANK, paid="2026-06-15")
+        self.due("2026-12-31")
+        self.cash_filer()
+        self.assertEqual(tb(self.handoff())[INSURANCE], D("1200.00"))
+        old = schedules.preview_tax_treatment(self.entity, "ins", "capitalize")
+        fiscal.apply(self.entity, "07-01")
+        with self.assertRaises(JournalError) as caught:
+            schedules.apply_tax_treatment(self.entity, "ins", "capitalize", old["plan_hash"])
+        self.assertEqual(caught.exception.code, "stale_preview")
+        result = self.handoff()
+        self.assertEqual(tb(result)[INSURANCE], D("500.00"))
+        self.assertEqual(tb(result)[PREPAID], D("700.00"))
+        self.assertEqual(result["tax_view"]["fiscal_year_start"], "07-01")
+
+    def test_tax_setting_file_failure_rolls_back_audit(self):
+        from unittest.mock import patch
+        original = (self.root / "entity.json").read_bytes()
+        before = self.store.load_audit_events()
+        with patch("os.replace", side_effect=OSError("synthetic rename failure")):
+            with self.assertRaises(OSError):
+                taxview.apply_set_tax_method(self.entity, "cash", "on")
+        self.assertEqual((self.root / "entity.json").read_bytes(), original)
+        self.assertEqual(self.store.load_audit_events(), before)
+        self.assertFalse((self.root / "entity.json.tax-method.tmp").exists())
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_balance_sheet_earnings_use_configured_fiscal_start(self):
+        from bookkeeping import fiscal
+        from bookkeeping.reports.statements import balance_sheet
+        self.item("prior", "receivable", AR, "200.00", "2026-06-01", "Synthetic", counter=SERVICES)
+        self.item("current", "receivable", AR, "300.00", "2026-07-01", "Synthetic", counter=SERVICES)
+        fiscal.apply(self.entity, "07-01")
+        result = balance_sheet(self.root, date(2026, 12, 31))
+        self.assertEqual(result.meta["fiscal_start"], "2026-07-01")
+        self.assertEqual(D(result.meta["current_fiscal_net_income"]), D("300.00"))
+        self.assertEqual(D(result.meta["cumulative_net_income"]), D("500.00"))
+
+    def test_adjustment_row_cannot_hide_an_unbalanced_ledger(self):
+        from bookkeeping.reports.cashview import CashViewError
+        self.item("inv", "receivable", AR, "100.00", "2026-01-01", "Synthetic", counter=SERVICES)
+        self.cash_filer()
+        with self.store.transaction(immediate=True) as conn:
+            conn.execute("UPDATE postings SET amount='90.00' WHERE account=?", (AR,))
+        with self.assertRaisesRegex(CashViewError, "trial balance"):
+            self.handoff()
+
+    def test_invalid_enabled_tax_method_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "no tax method"):
+            taxview.active_method({"tax_method_view": True})
+        with self.assertRaises(ValueError):
+            taxview.active_method({"tax_method_view": "on"})
+        with self.assertRaises(JournalError):
+            schedules.effective_tax_treatment({"kind": "prepaid", "tax_treatment": "typo"})
+
+
 if __name__ == "__main__":
     unittest.main()

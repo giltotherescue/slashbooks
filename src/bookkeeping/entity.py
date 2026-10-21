@@ -1119,6 +1119,12 @@ def add_parser(subparsers: Any) -> None:
     set_view_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     set_view_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
 
+    fiscal_parser = entity_sub.add_parser("set-fiscal-year", help="Set the fiscal-year start (person-only); previews unless --apply is given")
+    fiscal_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    fiscal_parser.add_argument("--start", required=True, help="First day of the fiscal year, MM-01 (for example 07-01)")
+    fiscal_parser.add_argument("--apply", action="store_true", help="Apply the previewed setting")
+    fiscal_parser.add_argument("--plan-hash", default=None, help="Refuse a changed company using the preview's plan_hash")
+
     tax_method_parser = entity_sub.add_parser(
         "set-tax-method",
         help="Record the tax method, cash or accrual, that tax outputs follow (person-only). Previews unless --apply is given",
@@ -1243,6 +1249,18 @@ def run(args: Any) -> int:
                 result = accrual_enable.apply_set_view(entity, args.view, args.plan_hash)
             else:
                 result = accrual_enable.preview_set_view(entity, args.view)
+        except (FileNotFoundError, ValueError) as exc:
+            result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+
+    if args.entity_command == "set-fiscal-year":
+        try:
+            from . import fiscal
+            entity = load_entity(_resolve_target(args.path))
+            result = fiscal.apply(entity, args.start, args.plan_hash) if args.apply else fiscal.preview(entity, args.start)
         except (FileNotFoundError, ValueError) as exc:
             result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
             print(json.dumps(result, sort_keys=True, indent=2))

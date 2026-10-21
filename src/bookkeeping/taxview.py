@@ -30,7 +30,6 @@ preparer must know about in ``flags``. Nothing here computes tax.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -79,7 +78,10 @@ def view_enabled(config: Mapping[str, Any]) -> bool:
 def active_method(config: Mapping[str, Any]) -> str | None:
     """The tax method that tax outputs follow, or None for the old behaviour (flag off or method unknown)."""
     method = tax_method(config)
-    return method if method and view_enabled(config) else None
+    enabled = view_enabled(config)
+    if enabled and method is None:
+        raise ValueError("The tax-method view is on but no tax method is recorded. Run books entity set-tax-method.")
+    return method if enabled else None
 
 
 @dataclass
@@ -92,11 +94,10 @@ class TaxView:
     capitalized: dict[str, str] = field(default_factory=dict)   # schedule id -> "recorded" or "default"
     ledger: Any = None
     control: set[str] = field(default_factory=set)
-    kept_control: set[str] = field(default_factory=set)
-    mixed_prepaid_accounts: list[str] = field(default_factory=list)
+    fiscal_year_start: str = "01-01"
 
     def stamp(self) -> dict[str, Any]:
-        return {"tax_method": self.tax_method, "view": self.view, "source": self.source, "label": self.label}
+        return {"tax_method": self.tax_method, "view": self.view, "source": self.source, "label": self.label, "fiscal_year_start": self.fiscal_year_start}
 
 
 def _records(conn: Any, table: str) -> list[dict[str, Any]]:
@@ -112,6 +113,8 @@ def plan(conn: Any, config: Mapping[str, Any], from_date: date, to_date: date) -
     method = active_method(config)
     if method is None:
         return None
+    from .fiscal import validate_start
+    fiscal_start = validate_start(config.get("fiscal_year_start", "01-01"))
     from .accrual.reports import CoverageError, coverage_metadata, opening_coverage
     from .accrual.scope import DISCIPLINE_ALL, DISCIPLINE_OFF, DISCIPLINE_PER_ACCOUNT, capability, discipline, tracking_start
     kind = discipline(config)
@@ -122,10 +125,10 @@ def plan(conn: Any, config: Mapping[str, Any], from_date: date, to_date: date) -
                                 "Turn accrual on with books accrual enable, or set the tax method to cash. Nothing was exported.", None, "from")
         coverage_metadata(conn, "tax_handoff", from_date, to_date, view="accrual")
         label = LABELS["accrual"] + (f"; accrual figures start on {started}" if started else "")
-        return TaxView("accrual", "accrual", "recorded", label, tracking_start=started)
+        return TaxView("accrual", "accrual", "recorded", label, tracking_start=started, fiscal_year_start=fiscal_start)
     if kind == DISCIPLINE_OFF:
         coverage_metadata(conn, "tax_handoff", from_date, to_date, view="cash")
-        return TaxView("cash", "cash", "recorded", LABELS["recorded_cash"])
+        return TaxView("cash", "cash", "recorded", LABELS["recorded_cash"], fiscal_year_start=fiscal_start)
     if capability(config) != 1:
         raise CoverageError("The tax method is cash, but these accrual books cannot produce a cash view (accrual capability is off). "
                             "Nothing was exported. Ask your accountant how to prepare the cash-method figures.", None, "from")
@@ -138,18 +141,22 @@ def plan(conn: Any, config: Mapping[str, Any], from_date: date, to_date: date) -
         raise CoverageError(f"The cash view for tax is not available before the accrual cutover {cutover}: the books hold no cash-basis detail "
                             f"before it (an imported or opening summary). Ask for a period that starts on or after {cutover}. Nothing was exported.",
                             cutover, "from")
-    return _derived(conn, from_date, to_date, started if kind == DISCIPLINE_PER_ACCOUNT else None)
+    return _derived(conn, from_date, to_date, started if kind == DISCIPLINE_PER_ACCOUNT else None, fiscal_start)
 
 
-def _derived(conn: Any, from_date: date, to_date: date, started: str | None) -> TaxView:
+def _derived(conn: Any, from_date: date, to_date: date, started: str | None, fiscal_year_start: str) -> TaxView:
     from .accrual.schedules import effective_tax_treatment
     from .reports import cashview
+    from .reports.cache import iter_postings
+    raw_total = sum((row[4] for row in iter_postings(conn, to_date=to_date)), _ZERO)
+    if raw_total:
+        raise cashview.CashViewError("The recorded trial balance does not balance. Nothing was exported; fix ledger integrity first.")
     schedules = _records(conn, "schedules")
     capitalized: dict[str, str] = {}
     for record in schedules:
         if record.get("kind") != "prepaid":
             continue
-        treatment, source = effective_tax_treatment(record)
+        treatment, source = effective_tax_treatment(record, fiscal_year_start)
         if treatment == "capitalize":
             capitalized[record["id"]] = source
     ledger = cashview.derive(conn, to_date, frozenset(capitalized))
@@ -162,22 +169,8 @@ def _derived(conn: Any, from_date: date, to_date: date, started: str | None) -> 
                 f"{tie['reconciling_total']}. Nothing was exported. Run books accrual report --kind reconciliation to find the unexplained balance.")
     items, intents = _records(conn, "items"), _records(conn, "intents")
     control, _ = cashview._registered_accounts(items, schedules, intents, cashview._load_entries(conn, to_date))
-    by_account: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for record in schedules:
-        if record.get("kind") in {"prepaid", "deferred"} and record.get("account"):
-            by_account[record["account"]].append(record)
-    item_accounts = {i["account"] for i in items if i.get("account")}
-    kept, mixed = set(), []
-    for account, records in by_account.items():
-        if account in item_accounts:
-            continue
-        flags = {r["id"] in capitalized for r in records}
-        if flags == {True}:
-            kept.add(account)
-        elif flags == {True, False}:
-            mixed.append(account)
     return TaxView("cash", "cash", "derived", LABELS["derived"], tracking_start=started, capitalized=capitalized,
-                   ledger=ledger, control=set(control), kept_control=kept, mixed_prepaid_accounts=sorted(mixed))
+                   ledger=ledger, control=set(control), fiscal_year_start=fiscal_year_start)
 
 
 def derived_balances(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict[str, Any]]:
@@ -185,7 +178,7 @@ def derived_balances(conn: Any, view: TaxView, from_date: date, to_date: date) -
     from .reports.cache import iter_postings, list_accounts
     from .taxmap import PRIOR_EARNINGS_ACCOUNT
     start = from_date.isoformat()
-    dropped = view.control - view.kept_control
+    dropped = view.control
     opening: dict[str, Decimal] = {}
     ending: dict[str, Decimal] = {}
     activity: dict[str, Decimal] = {}
@@ -200,6 +193,16 @@ def derived_balances(conn: Any, view: TaxView, from_date: date, to_date: date) -
         ending[account] = ending.get(account, _ZERO) + amount
         if day < start:
             opening[account] = opening.get(account, _ZERO) + amount
+    # Reconstruct only the capitalized schedules, including when their account
+    # also holds schedules deducted on payment. Never hide their assets in equity.
+    from datetime import timedelta
+    from .accrual.reports import _managed_support
+    for boundary, balances in ((from_date - timedelta(days=1), opening), (to_date, ending)):
+        for record in _managed_support(conn, boundary.isoformat())[1]:
+            if record["id"] in view.capitalized:
+                account = record["account"]
+                accounts.add(account)
+                balances[account] = balances.get(account, _ZERO) + Decimal(record["signed_balance"])
     derived: set[str] = set()
     for posting in view.ledger.postings:
         if posting.date > to_date.isoformat():
@@ -287,9 +290,6 @@ def flags(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict
             result.append({"code": "prepaid_expensed_by_default", "refs": [record["id"]], "treatment_source": "default",
                            "message": (f"Prepaid schedule {record.get('reference') or record['id']} is deducted when paid by default (12-month rule). "
                                        "Record its tax treatment with books accrual schedule tax-treatment to confirm.")})
-    for account in view.mixed_prepaid_accounts:
-        result.append({"code": "prepaid_account_mixed", "accounts": [account],
-                       "message": f"{account} holds both capitalized and expensed prepaid schedules, so its balance is not shown. The computed adjustment row carries it."})
     issues = [i for i in view.ledger.issues if start <= i["date"] <= end]
     for issue in issues:
         result.append({"code": issue["code"], "amount": issue.get("amount"), "message": issue["message"]})
@@ -396,14 +396,17 @@ def apply_set_tax_method(entity: Any, method: Any, tax_view: Any = None, plan_ha
             return {"status": "already_applied", "kind": SET_TAX_METHOD_KIND, **request, "request_hash": fresh["request_hash"]}
         entity = load_entity(entity.path)
         store = LedgerStore(default_store_path(entity.path))
-        with store.transaction(immediate=True) as conn:
-            store.append_audit_event("tax-method-set", {"from": fresh["effects"]["from"], "to": fresh["effects"]["to"],
-                                                         "plan_hash": fresh["plan_hash"]}, conn)
-            _seal(store, conn, "entity-set-tax-method")
         config = {**entity.entity_config, TAX_METHOD_KEY: request["method"], TAX_VIEW_KEY: request[TAX_VIEW_KEY]}
         temp = entity.path / "entity.json.tax-method.tmp"
         temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(temp, entity.path / "entity.json")
+        try:
+            with store.transaction(immediate=True) as conn:
+                store.append_audit_event("tax-method-set", {"from": fresh["effects"]["from"], "to": fresh["effects"]["to"],
+                                                             "plan_hash": fresh["plan_hash"]}, conn)
+                _seal(store, conn, "entity-set-tax-method")
+                os.replace(temp, entity.path / "entity.json")
+        finally:
+            temp.unlink(missing_ok=True)
         return {"status": "applied", "kind": SET_TAX_METHOD_KIND, **request, "from": fresh["effects"]["from"],
                 "request_hash": fresh["request_hash"], "plan_hash": fresh["plan_hash"], "entries_changed": 0,
                 "published_statements_changed": False}

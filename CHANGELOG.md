@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add an audited fiscal-year setting; use it for prepaid tax defaults and annual earnings. Preserve mixed prepaid assets and guard tax-policy writes against invalid ledger integrity and standing-authority changes.
+
 ## 0.7.0 — 2026-10-21
 
 - Fix Claude Desktop and Cowork marketplace compatibility by moving the bundled CLI launcher from `bin/books` to `scripts/books`. The Python-installed `books` command and skill-local wrappers keep working. Packaging tests now reject a top-level `bin/` directory.

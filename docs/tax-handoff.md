@@ -336,7 +336,7 @@ produce a cash view, or a cash view that does not tie to the accrual books.
 - `prepaid_capitalized` and `prepaid_expensed_by_default`, with `treatment_source` `recorded` or `default`.
 - `cash_view_unclassified` and `cash_view_noncash_entry`: entries the cash view cannot explain.
 
-The defaults need review by a tax professional: tax years are calendar years, the 12-month rule for
+The defaults need review by a tax professional: the configured fiscal year, the 12-month rule for
 prepaid expenses, and the treatment of opening receivables collected after the change.
 
 A historical opening summary supports its complete fiscal period, not arbitrary earlier months.
@@ -344,3 +344,36 @@ Unsupported pre-cutover subperiods or dates before the source balances are refus
 handoff files are written. A supported full-summary export identifies the included summary and
 states that historical transaction detail is unavailable. Periods entirely before optional accrual
 tracking began remain cash periods, and a period that crosses the tracking start is not refused.
+
+
+## Set the fiscal year
+
+Record the company's established fiscal calendar with a preview, then apply that preview:
+
+```sh
+books entity set-fiscal-year PATH --start 07-01
+books entity set-fiscal-year PATH --start 07-01 --apply --plan-hash HASH_FROM_PREVIEW
+```
+
+`07-01` means July 1 through June 30; `01-01` is the calendar-year default.
+The setting accepts the first day of any month (`MM-01`). It does not support
+52/53-week calendars or short transition years. It records the company's calendar;
+it does not elect or change its tax year with a tax authority.
+
+The command audits the change and refuses a stale preview or invalid ledger.
+It is an owner/preparer decision and is not covered by standing posting authority.
+An imported opening summary must agree with the chosen start; changing its
+historical coverage requires a separate reviewed correction.
+
+The prepaid 12-month default uses the end of the fiscal year following the
+payment's fiscal year. Tax-view metadata records `fiscal_year_start`. Accrual
+balance sheets use the calendar for current-year earnings; imported summaries
+retain their evidenced fiscal calendar. Explicit report/export date ranges remain
+as requested. `--year` remains the calendar-year shortcut; for July–June, use
+`--from 2026-07-01 --to 2027-06-30`. Existing exported files and published statements are unchanged.
+
+Capitalized prepaid balances remain assets even when an account also holds
+prepaids deducted on payment; only the capitalized portion appears in the tax view.
+
+The prepaid rule and calendar limitations follow [IRS Publication 538](https://www.irs.gov/publications/p538).
+Confirm the company's established method and calendar with its preparer.
