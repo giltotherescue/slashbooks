@@ -91,7 +91,7 @@ class TaxView:
     source: str          # "derived" (cash view of accrual records) or "recorded"
     label: str
     tracking_start: str | None = None
-    capitalized: dict[str, str] = field(default_factory=dict)   # schedule id -> "recorded" or "default"
+    capitalized: dict[str, str] = field(default_factory=dict)   # schedule id -> "recorded" or "not_recorded"
     refundable: dict[str, str] = field(default_factory=dict)    # deposit id -> "schedules" or "items" (recorded refundable)
     ledger: Any = None
     control: set[str] = field(default_factory=set)
@@ -157,7 +157,7 @@ def _derived(conn: Any, from_date: date, to_date: date, started: str | None, fis
     for record in schedules:
         if record.get("kind") != "prepaid":
             continue
-        treatment, source = effective_tax_treatment(record, fiscal_year_start)
+        treatment, source = effective_tax_treatment(record)
         if treatment == "capitalize":
             capitalized[record["id"]] = source
     # A deposit counts as refundable only when a person recorded it so. Unset means advance payment.
@@ -290,19 +290,16 @@ def flags(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict
                                    "Confirm that no earlier return already reported them.")})
     for record in schedules:
         if record.get("id") in view.capitalized:
-            result.append({"code": "prepaid_capitalized", "refs": [record["id"]], "treatment_source": view.capitalized[record["id"]],
-                           "message": (f"Prepaid schedule {record.get('reference') or record['id']} is capitalized for tax "
-                                       f"({'recorded' if view.capitalized[record['id']] == 'recorded' else 'default: the benefit lasts more than 12 months or past the next tax year'}). "
-                                       "It is deducted as it is used, not when paid.")})
-        elif record.get("kind") == "prepaid" and "tax_treatment" not in record:
-            result.append({"code": "prepaid_expensed_by_default", "refs": [record["id"]], "treatment_source": "default",
-                           "message": (f"Prepaid schedule {record.get('reference') or record['id']} is deducted when paid by default (12-month rule). "
-                                       "Record its tax treatment with books accrual schedule tax-treatment to confirm.")})
+            source = view.capitalized[record["id"]]
+            reason = "recorded tax treatment: capitalize" if source == "recorded" else "no tax treatment is recorded, so the books are followed"
+            result.append({"code": "prepaid_capitalized", "refs": [record["id"]], "treatment_source": source,
+                           "message": (f"Prepaid schedule {record.get('reference') or record['id']} stays on the balance sheet in the tax figures "
+                                       f"and is deducted as it is used ({reason}).")})
     untreated = sorted(r["id"] for r in schedules if r.get("kind") == "prepaid" and "tax_treatment" not in r)
     if untreated:
         result.append({"code": "prepaid_tax_treatment_not_recorded", "refs": untreated,
-                       "message": ("These prepaid schedules have no recorded tax treatment, so the default above applies. "
-                                   "Record it with books accrual schedule tax-treatment.")})
+                       "message": ("These prepaid schedules have no recorded tax treatment. The tax figures keep them on the balance sheet "
+                                   "as the books record them. A person records the treatment with books accrual schedule tax-treatment.")})
     held = deposits(conn, view, to_date)
     for row in held:
         if row["deposit_kind"] == "refundable":
@@ -441,7 +438,8 @@ def readiness_notes(entity: Any) -> list[dict[str, Any]]:
     if missing:
         notes.append({"code": "schedule_tax_treatment_missing", "refs": missing,
                       "message": ("The company files on the cash method, and these prepaid schedules have no recorded tax treatment. "
-                                  "A default applies (deduct when paid only under the 12-month rule). Record it with books accrual schedule tax-treatment.")})
+                                  "The tax figures keep them on the balance sheet as the books record them. A person records the treatment "
+                                  "with books accrual schedule tax-treatment.")})
     if active_method(entity.entity_config) == "cash":
         # Behind the tax-method view only, so a company without the view keeps its readiness output.
         from .accrual.schedules import is_deposit

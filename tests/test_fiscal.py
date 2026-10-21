@@ -65,11 +65,6 @@ class FiscalYearTests(unittest.TestCase):
                               (date(2026, 7, 1), date(2026, 7, 1)),
                               (date(2028, 2, 29), date(2027, 7, 1))):
             self.assertEqual(fiscal.year_start(day, "07-01"), expected)
-        from bookkeeping.accrual.schedules import default_tax_treatment
-        record = {"kind": "prepaid", "origin_date": "2026-06-30", "service_start": "2026-08-01", "service_end": "2027-06-30"}
-        self.assertEqual(default_tax_treatment(record, "07-01"), "expense_when_paid")
-        record["service_end"] = "2027-07-01"
-        self.assertEqual(default_tax_treatment(record, "07-01"), "capitalize")
 
 
     def test_imported_summary_calendar_cannot_be_reinterpreted(self):

@@ -378,6 +378,43 @@ class BalanceStatementViews(TrackedCompany):
         plain = statements.balance_sheet(self.root, date(2026, 4, 30)).to_json()
         self.assertEqual(statements.balance_sheet(self.root, date(2026, 4, 30), view="accrual").to_json(), plain)
 
+    def test_cash_default_with_records_labels_balances_as_recorded(self) -> None:
+        self.make("cash")
+        label = "Accounting basis: as recorded (cash view default)"
+        for call in (statements.balance_sheet, statements.trial_balance):
+            with self.subTest(call=call.__name__):
+                result = call(self.root, date(2026, 4, 30))
+                self.assertEqual((result.meta["basis"], result.meta["basis_label"]), ("cash", "as recorded (cash view default)"))
+                self.assertIn(label, result.to_text())
+                self.assertNotIn("Accounting basis: cash\n", result.to_text())
+                # A date before the tracking start is a plain cash period: unchanged.
+                before = call(self.root, date(2026, 3, 31))
+                self.assertNotIn("basis_label", before.meta)
+                self.assertIn("Accounting basis: cash\n", before.to_text())
+        for command in ("balance-sheet", "trial-balance"):
+            code, out, err = books("report", command, "--as-of", "2026-04-30", "--entity", str(self.root))
+            self.assertEqual(code, 0, err)
+            self.assertIn(label, out)
+            code, out, err = books("report", command, "--as-of", "2026-04-30", "--format", "json", "--entity", str(self.root))
+            self.assertEqual(out["meta"]["basis_label"], "as recorded (cash view default)")
+
+    def test_cash_only_and_accrual_default_labels_are_unchanged(self) -> None:
+        # The golden cash company, before accrual is turned on.
+        for call in (statements.balance_sheet, statements.trial_balance):
+            result = call(self.root, date(2026, 4, 30))
+            self.assertNotIn("basis_label", result.meta)
+            self.assertIn("Accounting basis: cash\n", result.to_text())
+        # Accrual turned on, but no accrual record: still one view, the cash books.
+        self.make("cash", records=False)
+        self.assertIn("Accounting basis: cash\n", statements.balance_sheet(self.root, date(2026, 4, 30)).to_text())
+        self.assertNotIn("basis_label", statements.trial_balance(self.root, date(2026, 4, 30)).meta)
+
+    def test_accrual_default_label_is_unchanged(self) -> None:
+        self.make("accrual")
+        result = statements.balance_sheet(self.root, date(2026, 4, 30))
+        self.assertNotIn("basis_label", result.meta)
+        self.assertIn("Accounting basis: accrual\n", result.to_text())
+
     def test_cli_refuses_a_view_with_structure_or_compare(self) -> None:
         self.make("cash")
         for extra in (["--structure", "--format", "json"], ["--compare", "previous"]):
@@ -390,6 +427,36 @@ class BalanceStatementViews(TrackedCompany):
         code, out, err = books("report", "balance-sheet", "--as-of", "2026-03-31", "--basis", "accrual", "--entity", str(self.root))
         self.assertEqual(code, 1)
         self.assertIn("--basis accrual --as-of 2026-04-01", err)
+
+
+class NativeAccrualRecordsOnCashDefault(unittest.TestCase):
+    """Accrual records from the first day (no tracking start), with the default view set to cash."""
+
+    def setUp(self) -> None:
+        from test_accrual_cash_view import AP as BILLS, UTILITIES, CashViewFixture
+        fixture = CashViewFixture("run")
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.item("bill", "payable", BILLS, "500.00", "2026-04-01", "Power Co", counter=UTILITIES)
+        self.root = fixture.root
+
+    def test_balance_sheet_and_workbook_cover_say_as_recorded(self) -> None:
+        from bookkeeping.reports import workbook
+        self.assertEqual(workbook._cover_basis(self.root, date(2026, 4, 30)), "Accrual basis")
+        self.assertIn("Accounting basis: accrual\n", statements.balance_sheet(self.root, date(2026, 4, 30)).to_text())
+        code, result, err = books("entity", "set-view", str(self.root), "--view", "cash", "--apply")
+        self.assertEqual(code, 0, (result, err))
+        self.assertEqual(workbook._cover_basis(self.root, date(2026, 4, 30)), "As recorded (cash view default)")
+        self.assertIn("Accounting basis: as recorded (cash view default)", statements.balance_sheet(self.root, date(2026, 4, 30)).to_text())
+
+    def test_cash_only_company_cover_is_unchanged(self) -> None:
+        import tempfile
+        from bookkeeping.reports import workbook
+        with tempfile.TemporaryDirectory() as tmp:
+            import golden_companies
+            root = Path(tmp) / "cash"
+            golden_companies.build_cash(root)
+            self.assertEqual(workbook._cover_basis(root, date(2026, 4, 30)), "Cash basis")
 
 
 class AskRouting(TrackedCompany):

@@ -3142,7 +3142,7 @@
           "type": "string"
         },
         "tax_treatment": {
-          "description": "Prepaid only. How a cash-method filer deducts it for tax: expense_when_paid (deduct on payment) or capitalize (deduct as used). When absent, the tax outputs use a default: expense_when_paid only if the service lasts 12 months or less and ends by the end of the tax year after the payment year; otherwise capitalize. Never changes the books.",
+          "description": "Prepaid only. How a cash-method filer deducts it for tax: expense_when_paid (deduct on payment) or capitalize (deduct as used). Set only by a person. When absent, the tax outputs keep the prepaid on the balance sheet as the books record it and list it as not recorded. Never changes the books.",
           "enum": [
             "expense_when_paid",
             "capitalize"

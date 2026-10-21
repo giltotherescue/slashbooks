@@ -119,8 +119,9 @@ class CashFilerWithAccrualRecords(CashViewFixture):
         self.assertNotIn(taxmap.PRIOR_EARNINGS_ACCOUNT, tb(y2027))
         self.assertEqual(y2027["totals"]["difference"], D("0.00"))
 
-    def test_prepaid_longer_than_12_months_is_capitalized_by_default(self):
+    def test_unset_prepaid_is_capitalized_and_flagged(self):
         # 2,400.00 paid 2026-01-01 for 24 months (equal_month, 100.00 a month). 2026 recognition: 12 x 100 = 1,200.00.
+        # No tax treatment is recorded, so the tax figures follow the books.
         self.schedule("ins24", "prepaid", PREPAID, INSURANCE, "2400.00", "2026-01-01", "2027-12-31", "equal_month", BANK)
         self.due("2026-12-31")
         self.cash_filer()
@@ -130,18 +131,36 @@ class CashFilerWithAccrualRecords(CashViewFixture):
         # The unused 1,200.00 stays an asset.
         self.assertEqual(rows[PREPAID], D("1200.00"))
         capitalized = next(f for f in handoff["tax_view"]["flags"] if f["code"] == "prepaid_capitalized")
-        self.assertEqual((capitalized["refs"], capitalized["treatment_source"]), (["ins24"], "default"))
+        self.assertEqual((capitalized["refs"], capitalized["treatment_source"]), (["ins24"], "not_recorded"))
+        not_recorded = next(f for f in handoff["tax_view"]["flags"] if f["code"] == "prepaid_tax_treatment_not_recorded")
+        self.assertEqual(not_recorded["refs"], ["ins24"])
+        self.assertNotIn("prepaid_expensed_by_default", flag_codes(handoff))
+        for message in (f["message"] for f in handoff["tax_view"]["flags"]):
+            self.assertNotIn("12-month", message)
+            self.assertNotIn("12 months", message)
         self.assertEqual(handoff["totals"]["difference"], D("0.00"))
 
-    def test_prepaid_up_to_12_months_is_expensed_when_paid(self):
-        # 1,200.00 paid 2026-07-01 for 2026-07-01 to 2027-06-30: 12 months, ends before 2027-12-31.
+    def test_unset_short_prepaid_is_not_expensed_until_a_person_records_it(self):
+        # 1,200.00 paid 2026-07-01 for 2026-07-01 to 2027-06-30 (100.00 a month). Unset: 6 x 100 = 600.00 used, 600.00 asset.
         self.schedule("ins12", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-07-01", "2027-06-30", "equal_month", BANK)
         self.due("2026-12-31")
         self.cash_filer()
         rows = tb(self.handoff())
+        self.assertEqual((rows[INSURANCE], rows[PREPAID]), (D("600.00"), D("600.00")))
+        self.assertIn("prepaid_tax_treatment_not_recorded", flag_codes(self.handoff()))
+        # A person records expense_when_paid: 2026 deducts the full 1,200.00 and no asset stays.
+        books("accrual", "schedule", "tax-treatment", "--entity", str(self.root), "--id", "ins12", "--treatment", "expense_when_paid", "--apply")
+        handoff = self.handoff()
+        rows = tb(handoff)
         self.assertEqual(rows[INSURANCE], D("1200.00"))
         self.assertNotIn(PREPAID, rows)
-        self.assertIn("prepaid_expensed_by_default", flag_codes(self.handoff()))
+        self.assertFalse({"prepaid_capitalized", "prepaid_tax_treatment_not_recorded"} & set(flag_codes(handoff)))
+        self.assertEqual(handoff["totals"]["difference"], D("0.00"))
+
+    def test_recorded_capitalize_is_capitalized(self):
+        self.schedule("ins12", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-07-01", "2027-06-30", "equal_month", BANK)
+        self.due("2026-12-31")
+        self.cash_filer()
         # A person records capitalize: 2026 deducts only the 6 months used, 6 x 100 = 600.00.
         code, plan, _ = books("accrual", "schedule", "tax-treatment", "--entity", str(self.root), "--id", "ins12", "--treatment", "capitalize")
         self.assertEqual((code, plan["changes"]), (0, True))
@@ -152,14 +171,39 @@ class CashFilerWithAccrualRecords(CashViewFixture):
         code, again, _ = books("accrual", "schedule", "tax-treatment", "--entity", str(self.root), "--id", "ins12", "--treatment", "capitalize", "--apply")
         self.assertEqual(again["status"], "already_applied")
         self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
-        rows = tb(self.handoff())
+        handoff = self.handoff()
+        rows = tb(handoff)
         self.assertEqual((rows[INSURANCE], rows[PREPAID]), (D("600.00"), D("600.00")))
+        capitalized = next(f for f in handoff["tax_view"]["flags"] if f["code"] == "prepaid_capitalized")
+        self.assertEqual(capitalized["treatment_source"], "recorded")
+        self.assertNotIn("prepaid_tax_treatment_not_recorded", flag_codes(handoff))
         listing = schedules.list_schedules(self.entity)
         self.assertEqual(listing[0]["tax_treatment"], "capitalize")
         code, text, _ = books("accrual", "report", "--entity", str(self.root), "--kind", "schedules", "--as-of", "2026-12-31", "--format", "text")
         self.assertIn("Tax treatment", text)
         events = [e["type"] if isinstance(e, dict) else e.type for e in LedgerStore(self.root / "ledger.sqlite").load_audit_events()]
         self.assertIn("schedule-tax-treatment-set", events)
+
+    def test_export_ties_to_the_accrual_books_with_recorded_and_unset_prepaids(self):
+        # Unset: 2,400.00 for 24 months, 100.00 a month; 2026 uses 1,200.00 in both views.
+        # Recorded expense_when_paid: 1,200.00 for 2026-07-01 to 2027-06-30; accrual uses 600.00, cash deducts 1,200.00.
+        self.schedule("long", "prepaid", PREPAID, INSURANCE, "2400.00", "2026-01-01", "2027-12-31", "equal_month", BANK)
+        self.schedule("short", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-07-01", "2027-06-30", "equal_month", BANK,
+                      tax_treatment="expense_when_paid")
+        self.due("2026-12-31")
+        self.cash_filer()
+        handoff = self.handoff()
+        # Accrual net income -1,800.00; cash -2,400.00; cash minus accrual -600.00, to the cent.
+        difference = next(f for f in handoff["tax_view"]["flags"] if f["code"] == "difference_from_accrual_view")
+        self.assertEqual((difference["accrual_net_income"], difference["cash_net_income"], difference["amount"]),
+                         ("-1800.00", "-2400.00", "-600.00"))
+        self.assertEqual(tb(handoff)[PREPAID], D("1200.00"))
+        self.assertEqual(handoff["totals"]["difference"], D("0.00"))
+        self.assertEqual(sum(tb(handoff).values(), D("0")), D("0.00"))
+        out = Path(self.tmp.name) / "tie-out"
+        code, _, err = books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out), "--formats", "csv")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads((out / "manifest.json").read_text())["view"], "cash")
 
     def test_deferred_revenue_is_income_on_receipt(self):
         # 1,200.00 received 2026-10-01 for 2026-10-01 to 2027-09-30, 100.00 a month. Accrual 2026: 300.00.
@@ -342,15 +386,15 @@ class ScheduleTaxTreatment(CashViewFixture):
         self.schedule("ok", "prepaid", PREPAID, INSURANCE, "100.00", "2026-01-01", "2026-12-31", "equal_month", BANK, tax_treatment="capitalize")
         self.assertEqual(schedules.list_schedules(self.entity)[0]["tax_treatment"], "capitalize")
 
-    def test_default_treatment_follows_the_12_month_rule(self):
-        def default(start, end, paid=None):
-            record = {"kind": "prepaid", "service_start": start, "service_end": end, "origin": {"date": paid} if paid else {}}
-            return schedules.default_tax_treatment(record)
-        self.assertEqual(default("2026-01-01", "2026-12-31"), "expense_when_paid")
-        self.assertEqual(default("2026-07-01", "2027-06-30"), "expense_when_paid")
-        self.assertEqual(default("2026-07-01", "2027-07-01"), "capitalize")        # 12 months and 1 day
-        self.assertEqual(default("2027-03-01", "2028-02-28", "2026-12-15"), "capitalize")  # ends after the next tax year
-        self.assertIsNone(schedules.default_tax_treatment({"kind": "deferred"}))
+    def test_treatment_comes_only_from_the_record(self):
+        # The engine applies no tax rule: the dates do not matter, only a recorded value.
+        for start, end in (("2026-01-01", "2026-12-31"), ("2026-07-01", "2027-07-01")):
+            record = {"kind": "prepaid", "service_start": start, "service_end": end}
+            self.assertEqual(schedules.effective_tax_treatment(record), ("capitalize", "not_recorded"))
+            for value in ("expense_when_paid", "capitalize"):
+                self.assertEqual(schedules.effective_tax_treatment({**record, "tax_treatment": value}), (value, "recorded"))
+        self.assertEqual(schedules.effective_tax_treatment({"kind": "deferred"}), (None, "not_recorded"))
+        self.assertFalse(hasattr(schedules, "default_tax_treatment"))
 
     def test_readiness_note_for_a_cash_filer_with_untreated_prepaid(self):
         self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", BANK)
@@ -364,6 +408,9 @@ class ScheduleTaxTreatment(CashViewFixture):
         warnings, blockers = codes()
         self.assertIn("schedule_tax_treatment_missing", warnings)
         self.assertNotIn("schedule_tax_treatment_missing", blockers)
+        note = next(n for n in taxview.readiness_notes(load_entity(self.root)) if n["code"] == "schedule_tax_treatment_missing")
+        self.assertNotIn("12-month", note["message"])
+        self.assertIn("as the books record them", note["message"])
         books("accrual", "schedule", "tax-treatment", "--entity", str(self.root), "--id", "ins", "--treatment", "expense_when_paid", "--apply")
         self.assertNotIn("schedule_tax_treatment_missing", codes()[0])
 
@@ -373,11 +420,12 @@ class ReviewRegressions(CashViewFixture):
     cash_filer = CashFilerWithAccrualRecords.cash_filer
     def test_mixed_prepaids_keep_only_capitalized_asset(self):
         self.schedule("long", "prepaid", PREPAID, INSURANCE, "2400.00", "2026-01-01", "2027-12-31", "equal_month", BANK)
-        self.schedule("short", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-07-01", "2027-06-30", "equal_month", BANK)
+        self.schedule("short", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-07-01", "2027-06-30", "equal_month", BANK,
+                      tax_treatment="expense_when_paid")
         self.due("2026-12-31")
         self.cash_filer()
         result = self.handoff()
-        # Long policy: 1,200 used, 1,200 asset. Short policy: all 1,200 deducted.
+        # Long policy (not recorded): 1,200 used, 1,200 asset. Short policy (recorded expense_when_paid): all 1,200 deducted.
         self.assertEqual(tb(result)[PREPAID], D("1200.00"))
         self.assertEqual(tb(result)[INSURANCE], D("2400.00"))
         self.assertEqual(result["totals"]["difference"], D("0.00"))
@@ -408,13 +456,13 @@ class ReviewRegressions(CashViewFixture):
         self.assertEqual(caught.exception.code, "tax_treatment_person_only")
         self.assertEqual(schedules.list_schedules(self.entity), [])
 
-    def test_fiscal_year_changes_prepaid_default_and_stales_preview(self):
+    def test_fiscal_year_does_not_change_prepaid_treatment_but_stales_preview(self):
         from bookkeeping import fiscal
-        # Paid before July year end; benefit ends after the following June year end.
+        # 1,200.00 for 2026-08-01 to 2027-07-31, 100.00 a month. Unset: 5 months used in 2026 (500.00), 700.00 asset.
         self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-08-01", "2027-07-31", "equal_month", BANK, paid="2026-06-15")
         self.due("2026-12-31")
         self.cash_filer()
-        self.assertEqual(tb(self.handoff())[INSURANCE], D("1200.00"))
+        self.assertEqual((tb(self.handoff())[INSURANCE], tb(self.handoff())[PREPAID]), (D("500.00"), D("700.00")))
         old = schedules.preview_tax_treatment(self.entity, "ins", "capitalize")
         fiscal.apply(self.entity, "07-01")
         with self.assertRaises(JournalError) as caught:

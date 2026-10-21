@@ -1,7 +1,14 @@
 # Local Books and Slashbooks Cloud
 
 Company creation explicitly selects cash (default) or supported accrual basis.
-The existing company basis is preserved. Accrual adjustments use the same engine
+A cloud company uses the same engine contract as local books after that. A person
+can turn accrual on later (`books accrual enable`) and change the default report
+view (`books entity set-view`); both are previews until a person applies them, and
+standing posting authority never covers them. When the company has no entries and
+no person set a currency, the first import that names a currency sets the company
+currency, and the host saves
+`entity.json` with the ledger (see [company currency](company-currency.md)).
+Accrual adjustments use the same engine
 plans as local books and require explicit `adjustments:write` delegation;
 client-only access stays read-only. Period publication/locking uses the existing
 separate authority boundary. See [accrual books](accrual.md).

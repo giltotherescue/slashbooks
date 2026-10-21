@@ -434,9 +434,10 @@ books accrual schedule tax-treatment --entity PATH --id SCHEDULE --treatment cap
 
 - It changes only the tax outputs of a cash-method filer. The books, the reports and the
   recognition entries stay as they are.
-- If it is absent, a default applies: `expense_when_paid` only when the service lasts 12 months
-  or less and ends by the end of the tax year after the payment year. Otherwise `capitalize`.
-  Tax years follow the company fiscal-year setting (`01-01` by default). The default needs review by a tax professional.
+- If it is absent, the engine applies no tax rule. The tax outputs keep the prepaid on the balance
+  sheet as the books record it (`capitalize`, source `not_recorded`) and list it in the flag
+  `prepaid_tax_treatment_not_recorded`. An agent can propose a value with its evidence, using the
+  checklist in the books-export skill. A person records it.
 - The value is shown in `accrual schedule list` and in the schedules report when it is recorded.
 - Readiness adds the note `schedule_tax_treatment_missing` (never a blocker) when the tax method is
   cash, accrual is on, and a prepaid schedule has no recorded tax treatment.
