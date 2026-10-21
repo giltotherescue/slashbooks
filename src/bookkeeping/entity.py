@@ -307,6 +307,12 @@ def _starter_account_opens(business_type: str, open_date: date = _DEFAULT_ACCOUN
     ]
 
 
+def accrual_starter_accounts(business_type: str) -> tuple[str, ...]:
+    """Names of the accounts a new accrual company of ``business_type`` gets on top of the cash starter chart."""
+    opens = _starter_account_opens(business_type, _DEFAULT_ACCOUNT_OPEN_DATE, "accrual")
+    return tuple(opened.account for opened in opens[-len(_ACCRUAL_STARTER_ACCOUNTS):])
+
+
 def _normalize_optional_date(value: str) -> str | None:
     normalized = str(value or "").strip()
     if not normalized:

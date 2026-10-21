@@ -369,12 +369,28 @@ The preview lists what will change and writes nothing. Applying it:
 
 - upgrades the ledger to hold accrual records, and keeps a sealed backup of the old ledger;
 - records the tracking start in the company file and the ledger, and writes an audit event;
+- opens the accrual starter accounts that a new accrual company gets (Accounts Receivable,
+  Accounts Payable, Prepaid Expenses, Deferred Revenue, Customer Deposits, Accrued Liabilities,
+  Equipment, Accumulated Depreciation and Depreciation), dated the tracking start. The preview
+  lists them in `effects.accounts_to_open` and the receipt in `accounts_opened`. An account that
+  already exists with the same name is left as it is. If an existing account clashes with one of
+  them (the same name in other letter case, the same name under another account type, or another
+  currency), the preview stops with `starter_account_clash` and names the accounts; correct or
+  rename the account, then preview again;
 - changes **no** entry, report, export, answer, period lock or published statement, and does not change the default view.
+  The new accounts have no postings. They appear only in account lists, such as `books accrual accounts`,
+  the routine's category list and `books tax map` (with a 0.00 balance).
 
 A person runs both commands. A delegated agent can run the preview, never the apply.
 The same preview applied again returns `already_applied`. The tracking start cannot be
 changed later. The command is refused when the date is inside a closed period, or when
 the company was created on accrual (it already keeps accrual books from its first day).
+
+A company that turned accrual on before the starter accounts were added by `enable` does not
+get them from a second `enable` (that is a replay and returns `already_applied`). Its next
+`books accrual opening preview` lists the missing starter accounts in `accounts_to_open`, and
+the apply opens them on the tracking start together with the opening items. You can also add
+one account at a time with `books entity account-add`.
 
 One thing does change: the ledger fingerprint. A readiness package made before this step
 carries the old fingerprint, so run `books readiness` again before closing a month.

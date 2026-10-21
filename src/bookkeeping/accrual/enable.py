@@ -6,7 +6,9 @@ Two person-only writes, both previewed first and both audited:
     A cash company turns accrual on at a tracking start date. The ledger takes the
     explicit schema upgrade (sealed backup), entity.json gains capability 1 and
     ``accrual_tracking_start``, and the ledger meta table records the same date.
-    No entry, report or default view changes. A company that was created on
+    The accrual starter accounts that a new accrual company gets (receivable,
+    payable, prepaid, deferred revenue and the others) are opened on that date
+    when they are missing. No entry, report or default view changes. A company that was created on
     accrual has no tracking start and cannot use this command.
 
 ``entity set-view``
@@ -25,7 +27,7 @@ import os
 import sqlite3
 from typing import Any, Mapping
 
-from ..entity import ACCRUAL_CAPABILITY_VERSION, Entity, load_entity, resolve_basis
+from ..entity import ACCRUAL_CAPABILITY_VERSION, Entity, accrual_starter_accounts, load_entity, resolve_basis
 from ..ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore, default_store_path
 from .intake import canonical_hash
 from .journals import JournalError
@@ -78,6 +80,34 @@ def require_tracking_coverage(conn: sqlite3.Connection, view: str, start: date |
             f"Accrual figures start on {first}, the day accrual tracking was turned on. Before then the books are cash books "
             f"with no invoices, bills or prepaid records. Ask for a period that starts on or after {first}, or use the cash view.",
             first, "from" if start is not None else "to")
+
+
+def starter_accounts_to_open(entity: Entity, conn: sqlite3.Connection) -> list[str]:
+    """The accrual starter accounts this company is missing, in starter-chart order.
+
+    An account that already exists with the same name and the company currency is left alone.
+    An account whose name differs only in letter case, or that has the same name under a different
+    account type (root), or the same name with another currency, is a clash: refuse and let a person decide.
+    """
+    existing = {str(name): str(currency) for name, currency in conn.execute("SELECT name, currency FROM accounts")}
+    missing, clashes = [], []
+    for account in accrual_starter_accounts(entity.business_type):
+        if account in existing:
+            if existing[account] != entity.currency:
+                clashes.append(f"{account} uses {existing[account]}, not the company currency {entity.currency}")
+            continue
+        rest = account.split(":", 1)[1].lower()
+        similar = sorted(name for name in existing
+                         if name.lower() == account.lower() or name.split(":", 1)[-1].lower() == rest)
+        if similar:
+            clashes.append(f"{', '.join(similar)} clashes with {account}")
+        else:
+            missing.append(account)
+    if clashes:
+        raise _err("starter_account_clash",
+                   "Cannot add the accrual starter accounts because existing accounts clash with them: " + "; ".join(clashes) + ".",
+                   "Rename or correct the clashing account, or ask your bookkeeper which account to keep, then preview again.")
+    return missing
 
 
 def _check_plan(plan: Any, kind: str) -> dict[str, Any]:
@@ -135,8 +165,8 @@ def preview_enable(entity: Entity, tracking_start_date: Any, operation_id: str |
     replayed = False
     if current is not None:
         if current != day.isoformat():
-            raise _err("tracking_start_conflict", f"Accrual was already turned on with tracking start {current}.",
-                       f"The tracking start cannot change. Use {current}, or leave the company as it is.")
+            raise _err("tracking_start_conflict", f"Accrual was already turned on with the start date {current}.",
+                       f"The start date cannot change. Use {current}, or leave the company as it is.")
         replayed = True
     elif capability == 1 or view == "accrual":
         raise _err("accrual_already_primary", "This company already keeps accrual books from its first day. There is nothing to turn on.",
@@ -152,12 +182,13 @@ def preview_enable(entity: Entity, tracking_start_date: Any, operation_id: str |
         entries = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
         later = conn.execute("SELECT COUNT(*) FROM entries WHERE date>=?", (day.isoformat(),)).fetchone()[0]
         digest = store.content_digest(conn)
+        accounts_to_open = [] if replayed else starter_accounts_to_open(entity, conn)
     warnings = []
     if later and not replayed:
         warnings.append({"code": "entries_on_or_after_tracking_start",
-                         "message": (f"{later} existing entries are dated on or after {day.isoformat()}. They stay as recorded. "
-                                     "If one of them already paid an invoice or bill that you list as open at the tracking start, "
-                                     "the amount would be counted twice. Choose a later tracking start, or list only what is still open.")})
+                         "message": (f"{later} existing entries are dated on or after the start date. They stay as recorded. "
+                                     "If one of them already paid an invoice or bill that you list as open on the start date, "
+                                     "the amount would be counted twice. Choose a later start date, or list only what is still open.")})
     body = {"schema_version": VERSION, "kind": ENABLE_KIND, "id": operation_id,
             "request": {"operation_id": operation_id, "tracking_start": day.isoformat()},
             "replayed": replayed, "ledger_digest": digest,
@@ -165,11 +196,12 @@ def preview_enable(entity: Entity, tracking_start_date: Any, operation_id: str |
             "effects": {"capability": 1, "default_view": view, "tracking_start": day.isoformat(),
                         "ledger_schema": {"from": schema, "to": ACCRUAL_SCHEMA_VERSION,
                                           "backup": "A sealed backup of the ledger is kept." if schema != ACCRUAL_SCHEMA_VERSION else None},
+                        "accounts_to_open": accounts_to_open,
                         "entries_changed": 0, "reports_changed": False,
                         "existing_entries": entries, "entries_on_or_after_tracking_start": later},
             "warnings": warnings,
             "next_steps": [
-                f"Optional: list what is still open on {day.isoformat()}: `books accrual opening preview --entity PATH --input request.json` (cutover {day.isoformat()}).",
+                f"Optional: list what is still open on the start date: `books accrual opening preview --entity PATH --input request.json` (cutover {day.isoformat()}).",
                 "Optional: `books entity set-view PATH --view accrual` to make accrual the default view."]}
     body["request_hash"] = canonical_hash({"kind": ENABLE_KIND, "request": body["request"]})
     body["plan_hash"] = canonical_hash(body)
@@ -203,19 +235,25 @@ def apply_enable(entity: Entity, plan: Any) -> dict[str, Any]:
             raise _err("stale_preview", "Company configuration changed after the preview.", "Run the preview again.")
         if fresh["ledger_digest"] != plan["ledger_digest"]:
             raise _err("stale_preview", "The ledger changed after the preview.", "Run the preview again.")
+        accounts = fresh["effects"]["accounts_to_open"]
+        if accounts != plan["effects"].get("accounts_to_open"):
+            raise _err("stale_preview", "The accounts to open changed after the preview.", "Run the preview again.")
         backup = store.upgrade()
         receipt = {"status": "applied", "id": operation_id, "kind": ENABLE_KIND, "request_hash": plan["request_hash"],
                    "plan_hash": plan["plan_hash"], "tracking_start": day.isoformat(), "capability": 1,
                    "default_view": fresh["effects"]["default_view"], "backup": backup.name if backup else None,
-                   "entries_changed": 0, "warnings": plan["warnings"]}
+                   "accounts_opened": accounts, "entries_changed": 0, "warnings": plan["warnings"]}
         intent = {"id": "operation:" + operation_id, "kind": ENABLE_KIND, "status": "applied",
                   "request_hash": plan["request_hash"], "plan_hash": plan["plan_hash"],
                   "request": plan["request"], "plan": dict(plan), "receipt": receipt}
         with store.transaction(immediate=True) as conn:
             apply_mutations(store, [SupportingMutation("intents", intent["id"], intent)], conn)
             store.set_meta(TRACKING_KEY, day.isoformat(), conn)
+            if accounts:
+                from ..ledger.model import Open
+                store.insert_opens([Open(day, account, (entity.currency,)) for account in accounts], conn)
             store.append_audit_event("accrual-enabled", {
-                "operation_id": operation_id, "tracking_start": day.isoformat(),
+                "operation_id": operation_id, "tracking_start": day.isoformat(), "accounts_opened": accounts,
                 "default_view": receipt["default_view"], "plan_hash": plan["plan_hash"]}, conn)
             _seal(store, conn, "accrual-enable")
         _write_config(entity, {"accrual_capability_version": ACCRUAL_CAPABILITY_VERSION, TRACKING_KEY: day.isoformat()})

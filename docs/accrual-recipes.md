@@ -871,7 +871,8 @@ books accrual enable preview --entity PATH --tracking-start 2026-04-01 > enable.
 books accrual enable apply --entity PATH --input enable.json
 ```
 
-Nothing recorded changes. If invoices or bills are still open on 2026-04-01, list only those.
+Nothing recorded changes. The apply opens the accrual starter accounts (receivable, payable, prepaid, deferred revenue
+and the others) on 2026-04-01 when they are missing. If invoices or bills are still open on 2026-04-01, list only those.
 Leave out `lines` and `cutover`; the entry is dated the tracking start and the balancing amount goes to
 `Equity:Opening-Balance-Adjustments`. Accrual records can be written while the default view is
 still cash; `books entity set-view` changes only what reports show by default.
