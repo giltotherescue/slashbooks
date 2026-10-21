@@ -300,7 +300,7 @@ You may:
 
 You must not:
 
-- Apply `entity set-tax-method`, `entity set-tax-profile`, `accrual schedule deposit-kind`,
+- Apply `entity set-tax-method`, `entity set-tax-profile`, `entity set-fiscal-year`, `accrual schedule deposit-kind`,
   `accrual item deposit-kind` or `accrual schedule tax-treatment`. Run the preview, show it, and
   let a person apply it (person-only writes).
 - Choose an expensing election, bonus depreciation or the de minimis safe harbor.
@@ -348,6 +348,7 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 
 
 When the owner needs to correct the fiscal calendar, use
-`books entity set-fiscal-year PATH --start MM-01` to preview the change, then
-apply the approved setting with `--apply --plan-hash HASH_FROM_PREVIEW`.
+`books entity set-fiscal-year PATH --start MM-01` to preview the change and show it.
+The owner applies the approved setting with `--apply --plan-hash HASH_FROM_PREVIEW`
+(person-only).
 Tax prepaid defaults follow that calendar; explicit export ranges stay unchanged.

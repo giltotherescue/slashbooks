@@ -873,8 +873,8 @@ books accrual enable apply --entity PATH --input enable.json
 
 Nothing recorded changes. If invoices or bills are still open on 2026-04-01, list only those.
 Leave out `lines` and `cutover`; the entry is dated the tracking start and the balancing amount goes to
-`Equity:Opening-Balance-Adjustments`. (Writing records while the default view is cash needs the
-treatment-scope change; until then run `books entity set-view PATH --view accrual --apply` first.)
+`Equity:Opening-Balance-Adjustments`. Accrual records can be written while the default view is
+still cash; `books entity set-view` changes only what reports show by default.
 
 ```json
 {

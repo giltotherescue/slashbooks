@@ -11,7 +11,10 @@ allowed-tools: Bash(scripts/books:*) Read Edit
 Read the selected company basis first. For accrual books, follow
 [the shared accrual workflow](references/accrual-workflow.md) before ordinary cash
 categorization, QBO opening, reporting, or close steps below. Cash remains the
-default; existing basis and delegated authority are preserved.
+default; existing basis and delegated authority are preserved. The basis is the
+default report view. A cash company can turn accrual on later from a date; that
+workflow describes it. Turning accrual on and changing the default view are
+person-only: you preview, a person applies.
 
 ## Company currency
 

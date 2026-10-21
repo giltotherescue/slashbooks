@@ -14,6 +14,14 @@ A tax preparer needs two things from the books before preparing a return:
 Slashbooks gives both with `books coverage` and `books tax`. Both commands
 read the books and never change ledger entries. Neither command computes tax.
 
+A person can also record facts for the preparer: the tax method
+([Tax method view](#tax-method-view)), the [tax profile](#tax-profile), the kind of
+each [deposit](#deposits-advance-payment-or-refundable) and the
+[fiscal year](#set-the-fiscal-year). When the tax method view is on, the export adds
+a Fixed Assets sheet, and a Deposits sheet when the view is the cash view of accrual
+records. Slashbooks stores these facts and lists missing inputs; it does not decide a
+tax rule. An agent can run each preview, and a person applies it.
+
 ## Source coverage
 
 ```sh
@@ -232,7 +240,8 @@ that starts with `=`, `+`, `-`, `@`, a tab or a carriage return would run as a
 formula in a spreadsheet program, so the CSV files write it with a leading
 apostrophe and the workbook stores it as plain text. Amounts stay numbers.
 
-Balances are cash-basis book balances from the engine. Balance columns are
+Balances are book balances from the engine, as recorded (see "Accounting basis
+and historical coverage" below), or the tax method view when it is on. Balance columns are
 debit-positive. Income and expense accounts show activity in the period.
 Balance sheet accounts show the start and end balances. Because the books are
 not closed, income and expenses before the period appear as one computed row,

@@ -34,7 +34,9 @@ the same books in a Slashbooks Cloud workspace; see
 
 ## What You Can Do
 
-- Keep cash books (the default), or opt in to accrual books to separate income and expenses from their payments.
+- Keep cash books (the default), or accrual books that separate income and expenses from their payments. A cash company can turn accrual on later from a date and keep its cash history.
+- Keep each company's books in one currency: USD by default, or the currency of its first bank, Stripe or QuickBooks import.
+- Record tax facts for your preparer (tax method, fiscal year, prior return method, deposits) and export a tax-line trial balance.
 - Record unpaid bills and customer invoices, then match payments without counting income or expenses twice. Keep overpayments and deposits as credits and apply them to invoices.
 - Spread annual software or insurance costs across their service months, record customer prepayments as income when earned, and depreciate equipment straight-line.
 - Accrue estimates that reverse themselves or are trued up to the actual bill, and write off uncollectable invoices.
@@ -69,12 +71,24 @@ choose internal record IDs or prepare accounting input files. See the
 
 ## Status
 
-Slashbooks is beta software. Cash basis is the default. Accrual is opt-in and covers
-one company, in one currency, for services and SaaS businesses; see
-[accrual bookkeeping](docs/accrual.md). Accrual books can show a cash-basis profit and
-loss derived from the accrual records (`books report pnl --basis cash`); read bank
-movements from the general ledger.
-Review its output and use professional judgment for accounting and tax decisions.
+Slashbooks is beta software. Review its output and use professional judgment for
+accounting and tax decisions.
+
+- **One ledger, a default view.** Each company keeps one ledger. Its basis (cash or
+  accrual) is the default view for reports, answers and exports; cash is the default.
+  `books report ... --basis cash|accrual` shows the other view for one command.
+- **Accrual later.** A cash company can turn accrual on from a tracking start date
+  (`books accrual enable`), list the invoices and bills still open on that date, and
+  then change the default view (`books entity set-view`). Earlier periods stay cash,
+  and published statements keep their basis. Accrual covers one company, for services
+  and SaaS businesses; see [accrual books](docs/accrual.md).
+- **One currency.** Each company keeps its books in one currency, USD unless the first
+  import or a person sets another. There is no currency conversion and no
+  multi-currency. Currencies with zero or three decimal places (JPY, KWD) are not
+  supported yet; see [company currency](docs/company-currency.md).
+- **People decide settings.** An agent can preview the currency, the default view,
+  accrual tracking, the fiscal year and the tax settings. A person applies them; see
+  [agent controls](docs/agent-controls.md).
 
 Slashbooks is not tax, legal, accounting, payroll, inventory, or investment advice.
 It doesn't replace professional review, and it isn't designed for businesses
@@ -89,17 +103,17 @@ To use Slashbooks for a company, read:
 - [How to do your books with Slashbooks](docs/doing-your-books.md)
 - [Accounting philosophy](docs/philosophy.md)
 - [For accountants](docs/for-accountants.md)
-- [Accrual books, reports, and close](docs/accrual.md)
+- [Accrual books, reports, and close](docs/accrual.md), including how to turn accrual on for a cash company
 - [Accrual recipes: a tested request for each pattern](docs/accrual-recipes.md)
 - [Supporting documents and request reference](docs/accrual-intake.md)
-- [Tax handoff: source coverage and tax-preparer export](docs/tax-handoff.md)
+- [Tax handoff: source coverage, tax method view, and tax-preparer export](docs/tax-handoff.md)
 - [Connectors](docs/connectors.md)
 - [BankSync setup](docs/banksync.md)
 - [CSV, QuickBooks, and file imports](docs/imports.md)
 - [Company currency](docs/company-currency.md)
 - [QuickBooks Online API reference sync and opening review](docs/quickbooks-sync.md)
 - [Work events](docs/work-events.md)
-- [Caller controls for connected agents](docs/agent-controls.md)
+- [Caller controls and person-only settings for connected agents](docs/agent-controls.md)
 - [Financial statements: structure, cash flows, comparative periods](docs/statements.md)
 
 The short version: after installing the plugin, create or choose a parent folder

@@ -4,7 +4,10 @@ Accrual bookkeeping records income when you earn it and expenses when you incur
 them. Receiving or paying the money is a separate step. That helps you see both
 how the business performed and what customers still owe or you still need to pay.
 
-Accrual is opt-in. Slashbooks supports straightforward accrual books for one
+Accrual is a choice. A new company can start on accrual, and a cash company can
+turn accrual on later from a date (see
+[Turn on accrual for an existing company](#turn-on-accrual-for-an-existing-company)).
+Slashbooks supports straightforward accrual books for one
 company, in one currency (USD unless the company sets another; see
 [company currency](company-currency.md)), for services and SaaS businesses. An owner, bookkeeper,
 accountant, or authorized agent can do the work. There is no separate mandatory
@@ -42,13 +45,13 @@ record IDs, choose amount signs, or prepare JSON files.
 ## Choose cash or accrual books
 
 Cash is the default for a new Slashbooks company. Ask for accrual during setup
-when that is the accounting basis you intend to use. Cash books generally record
+when that is the accounting basis you intend to use, or turn it on later. Cash books generally record
 income and expenses when money moves; accrual books separate earning or incurring
 an amount from its payment.
 
 For an existing company, preserve the basis already used for its books. Changing
-a report setting does not convert cash books into accrual books, and Slashbooks
-does not rewrite earlier periods. A cash company can add accrual records from a
+the default view (`books entity set-view`) does not convert cash books into accrual
+books, and Slashbooks does not rewrite earlier periods. A cash company can add accrual records from a
 date forward and keep its cash history: see
 [Turn on accrual for an existing company](#turn-on-accrual-for-an-existing-company).
 Local and Cloud books use the same accounting rules, and an imported set of books
@@ -315,8 +318,8 @@ no figures.
 
 - The cash view starts at the accrual cutover. A range that starts earlier fails and names
   the first available date, as other reports do.
-- It does not change the books. To have a company on a cash basis, keep cash books.
-  Moving between bases needs a separate conversion.
+- It does not change or convert the books. `books entity set-view PATH --view cash`
+  makes the cash view the default view; the records stay accrual.
 - Hand-built accruals in an account with no registered item, schedule or estimate
   journal (for example loan interest in a plain `Accrued-Interest` account) are not
   guessed at. They are included as recorded, so the cash view can show a non-cash
@@ -325,7 +328,9 @@ no figures.
   the header says "Includes $X of entries that may not be cash", and `books ask`
   mentions it. To have the cash view exclude such an accrual, record it as an estimate
   journal (with `reversal_date` or `estimate_basis`) or as an accrual item.
-- The balance sheet, tax mapping and accountant workbook sheets stay on the accrual basis in this release.
+- The balance sheet and the accrual sheets of the accountant workbook stay on the accrual basis.
+  The tax outputs follow the recorded books unless the tax method view is on; see
+  [the tax handoff](tax-handoff.md) ("Tax method view").
 - Per-vendor and per-customer cash totals need linked bank movements. Use the general
   ledger for them.
 

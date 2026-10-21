@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Slashbooks | Replace QuickBooks with an AI agent you control</title>
-  <meta name="description" content="Bookkeeping for an AI agent you control. Free, open-source cash books and opt-in accrual for straightforward USD SaaS and service businesses, kept in files on your own computer.">
+  <meta name="description" content="Bookkeeping for an AI agent you control. Free, open-source cash books and opt-in accrual for straightforward SaaS and service businesses in one currency (USD by default), kept in files on your own computer.">
   <link rel="canonical" href="https://slashbooks.org/">
   <meta property="og:title" content="Slashbooks | Replace QuickBooks with an AI agent you control">
-  <meta property="og:description" content="Cash books and opt-in accrual for straightforward USD SaaS and service businesses. Your agent runs the workflow; deterministic software keeps the numbers.">
+  <meta property="og:description" content="Cash books and opt-in accrual for straightforward SaaS and service businesses in one currency (USD by default). Your agent runs the workflow; deterministic software keeps the numbers.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://slashbooks.org/">
   <meta property="og:image" content="https://slashbooks.org/images/og.png">
@@ -58,7 +58,7 @@
         </a>
       </section>
 
-      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity USD SaaS or service business. Your books live in local files you own. A shared Slashbooks Cloud workspace is optional.</p>
+      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity SaaS or service business in one currency (USD by default). Your books live in local files you own. A shared Slashbooks Cloud workspace is optional.</p>
 
       <p>The <code>/books</code> plugin guides setup, imports, review, reconciliation, and export in Claude Cowork, Claude Code, and Codex. Other agents can use the same command-line interface. The accounting engine calculates the numbers; you decide what work the agent may do.</p>
 
@@ -73,7 +73,7 @@
           <article aria-labelledby="fit-yes">
             <h3 id="fit-yes">A good fit if&hellip;</h3>
             <ul class="fit-list fit-list-yes">
-              <li>You run a straightforward SaaS or service business in USD.</li>
+              <li>You run a straightforward SaaS or service business in one currency (USD by default).</li>
               <li>You need cash books or accrual books that track unpaid balances, prepayments, and monthly adjustments.</li>
               <li>You want current books without living inside accounting software.</li>
               <li>You want inspectable books in your own files.</li>
@@ -118,7 +118,7 @@
 
       <section aria-labelledby="basis-title">
         <h2 id="basis-title">Ask for the bookkeeping task you need</h2>
-        <p>Cash books record income and expenses when money moves. Accrual books separate when you earn income or incur expenses from when you get paid or pay the bill. Choose the basis for your company during setup and preserve it when moving existing books.</p>
+        <p>Cash books record income and expenses when money moves. Accrual books separate when you earn income or incur expenses from when you get paid or pay the bill. Choose the basis for your company during setup, or turn accrual on later from a date and keep your cash history.</p>
         <ul class="capabilities">
           <li><strong>“Record this bill for July; we have not paid it yet.”</strong> Record the expense and amount owed, then match the payment when it is paid.</li>
           <li><strong>“Spread this annual software payment across the months it covers.”</strong> Review the monthly expense and the amount still prepaid. Customer prepayments can be earned over their agreed service period too.</li>
@@ -126,7 +126,7 @@
           <li><strong>“Depreciate this laptop over 24 months.”</strong> The asset stays at cost, and each month adds depreciation expense and accumulated depreciation from the cost, salvage value, and dates you give. Cancelled subscriptions, usage-based schedules, and accrued estimates that reverse themselves are supported too.</li>
           <li><strong>“Prepare July and tell me what is missing.”</strong> Review financial statements, unpaid balances, monthly allocations, and reconciliations. The agent explains the work still needed before close.</li>
         </ul>
-        <p>The agent should show the accounting date, business effect, supporting document, and remaining balance. It checks whether a payment is already recorded so income, expenses, and cash are counted once. Accrual books are one company in USD. They can show a cash-basis profit and loss derived from the accrual records, with a tie-out to the accrual result; bank movements are in the general ledger. Slashbooks does not calculate payroll, tax, or inventory.</p>
+        <p>The agent should show the accounting date, business effect, supporting document, and remaining balance. It checks whether a payment is already recorded so income, expenses, and cash are counted once. Accrual books are one company in one currency. They can show a cash-basis profit and loss derived from the accrual records, with a tie-out to the accrual result; bank movements are in the general ledger. Slashbooks does not calculate payroll, tax, or inventory.</p>
         <p><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">See common accrual tasks and their results</a> or <a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-recipes.md">a tested request for each pattern</a></p>
       </section>
 
@@ -150,7 +150,7 @@
 
       <section class="compare-teaser" aria-labelledby="cloud-title">
         <h2 id="cloud-title">Local or Cloud</h2>
-        <p>Slashbooks is an AI bookkeeper. This site is the free open-source plugin. Slashbooks Cloud hosts the same engine and adds bank connections in the browser, automatic backups, and shared access for an accountant or firm. Both keep cash-basis books in US dollars for small businesses whose money moves through bank accounts, cards, Stripe, or Mercury. Opt-in accrual is for services and SaaS businesses. The local plugin keeps one company's books. Cloud is in beta. Neither one does payroll or inventory.</p>
+        <p>Slashbooks is an AI bookkeeper. This site is the free open-source plugin. Slashbooks Cloud hosts the same engine and adds bank connections in the browser, automatic backups, and shared access for an accountant or firm. Both keep cash-basis books for small businesses whose money moves through bank accounts, cards, Stripe, or Mercury. Opt-in accrual is for services and SaaS businesses. The local plugin keeps one company's books. Cloud is in beta. Neither one does payroll or inventory.</p>
         <table class="comparison">
           <thead>
             <tr>
@@ -223,7 +223,7 @@
             <tr>
               <td>Scope</td>
               <td data-label="QuickBooks">Broad platform for every kind of business.</td>
-              <td data-label="Slashbooks">Cash books and opt-in accrual for single-entity USD SaaS and services.</td>
+              <td data-label="Slashbooks">Cash books and opt-in accrual for single-entity SaaS and services in one currency.</td>
             </tr>
             <tr>
               <td>Cost</td>

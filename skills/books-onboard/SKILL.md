@@ -230,10 +230,12 @@ small related batch at a time, omitting facts already established:
 9. **Accounting basis and fiscal year** — Confirm cash (default) or supported
    accrual from the existing books and owner policy; do not infer policy from a
    QBO report toggle. New accrual books need explicit opt-in and source support.
-   Preserve the basis of initialized or remote books.
+   Preserve the basis of initialized or remote books. A cash company can turn accrual
+   on later from a date; see [the shared accrual workflow](../books/references/accrual-workflow.md).
    **Fiscal year** — Does the business use a calendar year (Jan-Dec) or a different
-   fiscal year? After initialization, preview `books entity set-fiscal-year PATH --start MM-01`,
-   then apply the confirmed calendar with `--apply --plan-hash HASH_FROM_PREVIEW`.
+   fiscal year? After initialization, preview `books entity set-fiscal-year PATH --start MM-01`
+   and show it. The owner applies the confirmed calendar with
+   `--apply --plan-hash HASH_FROM_PREVIEW` (person-only).
    Do not infer it from transactions. Only month-start annual calendars are supported;
    this records the existing calendar and does not elect a tax year.
    **Company currency** — Each company keeps its books in one currency; USD is the
