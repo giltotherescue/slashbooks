@@ -494,7 +494,9 @@ def sync_import(entity, input_path: Path) -> dict:
             coverage.setdefault(required, {"status": "missing", "reason": "Report was not included in snapshot"})
         relative_reference = str(Path("sources") / "quickbooks" / snapshot_id / "reference")
         opening_supported = snapshot["accounting_basis"] == "Cash" and currency == book and not multi
-        consistency_error = _opening_consistency(entity, reference, start) if opening_supported else None
+        from .currency import report_currency
+        with report_currency(book):
+            consistency_error = _opening_consistency(entity, reference, start) if opening_supported else None
         if consistency_error:
             warnings.append(consistency_error)
         opening_ready = opening_supported and not consistency_error and any(
@@ -503,7 +505,7 @@ def sync_import(entity, input_path: Path) -> dict:
                   "reference_complete": all(coverage[k]["status"] == "ready" for k in (
                       "ProfitAndLoss", "BalanceSheet", "TrialBalance", "GeneralLedger",
                       "OpeningTrialBalance", "OpeningBalanceSheet")),
-                  "comparison_ready": qb.inventory(reference, from_date=start, to_date=end).is_ready()
+                  "comparison_ready": _inventory_in(book, reference, from_date=start, to_date=end).is_ready()
                                       and currency == book and not multi,
                   "comparison_supported": snapshot["accounting_basis"] == "Cash" and currency == book and not multi,
                   "counts": counts, "coverage": coverage, "warnings": sorted(set(warnings)),
@@ -528,6 +530,12 @@ def sync_import(entity, input_path: Path) -> dict:
     return result
 
 
+def _inventory_in(code, reference, **kwargs):
+    from .currency import report_currency
+    with report_currency(code):
+        return qb.inventory(reference, **kwargs)
+
+
 def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False) -> dict:
     result = sync_import(entity, input_path)
     if not result["opening_supported"]:
@@ -539,7 +547,7 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
     if date.fromisoformat(snapshot["from"]) != cutover:
         raise ValueError("Opening cutover must match snapshot start date")
     reference = entity.path / result["reference_path"]
-    readiness = qb.inventory(reference, cutover=cutover)
+    readiness = _inventory_in(result.get("adopts_currency") or entity.currency, reference, cutover=cutover)
     selected = {s.report_key: s for s in readiness.slots}
     source = "trial-balance"
     slot = selected.get("trial_balance")

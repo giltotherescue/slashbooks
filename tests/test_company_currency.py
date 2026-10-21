@@ -200,18 +200,21 @@ class SetCurrencyTests(CompanyTestCase):
             currency.preview_set_currency(self.entity(), "EUR")
         self.assertEqual(ctx.exception.code, "company_has_entries")
         self.assertIn("USD", str(ctx.exception))
-        # USD by default is already USD: a no-op that writes nothing.
-        before = self.snapshot()
-        self.assertFalse(currency.preview_set_currency(self.entity(), "USD")["changes"])
-        self.assertEqual(currency.apply_set_currency(self.entity(), "USD")["status"], "already_applied")
-        self.assertEqual(self.snapshot(), before)
+        # Recording a currency, even the same USD, is refused once the company has entries.
+        with self.assertRaises(currency.CurrencyError) as again:
+            currency.preview_set_currency(self.entity(), "USD")
+        self.assertEqual(again.exception.code, "company_has_entries")
 
-    def test_set_usd_on_a_default_company_writes_nothing(self):
-        before = self.snapshot()
+    def test_set_usd_records_the_choice_and_a_later_eur_feed_is_refused(self):
         plan = currency.preview_set_currency(self.entity(), "USD")
-        self.assertFalse(plan["changes"])
-        self.assertEqual(currency.apply_set_currency(self.entity(), "USD", plan["plan_hash"])["status"], "already_applied")
-        self.assertEqual(self.snapshot(), before)
+        self.assertTrue(plan["changes"])
+        self.assertEqual(currency.apply_set_currency(self.entity(), "USD", plan["plan_hash"])["status"], "applied")
+        self.assertEqual((self.config()["currency"], self.config()["currency_source"]), ("USD", "set"))
+        with self.assertRaises(currency.CurrencyError) as ctx:
+            import_transactions(self.entity(), _rows("EUR"), "feed", categorizer=_post_everything)
+        self.assertIn("EUR", str(ctx.exception))
+        self.assertIn("USD", str(ctx.exception))
+        self.assertEqual(self.config()["currency"], "USD")
 
     def test_a_set_currency_cannot_change_once_there_are_entries(self):
         self.set_currency("EUR")
@@ -229,8 +232,32 @@ class SetCurrencyTests(CompanyTestCase):
             with self.assertRaises(OSError):
                 currency.apply_set_currency(self.entity(), "EUR")
         self.assertNotIn("currency", self.config())
+        # A read repairs in memory only; it never writes.
         self.assertEqual(self.entity().currency, "EUR")
+        self.assertNotIn("currency", self.config())
+        # The next write path repairs entity.json under the write lock.
+        from bookkeeping.ledger.importer import _entity_write_lock
+        with _entity_write_lock(self.path):
+            pass
         self.assertEqual((self.config()["currency"], self.config()["currency_source"]), ("EUR", "set"))
+
+    def test_a_read_command_does_not_write_the_repair(self):
+        self.set_currency("EUR")
+        stale = self.config()
+        del stale["currency"], stale["currency_source"]
+        (self.path / "entity.json").write_text(json.dumps(stale))
+        before = (self.path / "entity.json").read_bytes()
+        code, out = self.cli("statement", "list", "--entity", str(self.path))
+        self.assertEqual(code, 0, out)
+        self.assertEqual((self.path / "entity.json").read_bytes(), before)
+        self.assertEqual(self.entity().currency, "EUR")
+
+    def test_repair_keeps_the_source_when_the_ledger_has_none(self):
+        self.assertEqual(currency._repaired({"currency_source": "inferred"}, {"currency": "EUR"}), {"currency": "EUR",
+                         "currency_source": "inferred"})
+        self.assertEqual(currency._repaired({}, {"currency": "EUR"}), {"currency": "EUR"})
+        self.assertEqual(currency._repaired({"currency": "EUR", "currency_source": "set"},
+                                            {"currency": "EUR", "currency_source": "set"}), {})
 
     def test_refused_when_the_review_queue_has_items(self):
         import_transactions(self.entity(), _rows(None), "s1")  # Queued for review, not posted.
@@ -715,14 +742,15 @@ class ReviewFixTests(CompanyTestCase):
         self.assertEqual(LedgerStore(self.path / "ledger.sqlite").counts().entries, 0)
 
     def test_activity_counts_statement_records_duplicates_and_quickbooks_evidence(self):
-        for relative in ("ingestion/statements/st-1.json", "sources/quickbooks/abc/snapshot.json"):
-            target = self.path / relative
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text("{}")
-            self.assertTrue(currency.books_activity(self.path))
-            self.assertFalse(currency.books_activity(self.path, exclude=("sources/quickbooks/abc",))
-                             if relative.startswith("sources") else False)
-            target.unlink()
+        target = self.path / "ingestion/statements/st-1.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("{}")
+        self.assertIn("statement records", currency.books_activity(self.path))
+        target.unlink()
+        evidence = self.path / "sources/quickbooks/abc/snapshot.json"  # Evidence is not an entry.
+        evidence.parent.mkdir(parents=True)
+        evidence.write_text("{}")
+        self.assertEqual(currency.books_activity(self.path), [])
         (self.path / "staging" / "duplicate-candidates.json").write_text('[{"source_id": "x"}]')
         self.assertIn("duplicate candidates", currency.books_activity(self.path))
 
@@ -746,6 +774,141 @@ class ReviewFixTests(CompanyTestCase):
             migration_bundle.require_target_currency({"source_entity": {"currency": "EUR"}}, {"currency": "GBP"})
         self.assertIn("EUR", ctx.exception.message)
         self.assertIn("GBP", ctx.exception.message)
+
+
+class SecondReviewTests(CompanyTestCase):
+    def ofx_two_accounts(self, first: str | None, second: str | None) -> Path:
+        text = (STATEMENTS / "checking.ofx").read_text(encoding="utf-8")
+        start, end = text.index("<STMTTRNRS>"), text.index("</STMTTRNRS>") + len("</STMTTRNRS>")
+        block = text[start:end]
+        def account(code, acctid):
+            out = block.replace("SYNTH-CHK-0017", acctid)
+            return out.replace("<CURDEF>USD", f"<CURDEF>{code}") if code else out.replace("<CURDEF>USD\n", "")
+        return self.write("two.ofx", text[:start] + account(first, "SYNTH-CHK-0017") + account(second, "SYNTH-CHK-0099") + text[end:])
+
+    def map_two(self, file: Path) -> None:
+        si.save_profile(self.path, file, name="first", ledger_account=CHECKING, ofx_account="0017")
+        self.cli("entity", "account-add", str(self.path), "--account", "Assets:Bank:Savings")
+        si.save_profile(self.path, file, name="second", ledger_account="Assets:Bank:Savings", ofx_account="0099")
+
+    def written_state(self) -> tuple:
+        files = sorted(p.relative_to(self.path).as_posix() for p in (self.path / "ingestion").rglob("*") if p.is_file())
+        staged = sorted(p.name for p in (self.path / "staging").iterdir())
+        return (self.config(), (self.path / "ledger.sqlite").read_bytes(), files, staged)
+
+    def test_two_account_file_in_two_currencies_writes_nothing(self):
+        file = self.ofx_two_accounts("EUR", None)
+        self.map_two(file)
+        mixed = self.ofx_two_accounts("EUR", "USD")
+        before = self.written_state()
+        code, out = self.cli("statement", "import", str(mixed), "--entity", str(self.path))
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out)["error"]["code"], "unsupported_currency")
+        self.assertEqual(self.written_state(), before)
+
+    def test_two_account_file_adopts_once(self):
+        file = self.ofx_two_accounts("EUR", None)
+        self.map_two(file)
+        result = si.import_file(self.path, file, ts="2026-02-01T00:00:00Z")
+        self.assertEqual(result["status"], "imported", result)
+        self.assertEqual([s["statement"]["currency"] for s in result["statements"]], ["EUR", "EUR"])
+        self.assertEqual(self.audit_types().count("currency-inferred"), 1)
+        self.assertEqual(self.config()["currency"], "EUR")
+
+    def test_nothing_to_import_refuses_before_any_record(self):
+        file = self.write("eur.ofx", _ofx("EUR"))
+        si.save_profile(self.path, file, name="old", ledger_account=CHECKING, boundary_date="2025-01-01", side="before")
+        before = self.written_state()
+        result = si.import_file(self.path, file, ts="2026-02-01T00:00:00Z")
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["reason"], "nothing_to_adopt")
+        self.assertIn("is in EUR", result["error"]["message"])
+        self.assertEqual(self.written_state(), before)
+        # Recoverable: the person can still set the currency, then import.
+        self.assertEqual(currency.apply_set_currency(self.entity(), "EUR")["status"], "applied")
+
+    def test_two_quickbooks_snapshots_then_set_currency_and_opening(self):
+        from bookkeeping import quickbooks_sync as sync
+        snapshot = json.loads(QB_SNAPSHOT.read_text())
+        snapshot["preferences"]["CurrencyPrefs"]["HomeCurrency"] = {"value": "CAD"}
+        snapshot["company_info"]["CurrencyRef"] = {"value": "CAD"}
+        first = self.write("qb1.json", json.dumps(snapshot).replace('"Currency": "USD"', '"Currency": "CAD"'))
+        sync.sync_import(self.entity(), first)
+        snapshot["fetched_at"] = snapshot["fetched_at"].replace("Z", "+00:00") if snapshot["fetched_at"].endswith("Z") else snapshot["fetched_at"] + " "
+        second = self.write("qb2.json", json.dumps(snapshot).replace('"Currency": "USD"', '"Currency": "CAD"'))
+        result = sync.sync_import(self.entity(), second)
+        self.assertEqual(result["adopts_currency"], "CAD")
+        self.assertTrue(result["opening_supported"], result["warnings"])
+        self.assertEqual(currency.apply_set_currency(self.entity(), "CAD")["status"], "applied")
+        applied = sync.sync_opening(self.entity(), second, date(2026, 1, 1), apply=True)
+        self.assertTrue(applied["applied"], applied)
+        self.assertEqual(self.posting_currencies(), {"CAD"})
+
+    def unchanged_after(self, action) -> None:
+        before = (self.config(), self.audit_types(), LedgerStore(self.path / "ledger.sqlite").get_meta("currency"))
+        try:
+            action()
+        except Exception:
+            pass
+        self.assertEqual((self.config(), self.audit_types(),
+                          LedgerStore(self.path / "ledger.sqlite").get_meta("currency")), before)
+
+    def test_a_failed_post_adopts_nothing(self):
+        from unittest.mock import patch
+        with patch.object(LedgerStore, "insert_entries", side_effect=RuntimeError("disk full")):
+            self.unchanged_after(lambda: import_transactions(self.entity(), _rows("EUR"), "f", categorizer=_post_everything))
+        bad = _rows("EUR", 1)
+        bad[0]["date"] = "2026-13-45"
+        self.unchanged_after(lambda: import_transactions(self.entity(), bad, "f", categorizer=_post_everything))
+
+    def test_an_accrual_date_refusal_adopts_nothing(self):
+        from unittest.mock import patch
+        from bookkeeping.accrual import journals
+        checked = []
+
+        def refuse(*args, **kwargs):
+            checked.append(True)
+            raise journals.JournalError("locked_period", "Locked.")
+        with patch("bookkeeping.accrual.treatment.treatment_checker", return_value=lambda txn: False), \
+                patch("bookkeeping.accrual.scope.discipline", return_value="all"), \
+                patch("bookkeeping.accrual.scope.require_write_scope", return_value=None), \
+                patch.object(journals, "_check_dates", side_effect=refuse):
+            self.unchanged_after(lambda: import_transactions(self.entity(), _rows("EUR"), "f", categorizer=_post_everything))
+        self.assertTrue(checked)
+
+    def test_adoption_and_postings_share_one_transaction(self):
+        import_transactions(self.entity(), _rows("EUR"), "f", categorizer=_post_everything)
+        events = LedgerStore(self.path / "ledger.sqlite").load_audit_events()
+        types = [e["type"] for e in events]
+        adopted = types.index("currency-inferred")
+        self.assertLess(adopted, types.index("entry-written"))
+        self.assertNotIn("ledger-store-sealed", types[adopted:types.index("entry-written")])
+
+    def test_backstop_falls_back_to_entity_json_and_new_store_records_meta(self):
+        from bookkeeping.ledger.importer import _atomic_ledger_write, _ensure_ledger_store
+        from bookkeeping.ledger.model import Entry, Posting
+        self.set_currency("EUR")
+        store = LedgerStore(self.path / "ledger.sqlite")
+        with store.transaction() as conn:
+            conn.execute("DELETE FROM meta WHERE key IN ('currency', 'currency_source')")
+        entry = Entry(date=date(2026, 1, 2), narration="x", meta=(("source-id", "x1"),),
+                      postings=(Posting(CHECKING, Decimal("1.00"), "USD"), Posting("Expenses:Software", Decimal("-1.00"), "USD")))
+        with self.assertRaises(ValueError) as ctx:
+            _atomic_ledger_write(self.entity(), [], [entry], "s", None, "x")
+        self.assertIn("EUR", str(ctx.exception))
+        fresh = self.root / "fresh"
+        fresh.mkdir()
+        (fresh / "entity.json").write_text(json.dumps({"name": "Fresh", "currency": "EUR", "currency_source": "set"}))
+        self.assertEqual(_ensure_ledger_store(load_entity(fresh)).get_meta("currency"), "EUR")
+
+    def test_compare_reads_reports_in_the_company_currency(self):
+        from unittest.mock import patch
+        from bookkeeping import compare
+        self.set_currency("EUR")
+        seen = []
+        with patch.object(compare, "_compare_period", side_effect=lambda *a, **k: seen.append(currency._REPORT_CURRENCY.get())):
+            compare.compare_period(self.entity(), self.root, date(2026, 1, 1), date(2026, 1, 31))
+        self.assertEqual(seen, ["EUR"])
 
 
 class MigrationBundleTests(unittest.TestCase):

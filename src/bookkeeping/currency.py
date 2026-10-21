@@ -248,7 +248,8 @@ def books_activity(entity_path: Path | str, exclude: Iterable[str] = ()) -> list
     if (path / "books.beancount").exists() and (path / "books.beancount").read_text(encoding="utf-8").strip():
         found.append("legacy ledger file")
     skip = {Path(item).as_posix() for item in exclude}
-    for folder, label in (("ingestion/statements", "statement records"), ("sources/quickbooks", "QuickBooks snapshot evidence")):
+    # Saved QuickBooks snapshot evidence (sources/quickbooks) is evidence, not an entry: it does not count.
+    for folder, label in (("ingestion/statements", "statement records"),):
         root = path / folder
         if root.is_dir() and any(item.is_file() and not any(item.relative_to(path).as_posix().startswith(prefix + "/")
                                                             for prefix in skip)
@@ -283,38 +284,60 @@ def currency_sql(store: Any, conn: Any, previous: str, code: str, source: str, e
     store.append_audit_event(event, payload, conn)
 
 
-def write_config(entity: Any, code: str, source: str) -> None:
-    """The entity.json half of a currency change. Runs after the ledger commit."""
-    path = Path(entity.path) / "entity.json"
+def _replace_config(entity_path: Path | str, updates: Mapping[str, str]) -> None:
+    """Rewrite entity.json with *updates*, through a temp file with a unique name."""
+    import uuid
+    path = Path(entity_path) / "entity.json"
     config = json.loads(path.read_text(encoding="utf-8"))
-    config.update({CURRENCY_KEY: code, SOURCE_KEY: source})
-    temp = Path(entity.path) / "entity.json.currency.tmp"
+    config.update(updates)
+    temp = Path(entity_path) / f".entity.json.{uuid.uuid4().hex}.tmp"
     try:
         temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         os.replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
+
+
+def write_config(entity: Any, code: str, source: str) -> None:
+    """The entity.json half of a currency change. Runs after the ledger commit."""
+    _replace_config(entity.path, {CURRENCY_KEY: code, SOURCE_KEY: source})
     entity.entity_config.update({CURRENCY_KEY: code, SOURCE_KEY: source})
 
 
-def repair_config(entity_path: Path | str, config: dict[str, Any], meta: Mapping[str, str]) -> None:
-    """Make entity.json follow the ledger meta after a stop between the ledger commit and the entity.json write.
+def _repaired(config: Mapping[str, Any], meta: Mapping[str, str]) -> dict[str, str]:
+    """The entity.json keys that differ from the ledger meta (the ledger commits first). Empty when they agree."""
+    code = meta.get("currency")
+    if not code:
+        return {}
+    source = meta.get("currency_source") or config.get(SOURCE_KEY)
+    wanted = {CURRENCY_KEY: code, **({SOURCE_KEY: source} if source else {})}
+    return {} if all(config.get(key, DEFAULT_CURRENCY if key == CURRENCY_KEY else None) == value
+                     for key, value in wanted.items()) else wanted
 
-    Changes *config* in memory; writes entity.json when the folder is writable.
-    """
-    code, source = meta.get("currency"), meta.get("currency_source")
-    if not code or (config.get(CURRENCY_KEY, DEFAULT_CURRENCY), currency_source(config)) == (code, source or "default"):
-        return
-    config.update({CURRENCY_KEY: code, SOURCE_KEY: source or "set"})
-    path = Path(entity_path) / "entity.json"
+
+def repair_config(entity_path: Path | str, config: dict[str, Any], meta: Mapping[str, str]) -> None:
+    """Read side: make the loaded *config* follow the ledger meta, in memory only. A read never writes."""
+    config.update(_repaired(config, meta))
+
+
+def repair_on_disk(entity_path: Path | str) -> None:
+    """Write side: under the company write lock, finish an entity.json that a stop left behind the ledger."""
+    from .ledger.store import LedgerStore, default_store_path
+    path = Path(entity_path)
     try:
-        stored = json.loads(path.read_text(encoding="utf-8"))
-        stored.update({CURRENCY_KEY: code, SOURCE_KEY: source or "set"})
-        temp = Path(entity_path) / "entity.json.currency.tmp"
-        temp.write_text(json.dumps(stored, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(temp, path)
-    except OSError:
-        pass
+        store = LedgerStore(default_store_path(path))
+        if not store.path.exists() or not (path / "entity.json").exists():
+            return
+        with store.connection() as conn:
+            if store.schema_version(conn) is None:
+                return
+            meta = dict(conn.execute("SELECT key, value FROM meta WHERE key IN ('currency', 'currency_source')").fetchall())
+        config = json.loads((path / "entity.json").read_text(encoding="utf-8"))
+        updates = _repaired(config, meta)
+        if updates:
+            _replace_config(path, updates)
+    except (OSError, ValueError):
+        return
 
 
 def _write_currency(entity: Any, code: str, source: str, event: str, payload: dict[str, Any],
@@ -354,6 +377,15 @@ def mixed_error(found: Iterable[str], source: str) -> CurrencyError:
         "in one currency and Slashbooks does not convert currencies. Nothing was imported.",
         "Ask for a separate file for each currency, or a file already converted to the company currency.",
         reason="mixed_currency", currencies=codes)
+
+
+def adopt(entity: Any, code: str, source: str) -> None:
+    """Make a company with no entries take *code* now. The caller holds the company write lock."""
+    company = company_currency(entity.entity_config)
+    if code == company:
+        return
+    _write_currency(entity, code, "inferred", "currency-inferred",
+                    {"from": company, "to": code, "source": source}, "entity-currency-inferred")
 
 
 def can_adopt(entity: Any, exclude: Iterable[str] = ()) -> bool:
@@ -441,9 +473,9 @@ def preview_set_currency(entity: Any, currency: Any) -> dict[str, Any]:
     current = company_currency(config)
     current_source = currency_source(config)
     activity = books_activity(entity.path)
-    # USD by default is already USD: recording it changes nothing, so nothing is written.
-    changes = (current, current_source) != (code, "set") and not (
-        code == current == DEFAULT_CURRENCY and current_source == "default")
+    # Recording USD on a USD-by-default company records the person's choice ("set"), so a later import
+    # cannot adopt another currency. Outputs stay the same: a recorded USD reads like an absent key.
+    changes = (current, current_source) != (code, "set")
     if activity and changes:
         raise CurrencyError("company_has_entries",
                             f"The company already has {', '.join(activity)} in {current}. The company currency can change "

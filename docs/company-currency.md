@@ -19,7 +19,8 @@ Two keys in `entity.json`:
 When the currency changes, the ledger records it in its `meta` table (`currency`
 and `currency_source`) in the same transaction as the audit event, and new accounts
 open in it. The ledger commits first and entity.json follows. If a run stops in
-between, the next load of the company repairs entity.json from the ledger.
+between, a read of the company uses the ledger currency in memory and writes
+nothing; the next write command repairs entity.json under the company write lock.
 `books entity account-add --currency CODE` still accepts another code for an
 account, but no import or posting can use it: the ledger writer refuses a posting
 that is not in the company currency.
@@ -49,8 +50,9 @@ Without `--apply` the command shows a preview and writes nothing. With `--apply`
 it writes `currency` and `currency_source: "set"` to `entity.json`, moves the
 account catalog to the new currency and adds the audit event `currency-set`.
 Repeating the same value returns `already_applied`. `--currency USD` on a company
-that is USD by default changes nothing and writes nothing: a recorded USD and an
-absent key give the same outputs. The command is person-only:
+that is USD by default records `currency_source: "set"`, so a later import in
+another currency is refused instead of adopted. A recorded USD and an absent key
+give the same outputs. The command is person-only:
 standing posting authority cannot run it. When the company has entries, the
 command refuses with `company_has_entries`. Start a new company folder for books
 in another currency.
@@ -62,11 +64,17 @@ When the company has no entries and `currency_source` is `default` or
 the company currency. Adoption can therefore happen again while an inferred company
 still has no entries. It writes `currency` and `currency_source: "inferred"` and
 adds the audit event `currency-inferred` before any row is posted. Only the write
-step adopts: the importer, inside its company write lock, and the QuickBooks
-opening apply, in the same ledger transaction as the opening entry. Inspections,
+step adopts: the importer, in the same ledger transaction as the postings (or just
+before the first staged row when nothing posts), a statement file once for the
+whole file under the company write lock, and the QuickBooks opening apply, in the
+same ledger transaction as the opening entry. A failed write leaves the currency,
+the ledger meta and the audit log unchanged. A statement file in another currency
+with no row to import (every row outside the boundary, held or already imported)
+is refused with `reason: nothing_to_adopt` and writes no statement record. Inspections,
 previews, dry runs, `books qb sync-import` and the Stripe plan only check, and
 write nothing. "No entries" also means no review queue items, staged rows,
-duplicate candidates, statement records or saved QuickBooks snapshot evidence.
+duplicate candidates or statement records. Saved QuickBooks snapshot evidence is
+evidence, not an entry, and does not count.
 These imports can name a currency:
 
 - OFX, QFX and QBO files: `CURDEF`, or a `CURRENCY`/`CURSYM` on a transaction.

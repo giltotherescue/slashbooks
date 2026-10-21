@@ -144,6 +144,9 @@ def _entity_write_lock(entity_path: Path):
         fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
         token = _held_entity_locks.set((*held, resolved))
         try:
+            # Each write path starts by finishing an entity.json that a stop left behind the ledger currency.
+            from ..currency import repair_on_disk
+            repair_on_disk(resolved)
             yield
         finally:
             _held_entity_locks.reset(token)
@@ -215,6 +218,7 @@ def _atomic_ledger_write(
     finalization_receipt: dict[str, Any] | None = None,
     supporting_mutations: Sequence[SupportingMutation] = (),
     expected_digest: str | None = None,
+    adopt_currency: str | None = None,
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -228,6 +232,7 @@ def _atomic_ledger_write(
             finalization_receipt=finalization_receipt,
             supporting_mutations=supporting_mutations,
             expected_digest=expected_digest,
+            adopt_currency=adopt_currency,
         )
 
 
@@ -242,8 +247,13 @@ def _atomic_ledger_write_unlocked(
     finalization_receipt: dict[str, Any] | None = None,
     supporting_mutations: Sequence[SupportingMutation] = (),
     expected_digest: str | None = None,
+    adopt_currency: str | None = None,
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
+
+    ``adopt_currency`` makes a company with no entries take that currency in the same
+    transaction as the entries (ledger meta, account catalog, audit event); entity.json
+    follows after the commit.
 
     Protocol:
       1. Ensure the canonical SQLite store exists.
@@ -275,8 +285,15 @@ def _atomic_ledger_write_unlocked(
                 raise ValueError(f"Cannot publish accrual state: {integrity.message}")
         if expected_digest is not None and store.content_digest(conn) != expected_digest:
             raise ValueError("Stale accounting preview: canonical ledger state changed.")
-        # One company, one currency: a backstop for every writer that uses this path.
-        book = store.book_currency(conn)
+        from ..currency import company_currency, currency_sql
+        previous = company_currency(current_entity.entity_config)
+        if adopt_currency and adopt_currency != previous:
+            currency_sql(store, conn, previous, adopt_currency, "inferred", "currency-inferred",
+                         {"from": previous, "to": adopt_currency, "source": "import"})
+        # One company, one currency: a backstop for every writer that uses this path. A ledger with no
+        # recorded currency follows entity.json.
+        row = conn.execute("SELECT value FROM meta WHERE key='currency'").fetchone()
+        book = row[0] if row else previous
         foreign = sorted({p.currency for entry in new_entries for p in entry.postings if p.currency != book})
         if foreign:
             raise ValueError(f"The entries are in {', '.join(foreign)}, but the company keeps its books in {book}. "
@@ -331,6 +348,11 @@ def _atomic_ledger_write_unlocked(
             conn,
             ts=ts,
         )
+    if adopt_currency and adopt_currency != previous:
+        from ..currency import write_config
+        write_config(entity, adopt_currency, "inferred")
+        if current_entity is not entity:
+            current_entity.entity_config.update(entity.entity_config)
 
     return seal_hash
 
@@ -357,6 +379,9 @@ def _ensure_ledger_store(entity: Entity) -> LedgerStore:
     store.initialize()
     store.set_meta("canonical", "true")
     store.set_meta("title", entity.entity_config.get("name", "Books"))
+    from ..currency import company_currency
+    if company_currency(entity.entity_config) != "USD":
+        store.set_meta("currency", company_currency(entity.entity_config))
     return store
 
 
@@ -495,8 +520,15 @@ def _import_transactions_unlocked(
     _validate_normalized_transactions(normalized_txns)
     # One company, one currency. A company with no entries adopts the one currency the rows carry;
     # rows in another currency are refused before any write. Nothing converts.
-    from ..currency import check_rows
-    book_currency = check_rows(entity, normalized_txns, "import")
+    # This only checks. The adoption runs in the same ledger transaction as the postings
+    # (_atomic_ledger_write), or just before the first staged row is written.
+    from ..currency import adopt, check_rows
+    book_currency = check_rows(entity, normalized_txns, "import", adopt=False)
+    pending_adoption = [book_currency] if book_currency != entity.currency else []
+
+    def before_staged_write() -> None:
+        if pending_adoption:
+            adopt(entity, pending_adoption.pop(), "import")
     from ..accrual.treatment import treatment_checker
     from ..queue import txn_is_above_ask_first
     needs_treatment = treatment_checker(entity)
@@ -583,6 +615,7 @@ def _import_transactions_unlocked(
 
         if is_pending:
             # Route to staging; never the ledger.
+            before_staged_write()
             staging.add_pending(txn)
             result.new_pending += 1
             continue
@@ -620,6 +653,8 @@ def _import_transactions_unlocked(
                 result.skipped_duplicate += 1
                 continue
             if alias_status != "confirmed-distinct":
+                if feed_holds.get(source_id) is not None:
+                    before_staged_write()
                 candidate_state = _record_feed_hold(entity, feed_holds.get(source_id))
                 if candidate_state:
                     if candidate_state == "new":
@@ -640,6 +675,7 @@ def _import_transactions_unlocked(
             held = dict(txn)
             held["accrual_review_required"] = True
             held["accrual_review_action"] = "Link a settlement/schedule, or explicitly confirm new_cash_event."
+            before_staged_write()
             if _add_pending_categorization(entity, held):
                 result.pending_categorization += 1
             else:
@@ -660,6 +696,7 @@ def _import_transactions_unlocked(
                 # Tell Review why this row waits: its amount is above the ask-first limit.
                 held = dict(txn)
                 held["review_hold_reason"] = "above_ask_first_amount"
+            before_staged_write()
             if _add_pending_categorization(entity, held):
                 result.pending_categorization += 1
             else:
@@ -747,6 +784,7 @@ def _import_transactions_unlocked(
             ts=ts,
             intent_description=f"import {len(entries_to_write)} entries",
             source_transactions=source_transactions_to_write,
+            adopt_currency=pending_adoption[0] if pending_adoption else None,
         )
 
         # Mark all source IDs as seen.

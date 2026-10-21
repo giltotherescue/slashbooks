@@ -1145,12 +1145,36 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     all_txns: list[JsonObject] = []
     with _entity_write_lock(entity.path):
         entity = load_entity(entity_path)
+        planned = []
         for statement in selected:
+            prof = profiles[statement["profile"]]
+            txns, outside = _apply_boundary(statement["transactions"], prof)
+            planned.append((statement, txns, outside, plan_duplicates(
+                entity, txns, prof["ledger_account"], MAPPING_PREFIX + statement["profile"])))
+        # One file, one currency decision, under the lock, before any record or row is written.
+        resolved = selected[0]["currency"] if selected else entity.currency
+        if resolved != entity.currency:
+            company_now = entity.currency
+            try:
+                currency_mod.resolve_import_currency(entity, {resolved}, "statement file", adopt=False)
+                if not any(plan["import"] for *_, plan in planned):
+                    raise currency_mod.CurrencyError(
+                        "unsupported_currency",
+                        f"The statement file is in {resolved}, and the company keeps its books in {company_now}. "
+                        "No row of the file would be imported (every row is outside the boundary, held or already "
+                        f"imported), so the file cannot set the company currency, and a statement record in {resolved} "
+                        "would not fit the books. Nothing was written.",
+                        f"If the company keeps its books in {resolved}, run books entity set-currency PATH --currency "
+                        f"{resolved} first, then import again.",
+                        reason="nothing_to_adopt", file_currency=resolved, company_currency=company_now)
+            except currency_mod.CurrencyError as exc:
+                return {"status": "error", "file": path.name, "error": exc.as_dict()}
+            if not dry_run:
+                currency_mod.adopt(entity, resolved, "statement file")
+        for statement, txns, outside, plan in planned:
             name = statement["profile"]
             prof = profiles[name]
             mapping_key = MAPPING_PREFIX + name
-            txns, outside = _apply_boundary(statement["transactions"], prof)
-            plan = plan_duplicates(entity, txns, prof["ledger_account"], mapping_key)
             counts: JsonObject = {
                 "rows_in_file": len(statement["transactions"]) + statement["pending_rows"]
                 + statement["in_file_duplicates"],
@@ -1313,6 +1337,8 @@ def run(args: argparse.Namespace) -> int:
         result = {"status": "needs_mapping" if exc.code == "needs_mapping" else "error",
                   "error": exc.as_dict()}
     except StatementFileError as exc:
+        result = {"status": "error", "error": exc.as_dict()}
+    except currency_mod.CurrencyError as exc:
         result = {"status": "error", "error": exc.as_dict()}
     except FileNotFoundError as exc:
         result = {"status": "error", "error": {"code": "not_found", "message": str(exc)}}
