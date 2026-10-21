@@ -25,6 +25,8 @@ def _money(value: Any, field: str = "amount", *, positive: bool = True) -> Decim
 
 _ROOT_NAMES = {"Assets:": "an asset", "Liabilities:": "a liability", "Expenses:": "an expense", "Income:": "an income"}
 KINDS = ("prepaid", "deferred", "depreciation")
+# How a cash-method filer treats a prepaid expense for tax. Stored only when a person sets it.
+TAX_TREATMENTS = ("expense_when_paid", "capitalize")
 METHODS = ("actual_day", "equal_month", "custom")
 
 
@@ -287,8 +289,10 @@ def _schedule_effect(entity: Entity, payload: Mapping[str, Any]):
     _reject_legacy_dates(payload)
     request = _request(payload, {"operation_id", "id", "kind", "account", "recognition_account", "contra_account", "currency",
         "amount", "salvage_value", "service_start", "service_end", "method", "installments", "origin", "evidence_ids",
-        "recognition_start", "recognized_amount", "reference"})
+        "recognition_start", "recognized_amount", "reference", "tax_treatment"})
     operation_id, schedule_id = _id(request.get("operation_id")), _id(request.get("id"))
+    if "tax_treatment" in request:
+        request["tax_treatment"] = _tax_treatment(request["tax_treatment"], request.get("kind"))
     if "reference" in request:
         request["reference"] = _text(request["reference"], "reference")
     store = _store(entity)
@@ -742,3 +746,99 @@ def apply_change(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
 def list_schedules(entity: Entity) -> list[dict[str, Any]]:
     from .journals import _read_store
     return list_records(_read_store(entity), "schedules")
+
+
+# ---------------------------------------------------------------------------
+# Tax treatment of prepaid expenses (cash-method filers)
+# ---------------------------------------------------------------------------
+
+def _tax_treatment(value: Any, kind: Any) -> str:
+    if value not in TAX_TREATMENTS:
+        raise JournalError("invalid_tax_treatment", "tax_treatment must be expense_when_paid or capitalize.",
+                           "Use expense_when_paid to deduct the payment when paid, or capitalize to deduct it as it is used.")
+    if kind != "prepaid":
+        raise JournalError("tax_treatment_prepaid_only", "tax_treatment applies only to prepaid schedules.",
+                           "Remove tax_treatment, or use it on a prepaid schedule.")
+    return value
+
+
+def _add_months(day: date, months: int) -> date:
+    month = day.month - 1 + months
+    year, month = day.year + month // 12, month % 12 + 1
+    from calendar import monthrange
+    return date(year, month, min(day.day, monthrange(year, month)[1]))
+
+
+def default_tax_treatment(record: Mapping[str, Any]) -> str | None:
+    """The default tax treatment of a prepaid schedule, or None for other kinds.
+
+    expense_when_paid only when the benefit lasts 12 months or less and ends by the end of the tax year
+    after the payment's tax year (the 12-month rule). Otherwise capitalize. Tax years are calendar years.
+    This default needs review by a tax professional.
+    """
+    if record.get("kind") != "prepaid":
+        return None
+    start, end = _service(record)
+    paid_raw = record.get("origin_date") or (record.get("origin") or {}).get("date") or start.isoformat()
+    paid = _day(paid_raw, "origin date")
+    within_12_months = end < _add_months(start, 12)
+    by_next_year_end = end <= date(paid.year + 1, 12, 31)
+    return "expense_when_paid" if within_12_months and by_next_year_end else "capitalize"
+
+
+def effective_tax_treatment(record: Mapping[str, Any]) -> tuple[str | None, str]:
+    """Return (treatment, source): source is "recorded" when a person set it, else "default"."""
+    if record.get("tax_treatment") in TAX_TREATMENTS:
+        return record["tax_treatment"], "recorded"
+    return default_tax_treatment(record), "default"
+
+
+TAX_TREATMENT_KIND = "schedule_tax_treatment_set"
+
+
+def preview_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any) -> dict[str, Any]:
+    """Preview recording the tax treatment of one prepaid schedule. Writes nothing."""
+    from .journals import _read_store
+    store = _read_store(entity)
+    schedule_id = _id(schedule_id)
+    record = load_record(store, "schedules", schedule_id)
+    if record is None:
+        raise JournalError("schedule_not_found", f"No schedule has id {schedule_id}.", "Run `books accrual schedule list --entity PATH`.")
+    treatment = _tax_treatment(treatment, record.get("kind"))
+    current, source = effective_tax_treatment(record)
+    body = {"schema_version": 1, "kind": TAX_TREATMENT_KIND, "request": {"id": schedule_id, "tax_treatment": treatment},
+            "changes": record.get("tax_treatment") != treatment, "ledger_digest": store.content_digest(),
+            "record_revision": record_revision(store, "schedules", schedule_id),
+            "effects": {"from": record.get("tax_treatment"), "current_effective": current, "current_source": source, "to": treatment,
+                        "entries_changed": 0, "published_statements_changed": False,
+                        "note": ("Only the tax outputs of a cash-method filer change (`books tax map` and `books tax export` with the "
+                                 "tax method view on). The books, the reports and the schedule's recognition entries stay as they are.")}}
+    body["request_hash"] = canonical_hash({"kind": TAX_TREATMENT_KIND, "request": body["request"]})
+    body["plan_hash"] = canonical_hash(body)
+    return body
+
+
+def apply_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any, plan_hash: str | None = None) -> dict[str, Any]:
+    """Record the tax treatment. Repeating the same value returns already_applied."""
+    from ..ledger.importer import _entity_write_lock
+    from ..entity import load_entity
+    from .enable import _seal
+    from .store import apply_mutations
+    with _entity_write_lock(entity.path):
+        entity = load_entity(entity.path)
+        fresh = preview_tax_treatment(entity, schedule_id, treatment)
+        if plan_hash is not None and plan_hash != fresh["plan_hash"]:
+            raise JournalError("stale_preview", "The company changed after the preview.", "Run the preview again.")
+        request = fresh["request"]
+        if not fresh["changes"]:
+            return {"status": "already_applied", "kind": TAX_TREATMENT_KIND, **request, "request_hash": fresh["request_hash"]}
+        store = _store(entity)
+        record = load_record(store, "schedules", request["id"])
+        updated = {**record, "tax_treatment": request["tax_treatment"]}
+        with store.transaction(immediate=True) as conn:
+            apply_mutations(store, [SupportingMutation("schedules", request["id"], updated, fresh["record_revision"])], conn)
+            store.append_audit_event("schedule-tax-treatment-set", {"schedule_id": request["id"], "from": fresh["effects"]["from"],
+                                                                    "to": request["tax_treatment"], "plan_hash": fresh["plan_hash"]}, conn)
+            _seal(store, conn, "schedule-tax-treatment")
+        return {"status": "applied", "kind": TAX_TREATMENT_KIND, **request, "from": fresh["effects"]["from"],
+                "request_hash": fresh["request_hash"], "plan_hash": fresh["plan_hash"], "entries_changed": 0}

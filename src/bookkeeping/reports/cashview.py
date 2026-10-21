@@ -304,8 +304,14 @@ class CashLedger:
                 "ties": difference == total}
 
 
-def derive(conn: Any, through: date) -> CashLedger:
-    """Derive the cash-basis ledger from the accrual books for every entry dated on or before ``through``."""
+def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = frozenset()) -> CashLedger:
+    """Derive the cash-basis ledger from the accrual books for every entry dated on or before ``through``.
+
+    ``capitalized`` names prepaid schedules that a cash-method filer must capitalize for tax (see
+    ``taxview``). Their entries are kept as recorded: the payment stays an asset and the recognition
+    entries are the expense. The default (empty) is the report cash view, where a prepaid is expense
+    in full on the funding date.
+    """
     from ..accrual.accounts import _subtype, _usage_subtypes
     from ..accrual.reports import _records
     items_list, schedules = _records(conn, "items"), _records(conn, "schedules")
@@ -367,6 +373,14 @@ def derive(conn: Any, through: date) -> CashLedger:
         for account, amount in entry_postings:
             if _is_ie(account):
                 accrual.append((day, account, amount))
+        if capitalized:
+            kept = schedule_by_id.get(entry["meta"].get("schedule-id", "")) or schedule_by_source.get(source)
+            if kept and kept["id"] in capitalized:
+                # Capitalized for tax: the payment stays an asset and each recognition entry is the expense, as recorded.
+                for account, amount in entry_postings:
+                    if _is_ie(account):
+                        emit(day, account, amount, "capitalized_schedule", source)
+                continue
         touched = [(a, n) for a, n in entry_postings if a in control]
         if not touched:
             for account, amount in entry_postings:

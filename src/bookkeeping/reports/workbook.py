@@ -844,6 +844,15 @@ def _cover_basis(entity_path: Path, to_date: date) -> str:
     return label or entity.basis.title() + " basis"
 
 
+def _cover_tax_method(entity_path: Path) -> list[list[str]]:
+    """One cover row when the tax-method view is on; none otherwise, so other covers stay as they were."""
+    from ..taxview import active_method
+    method = active_method(load_entity(entity_path).entity_config)
+    if not method:
+        return []
+    return [["Tax method", f"{method.title()} method: books tax map and books tax export use the {method} view"]]
+
+
 def _build_cover_rows(
     entity_path: Path,
     entity_name: str,
@@ -862,6 +871,7 @@ def _build_cover_rows(
         ["Generated", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
         ["Source", str(entity_path)],
         ["Accounting basis", _cover_basis(entity_path, to_date)],
+        *_cover_tax_method(entity_path),
         [],
         ["Sheet index", ""],
         ["1. Cover", "This sheet"],

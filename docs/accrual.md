@@ -412,6 +412,30 @@ books entity set-view PATH --view accrual --apply  # change it
 - Pass `--basis cash` or `--basis accrual` to a report to pick the other view for one command.
 - **The accrual view starts on the tracking start.** A report or answer for a period that starts earlier is refused and names the first available date. The cash view is available for every period.
 
+### Tax method and prepaid tax treatment
+
+The tax outputs can follow the tax method instead of the default view. `books entity
+set-tax-method PATH --method cash|accrual --tax-view on [--apply]` records it. See
+[the tax handoff](tax-handoff.md) ("Tax method view").
+
+A prepaid schedule can carry `tax_treatment`: `expense_when_paid` or `capitalize`. Give it
+when you create the schedule, or record it later:
+
+```sh
+books accrual schedule tax-treatment --entity PATH --id SCHEDULE --treatment capitalize          # preview
+books accrual schedule tax-treatment --entity PATH --id SCHEDULE --treatment capitalize --apply  # record it
+```
+
+- It changes only the tax outputs of a cash-method filer. The books, the reports and the
+  recognition entries stay as they are.
+- If it is absent, a default applies: `expense_when_paid` only when the service lasts 12 months
+  or less and ends by the end of the tax year after the payment year. Otherwise `capitalize`.
+  Tax years are calendar years. The default needs review by a tax professional.
+- The value is shown in `accrual schedule list` and in the schedules report when it is recorded.
+- Readiness adds the note `schedule_tax_treatment_missing` (never a blocker) when the tax method is
+  cash, accrual is on, and a prepaid schedule has no recorded tax treatment.
+- It is a person-only write, like `entity set-view`.
+
 ### Every output on either view
 
 The default view picks the view of every report output. `--basis cash|accrual` picks the other one for one command.

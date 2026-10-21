@@ -47,6 +47,12 @@ def add_parser(subparsers: Any) -> None:
             due.add_argument("--entity", required=True, type=Path)
             due.add_argument("--through", required=True)
             due.add_argument("--operation-id", required=True)
+            treatment = children.add_parser("tax-treatment", help="Record how a cash-method filer deducts a prepaid schedule for tax (person-only). Previews unless --apply is given")
+            treatment.add_argument("--entity", required=True, type=Path)
+            treatment.add_argument("--id", required=True, dest="schedule_id")
+            treatment.add_argument("--treatment", required=True, choices=("expense_when_paid", "capitalize"))
+            treatment.add_argument("--apply", action="store_true")
+            treatment.add_argument("--plan-hash", default=None, dest="plan_hash")
     rules = commands.add_parser("rules", help="Saved accrual rules: what to propose for a supplier, customer or kind of cost. A rule never records anything.")
     children = rules.add_subparsers(dest="rules_command", required=True)
     for verb in ("set-preview", "set-apply", "clear-preview", "clear-apply", "match"):
@@ -204,7 +210,11 @@ def request_schemas() -> dict[str, Any]:
         "installments": installments_schema, "origin": schedule_origin, "evidence_ids": ids,
         "recognition_start": {**day, "description": "Opening-balance carry-over only: first day not yet recognized."},
         "recognized_amount": {**amount, "description": "Opening-balance carry-over only: amount already recognized (accumulated depreciation for depreciation)."},
-        "reference": {**text, "maxLength": 2000, "description": "Human reference or description, separate from the stable machine ID."}},
+        "reference": {**text, "maxLength": 2000, "description": "Human reference or description, separate from the stable machine ID."},
+        "tax_treatment": {"enum": ["expense_when_paid", "capitalize"], "description":
+            "Prepaid only. How a cash-method filer deducts it for tax: expense_when_paid (deduct on payment) or capitalize (deduct as used). "
+            "When absent, the tax outputs use a default: expense_when_paid only if the service lasts 12 months or less and ends by the end "
+            "of the tax year after the payment year; otherwise capitalize. Never changes the books."}},
         examples=[{"operation_id": "synthetic-prepaid-create", "id": "synthetic-prepaid", "reference": "Annual software subscription #104", "kind": "prepaid",
             "account": "Assets:Other:Prepaid-Expenses", "recognition_account": "Expenses:Software", "currency": "USD",
             "amount": "1200.00", "service_start": "2026-01-01", "service_end": "2026-12-31", "method": "equal_month",
@@ -525,6 +535,9 @@ def run(args: argparse.Namespace) -> int:
                     result = schedules.list_schedules(entity)
                 elif verb == "due-preview":
                     result = schedules.preview_due(entity, args.through, operation_id=args.operation_id)
+                elif verb == "tax-treatment":
+                    result = (schedules.apply_tax_treatment(entity, args.schedule_id, args.treatment, args.plan_hash) if args.apply
+                              else schedules.preview_tax_treatment(entity, args.schedule_id, args.treatment))
                 else:
                     function = {"preview": schedules.preview_schedule, "apply": schedules.apply_schedule,
                                 "due-apply": schedules.apply_due, "change-preview": schedules.preview_change,

@@ -105,7 +105,8 @@
       "change-preview",
       "change-apply",
       "list",
-      "due-preview"
+      "due-preview",
+      "tax-treatment"
     ],
     "support": [
       "preview",

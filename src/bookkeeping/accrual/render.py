@@ -49,6 +49,10 @@ def render_report(document: Mapping[str, Any]) -> str:
         "support": [("display_reference", "Support"), ("account", "Account"), ("as_of", "Supporting document date"), ("balance", "Balance")],
         "reconciliation": [("account", "Account"), ("ledger_balance", "Ledger"), ("support_balance", "Supporting detail"), ("difference", "Difference"), ("status", "Status")],
     }
+    if kind == "schedules" and any(row.get("tax_treatment") for row in rows):
+        # Shown only when a person recorded a tax treatment, so other listings keep their layout.
+        rows = [{**row, "tax_treatment": row.get("tax_treatment") or "-"} for row in rows]
+        columns["schedules"] = [*columns["schedules"][:-1], ("tax_treatment", "Tax treatment"), columns["schedules"][-1]]
     if not rows:
         lines.append("No recorded items for this report.")
     elif kind == "adjustments":

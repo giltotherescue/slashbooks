@@ -9,6 +9,7 @@
     "accrual schedule preview|apply|due-apply|change-preview|change-apply --entity PATH --input FILE",
     "accrual schedule list --entity PATH",
     "accrual schedule due-preview --entity PATH --through YYYY-MM-DD --operation-id ID",
+    "accrual schedule tax-treatment --entity PATH --id SCHEDULE_ID --treatment expense_when_paid|capitalize [--apply] [--plan-hash PLAN_HASH]",
     "accrual item preview|apply|settle-preview|settle-apply|adjust-preview|adjust-apply|offset-preview|offset-apply --entity PATH --input FILE",
     "accrual item list --entity PATH",
     "accrual support preview|apply --entity PATH --input FILE",
@@ -3137,6 +3138,13 @@
           "format": "date",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
           "type": "string"
+        },
+        "tax_treatment": {
+          "description": "Prepaid only. How a cash-method filer deducts it for tax: expense_when_paid (deduct on payment) or capitalize (deduct as used). When absent, the tax outputs use a default: expense_when_paid only if the service lasts 12 months or less and ends by the end of the tax year after the payment year; otherwise capitalize. Never changes the books.",
+          "enum": [
+            "expense_when_paid",
+            "capitalize"
+          ]
         }
       },
       "required": [

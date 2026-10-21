@@ -107,8 +107,10 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             ("enable", "preview"), ("rules", "list"), ("rules", "match"), ("rules", "set-preview"), ("rules", "clear-preview")}
         if path[1:] == ("journal", "due-reversals"):
             mutates = args.apply
-    if path == ("entity", "set-view") and not args.apply:
+    if path in {("entity", "set-view"), ("entity", "set-tax-method")} and not args.apply:
         mutates = False  # The default is a preview; --apply changes the company.
+    if path == ("accrual", "schedule", "tax-treatment"):
+        mutates = args.apply  # The default is a preview; --apply records the tax treatment.
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False
     if path == ("qb", "sync-import"):

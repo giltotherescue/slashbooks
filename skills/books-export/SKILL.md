@@ -268,6 +268,10 @@ If the books still need a year of statement files, follow
    scripts/books tax export --entity <entity-path> --year <year>
    ```
 
+   If `manifest.json` has `tax_method`, say which method and view the files use and read
+   each `tax_view.flags` message to the owner. Do not choose a tax method or a prepaid tax
+   treatment; the owner or the tax preparer records it with `books entity set-tax-method`.
+
    Explain the files: the tax trial balance, the tax-line summary for manual
    entry (Drake Tax, ProConnect Tax), the Lacerte Trial Balance Utility file, the
    UltraTax CS import file, and the unmapped-accounts report. Say that the

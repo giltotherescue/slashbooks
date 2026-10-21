@@ -1119,6 +1119,18 @@ def add_parser(subparsers: Any) -> None:
     set_view_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     set_view_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
 
+    tax_method_parser = entity_sub.add_parser(
+        "set-tax-method",
+        help="Record the tax method, cash or accrual, that tax outputs follow (person-only). Previews unless --apply is given",
+    )
+    tax_method_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    tax_method_parser.add_argument("--method", required=True, choices=("cash", "accrual"),
+                                   help="The method the company files its tax return on")
+    tax_method_parser.add_argument("--tax-view", choices=("on", "off"), default=None,
+                                   help="Turn the tax-method view on or off for books tax map and books tax export. Default: keep the current setting (off for a new company)")
+    tax_method_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    tax_method_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+
     map_parser = entity_sub.add_parser(
         "bank-account-map",
         help="Map a stable connected-bank account ID to an existing ledger account",
@@ -1231,6 +1243,22 @@ def run(args: Any) -> int:
                 result = accrual_enable.apply_set_view(entity, args.view, args.plan_hash)
             else:
                 result = accrual_enable.preview_set_view(entity, args.view)
+        except (FileNotFoundError, ValueError) as exc:
+            result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+
+    if args.entity_command == "set-tax-method":
+        target = _resolve_target(args.path)
+        try:
+            from . import taxview
+            entity = load_entity(target)
+            if args.apply:
+                result = taxview.apply_set_tax_method(entity, args.method, args.tax_view, args.plan_hash)
+            else:
+                result = taxview.preview_set_tax_method(entity, args.method, args.tax_view)
         except (FileNotFoundError, ValueError) as exc:
             result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
             print(json.dumps(result, sort_keys=True, indent=2))
