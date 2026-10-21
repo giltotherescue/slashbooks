@@ -514,14 +514,16 @@ def balance_sheet(
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
+        from ..entity import load_entity
         return _compute_balance_sheet(conn, as_of, _statement_view(conn, "balance sheet", view),
+                                      fiscal_year_start=load_entity(entity_path).entity_config.get("fiscal_year_start"),
                                       coverage_view=journal_coverage_view() if journal and view != "accrual" else None)
     finally:
         conn.close()
 
 
 def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
-                           coverage_view: Optional[str] = None) -> StatementResult:
+                           coverage_view: Optional[str] = None, fiscal_year_start: Optional[str] = None) -> StatementResult:
     metadata = _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view)
     balances = _account_balances_as_of(conn, as_of)
 
@@ -563,11 +565,17 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
 
     if metadata["basis"] == "accrual":
         opening = metadata.get("coverage")
-        anchor = date.fromisoformat(opening["fiscal_start"]) if opening else date(as_of.year, 1, 1)
-        import calendar
-        fiscal_start = date(as_of.year, anchor.month, min(anchor.day, calendar.monthrange(as_of.year, anchor.month)[1]))
-        if fiscal_start > as_of:
-            fiscal_start = fiscal_start.replace(year=fiscal_start.year - 1)
+        from ..fiscal import year_start
+        # Imported summary coverage retains its evidenced calendar.
+        if opening:
+            anchor = date.fromisoformat(opening["fiscal_start"])
+            import calendar
+            fiscal_start = date(as_of.year, anchor.month, min(anchor.day, calendar.monthrange(as_of.year, anchor.month)[1]))
+            if fiscal_start > as_of:
+                previous = as_of.year - 1
+                fiscal_start = date(previous, anchor.month, min(anchor.day, calendar.monthrange(previous, anchor.month)[1]))
+        else:
+            fiscal_start = year_start(as_of, fiscal_year_start or "01-01")
         current = _account_balances_in_range(conn, fiscal_start, as_of)
         current_income = -sum((n for a, n in current.items() if _is_income(a) or _is_expense(a)), Decimal(0))
         prior_income = net_income_raw - current_income

@@ -129,6 +129,9 @@ accrual records from a date, a person runs `books accrual enable preview|apply -
 preview. List what is still open on that date with `accrual opening` (leave out `lines` and `cutover`; the entry is dated
 the tracking start and balances to `Equity:Opening-Balance-Adjustments`). `books entity set-view PATH --view cash|accrual
 [--apply]` picks the default view (person-only); the accrual view starts on the tracking start and refuses earlier periods.
+`books entity set-tax-method PATH --method cash|accrual --tax-view on [--apply]` makes the tax outputs follow the tax
+method (person-only), and `books accrual schedule tax-treatment --entity PATH --id ID --treatment expense_when_paid|capitalize
+[--apply]` records how a cash-method filer deducts a prepaid schedule (person-only). Ask the owner or the tax preparer; never choose either value.
 Otherwise start a new accrual company and use `books accrual opening draft`/`preview`/`apply` (see accrual-intake.md);
 prior periods stay in the cash company.
 The `draft` output is a wrapper: copy its `request` object into the file you preview.

@@ -232,7 +232,10 @@ small related batch at a time, omitting facts already established:
    QBO report toggle. New accrual books need explicit opt-in and source support.
    Preserve the basis of initialized or remote books.
    **Fiscal year** — Does the business use a calendar year (Jan-Dec) or a different
-   fiscal year?
+   fiscal year? After initialization, preview `books entity set-fiscal-year PATH --start MM-01`,
+   then apply the confirmed calendar with `--apply --plan-hash HASH_FROM_PREVIEW`.
+   Do not infer it from transactions. Only month-start annual calendars are supported;
+   this records the existing calendar and does not elect a tax year.
 10. **Data sources** — What banks, credit cards, payment processors, or commerce
    platforms does this business use? List each one. Then explain BankSync before
     asking about it for local books: "BankSync is an optional third-party service that connects to

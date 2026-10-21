@@ -673,7 +673,25 @@ def _accounting_metadata(conn: Any, config: Mapping[str, Any], from_date: date, 
     return result
 
 
-def period_balances(entity_path: Path | str, from_date: date, to_date: date) -> list[dict[str, Any]]:
+def _tax_view(entity: Any, from_date: date, to_date: date, *, with_flags: bool = False):
+    """Plan the tax-method view (fail closed). With ``with_flags`` also return its flags and accounting metadata."""
+    from .accrual.reports import financial_metadata
+    from .reports.cache import open_cache
+    from .taxview import flags, plan
+    conn = open_cache(entity.path)
+    try:
+        view = plan(conn, entity.entity_config, from_date, to_date)
+        if not with_flags:
+            return view
+        accounting = financial_metadata(conn, "tax_handoff", from_date, to_date, view=view.view)
+        accounting["basis"] = view.view
+        accounting["tax_method"] = view.tax_method
+        return view, flags(conn, view, from_date, to_date), accounting
+    finally:
+        conn.close()
+
+
+def period_balances(entity_path: Path | str, from_date: date, to_date: date, *, tax_view: Any = None) -> list[dict[str, Any]]:
     """Fiscal-period trial balance rows.
 
     Balance sheet accounts carry their balance at the start and end of the
@@ -681,10 +699,21 @@ def period_balances(entity_path: Path | str, from_date: date, to_date: date) -> 
     Income and expense activity before the period appears as one computed
     ``Equity:Prior-Periods-Net-Income`` row, because the books are not closed
     into retained earnings. Balances are debit-positive.
+
+    ``tax_view`` (a ``taxview.TaxView``) chooses the view of a company whose tax
+    outputs follow its tax method. A derived cash view reads the cash view of the
+    accrual records. Without it, the rows are the recorded books.
     """
     from .reports.cache import iter_postings, list_accounts, open_cache
 
     entity_path = Path(entity_path)
+    if tax_view is not None and tax_view.source == "derived":
+        from .taxview import derived_balances
+        conn = open_cache(entity_path)
+        try:
+            return derived_balances(conn, tax_view, from_date, to_date)
+        finally:
+            conn.close()
     opening: dict[str, Decimal] = {}
     ending: dict[str, Decimal] = {}
     activity: dict[str, Decimal] = {}
@@ -758,7 +787,12 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
     """Mapping for every account; balances when a period is given."""
     entity = load_entity(entity_path)
     resolved, form_basis = resolve_form(entity.entity_config, form)
-    rows = period_balances(entity.path, from_date, to_date) if from_date and to_date else [
+    from .taxview import active_method
+    method = active_method(entity.entity_config)
+    tax_view = None
+    if method and from_date and to_date:
+        tax_view = _tax_view(entity, from_date, to_date)
+    rows = period_balances(entity.path, from_date, to_date, tax_view=tax_view) if from_date and to_date else [
         {"account": account, "type": account.split(":")[0], "beginning": None, "balance": None}
         for account in sorted(_catalog_accounts(entity.path))
     ]
@@ -777,7 +811,12 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
             item["balance"] = _money(row["balance"])
         accounts.append(item)
     unmapped = [item for item in accounts if item["line"] is None]
+    stamp = {}
+    if method:
+        stamp = {"tax_method": method, "view": tax_view.view if tax_view else method,
+                 "tax_view": tax_view.stamp() if tax_view else None}
     return {
+        **stamp,
         "schema_version": 1,
         "kind": "tax_line_mapping",
         "disclaimer": DISCLAIMER,
@@ -807,18 +846,24 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     entity = load_entity(entity_path)
     resolved, form_basis = resolve_form(entity.entity_config, form)
     from .reports.cache import open_cache
-    conn = open_cache(entity.path)
-    try:
-        accounting = _accounting_metadata(conn, entity.entity_config, from_date, to_date)
-        basis_label = book_basis(conn, entity.entity_config, to_date)[1]
-    finally:
-        conn.close()
+    from .taxview import active_method
+    tax_view = tax_flags = None
+    if active_method(entity.entity_config):
+        tax_view, tax_flags, accounting = _tax_view(entity, from_date, to_date, with_flags=True)
+        basis_label = tax_view.label
+    else:
+        conn = open_cache(entity.path)
+        try:
+            accounting = _accounting_metadata(conn, entity.entity_config, from_date, to_date)
+            basis_label = book_basis(conn, entity.entity_config, to_date)[1]
+        finally:
+            conn.close()
     settings = _settings(entity.entity_config)
-    if (accounting["basis"] == "accrual" and basis_label is None
+    if (tax_view is None and accounting["basis"] == "accrual" and basis_label is None
             and discipline(entity.entity_config) == DISCIPLINE_PER_ACCOUNT):
         # Defensive: a mixed company always shows the mixed label, never a plain "Accrual basis".
         basis_label = _MIXED_LABEL_NO_START
-    rows = [r for r in period_balances(entity.path, from_date, to_date)
+    rows = [r for r in period_balances(entity.path, from_date, to_date, tax_view=tax_view)
             if r["balance"] != _ZERO or (r["beginning"] not in (None, _ZERO))]
     mapping = {m.account: m for m in build_mapping(entity.entity_config, (r["account"] for r in rows), resolved)}
     numbers = _account_numbers(rows, settings.get("account_numbers") or {})
@@ -865,7 +910,11 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     order = {code: index for index, code in enumerate(CATALOG)}
     summary_rows = sorted(summary.values(), key=lambda s: (order[s["line"].code], s["detail"]))
     unmapped = [row for row in tb_rows if row["mapping"].line is None]
+    extra = {}
+    if tax_view is not None:
+        extra = {"tax_method": tax_view.tax_method, "view": tax_view.view, "tax_view": {**tax_view.stamp(), "flags": tax_flags}}
     return {
+        **extra,
         "entity_name": entity.name,
         "accounting_basis": accounting["basis"],
         "basis_label": basis_label,
@@ -1007,6 +1056,13 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
     summary = _coverage_summary(handoff.get("accounting") or {})
     if summary:
         rows.append(["Accounting coverage", summary])
+    if handoff.get("tax_view"):
+        rows.append(["Tax method", handoff["tax_method"].title() + " method"])
+        rows.append(["View", handoff["view"].title() + " view"])
+        for flag in handoff["tax_view"]["flags"]:
+            if flag["code"] == "tax_method":
+                continue
+            rows.append(["Flag: " + flag["code"], flag["message"]])
     for name, path in files.items():
         rows.append([name, path])
     return rows
@@ -1102,6 +1158,8 @@ def export_handoff(
                          if row["mapping"].review and row["mapping"].line],
         "xlsx_note": xlsx_note,
     }
+    if handoff.get("tax_view"):
+        manifest.update(tax_method=handoff["tax_method"], view=handoff["view"], tax_view=handoff["tax_view"])
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
@@ -1164,6 +1222,9 @@ def add_parser(subparsers: Any) -> None:
 def _render_mapping_text(report: Mapping[str, Any]) -> str:
     lines = [report["disclaimer"], "",
              f"Tax line mapping for {report['form_name']} (form from {report['form_basis']})"]
+    if report.get("tax_method"):
+        lines.append(f"Tax method: {report['tax_method']}; view: {report['view']}"
+                     + (f" ({report['tax_view']['label']})" if report.get("tax_view") else ""))
     for item in report["accounts"]:
         target = (f"{item['line']}  {item['label']}" + (f" — {item['detail']}" if item["detail"] else "")
                   if item["line"] else "UNMAPPED")

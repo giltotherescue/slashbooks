@@ -530,6 +530,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         except Exception as exc:
             blockers.append({"code": "report_validation_failed", "message": "Draft financial reports could not be validated.", "refs": [type(exc).__name__]})
 
+    from .taxview import readiness_notes
+    warnings.extend(readiness_notes(entity))  # notes only: never a blocker, and none unless tax_method is cash with capability 1
     _annotate_blockers(blockers, entity.path, period, start, end, sources)
     blockers = sorted(blockers, key=lambda item: (item["code"], item["refs"], item["message"]))
     warnings = sorted(warnings, key=lambda item: (item["code"], item["refs"], item["message"]))

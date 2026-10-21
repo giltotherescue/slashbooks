@@ -274,8 +274,106 @@ The full `accounting` block, with the account chart and hashes, stays only in
 `manifest.json`, next to `accounting_basis`. A company that tracks accrual for selected
 accounts only is labeled "Cash basis, with accrual tracking for selected accounts from <date>. Book balances as recorded, not a tax cash-basis view; the preparer adjusts." once it has accrual records. Turning tracking on alone changes no export.
 
+### Tax method view
+
+The tax outputs can follow the method the company files on, instead of the recorded books.
+Two keys in `entity.json` control it. A person sets both with one command:
+
+```sh
+books entity set-tax-method PATH --method cash --tax-view on          # preview
+books entity set-tax-method PATH --method cash --tax-view on --apply  # change it
+```
+
+- `tax_method` is `cash` or `accrual`. Absent means unknown.
+- `tax_method_view` is `true` or `false` (default `false`). If it is `false`, every tax output
+  is the same as before, even when `tax_method` is set. `--tax-view` can be left out to keep
+  the current value.
+- The command previews unless `--apply` is given. `--plan-hash` refuses a changed company.
+  An exact repeat returns `already_applied`. The ledger audit log gets a `tax-method-set` event.
+  No entry, report, period lock or published statement changes.
+- It is a person-only write. An agent can run the preview. Standing posting authority never
+  covers `--apply`.
+
+When the view is on, `books tax map`, `books tax export`, the Read Me, `README.txt`,
+`manifest.json` and the tax workbook use this view:
+
+| Tax method | Books | View used |
+|---|---|---|
+| cash | cash books (accrual off) | the recorded books, which are cash books |
+| cash | accrual records (capability 1) | the cash view derived from the accrual records |
+| accrual | accrual records | the recorded books; refused before the accrual tracking start |
+| accrual | cash books (accrual off) | refused: the books have no accrual view |
+
+The handoff, `tax map --format json` and `manifest.json` carry `tax_method`, `view` and
+`tax_view` (`source`, `label` and, for the handoff, `flags`). The "Basis" line of the Read Me
+names the method and the view. The cover of the accountant package gets a "Tax method" row.
+
+The cash view for tax:
+
+- Unpaid invoices are not income and unpaid bills are not expenses. Each is income or expense
+  on the date cash settles it, also when that date is in the next tax year.
+- Receivable, payable, accrued, deferred revenue and customer deposit balances leave the trial
+  balance. One computed row, `Equity:Accrual-To-Cash-Adjustment`, keeps the trial balance balanced.
+- Deferred revenue and customer deposits are income on receipt.
+- A prepaid schedule follows its `tax_treatment` (see `docs/accrual.md`). `expense_when_paid` is
+  expense on the payment date. `capitalize` keeps the unused part on the balance sheet and
+  deducts the recognition entries as they post.
+- Collected opening receivables and paid opening payables are income and expense on the cash date,
+  on the rows `Income:Opening-Receivables-Collected` and `Expenses:Opening-Payables-Paid`.
+
+The view never falls back to the other view. The export refuses, writes no file and names the
+reason when the view cannot be computed: a range that starts before the accrual cutover or inside
+an imported summary period, an accrual range before the tracking start, accrual books that cannot
+produce a cash view, or a cash view that does not tie to the accrual books.
+
+`tax_view.flags` lists what the preparer must check. Each flag has a `code` and a `message`:
+
+- `depreciation_not_tax_adjusted`: fixed assets stay on the balance sheet and depreciation is book
+  depreciation as recorded.
+- `difference_from_accrual_view`: cash-method net income minus accrual net income, with one row per group.
+- `deferred_revenue_on_receipt`, `bad_debt_not_deductible`, `accrued_liabilities_excluded`,
+  `receivables_payables_excluded`, `opening_items_on_receipt`.
+- `prepaid_capitalized` and `prepaid_expensed_by_default`, with `treatment_source` `recorded` or `default`.
+- `cash_view_unclassified` and `cash_view_noncash_entry`: entries the cash view cannot explain.
+
+The defaults need review by a tax professional: the configured fiscal year, the 12-month rule for
+prepaid expenses, and the treatment of opening receivables collected after the change.
+
 A historical opening summary supports its complete fiscal period, not arbitrary earlier months.
 Unsupported pre-cutover subperiods or dates before the source balances are refused before any
 handoff files are written. A supported full-summary export identifies the included summary and
 states that historical transaction detail is unavailable. Periods entirely before optional accrual
 tracking began remain cash periods, and a period that crosses the tracking start is not refused.
+
+
+## Set the fiscal year
+
+Record the company's established fiscal calendar with a preview, then apply that preview:
+
+```sh
+books entity set-fiscal-year PATH --start 07-01
+books entity set-fiscal-year PATH --start 07-01 --apply --plan-hash HASH_FROM_PREVIEW
+```
+
+`07-01` means July 1 through June 30; `01-01` is the calendar-year default.
+The setting accepts the first day of any month (`MM-01`). It does not support
+52/53-week calendars or short transition years. It records the company's calendar;
+it does not elect or change its tax year with a tax authority.
+
+The command audits the change and refuses a stale preview or invalid ledger.
+It is an owner/preparer decision and is not covered by standing posting authority.
+An imported opening summary must agree with the chosen start; changing its
+historical coverage requires a separate reviewed correction.
+
+The prepaid 12-month default uses the end of the fiscal year following the
+payment's fiscal year. Tax-view metadata records `fiscal_year_start`. Accrual
+balance sheets use the calendar for current-year earnings; imported summaries
+retain their evidenced fiscal calendar. Explicit report/export date ranges remain
+as requested. `--year` remains the calendar-year shortcut; for July–June, use
+`--from 2026-07-01 --to 2027-06-30`. Existing exported files and published statements are unchanged.
+
+Capitalized prepaid balances remain assets even when an account also holds
+prepaids deducted on payment; only the capitalized portion appears in the tax view.
+
+The prepaid rule and calendar limitations follow [IRS Publication 538](https://www.irs.gov/publications/p538).
+Confirm the company's established method and calendar with its preparer.
