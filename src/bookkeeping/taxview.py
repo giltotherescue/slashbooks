@@ -307,12 +307,12 @@ def flags(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict
     for row in held:
         if row["deposit_kind"] == "refundable":
             result.append({"code": "deposit_refundable", "refs": [row["id"]],
-                           "message": (f"Deposit {row['reference'] or row['id']} is recorded as refundable: it stays a liability "
-                                       "until it is applied to an invoice or forfeited, so it is not income when received.")})
+                           "message": (f"Deposit {row['reference'] or row['id']} is recorded as refundable. The cash view treats it as "
+                                       "a liability until it is applied to an invoice or forfeited, not as income on receipt.")})
     assumed = [row["id"] for row in held if row["deposit_kind_source"] == "assumed"]
     if assumed:
         result.append({"code": "deposit_kind_not_recorded", "refs": assumed,
-                       "message": ("These deposits have no recorded deposit kind. The cash view assumes advance payment: income when received. "
+                       "message": ("These deposits have no recorded deposit kind. The cash view treats them as advance payments, as income on receipt. "
                                    "Record the kind with books accrual schedule deposit-kind or books accrual item deposit-kind.")})
     issues = [i for i in view.ledger.issues if start <= i["date"] <= end]
     for issue in issues:
@@ -337,12 +337,15 @@ def deposits(conn: Any, view: TaxView, to_date: date) -> list[dict[str, Any]]:
     from .accrual.schedules import effective_deposit_kind, is_deposit
     opening = opening_coverage(conn)
     support_items, support_schedules = _managed_support(conn, to_date.isoformat())
+    # The kind comes from the current record, the one the cash-view math reads, not from a dated snapshot.
+    current = {table: {r["id"]: r for r in _records(conn, table)} for table in ("schedules", "items")}
     rows = []
     for table, records in (("schedules", support_schedules), ("items", support_items)):
         for record in records:
-            if not is_deposit(record, table):
+            latest = current[table].get(record["id"], record)
+            if not is_deposit(latest, table):
                 continue
-            kind, source = effective_deposit_kind(record, table)
+            kind, source = effective_deposit_kind(latest, table)
             rows.append({"id": record["id"], "record": table[:-1], "account": record["account"],
                          "date": _origin_date(record, opening), "amount": f"{Decimal(record.get('original_amount') or record['amount']):.2f}",
                          "balance_at_end": f"{abs(Decimal(record['signed_balance'])):.2f}",
@@ -353,9 +356,9 @@ def deposits(conn: Any, view: TaxView, to_date: date) -> list[dict[str, Any]]:
 
 
 def _entry_rows(conn: Any, to_date: date) -> list[tuple]:
-    """(date, source_id, payee, metadata, account, amount) for postings through ``to_date``."""
+    """(entry id, date, source_id, payee, metadata, account, amount) for postings through ``to_date``."""
     import sqlite3
-    base = ("SELECT e.date, e.source_id, e.payee, {meta}, p.account, p.amount FROM entries e JOIN postings p ON p.entry_id = e.id "
+    base = ("SELECT e.id, e.date, e.source_id, e.payee, {meta}, p.account, p.amount FROM entries e JOIN postings p ON p.entry_id = e.id "
             "WHERE e.date <= ? ORDER BY e.date, e.id, p.id")
     try:
         return conn.execute(base.format(meta="e.metadata_json"), (to_date.isoformat(),)).fetchall()
@@ -363,11 +366,16 @@ def _entry_rows(conn: Any, to_date: date) -> list[tuple]:
         return conn.execute(base.format(meta="'[]'"), (to_date.isoformat(),)).fetchall()
 
 
+_OPENING_META = ("accrual-opening", "accrual-tracking-opening")
+
+
 def fixed_assets(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict[str, Any]]:
     """The fixed-asset worksheet for the preparer: data only, no tax depreciation.
 
-    One row per depreciation schedule that exists on ``to_date``, and one row per purchase (a debit) posted to an
-    ``Assets:Fixed`` account through ``to_date`` that no depreciation schedule records. Book depreciation is as recorded.
+    One row per depreciation schedule that exists on ``to_date``, and one row per entry through ``to_date`` whose
+    postings to ``Assets:Fixed`` accounts are a net debit and that no depreciation schedule records. Accounts whose
+    name contains "Accumulated" and depreciation contra accounts are left out, so a move between two fixed-asset
+    accounts is not a purchase. An opening-balance entry is marked ``source: opening``. Book depreciation is as recorded.
     """
     import json
     from .accrual.reports import _managed_support, opening_coverage, _origin_date
@@ -379,20 +387,28 @@ def fixed_assets(conn: Any, view: TaxView, from_date: date, to_date: date) -> li
     origin_sources = {(r.get("origin") or {}).get("source_id") for r in all_depreciation} - {None}
     contra = {r.get("contra_account") for r in all_depreciation} - {None}
     payees: dict[str, str] = {}
-    purchases = []
-    for day, source_id, payee, metadata, account, amount in _entry_rows(conn, to_date):
+    entries: dict[int, dict[str, Any]] = {}
+    for entry_id, day, source_id, payee, metadata, account, amount in _entry_rows(conn, to_date):
         if source_id and payee:
             payees.setdefault(source_id, payee)
-        try:
-            meta = {str(k): str(v) for k, v in json.loads(metadata or "[]")}
-        except (TypeError, ValueError):
-            meta = {}
-        amount = Decimal(amount)
-        if (not account.startswith("Assets:Fixed") or account in contra or amount <= 0
-                or source_id in origin_sources or meta.get("schedule-id") in scheduled_ids):
+        entry = entries.get(entry_id)
+        if entry is None:
+            try:
+                meta = {str(k): str(v) for k, v in json.loads(metadata or "[]")}
+            except (TypeError, ValueError):
+                meta = {}
+            entry = entries[entry_id] = {"date": str(day)[:10], "source_id": source_id or "", "payee": payee or "", "meta": meta, "fixed": {}}
+        if account.startswith("Assets:Fixed") and account not in contra and "accumulated" not in account.lower():
+            entry["fixed"][account] = entry["fixed"].get(account, _ZERO) + Decimal(amount)
+    purchases = []
+    for entry in entries.values():
+        net = sum(entry["fixed"].values(), _ZERO)
+        if net <= 0 or entry["source_id"] in origin_sources or entry["meta"].get("schedule-id") in scheduled_ids:
             continue
-        purchases.append({"source": "purchase", "id": source_id or "", "account": account, "placed_in_service": str(day)[:10],
-                          "cost": f"{amount:.2f}", "vendor": payee or "", "reference": "",
+        account = max(entry["fixed"].items(), key=lambda pair: (pair[1], pair[0]))[0]
+        is_opening = any(entry["meta"].get(key, "").lower() == "true" for key in _OPENING_META)
+        purchases.append({"source": "opening" if is_opening else "purchase", "id": entry["source_id"], "account": account,
+                          "placed_in_service": entry["date"], "cost": f"{net:.2f}", "vendor": entry["payee"], "reference": "",
                           "book_depreciation_to_date": "", "depreciation_schedule": "none"})
     rows = []
     for record in schedules:
@@ -434,7 +450,7 @@ def readiness_notes(entity: Any) -> list[dict[str, Any]]:
         if unset:
             notes.append({"code": "deposit_kind_missing", "refs": unset,
                           "message": ("The tax view follows the cash method, and these deposits have no recorded deposit kind. "
-                                      "The cash view assumes advance payment (income when received). Record the kind with "
+                                      "The cash view treats them as advance payments, as income on receipt. Record the kind with "
                                       "books accrual schedule deposit-kind or books accrual item deposit-kind.")})
     return notes
 
@@ -579,7 +595,9 @@ def preview_set_tax_profile(entity: Any, prior_return_method: Any = None, entity
         raise JournalError("nothing_to_set", "Give --prior-return-method, --entity-type or both.",
                            "For example: books entity set-tax-profile PATH --prior-return-method cash --entity-type single_member_llc")
     config = entity.entity_config
-    current = tax_profile(config)
+    # Read the stored values without validating them, so this command can repair a bad value.
+    current = {key: config[key] for key in PROFILE_FIELDS if key in config}
+    invalid = sorted(key for key, value in current.items() if value not in PROFILE_FIELDS[key])
     _integrity(entity, "record the tax profile")
     store = LedgerStore(default_store_path(entity.path))
     target = {**current, **request}
@@ -588,6 +606,11 @@ def preview_set_tax_profile(entity: Any, prior_return_method: Any = None, entity
             "configuration_hash": canonical_hash(config),
             "effects": {"from": current, "to": target, "entries_changed": 0, "period_locks_changed": 0,
                         "published_statements_changed": False, "note": PROFILE_NOTE}}
+    if invalid:
+        body["warnings"] = [{"code": "invalid_stored_value", "refs": invalid,
+                             "message": "entity.json holds a value that is not allowed for " + ", ".join(invalid) + ". "
+                                        + ("This change replaces it." if all(key in request for key in invalid)
+                                           else "Give a valid value for it to repair it.")}]
     body["request_hash"] = canonical_hash({"kind": SET_TAX_PROFILE_KIND, "request": request})
     body["plan_hash"] = canonical_hash(body)
     return body

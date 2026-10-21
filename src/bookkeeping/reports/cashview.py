@@ -315,9 +315,9 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
     report cash view, where a prepaid is expense in full on the funding date.
 
     ``refundable`` names customer deposit items (credit items) that a person recorded as refundable.
-    Their receipt and refund are not income; applying one to an invoice is income on the application
-    date, and a forfeiture (an adjustment of the deposit) is income as recorded. The default (empty)
-    is the report cash view, where a deposit is income on receipt.
+    The view treats their receipt and refund as no income, an application to an invoice as income on the
+    application date, and a forfeiture (an adjustment of the deposit) as recorded. The default (empty)
+    is the report cash view, which treats a deposit as income on receipt.
     """
     from ..accrual.accounts import _subtype, _usage_subtypes
     from ..accrual.reports import _records
@@ -336,7 +336,20 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
             source = entries_by_source.get(item["origin"].get("source_id", ""))
             if source and any(not _is_ie(a) and a not in control for a, _ in source["postings"]):
                 cash_backed.add(item["id"])
-    events = _allocation_events(allocations, items, _ItemLines(items, entries_by_source), cash_backed)
+    # The view treats an opening-balance deposit recorded as refundable like a cash-backed one: applying it to an
+    # invoice places the income on the invoice lines. Any other deposit that no cash created
+    # (a credit memo) cannot be a refundable deposit, and the view refuses rather than guess.
+    backed = set(cash_backed)
+    for item_id in refundable:
+        item = items.get(item_id)
+        if item is None or item_id in cash_backed:
+            continue
+        if item.get("origin", {}).get("mode") != "opening":
+            raise CashViewError(f"refundable_deposit_not_cash_backed: deposit {item_id} is recorded as refundable, but no cash receipt or "
+                                "opening balance created it, so the cash view cannot place it. Nothing was exported. Record it as "
+                                "advance_payment, or record the deposit from its cash receipt.")
+        backed.add(item_id)
+    events = _allocation_events(allocations, items, _ItemLines(items, entries_by_source), backed)
     # Net income that a refundable deposit removes from an allocation's events, keyed by allocation id,
     # with the reconciling group that keeps the tie-out exact. Empty unless ``refundable`` is given.
     withheld: dict[str, tuple[Decimal, str]] = {}
@@ -453,7 +466,7 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
         elif schedule:
             emit(day, schedule["recognition_account"], -cash, "schedule_cash", source)
         elif credit and credit["id"] in refundable:
-            # A refundable deposit received: it stays a liability, so it is not income.
+            # A deposit recorded as refundable: the view keeps it a liability and places no income.
             reconciling.append((day, _SUBTYPE_GROUPS.get(_subtype(credit["account"], usage), "other_control"), cash))
         elif credit:
             emit(day, _K_UNAPPLIED_IN if _item_sign(credit) < 0 else _K_UNAPPLIED_OUT, -cash, "deposit", source)

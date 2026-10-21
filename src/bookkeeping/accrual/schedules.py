@@ -834,6 +834,9 @@ def apply_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any, plan_h
     from ..entity import load_entity
     from .enable import _seal
     from .store import apply_mutations
+    from ..preparation_runtime import is_preparation
+    if is_preparation():
+        raise JournalError("tax_treatment_person_only", "Recording a tax treatment requires the owner or tax preparer.")
     with _entity_write_lock(entity.path):
         entity = load_entity(entity.path)
         fresh = preview_tax_treatment(entity, schedule_id, treatment)
@@ -883,6 +886,19 @@ def deposit_kind(value: Any, record: Mapping[str, Any], table: str) -> str:
     return value
 
 
+def _check_deposit_source(store: Any, record: Mapping[str, Any], table: str) -> None:
+    """A deposit item must come from a cash receipt, an existing posted payment or an opening balance. A credit memo is not a deposit."""
+    if table != "items":
+        return
+    mode = (record.get("origin") or {}).get("mode")
+    received = any(a.get("kind") == "unapplied_receipt" and a.get("item_id") == record["id"] for a in list_records(store, "allocations"))
+    if not received and mode not in {"existing", "opening"}:
+        raise JournalError("deposit_kind_credit_memo",
+                           "This credit item was not created by a customer payment or an opening balance, so it is a credit memo, not a deposit.",
+                           "Record deposit_kind only on a deposit received with books accrual item settle-apply (excess), "
+                           "on a posted payment (origin existing), or on an opening deposit.")
+
+
 def effective_deposit_kind(record: Mapping[str, Any], table: str) -> tuple[str, str]:
     """Return (kind, source): source is "recorded" when a person set it, else "assumed" (advance_payment)."""
     if "deposit_kind" in record:
@@ -906,6 +922,7 @@ def preview_deposit_kind(entity: Entity, table: str, record_id: Any, kind: Any) 
         raise JournalError(f"{_DEPOSIT_TABLES[table]}_not_found", f"No {_DEPOSIT_TABLES[table]} has id {record_id}.",
                            f"Run `books accrual {_DEPOSIT_TABLES[table]} list --entity PATH`.")
     kind = deposit_kind(kind, record, table)
+    _check_deposit_source(store, record, table)
     current, source = effective_deposit_kind(record, table)
     body = {"schema_version": 1, "kind": DEPOSIT_KIND_KIND, "request": {"table": table, "id": record_id, "deposit_kind": kind},
             "changes": record.get("deposit_kind") != kind, "ledger_digest": store.content_digest(),
@@ -914,8 +931,8 @@ def preview_deposit_kind(entity: Entity, table: str, record_id: Any, kind: Any) 
             "effects": {"from": record.get("deposit_kind"), "current_effective": current, "current_source": source, "to": kind,
                         "entries_changed": 0, "published_statements_changed": False,
                         "note": ("Only the cash-method tax outputs change (`books tax map` and `books tax export` with the tax method view on). "
-                                 "advance_payment: income when received. refundable: a liability until it is applied to an invoice or "
-                                 "forfeited. The books, the reports and the recorded entries stay as they are.")}}
+                                 "The cash view treats advance_payment as income on receipt, and refundable as a liability until it is applied "
+                                 "to an invoice or forfeited. The books, the reports and the recorded entries stay as they are.")}}
     body["request_hash"] = canonical_hash({"kind": DEPOSIT_KIND_KIND, "request": body["request"]})
     body["plan_hash"] = canonical_hash(body)
     return body

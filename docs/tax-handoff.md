@@ -363,20 +363,23 @@ books entity set-tax-profile PATH --prior-return-method cash --entity-type singl
 ### Deposits: advance payment or refundable
 
 A deferred schedule or a customer deposit item (a credit item on a liability account) can carry
-`deposit_kind`. Only a person records it:
+`deposit_kind`. The item must come from a customer payment (`settle-apply` with `excess`), a posted
+payment (origin `existing`) or an opening balance; a credit memo is refused. Only a person records it:
 
 ```sh
 books accrual item deposit-kind --entity PATH --id DEPOSIT --deposit-kind refundable              # preview
 books accrual schedule deposit-kind --entity PATH --id SCHEDULE --deposit-kind refundable --apply  # record it
 ```
 
-In the cash view for tax:
+The cash view for tax treats them so:
 
 - `advance_payment` (also when nothing is recorded): income on the receipt date, as before.
-- `refundable`: not income when received and not an expense when refunded. It stays a liability
-  in the tax trial balance. It is income when it is applied to an invoice (on the application
-  date) or forfeited (an adjustment of the deposit into income). A refundable deferred schedule
-  is income as its recognition entries post.
+- `refundable`: no income on receipt and no expense on refund. It stays a liability in the tax
+  trial balance. The view places income when it is applied to an invoice (on the application
+  date, also for an opening-balance deposit) or forfeited (an adjustment of the deposit into
+  income). A refundable deferred schedule is income as its recognition entries post.
+- If a deposit recorded as refundable has no cash receipt and no opening balance behind it, the
+  view refuses with `refundable_deposit_not_cash_backed`.
 
 The view keeps its tie-out to the accrual books to the cent. `tax_view.deposits` and the
 "Deposits" sheet list every deposit with its kind. A deposit with no recorded kind shows
@@ -388,7 +391,10 @@ The view keeps its tie-out to the accrual books to the cent. `tax_view.deposits`
 
 - each depreciation schedule: purchase date (placed in service), cost, account, vendor (the payee
   of the purchase entry, when known), reference and book depreciation to the end of the period;
-- each purchase posted to an `Assets:Fixed` account with no depreciation schedule.
+- each entry with no depreciation schedule whose postings to `Assets:Fixed` accounts are a net
+  debit, on the account it debits most. A move between two fixed-asset accounts nets to zero and
+  is left out. Accounts whose name contains "Accumulated" and depreciation contra accounts are
+  left out. An opening-balance entry has `source` `opening`.
 
 `in_period` says whether the purchase date is in the export period. Slashbooks computes no tax
 depreciation and does not choose an expensing election or a safe harbor. The preparer does. For

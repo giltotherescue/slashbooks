@@ -394,5 +394,180 @@ class FlagOffIsUnchanged(Base):
         self.assertFalse(any(p.name.startswith(("fixed-assets", "deposits")) for p in out_after.iterdir()))
 
 
+
+class ReviewFixes(Base):
+    """Regression tests for the fresh-eyes review of the tax-flags pull request."""
+
+    def open_with(self, lines, items):
+        from bookkeeping.accrual import opening
+        (self.root / "evidence").mkdir(exist_ok=True)
+        (self.root / "evidence/open.pdf").write_bytes(b"%PDF synthetic opening")
+        plan = opening.preview_opening(self.entity, {"operation_id": "opening", "cutover": "2026-01-01",
+                                                     "evidence_refs": ["evidence/open.pdf"], "lines": lines, "items": items})
+        self.assertEqual(plan["status"], "ready", plan)
+        opening.apply_opening(self.entity, plan)
+        self.entity = load_entity(self.root)
+
+    def test_refundable_opening_deposit_is_income_when_applied(self):
+        # Opening: bank 30,000.00 and a 400.00 customer deposit held. 2026-04-01 invoice 400.00; 2026-04-05 the deposit is applied.
+        self.open_with([{"account": BANK, "amount": "30000.00"}, {"account": DEPOSITS, "amount": "-400.00"},
+                        {"account": "Equity:Opening-Balances", "amount": "-29600.00"}],
+                       [{"id": "open-dep", "kind": "credit", "account": DEPOSITS, "counterparty": "Vega", "reference": "DEP-1",
+                         "open_amount": "400.00", "direction": "credit"}])
+        self.item("inv", "receivable", AR, "400.00", "2026-04-01", "Vega", counter=SERVICES)
+        self.offset("apply", "2026-04-05", "open-dep", "inv", "400.00")
+        self.cash_filer()
+        # Advance payment: the deposit was received before the cutover, so applying it places no 2026 income.
+        self.assertNotIn(SERVICES, tb(self.handoff()))
+        self.deposit_kind("item", "open-dep", "refundable")
+        # Refundable: the application is Services income 400.00 in 2026. handoff() asserts the trial balance balances.
+        rows = tb(self.handoff())
+        self.assertEqual(rows[SERVICES], D("-400.00"))
+        self.assertEqual(rows.get(DEPOSITS, D("0.00")), D("0.00"))
+        tie = flag(self.handoff(), "difference_from_accrual_view")
+        # Accrual 400.00 (the invoice); cash 400.00 (the application): no difference.
+        self.assertEqual((tie["accrual_net_income"], tie["cash_net_income"]), ("400.00", "400.00"))
+
+    def test_credit_memo_cannot_be_a_refundable_deposit_and_the_view_refuses_one(self):
+        from bookkeeping.reports import cashview
+        from bookkeeping.reports.cache import open_cache
+        self.item("memo", "credit", DEPOSITS, "100.00", "2026-01-10", "Vega", counter=SERVICES, direction="credit")
+        with self.assertRaises(JournalError) as caught:
+            schedules.preview_deposit_kind(self.entity, "items", "memo", "refundable")
+        self.assertEqual(caught.exception.code, "deposit_kind_credit_memo")
+        conn = open_cache(self.root)
+        try:
+            with self.assertRaisesRegex(cashview.CashViewError, "refundable_deposit_not_cash_backed"):
+                cashview.derive(conn, date(2026, 12, 31), refundable={"memo"})
+        finally:
+            conn.close()
+
+    def test_existing_mode_deposit_receipt(self):
+        from bookkeeping.accrual import items
+        # A 300.00 receipt posted first (bank 300.00 / deposits), then recorded as a deposit item from that posted entry.
+        self.journal("rcpt", "2026-03-01", [(BANK, "300.00"), (DEPOSITS, "-300.00")])
+        request = {"operation_id": "create-dep", "id": "dep", "kind": "credit", "account": DEPOSITS, "currency": "USD",
+                   "original_amount": "300.00", "as_of": "2026-03-01", "counterparty": "Vega", "direction": "credit",
+                   "origin": {"mode": "existing", "source_id": "accrual:rcpt"}, "evidence_ids": [self.ev("dep")]}
+        items.apply_item(self.entity, items.preview_item(self.entity, request))
+        self.cash_filer()
+        # Advance payment: income 300.00 on receipt (the deposit line).
+        self.assertEqual(tb(self.handoff())[UNAPPLIED], D("-300.00"))
+        self.deposit_kind("item", "dep", "refundable")
+        rows = tb(self.handoff())
+        self.assertNotIn(UNAPPLIED, rows)
+        self.assertEqual(rows[DEPOSITS], D("-300.00"))
+
+    def test_partial_application_then_refund(self):
+        # 2026-02-10: 500.00 received. 2026-03-01: invoice 300.00. 2026-03-05: 300.00 applied. 2026-04-01: 200.00 refunded.
+        self.receive("dep", "2026-02-10", "500.00", "dep")
+        self.item("inv", "receivable", AR, "300.00", "2026-03-01", "Vega", counter=SERVICES)
+        self.offset("apply", "2026-03-05", "dep", "inv", "300.00")
+        self.settle("refund", "2026-04-01", "-200.00", [("dep", "200.00")])
+        self.cash_filer()
+        february = (date(2026, 2, 1), date(2026, 2, 28))
+        # Advance payment: February income 500.00 on the deposit line.
+        self.assertEqual(tb(self.handoff(february))[UNAPPLIED], D("-500.00"))
+        self.deposit_kind("item", "dep", "refundable")
+        # Refundable: February no income and a 500.00 liability; the year has Services 300.00 and no liability left.
+        feb = tb(self.handoff(february))
+        self.assertNotIn(UNAPPLIED, feb)
+        self.assertEqual(feb[DEPOSITS], D("-500.00"))
+        year = tb(self.handoff())
+        self.assertEqual(year[SERVICES], D("-300.00"))
+        self.assertNotIn(UNAPPLIED, year)
+        self.assertEqual(year.get(DEPOSITS, D("0.00")), D("0.00"))
+
+    def test_deposit_list_reads_the_current_kind(self):
+        # A deferred schedule changed in 2027 has a dated snapshot for 2026 without the kind recorded later.
+        self.schedule("sub", "deferred", DEFERRED, SUBSCRIPTIONS, "1200.00", "2026-10-01", "2027-09-30", "equal_month", BANK)
+        self.due("2026-12-31")
+        self.change("refund", "sub", "refund", "2027-01-31", amount="200.00", offset_account=BANK)
+        self.cash_filer()
+        self.deposit_kind("schedule", "sub", "refundable")
+        handoff = self.handoff()
+        listed = {r["id"]: r for r in handoff["tax_view"]["deposits"]}
+        self.assertEqual((listed["sub"]["deposit_kind"], listed["sub"]["note"]), ("refundable", "recorded"))
+        self.assertNotIn("deposit_kind_not_recorded", codes(handoff))
+        # The math uses the same kind: 2026 income is the 300.00 recognized.
+        self.assertEqual(tb(handoff)[SUBSCRIPTIONS], D("-300.00"))
+
+    def test_fixed_assets_skip_reclass_and_accumulated_and_mark_opening(self):
+        vehicles, furniture = "Assets:Fixed:Vehicles", "Assets:Fixed:Furniture"
+        add_account(self.root, vehicles, open_date="2025-12-31")
+        self.journal("reclass", "2026-02-01", [(vehicles, "1000.00"), (EQUIPMENT, "-1000.00")])
+        self.journal("accum", "2026-03-01", [(ACCUM, "200.00"), ("Expenses:Depreciation", "-200.00")])
+        self.journal("part", "2026-04-01", [(vehicles, "700.00"), (EQUIPMENT, "-200.00"), (BANK, "-500.00")])
+        self.cash_filer()
+        # An accrual opening of a fixed asset needs a depreciation schedule as support, so the opening entry is
+        # added to the rows the worksheet reads: entry 9999 with the accrual-opening metadata.
+        real = taxview._entry_rows
+        opening_meta = json.dumps([["accrual-opening", "true"]])
+
+        def with_opening(conn, to_date):
+            return [(9999, "2025-12-31", "opening", None, opening_meta, furniture, "5000.00"),
+                    (9999, "2025-12-31", "opening", None, opening_meta, "Equity:Opening-Balances", "-5000.00"), *real(conn, to_date)]
+        with patch.object(taxview, "_entry_rows", with_opening):
+            rows = self.handoff()["tax_view"]["fixed_assets"]
+        # Opening 5,000.00 is marked opening; the reclass nets to 0 and the accumulated debit is left out;
+        # the mixed entry nets 700.00 - 200.00 = 500.00 on the account it debits.
+        self.assertEqual([(r["source"], r["account"], r["cost"]) for r in rows],
+                         [("opening", furniture, "5000.00"), ("purchase", vehicles, "500.00")])
+
+    def test_tax_treatment_refused_through_the_preparation_path(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from bookkeeping.preparation_runtime import run_preparation_command
+        from test_accrual_journals import trusted_context
+        request = {"operation_id": "create-ins", "id": "ins", "kind": "prepaid", "account": PREPAID, "recognition_account": INSURANCE,
+                   "currency": "USD", "amount": "1200.00", "service_start": "2026-01-01", "service_end": "2026-12-31",
+                   "method": "equal_month", "origin": {"mode": "new", "source_id": "ins-payment", "funding_account": BANK},
+                   "evidence_ids": [self.ev("ins")], "tax_treatment": "expense_when_paid"}
+        path = Path(self.tmp.name) / "schedule.json"
+        path.write_text(json.dumps(request))
+        before = self.store.content_digest()
+        output = StringIO()
+        with redirect_stdout(output):
+            status = run_preparation_command(["accrual", "schedule", "preview", "--entity", str(self.root), "--input", str(path)],
+                                             trusted_context(), entity_path=self.root, expected_ledger_digest=before, source_hashes={})
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["errors"][0]["code"], "tax_treatment_person_only")
+        self.assertEqual(self.store.content_digest(), before)
+        # The setter refuses under preparation authority too.
+        self.schedule("ins2", "prepaid", PREPAID, INSURANCE, "600.00", "2026-01-01", "2026-06-30", "equal_month", BANK)
+        with patch("bookkeeping.preparation_runtime.is_preparation", return_value=True):
+            with self.assertRaises(JournalError) as caught:
+                schedules.apply_tax_treatment(self.entity, "ins2", "capitalize")
+        self.assertEqual(caught.exception.code, "tax_treatment_person_only")
+
+    def test_set_tax_profile_repairs_a_bad_stored_value(self):
+        path = self.root / "entity.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), "entity_type": "corp"}))
+        code, plan, _ = books("entity", "set-tax-profile", str(self.root), "--entity-type", "s_corp")
+        self.assertEqual(code, 0, plan)
+        self.assertEqual(plan["warnings"][0]["code"], "invalid_stored_value")
+        code, done, _ = books("entity", "set-tax-profile", str(self.root), "--entity-type", "s_corp", "--apply", "--plan-hash", plan["plan_hash"])
+        self.assertEqual((code, done["status"]), (0, "applied"))
+        self.assertEqual(taxview.tax_profile(json.loads(path.read_text())), {"entity_type": "s_corp"})
+
+    def test_xlsx_export_unchanged_with_the_view_off(self):
+        from golden_support import XLSX_AVAILABLE, xlsx_text
+        if not XLSX_AVAILABLE:
+            self.skipTest("needs the xlsx extra")
+        self.receive("dep", "2026-02-10", "500.00", "dep")
+        self.schedule("van", "depreciation", EQUIPMENT, "Expenses:Depreciation", "3600.00", "2026-01-01", "2028-12-31",
+                      "equal_month", BANK, contra_account=ACCUM)
+
+        def export(name):
+            out = Path(self.tmp.name) / name
+            taxmap.export_handoff(self.root, *Y2026, form="schc", output_dir=out, formats=("xlsx",))
+            return xlsx_text(out / "tax-handoff-schc-2026-01-01_2026-12-31.xlsx")
+        before = export("x-before")
+        self.deposit_kind("item", "dep", "refundable")
+        books("entity", "set-tax-profile", str(self.root), "--entity-type", "c_corp", "--apply")
+        books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
+        self.assertEqual(export("x-after"), before)
+
+
 if __name__ == "__main__":
     unittest.main()
