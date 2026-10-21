@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 — 2026-10-21
+
+- Fix Claude Desktop and Cowork marketplace compatibility by moving the bundled CLI launcher from `bin/books` to `scripts/books`. The Python-installed `books` command and skill-local wrappers keep working. Packaging tests now reject a top-level `bin/` directory.
 
 - Tax outputs can follow the company's tax method. New `books entity set-tax-method PATH --method cash|accrual [--tax-view on|off] [--apply] [--plan-hash H]` records `tax_method` and `tax_method_view` in `entity.json` (preview first, audit event `tax-method-set`, person-only). When `tax_method_view` is true, `books tax map`, `books tax export`, the tax Read Me, `README.txt`, `manifest.json` and the tax workbook use the cash view derived from the accrual records for a cash-method filer, and the accrual view for an accrual-method filer. They stamp `tax_method` and `view`, the Basis line names the method, and `tax_view.flags` lists depreciation not tax-adjusted, deferred revenue on receipt, bad debt not deductible, accrued liabilities excluded and the difference from the accrual view. The view never falls back: a range that the view cannot cover is refused with the reason. Prepaid schedules accept `tax_treatment` (`expense_when_paid` or `capitalize`; new `books accrual schedule tax-treatment`), with a 12-month-rule default when it is absent. Readiness adds the note `schedule_tax_treatment_missing` for a cash-method filer. Without the flag, every output is unchanged: no company golden output changed. The shared `accrual schema` and `accrual capabilities` goldens list the new field and command. The defaults need review by a tax professional. See `docs/tax-handoff.md` ("Tax method view").
 - Review fixes for imports, tax exports, statements and recovery.
