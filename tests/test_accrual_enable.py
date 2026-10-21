@@ -41,6 +41,9 @@ D = "2026-04-01"
 AR = "Assets:Receivable:Accounts-Receivable"
 AP = "Liabilities:Payable:Accounts-Payable"
 EQUITY = "Equity:Opening-Balance-Adjustments"
+STARTER = (AR, "Assets:Other:Prepaid-Expenses", "Assets:Fixed:Equipment", "Assets:Fixed:Accumulated-Depreciation", AP,
+           "Liabilities:Other:Accrued-Liabilities", "Liabilities:Other:Deferred-Revenue", "Liabilities:Other:Customer-Deposits",
+           "Expenses:Depreciation")
 
 
 def books(*argv: str) -> tuple[int, dict | str, str]:
@@ -118,6 +121,22 @@ class EnableProof(Fixture):
         self.assertEqual(sorted(before.files), sorted(after.files))
         changed = [name for name in before.files if before.files[name] != after.files[name]
                    and not name.startswith(self.DIGEST_BOUND)]
+        # Two chart listings gain the accrual starter accounts, each with no postings and a 0.00 balance:
+        # the routine's category list and the tax line map. Nothing else in them changes.
+        listings = ["routine/context.json", "tax/map_json.json", "tax/map_text.txt"]
+        self.assertEqual(sorted(name for name in changed if name in listings), listings)
+        starter = set(STARTER)
+        context_before, context_after = (json.loads(c.files["routine/context.json"]) for c in (before, after))
+        self.assertEqual([c for c in context_after["categories"] if c["name"] not in starter], context_before["categories"])
+        self.assertEqual({c["name"] for c in context_after["categories"]} - {c["name"] for c in context_before["categories"]}, starter)
+        self.assertEqual({k: v for k, v in context_after.items() if k != "categories"},
+                         {k: v for k, v in context_before.items() if k != "categories"})
+        map_before, map_after = (json.loads(c.files["tax/map_json.json"]) for c in (before, after))
+        self.assertEqual([a for a in map_after["accounts"] if a["account"] not in starter], map_before["accounts"])
+        self.assertEqual({a["balance"] for a in map_after["accounts"] if a["account"] in starter}, {"0.00"})
+        for line in (l for l in after.files["tax/map_text.txt"].splitlines() if l not in before.files["tax/map_text.txt"].splitlines()):
+            self.assertTrue(line.startswith(("Unmapped:", "Needs review:")) or any(f"  {a}  0.00 " in line for a in starter), line)
+        changed = [name for name in changed if name not in listings]
         # A readiness package is bound to the ledger digest, which now includes the empty accrual tables.
         # Its fingerprint and package id are the only readiness lines that may differ.
         self.assertEqual(sorted(changed), [f"readiness/2026-0{m}.json" for m in (1, 2, 3)])
@@ -441,6 +460,177 @@ class ProofCompanyEndToEnd(Fixture):
         self.assertIn("Liabilities › Payable › Accounts-Payable         650.00", sheet)
         self.assertIn("Assets › Receivable › Accounts-Receivable         900.00", sheet)
         self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+
+class StarterAccounts(Fixture):
+    """`accrual enable` opens the accrual starter accounts that a new accrual company gets."""
+
+    def accounts(self, root: Path | None = None) -> dict[str, tuple[str, str]]:
+        with LedgerStore((root or self.root) / "ledger.sqlite").connection() as conn:
+            return {row[0]: (row[1], row[2]) for row in conn.execute("SELECT name, currency, open_date FROM accounts")}
+
+    def preview(self, day: str = D) -> tuple[int, dict]:
+        code, plan, _ = books("accrual", "enable", "preview", "--entity", str(self.root), "--tracking-start", day)
+        return code, plan
+
+    def apply_plan(self, plan: dict, name: str = "plan") -> tuple[int, dict]:
+        path = self.work / f"{name}.json"
+        path.write_text(json.dumps(plan))
+        code, result, _ = books("accrual", "enable", "apply", "--entity", str(self.root), "--input", str(path))
+        return code, result
+
+    def test_enable_opens_the_starter_accounts_on_the_start_date(self) -> None:
+        before, entries = self.accounts(), self.store().load_entries()
+        self.assertFalse(set(STARTER) & set(before))
+        code, plan = self.preview()
+        self.assertEqual(code, 0)
+        effects = plan["effects"]
+        self.assertEqual((effects["accounts_to_open"], effects["entries_changed"], effects["reports_changed"]), (list(STARTER), 0, False))
+        receipt = self.enable()
+        self.assertEqual((receipt["status"], receipt["accounts_opened"], receipt["entries_changed"]), ("applied", list(STARTER), 0))
+        after = self.accounts()
+        self.assertEqual({name: row for name, row in after.items() if name not in STARTER}, before)
+        self.assertEqual({after[name] for name in STARTER}, {("USD", D)})
+        self.assertEqual(self.store().load_entries(), entries)
+        with self.store().connection() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM postings WHERE account IN (%s)" % ",".join("?" * len(STARTER)), STARTER).fetchone()[0], 0)
+        event = next(e for e in self.store().load_audit_events() if (e["type"] if isinstance(e, dict) else e.type) == "accrual-enabled")
+        payload = event["payload"] if isinstance(event, dict) else event.payload
+        self.assertEqual(payload["accounts_opened"], list(STARTER))
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+        # A replay opens nothing new.
+        code, again = books("accrual", "enable", "apply", "--entity", str(self.root), "--input", str(self.plan_path))[:2]
+        self.assertEqual((code, again["status"]), (0, "already_applied"))
+        self.assertEqual(self.accounts(), after)
+
+    def test_each_business_type_gets_the_accounts_of_a_new_accrual_company(self) -> None:
+        from bookkeeping.entity import _STARTER_ACCOUNTS
+        for business_type in sorted(_STARTER_ACCOUNTS):
+            with self.subTest(business_type=business_type):
+                cash, native = self.work / f"cash-{business_type}", self.work / f"native-{business_type}"
+                init_entity(cash, name="Cash Co", business_type=business_type)
+                init_entity(native, name="Native Co", business_type=business_type, basis="accrual", cutover_date="2026-01-01")
+                self.root = cash
+                cash_accounts = set(self.accounts())
+                self.enable()
+                added = set(self.accounts()) - cash_accounts
+                self.assertEqual(added, set(self.accounts(native)) - cash_accounts)
+                self.assertEqual(added, set(STARTER))
+                self.assertEqual(set(self.accounts()), set(self.accounts(native)))
+
+    def test_existing_starter_accounts_are_left_alone(self) -> None:
+        code, _, err = books("entity", "account-add", str(self.root), "--account", AR, "--open-date", "2026-01-01")
+        self.assertEqual(code, 0, err)
+        existing = self.accounts()[AR]
+        code, plan = self.preview()
+        self.assertEqual(plan["effects"]["accounts_to_open"], [name for name in STARTER if name != AR])
+        code, receipt = self.apply_plan(plan)
+        self.assertEqual((code, receipt["status"]), (0, "applied"))
+        self.assertEqual(self.accounts()[AR], existing)
+        self.assertEqual({self.accounts()[name] for name in STARTER if name != AR}, {("USD", D)})
+
+    def test_a_clashing_account_refuses_enable(self) -> None:
+        clashes = ((["--account", "Liabilities:Other:Prepaid-Expenses"], "Assets:Other:Prepaid-Expenses"),
+                   (["--account", AR, "--currency", "EUR"], AR))
+        for index, (flags, named) in enumerate(clashes):
+            with self.subTest(flags=flags):
+                self.root = self.work / f"clash-{index}"
+                golden_companies.build_cash(self.root)
+                code, _, err = books("entity", "account-add", str(self.root), *flags, "--open-date", "2026-01-01")
+                self.assertEqual(code, 0, err)
+                accounts, config = self.accounts(), self.config()
+                code, blocked = self.preview()
+                self.assertEqual((code, blocked["errors"][0]["code"]), (1, "starter_account_clash"))
+                self.assertIn(named, blocked["errors"][0]["message"])
+                self.assertEqual((self.accounts(), self.config(), self.store().schema_version()), (accounts, config, 1))
+
+    def test_plan_hash_covers_the_accounts_and_a_stale_preview_is_refused(self) -> None:
+        code, plan = self.preview()
+        tampered = json.loads(json.dumps(plan))
+        tampered["effects"]["accounts_to_open"] = tampered["effects"]["accounts_to_open"][1:]
+        code, blocked = self.apply_plan(tampered, "tampered")
+        self.assertEqual((code, blocked["errors"][0]["code"]), (1, "plan_changed"))
+        # One of the accounts appears after the preview: the preview is stale.
+        books("entity", "account-add", str(self.root), "--account", "Assets:Other:Prepaid-Expenses", "--open-date", "2026-01-01")
+        code, blocked = self.apply_plan(plan, "stale")
+        self.assertEqual((code, blocked["errors"][0]["code"]), (1, "stale_preview"))
+        self.assertEqual(self.store().schema_version(), 1)
+        self.assertNotIn(AR, self.accounts())
+
+    CASH_VIEW = (["report", "balance-sheet", "--as-of", "2026-04-30", "--basis", "cash"],
+                 ["report", "trial-balance", "--as-of", "2026-04-30", "--basis", "cash"],
+                 ["report", "pnl", "--from", "2026-01-01", "--to", "2026-04-30", "--basis", "cash"],
+                 ["report", "balance-sheet", "--as-of", "2026-03-31", "--basis", "cash", "--format", "json"])
+
+    def cash_view(self) -> list:
+        results = []
+        for argv in self.CASH_VIEW:
+            code, out, err = books(*argv, "--entity", str(self.root))
+            self.assertEqual(code, 0, err)
+            results.append(out)
+        return results
+
+    def test_cash_reports_are_identical_after_enable(self) -> None:
+        before = self.cash_view()
+        self.enable()
+        self.assertEqual(self.cash_view(), before)
+
+    def test_turned_on_later_then_opening_items_end_to_end(self) -> None:
+        """The hosted flow: a cash company turns accrual on, then enters open invoices and bills."""
+        months = [(date(2026, m, 1), date(2026, m, 28)) for m in (1, 2, 3, 4)] + [(date(2026, 1, 1), date(2026, 4, 30))]
+        figures = ProofCompanyEndToEnd.figures
+
+        def cash_figures() -> list:
+            return [figures(statements.profit_and_loss(self.root, start, end, basis="cash")) for start, end in months]
+        cash_before = cash_figures()
+        self.enable()
+        request = self.work / "opening.json"
+        request.write_text(json.dumps(self.OPEN_ITEMS))
+        code, plan, err = books("accrual", "opening", "preview", "--entity", str(self.root), "--input", str(request))
+        self.assertEqual((code, plan.get("status"), plan.get("accounts_to_open")), (0, "ready", []), err)
+        receipt = self.apply_opening(self.OPEN_ITEMS)
+        self.assertEqual((receipt["status"], receipt["entries_written"]), ("applied", 1))
+        # The cash view is unchanged (a balance sheet with receivables and payables has no cash view);
+        # the accrual view shows the open invoice and bill.
+        self.assertEqual(cash_figures(), cash_before)
+        code, sheet, err = books("report", "balance-sheet", "--as-of", "2026-04-30", "--basis", "accrual", "--entity", str(self.root))
+        self.assertEqual(code, 0, err)
+        self.assertIn("Assets › Receivable › Accounts-Receivable         900.00", sheet)
+        self.assertIn("Liabilities › Payable › Accounts-Payable         250.00", sheet)
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_a_company_enabled_without_the_accounts_gets_them_from_the_opening(self) -> None:
+        from unittest import mock
+        with mock.patch.object(accrual_enable, "accrual_starter_accounts", return_value=()):
+            receipt = self.enable()
+        self.assertEqual(receipt["accounts_opened"], [])
+        self.assertFalse(set(STARTER) & set(self.accounts()))
+        # Enable again with the same date: a replay that changes nothing.
+        code, plan = self.preview()
+        self.assertEqual((code, plan["replayed"], plan["effects"]["accounts_to_open"]), (0, True, []))
+        code, again = self.apply_plan(plan, "again")
+        self.assertEqual((code, again["status"]), (0, "already_applied"))
+        self.assertFalse(set(STARTER) & set(self.accounts()))
+        # The opening preview adds the missing starter accounts, dated the start date.
+        request = self.work / "opening.json"
+        request.write_text(json.dumps(self.OPEN_ITEMS))
+        code, preview, err = books("accrual", "opening", "preview", "--entity", str(self.root), "--input", str(request))
+        self.assertEqual((code, preview.get("accounts_to_open")), (0, list(STARTER)), err)
+        self.apply_opening(self.OPEN_ITEMS)
+        accounts = self.accounts()
+        self.assertEqual({accounts[name] for name in STARTER}, {("USD", D)})
+        entry = next(e for e in self.store().load_entries() if e.source_id == "tracking-opening")
+        self.assertEqual({p.account: p.amount for p in entry.postings},
+                         {AR: Decimal("900.00"), AP: Decimal("-250.00"), EQUITY: Decimal("-650.00")})
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_human_messages_say_start_date(self) -> None:
+        code, plan = self.preview("2026-03-01")
+        message = plan["warnings"][0]["message"]
+        self.assertIn("start date", message)
+        self.assertNotIn("tracking start", message)
+        self.assertNotIn("2026-03-01", message)
+        self.assertEqual(plan["warnings"][0]["code"], "entries_on_or_after_tracking_start")
 
 
 class CommandSurface(unittest.TestCase):

@@ -201,7 +201,7 @@ def _derive_lines(request: Mapping[str, Any]) -> list[dict[str, str]]:
 
 def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
     """Preview an opening without writing. Returns a plan that `apply` takes unchanged."""
-    from .enable import tracking_start
+    from .enable import starter_accounts_to_open, tracking_start
     entity = load_entity(entity.path)
     start = tracking_start(entity)
     require_capability(entity)
@@ -226,6 +226,13 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
         if isinstance(recognition, str) and recognition not in existing:
             raise _err("unknown_recognition_account", f"schedules recognition_account {recognition} is not in the chart.",
                        f"Add it first: books entity account-add --entity PATH --account {recognition}")
+    # A company that turned accrual on later gets the accrual starter accounts with no postings. `accrual enable`
+    # opens them; a company enabled before that gets the missing ones here, opened on the tracking start date.
+    starter: list[str] = []
+    if start:
+        with store.connection() as conn:
+            starter = starter_accounts_to_open(entity, conn)
+        used |= set(starter)
     mapping = {name: name for name in sorted(used | set(existing))}
     chart = []
     for account in sorted(used):
@@ -250,7 +257,8 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
             supporting=supporting, cutover=cutover, fiscal_start=cutover, closed_position=True,
             source_id=request["operation_id"], coverage_extra={"source_hashes": {}, "mapping_hash": _hash(mapping)},
             request_extra={"opening": "accrual-tracking-opening" if start else "accrual-opening"},
-            plan_extra={"request": raw_request, "folder": None}, tracking=bool(start))
+            plan_extra={"request": raw_request, "folder": None, **({"accounts_to_open": starter} if start else {})},
+            tracking=bool(start))
     except ValueError as exc:
         if isinstance(exc, JournalError):
             raise

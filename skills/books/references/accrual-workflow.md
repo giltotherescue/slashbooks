@@ -126,7 +126,8 @@ Cash remains the default. Accrual is opt-in for a single-currency services/SaaS 
 ordinary accrual is supported, governmental modified accrual is not. Preserve
 existing basis. A report toggle or re-init cannot convert populated books. To keep a cash company's history and add
 accrual records from a date, a person runs `books accrual enable preview|apply --tracking-start DATE`
-(docs/accrual.md "Turn on accrual for an existing company"); it changes no entry or report, and an agent may run only the
+(docs/accrual.md "Turn on accrual for an existing company"); it opens the missing accrual starter accounts (receivable, payable,
+prepaid, deferred revenue and the others) on that date, changes no entry or report, and an agent may run only the
 preview. List what is still open on that date with `accrual opening` (leave out `lines` and `cutover`; the entry is dated
 the tracking start and balances to `Equity:Opening-Balance-Adjustments`). `books entity set-view PATH --view cash|accrual
 [--apply]` picks the default view (person-only); the accrual view starts on the tracking start and refuses earlier periods.
