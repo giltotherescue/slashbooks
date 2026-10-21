@@ -275,6 +275,12 @@ def _atomic_ledger_write_unlocked(
                 raise ValueError(f"Cannot publish accrual state: {integrity.message}")
         if expected_digest is not None and store.content_digest(conn) != expected_digest:
             raise ValueError("Stale accounting preview: canonical ledger state changed.")
+        # One company, one currency: a backstop for every writer that uses this path.
+        book = store.book_currency(conn)
+        foreign = sorted({p.currency for entry in new_entries for p in entry.postings if p.currency != book})
+        if foreign:
+            raise ValueError(f"The entries are in {', '.join(foreign)}, but the company keeps its books in {book}. "
+                             "Slashbooks does not convert currencies. Nothing was written.")
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
         if finalization_receipt is not None:

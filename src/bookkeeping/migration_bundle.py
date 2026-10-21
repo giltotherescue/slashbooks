@@ -417,7 +417,13 @@ def require_target_currency(manifest, target_config):
     """
     from .currency import company_currency
     bundle_currency = (manifest.get("source_entity") or {}).get("currency", "USD")
-    _require(bundle_currency == company_currency(target_config or {}), "unsupported_currency")
+    target = company_currency(target_config or {})
+    if bundle_currency != target:
+        error = BundleError("unsupported_currency")
+        error.message = (f"The bundle keeps its books in {bundle_currency}, but the target company keeps its books in "
+                         f"{target}. Slashbooks does not convert currencies.")
+        error.bundle_currency, error.target_currency = bundle_currency, target
+        raise error
     return bundle_currency
 
 

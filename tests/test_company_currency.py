@@ -63,7 +63,7 @@ class CompanyTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.root = Path(self._tmp.name)
+        self.root = Path(self._tmp.name).resolve()
         self.path = self.root / "company"
         init_entity(self.path, name="Synthetic Currency Co")
         config = json.loads((self.path / "entity.json").read_text())
@@ -75,6 +75,9 @@ class CompanyTestCase(unittest.TestCase):
 
     def config(self) -> dict:
         return json.loads((self.path / "entity.json").read_text())
+
+    def snapshot(self) -> tuple:
+        return (self.config(), (self.path / "ledger.sqlite").read_bytes())
 
     def audit_types(self) -> list[str]:
         return [event["type"] for event in LedgerStore(self.path / "ledger.sqlite").load_audit_events()]
@@ -197,9 +200,37 @@ class SetCurrencyTests(CompanyTestCase):
             currency.preview_set_currency(self.entity(), "EUR")
         self.assertEqual(ctx.exception.code, "company_has_entries")
         self.assertIn("USD", str(ctx.exception))
-        # Recording the currency the books already use is allowed.
-        self.assertEqual(currency.apply_set_currency(self.entity(), "USD")["status"], "applied")
-        self.assertEqual(self.config()["currency_source"], "set")
+        # USD by default is already USD: a no-op that writes nothing.
+        before = self.snapshot()
+        self.assertFalse(currency.preview_set_currency(self.entity(), "USD")["changes"])
+        self.assertEqual(currency.apply_set_currency(self.entity(), "USD")["status"], "already_applied")
+        self.assertEqual(self.snapshot(), before)
+
+    def test_set_usd_on_a_default_company_writes_nothing(self):
+        before = self.snapshot()
+        plan = currency.preview_set_currency(self.entity(), "USD")
+        self.assertFalse(plan["changes"])
+        self.assertEqual(currency.apply_set_currency(self.entity(), "USD", plan["plan_hash"])["status"], "already_applied")
+        self.assertEqual(self.snapshot(), before)
+
+    def test_a_set_currency_cannot_change_once_there_are_entries(self):
+        self.set_currency("EUR")
+        import_transactions(self.entity(), _rows(None), "s1", categorizer=_post_everything)
+        for code in ("USD", "GBP"):
+            with self.assertRaises(currency.CurrencyError) as ctx:
+                currency.preview_set_currency(self.entity(), code)
+            self.assertEqual(ctx.exception.code, "company_has_entries")
+        self.assertEqual(currency.apply_set_currency(self.entity(), "EUR")["status"], "already_applied")
+
+    def test_entity_json_is_repaired_from_the_ledger_after_a_stop(self):
+        # The ledger commits first. A stop before the entity.json write leaves entity.json behind; loading repairs it.
+        from unittest.mock import patch
+        with patch.object(currency, "write_config", side_effect=OSError("stopped")):
+            with self.assertRaises(OSError):
+                currency.apply_set_currency(self.entity(), "EUR")
+        self.assertNotIn("currency", self.config())
+        self.assertEqual(self.entity().currency, "EUR")
+        self.assertEqual((self.config()["currency"], self.config()["currency_source"]), ("EUR", "set"))
 
     def test_refused_when_the_review_queue_has_items(self):
         import_transactions(self.entity(), _rows(None), "s1")  # Queued for review, not posted.
@@ -296,25 +327,51 @@ class InferenceTests(CompanyTestCase):
                       fee_account="Expenses:Fees", refund_account="Income:Refunds",
                       revenue_rules=[dict(id="services", match={"metadata": {"object": "charge", "key": "stream", "value": "service"}},
                                           category="Income:Consulting")])
+        # A USD policy for EUR evidence is refused before anything is adopted.
+        before = self.snapshot()
+        with self.assertRaises(ValueError):
+            stripe_stage(self.entity(), evidence, {**policy, "currency": "USD"})
+        self.assertEqual(self.snapshot(), before)
+        # Two balance currencies refuse adoption.
+        mixed = copy.deepcopy(evidence)
+        mixed["balanceTransactions"].append(dict(evidence["balanceTransactions"][0], id="txn_usd", currency="usd"))
+        with self.assertRaises(currency.CurrencyError) as ctx:
+            stripe_stage(self.entity(), mixed, policy)
+        self.assertEqual(ctx.exception.detail["reason"], "mixed_currency")
+        self.assertEqual(self.snapshot(), before)
         staged = stripe_stage(self.entity(), evidence, policy)
         self.assertEqual(staged["staged"], 1)
         self.assert_inferred("EUR")
-        # A second Stripe account in another currency is refused: Stripe stays single-currency.
+        # The company now has entries: a row in another currency stays unresolved; the rest still stages.
         other = copy.deepcopy(evidence)
-        other["balanceTransactions"][0].update(id="txn_usd", currency="usd")
-        with self.assertRaises(currency.CurrencyError) as ctx:
-            stripe_stage(self.entity(), other, policy)
-        self.assertIn("EUR", str(ctx.exception))
-        self.assertIn("USD", str(ctx.exception))
+        other["balanceTransactions"] = [dict(evidence["balanceTransactions"][0], id="txn_usd", currency="usd"),
+                                        dict(evidence["balanceTransactions"][0], id="txn_eur2")]
+        result = stripe_stage(self.entity(), other, policy)
+        self.assertEqual(result["staged"], 1)
+        self.assertIn(("stripe:acct_test:txn_usd", "unsupported_currency"),
+                      {(row["source_id"], row["reason"]) for row in result["plan"]["unresolved"]})
 
     def test_quickbooks_home_currency(self):
         from bookkeeping import quickbooks_sync as sync
         snapshot = json.loads(QB_SNAPSHOT.read_text())
         snapshot["preferences"]["CurrencyPrefs"]["HomeCurrency"] = {"value": "CAD"}
         snapshot["company_info"]["CurrencyRef"] = {"value": "CAD"}
-        result = sync.sync_import(self.entity(), self.write("qb.json", json.dumps(snapshot)))
+        text = json.dumps(snapshot).replace('"Currency": "USD"', '"Currency": "CAD"')
+        source = self.write("qb.json", text)
+        before = self.config(), self.audit_types(), LedgerStore(self.path / "ledger.sqlite").get_meta("currency")
+        result = sync.sync_import(self.entity(), source)
+        self.assertEqual(result["adopts_currency"], "CAD")
+        self.assertTrue(result["opening_supported"], result["warnings"])
+        # Neither the import of the evidence nor the opening preview changes the company currency.
+        preview = sync.sync_opening(self.entity(), source, date(2026, 1, 1))
+        self.assertFalse(preview["applied"])
+        self.assertEqual({p["currency"] for p in preview["opening"]["proposed_postings"]}, {"CAD"})
+        self.assertEqual((self.config(), self.audit_types(),
+                          LedgerStore(self.path / "ledger.sqlite").get_meta("currency")), before)
+        applied = sync.sync_opening(self.entity(), source, date(2026, 1, 1), apply=True)
+        self.assertTrue(applied["applied"], applied)
         self.assert_inferred("CAD")
-        self.assertNotIn("Multicurrency/non-CAD snapshots are evidence only; opening application blocked", result["warnings"])
+        self.assertEqual(self.posting_currencies(), {"CAD"})
 
     def test_quickbooks_home_currency_mismatch_is_evidence_only(self):
         from bookkeeping import quickbooks_sync as sync
@@ -357,9 +414,9 @@ class InferenceTests(CompanyTestCase):
         self.assertEqual(result["error"]["company_currency"], "USD")
 
     def test_mismatch_with_a_person_set_currency(self):
-        self.set_currency("USD")
+        self.set_currency("EUR")
         with self.assertRaises(currency.CurrencyError) as ctx:
-            import_transactions(self.entity(), _rows("EUR"), "feed")
+            import_transactions(self.entity(), _rows("GBP"), "feed")
         self.assertIn("a person set the company currency", str(ctx.exception))
 
     def test_zero_decimal_file_currency_is_refused(self):
@@ -492,6 +549,203 @@ class EuroCompanyTests(CompanyTestCase):
         report = taxmap.mapping_report(other, form="schc")
         self.assertNotIn("currency", report)
         self.assertNotIn("flags", report)
+
+
+class ReviewFixTests(CompanyTestCase):
+    def stripe_setup(self, policy_currency: str = "USD") -> dict:
+        for account in ("Assets:Processors:Stripe", "Assets:Transfers:Stripe-Payouts", "Income:Refunds"):
+            self.cli("entity", "account-add", str(self.path), "--account", account)
+        config = self.config()
+        config["bank_account_mappings"]["acct_test"] = "Assets:Processors:Stripe"
+        (self.path / "entity.json").write_text(json.dumps(config))
+        return dict(version=1, enabled=True, stripe_account_id="acct_test", livemode=False, currency=policy_currency,
+                    clearing_account="Assets:Processors:Stripe", payout_transit_account="Assets:Transfers:Stripe-Payouts",
+                    fee_account="Expenses:Fees", refund_account="Income:Refunds",
+                    revenue_rules=[dict(id="services", match={"metadata": {"object": "charge", "key": "stream", "value": "service"}},
+                                        category="Income:Consulting")])
+
+    @staticmethod
+    def stripe_evidence(*rows: tuple[str, str]) -> dict:
+        bts, charges = [], []
+        for index, (bt_id, code) in enumerate(rows):
+            bts.append({"id": bt_id, "created": 1768435200 + index, "amount": 10000, "fee": 300, "net": 9700,
+                        "currency": code, "status": "available", "type": "charge", "source": f"ch_{bt_id}"})
+            charges.append({"id": f"ch_{bt_id}", "livemode": False, "amount": 10000, "currency": code,
+                            "status": "succeeded", "paid": True, "captured": True, "balance_transaction": bt_id,
+                            "metadata": {"stream": "service"}})
+        return {"source": "stripe", "account": {"id": "acct_test", "livemode": False}, "coverage": {"complete": True},
+                "balanceTransactions": bts, "charges": charges}
+
+    def test_usd_company_with_entries_stages_usd_rows_and_holds_a_foreign_row(self):
+        from bookkeeping.stripe import stripe_plan, stripe_stage
+        import_transactions(self.entity(), _rows(None), "s1", categorizer=_post_everything)
+        policy = self.stripe_setup("USD")
+        evidence = self.stripe_evidence(("txn_a", "usd"), ("txn_b", "eur"))
+        result = stripe_stage(self.entity(), evidence, policy)
+        self.assertEqual(result["staged"], 1)
+        unresolved = {(row["source_id"], row["reason"]) for row in result["plan"]["unresolved"]}
+        self.assertIn(("stripe:acct_test:txn_b", "unsupported_currency"), unresolved)
+        self.assertEqual(unresolved, {(row["source_id"], row["reason"])
+                                      for row in stripe_plan(self.entity(), evidence, policy)["unresolved"]})
+        self.assertNotIn("currency", self.config())
+
+    def test_eur_manual_accrual_opening(self):
+        from bookkeeping.accrual import opening
+        root = self.root / "accrual"
+        init_entity(root, name="Synthetic Accrual", basis="accrual", cutover_date="2026-01-01")
+        currency.apply_set_currency(load_entity(root), "EUR")
+        (root / "evidence").mkdir(exist_ok=True)
+        (root / "evidence/list.pdf").write_bytes(b"%PDF synthetic")
+        request = {"operation_id": "op", "cutover": "2026-01-01", "evidence_refs": ["evidence/list.pdf"],
+                   "lines": [{"account": "Assets:Bank:Checking", "amount": "1000.00"},
+                             {"account": "Assets:Receivable:Accounts-Receivable", "amount": "300.00"},
+                             {"account": "Equity:Opening-Balances", "amount": "-1300.00"}],
+                   "items": [{"id": "inv-1", "kind": "receivable", "account": "Assets:Receivable:Accounts-Receivable",
+                              "counterparty": "Synthetic Customer", "due_date": "2025-12-15", "open_amount": "300.00"}]}
+        entity = load_entity(root)
+        plan = opening.preview_opening(entity, request)
+        self.assertEqual(plan["status"], "ready", plan.get("support_differences"))
+        self.assertEqual(opening.apply_opening(entity, plan)["entries_written"], 1)
+        with LedgerStore(root / "ledger.sqlite").connection() as conn:
+            self.assertEqual({row[0] for row in conn.execute("SELECT DISTINCT currency FROM postings")}, {"EUR"})
+
+    def test_eur_quickbooks_accrual_opening(self):
+        import shutil
+        from bookkeeping.accrual import migration
+        root = self.root / "qb-accrual"
+        init_entity(root, name="Synthetic Services", basis="accrual", cutover_date="2026-07-01")
+        currency.apply_set_currency(load_entity(root), "EUR")
+        shutil.copytree(ROOT / "tests/fixtures/accrual/quickbooks", root / "qb-exports")
+        (root / "evidence").mkdir(exist_ok=True)
+        (root / "evidence/opening.pdf").write_bytes(b"%PDF synthetic opening support")
+        support = json.loads((root / "qb-exports/support.json").read_text().replace('"USD"', '"EUR"'))
+        entity = load_entity(root)
+        plan = migration.preview(entity, root / "qb-exports", "2026-07-01", fiscal_start="2026-01-01", supporting=support)
+        self.assertEqual(plan["status"], "ready", plan.get("support_differences"))
+        self.assertEqual(migration.apply(entity, plan)["entries_written"], 1)
+        with LedgerStore(root / "ledger.sqlite").connection() as conn:
+            self.assertEqual({row[0] for row in conn.execute("SELECT DISTINCT currency FROM postings")}, {"EUR"})
+
+    def test_report_amounts_strip_only_the_company_currency(self):
+        from bookkeeping import quickbooks as qb
+        self.assertEqual(qb.parse_amount("$1,234.00"), Decimal("1234.00"))
+        for text in ("€1,234.00", "£5.00"):
+            with self.assertRaises(currency.CurrencyError) as ctx:
+                qb.parse_amount(text)
+            self.assertEqual(ctx.exception.code, "unsupported_currency")
+        with currency.report_currency("EUR"):
+            self.assertEqual(qb.parse_amount("€1,234.00"), Decimal("1234.00"))
+            self.assertEqual(qb.parse_amount("(€5.00)"), Decimal("-5.00"))
+            for text in ("$1.00", "£1.00", "1.00 USD"):
+                with self.assertRaises(currency.CurrencyError):
+                    qb.parse_amount(text)
+        from bookkeeping.accrual import migration
+        with self.assertRaises(currency.CurrencyError):
+            migration._source_amount("€10.00")
+
+    def test_explicit_usd_is_identical_to_an_absent_key(self):
+        from bookkeeping import taxmap
+        from bookkeeping.reports.workbook import run_sanity_checks
+        outputs = []
+        for name, extra in (("absent", {}), ("explicit", {"currency": "USD", "currency_source": "set"})):
+            root = self.root / name
+            init_entity(root, name="Synthetic Same Co")
+            config = json.loads((root / "entity.json").read_text())
+            config.update({"bank_account_mappings": {"feed-chk": CHECKING}, **extra})
+            (root / "entity.json").write_text(json.dumps(config, indent=2) + "\n")
+            import_transactions(load_entity(root), _rows(None, 2), "feed", categorizer=_post_everything,
+                                ts="2026-02-01T00:00:00Z")
+            mapping = taxmap.mapping_report(root, form="schc", from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
+            out = self.root / f"tax-{name}"
+            manifest = taxmap.export_handoff(root, date(2026, 1, 1), date(2026, 12, 31), form="schc",
+                                             output_dir=out, formats=("csv",))
+            manifest = {k: v for k, v in manifest.items() if k != "output_dir"}
+            files = {path.name: path.read_bytes() for path in sorted(out.iterdir()) if path.name != "manifest.json"}
+            checks = [(c.check, c.status, c.detail) for c in run_sanity_checks(root, date(2026, 1, 1), date(2026, 1, 31)).checks]
+            outputs.append((mapping, manifest, files, checks))
+        self.assertEqual(outputs[0], outputs[1])
+
+    def test_cash_eur_company_report_meta_and_noncash_notes(self):
+        from bookkeeping.reports.statements import ask, profit_and_loss
+        self.set_currency("EUR")
+        import_transactions(self.entity(), _rows(None, 2), "feed", categorizer=_post_everything)
+        cash = profit_and_loss(self.path, date(2026, 1, 1), date(2026, 1, 31))
+        self.assertEqual(cash.meta["currency"], "EUR")
+        # The noncash notes come from the cash view of accrual books.
+        from bookkeeping.accrual import journals
+        root = self.root / "accrual-eur"
+        init_entity(root, name="Synthetic", basis="accrual", cutover_date="2026-01-01")
+        currency.apply_set_currency(load_entity(root), "EUR")
+        evidence = {"schema_version": 1, "source": {"namespace": "ex.v", "account_id": "a", "object_id": "i1", "version": "1"},
+                    "currency": "EUR", "dates": {"issued": "2026-01-20"}, "amounts": {"gross": "40.00"}}
+        stored = journals.intake_evidence(load_entity(root), evidence)["id"]
+        request = {"id": "j1", "date": "2026-01-20", "description": "Accrued software", "evidence_ids": [stored],
+                   "postings": [{"account": "Expenses:Software", "amount": "40.00"},
+                                {"account": "Liabilities:Other:Accrued-Liabilities", "amount": "-40.00"}]}
+        entity = load_entity(root)
+        journals.apply_journal(entity, journals.preview_journal(entity, request))
+        report = profit_and_loss(root, date(2026, 1, 1), date(2026, 1, 31), basis="cash")
+        self.assertIn("Includes €40.00 of entries that may not be cash", report.to_text())
+        answer = ask(root, "What was our cash basis profit in January 2026?", today=date(2026, 2, 1))
+        self.assertIn("Note: this includes €40.00 of entries that may not be cash", answer.answer_text)
+
+    def test_hosted_capture_names_both_currencies_when_entity_json_was_not_saved(self):
+        from bookkeeping import hosted_migration
+        self.set_currency("EUR")
+        import_transactions(self.entity(), _rows(None, 1), "feed", categorizer=_post_everything)
+        stale = self.config()
+        del stale["currency"], stale["currency_source"]
+        (self.path / "entity.json").write_text(json.dumps(stale))  # The host saved the ledger but not entity.json.
+        report = hosted_migration.assess(self.path)
+        self.assertIn("company_settings_out_of_date", report["blockers"])
+        message = report["currency_settings"]["message"]
+        self.assertIn("EUR", message)
+        self.assertIn("USD", message)
+        self.assertIn("the saved company settings are out of date", message)
+
+    def test_ledger_writer_refuses_a_posting_in_another_currency(self):
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        self.set_currency("EUR")
+        entry = Entry(date=date(2026, 1, 2), narration="x", meta=(("source-id", "x1"),),
+                      postings=(Posting(CHECKING, Decimal("1.00"), "USD"), Posting("Expenses:Software", Decimal("-1.00"), "USD")))
+        with self.assertRaises(ValueError) as ctx:
+            _atomic_ledger_write(self.entity(), [], [entry], "s", None, "x")
+        self.assertIn("EUR", str(ctx.exception))
+        self.assertEqual(LedgerStore(self.path / "ledger.sqlite").counts().entries, 0)
+
+    def test_activity_counts_statement_records_duplicates_and_quickbooks_evidence(self):
+        for relative in ("ingestion/statements/st-1.json", "sources/quickbooks/abc/snapshot.json"):
+            target = self.path / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("{}")
+            self.assertTrue(currency.books_activity(self.path))
+            self.assertFalse(currency.books_activity(self.path, exclude=("sources/quickbooks/abc",))
+                             if relative.startswith("sources") else False)
+            target.unlink()
+        (self.path / "staging" / "duplicate-candidates.json").write_text('[{"source_id": "x"}]')
+        self.assertIn("duplicate candidates", currency.books_activity(self.path))
+
+    def test_infer_reads_stripe_balance_transactions_only(self):
+        envelope = self.stripe_evidence(("txn_a", "usd"))
+        envelope["charges"][0]["currency"] = "eur"
+        result = currency.infer_from_files([self.write("stripe.json", json.dumps(envelope))])
+        self.assertEqual(result["currency"], "USD")
+
+    def test_dollar_file_in_a_non_dollar_company_says_so(self):
+        self.set_currency("EUR")
+        text = "Date,Description,Amount\n01/15/2026,NORTHWIND,-$4.50\n01/16/2026,CONTOSO,$100.00\n"
+        result = si.inspect_file(self.write("usd.csv", text), entity_config=self.config())
+        self.assertEqual(result["error"]["code"], "unsupported_currency")
+        self.assertIn("dollar sign", result["error"]["message"])
+        self.assertIn("EUR", result["error"]["message"])
+
+    def test_bundle_currency_error_names_both_currencies(self):
+        from bookkeeping import migration_bundle
+        with self.assertRaises(migration_bundle.BundleError) as ctx:
+            migration_bundle.require_target_currency({"source_entity": {"currency": "EUR"}}, {"currency": "GBP"})
+        self.assertIn("EUR", ctx.exception.message)
+        self.assertIn("GBP", ctx.exception.message)
 
 
 class MigrationBundleTests(unittest.TestCase):

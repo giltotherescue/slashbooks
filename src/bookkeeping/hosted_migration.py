@@ -394,6 +394,17 @@ def _ledger(files, report, references, blockers):
                     book = require_supported(_json(files["entity.json"]).get("currency", "USD"))
                 except (ValueError, TypeError, AttributeError):
                     raise Rejected("unsupported_currency") from None
+            ledger_currency = store.get_meta("currency") or "USD"
+            if ledger_currency != book:
+                # A run that adopted a currency changed entity.json and the ledger meta together; the host saved the
+                # ledger but not entity.json. Name both currencies; the codes and fixed text cross the boundary.
+                report["currency_settings"] = {
+                    "entity_json_currency": book, "ledger_currency": ledger_currency,
+                    "message": (f"The ledger keeps its books in {ledger_currency}, but entity.json says {book}: "
+                                "the saved company settings are out of date. Save entity.json from the same run as "
+                                "ledger.sqlite, then try again.")}
+                blockers.add("company_settings_out_of_date")
+                raise Rejected("unsupported_currency")
             for table in ("accounts", "postings", "balance_assertions"):
                 require(not sql.execute(f"SELECT 1 FROM {table} WHERE currency <> ? LIMIT 1", (book,)).fetchone(),
                         "unsupported_currency")

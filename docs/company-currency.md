@@ -16,9 +16,13 @@ Two keys in `entity.json`:
   first import that carried a currency set it) or `set` (a person ran
   `books entity set-currency`).
 
-The ledger also records a non-USD company currency in its `meta` table, so that
-new accounts open in that currency. Every account in the account catalog uses the
-company currency.
+When the currency changes, the ledger records it in its `meta` table (`currency`
+and `currency_source`) in the same transaction as the audit event, and new accounts
+open in it. The ledger commits first and entity.json follows. If a run stops in
+between, the next load of the company repairs entity.json from the ledger.
+`books entity account-add --currency CODE` still accepts another code for an
+account, but no import or posting can use it: the ledger writer refuses a posting
+that is not in the company currency.
 
 ## Supported currencies
 
@@ -44,29 +48,46 @@ books entity set-currency ~/Documents/books/acme --currency EUR --apply --plan-h
 Without `--apply` the command shows a preview and writes nothing. With `--apply`
 it writes `currency` and `currency_source: "set"` to `entity.json`, moves the
 account catalog to the new currency and adds the audit event `currency-set`.
-Repeating the same value returns `already_applied`. The command is person-only:
+Repeating the same value returns `already_applied`. `--currency USD` on a company
+that is USD by default changes nothing and writes nothing: a recorded USD and an
+absent key give the same outputs. The command is person-only:
 standing posting authority cannot run it. When the company has entries, the
 command refuses with `company_has_entries`. Start a new company folder for books
 in another currency.
 
 ## The currency from imports
 
-When the company has no entries and `currency_source` is `default`, the first
-import that names a currency makes that currency the company currency. It writes
-`currency` and `currency_source: "inferred"` to `entity.json` and adds the audit
-event `currency-inferred` before any row is posted. These imports can name a
-currency:
+When the company has no entries and `currency_source` is `default` or
+`inferred` (not `set`), the first import that names a currency makes that currency
+the company currency. Adoption can therefore happen again while an inferred company
+still has no entries. It writes `currency` and `currency_source: "inferred"` and
+adds the audit event `currency-inferred` before any row is posted. Only the write
+step adopts: the importer, inside its company write lock, and the QuickBooks
+opening apply, in the same ledger transaction as the opening entry. Inspections,
+previews, dry runs, `books qb sync-import` and the Stripe plan only check, and
+write nothing. "No entries" also means no review queue items, staged rows,
+duplicate candidates, statement records or saved QuickBooks snapshot evidence.
+These imports can name a currency:
 
 - OFX, QFX and QBO files: `CURDEF`, or a `CURRENCY`/`CURSYM` on a transaction.
 - Bank and card CSV files: a currency code or an unambiguous symbol (`€`, `£`,
   `₹` and others) in a money column, a header such as `Amount (EUR)`, or a
   currency column. A plain `$` is not counted, because many currencies use it.
-- Stripe: the currency of the balance transactions.
+- Stripe: the currency of the balance transactions (not the charge or invoice
+  currency). For a company with entries, a balance transaction in another
+  currency is not staged: it stays unresolved with `unsupported_currency`, and
+  the other rows are staged.
 - QuickBooks API snapshots: the home currency (`CurrencyPrefs.HomeCurrency`).
+  `books qb sync-import` reports it as `adopts_currency`; applying the opening
+  sets it.
 - BankSync and any feed whose normalized rows carry `currency`.
 
 A file with no currency marker (most US bank CSV files) names no currency. It is
 read in the company currency.
+
+QuickBooks report exports and accrual opening reports are read in the company
+currency: an amount that shows another currency (such as `€1,234.00` in a USD
+company, or `$` in a EUR company) is refused with `unsupported_currency`.
 
 An import stops with the error code `unsupported_currency` and writes nothing when:
 
@@ -88,6 +109,17 @@ writes nothing. It prints `currency` (or null), `source` (`inferred`, `mixed`,
 host can call it before onboarding finishes, so that onboarding does not need to
 ask.
 
+## Cloud contract
+
+Adoption is allowed under preparation authority, so onboarding does not need to
+ask. A hosted run that adopts a currency changes `entity.json` and the ledger
+`meta` together. The host MUST save `entity.json` from that run together with
+`ledger.sqlite`, and then read `currency` again. If the host saves the ledger and
+not `entity.json`, the hosted migration check refuses with `unsupported_currency`
+and `company_settings_out_of_date`, and `currency_settings.message` names both
+currencies and says that the saved company settings are out of date. A local load
+of the company repairs `entity.json` from the ledger.
+
 ## For AI agents
 
 - Read `currency` in `entity.json`. When it is absent, the company currency is USD.
@@ -104,10 +136,10 @@ ask.
   show the company currency in the currency fields. Without `--entity` they show
   USD, as before.
 - Tax outputs (`books tax map`, `books tax export`, `README.txt` and
-  `manifest.json`) stamp `currency` when `entity.json` records one. When the
-  currency is not USD, they add the flag `tax_mapping_is_us`: "The tax mapping
+  `manifest.json`) stamp `currency` when the company currency is not USD, and add
+  the flag `tax_mapping_is_us`: "The tax mapping
   follows US forms. The company currency is EUR. The preparer decides what
   applies." The engine does not block or refuse a tax output for this reason.
 - A migration bundle carries the company currency in `source_entity.currency`.
   `migration_bundle.require_target_currency` refuses a bundle whose currency
-  differs from the target company.
+  differs from the target company; the error message names both currencies.

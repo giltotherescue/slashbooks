@@ -455,7 +455,7 @@ def _run_entity_metadata_check(entity_path: Path) -> SanityCheck:
             ("tax_jurisdiction", "tax jurisdiction"),
             ("operating_currency", "operating currency"),
         )
-        if not str(config.get(key) or (config.get("currency") if key == "operating_currency" else "") or "").strip()
+        if not str(config.get(key) or (_non_usd_currency(config) if key == "operating_currency" else "") or "").strip()
     ]
     if missing:
         return SanityCheck(
@@ -473,7 +473,7 @@ def _run_entity_metadata_check(entity_path: Path) -> SanityCheck:
         detail=(
             "Entity jurisdiction context is present: "
             f"{config.get('country')} / {config.get('tax_jurisdiction')}, "
-            f"currency {config.get('operating_currency') or config.get('currency')}."
+            f"currency {config.get('operating_currency') or _non_usd_currency(config)}."
         ),
     )
 
@@ -506,11 +506,18 @@ def _run_indirect_tax_scope_check(entity_path: Path) -> SanityCheck:
     )
 
 
+def _non_usd_currency(config: dict) -> str:
+    """The company currency when it is not USD, else "". A recorded USD reads like an absent key."""
+    from ..currency import company_currency
+    code = company_currency(config)
+    return "" if code == "USD" else code
+
+
 def _run_currency_scope_check(entity_path: Path) -> SanityCheck:
     """Check: flag transaction currencies outside the operating currency."""
     config = _load_entity_config(entity_path)
     # The company currency (entity.json currency) stands in when operating_currency is not set.
-    operating_currency = str(config.get("operating_currency") or config.get("currency") or "").strip().upper()
+    operating_currency = str(config.get("operating_currency") or _non_usd_currency(config) or "").strip().upper()
     if not operating_currency:
         return SanityCheck(
             check="currency_scope",
@@ -1575,7 +1582,7 @@ def _build_summary_rows(
         ["Legal structure", str(entity_config.get("legal_structure", ""))],
         ["Country", str(entity_config.get("country", ""))],
         ["Tax jurisdiction", str(entity_config.get("tax_jurisdiction", ""))],
-        ["Operating currency", str(entity_config.get("operating_currency", entity_config.get("currency", "")))],
+        ["Operating currency", str(entity_config.get("operating_currency", _non_usd_currency(entity_config)))],
         ["Period start", str(from_date)],
         ["Period end", str(to_date)],
         ["Package status", status],

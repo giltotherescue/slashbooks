@@ -71,7 +71,8 @@ def _source_folder(entity, folder):
 
 
 def _source_amount(value):
-    text = value.strip().strip('"').replace("$", "").replace("€", "").replace("£", "").replace(",", "")
+    from ..currency import strip_amount
+    text = strip_amount(value.strip().strip('"')).strip().replace(",", "")
     if text.startswith("(") and text.endswith(")"):
         text = "-" + text[1:-1]
     return _money(text or "0")
@@ -422,6 +423,13 @@ def preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clos
     block application; report basis selection never sets company policy.
     """
     require_capability(entity)
+    from ..currency import report_currency
+    with report_currency(entity.currency):
+        return _preview(entity, folder, cutover, fiscal_start=fiscal_start, supporting=supporting,
+                        closed_position=closed_position)
+
+
+def _preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, closed_position=False):
     cutover = _day(cutover)
     if fiscal_start is None:
         raise ValueError("Supply the evidenced fiscal_start explicitly; fiscal policy cannot be inferred from report toggles.")
@@ -548,7 +556,9 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
 def _effects(plan):
     coverage = plan["coverage"]
     opened = _day(coverage["source_as_of"])
-    postings = tuple(Posting(a, _money(n)) for a, n in sorted(plan["balances"].items()) if _money(n))
+    # The coverage record carries the company currency; a plan written before it existed is USD.
+    currency = coverage.get("currency", "USD")
+    postings = tuple(Posting(a, _money(n), currency) for a, n in sorted(plan["balances"].items()) if _money(n))
     tracking = coverage["id"] == TRACKING_COVERAGE_ID
     metadata = (("source-id", coverage["opening_source_id"]), ("import-source", plan.get("import_source", "quickbooks-opening")),
                         ("accrual-tracking-opening" if tracking else "accrual-opening", "true"), ("coverage-id", coverage["id"]),

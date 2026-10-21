@@ -60,7 +60,7 @@ def _objects(evidence, name):
     return result
 
 
-def _policy(policy, opens, book='USD'):
+def _policy(policy, opens, book='USD', account_book=None):
     if not isinstance(policy, dict) or type(policy.get('version')) is not int or policy['version'] < 1 or type(policy.get('enabled')) is not bool:
         raise ValueError('Stripe policy requires a positive version and enabled boolean.')
     _id(policy.get('stripe_account_id'), 'Stripe account')
@@ -72,7 +72,7 @@ def _policy(policy, opens, book='USD'):
         account = policy.get(field)
         if not isinstance(account, str) or account not in opens or not account.startswith(prefix):
             raise ValueError(f'{field} must be a catalog {prefix[:-1]} account.')
-        if opens[account].currencies and book not in opens[account].currencies:
+        if opens[account].currencies and (account_book or book) not in opens[account].currencies:
             raise ValueError(f'{field} must support {book}.')
     if len({policy[field] for field in roles}) != len(roles):
         raise ValueError('Stripe clearing, transit, fees and refunds require distinct accounts.')
@@ -479,7 +479,7 @@ def _source_capture_digest(bt, objects):
 
 
 def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=None,
-                limit=50, after_source_id=''):
+                limit=50, after_source_id='', _book=None):
     """Read-only bounded plan. All rules and bank bindings come from trusted host.
 
     Evidence is the connector envelope with optional charges/refunds/invoices
@@ -492,9 +492,11 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         raise ValueError('Cash-only Stripe posting is unavailable for accrual companies. Capture provider evidence with books accrual intake, then preview a journal/schedule/settlement with the explicit accounting treatment.')
     needs_treatment = treatment_checker(entity)
     pending, opens, posted, reversed_ids, owned = _state(entity)
-    book = entity.currency
+    # _book is the currency a company with no entries is about to adopt (stripe_stage); the catalog still
+    # names the current currency until the importer adopts it.
+    book = _book or entity.currency
     cur = book.lower()
-    _policy(policy, opens, book)
+    _policy(policy, opens, book, entity.currency)
     if type(limit) is not int or not 1 <= limit <= 500 or not isinstance(after_source_id, str):
         raise ValueError('Invalid Stripe batch cursor.')
     if not isinstance(evidence, dict) or evidence.get('source') != 'stripe' or not isinstance(evidence.get('account'), dict):
@@ -686,15 +688,21 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
 def stripe_stage(entity, evidence, policy, **kwargs):
     """Stage validated sources in the company currency only; returned proposals need trusted approval.
 
-    Stripe stays single-currency: the balance transactions must all be in one currency. A company with no
-    entries adopts that currency; a company in another currency refuses. Nothing converts.
+    A company with no entries adopts the one Stripe balance currency (balance transactions in more than
+    one currency refuse). For a company with entries, a row in another currency stays unresolved with
+    ``unsupported_currency`` and is not staged; the other rows are staged. Nothing converts.
     """
-    from .currency import resolve_import_currency
+    from .currency import can_adopt, resolve_import_currency
     raw = evidence.get('balanceTransactions') if isinstance(evidence, dict) else None
     found = {row['currency'].upper() for row in raw or [] if isinstance(row, dict) and isinstance(row.get('currency'), str)}
-    resolve_import_currency(entity, found, 'Stripe account (balance currency)')
-    plan = stripe_plan(entity, evidence, policy, **kwargs)
-    rows = [row for row in plan['normalized_sources'] if row['currency'] == entity.currency]
+    target = entity.currency
+    if found and found != {target} and can_adopt(entity):
+        # A company with no entries takes the one Stripe balance currency (more than one refuses). Check only:
+        # the policy and the plan are validated first, and the importer adopts inside its write lock.
+        target = resolve_import_currency(entity, found, 'Stripe account (balance currency)', adopt=False)
+    # A company with entries keeps its currency: a row in another currency stays unresolved (unsupported_currency).
+    plan = stripe_plan(entity, evidence, policy, _book=target, **kwargs)
+    rows = [row for row in plan['normalized_sources'] if row['currency'] == target]
     imported = import_transactions(entity, rows, 'stripe-intake', intake_only=True)
     return dict(staged=imported.pending_categorization, duplicates=imported.skipped_duplicate,
                 plan=stripe_plan(entity, evidence, policy, **kwargs))

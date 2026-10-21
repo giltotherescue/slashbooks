@@ -1119,9 +1119,9 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                                            f"Profile '{profile}' is for OFX files, and this file is a CSV.")
             selected = [_csv_statement(path, text, file_sha, profile, profiles[profile], company)]
         # One company, one currency: the file's currency must be the company currency, or a company with
-        # no entries adopts it (books entity set-currency explains). Nothing converts.
+        # no entries adopts it. This only checks; the importer adopts inside its write lock, before any posting.
         named = {code for statement in selected for code in statement["named_currencies"]}
-        resolved = currency_mod.resolve_import_currency(entity, named, "statement file", adopt=not dry_run)
+        resolved = currency_mod.resolve_import_currency(entity, named, "statement file", adopt=False)
         for statement in selected:
             statement["currency"] = resolved
             for txn in statement["transactions"]:

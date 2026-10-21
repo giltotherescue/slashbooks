@@ -839,22 +839,20 @@ TAX_MAPPING_IS_US = "tax_mapping_is_us"
 
 
 def currency_stamp(config: Mapping[str, Any]) -> dict[str, Any]:
-    """The company currency, stamped on tax outputs when entity.json records one.
+    """The company currency, stamped on tax outputs when it is not USD.
 
-    A company with no recorded currency (USD by default) gets nothing, so its outputs are unchanged.
+    A USD company (recorded or by default) gets nothing, so its outputs are unchanged.
     When the currency is not USD, a flag says that the tax mapping follows US forms. The engine does not
     decide what applies: it does not block, refuse or compute anything from it.
     """
-    from .currency import CURRENCY_KEY, company_currency
-    if CURRENCY_KEY not in config:
-        return {}
+    from .currency import company_currency
     code = company_currency(config)
-    stamp: dict[str, Any] = {"currency": code}
-    if code != "USD":
-        stamp["flags"] = [{"code": TAX_MAPPING_IS_US,
-                           "message": f"The tax mapping follows US forms. The company currency is {code}. "
-                                      "The preparer decides what applies."}]
-    return stamp
+    if code == "USD":
+        return {}  # USD, recorded or by default: the outputs stay exactly as they were.
+    return {"currency": code,
+            "flags": [{"code": TAX_MAPPING_IS_US,
+                       "message": f"The tax mapping follows US forms. The company currency is {code}. "
+                                  "The preparer decides what applies."}]}
 
 
 def _signed_amount(balance: Decimal, line: TaxLine | None) -> Decimal:

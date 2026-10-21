@@ -1050,6 +1050,7 @@ def load_entity(path: str | Path) -> Entity:
     resolve_basis(entity_config)
     from .ledger.store import LedgerStore, default_store_path
     store_path = default_store_path(p)
+    currency_meta: dict[str, str] = {}
     if store_path.exists():
         store = LedgerStore(store_path)
         with store.connection() as conn:
@@ -1060,6 +1061,12 @@ def load_entity(path: str | Path) -> Entity:
                     recorded_basis = "cash"
                 if recorded_basis is not None:
                     resolve_basis(entity_config, authoritative_basis=recorded_basis)
+                # A currency change commits the ledger first; finish entity.json if a stop came in between.
+                currency_meta = dict(conn.execute(
+                    "SELECT key, value FROM meta WHERE key IN ('currency', 'currency_source')").fetchall())
+    if store_path.exists() and currency_meta:
+        from .currency import repair_config
+        repair_config(p, entity_config, currency_meta)
 
     trust_path = p / "trust-policy.json"
     if trust_path.exists():

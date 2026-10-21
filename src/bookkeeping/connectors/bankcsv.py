@@ -247,6 +247,14 @@ def _foreign_currency(value: str, currency: str = "USD") -> str | None:
     return None
 
 
+def _foreign_message(value: str, mark: str, currency: str) -> str:
+    if mark == "$":
+        return (f"The file shows amounts with a dollar sign ({value}), but the company keeps its books in {currency}, "
+                f"which does not use \"$\". Slashbooks does not convert currencies. Ask for a file in {currency}.")
+    return (f"The file contains an amount ({value}) in {mark}, not in {currency}, the company currency. "
+            "Slashbooks does not convert currencies.")
+
+
 def _mixed_error(found: set[str], what: str = "The file") -> StatementFileError:
     return StatementFileError(
         "unsupported_currency",
@@ -325,8 +333,9 @@ def parse_money(value: str, decimal: str = ".", currency: str | None = "USD") ->
             raise ForeignCurrencyError(f"more than one currency in {raw!r}")
         allowed = marks
     else:
-        if _foreign_currency(raw, currency):
-            raise ForeignCurrencyError(f"value {raw!r} is not in {currency}")
+        mark = _foreign_currency(raw, currency)
+        if mark:
+            raise ForeignCurrencyError(f"value {raw!r} is not in {currency}", raw, mark)
         allowed = {currency}
     text = raw
     for code in allowed:
@@ -606,11 +615,9 @@ def detect_layout(text: str, *, kind: str | None = None, default_currency: str =
         raise _mixed_error(named)
     file_currency = next(iter(named)) if named else default_currency
     for value in money_values:
-        if _foreign_currency(value, file_currency):
-            raise StatementFileError(
-                "unsupported_currency",
-                f"The file contains an amount ({value}) that is not in {file_currency}. "
-                "Slashbooks does not convert currencies.")
+        mark = _foreign_currency(value, file_currency)
+        if mark:
+            raise StatementFileError("unsupported_currency", _foreign_message(value, mark, file_currency))
     decimal, decimal_uncertain = _detect_decimal(money_values)
     uncertain += decimal_uncertain
 
@@ -844,7 +851,8 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None,
         except ForeignCurrencyError as exc:
             raise StatementFileError(
                     "unsupported_currency",
-                    f"Line {line} has an amount that is not in {currency}. Slashbooks does not convert currencies.",
+                    f"Line {line}: " + _foreign_message(str(exc.args[1]) if len(exc.args) > 1 else "", str(exc.args[2])
+                                                        if len(exc.args) > 2 else "", currency),
                     [line]) from exc
         except ValueError as exc:
             errors.append(line)

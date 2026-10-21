@@ -174,16 +174,56 @@ def dollar_allowed(currency: str) -> bool:
     return currency in DOLLAR_CURRENCIES
 
 
+import contextvars
+from contextlib import contextmanager
+
+# The currency that QuickBooks report amounts are read in (see quickbooks.parse_amount).
+_REPORT_CURRENCY: contextvars.ContextVar[str] = contextvars.ContextVar("report_currency", default=DEFAULT_CURRENCY)
+
+
+@contextmanager
+def report_currency(code: str):
+    """Read report amounts in *code* while the block runs."""
+    token = _REPORT_CURRENCY.set(code)
+    try:
+        yield
+    finally:
+        _REPORT_CURRENCY.reset(token)
+
+
+def strip_amount(text: str, code: str | None = None) -> str:
+    """Remove the company currency's own marks from a report amount.
+
+    An amount that shows another currency (a code, a symbol, or "$" for a currency that does not use it)
+    raises CurrencyError ``unsupported_currency``. Nothing converts.
+    """
+    code = code or _REPORT_CURRENCY.get()
+    others = marks_in(text) - {code}
+    if "$" in text and not dollar_allowed(code):
+        others.add("$")
+    if others:
+        raise CurrencyError("unsupported_currency",
+                            f"The amount {text!r} is not in {code}, the company currency. Slashbooks does not convert currencies.",
+                            f"Use a report in {code}.", company_currency=code)
+    symbol = CURRENCIES[code].symbol if code in CURRENCIES else None
+    if symbol:
+        text = text.replace(symbol, "")
+    text = re.sub(rf"(?i)(?<![A-Za-z]){code}(?![A-Za-z])", "", text)
+    return text.replace("$", "") if dollar_allowed(code) else text
+
+
 # ---------------------------------------------------------------------------
 # Company state
 # ---------------------------------------------------------------------------
 
-def books_activity(entity_path: Path | str) -> list[str]:
+def books_activity(entity_path: Path | str, exclude: Iterable[str] = ()) -> list[str]:
     """Name what the company already holds. An empty list means a company with no entries at all.
 
     Counts ledger entries, balance assertions, imported source rows, accrual
-    records (the accrual-enable receipt does not count), the review queue and
-    staged rows.
+    records (the accrual-enable receipt does not count), the review queue, staged
+    rows, duplicate candidates, statement records and archived statement files, and
+    saved QuickBooks snapshot evidence. *exclude* names company-relative paths that
+    belong to the import being checked.
     """
     from .ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore, default_store_path
     path = Path(entity_path)
@@ -207,9 +247,16 @@ def books_activity(entity_path: Path | str) -> list[str]:
                             found.append(f"accrual {table}")
     if (path / "books.beancount").exists() and (path / "books.beancount").read_text(encoding="utf-8").strip():
         found.append("legacy ledger file")
+    skip = {Path(item).as_posix() for item in exclude}
+    for folder, label in (("ingestion/statements", "statement records"), ("sources/quickbooks", "QuickBooks snapshot evidence")):
+        root = path / folder
+        if root.is_dir() and any(item.is_file() and not any(item.relative_to(path).as_posix().startswith(prefix + "/")
+                                                            for prefix in skip)
+                                 for item in root.rglob("*")):
+            found.append(label)
     staging = path / "staging"
     for name, label in (("pending-categorization.json", "review queue items"), ("pending.json", "staged pending rows"),
-                        ("seen-ids.json", "imported source IDs")):
+                        ("seen-ids.json", "imported source IDs"), ("duplicate-candidates.json", "duplicate candidates")):
         target = staging / name
         if target.exists():
             try:
@@ -222,35 +269,66 @@ def books_activity(entity_path: Path | str) -> list[str]:
     return found
 
 
-def _write_currency(entity: Any, code: str, source: str, event: str, payload: dict[str, Any],
-                    session: str) -> None:
-    """Write entity.json currency, re-label account currencies and append an audit event in one transaction."""
-    from .ledger.store import LedgerStore, default_store_path
-    previous = company_currency(entity.entity_config)
-    config = {**entity.entity_config, CURRENCY_KEY: code, SOURCE_KEY: source}
-    temp = entity.path / "entity.json.currency.tmp"
-    temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    store = LedgerStore(default_store_path(entity.path))
+def currency_sql(store: Any, conn: Any, previous: str, code: str, source: str, event: str,
+                 payload: dict[str, Any]) -> None:
+    """The ledger half of a currency change, inside the caller's transaction (the caller seals).
+
+    The company has no entries, so only the account catalog names the old currency.
+    The ledger meta records the currency and its source; it is the record that
+    entity.json is repaired from (see ``repair_config``).
+    """
+    conn.execute("UPDATE accounts SET currency=? WHERE currency=?", (code, previous))
+    store.set_meta("currency", code, conn)
+    store.set_meta("currency_source", source, conn)
+    store.append_audit_event(event, payload, conn)
+
+
+def write_config(entity: Any, code: str, source: str) -> None:
+    """The entity.json half of a currency change. Runs after the ledger commit."""
+    path = Path(entity.path) / "entity.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    config.update({CURRENCY_KEY: code, SOURCE_KEY: source})
+    temp = Path(entity.path) / "entity.json.currency.tmp"
     try:
-        if store.path.exists() and store.schema_version() is not None:
-            with store.transaction(immediate=True) as conn:
-                # The company has no entries, so only the account catalog names the old currency.
-                conn.execute("UPDATE accounts SET currency=? WHERE currency=?", (code, previous))
-                # The store records a non-USD company currency so that new accounts open in it.
-                if code == DEFAULT_CURRENCY:
-                    conn.execute("DELETE FROM meta WHERE key='currency'")
-                else:
-                    store.set_meta("currency", code, conn)
-                store.append_audit_event(event, payload, conn)
-                store.append_audit_event("ledger-store-sealed", {"session_id": session, "entries": 0,
-                                                                 "store_sha256": store.content_digest(conn)}, conn)
-                os.replace(temp, entity.path / "entity.json")
-        else:
-            os.replace(temp, entity.path / "entity.json")
+        temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
-    entity.entity_config.clear()
-    entity.entity_config.update(config)
+    entity.entity_config.update({CURRENCY_KEY: code, SOURCE_KEY: source})
+
+
+def repair_config(entity_path: Path | str, config: dict[str, Any], meta: Mapping[str, str]) -> None:
+    """Make entity.json follow the ledger meta after a stop between the ledger commit and the entity.json write.
+
+    Changes *config* in memory; writes entity.json when the folder is writable.
+    """
+    code, source = meta.get("currency"), meta.get("currency_source")
+    if not code or (config.get(CURRENCY_KEY, DEFAULT_CURRENCY), currency_source(config)) == (code, source or "default"):
+        return
+    config.update({CURRENCY_KEY: code, SOURCE_KEY: source or "set"})
+    path = Path(entity_path) / "entity.json"
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        stored.update({CURRENCY_KEY: code, SOURCE_KEY: source or "set"})
+        temp = Path(entity_path) / "entity.json.currency.tmp"
+        temp.write_text(json.dumps(stored, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(temp, path)
+    except OSError:
+        pass
+
+
+def _write_currency(entity: Any, code: str, source: str, event: str, payload: dict[str, Any],
+                    session: str) -> None:
+    """Change the company currency: ledger first (one sealed transaction), then entity.json."""
+    from .ledger.store import LedgerStore, default_store_path
+    previous = company_currency(entity.entity_config)
+    store = LedgerStore(default_store_path(entity.path))
+    if store.path.exists() and store.schema_version() is not None:
+        with store.transaction(immediate=True) as conn:
+            currency_sql(store, conn, previous, code, source, event, payload)
+            store.append_audit_event("ledger-store-sealed", {"session_id": session, "entries": 0,
+                                                             "store_sha256": store.content_digest(conn)}, conn)
+    write_config(entity, code, source)
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +356,13 @@ def mixed_error(found: Iterable[str], source: str) -> CurrencyError:
         reason="mixed_currency", currencies=codes)
 
 
-def resolve_import_currency(entity: Any, found: Iterable[str], source: str, *, adopt: bool = True) -> str:
+def can_adopt(entity: Any, exclude: Iterable[str] = ()) -> bool:
+    """True when an import may set the company currency: no entries, and no person set it."""
+    return currency_source(entity.entity_config) != "set" and not books_activity(entity.path, exclude)
+
+
+def resolve_import_currency(entity: Any, found: Iterable[str], source: str, *, adopt: bool = True,
+                            exclude: Iterable[str] = ()) -> str:
     """Check the currencies an import carries against the company currency.
 
     Returns the company currency to book in. A company with no entries whose
@@ -314,7 +398,7 @@ def resolve_import_currency(entity: Any, found: Iterable[str], source: str, *, a
             entity.entity_config.update(fresh.entity_config)
             return company
         source_set = currency_source(fresh.entity_config) == "set"
-        if source_set or books_activity(entity.path):
+        if source_set or books_activity(entity.path, exclude):
             raise mismatch_error(company, code, source, source_set=source_set)
         require_supported(code)
         if not adopt:
@@ -326,9 +410,14 @@ def resolve_import_currency(entity: Any, found: Iterable[str], source: str, *, a
         return code
 
 
-def check_rows(entity: Any, rows: Iterable[Mapping[str, Any]], source: str) -> str:
-    """Resolve the currencies named by normalized rows (their ``currency`` field)."""
-    return resolve_import_currency(entity, {str(r.get("currency")) for r in rows if r.get("currency")}, source)
+def check_rows(entity: Any, rows: Iterable[Mapping[str, Any]], source: str, *, adopt: bool = True) -> str:
+    """Resolve the currencies named by normalized rows (their ``currency`` field).
+
+    The importer calls this inside its company write lock; it is the one place where
+    an ordinary import adopts a currency. Other callers check only (``adopt=False``).
+    """
+    return resolve_import_currency(entity, {str(r.get("currency")) for r in rows if r.get("currency")}, source,
+                                   adopt=adopt)
 
 
 # ---------------------------------------------------------------------------
@@ -352,8 +441,10 @@ def preview_set_currency(entity: Any, currency: Any) -> dict[str, Any]:
     current = company_currency(config)
     current_source = currency_source(config)
     activity = books_activity(entity.path)
-    changes = (current, current_source) != (code, "set")
-    if activity and code != current:
+    # USD by default is already USD: recording it changes nothing, so nothing is written.
+    changes = (current, current_source) != (code, "set") and not (
+        code == current == DEFAULT_CURRENCY and current_source == "default")
+    if activity and changes:
         raise CurrencyError("company_has_entries",
                             f"The company already has {', '.join(activity)} in {current}. The company currency can change "
                             "only while the company has no entries. Slashbooks does not convert currencies.",
@@ -417,6 +508,12 @@ def _file_evidence(path: Path) -> tuple[set[str], str]:
 def json_currencies(data: Any) -> set[str]:
     """Currency codes in a JSON export: Stripe balance/charges, QuickBooks home currency, BankSync accounts and rows."""
     found: set[str] = set()
+    if isinstance(data, Mapping) and isinstance(data.get("balanceTransactions"), list):
+        # A Stripe envelope: the balance currency is the books currency. Charges and invoices can name the
+        # customer's presentment currency, which is not evidence for the books.
+        return {row["currency"].strip().upper() for row in data["balanceTransactions"]
+                if isinstance(row, Mapping) and isinstance(row.get("currency"), str)
+                and re.fullmatch(r"[A-Za-z]{3}", row["currency"].strip())}
 
     def walk(value: Any, depth: int = 0) -> None:
         if depth > 6:
