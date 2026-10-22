@@ -210,3 +210,16 @@ class SignInErrorResponseTests(unittest.TestCase):
             agent_auth._post('https://books.example.com', '/oauth/token', {})
         self.assertEqual(caught.exception.payload['error']['code'], 'AUTH_CONNECTION_FAILED')
         self.assertNotIn('synthetic-secret', str(caught.exception.payload))
+
+    def test_login_storage_failure_is_structured_and_does_not_claim_connected(self):
+        from contextlib import redirect_stderr
+        args = SimpleNamespace(hosted_command="login")
+        output, errors = StringIO(), StringIO()
+        with patch.object(agent_auth, "login", side_effect=PermissionError("synthetic-secret-path")), \
+                redirect_stdout(output), redirect_stderr(errors):
+            self.assertEqual(hosted.run(args), 1)
+        result = json.loads(errors.getvalue())
+        self.assertEqual(result["error"]["code"], "AUTH_STORAGE_FAILED")
+        self.assertNotIn("synthetic-secret-path", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
+        self.assertNotIn('"connected": true', output.getvalue())

@@ -624,3 +624,17 @@ class TestSkillSecurity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReleaseVersionTests(unittest.TestCase):
+    def test_runtime_version_matches_package_and_marketplaces(self):
+        import json
+        import tomllib
+        from bookkeeping import __version__
+        root = Path(__file__).resolve().parents[1]
+        version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+        self.assertEqual(__version__, version)
+        for filename in [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]:
+            self.assertEqual(json.loads((root / filename).read_text())["version"], version)
+        marketplace = json.loads((root / ".claude-plugin/marketplace.json").read_text())
+        self.assertEqual(marketplace["plugins"][0]["version"], version)

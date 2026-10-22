@@ -667,6 +667,12 @@ def run(args: argparse.Namespace) -> int:
         except HostedError as exc:
             print(json.dumps(exc.payload), file=sys.stderr)
             return 1
+        except OSError:
+            failure = HostedError("AUTH_STORAGE_FAILED",
+                                  "Sign-in could not finish saving local files. Check folder access and free disk space. "
+                                  "Browser approval may already exist; a working connection has not been confirmed.")
+            print(json.dumps(failure.payload), file=sys.stderr)
+            return 1
     if args.hosted_command == "migration":
         from . import hosted_adoption
 
