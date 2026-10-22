@@ -34,17 +34,16 @@ the same books in a Slashbooks Cloud workspace; see
 
 ## Supported runtime
 
-The CLI needs Python 3.11 or newer on macOS or Linux. On Windows, run both
-the agent and Slashbooks inside WSL with Linux Python, with company folders
-in the Linux home directory. Native Windows Python is not supported yet;
-Git Bash does not supply the required file locks and permissions. Native
-Windows commands stop before browser sign-in or changes to books. `--help`
-remains available. This restriction also applies to migration and adoption.
+The CLI needs Python 3.11 or newer on Windows, macOS, or Linux. Windows uses
+native file permissions and locks; WSL and administrator access are not required.
+Install Python, restart the agent, and use the plugin normally. The agent uses
+`scripts/books.cmd` from PowerShell or Command Prompt, or `scripts/books` from
+Git Bash. Both launchers find an installed Python interpreter.
 
-Do not copy credential files between Windows and WSL. Start a new sign-in
-inside the supported environment. Existing browser approvals are separate
-from a working local connection; do not revoke one unless you have confirmed
-that no working agent uses it.
+Keep credentials and company folders on a local drive that supports Windows
+access-control lists, such as NTFS. Slashbooks checks private storage before
+browser sign-in. It refuses files with permissions that allow other users,
+and refuses junctions and symbolic links in protected transfer/migration paths.
 
 ## What You Can Do
 

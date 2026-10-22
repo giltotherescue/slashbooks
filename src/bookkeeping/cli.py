@@ -88,15 +88,6 @@ def main(argv: list[str] | None = None) -> int:
     work_args, command_argv = work_parser.parse_known_args(command_argv)
     args = parser.parse_args(command_argv)
 
-    # argparse handles help before this check. Refuse before binding discovery,
-    # work receipts, network calls, or local bookkeeping writes.
-    from .platform_support import require_supported_platform
-    try:
-        require_supported_platform()
-    except hosted_module.HostedError as exc:
-        print(json.dumps(exc.payload), file=sys.stderr)
-        return 1
-
     if work_args.work_out is not None:
         if args.command in {"cloud", "hosted"} or remote_module.is_bound(args):
             print(json.dumps({"error": {

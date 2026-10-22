@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import os
+from . import pinned_files
 from pathlib import Path
 import re
 import sqlite3
@@ -364,11 +365,11 @@ def load_bundle(path):
     try:
         source = Path(path)
         with capture._directory(source.parent) as (fd, _):
-            info = os.stat(source.name, dir_fd=fd, follow_symlinks=False)
+            info = pinned_files.stat_child(fd, source.name)
             _require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "unsafe_bundle_file")
             maximum = capture.MAX_TOTAL + MAX_MANIFEST + capture.MAX_ITEMS * 4096
             _require(info.st_size <= maximum, "bundle_size_limit")
-            handle = os.open(source.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+            handle = pinned_files.open_child(fd, source.name)
             with os.fdopen(handle, "rb") as stream:
                 signature = capture._signature(info)
                 _require(capture._signature(os.fstat(stream.fileno())) == signature, "bundle_changed")
@@ -394,19 +395,19 @@ def validate_bundle(path):
 def _write_exclusive(destination, raw):
     target = Path(destination)
     with capture._directory(target.parent) as (fd, _):
-        handle = os.open(target.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=fd)
+        handle = pinned_files.open_child(fd, target.name, create=True)
         signature = os.fstat(handle)
         try:
             with os.fdopen(handle, "wb") as stream:
                 stream.write(raw)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.fsync(fd)
+            pinned_files.sync(fd)
         except BaseException:
             try:
-                current = os.stat(target.name, dir_fd=fd, follow_symlinks=False)
+                current = pinned_files.stat_child(fd, target.name)
                 if (current.st_dev, current.st_ino) == (signature.st_dev, signature.st_ino):
-                    os.unlink(target.name, dir_fd=fd)
+                    pinned_files.unlink_child(fd, target.name)
             except FileNotFoundError:
                 pass
             raise

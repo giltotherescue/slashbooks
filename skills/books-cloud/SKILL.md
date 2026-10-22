@@ -31,13 +31,15 @@ existing workflow, or plain-English next steps after setup.
 
 ### Check the runtime first
 
-Native Windows Python is not supported yet. Git Bash alone does not change
-this. If the CLI returns `UNSUPPORTED_PLATFORM`, stop retrying sign-in and
-explain that the agent and plugin must run inside WSL with Linux Python, or on
-macOS or Linux. Do not weaken file permissions, patch the installed plugin, or
-copy credentials to bypass this check. Keep WSL company folders in the Linux
-home directory. Help the person choose a supported environment before asking
-for browser approval.
+Windows, macOS and Linux use Python 3.11 or newer. On Windows in PowerShell or
+Command Prompt, invoke the bundled `scripts/books.cmd` wrapper. In Git Bash,
+use `scripts/books`. Do not ask the person to install WSL or run as administrator.
+The launcher finds Python; after installing Python, restart the agent if needed.
+
+`PRIVATE_STORAGE_UNAVAILABLE` means Windows could not create and verify private
+credential storage before sign-in. Help the person check user-profile access
+and use a local NTFS drive. Never weaken permissions or copy credentials to a
+shared directory to bypass the check. A normal setup needs only browser approval.
 
 A sign-in `AUTH_SERVICE_UNAVAILABLE` means a temporary service failure, not
 rejected access. Report it without claiming that the user declined or revoked

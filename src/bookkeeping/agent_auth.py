@@ -99,21 +99,13 @@ def _check_folder(directory: Path, endpoint: str, company: str | None, reauthori
 
 @contextmanager
 def _lock(path: Path):
-    import fcntl
+    from . import file_safety
     from .remote import _no_symlinks
 
     _no_symlinks(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
-    with os.fdopen(os.open(path.with_suffix(".lock"), flags, 0o600), "r+") as handle:
-        info = os.fstat(handle.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
-            raise hosted.HostedError("INSECURE_FILE", "Agent credential storage must be owner-only.")
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+    with file_safety.private_lock(path.with_suffix(".lock")):
+        yield
 
 
 def credential_token(config: dict, timeout: float = 30) -> tuple[str, str]:
@@ -139,9 +131,9 @@ def credential_token(config: dict, timeout: float = 30) -> tuple[str, str]:
 def login(args) -> int:
     from . import remote
 
-    from .platform_support import require_supported_platform
+    from .file_safety import check_private_storage
 
-    require_supported_platform()
+    check_private_storage()
     endpoint = hosted._endpoint(args.endpoint, args.allow_localhost)
     # Without a company, the user chooses it in the browser. Without a folder,
     # the standard folder for the chosen company is used after approval.

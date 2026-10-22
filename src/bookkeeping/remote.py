@@ -82,21 +82,13 @@ def _revision(result: dict[str, Any]) -> int:
 
 @contextmanager
 def _revision_lock(config: Path):
-    import fcntl
+    from . import file_safety
 
     config = _absolute(config)
     path = config.parent / ".slashbooks-remote-state.lock"
     _no_symlinks(path)
-    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    with os.fdopen(os.open(path, flags, 0o600), "r+") as handle:
-        info = os.fstat(handle.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
-            raise _error("INSECURE_FILE", "Remote revision state must be owner-only.")
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield config.parent / ".slashbooks-remote-state.json"
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+    with file_safety.private_lock(path):
+        yield config.parent / ".slashbooks-remote-state.json"
 
 
 def _cached_revision(path: Path, client: hosted.HostedClient) -> int | None:
@@ -142,9 +134,11 @@ def _relative(value: str) -> str:
 
 
 def _no_symlinks(path: Path) -> None:
-    for parent in (path, *path.parents):
-        if parent.is_symlink():
-            raise _error("UNSAFE_PATH", "Symbolic links are not supported for transferred files.")
+    from .file_safety import reject_links
+    try:
+        reject_links(path)
+    except PermissionError:
+        raise _error("UNSAFE_PATH", "Symbolic links and junctions are not supported for transferred files.") from None
 
 
 def _read_bytes(path: Path) -> bytes:

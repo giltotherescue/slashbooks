@@ -27,3 +27,16 @@ jobs:
 
       - name: Run complete test suite
         run: python -m unittest discover -s tests
+
+  windows:
+    name: Native Windows compatibility
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - run: python -m unittest discover -s tests -p test_native_windows.py -v
+      - run: python -m unittest tests.test_agent_auth.SignInErrorResponseTests -v

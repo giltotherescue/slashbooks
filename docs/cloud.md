@@ -29,11 +29,19 @@ the cloud later; see [Move existing local books to a hosted company](hosted-migr
 
 ## Windows setup
 
-Run the agent and plugin inside WSL with Linux Python 3.11 or newer. Keep the
-company folder in the Linux home directory. Git Bash with native Windows Python
-is not supported: it cannot provide the locks and owner-only file permissions
-that protect sign-in credentials and books. The CLI returns `UNSUPPORTED_PLATFORM`
-before it asks you to approve browser access. See [supported runtimes](../README.md#supported-runtime).
+Use the plugin with Python 3.11 or newer installed on Windows. No WSL, extra
+Python package, or administrator session is required. The agent uses the `.cmd`
+launcher in PowerShell or Command Prompt, and the shell launcher in Git Bash.
+Browser approval saves a private credential and the company connection locally,
+just as it does on macOS and Linux.
+
+Windows credentials use a protected access-control list granting only the
+signed-in Windows user access. File locks serialize credential renewal and
+company changes. Private storage is checked before starting browser sign-in;
+`PRIVATE_STORAGE_UNAVAILABLE` means the user profile needs a writable local
+folder with Windows permissions, such as an NTFS drive. Do not bypass the check
+or copy credentials into a shared folder. Existing insecure files are refused,
+not silently changed.
 
 A temporary sign-in service error returns `AUTH_SERVICE_UNAVAILABLE`. Try again
 later. It does not mean access was declined. Unexpected error responses return

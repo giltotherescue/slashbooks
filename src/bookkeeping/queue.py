@@ -764,11 +764,8 @@ def _save_item(entity: Entity, item: dict) -> None:
 
 
 def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    from .file_safety import sync_directory
+    sync_directory(path)
 
 
 def _write_fsynced(path: Path, payload: bytes) -> None:
