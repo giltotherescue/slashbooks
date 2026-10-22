@@ -206,6 +206,43 @@ class ImportTests(unittest.TestCase):
         return coverage.check_coverage(self.entity, coverage.date(2026, 3, 1), coverage.date(2026, 3, 31),
                                        accounts=[CHECKING])
 
+    def test_reconciliation_preview_uses_ledger_signs_and_does_not_import(self):
+        for name, profile in (("bank_verified.json", "checking-pdf"), ("card_verified.json", "visa-pdf")):
+            raw = fixture(name)
+            result = self.imp(raw, profile=profile, dry_run=True)
+            review = result["reconciliation"]
+            sign = Decimal("-1") if profile == "visa-pdf" else Decimal("1")
+            self.assertEqual(Decimal(review["closing"]), sign * Decimal(raw["closing_balance"]))
+            self.assertEqual(Decimal(review["opening"]) + Decimal(review["activity"]), Decimal(review["closing"]))
+            self.assertEqual(len(review["missing"]), len(raw["transactions"]))
+            self.assertEqual(self.staged(), [])
+            self.assertEqual(self.statement_files(), [])
+
+    def test_reconciliation_preview_reuses_duplicate_plan_for_pending_rows(self):
+        self.imp("bank_verified.json", intake_only=True)
+        review = self.imp("bank_verified.json", dry_run=True)["reconciliation"]
+        self.assertEqual(review["missing"], [])
+        self.assertEqual(review["possible_matches"], 0)
+        self.assertEqual(len(self.staged()), 18)
+
+    def test_feed_matches_are_not_missing_but_an_absent_fee_is(self):
+        from bookkeeping.entity import load_entity
+        from bookkeeping.ledger.importer import import_transactions
+        raw = fixture("bank_verified.json")
+        fee = raw["transactions"][-1]
+        feed = [{"id": f"feed-{i}", "date": row["date"], "description": row["description"],
+                 "amount": row["amount"], "accountId": "feed-chk", "pending": False}
+                for i, row in enumerate(raw["transactions"][:-1])]
+        import_transactions(load_entity(self.entity), feed, session_id="synthetic-feed", intake_only=True)
+        result = self.imp(raw, dry_run=True)
+        self.assertEqual(result["reconciliation"]["missing"],
+                         [{k: fee[k] for k in ("date", "description", "amount")}])
+        self.assertEqual(result["reconciliation"]["possible_matches"], len(feed))
+        added = self.imp(raw, intake_only=True)
+        self.assertEqual(added["counts"]["queued_for_review"], 1)
+        self.assertEqual(added["counts"]["posted"], 0)
+        self.assertEqual(len(self.staged()), len(raw["transactions"]))
+
     def test_a_verified_statement_is_recorded_and_feeds_coverage(self):
         result = self.imp("bank_verified.json", evidence=None)
         self.assertEqual((result["status"], result["recorded"], result["coverage"]), ("imported", True, "recorded"))
