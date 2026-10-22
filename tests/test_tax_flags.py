@@ -1,8 +1,8 @@
-"""Tax profile, deposit kind, fixed-asset worksheet and missing-input flags in the tax-method view.
+"""Tax profile, deposit kind, fixed-asset worksheet and missing-input flags in the tax method view.
 
 The engine stores facts, does the mechanical cash-view math with the recorded deposit kind and lists
 missing inputs. It applies no tax rule to the tax profile. Every expected figure is hand-computed in the
-comment beside it. The flag-off tests prove that a company without the view gets the same outputs as before.
+comment beside it. The no-tax-method tests prove that a company without a tax method gets the same outputs as before.
 """
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ class Base(CashViewFixture):
         add_account(self.root, FORFEITED, open_date="2025-12-31")
 
     def cash_filer(self):
-        code, result, err = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--tax-view", "on", "--apply")
+        code, result, err = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
         self.assertEqual(code, 0, (result, err))
         self.entity = load_entity(self.root)
 
@@ -124,13 +124,14 @@ class TaxProfile(Base):
         self.cash_filer()
         before = self.handoff()
         self.assertEqual(before["tax_view"]["tax_profile"], {})
-        # A prior accrual return and a C corporation: the engine records and lists the facts. It blocks, warns and decides nothing.
+        # A prior accrual return and a C corporation: the engine records and lists the facts. It adds one flag and blocks nothing.
         books("entity", "set-tax-profile", str(self.root), "--prior-return-method", "accrual", "--entity-type", "c_corp", "--apply")
         after = self.handoff()
         self.assertEqual(after["tax_view"]["tax_profile"], {"prior_return_method": "accrual", "entity_type": "c_corp"})
-        self.assertEqual(codes(after), codes(before))
+        self.assertEqual([c for c in codes(after) if c != "method_change_possible"], codes(before))
+        self.assertEqual(codes(after).count("method_change_possible"), 1)
         self.assertEqual(tb(after), tb(before))
-        code, result, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--tax-view", "on", "--apply")
+        code, result, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
         self.assertEqual((code, result["status"]), (0, "already_applied"))
         out = Path(self.tmp.name) / "profile-out"
         books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out), "--formats", "csv")
@@ -337,6 +338,7 @@ class FixedAssetsAndPrepaid(Base):
         machine = next(r for r in rows.values() if r["source"] == "purchase")
         self.assertEqual((machine["placed_in_service"], machine["cost"], machine["book_depreciation_to_date"], machine["depreciation_schedule"]),
                          ("2026-05-04", "2500.00", "", "none"))
+        self.assertEqual((van["purchase_date"], machine["purchase_date"]), ("2026-01-01", "2026-05-04"))
         self.assertEqual(len(rows), 2)  # The van purchase entry and its accumulated depreciation are not extra rows.
         self.assertFalse({"size_marker", "tax_depreciation"} & set(van))
         # 2027: still listed, not in the period, depreciation to date 2,400.00 once 2027 is recognized.
@@ -346,7 +348,9 @@ class FixedAssetsAndPrepaid(Base):
         out = Path(self.tmp.name) / "fa-out"
         books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out), "--formats", "csv")
         sheet = (out / "fixed-assets-schc-2026-01-01_2026-12-31.csv").read_text()
-        self.assertIn("Placed In Service (Purchase Date)", sheet)
+        self.assertNotIn("Placed In Service", sheet)
+        self.assertIn("Purchase Date,In Period,Account,Cost", sheet)
+        self.assertIn("The placed-in-service date is not recorded", sheet)
         self.assertIn("3600.00", sheet)
 
     def test_prepaid_tax_treatment_not_recorded_lists_only_unset_schedules(self):
@@ -367,8 +371,8 @@ class FixedAssetsAndPrepaid(Base):
         self.assertEqual(handoff["tax_view"]["deposits"], [])
 
 
-class FlagOffIsUnchanged(Base):
-    def test_recorded_fields_without_the_view_change_no_output(self):
+class NoTaxMethodIsUnchanged(Base):
+    def test_recorded_fields_without_a_tax_method_change_no_output(self):
         self.receive("dep", "2026-02-10", "500.00", "dep")
         self.schedule("sub", "deferred", DEFERRED, SUBSCRIPTIONS, "1200.00", "2026-10-01", "2027-09-30", "equal_month", BANK)
         self.schedule("van", "depreciation", EQUIPMENT, "Expenses:Depreciation", "3600.00", "2026-01-01", "2028-12-31",
@@ -379,11 +383,10 @@ class FlagOffIsUnchanged(Base):
         before = [run_cli(argv) for argv in commands]
         out_before = Path(self.tmp.name) / "before"
         books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out_before), "--formats", "csv")
-        # Record every new fact, and the tax method with the view off.
+        # Record every new fact except the tax method. Without a tax method, no tax output changes.
         self.deposit_kind("item", "dep", "refundable")
         self.deposit_kind("schedule", "sub", "refundable")
         books("entity", "set-tax-profile", str(self.root), "--prior-return-method", "accrual", "--entity-type", "c_corp", "--apply")
-        books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
         self.assertEqual([run_cli(argv) for argv in commands], before)
         out_after = Path(self.tmp.name) / "after"
         books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out_after), "--formats", "csv")
@@ -550,7 +553,7 @@ class ReviewFixes(Base):
         self.assertEqual((code, done["status"]), (0, "applied"))
         self.assertEqual(taxview.tax_profile(json.loads(path.read_text())), {"entity_type": "s_corp"})
 
-    def test_xlsx_export_unchanged_with_the_view_off(self):
+    def test_xlsx_export_unchanged_without_a_tax_method(self):
         from golden_support import XLSX_AVAILABLE, xlsx_text
         if not XLSX_AVAILABLE:
             self.skipTest("needs the xlsx extra")
@@ -565,8 +568,230 @@ class ReviewFixes(Base):
         before = export("x-before")
         self.deposit_kind("item", "dep", "refundable")
         books("entity", "set-tax-profile", str(self.root), "--entity-type", "c_corp", "--apply")
-        books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
         self.assertEqual(export("x-after"), before)
+
+
+class MethodChangeFlag(Base):
+    def profile(self, prior: str):
+        code, result, err = books("entity", "set-tax-profile", str(self.root), "--prior-return-method", prior, "--apply")
+        self.assertEqual(code, 0, (result, err))
+
+    def test_cash_method_after_an_accrual_or_unknown_return_adds_the_flag_and_blocks_nothing(self):
+        self.cash_filer()
+        for prior in ("accrual", "unknown"):
+            self.profile(prior)
+            handoff = self.handoff()
+            self.assertEqual(codes(handoff).count("method_change_possible"), 1, prior)
+            message = flag(handoff, "method_change_possible")["message"]
+            self.assertEqual(message, "The method on the last tax return is accrual or not known. "
+                             "The books do not show the method on the return. Confirm it with the last return. "
+                             "A change from accrual to cash generally needs IRS consent (usually Form 3115) "
+                             "and a section 481(a) adjustment. The preparer handles it.")
+            self.assertNotIn("Rev. Proc", message)
+            out = Path(self.tmp.name) / ("mc-" + prior)
+            code, _, err = books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc",
+                                 "--output-dir", str(out), "--formats", "csv")
+            self.assertEqual(code, 0, err)
+            self.assertIn("Flag: method_change_possible", (out / "README.txt").read_text())
+
+    def test_no_flag_for_other_prior_methods_or_for_the_accrual_method(self):
+        self.cash_filer()
+        self.assertNotIn("method_change_possible", codes(self.handoff()))   # not recorded
+        for prior in ("cash", "none"):
+            self.profile(prior)
+            self.assertNotIn("method_change_possible", codes(self.handoff()), prior)
+        self.profile("accrual")
+        books("entity", "set-tax-method", str(self.root), "--method", "accrual", "--apply")
+        self.assertNotIn("method_change_possible", codes(self.handoff()))
+
+
+class TaxAssumptions(Base):
+    def assumptions(self, period=Y2026):
+        return self.handoff(period)["tax_view"]["assumptions"]
+
+    def test_object_has_settings_items_counts_and_the_preparer_list(self):
+        self.schedule("a", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", BANK)
+        self.schedule("b", "prepaid", PREPAID, INSURANCE, "600.00", "2026-01-01", "2026-06-30", "equal_month", BANK,
+                      tax_treatment="expense_when_paid")
+        self.receive("dep", "2026-02-10", "500.00", "dep")
+        self.cash_filer()
+        books("entity", "set-tax-profile", str(self.root), "--prior-return-method", "unknown", "--apply")
+        result = self.assumptions()
+        self.assertEqual(result["settings"], {
+            "tax_method": "cash", "tax_method_source": "value in entity.json (set with books entity set-tax-method)",
+            "fiscal_year_start": "01-01",
+            "fiscal_year_start_source": "value in entity.json (who set it is not recorded here)", "prior_return_method": "unknown",
+            "entity_type": "not recorded", "currency": "USD", "period": "2026-01-01 to 2026-12-31",
+            "books_basis": "accrual", "tax_view_used": "cash"})
+        names = [item["item"] for item in result["items"]]
+        self.assertEqual(names, ["Prepaid expenses", "Customer deposits", "Deferred revenue", "Opening receivables and payables",
+                                 "Credit card charges", "Bad debts", "Depreciation, section 179, bonus, de minimis",
+                                 "Accrued liabilities", "Inventory", "Tax year"])
+        for item in result["items"]:
+            self.assertEqual(set(item), {"item", "handling", "source", "preparer_decides"})
+            self.assertIn(item["source"].split(" where")[0], {"Recorded by a person", "Value in entity.json", "Assumed default", "Not adjusted"})
+        counts = result["counts"]
+        self.assertEqual(counts["prepaid_schedules_without_tax_treatment"], 1)
+        self.assertEqual(counts["deposits_without_recorded_kind"], 1)
+        self.assertEqual(counts["open_flags"]["method_change_possible"], 1)
+        self.assertEqual(counts["open_flags"]["deposit_kind_not_recorded"], 1)
+        self.assertNotIn("tax_method", counts["open_flags"])
+        decides = " ".join(result["preparer_decides"])
+        for text in ("Form 3115", "section 481(a)", "election out is made on the return", "inventory method", "trust or escrow",
+                     "Do not decide it from an account name"):
+            self.assertIn(text, decides)
+
+    def test_text_names_no_dollar_amount_and_no_revenue_procedure(self):
+        self.cash_filer()
+        text = json.dumps({k: v for k, v in self.assumptions().items() if k != "settings"})
+        self.assertNotRegex(text, r"\$|\d{1,3},\d{3}|Rev\. Proc|usually refundable")
+        self.assertNotRegex(Path(taxview.__file__).with_name("taxassumptions.py").read_text(), r"\$\s?\d|\d{1,3},\d{3}")
+
+    def test_the_counts_follow_the_books(self):
+        self.schedule("a", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", BANK)
+        self.cash_filer()
+        before = self.assumptions()["counts"]
+        self.assertEqual((before["prepaid_schedules_without_tax_treatment"], before["deposits_without_recorded_kind"]), (1, 0))
+        books("accrual", "schedule", "tax-treatment", "--entity", str(self.root), "--id", "a", "--treatment", "capitalize", "--apply")
+        self.assertEqual(self.assumptions()["counts"]["prepaid_schedules_without_tax_treatment"], 0)
+
+    def test_accrual_method_rows_say_not_adjusted(self):
+        self.cash_filer()
+        books("entity", "set-tax-method", str(self.root), "--method", "accrual", "--apply")
+        result = self.assumptions()
+        self.assertEqual(result["settings"]["tax_view_used"], "accrual")
+        self.assertNotIn("deposits_without_recorded_kind", result["counts"])
+        self.assertNotIn("prepaid_schedules_without_tax_treatment", result["counts"])
+        out = Path(self.tmp.name) / "acc-out"
+        taxmap.export_handoff(self.root, *Y2026, form="schc", output_dir=out, formats=("csv",))
+        readme = (out / "README.txt").read_text()
+        self.assertIn("Tax assumptions: The Tax Assumptions sheet", readme)
+        self.assertNotIn("Prepaid schedules with no recorded tax treatment", readme)
+        deposits = next(i for i in result["items"] if i["item"] == "Customer deposits")
+        self.assertEqual(deposits["source"], "Not adjusted")
+        self.assertIn("the recorded books are used as they are", deposits["handling"])
+
+    def test_the_sheet_follows_the_read_me_and_the_read_me_has_a_section(self):
+        from golden_support import XLSX_AVAILABLE, xlsx_text
+        self.schedule("van", "depreciation", EQUIPMENT, "Expenses:Depreciation", "3600.00", "2026-01-01", "2028-12-31",
+                      "equal_month", BANK, contra_account=ACCUM)
+        self.cash_filer()
+        out = Path(self.tmp.name) / "ta-out"
+        manifest = taxmap.export_handoff(self.root, *Y2026, form="schc", output_dir=out, formats=("csv", "xlsx"))
+        self.assertIn("tax-assumptions-schc-2026-01-01_2026-12-31.csv", manifest["files"])
+        self.assertIn("assumptions", manifest["tax_view"])
+        csv_text = (out / "tax-assumptions-schc-2026-01-01_2026-12-31.csv").read_text()
+        self.assertIn("Item,Handling in this export,Source of the handling,Preparer decides?", csv_text)
+        for text in ("Settings in effect", "Input completeness", "Preparer decides", "Flag: depreciation_not_tax_adjusted"):
+            self.assertIn(text, csv_text)
+        readme = (out / "README.txt").read_text()
+        self.assertIn("Tax assumptions: The Tax Assumptions sheet", readme)
+        self.assertIn("Preparer decides: ", readme)
+        if XLSX_AVAILABLE:
+            sheets = [line[len("=== sheet: "):] for line in xlsx_text(out / "tax-handoff-schc-2026-01-01_2026-12-31.xlsx").splitlines()
+                      if line.startswith("=== sheet: ")]
+            self.assertEqual(sheets[:3], ["Read Me", "Tax Assumptions", "Trial Balance"])
+
+    def test_bad_debts_row_leaves_the_decision_to_the_preparer(self):
+        self.cash_filer()
+        row = next(i for i in self.assumptions()["items"] if i["item"] == "Bad debts")
+        self.assertEqual(row["preparer_decides"], "Yes")
+        self.assertIn("credits and true-ups", row["handling"])
+
+    def test_the_tax_map_with_a_period_refuses_an_invalid_profile_like_the_export(self):
+        self.cash_filer()
+        path = self.root / "entity.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), "prior_return_method": "hybrid"}))
+        code, _, err = books("tax", "map", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--format", "json")
+        self.assertEqual(code, 1)
+        self.assertIn("prior_return_method must be one of", err)
+
+    def test_the_same_method_with_an_old_view_key_is_already_applied(self):
+        self.cash_filer()
+        path = self.root / "entity.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), "tax_method_view": True}))
+        code, result, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
+        self.assertEqual((code, result["status"]), (0, "already_applied"))
+
+    def test_tax_map_json_carries_the_assumptions(self):
+        self.cash_filer()
+        code, report, err = books("tax", "map", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--format", "json")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(report["tax_view"]["assumptions"]["settings"]["tax_view_used"], "cash")
+        code, report, _ = books("tax", "map", "--entity", str(self.root), "--form", "schc", "--format", "json")
+        self.assertIsNone(report["tax_view"])   # no period: no assumptions
+
+    def item_text(self, name):
+        return next(i for i in self.assumptions()["items"] if i["item"] == name)["handling"]
+
+    def test_deferred_revenue_row_matches_the_refundable_schedule_figures(self):
+        # 1,200.00 received 2026-10-01, 100.00 a month. Advance payment: 1,200.00 income. Refundable: 300.00 income, 900.00 stays a liability.
+        self.schedule("sub", "deferred", DEFERRED, SUBSCRIPTIONS, "1200.00", "2026-10-01", "2027-09-30", "equal_month", BANK)
+        self.due("2026-12-31")
+        self.cash_filer()
+        self.assertEqual(tb(self.handoff())[SUBSCRIPTIONS], D("-1200.00"))
+        self.deposit_kind("schedule", "sub", "refundable")
+        rows = tb(self.handoff())
+        self.assertEqual((rows[SUBSCRIPTIONS], rows[DEFERRED]), (D("-300.00"), D("-900.00")))
+        text = self.item_text("Deferred revenue")
+        self.assertIn("advance_payment, or with no recorded kind, is income on receipt", text)
+        self.assertIn("recorded as refundable keeps its liability", text)
+        self.assertIn("follows its recognition entries as they post", text)
+        self.assertNotIn("Income on receipt (cash method)", text)
+        self.assertIn("released by its recognition entries", self.item_text("Customer deposits"))
+
+    def test_card_row_keeps_the_item_treatment_for_a_card_funded_asset(self):
+        # A 2,500.00 machine bought on the card stays an asset: the charge date is the payment date, not an expense.
+        self.journal("machine", "2026-05-04", [(EQUIPMENT, "2500.00"), ("Liabilities:CreditCard", "-2500.00")])
+        self.cash_filer()
+        rows = tb(self.handoff())
+        self.assertEqual(rows[EQUIPMENT], D("2500.00"))
+        text = self.item_text("Credit card charges")
+        self.assertNotIn("The expense is on the charge date", text)
+        for part in ("charge date is used as the payment date", "a card-funded asset", "capitalized prepaid schedule keeps its treatment",
+                     "deductible", "preparer's decision"):
+            self.assertIn(part, text)
+        asset = next(r for r in self.handoff()["tax_view"]["fixed_assets"] if r["source"] == "purchase")
+        self.assertEqual(asset["cost"], "2500.00")
+
+    def test_card_funded_capitalized_prepaid_keeps_its_unused_balance(self):
+        # 1,200.00 insurance on the card, 2026-01-01 to 2026-12-31, capitalize: 100.00 a month, so 600.00 is unused at 2026-06-30.
+        self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", "Liabilities:CreditCard",
+                      tax_treatment="capitalize")
+        self.due("2026-06-30")
+        self.cash_filer()
+        rows = tb(self.handoff((date(2026, 1, 1), date(2026, 6, 30))))
+        self.assertEqual((rows[PREPAID], rows[INSURANCE]), (D("600.00"), D("600.00")))
+
+    def test_deposit_note_is_conditional(self):
+        self.cash_filer()
+        notes = " ".join(self.assumptions()["notes"])
+        self.assertIn("Where a person recorded a deposit kind, it remains a proposal", notes)
+        self.assertNotIn("A person recorded the deposit kind", notes)
+
+    def test_fiscal_year_start_tells_an_absent_key_from_a_recorded_01_01(self):
+        self.cash_filer()
+        path = self.root / "entity.json"
+        config = json.loads(path.read_text())
+
+        def start():
+            result = self.assumptions()
+            item = next(i for i in result["items"] if i["item"] == "Tax year")
+            return result["settings"]["fiscal_year_start_source"], item["handling"], item["source"]
+
+        config.pop("fiscal_year_start", None)
+        path.write_text(json.dumps(config))
+        source, handling, item_source = start()
+        self.assertEqual(source, "default (entity.json has no value)")
+        self.assertIn("the default, because entity.json has no value", handling)
+        self.assertEqual(item_source, "Assumed default")
+        for value in ("07-01", "01-01"):   # a person set 07-01, then 01-01 again: the key stays
+            code, result, err = books("entity", "set-fiscal-year", str(self.root), "--start", value, "--apply")
+            self.assertEqual(code, 0, (result, err))
+            source, handling, item_source = start()
+            self.assertEqual(source, "value in entity.json (who set it is not recorded here)")
+            self.assertIn(f"The fiscal year start is {value} (a value in entity.json)", handling)
+            self.assertEqual(item_source, "Value in entity.json")
 
 
 if __name__ == "__main__":

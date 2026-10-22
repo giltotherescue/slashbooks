@@ -24,7 +24,7 @@ preparation runtime refuses it.
 | `books entity set-view PATH --view cash\|accrual --apply` | The default report view. |
 | `books accrual enable apply` | Accrual tracking from a tracking start date. `enable preview` is read-only. |
 | `books entity set-fiscal-year PATH --start MM-01 --apply` | The fiscal-year start. |
-| `books entity set-tax-method PATH --method cash\|accrual --apply` | The tax method and the tax method view. |
+| `books entity set-tax-method PATH --method cash\|accrual --apply` | The tax method. The tax outputs follow it. |
 | `books entity set-tax-profile PATH ... --apply` | The prior return method and the entity type. |
 | `books accrual schedule tax-treatment ... --apply` | How a cash-method filer deducts a prepaid schedule. |
 | `books accrual schedule\|item deposit-kind ... --apply` | Whether a deposit is an advance payment or refundable. |

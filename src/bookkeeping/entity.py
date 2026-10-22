@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -1214,8 +1215,8 @@ def add_parser(subparsers: Any) -> None:
     tax_method_parser.add_argument("path", type=Path, help="Path to the entity directory")
     tax_method_parser.add_argument("--method", required=True, choices=("cash", "accrual"),
                                    help="The method the company files its tax return on")
-    tax_method_parser.add_argument("--tax-view", choices=("on", "off"), default=None,
-                                   help="Turn the tax-method view on or off for books tax map and books tax export. Default: keep the current setting (off for a new company)")
+    # Removed option. It stays here so an old script gets a clear refusal, not a silent change.
+    tax_method_parser.add_argument("--tax-view", nargs="?", const="removed", default=None, help=argparse.SUPPRESS)
     tax_method_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     tax_method_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
 
@@ -1394,11 +1395,15 @@ def run(args: Any) -> int:
         target = _resolve_target(args.path)
         try:
             from . import taxview
+            if args.tax_view is not None:
+                print(json.dumps({"status": "blocked", "errors": [{"code": "tax_view_removed", "message": taxview.TAX_VIEW_REMOVED}]},
+                                 sort_keys=True, indent=2))
+                return 1
             entity = load_entity(target)
             if args.apply:
-                result = taxview.apply_set_tax_method(entity, args.method, args.tax_view, args.plan_hash)
+                result = taxview.apply_set_tax_method(entity, args.method, args.plan_hash)
             else:
-                result = taxview.preview_set_tax_method(entity, args.method, args.tax_view)
+                result = taxview.preview_set_tax_method(entity, args.method)
         except (FileNotFoundError, ValueError) as exc:
             result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
             print(json.dumps(result, sort_keys=True, indent=2))

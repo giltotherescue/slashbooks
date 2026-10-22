@@ -131,8 +131,8 @@ prepaid, deferred revenue and the others) on that date, changes no entry or repo
 preview. List what is still open on that date with `accrual opening` (leave out `lines` and `cutover`; the entry is dated
 the tracking start and balances to `Equity:Opening-Balance-Adjustments`). `books entity set-view PATH --view cash|accrual
 [--apply]` picks the default view (person-only); the accrual view starts on the tracking start and refuses earlier periods.
-`books entity set-tax-method PATH --method cash|accrual --tax-view on [--apply]` makes the tax outputs follow the tax
-method (person-only), and `books accrual schedule tax-treatment --entity PATH --id ID --treatment expense_when_paid|capitalize
+`books entity set-tax-method PATH --method cash|accrual [--apply]` makes the tax outputs follow the tax
+method (person-only; with no tax method recorded they read the recorded books), and `books accrual schedule tax-treatment --entity PATH --id ID --treatment expense_when_paid|capitalize
 [--apply]` records how a cash-method filer deducts a prepaid schedule (person-only; unset keeps it on the balance sheet). Propose a value with evidence; never apply it.
 `books entity set-tax-profile PATH [--prior-return-method cash|accrual|unknown|none] [--entity-type TYPE] [--apply]` records
 facts for the preparer, and `books accrual schedule|item deposit-kind --entity PATH --id ID --deposit-kind advance_payment|refundable

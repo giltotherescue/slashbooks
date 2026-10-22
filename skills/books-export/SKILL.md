@@ -269,8 +269,10 @@ If the books still need a year of statement files, follow
    ```
 
    If `manifest.json` has `tax_method`, say which method and view the files use and read
-   each `tax_view.flags` message to the owner. Do not choose a tax method or a prepaid tax
-   treatment; the owner or the tax preparer records it with `books entity set-tax-method`.
+   each `tax_view.flags` message to the owner. Open the "Tax Assumptions" sheet
+   (`tax_view.assumptions`) with the owner: it lists the settings, how each item is handled,
+   the counts of missing inputs and what the preparer decides. Do not choose a tax method or a
+   prepaid tax treatment; the owner or the tax preparer records it with `books entity set-tax-method`.
    Then follow "Tax method: what you decide and what you do not" below.
 
    Explain the files: the tax trial balance, the tax-line summary for manual
@@ -294,7 +296,9 @@ You may:
   vehicles or software this year; whether it keeps inventory.
 - Read contracts, invoices and statements to propose a `deposit_kind` for each deposit or a
   `tax_treatment` for each prepaid schedule.
-- Spot an auto-renewal, a trust or escrow retainer, or insurance or interest inside a prepaid.
+- Spot an auto-renewal, a trust, escrow or card item, or insurance or interest inside a prepaid,
+  and list it for the preparer. A trust, escrow, card or refundable deposit item needs the
+  preparer's decision. You only propose.
 - Explain each `tax_view.flags` message and the checklist below to the owner in plain words.
 - Draft a short note for the tax preparer.
 
@@ -304,6 +308,7 @@ You must not:
   `accrual item deposit-kind` or `accrual schedule tax-treatment`. Run the preview, show it, and
   let a person apply it (person-only writes).
 - Choose an expensing election, bonus depreciation or the de minimis safe harbor.
+- Classify a deposit, or funds held in trust or escrow, from an account name.
 - Say that a treatment is correct for tax, run a method change, or compute tax.
 
 Each proposal names its evidence (a document or the owner's answer) and says "for the preparer
@@ -313,41 +318,62 @@ Checklist. Read the company `entity.json` and the tax export (`tax_view.tax_prof
 `tax_view.flags`, `tax_view.deposits`, `tax_view.fixed_assets`). For each rule that applies, tell
 the owner, propose a value with its evidence, and note it for the preparer to confirm:
 
-1. Method change. `tax_method` is cash and `prior_return_method` is accrual or unknown: moving
-   from accrual to cash is a change in accounting method. The preparer files the change;
-   Slashbooks cannot prepare it (IRS Publication 538). Ask before the owner turns the tax view on.
+1. Method change. `tax_method` is cash and `prior_return_method` is accrual or unknown: the export
+   carries the flag `method_change_possible` and is not blocked. Accrual books do not prove an
+   accrual tax method, so the owner confirms the method on the last return. Unknown means find
+   out. A change from accrual to cash needs IRS consent (Form 3115) and a section 481(a)
+   adjustment. The preparer handles it; Slashbooks cannot prepare it (IRS Publication 538).
 2. Accrual books from the first day. The tax method is cash and the books have no accrual
    tracking start: the cash figures are derived from accrual records. Tell the preparer.
 3. Cash method eligibility. `entity_type` is c_corp (or a partnership with a C corporation
    partner): eligibility for the cash method depends on the gross receipts test (Internal Revenue
-   Code section 448; IRS Publication 538). The preparer checks. Do not compute receipts.
-4. Tax year. `fiscal_year_start` is not 01-01 and the entity is a sole proprietor, a
-   single-member LLC, a partnership or an S corporation: the tax year may differ from the fiscal
-   year (IRS Publication 538).
+   Code section 448; IRS Publication 538). A tax shelter cannot use that test. The preparer
+   checks eligibility and tax-shelter status. Do not compute receipts.
+4. Tax year. Use the taxpayer's tax year, not the book fiscal year. `fiscal_year_start` is not
+   01-01 and the entity is a sole proprietor, a single-member LLC, a partnership or an S
+   corporation: the tax year may differ from the fiscal year (IRS Publication 538). The
+   federal tax year is not checked by Slashbooks. The preparer confirms it.
 5. Prepaid schedules. The engine uses only a `tax_treatment` that a person recorded. Without one,
    the tax figures keep the prepaid on the balance sheet as the books record it, and the flag
    `prepaid_tax_treatment_not_recorded` lists the schedule. For each listed schedule, read its
    `service_start`, `service_end`, payment date and documents, and apply the 12-month rule
    (Treas. Reg. 1.263(a)-4(f)):
-   - A cash-method taxpayer can deduct the payment when paid if the benefit lasts no longer than
+   - A cash-method taxpayer need not capitalize the payment if the benefit lasts no longer than
      the earlier of 12 months after the benefit begins, or the end of the tax year after the
-     tax year of the payment. Use the company `fiscal_year_start` as the tax year unless the
-     owner says otherwise (see item 4).
-   - The rule does not apply to a benefit of indefinite duration, a financial interest, prepaid
-     interest, or depreciable property. If a renewal is reasonably expected, count the renewal
-     period in the duration.
-   - The taxpayer can elect out of the rule on the return, for all similar items. Slashbooks does
-     not make the election. If the preparer elects out, the preparer uses the capitalized figures.
+     tax year of the payment. Use the taxpayer's tax year (see item 4).
+   - Passing the 12-month test only removes the capitalization requirement. It does not prove
+     that the item is deductible.
+   - The rule does not apply to a created financial interest (this includes insurance with
+     cash value), a self-created amortizable section 197 intangible, or a right of indefinite
+     duration.
+   - Count a renewal that is reasonably expected, on all the facts. An auto-renewal note means
+     "review the facts". It does not mean "capitalize".
+   - Prepaid interest follows section 461(g). Inventory and tangible assets follow their own
+     rules. A change to an established prepaid treatment may need IRS consent.
+   - The election out is made by capitalizing all similar items on the timely filed original
+     return. A schedule override in Slashbooks is not that election, and Slashbooks does not make
+     it. If the preparer elects out, the preparer uses the capitalized figures.
    Propose `expense_when_paid` when the rule applies and `capitalize` when it does not. Name the
    dates and the document, and say "for the preparer to confirm". Show the preview of
    `books accrual schedule tax-treatment`; a person applies it.
-6. Inventory. An inventory account has a balance: the small business rules for inventory apply
-   (Internal Revenue Code section 471(c)). The preparer checks.
-7. Fixed assets. For each row of the fixed-asset worksheet, compare the cost per invoice or item
-   with the current de minimis safe harbor threshold (Treas. Reg. 1.263(a)-1(f); see
-   docs/tax-handoff.md for the amount and verify it before use). The preparer decides.
+6. Inventory. An inventory account has a balance: an eligible small business may use the small
+   business rule (Internal Revenue Code section 471(c)). It does not give a blanket deduction
+   for inventory purchases. The preparer checks the inventory method.
+7. Fixed assets. The worksheet shows the purchase date. The placed-in-service date is not
+   recorded and can differ, so ask for it. Cost alone does not decide depreciation, section 179,
+   bonus or the de minimis safe harbor. The de minimis safe harbor needs written accounting
+   procedures, book expensing and an annual election on the return (Treas. Reg. 1.263(a)-1(f);
+   see docs/tax-handoff.md for the amounts, and verify them before use). Any size check is a
+   screening aid only. The preparer decides.
 8. Deposits. For each deposit marked "assumed advance payment", ask whether the company must give
-   the money back. A trust or escrow retainer is usually refundable. Propose a `deposit_kind`.
+   the money back, and ask for the agreement. A refundable deposit is not always excluded from
+   income, and an advance payment can stay income even with a contingent refund. Propose a
+   `deposit_kind` with the evidence. A trust, escrow, card or refundable deposit item needs the
+   preparer's decision. Do not decide it from an account name.
+9. Card charges. The cash view uses the charge date as the payment date, and the card payment is
+   a transfer. Expense recognition still follows the item: a card-funded asset or a capitalized
+   prepaid schedule keeps its treatment. The preparer decides whether the charge is deductible and
+   whether card use is financing.
 
 ## Shared procedures
 

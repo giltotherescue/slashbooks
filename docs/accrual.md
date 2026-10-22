@@ -329,7 +329,7 @@ no figures.
   mentions it. To have the cash view exclude such an accrual, record it as an estimate
   journal (with `reversal_date` or `estimate_basis`) or as an accrual item.
 - The balance sheet and the accrual sheets of the accountant workbook stay on the accrual basis.
-  The tax outputs follow the recorded books unless the tax method view is on; see
+  The tax outputs follow the recorded books unless a tax method is recorded; see
   [the tax handoff](tax-handoff.md) ("Tax method view").
 - Per-vendor and per-customer cash totals need linked bank movements. Use the general
   ledger for them.
@@ -436,8 +436,8 @@ books entity set-view PATH --view accrual --apply  # change it
 
 ### Tax method and prepaid tax treatment
 
-The tax outputs can follow the tax method instead of the default view. `books entity
-set-tax-method PATH --method cash|accrual --tax-view on [--apply]` records it. See
+The tax outputs follow the tax method, instead of the default view, once a person records it. `books entity
+set-tax-method PATH --method cash|accrual [--apply]` records it. See
 [the tax handoff](tax-handoff.md) ("Tax method view").
 
 A prepaid schedule can carry `tax_treatment`: `expense_when_paid` or `capitalize`. Give it
