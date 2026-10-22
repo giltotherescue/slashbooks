@@ -344,6 +344,62 @@ class ImportedOpeningAnchorTests(unittest.TestCase):
         self.assertNotIn(RETAINED_LABEL, tb_rows(tb))
         self.assertEqual(tb.totals["total_debits"], tb.totals["total_credits"])
 
+    def test_compare_period_accrual_trial_balance_adds_the_computed_row_to_retained_earnings(self):
+        import shutil
+        from bookkeeping.compare import _compare_tb
+        folder = Path(self.fixture.tmp.name).resolve() / "qb-2027"
+        folder.mkdir()
+        shutil.copy(self.fixture.exports / "accounts.csv", folder / "accounts.csv")
+        # QuickBooks style as of Jan 31, 2027: Retained Earnings holds the imported 9,000.00 plus 2026 net income
+        # 2,560.00; income and expense accounts show 2027 only.
+        (folder / "trial_balance.csv").write_text(
+            'Synthetic Services\nTrial Balance\n"As of January 31, 2027"\nAccount Name,Debit,Credit\n'
+            'Checking,9700,\nAccounts Receivable,600,\nPrepaid Insurance,500,\nEquipment,2400,\n'
+            'Accumulated Depreciation,,440\nAccounts Payable,,300\nDeferred Revenue,,500\nPayroll Payable,,300\n'
+            'Retained Earnings,,11560\nServices,,100\nTOTAL,13200,13200\nAccrual Basis\n')
+        matched: list = []
+        material, immaterial = _compare_tb(load_entity(self.root), folder, date(2027, 1, 31), Decimal("1.00"),
+                                           Decimal("0.01"), matched=matched, totals={})
+        self.assertEqual(material + immaterial, [])
+        rows = {row["name"]: row for row in matched}
+        self.assertEqual(Decimal(rows["Equity:Retained-Earnings"]["ours"]), Decimal("-11560.00"))
+        self.assertEqual(Decimal(rows["Equity:Retained-Earnings"]["reference"]), Decimal("-11560.00"))
+        self.assertNotIn(RETAINED_LABEL, rows)
+        self.assertEqual(Decimal(rows["Income:Services"]["ours"]), Decimal("-100.00"))
+
+
+class RecordedViewTests(unittest.TestCase):
+    """A cash-default company that keeps accrual records ("as recorded (cash view default)") closes earlier fiscal
+    years the same way. Fiscal year moved to 04-01, so January to March 2026 is an earlier fiscal year at April 30."""
+
+    def setUp(self):
+        from test_view_outputs import TrackedCompany
+        self.fixture = TrackedCompany("make")
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+        self.fixture.make("cash")
+        self.root = self.fixture.root
+        fiscal.apply(load_entity(self.root), "04-01")
+
+    def test_recorded_balances_split_at_the_fiscal_year_start(self):
+        earlier = statements.profit_and_loss(self.root, date(2026, 1, 1), date(2026, 3, 31)).totals["net_income"]
+        april = statements.profit_and_loss(self.root, date(2026, 4, 1), date(2026, 4, 30)).totals["net_income"]
+        self.assertEqual(earlier, Decimal("14543.94"))  # the cash golden company's January to March net income
+        self.assertEqual(april, Decimal("-400.00"))      # the unpaid April bill, as recorded
+        bs = statements.balance_sheet(self.root, date(2026, 4, 30))
+        tb = statements.trial_balance(self.root, date(2026, 4, 30))
+        for result in (bs, tb):
+            self.assertEqual((result.meta["basis"], result.meta["basis_label"]), ("cash", "as recorded (cash view default)"))
+            self.assertEqual(result.meta["fiscal_start"], "2026-04-01")
+        self.assertEqual(equity(bs)[RETAINED_LABEL], earlier)
+        self.assertEqual(equity(bs)[CURRENT_NET_INCOME_LABEL], april)
+        self.assertEqual(bs.meta["cumulative_net_income"], str(earlier + april))
+        self.assertEqual(bs.totals["total_assets"], bs.totals["total_liabilities_and_equity"])
+        self.assertEqual(tb_rows(tb)[RETAINED_LABEL], (Decimal("0.00"), earlier))
+        self.assertEqual(tb_rows(tb)["Expenses › Insurance"], (Decimal("400.00"), Decimal("0.00")))
+        self.assertEqual(tb.totals["total_debits"], tb.totals["total_credits"])
+        self.assertIn("Accounting basis: as recorded (cash view default)", bs.to_text())
+
 
 if __name__ == "__main__":
     unittest.main()
