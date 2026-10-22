@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 import sqlite3
 import stat
+import sys
 import tempfile
 import time
 
@@ -95,6 +96,7 @@ def _excluded(name):
 
 @contextmanager
 def _directory(path):
+    require(sys.platform != "win32", "unsupported_platform_use_wsl")
     raw = Path(path)
     require(".." not in raw.parts, "unsafe_entity_path")
     absolute = Path(os.path.abspath(raw))

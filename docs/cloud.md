@@ -27,6 +27,18 @@ two places, chosen during onboarding:
 Both use the same commands, skills and accounting rules. Local books can move to
 the cloud later; see [Move existing local books to a hosted company](hosted-migration.md).
 
+## Windows setup
+
+Run the agent and plugin inside WSL with Linux Python 3.11 or newer. Keep the
+company folder in the Linux home directory. Git Bash with native Windows Python
+is not supported: it cannot provide the locks and owner-only file permissions
+that protect sign-in credentials and books. The CLI returns `UNSUPPORTED_PLATFORM`
+before it asks you to approve browser access. See [supported runtimes](../README.md#supported-runtime).
+
+A temporary sign-in service error returns `AUTH_SERVICE_UNAVAILABLE`. Try again
+later. It does not mean access was declined. Unexpected error responses return
+`AUTH_RESPONSE_INVALID`; neither message includes the server response body.
+
 ## How the CLI selects local or cloud
 
 A company folder that contains `.slashbooks-remote.json` is linked to cloud

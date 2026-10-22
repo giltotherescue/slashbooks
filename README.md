@@ -32,6 +32,20 @@ the same books in a Slashbooks Cloud workspace; see
 
 **[Install for Claude Cowork, Claude Code, or Codex →](#install)**
 
+## Supported runtime
+
+The CLI needs Python 3.11 or newer on macOS or Linux. On Windows, run both
+the agent and Slashbooks inside WSL with Linux Python, with company folders
+in the Linux home directory. Native Windows Python is not supported yet;
+Git Bash does not supply the required file locks and permissions. Native
+Windows commands stop before browser sign-in or changes to books. `--help`
+remains available. This restriction also applies to migration and adoption.
+
+Do not copy credential files between Windows and WSL. Start a new sign-in
+inside the supported environment. Existing browser approvals are separate
+from a working local connection; do not revoke one unless you have confirmed
+that no working agent uses it.
+
 ## What You Can Do
 
 - Keep cash books (the default), or accrual books that separate income and expenses from their payments. A cash company can turn accrual on later from a date and keep its cash history.

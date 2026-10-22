@@ -346,8 +346,7 @@ class TestBooksWrapper(unittest.TestCase):
                     f"{wrapper} is not executable by owner",
                 )
                 content = wrapper.read_text()
-                self.assertIn("bookkeeping.cli", content)
-                self.assertIn("BOOKKEEPING_TEMPLATES_DIR", content)
+                self.assertIn('exec "$PLUGIN_ROOT/scripts/books" "$@"', content)
                 result = subprocess.run(
                     [str(wrapper), "--help"],
                     cwd=str(wrapper.parent.parent),

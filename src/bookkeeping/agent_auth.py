@@ -38,16 +38,23 @@ def _post(endpoint: str, suffix: str, body: dict, timeout: float = 30) -> dict:
             raise ValueError()
         return value
     except error.HTTPError as exc:
-        with exc:
-            raw = exc.read(MAX_BYTES + 1)
+        try:
+            with exc:
+                raw = exc.read(MAX_BYTES + 1)
+        except (OSError, TimeoutError, http.client.HTTPException):
+            raise hosted.HostedError("AUTH_CONNECTION_FAILED", "Sign-in error response could not be read. No bookkeeping was submitted. Try again later.") from None
         try:
             value = hosted._json_loads(raw.decode("utf-8")) if len(raw) <= MAX_BYTES else {}
             code = value.get("error") if isinstance(value, dict) else None
-        except (ValueError, UnicodeError):
+        except (ValueError, UnicodeError, RecursionError):
             code = None
         # Never forward server error bodies, which can contain secrets.
         allowed = {"authorization_pending", "slow_down", "expired_token", "access_denied", "invalid_grant", "invalid_client", "invalid_scope"}
-        return {"error": code if code in allowed else "authorization_failed"}
+        if exc.code == 429 or 500 <= exc.code <= 599:
+            raise hosted.HostedError("AUTH_SERVICE_UNAVAILABLE", "Sign-in is temporarily unavailable. No bookkeeping was submitted. Try again later.") from None
+        if not isinstance(code, str) or code not in allowed:
+            raise hosted.HostedError("AUTH_RESPONSE_INVALID", "Sign-in returned an unexpected error. No bookkeeping was submitted. Try again later.") from None
+        return {"error": code}
     except (error.URLError, OSError, TimeoutError, http.client.HTTPException) as exc:
         raise hosted.HostedError("AUTH_CONNECTION_FAILED", "Agent sign-in could not be confirmed. Start sign-in again; no bookkeeping was submitted.") from exc
     except (ValueError, UnicodeError, RecursionError) as exc:
@@ -132,6 +139,9 @@ def credential_token(config: dict, timeout: float = 30) -> tuple[str, str]:
 def login(args) -> int:
     from . import remote
 
+    from .platform_support import require_supported_platform
+
+    require_supported_platform()
     endpoint = hosted._endpoint(args.endpoint, args.allow_localhost)
     # Without a company, the user chooses it in the browser. Without a folder,
     # the standard folder for the chosen company is used after approval.
