@@ -68,6 +68,8 @@ def _policy(policy, opens, book='USD', account_book=None):
         raise ValueError(f'Stripe policy requires explicit mode and {book} currency.')
     roles = {'clearing_account': 'Assets:Processors:', 'payout_transit_account': 'Assets:Transfers:',
              'fee_account': 'Expenses:', 'refund_account': 'Income:'}
+    if policy.get('reserve_account') is not None:
+        roles['reserve_account'] = 'Assets:Processors:'
     for field, prefix in roles.items():
         account = policy.get(field)
         if not isinstance(account, str) or account not in opens or not account.startswith(prefix):
@@ -75,7 +77,7 @@ def _policy(policy, opens, book='USD', account_book=None):
         if opens[account].currencies and (account_book or book) not in opens[account].currencies:
             raise ValueError(f'{field} must support {book}.')
     if len({policy[field] for field in roles}) != len(roles):
-        raise ValueError('Stripe clearing, transit, fees and refunds require distinct accounts.')
+        raise ValueError('Stripe account roles require distinct accounts.')
     if policy['clearing_account'].startswith('Assets:Bank:') or policy['payout_transit_account'].startswith('Assets:Bank:'):
         raise ValueError('Processor and payout transit accounts cannot be bank cash accounts.')
     rules = policy.get('revenue_rules')
@@ -244,9 +246,13 @@ def stripe_preview(evidence):
             row['gross_sales'] += amount
         elif kind in {'refund', 'payment_refund'} and amount < 0:
             row['refunds'] -= amount
-        elif kind == 'stripe_fee' and amount < 0 and fee == 0:
+        elif kind in {'stripe_fee', 'stripe_fx_fee'} and net != 0:
             row['fees'] -= amount
-        elif kind == 'payout' and amount < 0 and fee == 0:
+        elif (kind == 'reserve_transaction' and amount != 0 and fee == 0
+              or kind == 'payout_minimum_balance_hold' and amount < 0 and fee == 0
+              or kind == 'payout_minimum_balance_release' and amount > 0 and fee == 0):
+            pass  # Asset movements do not change sales, refunds, fees or payouts.
+        elif kind == 'payout' and amount < 0 and fee >= 0:
             row['payouts'] -= amount
         else:
             unsupported.append(dict(balance_transaction_id=bt['id'], type=kind, currency=currency))
@@ -332,6 +338,7 @@ def stripe_prepare(entity, *, opening_date):
         raise ValueError('Stripe opening_date must use YYYY-MM-DD.')
     accounts = dict(clearing_account='Assets:Processors:Stripe',
                     payout_transit_account='Assets:Transfers:Stripe-Payouts',
+                    reserve_account='Assets:Processors:Stripe-Reserved',
                     fee_account='Expenses:Payment-Processing:Stripe', refund_account='Income:Refunds:Stripe')
     store = LedgerStore(default_store_path(entity.path))
     opened = {item.account: item for item in store.load_opens()}
@@ -360,6 +367,8 @@ def stripe_configure(entity, policy):
     _policy(policy, opens, entity.currency)
     mappings = flat_bank_account_mappings(entity.entity_config)
     targets = {policy['clearing_account'], policy['payout_transit_account']}
+    if policy.get('reserve_account'):
+        targets.add(policy['reserve_account'])
     if any(key != policy['stripe_account_id'] and value in targets for key, value in mappings.items()):
         raise ValueError('Stripe processor/transit account is already mapped to another source account.')
     result = map_bank_account(entity.path, policy['stripe_account_id'], policy['clearing_account'])
@@ -626,14 +635,25 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                 if bt['fee']:
                     postings.append((policy['fee_account'], bt['fee']))
                 authority = ['refund-account-policy']
-            elif kind == 'stripe_fee' and bt['amount'] < 0 and bt['fee'] == 0:
-                postings.append((policy['fee_account'], -bt['amount'])); authority = ['fee-account-policy']
-            elif kind == 'payout' and bt['amount'] < 0 and bt['fee'] == 0:
+            elif kind in {'stripe_fee', 'stripe_fx_fee'} and bt['net'] != 0:
+                postings.append((policy['fee_account'], -bt['net'])); authority = ['fee-account-policy']
+            elif kind in {'payout_minimum_balance_hold', 'payout_minimum_balance_release', 'reserve_transaction'} and bt['fee'] == 0 and bt['amount'] != 0:
+                if not policy.get('reserve_account'):
+                    raise ValueError('missing_reserve_account')
+                if ((kind == 'payout_minimum_balance_hold' and bt['amount'] > 0)
+                        or (kind == 'payout_minimum_balance_release' and bt['amount'] < 0)):
+                    raise ValueError('invalid_reserve_direction')
+                postings.append((policy['reserve_account'], -bt['amount']))
+                authority = ['reserve-account-policy']
+            elif kind == 'payout' and bt['amount'] < 0 and bt['fee'] >= 0:
                 payout = source or payouts.get(source_id)
                 if (not payout or _object_id(payout.get('balance_transaction')) != bt['id'] or payout.get('amount') != -bt['amount']
                         or payout.get('currency') != cur or payout.get('status') not in {'paid', 'in_transit', 'pending'}):
                     raise ValueError('missing_or_failed_payout')
-                postings.append((policy['payout_transit_account'], -bt['amount'])); authority = ['payout-transit-policy']
+                postings.append((policy['payout_transit_account'], -bt['amount']))
+                if bt['fee']:
+                    postings.append((policy['fee_account'], bt['fee']))
+                authority = ['payout-transit-policy']
             else:
                 raise ValueError('unsupported_balance_type')
             if sum(amount for _, amount in postings) != 0:
@@ -668,7 +688,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         try:
             if not policy['enabled']:
                 raise ValueError('policy_disabled')
-            action = _bank_action(by_payout[payout], payout, bt['net'], pending, posted, owned, opens, entity, cutoff,
+            action = _bank_action(by_payout[payout], payout, bt['amount'], pending, posted, owned, opens, entity, cutoff,
                                   policy['payout_transit_account'], saved, entries, reversed_ids)
             if action:
                 result['actions'].append(action)

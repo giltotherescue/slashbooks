@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record Stripe fee credits and payout fees without inflating bank deposits. Add an optional reserved-balance account for minimum payout holds, releases and Connect reserve movements.
+
 ## 0.8.0 — 2026-10-22
 
 - Native Windows support for Cloud sign-in, credential refresh, private command receipts and report downloads. Credentials use a protected Windows access list for the current user. Native file locks replace Unix-only calls; unsupported private storage is detected before browser approval. Windows does not require WSL or administrator access.
