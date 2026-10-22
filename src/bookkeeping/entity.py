@@ -891,12 +891,23 @@ def onboarding_completed(config: dict[str, Any]) -> dict[str, str] | None:
     return {"on": day.isoformat(), "via": value["via"]}
 
 
+def _latest_today() -> date:
+    """The latest date that counts as today: the later of the machine date and the UTC date.
+
+    The engine keeps no company time zone. The default ``--on`` is the machine date, and a
+    machine east of UTC can be one day ahead of UTC, so the limit accepts the later of the two.
+    """
+    return max(date.today(), datetime.now(timezone.utc).date())
+
+
 @_locked_entity_operation
 def record_onboarding_complete(entity_path: Path, via: str, on: str = "") -> dict[str, Any]:
-    """Record that onboarding of the company is complete. The first record is kept.
+    """Record that onboarding of the company is complete. A valid first record is kept.
 
     A second call changes nothing and returns the record that is already there, so a
-    workflow can call it again safely. It changes no ledger data.
+    workflow can call it again safely. It changes only entity.json, never ledger data.
+    ``on`` defaults to the machine date (``date.today()``); the engine keeps no company time
+    zone. A date after today (the later of the machine date and the UTC date) is refused.
     """
     if via not in ONBOARDING_VIAS:
         raise ValueError(f"Onboarding completion --via must be one of: {', '.join(ONBOARDING_VIAS)}.")
@@ -904,6 +915,8 @@ def record_onboarding_complete(entity_path: Path, via: str, on: str = "") -> dic
         day = date.fromisoformat(on) if on else date.today()
     except ValueError as exc:
         raise ValueError("Onboarding completion --on must use YYYY-MM-DD format.") from exc
+    if day > _latest_today():
+        raise ValueError("Onboarding completion --on cannot be after today.")
     entity = load_entity(entity_path)
     existing = onboarding_completed(entity.entity_config)
     if existing is not None:
@@ -1275,7 +1288,8 @@ def add_parser(subparsers: Any) -> None:
     onboarding_parser.add_argument("--via", required=True, choices=ONBOARDING_VIAS,
                                    help="How the business was set up: agent (an AI agent's onboarding workflow), "
                                         "meeting (a hosted setup meeting) or staff (a person marked it done)")
-    onboarding_parser.add_argument("--on", default="", help="Completion date in YYYY-MM-DD format; defaults to today")
+    onboarding_parser.add_argument("--on", default="",
+                                   help="Completion date in YYYY-MM-DD format; defaults to the machine date. A date after today is refused")
 
     related_parser = entity_sub.add_parser(
         "related-entity",

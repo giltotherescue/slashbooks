@@ -34,6 +34,22 @@ infer-currency` only reads files, so an agent can run it. Closing and reopening 
 period also need a person. See [the tax handoff](tax-handoff.md) for the tax
 settings and [accrual books](accrual.md) for accrual tracking and the default view.
 
+## Record that onboarding is complete
+
+`books entity onboarding-complete PATH --via agent|meeting|staff [--on YYYY-MM-DD]`
+records that the company finished onboarding. It writes `onboarding_completed`
+(`on`, `via`) to `entity.json` only. It changes no ledger data, no other setting
+and no queue item. A valid first record is kept: a second run prints
+`already_complete` and writes nothing. `--on` defaults to the machine date
+(`date.today()`), because the engine keeps no company time zone. A date after
+today (the later of the machine date and the UTC date) is refused.
+
+With local books, the books-onboard skill runs it with `--via agent` when
+onboarding is done. A host can limit who records it. Inside Slashbooks Cloud,
+only the setup meeting, staff and a person's own connected agent can record
+completion. Slashbooks' own hosted automation cannot, so a hosted run cannot
+mark its own company as set up. Outside Cloud, `--via agent` works as written.
+
 ## Who made a suggestion
 
 `books queue propose`, `propose-group`, `propose-split`, `propose-transfer`,

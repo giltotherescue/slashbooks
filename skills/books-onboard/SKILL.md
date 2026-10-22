@@ -645,13 +645,15 @@ this internal command yourself:
 scripts/books entity onboarding-complete <path> --via agent
 ```
 
-It writes `onboarding_completed` (date and `via`) to `entity.json` and changes
-no ledger data. The first record is kept, so a second run reports
+It writes `onboarding_completed` (date and `via`) to `entity.json` only and
+changes no ledger data. A valid first record is kept, so a second run reports
 `already_complete` and is safe. Do not run it for demo books, in prepare mode,
 or while setup questions are still open. For cloud books, Slashbooks Cloud reads
 this record: until a company has it (or completed the setup meeting, or published
 a month), its To do and Reports stay locked and the hosted automation asks no
-business questions. Do not mark completion to get past that lock.
+business questions. Inside Cloud, only the setup meeting, staff and a person's
+own connected agent can record it; Slashbooks' own hosted automation cannot. Do
+not mark completion to get past that lock.
 
 Summarize what was set up: company folder, business type, account-catalog
 sections, sources declared, opening balance status. Tell the owner their next

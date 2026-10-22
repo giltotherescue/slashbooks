@@ -1192,6 +1192,23 @@ class TestOnboardingComplete(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertFalse((Path(tmp) / "missing").exists())
 
+    def test_refuses_a_date_after_today(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "company"
+            init_entity(root)
+            before = (root / "entity.json").read_bytes()
+            latest = max(date.today(), datetime.now(timezone.utc).date())
+            code, result = self._run("onboarding-complete", str(root), "--via", "agent", "--on", (latest + timedelta(days=1)).isoformat())
+            self.assertEqual(code, 1)
+            self.assertEqual(result["status"], "blocked")
+            self.assertIn("after today", result["errors"][0]["message"])
+            self.assertEqual((root / "entity.json").read_bytes(), before)
+            # Today itself is accepted.
+            code, result = self._run("onboarding-complete", str(root), "--via", "agent", "--on", latest.isoformat())
+            self.assertEqual(code, 0)
+            self.assertEqual(result["onboarding_completed"]["on"], latest.isoformat())
+
     def test_a_malformed_marker_counts_as_not_complete(self) -> None:
         from bookkeeping.entity import onboarding_completed
         for value in (None, "yes", {"on": "2026-10-20"}, {"on": "2026-13-01", "via": "agent"}, {"on": "2026-10-20", "via": "robot"}):
