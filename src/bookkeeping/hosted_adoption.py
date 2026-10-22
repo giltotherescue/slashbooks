@@ -11,6 +11,7 @@ import hashlib
 import http.client
 import json
 import os
+from . import pinned_files, file_safety
 from pathlib import Path
 import re
 import stat
@@ -43,19 +44,18 @@ def _sha(data: bytes) -> str:
 
 def _read_bytes(path: Path, maximum: int, *, private: bool = False) -> bytes:
     with capture._directory(path.parent) as (directory, _):
-        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
-        with os.fdopen(os.open(path.name, flags, dir_fd=directory), "rb") as stream:
+        with os.fdopen(pinned_files.open_child(directory, path.name), "rb") as stream:
             info = os.fstat(stream.fileno())
             _require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1,
                      "INVALID_FILE", "A regular snapshot or receipt file with one hard link is required.")
             if private:
-                _require(not info.st_mode & 0o077 and info.st_uid == os.getuid(),
-                         "INSECURE_FILE", "Adoption receipts and snapshots must be owner-only; use chmod 600.")
+                _require(file_safety.is_private(stream.fileno()),
+                         "INSECURE_FILE", "Adoption receipts and snapshots must be accessible only to the current user.")
             _require(info.st_size <= maximum, "ADOPTION_LIMIT", "Adoption file exceeds its size limit.")
             raw = stream.read(maximum + 1)
             signature = capture._signature(info)
             _require(len(raw) == info.st_size and signature == capture._signature(os.fstat(stream.fileno()))
-                     and signature == capture._signature(os.stat(path.name, dir_fd=directory, follow_symlinks=False)),
+                     and signature == capture._signature(pinned_files.stat_child(directory, path.name)),
                      "INPUT_CHANGED", "Adoption input changed while being captured. Nothing new was submitted.")
     return raw
 

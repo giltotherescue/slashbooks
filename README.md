@@ -32,6 +32,19 @@ the same books in a Slashbooks Cloud workspace; see
 
 **[Install for Claude Cowork, Claude Code, or Codex →](#install)**
 
+## Supported runtime
+
+The CLI needs Python 3.11 or newer on Windows, macOS, or Linux. Windows uses
+native file permissions and locks; WSL and administrator access are not required.
+Install Python, restart the agent, and use the plugin normally. The agent uses
+`scripts/books.cmd` from PowerShell or Command Prompt, or `scripts/books` from
+Git Bash. Both launchers find an installed Python interpreter.
+
+Keep credentials and company folders on a local drive that supports Windows
+access-control lists, such as NTFS. Slashbooks checks private storage before
+browser sign-in. It refuses files with permissions that allow other users,
+and refuses junctions and symbolic links in protected transfer/migration paths.
+
 ## What You Can Do
 
 - Keep cash books (the default), or accrual books that separate income and expenses from their payments. A cash company can turn accrual on later from a date and keep its cash history.

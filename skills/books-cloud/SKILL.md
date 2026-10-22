@@ -29,6 +29,22 @@ existing workflow, or plain-English next steps after setup.
 
 ## Connect the selected company
 
+### Check the runtime first
+
+Windows, macOS and Linux use Python 3.11 or newer. On Windows in PowerShell or
+Command Prompt, invoke the bundled `scripts/books.cmd` wrapper. In Git Bash,
+use `scripts/books`. Do not ask the person to install WSL or run as administrator.
+The launcher finds Python; after installing Python, restart the agent if needed.
+
+`PRIVATE_STORAGE_UNAVAILABLE` means Windows could not create and verify private
+credential storage before sign-in. Help the person check user-profile access
+and use a local NTFS drive. Never weaken permissions or copy credentials to a
+shared directory to bypass the check. A normal setup needs only browser approval.
+
+A sign-in `AUTH_SERVICE_UNAVAILABLE` means a temporary service failure, not
+rejected access. Report it without claiming that the user declined or revoked
+access. Never repeat the approval loop automatically.
+
 ### Make setup effortless
 
 For owners and accountants, explain only what they need to do next. Do not

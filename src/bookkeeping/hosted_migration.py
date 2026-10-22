@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, ExitStack
 from datetime import datetime
 import hashlib
 import json
@@ -12,6 +12,7 @@ import re
 import sqlite3
 import stat
 import tempfile
+from . import pinned_files
 import time
 
 from .ledger.projections import render_store_ledger
@@ -95,34 +96,22 @@ def _excluded(name):
 
 @contextmanager
 def _directory(path):
-    raw = Path(path)
-    require(".." not in raw.parts, "unsafe_entity_path")
-    absolute = Path(os.path.abspath(raw))
-    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        for component in absolute.parts[1:]:
-            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-            os.close(fd)
-            fd = child
-        yield fd, absolute
-    finally:
-        os.close(fd)
+    require(".." not in Path(path).parts, "unsafe_entity_path")
+    with pinned_files.directory(path) as result:
+        yield result
 
 
 def _inventory(fd, prefix="", found=None):
     found = {} if found is None else found
-    for name in sorted(os.listdir(fd)):
+    for name in sorted(pinned_files.names(fd)):
         require(len(found) < MAX_ITEMS, "inventory_limit")
         path = prefix + name
-        info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        info = pinned_files.stat_child(fd, name)
         found[path] = _signature(info)
         if stat.S_ISDIR(info.st_mode) and not _excluded(path):
-            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-            try:
-                require(_signature(os.fstat(child)) == found[path], "source_changed")
+            with pinned_files.child(fd, name) as child:
+                require(_signature(pinned_files.info(child)) == found[path], "source_changed")
                 _inventory(child, path + "/", found)
-            finally:
-                os.close(child)
     return found
 
 
@@ -134,14 +123,12 @@ def _book_inventory(inventory):
 
 def _read(fd, name, expected):
     """Resolve each component relative to pinned directories, never through links."""
-    parent = os.dup(fd)
-    try:
+    with ExitStack() as stack:
+        parent = fd
         parts = name.split("/")
         for part in parts[:-1]:
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-            os.close(parent)
-            parent = child
-        file_fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            parent = stack.enter_context(pinned_files.child(parent, part))
+        file_fd = pinned_files.open_child(parent, parts[-1])
         with os.fdopen(file_fd, "rb") as handle:
             info = os.fstat(handle.fileno())
             require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "unsafe_file")
@@ -150,8 +137,6 @@ def _read(fd, name, expected):
             data = handle.read(MAX_FILE + 1)
             require(len(data) == info.st_size and _signature(os.fstat(handle.fileno())) == expected, "source_changed")
             return data
-    finally:
-        os.close(parent)
 
 
 def _json(data):
@@ -604,7 +589,7 @@ def _capture(entity_dir, *, for_export=False):
             require(_book_inventory(before) == _book_inventory(_inventory(fd)), "source_changed")
             # Detect replacement of the selected directory as well as its contents.
             with _directory(entity_dir) as (current, _):
-                require(_signature(os.fstat(current)) == _signature(os.fstat(fd)), "source_changed")
+                require(_signature(pinned_files.info(current)) == _signature(pinned_files.info(fd)), "source_changed")
             report["checks"]["source_stable"] = True
     except Rejected as exc:
         blockers.add(str(exc))

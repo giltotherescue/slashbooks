@@ -27,6 +27,26 @@ two places, chosen during onboarding:
 Both use the same commands, skills and accounting rules. Local books can move to
 the cloud later; see [Move existing local books to a hosted company](hosted-migration.md).
 
+## Windows setup
+
+Use the plugin with Python 3.11 or newer installed on Windows. No WSL, extra
+Python package, or administrator session is required. The agent uses the `.cmd`
+launcher in PowerShell or Command Prompt, and the shell launcher in Git Bash.
+Browser approval saves a private credential and the company connection locally,
+just as it does on macOS and Linux.
+
+Windows credentials use a protected access-control list granting only the
+signed-in Windows user access. File locks serialize credential renewal and
+company changes. Private storage is checked before starting browser sign-in;
+`PRIVATE_STORAGE_UNAVAILABLE` means the user profile needs a writable local
+folder with Windows permissions, such as an NTFS drive. Do not bypass the check
+or copy credentials into a shared folder. Existing insecure files are refused,
+not silently changed.
+
+A temporary sign-in service error returns `AUTH_SERVICE_UNAVAILABLE`. Try again
+later. It does not mean access was declined. Unexpected error responses return
+`AUTH_RESPONSE_INVALID`; neither message includes the server response body.
+
 ## How the CLI selects local or cloud
 
 A company folder that contains `.slashbooks-remote.json` is linked to cloud

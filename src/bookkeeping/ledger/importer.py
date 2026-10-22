@@ -139,18 +139,18 @@ def _entity_write_lock(entity_path: Path):
     lock_path = resolved / _LOCK_FILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a", encoding="utf-8") as fh:
-        import fcntl
+        from ..file_safety import locked
 
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-        token = _held_entity_locks.set((*held, resolved))
-        try:
-            # Each write path starts by finishing an entity.json that a stop left behind the ledger currency.
-            from ..currency import repair_on_disk
-            repair_on_disk(resolved)
-            yield
-        finally:
-            _held_entity_locks.reset(token)
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        with locked(fh.fileno()):
+            token = _held_entity_locks.set((*held, resolved))
+            try:
+                # Each write path starts by finishing an entity.json that a stop left behind the ledger currency.
+                from ..currency import repair_on_disk
+                repair_on_disk(resolved)
+                yield
+            finally:
+                _held_entity_locks.reset(token)
+
 
 
 @contextmanager
@@ -165,7 +165,7 @@ def _entity_read_lock(entity_path: Path):
     if resolved in _held_entity_locks.get() or resolved in _held_shared_locks.get():
         yield
         return
-    import fcntl
+    from ..file_safety import locked
 
     lock_path = resolved / _LOCK_FILE
     handle = None
@@ -179,14 +179,12 @@ def _entity_read_lock(entity_path: Path):
     if handle is None:
         yield
         return
-    with handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+    with handle, locked(handle.fileno(), shared=True):
         token = _held_shared_locks.set((*_held_shared_locks.get(), resolved))
         try:
             yield
         finally:
             _held_shared_locks.reset(token)
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _now_iso() -> str:
