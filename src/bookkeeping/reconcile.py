@@ -299,6 +299,9 @@ def _reconcile_unlocked(
     source_evidence_hashes: dict[str, str] | None = None,
 ) -> ReconcileResult:
     """Compute and persist a reconciliation while holding the entity lock."""
+    from .statement_selection import replaced_evidence
+    if replaced_evidence(entity_path).intersection((source_evidence_hashes or {}).values()):
+        raise ValueError("This statement was replaced. Reconcile with the current statement.")
 
     conn = open_cache(entity_path)
     try:

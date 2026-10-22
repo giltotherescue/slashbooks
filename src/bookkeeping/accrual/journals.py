@@ -172,7 +172,7 @@ def _check_dates(entity: Entity, store: LedgerStore, dates: Sequence[str], kind:
         if kind != "period_reopen" and (raw[:7] in closed or locks.get(raw[:7]) in {"closed", "locked"} or (through and raw <= through)):
             raise JournalError("closed_period", f"The period containing {raw} is closed.",
                                "Use existing reopen authority or choose an allowed correction date.")
-        if cutover and raw < cutover and kind not in {"migration", "opening"}:
+        if cutover and raw < cutover and kind not in {"migration", "opening", "statement_selection"}:
             raise JournalError("outside_coverage", f"{raw} precedes the supported cutover {cutover}.")
 
 

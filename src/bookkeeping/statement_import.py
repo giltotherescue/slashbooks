@@ -798,7 +798,7 @@ def _unconfirmed_path(entity_path: Path, statement_id: str) -> Path:
     return Path(entity_path) / STATEMENTS_DIR / UNCONFIRMED_DIR / f"{statement_id}.json"
 
 
-def load_statement_records(entity_path: Path) -> list[JsonObject]:
+def load_statement_records(entity_path: Path, *, include_all: bool = False) -> list[JsonObject]:
     """Return the statement records this importer wrote (oldest first).
 
     Records with a confirmed period are coverage contract records in
@@ -811,8 +811,8 @@ def load_statement_records(entity_path: Path) -> list[JsonObject]:
     """
     from . import coverage
 
-    records = [doc for doc in coverage.load_statement_documents(entity_path)
-               if doc.get("writer") == WRITER]
+    records = [doc for doc in coverage.load_statement_documents(entity_path, include_replaced=True)
+               if include_all or doc.get("writer") == WRITER]
     directory = Path(entity_path) / STATEMENTS_DIR / UNCONFIRMED_DIR
     if directory.is_dir():
         for path in sorted(directory.glob("*.json")):
@@ -826,6 +826,10 @@ def load_statement_records(entity_path: Path) -> list[JsonObject]:
 
     records.extend(r for r in statement_extract.load_review_records(entity_path)
                    if r.get("status") == "needs_review")
+    from .statement_selection import load_selection
+    replaced = load_selection(entity_path)["replaced"]
+    for record in records:
+        record["replaced_by"] = replaced.get(record.get("statement_id"))
     records.sort(key=lambda r: (str(r.get("account")), str(r.get("period_start")), str(r.get("statement_id"))))
     return records
 
@@ -1295,8 +1299,15 @@ def add_parser(subparsers: Any) -> None:
     from . import statement_extract
     statement_extract.add_parsers(sub)
 
+    choose = sub.add_parser("select", help="Use a saved statement instead of others for the same account and period")
+    choose.add_argument("--entity", type=Path, required=True)
+    choose.add_argument("--statement-id", required=True)
+    choose.add_argument("--expected-revision", required=True)
+    choose.add_argument("--expected", action="append", required=True, help="Each saved statement reviewed for this period")
+
     list_p = sub.add_parser("list", help="List recorded statements and their periods and balances")
     list_p.add_argument("--entity", type=Path, required=True)
+    list_p.add_argument("--all", action="store_true", dest="include_all", help="Include manually recorded statement metadata")
     list_p.add_argument("--account", default=None, help="Only this ledger account")
 
 
@@ -1325,12 +1336,19 @@ def run(args: argparse.Namespace) -> int:
         elif command in {"validate", "map-extracted", "import-extracted"}:
             from . import statement_extract
             result = statement_extract.run(args)
+        elif command == "select":
+            from .statement_selection import select_statement
+            try:
+                result = select_statement(args.entity, args.statement_id, expected=args.expected, expected_revision=args.expected_revision)
+            except ValueError as exc:
+                raise StatementImportError("statement_selection", str(exc)) from exc
         elif command == "list":
             load_entity(args.entity)
-            records = load_statement_records(args.entity)
+            records = load_statement_records(args.entity, include_all=args.include_all)
             if args.account:
                 records = [r for r in records if r.get("account") == args.account]
-            result = {"status": "ok", "statements": records}
+            from .statement_selection import selection_revision
+            result = {"status": "ok", "statements": records, "selection_revision": selection_revision(args.entity)}
         else:
             raise StatementImportError("unknown_command", f"Unknown statement command: {command}")
     except StatementImportError as exc:
