@@ -90,3 +90,11 @@ class StatementSelectionTests(unittest.TestCase):
         reconcile(self.company, CHECKING, Decimal('95'), date(2026,9,30), source_evidence_hashes={'correct': 'b'*64})
         codes = {f['code'] for f in check_coverage(self.company, date(2026,9,1), date(2026,9,30))['findings']}
         self.assertNotIn('statement_reconciliation_outdated', codes)
+
+    def test_history_list_includes_manual_records_when_requested(self):
+        from bookkeeping.statement_import import load_statement_records
+        self.assertEqual([], load_statement_records(self.company))
+        self.choose()
+        rows = load_statement_records(self.company, include_all=True)
+        self.assertEqual({'correct', 'old'}, {r['statement_id'] for r in rows})
+        self.assertEqual('correct', next(r for r in rows if r['statement_id'] == 'old')['replaced_by'])

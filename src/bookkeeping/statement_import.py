@@ -798,7 +798,7 @@ def _unconfirmed_path(entity_path: Path, statement_id: str) -> Path:
     return Path(entity_path) / STATEMENTS_DIR / UNCONFIRMED_DIR / f"{statement_id}.json"
 
 
-def load_statement_records(entity_path: Path) -> list[JsonObject]:
+def load_statement_records(entity_path: Path, *, include_all: bool = False) -> list[JsonObject]:
     """Return the statement records this importer wrote (oldest first).
 
     Records with a confirmed period are coverage contract records in
@@ -812,7 +812,7 @@ def load_statement_records(entity_path: Path) -> list[JsonObject]:
     from . import coverage
 
     records = [doc for doc in coverage.load_statement_documents(entity_path, include_replaced=True)
-               if doc.get("writer") == WRITER]
+               if include_all or doc.get("writer") == WRITER]
     directory = Path(entity_path) / STATEMENTS_DIR / UNCONFIRMED_DIR
     if directory.is_dir():
         for path in sorted(directory.glob("*.json")):
@@ -1307,6 +1307,7 @@ def add_parser(subparsers: Any) -> None:
 
     list_p = sub.add_parser("list", help="List recorded statements and their periods and balances")
     list_p.add_argument("--entity", type=Path, required=True)
+    list_p.add_argument("--all", action="store_true", dest="include_all", help="Include manually recorded statement metadata")
     list_p.add_argument("--account", default=None, help="Only this ledger account")
 
 
@@ -1343,7 +1344,7 @@ def run(args: argparse.Namespace) -> int:
                 raise StatementImportError("statement_selection", str(exc)) from exc
         elif command == "list":
             load_entity(args.entity)
-            records = load_statement_records(args.entity)
+            records = load_statement_records(args.entity, include_all=args.include_all)
             if args.account:
                 records = [r for r in records if r.get("account") == args.account]
             from .statement_selection import selection_revision
