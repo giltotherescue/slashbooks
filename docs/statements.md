@@ -189,3 +189,24 @@ that the engine cannot place go to "Needs classification". These are approximate
 - Retained earnings and prior-period equity moves go to "Needs classification".
 - A gain or loss on the sale of a fixed asset is not split from the sale proceeds.
 - A period that starts inside an imported fiscal summary is refused with the first available date (the cutover). The P&L accepts such a period; a cash flow statement cannot, because the opening balances are its starting point. In `--compare`, a prior period like that is reported as having no data.
+
+
+## Correct a statement for the same account and period
+
+Use `books statement list --entity PATH` to compare saved statements. It includes
+`replaced_by` and a `selection_revision`. Choose the correct imported statement:
+
+```sh
+books statement select --entity PATH --statement-id CORRECT_ID \
+  --expected OLD_ID --expected CORRECT_ID --expected-revision REVISION
+```
+
+Pass every saved statement ID for that account and exact period from the review.
+The command refuses stale reviews and closed periods. It atomically saves the
+choice and its history without changing original files, transaction intake or
+ledger entries. Retrying the same choice is safe. Selecting an earlier statement
+again reverses the choice. A later upload remains active until separately reviewed.
+
+Import new corrected files through the usual duplicate check first. Selection
+never repairs incorrect recorded transactions; correct those separately. A
+reconciliation using a replaced document must be run again with the current one.
