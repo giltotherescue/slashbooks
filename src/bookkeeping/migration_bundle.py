@@ -263,8 +263,11 @@ def _anchors(files, inventory=None):
                 if date.fromisoformat(start) < tracked:
                     first, last = tracked, max(last, tracked)
                     start, end = first.isoformat(), last.isoformat()
-            reports = [statements._compute_pnl(sql, first, last), statements._compute_balance_sheet(sql, last),
-                       statements._compute_trial_balance(sql, last), statements._compute_general_ledger(sql, first, last)]
+            # The fingerprints keep the statement layout from before earlier fiscal years were closed into retained
+            # earnings in every view (close_all_views=False). The amounts behind them are the same, and a bundle made by
+            # an earlier version still validates.
+            reports = [statements._compute_pnl(sql, first, last), statements._compute_balance_sheet(sql, last, close_all_views=False),
+                       statements._compute_trial_balance(sql, last, close_all_views=False), statements._compute_general_ledger(sql, first, last)]
             fingerprints = {item.kind: _sha(_json_bytes(capture._json(item.to_json()))) for item in reports}
             ledger = {"schema_version": version, "content_sha256": store.content_digest(sql), "tables": tables}
     _references(files, references, inventory)

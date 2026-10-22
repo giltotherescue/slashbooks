@@ -22,7 +22,7 @@ Each line has:
 
 | Field | Meaning |
 | --- | --- |
-| `type` | `section` (header, no amount), `account`, `computed` (a line the engine derives, such as current-period net income), `subtotal` (a section total or Gross Profit) or `total` (a statement total) |
+| `type` | `section` (header, no amount), `account`, `computed` (a line the engine derives: current fiscal year net income or retained earnings), `subtotal` (a section total or Gross Profit) or `total` (a statement total) |
 | `key` | A stable machine name: the ledger account for an `account` line, otherwise a name such as `total_revenue`, `gross_profit`, `net_income`, `total_assets`, `total_liabilities`, `total_equity`, `total_liabilities_and_equity` |
 | `label`, `indent` | Display text and nesting level |
 | `amount` | Decimal string with two places. Not on `section` lines |
@@ -41,6 +41,27 @@ Each line has:
   does not include cost of sales. The older `sections` field keeps every expense in one total.
 - The balance sheet structure adds `balanced` and `difference` (assets minus liabilities and equity).
 - With `--format text`, `--structure` changes nothing.
+
+## Retained earnings and net income
+
+The books have no closing entries. The balance sheet and the trial balance close earlier fiscal years when the report
+is made, in every view (cash, recorded and accrual), as QuickBooks and Xero do:
+
+- **Balance sheet.** Equity shows the equity accounts, then "Retained earnings from prior fiscal activity" (income less
+  expenses of all earlier fiscal years; only when it is not zero), then "Net Income (current period)" (income less
+  expenses from the first day of the current fiscal year to the as-of date). In `--structure` their keys are
+  `retained_earnings_prior` and `net_income_current_period`. Owner contributions, draws, distributions and opening
+  balances stay account lines. Total equity is the same as one line for all earnings.
+- **Trial balance.** Income and expense accounts show the current fiscal year only. Earlier years are one computed row,
+  "Retained earnings from prior fiscal activity", with `key: "retained_earnings_prior"` and `computed: true` in
+  `meta.raw_rows`. Total debits still equal total credits.
+- **Fiscal year.** The year follows `fiscal_year_start` (`books entity set-fiscal-year`, default January 1). A company
+  opened from an imported summary (`books accrual migration`) keeps the fiscal start of that summary. A change to the
+  fiscal year changes only the split in later reports, never an entry or a total.
+- **Metadata.** When a balance sheet shows the retained line, `meta` has `fiscal_start`, `cumulative_net_income`
+  (all earnings to the as-of date) and `current_fiscal_net_income`. The accrual view always has them. A trial balance
+  with the computed row has `meta.fiscal_start`. A company with one fiscal year of activity gets the same output as before.
+- **Profit and loss.** It was always the period that you ask for, so it does not change.
 
 ## Statement of cash flows
 
