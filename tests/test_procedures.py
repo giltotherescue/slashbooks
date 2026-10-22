@@ -64,6 +64,15 @@ class ProcedureSourceTests(unittest.TestCase):
         listing = json.loads(_cli("procedures", "list").stdout)
         self.assertEqual(listing["bundle_sha256"], every["bundle_sha256"])
 
+    def test_question_body_example_preserves_literal_dollars_through_the_shell(self):
+        rules = procedures.get_procedure("question-rules")["rules"]
+        examples = [re.search(r"--body ('[^']*')", rule) for rule in rules]
+        example = next(match.group(1) for match in examples if match)
+        result = subprocess.run(["/bin/sh", "-c", "printf '%s' " + example],
+                                capture_output=True, text=True, check=True)
+        self.assertEqual(result.stdout, example[1:-1])
+        self.assertIn("$120.00", result.stdout)
+
     def test_unknown_procedure_fails(self):
         result = _cli("procedures", "show", "../etc/passwd")
         self.assertEqual(result.returncode, 1)

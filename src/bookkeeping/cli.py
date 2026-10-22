@@ -59,15 +59,27 @@ from bookkeeping import tieout as tieout_module
 from bookkeeping import taxmap as taxmap_module
 
 
+def _answer_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="books", add_help=False, allow_abbrev=False, usage=argparse.SUPPRESS,
+        description="Remote answer application: attach all four fields to the accounting write. "
+                    "Use these exact flag names; abbreviations and plural forms are not supported.",
+    )
+    parser.add_argument("--answer-question-id", help="Question whose replies authorize this write")
+    parser.add_argument("--answer-reply-id", action="append",
+                        help="Repeat for every reply ID in the complete reply set")
+    parser.add_argument("--answer-reply-watermark", type=int,
+                        help="Current positive reply watermark from the complete read")
+    parser.add_argument("--answer-source-id", action="append",
+                        help="Repeat for each source ID this write changes; at least one is required")
+    return parser
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path.cwd() / ".env")
     parser = build_parser()
     command_argv = list(sys.argv[1:] if argv is None else argv)
-    answer_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
-    answer_parser.add_argument("--answer-question-id")
-    answer_parser.add_argument("--answer-reply-id", action="append")
-    answer_parser.add_argument("--answer-reply-watermark", type=int)
-    answer_parser.add_argument("--answer-source-id", action="append")
+    answer_parser = _answer_parser()
     answer_args, command_argv = answer_parser.parse_known_args(command_argv)
     answer_fields = (
         answer_args.answer_question_id,
@@ -214,7 +226,9 @@ def load_dotenv(path: Path) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="books")
+    answer_help = _answer_parser().format_help()
+    parser = argparse.ArgumentParser(prog="books", epilog=answer_help,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     readiness_module.add_parser(subcommands)
@@ -337,7 +351,7 @@ def build_parser() -> argparse.ArgumentParser:
     cashflow_module.add_parser(subcommands)
     reconcile_module.add_parser(subcommands)
     compare_module.add_parser(subcommands)
-    queue_module.add_parser(subcommands)
+    queue_module.add_parser(subcommands, answer_help=answer_help)
     workbook_module.add_parser(subcommands)
     # Tax handoff commands.
     coverage_module.add_parser(subcommands)

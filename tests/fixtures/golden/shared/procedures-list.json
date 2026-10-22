@@ -1,5 +1,5 @@
 {
-  "bundle_sha256": "a8f762f1e9ae7779275b0791f9181f428b8678310840759503c8ca0d6b43cb30",
+  "bundle_sha256": "f0594552532cc30e234ead3a17491c5b0e72e8f21ce3fafa82fea8875fca71d8",
   "procedures": [
     {
       "name": "catch-up",
@@ -33,9 +33,9 @@
     },
     {
       "name": "grouped-replies",
-      "version": 1,
+      "version": 2,
       "title": "Grouped replies",
-      "sha256": "8e57bc419afa54c0b62de8e314645a0f8cbc342bcc3f623e0f42bc1f7ba93f6e"
+      "sha256": "468ffd00328e9cd43c616be2e68f776679037253604f4dcb48de0281bf2b6e23"
     },
     {
       "name": "hard-rules",
@@ -69,9 +69,9 @@
     },
     {
       "name": "question-rules",
-      "version": 2,
+      "version": 3,
       "title": "Asking and answering questions",
-      "sha256": "801f7b05983eabd9fe3b965428654a60509731ece25900ac5e6c5ff375a854ff"
+      "sha256": "4badbc2ab9aadfef82dcd4412ff398e2581c4561ad24640b65dc4f76497077f8"
     },
     {
       "name": "reconcile",

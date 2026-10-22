@@ -801,6 +801,33 @@ class RemoteTests(unittest.TestCase):
                 self.assertIn("ANSWER_APPLICATION", err)
         self.assertEqual(self.api.calls, [])
 
+    def test_answer_help_exposes_canonical_flags_without_expanding_transport_argv(self):
+        flags = ("--answer-question-id", "--answer-reply-id",
+                 "--answer-reply-watermark", "--answer-source-id")
+        for route in ([], ["queue", "confirm"]):
+            with self.subTest(route=route):
+                out = StringIO()
+                with redirect_stdout(out), self.assertRaises(SystemExit) as exit:
+                    cli.main([*route, "--help"])
+                self.assertEqual(exit.exception.code, 0)
+                for flag in flags:
+                    self.assertIn(flag, out.getvalue())
+                self.assertIn("Repeat for every reply ID", out.getvalue())
+                self.assertIn("Repeat for each source ID", out.getvalue())
+                self.assertIn("at least one is required", " ".join(out.getvalue().split()))
+        with self.assertRaises(ValueError):
+            parse_command(["queue", "confirm", "--entity", str(self.entity), "--item", "proposal-1",
+                           "--answer-question-id", "question-1"])
+        self.assertEqual(self.api.calls, [])
+
+    def test_answer_flag_abbreviations_and_plural_forms_are_rejected_before_network(self):
+        for flag in ("--answer-question", "--answer-reply", "--answer-watermark",
+                     "--answer-reply-ids", "--answer-source-ids"):
+            with self.subTest(flag=flag), self.assertRaises(SystemExit) as exit:
+                self.command("queue", "confirm", "--item", "proposal-1", flag, "example-1")
+            self.assertEqual(exit.exception.code, 2)
+        self.assertEqual(self.api.calls, [])
+
     def test_download_failure_recovers_without_another_request(self):
         output = self.directory / "report.json"
         self.api.artifacts = [artifact("@output/output/report.json")]
