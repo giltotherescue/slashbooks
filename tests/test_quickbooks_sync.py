@@ -41,6 +41,10 @@ class QuickBooksSyncTests(unittest.TestCase):
         self.empty_opening_reports()
         result = sync.sync_import(self.entity, self.write())
         self.assertTrue(result["reference_complete"])
+        self.assertFalse(result["opening_ready"], "A valid empty report cannot create an opening entry")
+        self.assertIn("No opening balances are available to record", result["warnings"])
+        with self.assertRaisesRegex(ValueError, "Opening source reports"):
+            sync.sync_opening(self.entity, self.write(), date(2026, 1, 1))
         reference = self.entity_path / result["reference_path"]
         self.assertEqual(qb.parse_trial_balance(reference / "OpeningTrialBalance.qbo.json").entries, [])
         self.assertEqual(qb.parse_balance_sheet(reference / "OpeningBalanceSheet.qbo.json").rows, [])

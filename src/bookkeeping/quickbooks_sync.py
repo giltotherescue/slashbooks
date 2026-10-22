@@ -523,6 +523,12 @@ def sync_import(entity, input_path: Path) -> dict:
             warnings.append(consistency_error)
         opening_ready = opening_supported and not consistency_error and any(
             coverage[key]["status"] == "ready" for key in ("OpeningTrialBalance", "OpeningBalanceSheet"))
+        if opening_ready:
+            opening_inventory = _inventory_in(book, reference, cutover=start)
+            opening_ready = any(slot.report_key in ("trial_balance", "balance_sheet") and slot.status == "present"
+                                for slot in opening_inventory.slots)
+            if not opening_ready:
+                warnings.append("No opening balances are available to record")
         result = {"success": True, "snapshot_id": snapshot_id, "reference_path": relative_reference,
                   "reference_complete": all(coverage[k]["status"] == "ready" for k in (
                       "ProfitAndLoss", "BalanceSheet", "TrialBalance", "GeneralLedger",
