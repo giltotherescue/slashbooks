@@ -52,7 +52,8 @@ def _items(view: Any, fiscal_start: str, fiscal_recorded: bool) -> list[dict[str
         return {"item": item, "handling": handling, "source": source, "preparer_decides": decides}
 
     tax_year = row("Tax year",
-                   f"The fiscal year start setting is used ({fiscal_start}). The federal tax year is not checked.",
+                   f"The fiscal year start setting is recorded ({fiscal_start}). The export covers the period that was asked for. "
+                   "The federal tax year is not checked.",
                    RECORDED if fiscal_recorded else ASSUMED, "Yes")
     depreciation = row("Depreciation, section 179, bonus, de minimis",
                        "Not computed. Book depreciation is shown as recorded. The Fixed Assets sheet lists purchases with their cost. "
@@ -74,14 +75,15 @@ def _items(view: Any, fiscal_start: str, fiscal_recorded: bool) -> list[dict[str
             row("Credit card charges",
                 "The expense is on the charge date. The payment of the card balance is a transfer.", ASSUMED, "Yes"),
             row("Bad debts",
-                "Not recorded as a deduction. Receivables that were never received are never in income.", ASSUMED, "No"),
+                "Not recorded as a deduction. Write-offs, credits and true-ups are left out. Receivables that were never received "
+                "are never in income. The preparer decides if any deduction applies.", ASSUMED, "Yes"),
             depreciation,
             row("Accrued liabilities", "Excluded in the cash view until they are paid.", ASSUMED, "Yes"),
             inventory,
             tax_year,
         ]
     recorded = ("the recorded books are cash books, so income and expense follow cash movement"
-                if view.tax_method == "cash" else "the accrual books are used as recorded")
+                if view.tax_method == "cash" else "the recorded books are used as they are (see the basis of the recorded books)")
     generic = f"Not adjusted: {recorded}."
     return [
         row("Prepaid expenses", generic, NOT_ADJUSTED, "Yes"),
@@ -118,11 +120,12 @@ def build(conn: Any, config: Mapping[str, Any], view: Any, from_date: date, to_d
         "tax_view_used": view.view,
     }
     counts: dict[str, Any] = {
-        "prepaid_schedules_without_tax_treatment": len(_prepaid_without_treatment(_records(conn, "schedules"))),
         "fixed_asset_rows_listed": len(data.get("fixed_assets", [])),
         "fixed_asset_rows_in_period": sum(1 for r in data.get("fixed_assets", []) if r.get("in_period")),
     }
     if view.source == "derived":
+        # Only the cash view reads these two inputs.
+        counts["prepaid_schedules_without_tax_treatment"] = len(_prepaid_without_treatment(_records(conn, "schedules")))
         counts["deposits_without_recorded_kind"] = sum(1 for r in data.get("deposits", []) if r.get("deposit_kind_source") == "assumed")
     open_flags: dict[str, int] = {}
     for flag in flag_list:
@@ -145,6 +148,7 @@ COUNT_LABELS = {
     "fixed_asset_rows_listed": "Fixed-asset rows listed",
     "fixed_asset_rows_in_period": "Fixed-asset rows with a purchase date in the period",
 }
+FLAGS_LISTED = "Flags listed"
 
 
 def sheet_rows(assumptions: Mapping[str, Any]) -> list[list[str]]:
@@ -163,9 +167,9 @@ def sheet_rows(assumptions: Mapping[str, Any]) -> list[list[str]]:
             rows.append([label, str(counts[key]), "", ""])
     if counts["open_flags"]:
         for code, number in counts["open_flags"].items():
-            rows.append([f"Open flag: {code}", str(number), "", ""])
+            rows.append([f"Flag: {code}", str(number), "", ""])
     else:
-        rows.append(["Open flags", "0", "", ""])
+        rows.append([FLAGS_LISTED, "0", "", ""])
     rows += [[], ["Preparer decides", "", "", ""]]
     rows += [[text, "", "", ""] for text in assumptions["preparer_decides"]]
     rows += [[], ["Notes", "", "", ""]]
@@ -176,10 +180,13 @@ def sheet_rows(assumptions: Mapping[str, Any]) -> list[list[str]]:
 def readme_rows(assumptions: Mapping[str, Any]) -> list[list[str]]:
     """A short Read Me section. The Tax Assumptions sheet and tax_view.assumptions in manifest.json hold the full text."""
     counts = assumptions["counts"]
-    open_total = sum(counts["open_flags"].values())
+    text = (f"The Tax Assumptions sheet states how each item is handled and what the preparer decides. "
+            f"{FLAGS_LISTED}: {sum(counts['open_flags'].values())}.")
+    if "prepaid_schedules_without_tax_treatment" in counts:
+        text += f" Prepaid schedules with no recorded tax treatment: {counts['prepaid_schedules_without_tax_treatment']}."
     return [
-        ["Tax assumptions", "The Tax Assumptions sheet states how each item is handled and what the preparer decides. "
-                            f"Open flags: {open_total}. Prepaid schedules with no recorded tax treatment: "
-                            f"{counts['prepaid_schedules_without_tax_treatment']}."],
-        ["Preparer decides", " ".join(assumptions["preparer_decides"])],
+        ["Tax assumptions", text],
+        ["Preparer decides", "The tax method and tax year, a method change, cash-method eligibility, the 12-month rule and the election out, "
+                             "depreciation and expensing, deposit and trust or escrow classification, the inventory method and card financing. "
+                             "The Tax Assumptions sheet has the full list."],
     ]

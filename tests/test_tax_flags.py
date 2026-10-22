@@ -1,4 +1,4 @@
-"""Tax profile, deposit kind, fixed-asset worksheet and missing-input flags in the tax-method view.
+"""Tax profile, deposit kind, fixed-asset worksheet and missing-input flags in the tax method view.
 
 The engine stores facts, does the mechanical cash-view math with the recorded deposit kind and lists
 missing inputs. It applies no tax rule to the tax profile. Every expected figure is hand-computed in the
@@ -658,9 +658,15 @@ class TaxAssumptions(Base):
         result = self.assumptions()
         self.assertEqual(result["settings"]["tax_view_used"], "accrual")
         self.assertNotIn("deposits_without_recorded_kind", result["counts"])
+        self.assertNotIn("prepaid_schedules_without_tax_treatment", result["counts"])
+        out = Path(self.tmp.name) / "acc-out"
+        taxmap.export_handoff(self.root, *Y2026, form="schc", output_dir=out, formats=("csv",))
+        readme = (out / "README.txt").read_text()
+        self.assertIn("Tax assumptions: The Tax Assumptions sheet", readme)
+        self.assertNotIn("Prepaid schedules with no recorded tax treatment", readme)
         deposits = next(i for i in result["items"] if i["item"] == "Customer deposits")
         self.assertEqual(deposits["source"], "Not adjusted")
-        self.assertIn("accrual books are used as recorded", deposits["handling"])
+        self.assertIn("the recorded books are used as they are", deposits["handling"])
 
     def test_the_sheet_follows_the_read_me_and_the_read_me_has_a_section(self):
         from golden_support import XLSX_AVAILABLE, xlsx_text
@@ -673,7 +679,7 @@ class TaxAssumptions(Base):
         self.assertIn("assumptions", manifest["tax_view"])
         csv_text = (out / "tax-assumptions-schc-2026-01-01_2026-12-31.csv").read_text()
         self.assertIn("Item,Handling in this export,Source of the handling,Preparer decides?", csv_text)
-        for text in ("Settings in effect", "Input completeness", "Preparer decides", "Open flag: depreciation_not_tax_adjusted"):
+        for text in ("Settings in effect", "Input completeness", "Preparer decides", "Flag: depreciation_not_tax_adjusted"):
             self.assertIn(text, csv_text)
         readme = (out / "README.txt").read_text()
         self.assertIn("Tax assumptions: The Tax Assumptions sheet", readme)
@@ -682,6 +688,27 @@ class TaxAssumptions(Base):
             sheets = [line[len("=== sheet: "):] for line in xlsx_text(out / "tax-handoff-schc-2026-01-01_2026-12-31.xlsx").splitlines()
                       if line.startswith("=== sheet: ")]
             self.assertEqual(sheets[:3], ["Read Me", "Tax Assumptions", "Trial Balance"])
+
+    def test_bad_debts_row_leaves_the_decision_to_the_preparer(self):
+        self.cash_filer()
+        row = next(i for i in self.assumptions()["items"] if i["item"] == "Bad debts")
+        self.assertEqual(row["preparer_decides"], "Yes")
+        self.assertIn("credits and true-ups", row["handling"])
+
+    def test_the_tax_map_with_a_period_refuses_an_invalid_profile_like_the_export(self):
+        self.cash_filer()
+        path = self.root / "entity.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), "prior_return_method": "hybrid"}))
+        code, _, err = books("tax", "map", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--format", "json")
+        self.assertEqual(code, 1)
+        self.assertIn("prior_return_method must be one of", err)
+
+    def test_the_same_method_with_an_old_view_key_is_already_applied(self):
+        self.cash_filer()
+        path = self.root / "entity.json"
+        path.write_text(json.dumps({**json.loads(path.read_text()), "tax_method_view": True}))
+        code, result, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
+        self.assertEqual((code, result["status"]), (0, "already_applied"))
 
     def test_tax_map_json_carries_the_assumptions(self):
         self.cash_filer()

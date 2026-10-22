@@ -17,8 +17,8 @@ read the books and never change ledger entries. Neither command computes tax.
 A person can also record facts for the preparer: the tax method
 ([Tax method view](#tax-method-view)), the [tax profile](#tax-profile), the kind of
 each [deposit](#deposits-advance-payment-or-refundable) and the
-[fiscal year](#set-the-fiscal-year). When the tax method view is on, the export adds
-a Fixed Assets sheet, and a Deposits sheet when the view is the cash view of accrual
+[fiscal year](#set-the-fiscal-year). When a tax method is recorded, the export adds
+a Tax Assumptions sheet, a Fixed Assets sheet, and a Deposits sheet when the view is the cash view of accrual
 records. Slashbooks stores these facts and lists missing inputs; it does not decide a
 tax rule. An agent can run each preview, and a person applies it.
 
@@ -241,7 +241,7 @@ formula in a spreadsheet program, so the CSV files write it with a leading
 apostrophe and the workbook stores it as plain text. Amounts stay numbers.
 
 Balances are book balances from the engine, as recorded (see "Accounting basis
-and historical coverage" below), or the tax method view when it is on. Balance columns are
+and historical coverage" below), or the tax method view when a tax method is recorded. Balance columns are
 debit-positive. Income and expense accounts show activity in the period.
 Balance sheet accounts show the start and end balances. Because the books are
 not closed, income and expenses before the period appear as one computed row,
