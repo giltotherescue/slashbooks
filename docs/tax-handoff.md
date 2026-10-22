@@ -246,6 +246,9 @@ debit-positive. Income and expense accounts show activity in the period.
 Balance sheet accounts show the start and end balances. Because the books are
 not closed, income and expenses before the period appear as one computed row,
 `Equity:Prior-Periods-Net-Income`, so the trial balance stays in balance.
+When the period starts on the fiscal year start, this row is the same figure that the balance sheet and
+`books report trial-balance` show as "Retained earnings from prior fiscal activity". The account name stays,
+because saved tax lines and account numbers use it.
 Distributions lines show the change in the account during the period.
 
 ### Tax software

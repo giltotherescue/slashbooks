@@ -2267,7 +2267,8 @@ def generate_accountant_package(
                 vendor_rows=_rows("vendor-1099") if "vendor-1099" in selected_set else None,
                 open_question_rows=_rows("open-questions") if "open-questions" in selected_set else None,
                 formulas=formulas,
-                closing_cumulative_net_income=Decimal(closing_bs.meta["cumulative_net_income"]) if closing_bs.meta.get("basis") == "accrual" else None,
+                # The cash and recorded views stamp it only when an earlier fiscal year is closed into retained earnings.
+                closing_cumulative_net_income=Decimal(closing_bs.meta["cumulative_net_income"]) if "cumulative_net_income" in closing_bs.meta else None,
                 accounting_basis_text=_cover_basis(entity_path, to_date),
                 # Turning tracking on alone changes no export: name the start only when the books can differ from cash.
                 tracking_start=plan.tracking_start if (plan.default == "accrual" or _keeps_accrual_records(entity_path)) else None,

@@ -160,6 +160,11 @@ class StatementResult:
                 message = issue.get("message") or issue.get("code", "Unresolved issue").replace("_", " ")
                 refs = ", ".join(str(ref) for ref in issue.get("refs", []))
                 lines.append(f"  - {message}" + (f" [{refs}]" if refs else ""))
+        # The retained earnings label is longer than the 40-character label column. When it is shown, the column
+        # widens to the longest label so the amounts stay in one column. Other statements keep the 40 characters.
+        labels = [row.get("label", "") for section in self.sections for row in section.get("rows", [])]
+        extra = max(0, max(len(label) for label in labels) - 40) if RETAINED_LABEL in labels else 0
+        width = 40 + extra
         for section in self.sections:
             lines.append("")
             lines.append(section.get("label", ""))
@@ -169,20 +174,20 @@ class StatementResult:
                 label = row.get("label", "")
                 amount = row.get("amount")
                 if amount is not None:
-                    lines.append(f"{indent}{label:<40} {_fmt(amount):>14}")
+                    lines.append(f"{indent}{label:<{width}} {_fmt(amount):>14}")
                 else:
                     lines.append(f"{indent}{label}")
             total = section.get("total")
             if total is not None:
                 label = section.get("total_label", "Total")
-                lines.append(f"{'':>2}{label:<40} {_fmt(total):>14}")
+                lines.append(f"{'':>2}{label:<{width}} {_fmt(total):>14}")
         lines.append("")
         # Overall totals
         if self.totals:
-            lines.append("-" * 56)
+            lines.append("-" * (56 + extra))
             for k, v in self.totals.items():
                 k_readable = k.replace("_", " ").title()
-                lines.append(f"{k_readable:<42} {_fmt(v):>14}")
+                lines.append(f"{k_readable:<{42 + extra}} {_fmt(v):>14}")
         if self.meta.get("tie_out"):
             from .cashview import noncash_lines, tie_out_lines
             lines.extend(noncash_lines(self.meta.get("unresolved_issues", [])))
@@ -545,19 +550,53 @@ def balance_sheet(
         conn.close()
 
 
+RETAINED_LABEL = "Retained earnings from prior fiscal activity"
+CURRENT_NET_INCOME_LABEL = "Net Income (current period)"
+
+
+def fiscal_year_anchor(as_of: date, coverage: Optional[dict], fiscal_year_start: Optional[str]) -> date:
+    """First day of the fiscal year that holds *as_of*. One rule for the balance sheet and the trial balance.
+
+    An imported opening summary keeps the calendar it was evidenced with, so its ``fiscal_start`` wins.
+    Otherwise the company's ``fiscal_year_start`` (MM-01, default 01-01) is used.
+    """
+    from ..fiscal import year_start
+    if coverage and coverage.get("fiscal_start"):
+        import calendar
+        anchor = date.fromisoformat(coverage["fiscal_start"])
+
+        def on(year: int) -> date:
+            return date(year, anchor.month, min(anchor.day, calendar.monthrange(year, anchor.month)[1]))
+
+        start = on(as_of.year)
+        return start if start <= as_of else on(as_of.year - 1)
+    return year_start(as_of, fiscal_year_start or "01-01")
+
+
+def books_start(conn: Any, coverage: Optional[dict]) -> Optional[date]:
+    """First day the books cover. An imported opening summary covers from its summary start (else its cutover);
+    otherwise it is the date of the first entry. None when the books have no entry."""
+    if coverage and (coverage.get("summary_from") or coverage.get("cutover_date")):
+        return date.fromisoformat(coverage.get("summary_from") or coverage["cutover_date"])
+    row = conn.execute("SELECT MIN(e.date) FROM entries e JOIN postings p ON p.entry_id = e.id").fetchone()
+    return date.fromisoformat(str(row[0])[:10]) if row and row[0] else None
+
+
+def _earnings(balances: dict[str, Decimal], start: Decimal = Decimal("0.00")) -> Decimal:
+    """Income less expenses of income and expense balances (credit-normal income)."""
+    return -sum((n for a, n in balances.items() if _is_income(a) or _is_expense(a)), start)
+
+
 def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
-                           coverage_view: Optional[str] = None, fiscal_year_start: Optional[str] = None) -> StatementResult:
+                           coverage_view: Optional[str] = None, fiscal_year_start: Optional[str] = None,
+                           close_all_views: bool = True) -> StatementResult:
+    """``close_all_views`` False keeps the layout from before the fiscal-year split applied to every view: only the
+    accrual view splits. The migration bundle uses it so that its report fingerprints stay the same."""
     metadata = _label_recorded_balances(conn, _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view), as_of, view)
     balances = _account_balances_as_of(conn, as_of)
 
-    # Also compute net income from inception through as_of for equity section
-    all_balances = _account_balances_as_of(conn, as_of)
-    net_income_raw = Decimal("0.00")
-    for acc, bal in all_balances.items():
-        if _is_income(acc):
-            net_income_raw += -bal  # flip income
-        elif _is_expense(acc):
-            net_income_raw -= bal  # subtract expenses
+    # Net income from inception through as_of. The fiscal-year split below divides it in two.
+    net_income_raw = _earnings(balances)
 
     # Assets
     asset_rows = []
@@ -586,32 +625,25 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
             equity_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
             total_equity_base += display
 
-    if metadata["basis"] == "accrual":
-        opening = metadata.get("coverage")
-        from ..fiscal import year_start
-        # Imported summary coverage retains its evidenced calendar.
-        if opening:
-            anchor = date.fromisoformat(opening["fiscal_start"])
-            import calendar
-            fiscal_start = date(as_of.year, anchor.month, min(anchor.day, calendar.monthrange(as_of.year, anchor.month)[1]))
-            if fiscal_start > as_of:
-                previous = as_of.year - 1
-                fiscal_start = date(previous, anchor.month, min(anchor.day, calendar.monthrange(previous, anchor.month)[1]))
-        else:
-            fiscal_start = year_start(as_of, fiscal_year_start or "01-01")
-        current = _account_balances_in_range(conn, fiscal_start, as_of)
-        current_income = -sum((n for a, n in current.items() if _is_income(a) or _is_expense(a)), Decimal(0))
+    accrual = metadata["basis"] == "accrual"
+    if accrual or close_all_views:
+        # Earlier fiscal years are closed into retained earnings when the report is made. No closing entry is written.
+        fiscal_start = fiscal_year_anchor(as_of, metadata.get("coverage"), fiscal_year_start)
+        # The start value keeps each view's existing decimal places when nothing was posted ("0" accrual, "0.00" others).
+        current_income = _earnings(_account_balances_in_range(conn, fiscal_start, as_of), Decimal(0) if accrual else Decimal("0.00"))
         prior_income = net_income_raw - current_income
         if prior_income:
-            equity_rows.append({"label": "Retained earnings from prior fiscal activity", "amount": prior_income, "indent": 1})
+            equity_rows.append({"label": RETAINED_LABEL, "amount": prior_income, "indent": 1})
             total_equity_base += prior_income
         net_income_raw = current_income
-        metadata["fiscal_start"] = fiscal_start.isoformat()
-        metadata["cumulative_net_income"] = str(prior_income + current_income)
-        metadata["current_fiscal_net_income"] = str(current_income)
-    # Include current-period net income as a computed line in equity
+        # The cash and recorded views name the split only when it exists, so a single-year report is unchanged.
+        if accrual or prior_income:
+            metadata["fiscal_start"] = fiscal_start.isoformat()
+            metadata["cumulative_net_income"] = str(prior_income + current_income)
+            metadata["current_fiscal_net_income"] = str(current_income)
+    # Net income of the current fiscal year as a computed line in equity
     equity_rows.append({
-        "label": "Net Income (current period)",
+        "label": CURRENT_NET_INCOME_LABEL,
         "amount": net_income_raw,
         "indent": 1,
     })
@@ -668,39 +700,65 @@ def trial_balance(
     entity_path = Path(entity_path)
     conn = open_cache(entity_path)
     try:
+        from ..entity import load_entity
         return _compute_trial_balance(conn, as_of, _statement_view(conn, "trial balance", view),
-                                      coverage_view=journal_coverage_view() if journal and view != "accrual" else None)
+                                      coverage_view=journal_coverage_view() if journal and view != "accrual" else None,
+                                      fiscal_year_start=load_entity(entity_path).entity_config.get("fiscal_year_start"))
     finally:
         conn.close()
 
 
 def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
-                           coverage_view: Optional[str] = None) -> StatementResult:
+                           coverage_view: Optional[str] = None, fiscal_year_start: Optional[str] = None,
+                           close_all_views: bool = True) -> StatementResult:
+    """Income and expense accounts show the current fiscal year. Earlier years' income less expenses is one computed
+    row, "Retained earnings from prior fiscal activity", so debits still equal credits. ``close_all_views`` False keeps
+    the earlier life-to-date layout for the migration bundle's report fingerprints."""
     metadata = _label_recorded_balances(conn, _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view), as_of, view)
     balances = _account_balances_as_of(conn, as_of)
+    prior = Decimal("0.00")
+    moved = False
+    if close_all_views:
+        fiscal_start = fiscal_year_anchor(as_of, metadata.get("coverage"), fiscal_year_start)
+        before = _account_balances_as_of(conn, fiscal_start - timedelta(days=1))
+        for acc, bal in before.items():
+            if (_is_income(acc) or _is_expense(acc)) and bal:
+                balances[acc] -= bal
+                prior += bal  # debit-positive: a profit makes this negative (a credit)
+                moved = True
+        if moved:
+            # The income and expense rows show the current fiscal year, even when earlier years net to zero.
+            metadata["fiscal_start"] = fiscal_start.isoformat()
 
     rows = []
     total_debits = Decimal("0.00")
     total_credits = Decimal("0.00")
 
+    def add(label: str, bal: Decimal, **extra: Any) -> None:
+        nonlocal total_debits, total_credits
+        if bal > 0:
+            rows.append({"label": label, "debit": bal, "credit": Decimal("0.00"), "indent": 0, **extra})
+            total_debits += bal
+        else:
+            rows.append({"label": label, "debit": Decimal("0.00"), "credit": -bal, "indent": 0, **extra})
+            total_credits += -bal
+
     for acc in sorted(balances):
         bal = balances[acc]
         if bal == Decimal("0.00"):
             continue  # skip zero-balance accounts
-        if bal > 0:
-            rows.append({"label": _render_account(acc), "debit": bal, "credit": Decimal("0.00"), "indent": 0})
-            total_debits += bal
-        else:
-            rows.append({"label": _render_account(acc), "debit": Decimal("0.00"), "credit": -bal, "indent": 0})
-            total_credits += -bal
+        add(_render_account(acc), bal)
+    if prior != Decimal("0.00"):
+        add(RETAINED_LABEL, prior, key="retained_earnings_prior", computed=True)
 
     # Reformat rows to have a single "amount" column for to_text rendering
     display_rows = []
     for r in rows:
+        extra = {"key": r["key"], "computed": True} if r.get("computed") else {}
         if r["debit"] > 0:
-            display_rows.append({"label": r["label"], "amount": r["debit"], "indent": 0})
+            display_rows.append({"label": r["label"], "amount": r["debit"], "indent": 0, **extra})
         else:
-            display_rows.append({"label": r["label"], "amount": -r["credit"], "indent": 0})
+            display_rows.append({"label": r["label"], "amount": -r["credit"], "indent": 0, **extra})
 
     sections = [
         {

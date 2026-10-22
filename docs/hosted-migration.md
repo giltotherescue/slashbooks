@@ -125,6 +125,20 @@ books report general-ledger --entity "$VERIFY" --from "$FROM" --to "$TO" --forma
 - Compare all four reports for the same period using canonical JSON fingerprints,
   not screenshots or rounded totals. Ordinary `books report` must use the
   verification binding, not silently read the original local ledger.
+- The bundle's report fingerprints use the statement layout from before earlier
+  fiscal years were closed into retained earnings in every view. In that layout
+  the balance sheet of a cash company has one cumulative net income line (an
+  accrual company keeps the accrual view's split, as before), and the trial
+  balance shows life-to-date income and expense accounts in every view. A bundle
+  made by an earlier version still validates. For a company with more than one
+  fiscal year, the `books report balance-sheet` and `trial-balance` JSON
+  therefore differ from the fingerprinted layout. On the balance sheet of a cash
+  or recorded view, the retained earnings and net income lines differ and `meta`
+  gains `fiscal_start`, `cumulative_net_income` and `current_fiscal_net_income`;
+  every total is the same. On the trial balance (every view), income and expense
+  rows show the current fiscal year, a computed retained earnings row is added,
+  `meta` gains `fiscal_start`, and total debits and total credits are lower by
+  the same amount. The ledger and its entries are the same.
 - Check shared `entity.json`, business profile, and context through cloud file
   access. Download each registered document through the authenticated evidence
   download route, `GET /api/v1/companies/:company/evidence/:id/download`, and compare
