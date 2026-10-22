@@ -2,7 +2,7 @@
 
 Network/model responses are synthetic. Windows filesystem operations are real.
 """
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 import io
 import json
 import os
@@ -136,7 +136,7 @@ class NativeWindowsTests(unittest.TestCase):
         result = subprocess.run([sys.executable, '-m', 'bookkeeping.cli', 'demo', 'init', str(self.root / 'demo')],
                                 env={**os.environ, 'PYTHONPATH': str(repo / 'src')}, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        result = subprocess.run([sys.executable, '-m', 'bookkeeping.cli', 'report', 'trial-balance', '--entity', str(self.root / 'demo')],
+        result = subprocess.run([sys.executable, '-m', 'bookkeeping.cli', 'report', 'trial-balance', '--as-of', '2026-12-31', '--entity', str(self.root / 'demo')],
                                 env={**os.environ, 'PYTHONPATH': str(repo / 'src')}, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -162,3 +162,39 @@ class NativeWindowsTests(unittest.TestCase):
         result = subprocess.run(['cmd', '/c', str(repo / 'skills/books-cloud/scripts/books.cmd'), '--help'],
                                 cwd=self.root, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_cloud_upload_download_and_private_receipts(self):
+        from bookkeeping import cli
+        from tests.test_remote import API, TOKEN, artifact
+        import base64
+        api = API()
+        self.addCleanup(api.close)
+        entity = self.root / 'online company'
+        entity.mkdir()
+
+        def invoke(*args):
+            output, error = io.StringIO(), io.StringIO()
+            with redirect_stdout(output), redirect_stderr(error):
+                code = cli.main(list(args))
+            self.assertEqual(code, 0, output.getvalue() + error.getvalue())
+            self.assertNotIn(TOKEN, output.getvalue() + error.getvalue())
+
+        with patch.dict(os.environ, {'BOOKS_API_TOKEN': TOKEN}), patch.object(cli, 'load_dotenv'):
+            invoke('cloud', 'configure', '--endpoint', api.endpoint, '--company', 'company-A',
+                   '--allow-localhost', '--entity', str(entity))
+            source = self.root / 'source.json'
+            source.write_bytes(b'{"transactions": []}')
+            invoke('ingest', str(source), '--source', 'synthetic', '--entity', str(entity))
+            self.assertEqual(base64.b64decode(api.calls[-1]['body']['inputs'][0]['data_base64']), source.read_bytes())
+            output = self.root / 'pnl.json'
+            api.artifacts = [artifact('@output/output/pnl.json')]
+            invoke('report', 'pnl', '--from', '2026-01-01', '--to', '2026-03-31',
+                   '--output', str(output), '--entity', str(entity))
+            self.assertEqual(output.read_bytes(), b'synthetic output\n')
+            with os.fdopen(file_safety.open_private(output)) as handle:
+                self.assertTrue(file_safety.is_private(handle.fileno()))
+            receipts = list((entity / '.slashbooks-remote-receipts').glob('*.json'))
+            self.assertEqual(len(receipts), 2)
+            for receipt in receipts:
+                self.assertIn('response', hosted._read_json(receipt, private=True))
+            self.assertFalse((entity / 'ledger.sqlite').exists())

@@ -13,12 +13,11 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import sys
-import tempfile
 from typing import Any
 from urllib.parse import urlencode
 import uuid
 
-from bookkeeping import hosted
+from bookkeeping import hosted, file_safety
 
 
 CONFIG_NAME = ".slashbooks-remote.json"
@@ -143,8 +142,7 @@ def _no_symlinks(path: Path) -> None:
 
 def _read_bytes(path: Path) -> bytes:
     _no_symlinks(path)
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    with os.fdopen(os.open(path, flags), "rb") as handle:
+    with os.fdopen(file_safety.open_read(path), "rb") as handle:
         if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
             raise _error("INVALID_FILE", "Transfers require regular files.")
         data = handle.read(MAX_TRANSFER_BYTES + 1)
@@ -347,7 +345,7 @@ def _publish(path: Path, data: bytes, expected: str | None) -> None:
         raise _error("OUTPUT_CHANGED", "Local output changed since submission. Saved receipt can recover the artifact without rerunning the command.")
     path.parent.mkdir(parents=True, exist_ok=True)
     _no_symlinks(path)
-    fd, temporary = tempfile.mkstemp(prefix=".remote-", dir=path.parent)
+    fd, temporary = file_safety.private_temp(path.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
@@ -355,7 +353,7 @@ def _publish(path: Path, data: bytes, expected: str | None) -> None:
             os.fsync(handle.fileno())
         if _fingerprint(path) != current:
             raise _error("OUTPUT_CHANGED", "Local output changed while preparing the download.")
-        os.replace(temporary, path)
+        file_safety.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
