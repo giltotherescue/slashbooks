@@ -38,7 +38,7 @@ NOTES = [
     "A prepaid schedule override in Slashbooks is not the election out. The election out is made on the return.",
     "The Fixed Assets sheet shows the purchase date. The placed-in-service date is not recorded.",
     "Cost alone does not decide the de minimis safe harbor. The preparer checks the written procedures and the election.",
-    "A deposit marked refundable is a proposal that a person recorded. It is not a tax conclusion.",
+    "A person recorded the deposit kind. It is not a tax conclusion. The preparer confirms it against the agreement.",
 ]
 
 
@@ -52,8 +52,8 @@ def _items(view: Any, fiscal_start: str, fiscal_recorded: bool) -> list[dict[str
         return {"item": item, "handling": handling, "source": source, "preparer_decides": decides}
 
     tax_year = row("Tax year",
-                   f"The fiscal year start setting is recorded ({fiscal_start}). The export covers the period that was asked for. "
-                   "The federal tax year is not checked.",
+                   f"The fiscal year start is {fiscal_start} ({'set by a person' if fiscal_recorded else 'the default'}). "
+                   "The export covers the period that was asked for. The federal tax year is not checked.",
                    RECORDED if fiscal_recorded else ASSUMED, "Yes")
     depreciation = row("Depreciation, section 179, bonus, de minimis",
                        "Not computed. Book depreciation is shown as recorded. The Fixed Assets sheet lists purchases with their cost. "
@@ -62,12 +62,14 @@ def _items(view: Any, fiscal_start: str, fiscal_recorded: bool) -> list[dict[str
     if view.source == "derived":
         return [
             row("Prepaid expenses",
-                "A schedule with a recorded tax treatment uses it: expense_when_paid is deducted on payment and capitalize is deducted as used. "
-                "A schedule with no recorded treatment stays capitalized, as the books record it.",
+                "A schedule with a recorded tax treatment uses it. Under expense_when_paid, the payment is an expense when paid. "
+                "Under capitalize, the expense is taken as the item is used. A schedule with no recorded treatment stays capitalized, "
+                "as the books record it.",
                 RECORDED_OR_ASSUMED, "Yes"),
             row("Customer deposits",
-                "A deposit recorded as advance_payment is income on receipt. A deposit recorded as refundable is a liability until it is "
-                "applied to an invoice or forfeited. A deposit with no recorded kind is assumed to be an advance_payment.",
+                "A deposit recorded as advance_payment is income on receipt. A deposit recorded as refundable is a liability. "
+                "It stays a liability until it is applied to an invoice or forfeited. A deposit with no recorded kind is assumed "
+                "to be an advance_payment.",
                 RECORDED_OR_ASSUMED, "Yes"),
             row("Deferred revenue", "Income on receipt (cash method). The deferral that the accrual books show is removed.", ASSUMED, "Yes"),
             row("Opening receivables and payables",
@@ -111,7 +113,7 @@ def build(conn: Any, config: Mapping[str, Any], view: Any, from_date: date, to_d
         "tax_method": view.tax_method,
         "tax_method_source": "recorded in entity.json by a person (books entity set-tax-method)",
         "fiscal_year_start": view.fiscal_year_start,
-        "fiscal_year_start_source": "recorded by a person" if fiscal_recorded else "default",
+        "fiscal_year_start_source": "set by a person" if fiscal_recorded else "default",
         "prior_return_method": profile.get("prior_return_method", NOT_RECORDED),
         "entity_type": profile.get("entity_type", NOT_RECORDED),
         "currency": company_currency(config),

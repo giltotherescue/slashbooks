@@ -371,6 +371,9 @@ def fixed_assets(conn: Any, view: TaxView, from_date: date, to_date: date) -> li
     postings to ``Assets:Fixed`` accounts are a net debit and that no depreciation schedule records. Accounts whose
     name contains "Accumulated" and depreciation contra accounts are left out, so a move between two fixed-asset
     accounts is not a purchase. An opening-balance entry is marked ``source: opening``. Book depreciation is as recorded.
+
+    ``purchase_date`` is the date of the purchase entry or the origin date of the schedule. ``placed_in_service`` holds the
+    same value and stays for old readers. The placed-in-service date is not recorded, so do not read it as one.
     """
     import json
     from .accrual.reports import _managed_support, opening_coverage, _origin_date
@@ -403,13 +406,13 @@ def fixed_assets(conn: Any, view: TaxView, from_date: date, to_date: date) -> li
         account = max(entry["fixed"].items(), key=lambda pair: (pair[1], pair[0]))[0]
         is_opening = any(entry["meta"].get(key, "").lower() == "true" for key in _OPENING_META)
         purchases.append({"source": "opening" if is_opening else "purchase", "id": entry["source_id"], "account": account,
-                          "placed_in_service": entry["date"], "cost": f"{net:.2f}", "vendor": entry["payee"], "reference": "",
+                          "purchase_date": entry["date"], "placed_in_service": entry["date"], "cost": f"{net:.2f}", "vendor": entry["payee"], "reference": "",
                           "book_depreciation_to_date": "", "depreciation_schedule": "none"})
     rows = []
     for record in schedules:
         placed = _origin_date(record, opening)
         source_id = (record.get("origin") or {}).get("source_id")
-        rows.append({"source": "depreciation_schedule", "id": record["id"], "account": record["account"], "placed_in_service": placed,
+        rows.append({"source": "depreciation_schedule", "id": record["id"], "account": record["account"], "purchase_date": placed, "placed_in_service": placed,
                      "cost": f"{Decimal(record['amount']):.2f}", "vendor": payees.get(source_id or "", ""),
                      "reference": record.get("reference") or "", "book_depreciation_to_date": f"{Decimal(record['recognized_amount']):.2f}",
                      "depreciation_schedule": record["id"]})

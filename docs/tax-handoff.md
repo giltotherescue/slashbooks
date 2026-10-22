@@ -397,7 +397,10 @@ Points the sheet states:
   override in Slashbooks is not that election.
 - A deposit recorded as refundable is a proposal that a person recorded. Check the agreement. Do not
   classify a deposit, or funds held in trust or escrow, from an account name.
-- With another tax method or with cash books, the rows say "Not adjusted": the recorded books are used.
+- When the export reads the recorded books as they are (the accrual method, or cash books), the
+  rows say "Not adjusted".
+- `placed_in_service` in `tax_view.fixed_assets` holds the purchase date and stays for old readers.
+  Use `purchase_date`.
 
 ### Tax profile
 

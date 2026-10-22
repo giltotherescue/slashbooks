@@ -338,6 +338,7 @@ class FixedAssetsAndPrepaid(Base):
         machine = next(r for r in rows.values() if r["source"] == "purchase")
         self.assertEqual((machine["placed_in_service"], machine["cost"], machine["book_depreciation_to_date"], machine["depreciation_schedule"]),
                          ("2026-05-04", "2500.00", "", "none"))
+        self.assertEqual((van["purchase_date"], machine["purchase_date"]), ("2026-01-01", "2026-05-04"))
         self.assertEqual(len(rows), 2)  # The van purchase entry and its accumulated depreciation are not extra rows.
         self.assertFalse({"size_marker", "tax_depreciation"} & set(van))
         # 2027: still listed, not in the period, depreciation to date 2,400.00 once 2027 is recognized.

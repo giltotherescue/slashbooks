@@ -1117,7 +1117,7 @@ def _fixed_asset_table(handoff: Mapping[str, Any]) -> list[list[str]]:
     """Data for the preparer. No tax depreciation is computed; book depreciation is as recorded."""
     rows = [list(_FIXED_ASSET_HEADER)]
     for row in handoff["tax_view"]["fixed_assets"]:
-        rows.append([row["placed_in_service"] or "", "yes" if row["in_period"] else "no", row["account"], row["cost"], row["vendor"],
+        rows.append([row["purchase_date"] or "", "yes" if row["in_period"] else "no", row["account"], row["cost"], row["vendor"],
                      row["reference"], row["book_depreciation_to_date"], row["depreciation_schedule"], row["source"], row["id"]])
     rows += [[], [_FIXED_ASSET_NOTE]]
     return rows
@@ -1199,6 +1199,7 @@ def export_handoff(
             }
             sheets = [XlsxSheet(name="Read Me", rows=_readme_table(handoff, {}))]
             sheets += [XlsxSheet(name=sheet, rows=rows, numeric_columns=numeric[sheet],
+                                 wrap_columns=frozenset({0, 1, 2}) if sheet == "Tax Assumptions" else frozenset(),
                                  total_label_column=1 if sheet == "Trial Balance" else None, total_label="Total")
                        for sheet, (_, rows) in tables.items()]
             _write_xlsx(output_dir / name, sheets)

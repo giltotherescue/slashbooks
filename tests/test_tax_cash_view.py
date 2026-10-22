@@ -318,7 +318,7 @@ class NoTaxMethodIsUnchanged(CashViewFixture):
 
     def test_the_removed_tax_view_option_is_refused_with_a_clear_message(self):
         before = (self.root / "entity.json").read_text()
-        for argv in (["--tax-view", "on"], ["--tax-view", "off"], ["--tax-view", "on", "--apply"]):
+        for argv in (["--tax-view", "on"], ["--tax-view", "off"], ["--tax-view", "on", "--apply"], ["--tax-view"]):
             code, result, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", *argv)
             self.assertEqual((code, result["errors"][0]["code"]), (1, "tax_view_removed"), argv)
             self.assertIn("The tax method view is always on once a tax method is set", result["errors"][0]["message"])

@@ -1216,7 +1216,7 @@ def add_parser(subparsers: Any) -> None:
     tax_method_parser.add_argument("--method", required=True, choices=("cash", "accrual"),
                                    help="The method the company files its tax return on")
     # Removed option. It stays here so an old script gets a clear refusal, not a silent change.
-    tax_method_parser.add_argument("--tax-view", default=None, help=argparse.SUPPRESS)
+    tax_method_parser.add_argument("--tax-view", nargs="?", const="removed", default=None, help=argparse.SUPPRESS)
     tax_method_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     tax_method_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
 
