@@ -859,7 +859,7 @@ def _cover_basis(entity_path: Path, to_date: date) -> str:
 
 
 def _cover_tax_method(entity_path: Path) -> list[list[str]]:
-    """One cover row when the tax-method view is on; none otherwise, so other covers stay as they were."""
+    """One cover row when a tax method is recorded; none otherwise, so other covers stay as they were."""
     from ..taxview import active_method
     method = active_method(load_entity(entity_path).entity_config)
     if not method:

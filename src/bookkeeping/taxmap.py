@@ -686,9 +686,13 @@ def _tax_view(entity: Any, from_date: date, to_date: date, *, with_flags: bool =
         accounting = financial_metadata(conn, "tax_handoff", from_date, to_date, view=view.view)
         accounting["basis"] = view.view
         accounting["tax_method"] = view.tax_method
-        data = {"tax_profile": tax_profile(entity.entity_config), "fixed_assets": fixed_assets(conn, view, from_date, to_date),
+        profile = tax_profile(entity.entity_config)
+        data = {"tax_profile": profile, "fixed_assets": fixed_assets(conn, view, from_date, to_date),
                 "deposits": deposits(conn, view, to_date)}
-        return view, flags(conn, view, from_date, to_date), accounting, data
+        flag_list = flags(conn, view, from_date, to_date, profile)
+        from .taxassumptions import build
+        data["assumptions"] = build(conn, entity.entity_config, view, from_date, to_date, flag_list, data, profile)
+        return view, flag_list, accounting, data
     finally:
         conn.close()
 
@@ -791,9 +795,10 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
     resolved, form_basis = resolve_form(entity.entity_config, form)
     from .taxview import active_method
     method = active_method(entity.entity_config)
-    tax_view = None
+    tax_view = assumptions = None
     if method and from_date and to_date:
-        tax_view = _tax_view(entity, from_date, to_date)
+        tax_view, _, _, data = _tax_view(entity, from_date, to_date, with_flags=True)
+        assumptions = data["assumptions"]
     rows = period_balances(entity.path, from_date, to_date, tax_view=tax_view) if from_date and to_date else [
         {"account": account, "type": account.split(":")[0], "beginning": None, "balance": None}
         for account in sorted(_catalog_accounts(entity.path))
@@ -816,7 +821,7 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
     stamp = {}
     if method:
         stamp = {"tax_method": method, "view": tax_view.view if tax_view else method,
-                 "tax_view": tax_view.stamp() if tax_view else None}
+                 "tax_view": {**tax_view.stamp(), "assumptions": assumptions} if tax_view else None}
     return {
         **stamp,
         **currency_stamp(entity.entity_config),
@@ -960,7 +965,7 @@ DISCLAIMER = (
 )
 # Vendor import layouts (Lacerte, UltraTax) must start with their header row,
 # so they carry no note row; README.txt and the manifest carry the disclaimer.
-_NOTE_TABLES = frozenset({"Trial Balance", "Tax Line Summary", "Unmapped Accounts", "Fixed Assets", "Deposits"})
+_NOTE_TABLES = frozenset({"Tax Assumptions", "Trial Balance", "Tax Line Summary", "Unmapped Accounts", "Fixed Assets", "Deposits"})
 
 
 def _readme_text(handoff: Mapping[str, Any], files: Mapping[str, str]) -> str:
@@ -1089,6 +1094,8 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
             if flag["code"] == "tax_method":
                 continue
             rows.append(["Flag: " + flag["code"], flag["message"]])
+        from .taxassumptions import readme_rows
+        rows.extend(readme_rows(handoff["tax_view"]["assumptions"]))
     if handoff.get("currency"):
         rows.append(["Currency", handoff["currency"]])
     for flag in handoff.get("flags", []):
@@ -1098,8 +1105,10 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
     return rows
 
 
-_FIXED_ASSET_HEADER = ["Placed In Service (Purchase Date)", "In Period", "Account", "Cost", "Vendor", "Reference",
+_FIXED_ASSET_HEADER = ["Purchase Date", "In Period", "Account", "Cost", "Vendor", "Reference",
                        "Book Depreciation To Date", "Depreciation Schedule", "Source", "ID"]
+_FIXED_ASSET_NOTE = ("The placed-in-service date is not recorded. Purchase Date is the date of the purchase entry, "
+                     "or the origin date of the depreciation schedule. The preparer sets the placed-in-service date.")
 _DEPOSIT_HEADER = ["Date Received", "Record", "ID", "Account", "Counterparty", "Reference", "Amount", "Balance At Period End",
                    "Deposit Kind", "Kind Source"]
 
@@ -1110,6 +1119,7 @@ def _fixed_asset_table(handoff: Mapping[str, Any]) -> list[list[str]]:
     for row in handoff["tax_view"]["fixed_assets"]:
         rows.append([row["placed_in_service"] or "", "yes" if row["in_period"] else "no", row["account"], row["cost"], row["vendor"],
                      row["reference"], row["book_depreciation_to_date"], row["depreciation_schedule"], row["source"], row["id"]])
+    rows += [[], [_FIXED_ASSET_NOTE]]
     return rows
 
 
@@ -1146,15 +1156,20 @@ def export_handoff(
     period = f"{from_date.isoformat()}_{to_date.isoformat()}"
     output_dir = Path(output_dir) if output_dir else entity.reports_dir / "tax-handoff" / f"{handoff['form']}_{period}"
     stem = f"{handoff['form']}-{period}"
-    tables = {
+    tables: dict[str, tuple[str, list[list[str]]]] = {}
+    if handoff.get("tax_view"):
+        # Tax-method view only: it sits right after the Read Me. Without a tax method the files are as before.
+        from .taxassumptions import sheet_rows
+        tables["Tax Assumptions"] = (f"tax-assumptions-{stem}.csv", sheet_rows(handoff["tax_view"]["assumptions"]))
+    tables.update({
         "Trial Balance": (f"tax-trial-balance-{stem}.csv", _tb_table(handoff)),
         "Tax Line Summary": (f"tax-line-summary-{stem}.csv", _summary_table(handoff)),
         "Unmapped Accounts": (f"unmapped-accounts-{stem}.csv", _unmapped_table(handoff)),
         "Lacerte TBU": (f"lacerte-tbu-{stem}.csv", _lacerte_table(handoff)),
         "UltraTax CS Import": (f"ultratax-tb-import-{stem}.csv", _ultratax_table(handoff)),
-    }
+    })
     if handoff.get("tax_view"):
-        # Tax-method view only: the worksheets the preparer uses. Without the view the files are as before.
+        # The worksheets the preparer uses.
         tables["Fixed Assets"] = (f"fixed-assets-{stem}.csv", _fixed_asset_table(handoff))
         if handoff["tax_view"]["source"] == "derived":
             tables["Deposits"] = (f"deposits-{stem}.csv", _deposit_table(handoff))
@@ -1178,6 +1193,7 @@ def export_handoff(
                 "Unmapped Accounts": frozenset({3}),
                 "Lacerte TBU": frozenset({3}),
                 "UltraTax CS Import": frozenset({4}),
+                "Tax Assumptions": frozenset(),
                 "Fixed Assets": frozenset({3, 6}),
                 "Deposits": frozenset({6, 7}),
             }

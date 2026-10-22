@@ -1,16 +1,15 @@
 """Tax outputs that follow the company's tax method, not the recorded books.
 
-Two entity.json keys control it:
+One entity.json key controls it:
 
 ``tax_method``
     ``"cash"`` or ``"accrual"``: the method the company files its tax return on.
-    Absent means unknown, and tax outputs read the recorded books as before.
-``tax_method_view``
-    ``true`` turns the tax-method view on. Without it every tax output is the
-    same as before, even when ``tax_method`` is set. A person sets both keys with
-    ``books entity set-tax-method`` (preview, then ``--apply``).
+    A person sets it with ``books entity set-tax-method`` (preview, then
+    ``--apply``). Absent means unknown, and tax outputs read the recorded books
+    exactly as they did before this view existed. An old ``tax_method_view`` key
+    in ``entity.json`` is ignored on read and is never written.
 
-When the view is on, ``books tax map`` and ``books tax export`` (and the tax
+When ``tax_method`` is set, ``books tax map`` and ``books tax export`` (and the tax
 Read Me, manifest and workbook) read:
 
 * cash method, accrual capability 1: the cash view derived from the accrual
@@ -36,7 +35,7 @@ from decimal import Decimal
 from typing import Any, Mapping
 
 TAX_METHOD_KEY = "tax_method"
-TAX_VIEW_KEY = "tax_method_view"
+LEGACY_VIEW_KEY = "tax_method_view"   # an old switch. Ignored on read, dropped when the method is set, never written.
 TAX_METHODS = ("cash", "accrual")
 ADJUSTMENT_ACCOUNT = "Equity:Accrual-To-Cash-Adjustment"
 _ZERO = Decimal("0.00")
@@ -68,20 +67,9 @@ def tax_method(config: Mapping[str, Any]) -> str | None:
     return value
 
 
-def view_enabled(config: Mapping[str, Any]) -> bool:
-    value = config.get(TAX_VIEW_KEY, False)
-    if not isinstance(value, bool):
-        raise ValueError(f"entity.json {TAX_VIEW_KEY} must be true or false. Run books entity set-tax-method to fix it.")
-    return value
-
-
 def active_method(config: Mapping[str, Any]) -> str | None:
-    """The tax method that tax outputs follow, or None for the old behaviour (flag off or method unknown)."""
-    method = tax_method(config)
-    enabled = view_enabled(config)
-    if enabled and method is None:
-        raise ValueError("The tax-method view is on but no tax method is recorded. Run books entity set-tax-method.")
-    return method if enabled else None
+    """The tax method that tax outputs follow, or None (no method recorded: the books view, as before)."""
+    return tax_method(config)
 
 
 @dataclass
@@ -107,7 +95,7 @@ def _records(conn: Any, table: str) -> list[dict[str, Any]]:
 
 
 def plan(conn: Any, config: Mapping[str, Any], from_date: date, to_date: date) -> TaxView | None:
-    """Choose the view for a tax output, or return None when the tax-method view is off.
+    """Choose the view for a tax output, or return None when no tax method is recorded.
 
     Refuses (fail closed) when the chosen view cannot be computed for the period.
     """
@@ -247,10 +235,20 @@ def _money(value: Decimal) -> str:
     return f"{value:.2f}"
 
 
-def flags(conn: Any, view: TaxView, from_date: date, to_date: date) -> list[dict[str, Any]]:
+METHOD_CHANGE_MESSAGE = ("Accrual books or an unknown prior return method do not show the method on the tax return. "
+                         "Confirm the method on the last return. A change from accrual to cash needs IRS consent (Form 3115) "
+                         "and a section 481(a) adjustment. The preparer handles it.")
+
+
+def flags(conn: Any, view: TaxView, from_date: date, to_date: date,
+          profile: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     """What the preparer must know about this view. Every flag has a code, a message and, where it applies, an amount."""
     start, end = from_date.isoformat(), to_date.isoformat()
     result: list[dict[str, Any]] = [{"code": "tax_method", "message": view.label + "."}]
+    if view.tax_method == "cash" and (profile or {}).get(PRIOR_RETURN_METHOD_KEY) in ("accrual", "unknown"):
+        # A flag, not a block: the export is never refused for this.
+        result.append({"code": "method_change_possible", "prior_return_method": profile[PRIOR_RETURN_METHOD_KEY],
+                       "message": METHOD_CHANGE_MESSAGE})
     schedules = _records(conn, "schedules")
     depreciation = [s for s in schedules if s.get("kind") == "depreciation"]
     fixed = sorted({a for (a,) in conn.execute(
@@ -440,16 +438,14 @@ def readiness_notes(entity: Any) -> list[dict[str, Any]]:
                       "message": ("The company files on the cash method, and these prepaid schedules have no recorded tax treatment. "
                                   "The tax figures keep them on the balance sheet as the books record them. A person records the treatment "
                                   "with books accrual schedule tax-treatment.")})
-    if active_method(entity.entity_config) == "cash":
-        # Behind the tax-method view only, so a company without the view keeps its readiness output.
-        from .accrual.schedules import is_deposit
-        unset = sorted(r["id"] for table in ("schedules", "items") for r in list_records(store, table)
-                       if is_deposit(r, table) and "deposit_kind" not in r)
-        if unset:
-            notes.append({"code": "deposit_kind_missing", "refs": unset,
-                          "message": ("The tax view follows the cash method, and these deposits have no recorded deposit kind. "
-                                      "The cash view treats them as advance payments, as income on receipt. Record the kind with "
-                                      "books accrual schedule deposit-kind or books accrual item deposit-kind.")})
+    from .accrual.schedules import is_deposit
+    unset = sorted(r["id"] for table in ("schedules", "items") for r in list_records(store, table)
+                   if is_deposit(r, table) and "deposit_kind" not in r)
+    if unset:
+        notes.append({"code": "deposit_kind_missing", "refs": unset,
+                      "message": ("The tax view follows the cash method, and these deposits have no recorded deposit kind. "
+                                  "The cash view treats them as advance payments, as income on receipt. Record the kind with "
+                                  "books accrual schedule deposit-kind or books accrual item deposit-kind.")})
     return notes
 
 
@@ -458,24 +454,14 @@ def readiness_notes(entity: Any) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 SET_TAX_METHOD_KIND = "tax_method_set"
-FLAG_EXPLANATION = (f"{TAX_VIEW_KEY} turns the tax-method view on. When it is on, books tax map and books tax export follow the tax method: "
-                    "a cash-method filer with accrual records gets the cash view (unpaid invoices and bills are left out, prepaid expenses "
-                    "follow their tax treatment), and an accrual-method filer gets the accrual view. When it is off, tax outputs read the "
-                    "recorded books as before. Reports, entries and published statements never change.")
+TAX_VIEW_REMOVED = "The tax method view is always on once a tax method is set. Remove --tax-view."
+VIEW_NOTE = ("When a tax method is recorded, books tax map and books tax export follow it: a cash-method filer with accrual records "
+             "gets the cash view (unpaid invoices and bills are left out, prepaid expenses follow their tax treatment), and an "
+             "accrual-method filer gets the accrual view. Reports, entries and published statements never change.")
 
 
-def _parse_switch(value: Any) -> bool | None:
-    if value is None:
-        return None
-    if value in ("on", True):
-        return True
-    if value in ("off", False):
-        return False
-    raise ValueError("--tax-view must be on or off.")
-
-
-def preview_set_tax_method(entity: Any, method: Any, tax_view: Any = None) -> dict[str, Any]:
-    """Preview recording the tax method (and optionally the view flag). Writes nothing."""
+def preview_set_tax_method(entity: Any, method: Any) -> dict[str, Any]:
+    """Preview recording the tax method. Writes nothing."""
     from .accrual.enable import _integrity
     from .accrual.intake import canonical_hash
     from .accrual.journals import JournalError
@@ -485,10 +471,8 @@ def preview_set_tax_method(entity: Any, method: Any, tax_view: Any = None) -> di
     entity = load_entity(entity.path)
     if method not in TAX_METHODS:
         raise JournalError("invalid_tax_method", "method must be cash or accrual.", "Use --method cash or --method accrual.")
-    switch = _parse_switch(tax_view)
     config = entity.entity_config
-    current_method, current_flag = tax_method(config), view_enabled(config)
-    flag = current_flag if switch is None else switch
+    current_method = tax_method(config)
     _integrity(entity, "record the tax method")
     store = LedgerStore(default_store_path(entity.path))
     cap = capability(config)
@@ -497,24 +481,24 @@ def preview_set_tax_method(entity: Any, method: Any, tax_view: Any = None) -> di
     else:
         source = "recorded books (accrual view)" if cap == 1 else "not available: the books keep no accrual records, so tax outputs refuse"
     warnings = []
-    if method == "accrual" and cap != 1 and flag:
+    if method == "accrual" and cap != 1:
         warnings.append({"code": "accrual_view_unavailable",
-                         "message": "With the view on, books tax map and books tax export refuse for these cash books until accrual is turned on."})
-    body = {"schema_version": 1, "kind": SET_TAX_METHOD_KIND, "request": {"method": method, TAX_VIEW_KEY: flag},
-            "changes": (current_method, current_flag) != (method, flag), "ledger_digest": store.content_digest(),
+                         "message": "books tax map and books tax export refuse for these cash books until accrual is turned on."})
+    body = {"schema_version": 1, "kind": SET_TAX_METHOD_KIND, "request": {"method": method},
+            "changes": current_method != method, "ledger_digest": store.content_digest(),
             "configuration_hash": canonical_hash(config),
-            "effects": {"from": {"tax_method": current_method, TAX_VIEW_KEY: current_flag}, "to": {"tax_method": method, TAX_VIEW_KEY: flag},
-                        "tax_outputs_read": source if flag else "recorded books, as before (the view is off)",
+            "effects": {"from": {"tax_method": current_method}, "to": {"tax_method": method},
+                        "tax_outputs_read": source,
                         "entries_changed": 0, "period_locks_changed": 0, "published_statements_changed": False,
-                        "flag": FLAG_EXPLANATION},
+                        "note": VIEW_NOTE},
             "warnings": warnings}
     body["request_hash"] = canonical_hash({"kind": SET_TAX_METHOD_KIND, "request": body["request"]})
     body["plan_hash"] = canonical_hash(body)
     return body
 
 
-def apply_set_tax_method(entity: Any, method: Any, tax_view: Any = None, plan_hash: str | None = None) -> dict[str, Any]:
-    """Record the tax method. Repeating the same values returns already_applied."""
+def apply_set_tax_method(entity: Any, method: Any, plan_hash: str | None = None) -> dict[str, Any]:
+    """Record the tax method. Repeating the same value returns already_applied."""
     import json
     import os
     from .accrual.enable import _seal
@@ -523,7 +507,7 @@ def apply_set_tax_method(entity: Any, method: Any, tax_view: Any = None, plan_ha
     from .ledger.importer import _entity_write_lock
     from .ledger.store import LedgerStore, default_store_path
     with _entity_write_lock(entity.path):
-        fresh = preview_set_tax_method(entity, method, tax_view)
+        fresh = preview_set_tax_method(entity, method)
         if plan_hash is not None and plan_hash != fresh["plan_hash"]:
             raise JournalError("stale_preview", "The company changed after the preview.", "Run the preview again.")
         request = fresh["request"]
@@ -531,7 +515,8 @@ def apply_set_tax_method(entity: Any, method: Any, tax_view: Any = None, plan_ha
             return {"status": "already_applied", "kind": SET_TAX_METHOD_KIND, **request, "request_hash": fresh["request_hash"]}
         entity = load_entity(entity.path)
         store = LedgerStore(default_store_path(entity.path))
-        config = {**entity.entity_config, TAX_METHOD_KEY: request["method"], TAX_VIEW_KEY: request[TAX_VIEW_KEY]}
+        config = {key: value for key, value in entity.entity_config.items() if key != LEGACY_VIEW_KEY}
+        config[TAX_METHOD_KEY] = request["method"]
         temp = entity.path / "entity.json.tax-method.tmp"
         temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         try:

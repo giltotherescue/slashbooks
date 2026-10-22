@@ -288,25 +288,27 @@ accounts only is labeled "Cash basis, with accrual tracking for selected account
 
 ### Tax method view
 
-The tax outputs can follow the method the company files on, instead of the recorded books.
-Two keys in `entity.json` control it. A person sets both with one command:
+The tax outputs follow the method the company files on, instead of the recorded books, as soon as
+a person records that method. One key in `entity.json` controls it. A person sets it with one command:
 
 ```sh
-books entity set-tax-method PATH --method cash --tax-view on          # preview
-books entity set-tax-method PATH --method cash --tax-view on --apply  # change it
+books entity set-tax-method PATH --method cash          # preview
+books entity set-tax-method PATH --method cash --apply  # change it
 ```
 
-- `tax_method` is `cash` or `accrual`. Absent means unknown.
-- `tax_method_view` is `true` or `false` (default `false`). If it is `false`, every tax output
-  is the same as before, even when `tax_method` is set. `--tax-view` can be left out to keep
-  the current value.
+- `tax_method` is `cash` or `accrual`. Absent means unknown. With no `tax_method`, every tax output
+  is the same as before the view existed: it reads the recorded books.
+- The tax method view is always on once a tax method is set. An old `tax_method_view` key in
+  `entity.json` is ignored on read, is never written, and is dropped when the method changes.
+  The option `--tax-view` is removed. A script that still passes it gets a refusal
+  (`tax_view_removed`) and nothing changes, so an old `--tax-view off` cannot be ignored without notice.
 - The command previews unless `--apply` is given. `--plan-hash` refuses a changed company.
   An exact repeat returns `already_applied`. The ledger audit log gets a `tax-method-set` event.
   No entry, report, period lock or published statement changes.
 - It is a person-only write. An agent can run the preview. Standing posting authority never
   covers `--apply`.
 
-When the view is on, `books tax map`, `books tax export`, the Read Me, `README.txt`,
+When a tax method is set, `books tax map`, `books tax export`, the Read Me, `README.txt`,
 `manifest.json` and the tax workbook use this view:
 
 | Tax method | Books | View used |
@@ -317,7 +319,7 @@ When the view is on, `books tax map`, `books tax export`, the Read Me, `README.t
 | accrual | cash books (accrual off) | refused: the books have no accrual view |
 
 The handoff, `tax map --format json` and `manifest.json` carry `tax_method`, `view` and
-`tax_view` (`source`, `label` and, for the handoff, `flags`). The "Basis" line of the Read Me
+`tax_view` (`source`, `label`, `assumptions` and, for the handoff, `flags`). The "Basis" line of the Read Me
 names the method and the view. The cover of the accountant package gets a "Tax method" row.
 
 The cash view for tax:
@@ -349,12 +351,53 @@ produce a cash view, or a cash view that does not tie to the accrual books.
 - `prepaid_capitalized`, one per prepaid schedule kept on the balance sheet, with `treatment_source`
   `recorded` (a person recorded `capitalize`) or `not_recorded` (no value is recorded).
 - `cash_view_unclassified` and `cash_view_noncash_entry`: entries the cash view cannot explain.
+- `method_change_possible`: the tax method is cash and `prior_return_method` is `accrual` or
+  `unknown`. It is a flag only. The export is not refused. See "Method change" below.
 - `prepaid_tax_treatment_not_recorded`: the prepaid schedules with no recorded `tax_treatment`.
 - `deposit_kind_not_recorded`: the deposits with no recorded `deposit_kind` (the view assumes
   advance payment). `deposit_refundable`: one per deposit recorded as refundable.
 
-These flags only list missing inputs and recorded facts. Slashbooks does not apply a tax rule to
-the tax profile or to the asset list. It does not block, warn or decide from them.
+These flags only list missing inputs and recorded facts. Slashbooks applies no tax rule to the
+tax profile or to the asset list. It does not block or decide from them.
+
+### Method change
+
+Accrual books, or an unknown prior return method, do not show the method on the tax return.
+Slashbooks cannot know the method on the last return. The preparer confirms it. A change from accrual
+to cash needs IRS consent (Form 3115) and a section 481(a) adjustment. The preparer handles both.
+Slashbooks does not prepare them, does not name the guidance that applies this year, and does not
+refuse the export. It adds the flag `method_change_possible`.
+
+### Tax assumptions
+
+The tax export states what it did and what it left alone, so the preparer can review it. The
+section is data from the books and the settings. It applies no tax rule and gives no tax advice.
+It is in `tax_view.assumptions` (tax export, `manifest.json` and `tax map --format json` with a
+period), in the "Tax Assumptions" sheet right after the Read Me, in `tax-assumptions-*.csv`, and in a
+short Read Me section. It has four parts:
+
+1. Settings in effect: tax method and its source, fiscal year start, prior return method, entity type,
+   currency, period covered, the basis of the recorded books and the view used for tax.
+2. How each item is handled. One row each: prepaid expenses, customer deposits, deferred revenue,
+   opening receivables and payables, credit card charges, bad debts, depreciation and expensing,
+   accrued liabilities, inventory and tax year. Each row has the handling in this export, the source of
+   the handling (recorded by a person, assumed default or not adjusted) and whether the preparer decides.
+3. Counts that show how complete the inputs are: prepaid schedules with no recorded tax treatment,
+   deposits with no recorded kind (assumed advance payment), fixed-asset rows listed, and open flags by code.
+4. The list of what the preparer decides: the tax method and the tax year on the filed return,
+   cash-method eligibility and tax-shelter status, the 12-month rule and the election out, Form 3115 and
+   the section 481(a) adjustment, depreciation, section 179, bonus and de minimis, deposit and
+   trust or escrow classification, the inventory method, and card financing.
+
+Points the sheet states:
+
+- Passing the 12-month test only removes the capitalization requirement. It does not prove that an
+  item is deductible.
+- The election out of the 12-month rule is made on the timely filed original return. A schedule
+  override in Slashbooks is not that election.
+- A deposit recorded as refundable is a proposal that a person recorded. Check the agreement. Do not
+  classify a deposit, or funds held in trust or escrow, from an account name.
+- With another tax method or with cash books, the rows say "Not adjusted": the recorded books are used.
 
 ### Tax profile
 
@@ -403,18 +446,25 @@ The view keeps its tie-out to the accrual books to the cent. `tax_view.deposits`
 
 `tax_view.fixed_assets` and the "Fixed Assets" sheet list, as data only:
 
-- each depreciation schedule: purchase date (placed in service), cost, account, vendor (the payee
+- each depreciation schedule: purchase date (the origin date of the schedule), cost, account, vendor (the payee
   of the purchase entry, when known), reference and book depreciation to the end of the period;
 - each entry with no depreciation schedule whose postings to `Assets:Fixed` accounts are a net
   debit, on the account it debits most. A move between two fixed-asset accounts nets to zero and
   is left out. Accounts whose name contains "Accumulated" and depreciation contra accounts are
   left out. An opening-balance entry has `source` `opening`.
 
-`in_period` says whether the purchase date is in the export period. Slashbooks computes no tax
-depreciation and does not choose an expensing election or a safe harbor. The preparer does. For
-reference only: the de minimis safe harbor for a taxpayer without audited financial statements
-was $2,500 per invoice or item for 2026 (Treas. Reg. 1.263(a)-1(f) and IRS guidance; verify
-before use).
+`in_period` says whether the purchase date is in the export period. The purchase date is not the
+placed-in-service date. Slashbooks does not record the placed-in-service date, and the two can differ.
+The sheet header says "Purchase Date" and the sheet carries a note. The preparer sets the
+placed-in-service date.
+
+Slashbooks computes no tax depreciation. It does not choose section 179, bonus depreciation or the de
+minimis safe harbor. The preparer does. Amounts are ceilings, and each has conditions that the preparer
+checks. For reference only (verify before use): the de minimis safe harbor is $2,500 per invoice or
+item without an applicable financial statement, and $5,000 with one (Treas. Reg. 1.263(a)-1(f)). It needs
+written accounting procedures at the start of the year, book expensing, and an annual election on the
+return. It excludes inventory, land and spare parts. Cost alone does not qualify an item, so any size
+screen is a screening aid only.
 
 The defaults need review by a tax professional: the configured fiscal year and the treatment of
 opening receivables collected after the change. Slashbooks applies no prepaid tax rule. The

@@ -1,7 +1,7 @@
-"""Tax outputs follow the company's tax method when the tax-method view is on.
+"""Tax outputs follow the company's tax method once a tax method is recorded.
 
-Every expected figure is hand-computed in the comment beside it. The flag-off tests
-prove that a company without the view (or with ``tax_method`` set but the view off)
+Every expected figure is hand-computed in the comment beside it. The no-tax-method tests
+prove that a company without a tax method
 produces the same tax outputs as before, byte for byte. The golden harness
 (tests/test_golden_outputs.py) proves the same for the three golden companies.
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 import json
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -45,11 +46,8 @@ def books(*argv: str):
     return code, (json.loads(out) if out.strip().startswith(("{", "[")) else out), err
 
 
-def set_method(root: Path, method: str, view: str | None = "on"):
-    args = ["entity", "set-tax-method", str(root), "--method", method, "--apply"]
-    if view:
-        args += ["--tax-view", view]
-    code, result, err = books(*args)
+def set_method(root: Path, method: str):
+    code, result, err = books("entity", "set-tax-method", str(root), "--method", method, "--apply")
     assert code == 0, (result, err)
     return result
 
@@ -275,23 +273,56 @@ class CashFilerWithAccrualRecords(CashViewFixture):
         self.assertTrue(after["basis_label"].startswith("Accrual method (tax)"))
 
 
-class FlagOffIsUnchanged(CashViewFixture):
-    def test_tax_method_without_the_view_changes_no_tax_output(self):
-        self.item("bill", "payable", AP, "500.00", "2026-04-01", "Power Co", counter=UTILITIES)
-        self.schedule("ins24", "prepaid", PREPAID, INSURANCE, "2400.00", "2026-01-01", "2027-12-31", "equal_month", BANK)
+class NoTaxMethodIsUnchanged(CashViewFixture):
+    """With no tax_method recorded, every tax output is what it was before the tax method view existed."""
+
+    def outputs(self, name: str):
         argv = ["tax", "map", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--format", "json"]
-        before = run_cli(argv)
-        out_before = Path(self.tmp.name) / "before"
-        books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out_before), "--formats", "csv")
-        set_method(self.root, "cash", view=None)
-        config = json.loads((self.root / "entity.json").read_text())
-        self.assertEqual((config["tax_method"], config["tax_method_view"]), ("cash", False))
-        self.assertEqual(run_cli(argv), before)
-        out_after = Path(self.tmp.name) / "after"
-        books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out_after), "--formats", "csv")
-        for path in sorted(out_before.iterdir()):
-            text = path.read_text().replace(str(out_before), "OUT")
-            self.assertEqual(text, (out_after / path.name).read_text().replace(str(out_after), "OUT"), path.name)
+        out = Path(self.tmp.name) / name
+        books("tax", "export", "--entity", str(self.root), "--year", "2026", "--form", "schc", "--output-dir", str(out), "--formats", "csv,xlsx")
+        files = {path.name: path.read_text(errors="replace").replace(str(out), "OUT") for path in sorted(out.iterdir())
+                 if path.suffix != ".xlsx"}
+        return run_cli(argv), files, sorted(path.name for path in out.iterdir())
+
+    def test_an_old_view_key_without_a_method_changes_nothing(self):
+        self.item("bill", "payable", AP, "500.00", "2026-04-01", "Power Co", counter=UTILITIES)
+        before = self.outputs("before")
+        self.assertFalse(any("assumptions" in name for name in before[2]))
+        self.assertNotIn("tax_view", before[0][1])
+        path = self.root / "entity.json"
+        config = json.loads(path.read_text())
+        for value in (True, False):
+            path.write_text(json.dumps({**config, "tax_method_view": value}))
+            self.assertEqual(self.outputs("after"), before)
+            shutil.rmtree(Path(self.tmp.name) / "after")
+
+    def test_an_old_view_key_is_ignored_and_dropped_when_the_method_is_set(self):
+        path = self.root / "entity.json"
+        config = json.loads(path.read_text())
+        path.write_text(json.dumps({**config, "tax_method_view": False}))
+        # The method now decides. The old key, even "false", does not turn the view off.
+        code, result, err = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
+        self.assertEqual((code, result["status"]), (0, "applied"), err)
+        saved = json.loads(path.read_text())
+        self.assertEqual(saved["tax_method"], "cash")
+        self.assertNotIn("tax_method_view", saved)
+        self.assertEqual(taxmap.build_handoff(self.root, *Y2026, form="schc")["view"], "cash")
+
+    def test_an_old_view_key_with_a_method_is_harmless(self):
+        path = self.root / "entity.json"
+        config = json.loads(path.read_text())
+        path.write_text(json.dumps({**config, "tax_method": "cash", "tax_method_view": False}))
+        self.assertEqual(taxmap.build_handoff(self.root, *Y2026, form="schc")["view"], "cash")
+        path.write_text(json.dumps({**config, "tax_method": "cash", "tax_method_view": "garbage"}))
+        self.assertEqual(taxmap.build_handoff(self.root, *Y2026, form="schc")["view"], "cash")
+
+    def test_the_removed_tax_view_option_is_refused_with_a_clear_message(self):
+        before = (self.root / "entity.json").read_text()
+        for argv in (["--tax-view", "on"], ["--tax-view", "off"], ["--tax-view", "on", "--apply"]):
+            code, result, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", *argv)
+            self.assertEqual((code, result["errors"][0]["code"]), (1, "tax_view_removed"), argv)
+            self.assertIn("The tax method view is always on once a tax method is set", result["errors"][0]["message"])
+        self.assertEqual((self.root / "entity.json").read_text(), before)
 
 
 class CashCompany(unittest.TestCase):
@@ -336,17 +367,18 @@ class CashCompany(unittest.TestCase):
 
     def test_setter_preview_apply_idempotent_and_audit(self):
         config_before = (self.root / "entity.json").read_text()
-        code, plan, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--tax-view", "on")
+        code, plan, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash")
         self.assertEqual(code, 0)
         self.assertEqual((self.root / "entity.json").read_text(), config_before)
-        self.assertIn("tax_method_view", plan["effects"]["flag"])
+        self.assertNotIn("tax_method_view", json.dumps(plan))
         self.assertEqual(plan["effects"]["published_statements_changed"], False)
-        code, stale, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--tax-view", "on", "--apply", "--plan-hash", "0" * 64)
+        code, stale, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply", "--plan-hash", "0" * 64)
         self.assertEqual((code, stale["errors"][0]["code"]), (1, "stale_preview"))
-        code, done, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--tax-view", "on", "--apply", "--plan-hash", plan["plan_hash"])
+        code, done, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply", "--plan-hash", plan["plan_hash"])
         self.assertEqual((code, done["status"]), (0, "applied"))
         config = json.loads((self.root / "entity.json").read_text())
-        self.assertEqual((config["tax_method"], config["tax_method_view"]), ("cash", True))
+        self.assertEqual(config["tax_method"], "cash")
+        self.assertNotIn("tax_method_view", config)
         code, same, _ = books("entity", "set-tax-method", str(self.root), "--method", "cash", "--apply")
         self.assertEqual(same["status"], "already_applied")
         events = [e["type"] if isinstance(e, dict) else e.type for e in LedgerStore(self.root / "ledger.sqlite").load_audit_events()]
@@ -357,7 +389,7 @@ class CashCompany(unittest.TestCase):
     def test_invalid_tax_method_in_entity_json_is_refused(self):
         path = self.root / "entity.json"
         config = json.loads(path.read_text())
-        path.write_text(json.dumps({**config, "tax_method": "hybrid", "tax_method_view": True}))
+        path.write_text(json.dumps({**config, "tax_method": "hybrid"}))
         with self.assertRaises(ValueError):
             taxmap.build_handoff(self.root, date(2026, 1, 1), date(2026, 3, 31), form="schc")
 
@@ -404,7 +436,7 @@ class ScheduleTaxTreatment(CashViewFixture):
             return [w["code"] for w in document["warnings"]], [b["code"] for b in document["blockers"]]
         warnings, _ = codes()
         self.assertNotIn("schedule_tax_treatment_missing", warnings)
-        set_method(self.root, "cash", view=None)
+        set_method(self.root, "cash")
         warnings, blockers = codes()
         self.assertIn("schedule_tax_treatment_missing", warnings)
         self.assertNotIn("schedule_tax_treatment_missing", blockers)
@@ -479,7 +511,7 @@ class ReviewRegressions(CashViewFixture):
         before = self.store.load_audit_events()
         with patch("os.replace", side_effect=OSError("synthetic rename failure")):
             with self.assertRaises(OSError):
-                taxview.apply_set_tax_method(self.entity, "cash", "on")
+                taxview.apply_set_tax_method(self.entity, "cash")
         self.assertEqual((self.root / "entity.json").read_bytes(), original)
         self.assertEqual(self.store.load_audit_events(), before)
         self.assertFalse((self.root / "entity.json.tax-method.tmp").exists())
@@ -505,11 +537,12 @@ class ReviewRegressions(CashViewFixture):
         with self.assertRaisesRegex(CashViewError, "trial balance"):
             self.handoff()
 
-    def test_invalid_enabled_tax_method_fails_closed(self):
-        with self.assertRaisesRegex(ValueError, "no tax method"):
-            taxview.active_method({"tax_method_view": True})
+    def test_the_active_method_is_the_recorded_method_and_an_old_key_is_ignored(self):
+        self.assertIsNone(taxview.active_method({}))
+        self.assertIsNone(taxview.active_method({"tax_method_view": True}))
+        self.assertEqual(taxview.active_method({"tax_method": "accrual", "tax_method_view": False}), "accrual")
         with self.assertRaises(ValueError):
-            taxview.active_method({"tax_method_view": "on"})
+            taxview.active_method({"tax_method": "hybrid"})
         with self.assertRaises(JournalError):
             schedules.effective_tax_treatment({"kind": "prepaid", "tax_treatment": "typo"})
 
