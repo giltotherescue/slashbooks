@@ -81,6 +81,72 @@ class StripeTests(unittest.TestCase):
         import_transactions(self.entity, [bank], 'bank-intake', intake_only=True)
         return [dict(payout_id='po_one', bank_source_id=bank['id'], bank_source_digest=routine_source_digest([bank]), approved_ledger_account=BANK)]
 
+    def test_reserve_hold_release_never_becomes_income(self):
+        reserve = 'Assets:Processors:Stripe-Reserved'
+        with self.store.transaction() as conn:
+            self.store.insert_opens([Open(date(2000, 1, 1), reserve, ('USD',))], conn)
+        self.raw['balanceTransactions'] = [
+            dict(evidence()['balanceTransactions'][0], id='txn_hold', source=None,
+                 type='payout_minimum_balance_hold', amount=-500, fee=0, net=-500)]
+        plan = stripe_plan(self.entity, self.raw, self.policy)
+        self.assertEqual('missing_reserve_account', plan['unresolved'][0]['reason'])
+        self.policy['reserve_account'] = reserve
+        self.stage(); self.apply()
+        self.assertEqual({CLEARING: Decimal('-5'), reserve: Decimal('5')}, self.balances())
+        self.raw['balanceTransactions'] = [dict(self.raw['balanceTransactions'][0],
+            id='txn_release', type='payout_minimum_balance_release', amount=500, net=500)]
+        self.stage(); self.apply()
+        self.assertEqual({CLEARING: Decimal('0'), reserve: Decimal('0')}, self.balances())
+        self.apply()
+        self.assertEqual(2, len(self.store.load_entries()))
+
+    def test_reserve_policy_cannot_reuse_clearing(self):
+        self.policy['reserve_account'] = CLEARING
+        with self.assertRaisesRegex(ValueError, 'distinct'):
+            stripe_plan(self.entity, self.raw, self.policy)
+
+    def test_fee_reported_in_fee_field_posts_total_net_cost(self):
+        self.raw['balanceTransactions'] = [dict(evidence()['balanceTransactions'][0],
+            id='txn_fee', type='stripe_fee', source=None, amount=0, fee=175, net=-175)]
+        self.assertEqual(175, stripe_preview(self.raw)['by_currency'][0]['fees'])
+        self.stage(); self.apply()
+        self.assertEqual({CLEARING: Decimal('-1.75'), FEES: Decimal('1.75')}, self.balances())
+
+    def test_fee_credits_reduce_expense_and_replay_once(self):
+        for kind in ('stripe_fee', 'stripe_fx_fee'):
+            with self.subTest(kind=kind):
+                bt = dict(evidence()['balanceTransactions'][0], id='txn_' + kind,
+                          type=kind, source=None, amount=125, fee=0, net=125)
+                self.raw['balanceTransactions'] = [bt]
+                preview = stripe_preview(self.raw)
+                self.assertEqual([], preview['unsupported'])
+                self.assertEqual(-125, preview['by_currency'][0]['fees'])
+                plan = self.stage()
+                self.assertEqual([], plan['unresolved'])
+                self.assertEqual({CLEARING: '1.25', FEES: '-1.25'},
+                                 {p['account']: p['amount'] for p in plan['actions'][0]['postings']})
+                self.apply()
+                before = self.balances()
+                self.apply()
+                self.assertEqual(before, self.balances())
+
+    def test_payout_fee_does_not_inflate_bank_arrival(self):
+        matches = self.full_flow()
+        payout = self.raw['balanceTransactions'][-1]
+        payout.update(fee=50, net=-7750)
+        preview = stripe_preview(self.raw)
+        self.assertEqual([], preview['unsupported'])
+        self.assertEqual(350, preview['by_currency'][0]['fees'])
+        self.stage(bank_matches=matches)
+        self.apply(bank_matches=matches)
+        balances = self.balances()
+        self.assertEqual(Decimal('77.00'), balances[BANK])
+        self.assertEqual(Decimal('0.00'), balances[TRANSIT])
+        self.assertEqual(Decimal('3.50'), balances[FEES])
+        self.assertEqual(Decimal('-0.50'), balances[CLEARING])
+        self.apply(bank_matches=matches)
+        self.assertEqual(balances, self.balances())
+
     def _interrupted_sale_then_expanded_capture(self):
         from unittest.mock import patch
         from bookkeeping.ledger.staging import StagingStore
@@ -356,7 +422,7 @@ class StripeTests(unittest.TestCase):
 
     def test_prepare_creates_audited_catalog_only_and_repeat_is_noop(self):
         first = stripe_prepare(self.entity, opening_date='2026-01-01')
-        self.assertEqual(3, len(first['created']))  # clearing already exists
+        self.assertEqual(4, len(first['created']))  # clearing already exists
         self.assertEqual([], self.store.load_entries())
         self.assertFalse(first['opening_balance_supplied']); self.assertFalse(first['policy_approved'])
         before = self.files()
