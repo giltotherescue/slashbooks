@@ -88,6 +88,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                            "work"}
             or path in {("qb", "inventory"), ("qb", "agreement", "run"), ("entity", "related-entity", "list"),
                         ("entity", "infer-currency"),  # Reads files and proposes; writes nothing.
+                        ("migration", "export"),
                         ("connector", "csv", "inspect"), ("connector", "csv", "propose-mapping"),
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),
                         ("queue", "list"), ("queue", "show"), ("queue", "summary"),

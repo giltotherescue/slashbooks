@@ -1,4 +1,4 @@
-"""Local migration capture and read-only assessment; CLI remains assessment-only."""
+"""Local migration capture, assessment and fixed offline bundle export."""
 from __future__ import annotations
 
 import argparse
@@ -47,6 +47,15 @@ SECRET_TEXT = re.compile(
     rb"|(?i:authorization\s*[:=]\s*bearer\s+\S+)")
 
 
+# Exact host-created projection and artifact state. The reserved names stay
+# narrow so an arbitrary hidden customer path remains a migration blocker.
+ENGINE_METADATA_FILES = frozenset({
+    ".engine/bridge.json",
+    ".engine/company-artifacts.json",
+})
+ENGINE_ARTIFACTS_ROOT = ".engine/artifacts"
+
+
 class Rejected(Exception):
     """Only fixed diagnostic codes may cross the output boundary."""
 
@@ -72,8 +81,10 @@ def _excluded(name):
     parts = PurePosixPath(name).parts
     if re.fullmatch(r"backups/ledger\.sqlite\.(?:schema-v1|schema-repair)\.[0-9a-f]{32}\.sqlite", name):
         return "runtime_state"
-    if name == ".books.lock":
+    if name == ".books.lock" or name in ENGINE_METADATA_FILES:
         return "runtime_state"
+    if name == ENGINE_ARTIFACTS_ROOT or name.startswith(ENGINE_ARTIFACTS_ROOT + "/"):
+        return "derived_state"
     if name == ".gitignore" or parts[0] == ".git":
         return "local_vcs"
     if any(p.lower().startswith((".env", ".slashbooks", ".books")) or
@@ -510,6 +521,8 @@ def _capture(entity_dir, *, for_export=False):
                     reason = "unsafe_file"
                 elif reason in {"runtime_state", "platform_metadata"} and not stat.S_ISREG(mode):
                     reason = "unsafe_file"
+                elif name == ENGINE_ARTIFACTS_ROOT and not stat.S_ISDIR(mode):
+                    reason = "unsafe_file"
                 elif not reason and mode & 0o111:
                     reason = "custom_code"
                 if not reason:
@@ -614,6 +627,26 @@ def build_bundle(entity_dir, destination):
     """Export a private portable snapshot; this does not authorize adoption."""
     from .migration_bundle import build_bundle as build
     return build(entity_dir, destination)
+
+
+def add_parser(subparsers):
+    """Add the network-free engine command used by fixed sandbox execution."""
+    parser = subparsers.add_parser(
+        "migration", help="Create a verified offline company snapshot",
+    )
+    commands = parser.add_subparsers(dest="migration_command", required=True)
+    export = commands.add_parser(
+        "export", help="Write a private, portable company snapshot",
+    )
+    export.add_argument("--entity", required=True, type=Path)
+    export.add_argument("--output", required=True, type=Path)
+
+
+def run(args):
+    """Run the fixed export command without provider or transport access."""
+    result = build_bundle(args.entity.expanduser(), args.output.expanduser())
+    print(json.dumps(result, sort_keys=True, allow_nan=False))
+    return 0 if result.get("bundle_created") is True else 1
 
 
 class _Parser(argparse.ArgumentParser):

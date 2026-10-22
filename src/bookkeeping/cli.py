@@ -37,6 +37,7 @@ from bookkeeping import bank_accounts as bank_accounts_module
 from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
 from bookkeeping import hosted as hosted_module
+from bookkeeping import hosted_migration as migration_module
 from bookkeeping import import_check as import_check_module
 from bookkeeping import ingest as ingest_module
 from bookkeeping import procedures as procedures_module
@@ -128,6 +129,8 @@ def _dispatch(
             return run_connector(args)
         if args.command == "demo":
             return demo_module.run(args)
+        if args.command == "migration":
+            return migration_module.run(args)
         if args.command == "entity":
             return entity_module.run(args)
         if args.command == "accrual":
@@ -326,6 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     csvsource_module.add_parser(connector_subcommands)
 
     demo_module.add_parser(subcommands)
+    migration_module.add_parser(subcommands)
     hosted_module.add_parser(subcommands)
     entity_module.add_parser(subcommands)
     bank_accounts_module.add_parser(subcommands)

@@ -42,8 +42,14 @@ VERIFY="$WORK/verify"
 mkdir -m 700 "$VERIFY"
 CONFIG="$VERIFY/.slashbooks-remote.json"
 
-books cloud migration export --entity-dir "$SOURCE" --output "$WORK/company.zip"
+books migration export --entity "$SOURCE" --output "$WORK/company.zip"
 ```
+
+`books migration export` is the fixed, network-free engine command. A hosted
+executor can run the same command with `--entity @entity` and
+`--output @output/company.zip`; those are the only company and output path
+fields in its remote command contract. `books cloud migration export` remains
+the local transport-management alias for compatibility.
 
 Accrual bundles use the supported version-2 format and retain evidence, intents,
 schedules, items, allocations, coverage, and periods; legacy cash bundles remain

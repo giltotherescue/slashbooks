@@ -1,0 +1,45 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "slashbooks-cloud",
+  "version": "0.9.0",
+  "description": "Use hosted Slashbooks bookkeeping from ChatGPT, Codex, and other compatible agents.",
+  "author": {
+    "name": "Lower Coast Labs, LLC",
+    "email": "hi@slashbooks.co",
+    "url": "https://slashbooks.co"
+  },
+  "homepage": "https://slashbooks.co",
+  "repository": "https://github.com/giltotherescue/slashbooks",
+  "license": "Apache-2.0",
+  "keywords": [
+    "bookkeeping",
+    "accounting",
+    "finance"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Slashbooks",
+        "shortDescription": "Bookkeeping from your AI chat",
+        "longDescription": "Keep your business books up to date from ChatGPT. Review transactions, import bank statements, reconcile accounts, and get financial reports and cash forecasts using your Slashbooks Cloud company.\n\nSlashbooks records routine transactions under the permissions you approve and asks when something needs your judgment. You stay in control of approvals and closing the books.\n\nSign in to Slashbooks to choose your company and access. No software installation is needed. Requires a Slashbooks Cloud account; request access at slashbooks.co.",
+        "developerName": "Lower Coast Labs, LLC",
+        "category": "Finance",
+        "capabilities": [
+          "Review bookkeeping work",
+          "Read company reports",
+          "Prepare accountant exports"
+        ],
+        "websiteURL": "https://slashbooks.co",
+        "supportURL": "https://slashbooks.co/support",
+        "privacyPolicyURL": "https://slashbooks.co/privacy",
+        "termsOfServiceURL": "https://slashbooks.co/terms",
+        "defaultPrompt": [
+          "Update my books through September 30 and tell me what still needs review.",
+          "Import this September bank statement and reconcile it with the books.",
+          "Forecast cash for the next 13 weeks and explain the assumptions."
+        ]
+      },
+      "onboardingSkill": "./skills/get-started/SKILL.md"
+    }
+  }
+}

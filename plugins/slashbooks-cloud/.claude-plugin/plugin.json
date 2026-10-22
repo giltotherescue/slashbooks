@@ -1,0 +1,13 @@
+{
+  "name": "slashbooks-cloud",
+  "version": "0.9.0",
+  "description": "Use hosted Slashbooks bookkeeping from Claude.",
+  "author": {
+    "name": "Lower Coast Labs, LLC",
+    "email": "hi@slashbooks.co"
+  },
+  "homepage": "https://slashbooks.co",
+  "repository": "https://github.com/giltotherescue/slashbooks",
+  "privacyPolicyUrl": "https://slashbooks.co/privacy",
+  "license": "Apache-2.0"
+}
