@@ -150,6 +150,13 @@ class RemoteContractTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             command_spec(["queue", "list", "--entity", "@entity", "--work-out"])
 
+    def test_onboarding_complete_is_a_company_write(self):
+        spec = command_spec(["entity", "onboarding-complete", "@entity", "--via", "agent"])
+        self.assertEqual(spec["path"], ("entity", "onboarding-complete"))
+        self.assertEqual(spec["entity_fields"], ["path"])
+        self.assertTrue(spec["mutates"])
+        self.assertFalse(spec["network"])
+
     def test_unsafe_paths_and_commands(self):
         for value in ("../a", "/etc/passwd", "a//b", "a/./b", "a\\b", "C:/x", "%2e%2e/x", ".", "a/../b", "a\x00b"):
             with self.subTest(path=value), self.assertRaises(ContractError):
