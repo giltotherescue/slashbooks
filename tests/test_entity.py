@@ -1132,5 +1132,79 @@ class TestAccountingBasis(unittest.TestCase):
                 load_entity(root)
 
 
+class TestOnboardingComplete(unittest.TestCase):
+    """`books entity onboarding-complete` records one completion marker in entity.json."""
+
+    def _run(self, *argv: str) -> tuple[int, dict]:
+        import argparse
+        import contextlib
+        import io
+        parent = argparse.ArgumentParser()
+        add_parser(parent.add_subparsers(dest="command"))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = run(parent.parse_args(["entity", *argv]))
+        return code, json.loads(out.getvalue())
+
+    def test_records_the_marker_and_keeps_the_first_one(self) -> None:
+        from bookkeeping.entity import onboarding_completed
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "company"
+            init_entity(root)
+            self.assertIsNone(onboarding_completed(load_entity(root).entity_config))
+            ledger = (root / "ledger.sqlite").read_bytes()
+            code, result = self._run("onboarding-complete", str(root), "--via", "agent", "--on", "2026-10-20")
+            self.assertEqual(code, 0)
+            self.assertEqual(result, {"status": "completed", "onboarding_completed": {"on": "2026-10-20", "via": "agent"}})
+            config = json.loads((root / "entity.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["onboarding_completed"], {"on": "2026-10-20", "via": "agent"})
+            self.assertEqual(onboarding_completed(config), {"on": "2026-10-20", "via": "agent"})
+            # A second call, by any path, keeps the first record and writes nothing.
+            before = (root / "entity.json").read_bytes()
+            code, result = self._run("onboarding-complete", str(root), "--via", "staff")
+            self.assertEqual(code, 0)
+            self.assertEqual(result, {"status": "already_complete", "onboarding_completed": {"on": "2026-10-20", "via": "agent"}})
+            self.assertEqual((root / "entity.json").read_bytes(), before)
+            # The ledger does not change.
+            self.assertEqual((root / "ledger.sqlite").read_bytes(), ledger)
+
+    def test_defaults_to_today_and_keeps_other_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "company"
+            init_entity(root, name="Synthetic Co", website_url="https://example.com")
+            code, result = self._run("onboarding-complete", str(root), "--via", "meeting")
+            self.assertEqual(code, 0)
+            self.assertEqual(result["onboarding_completed"], {"on": date.today().isoformat(), "via": "meeting"})
+            config = json.loads((root / "entity.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["name"], "Synthetic Co")
+            self.assertEqual(config["website_url"], "https://example.com")
+
+    def test_refuses_a_bad_date_or_a_missing_company(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "company"
+            init_entity(root)
+            before = (root / "entity.json").read_bytes()
+            code, result = self._run("onboarding-complete", str(root), "--via", "agent", "--on", "soon")
+            self.assertEqual(code, 1)
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual((root / "entity.json").read_bytes(), before)
+            code, result = self._run("onboarding-complete", str(Path(tmp) / "missing"), "--via", "agent")
+            self.assertEqual(code, 1)
+            self.assertFalse((Path(tmp) / "missing").exists())
+
+    def test_a_malformed_marker_counts_as_not_complete(self) -> None:
+        from bookkeeping.entity import onboarding_completed
+        for value in (None, "yes", {"on": "2026-10-20"}, {"on": "2026-13-01", "via": "agent"}, {"on": "2026-10-20", "via": "robot"}):
+            with self.subTest(value=value):
+                self.assertIsNone(onboarding_completed({"onboarding_completed": value}))
+
+    def test_rejects_an_unknown_via(self) -> None:
+        import argparse
+        parent = argparse.ArgumentParser()
+        add_parser(parent.add_subparsers(dest="command"))
+        with self.assertRaises(SystemExit):
+            parent.parse_args(["entity", "onboarding-complete", "/tmp/foo", "--via", "robot"])
+
+
 if __name__ == "__main__":
     unittest.main()

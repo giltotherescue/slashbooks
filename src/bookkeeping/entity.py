@@ -870,6 +870,50 @@ def _write_entity_config(entity: "Entity") -> None:
     os.replace(tmp, destination)
 
 
+ONBOARDING_VIAS = ("agent", "meeting", "staff")
+
+
+def onboarding_completed(config: dict[str, Any]) -> dict[str, str] | None:
+    """The recorded onboarding completion of a company, or None.
+
+    ``entity.json`` keeps it as ``onboarding_completed``: ``{"on": "YYYY-MM-DD", "via": "agent"}``.
+    ``via`` says how the business was set up: ``agent`` (the onboarding workflow of an AI
+    agent), ``meeting`` (a hosted setup meeting) or ``staff`` (a person marked it done).
+    A missing or malformed value means onboarding is not recorded as complete.
+    """
+    value = config.get("onboarding_completed")
+    if not isinstance(value, dict) or value.get("via") not in ONBOARDING_VIAS or not isinstance(value.get("on"), str):
+        return None
+    try:
+        day = date.fromisoformat(value["on"])
+    except ValueError:
+        return None
+    return {"on": day.isoformat(), "via": value["via"]}
+
+
+@_locked_entity_operation
+def record_onboarding_complete(entity_path: Path, via: str, on: str = "") -> dict[str, Any]:
+    """Record that onboarding of the company is complete. The first record is kept.
+
+    A second call changes nothing and returns the record that is already there, so a
+    workflow can call it again safely. It changes no ledger data.
+    """
+    if via not in ONBOARDING_VIAS:
+        raise ValueError(f"Onboarding completion --via must be one of: {', '.join(ONBOARDING_VIAS)}.")
+    try:
+        day = date.fromisoformat(on) if on else date.today()
+    except ValueError as exc:
+        raise ValueError("Onboarding completion --on must use YYYY-MM-DD format.") from exc
+    entity = load_entity(entity_path)
+    existing = onboarding_completed(entity.entity_config)
+    if existing is not None:
+        return {"status": "already_complete", "onboarding_completed": existing}
+    record = {"on": day.isoformat(), "via": via}
+    entity.entity_config["onboarding_completed"] = record
+    _write_entity_config(entity)
+    return {"status": "completed", "onboarding_completed": record}
+
+
 @_locked_entity_operation
 def record_related_entity(
     entity_path: Path,
@@ -1223,6 +1267,16 @@ def add_parser(subparsers: Any) -> None:
     coverage_parser.add_argument("--account", default=None,
                                  help="Existing asset or liability account covered by this source")
 
+    onboarding_parser = entity_sub.add_parser(
+        "onboarding-complete",
+        help="Record that onboarding of the company is complete (entity.json onboarding_completed). The first record is kept",
+    )
+    onboarding_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    onboarding_parser.add_argument("--via", required=True, choices=ONBOARDING_VIAS,
+                                   help="How the business was set up: agent (an AI agent's onboarding workflow), "
+                                        "meeting (a hosted setup meeting) or staff (a person marked it done)")
+    onboarding_parser.add_argument("--on", default="", help="Completion date in YYYY-MM-DD format; defaults to today")
+
     related_parser = entity_sub.add_parser(
         "related-entity",
         help="Record or inspect owner-authorized related-entity settlement policies",
@@ -1415,6 +1469,16 @@ def run(args: Any) -> int:
         if len(report["ranges"]) > 1:
             print("Warning: these ranges have a gap between them; a period that spans the gap stays blocked. "
                   f"Fill the gap with: books entity source-coverage {target} --source \"{report['source']}\" --from <gap start> --to <gap end>")
+        return 0
+
+    if args.entity_command == "onboarding-complete":
+        try:
+            result = record_onboarding_complete(_resolve_target(args.path), args.via, args.on)
+        except (FileNotFoundError, ValueError) as exc:
+            print(json.dumps({"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]},
+                             sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
         return 0
 
     if args.entity_command == "related-entity":
