@@ -619,7 +619,8 @@ class TaxAssumptions(Base):
         result = self.assumptions()
         self.assertEqual(result["settings"], {
             "tax_method": "cash", "tax_method_source": "recorded in entity.json by a person (books entity set-tax-method)",
-            "fiscal_year_start": "01-01", "fiscal_year_start_source": "default", "prior_return_method": "unknown",
+            "fiscal_year_start": "01-01",
+            "fiscal_year_start_source": "value in entity.json (who set it is not recorded here)", "prior_return_method": "unknown",
             "entity_type": "not recorded", "currency": "USD", "period": "2026-01-01 to 2026-12-31",
             "books_basis": "accrual", "tax_view_used": "cash"})
         names = [item["item"] for item in result["items"]]
@@ -628,7 +629,7 @@ class TaxAssumptions(Base):
                                  "Accrued liabilities", "Inventory", "Tax year"])
         for item in result["items"]:
             self.assertEqual(set(item), {"item", "handling", "source", "preparer_decides"})
-            self.assertIn(item["source"].split(" where")[0], {"Recorded by a person", "Assumed default", "Not adjusted"})
+            self.assertIn(item["source"].split(" where")[0], {"Recorded by a person", "Value in entity.json", "Assumed default", "Not adjusted"})
         counts = result["counts"]
         self.assertEqual(counts["prepaid_schedules_without_tax_treatment"], 1)
         self.assertEqual(counts["deposits_without_recorded_kind"], 1)
@@ -719,6 +720,69 @@ class TaxAssumptions(Base):
         self.assertEqual(report["tax_view"]["assumptions"]["settings"]["tax_view_used"], "cash")
         code, report, _ = books("tax", "map", "--entity", str(self.root), "--form", "schc", "--format", "json")
         self.assertIsNone(report["tax_view"])   # no period: no assumptions
+
+    def item_text(self, name):
+        return next(i for i in self.assumptions()["items"] if i["item"] == name)["handling"]
+
+    def test_deferred_revenue_row_matches_the_refundable_schedule_figures(self):
+        # 1,200.00 received 2026-10-01, 100.00 a month. Advance payment: 1,200.00 income. Refundable: 300.00 income, 900.00 stays a liability.
+        self.schedule("sub", "deferred", DEFERRED, SUBSCRIPTIONS, "1200.00", "2026-10-01", "2027-09-30", "equal_month", BANK)
+        self.due("2026-12-31")
+        self.cash_filer()
+        self.assertEqual(tb(self.handoff())[SUBSCRIPTIONS], D("-1200.00"))
+        self.deposit_kind("schedule", "sub", "refundable")
+        rows = tb(self.handoff())
+        self.assertEqual((rows[SUBSCRIPTIONS], rows[DEFERRED]), (D("-300.00"), D("-900.00")))
+        text = self.item_text("Deferred revenue")
+        self.assertIn("advance_payment, or with no recorded kind, is income on receipt", text)
+        self.assertIn("recorded as refundable keeps its liability", text)
+        self.assertIn("follows its recognition entries as they post", text)
+        self.assertNotIn("Income on receipt (cash method)", text)
+        self.assertIn("released by a recognition entry", self.item_text("Customer deposits"))
+
+    def test_card_row_keeps_the_item_treatment_for_a_card_funded_asset(self):
+        # A 2,500.00 machine bought on the card stays an asset: the charge date is the payment date, not an expense.
+        self.journal("machine", "2026-05-04", [(EQUIPMENT, "2500.00"), ("Liabilities:CreditCard", "-2500.00")])
+        self.cash_filer()
+        rows = tb(self.handoff())
+        self.assertEqual(rows[EQUIPMENT], D("2500.00"))
+        text = self.item_text("Credit card charges")
+        self.assertNotIn("The expense is on the charge date", text)
+        for part in ("charge date is used as the payment date", "a card-funded asset", "capitalized prepaid schedule keeps its treatment",
+                     "deductible", "preparer's decision"):
+            self.assertIn(part, text)
+        asset = next(r for r in self.handoff()["tax_view"]["fixed_assets"] if r["source"] == "purchase")
+        self.assertEqual(asset["cost"], "2500.00")
+
+    def test_deposit_note_is_conditional(self):
+        self.cash_filer()
+        notes = " ".join(self.assumptions()["notes"])
+        self.assertIn("Where a person recorded a deposit kind, it remains a proposal", notes)
+        self.assertNotIn("A person recorded the deposit kind", notes)
+
+    def test_fiscal_year_start_tells_an_absent_key_from_a_recorded_01_01(self):
+        self.cash_filer()
+        path = self.root / "entity.json"
+        config = json.loads(path.read_text())
+
+        def start():
+            result = self.assumptions()
+            item = next(i for i in result["items"] if i["item"] == "Tax year")
+            return result["settings"]["fiscal_year_start_source"], item["handling"], item["source"]
+
+        config.pop("fiscal_year_start", None)
+        path.write_text(json.dumps(config))
+        source, handling, item_source = start()
+        self.assertEqual(source, "default (entity.json has no value)")
+        self.assertIn("the default, because entity.json has no value", handling)
+        self.assertEqual(item_source, "Assumed default")
+        for value in ("07-01", "01-01"):   # a person set 07-01, then 01-01 again: the key stays
+            code, result, err = books("entity", "set-fiscal-year", str(self.root), "--start", value, "--apply")
+            self.assertEqual(code, 0, (result, err))
+            source, handling, item_source = start()
+            self.assertEqual(source, "value in entity.json (who set it is not recorded here)")
+            self.assertIn(f"The fiscal year start is {value} (a value in entity.json)", handling)
+            self.assertEqual(item_source, "Value in entity.json")
 
 
 if __name__ == "__main__":

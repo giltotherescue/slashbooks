@@ -328,7 +328,9 @@ The cash view for tax:
   on the date cash settles it, also when that date is in the next tax year.
 - Receivable, payable, accrued, deferred revenue and customer deposit balances leave the trial
   balance. One computed row, `Equity:Accrual-To-Cash-Adjustment`, keeps the trial balance balanced.
-- Deferred revenue and customer deposits are income on receipt.
+- Deferred revenue and customer deposits are income on receipt, except a record that a person
+  marked `refundable` (see "Deposits: advance payment or refundable"). A refundable record keeps
+  its liability, and its income follows applications, forfeitures and recognition entries.
 - A prepaid schedule follows its recorded `tax_treatment` (see `docs/accrual.md`). `expense_when_paid` is
   expense on the payment date. `capitalize` keeps the unused part on the balance sheet and
   deducts the recognition entries as they post. With no recorded value, the view follows the
@@ -382,7 +384,7 @@ short Read Me section. It has four parts:
 2. How each item is handled. One row each: prepaid expenses, customer deposits, deferred revenue,
    opening receivables and payables, credit card charges, bad debts, depreciation and expensing,
    accrued liabilities, inventory and tax year. Each row has the handling in this export, the source of
-   the handling (recorded by a person, assumed default or not adjusted) and whether the preparer decides.
+   the handling (recorded by a person, a value in `entity.json`, assumed default or not adjusted) and whether the preparer decides.
 3. Counts that show how complete the inputs are: prepaid schedules with no recorded tax treatment,
    deposits with no recorded kind (assumed advance payment), fixed-asset rows listed, and open flags by code.
 4. The list of what the preparer decides: the tax method and the tax year on the filed return,

@@ -370,8 +370,10 @@ the owner, propose a value with its evidence, and note it for the preparer to co
    income, and an advance payment can stay income even with a contingent refund. Propose a
    `deposit_kind` with the evidence. A trust, escrow, card or refundable deposit item needs the
    preparer's decision. Do not decide it from an account name.
-9. Card charges. The cash view treats a card charge as expensed on the charge date, and the card
-   payment as a transfer. The preparer decides whether a card is financing.
+9. Card charges. The cash view uses the charge date as the payment date, and the card payment is
+   a transfer. Expense recognition still follows the item: a card-funded asset or a capitalized
+   prepaid schedule keeps its treatment. The preparer decides whether the charge is deductible and
+   whether card use is financing.
 
 ## Shared procedures
 

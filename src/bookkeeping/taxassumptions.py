@@ -14,9 +14,9 @@ from datetime import date
 from typing import Any, Mapping
 
 NOT_RECORDED = "not recorded"
-RECORDED = "Recorded by a person"
 ASSUMED = "Assumed default"
 NOT_ADJUSTED = "Not adjusted"
+IN_FILE = "Value in entity.json"
 RECORDED_OR_ASSUMED = "Recorded by a person where set. Assumed default where not set"
 
 # What the preparer decides. This list never changes with the books.
@@ -38,7 +38,7 @@ NOTES = [
     "A prepaid schedule override in Slashbooks is not the election out. The election out is made on the return.",
     "The Fixed Assets sheet shows the purchase date. The placed-in-service date is not recorded.",
     "Cost alone does not decide the de minimis safe harbor. The preparer checks the written procedures and the election.",
-    "A person recorded the deposit kind. It is not a tax conclusion. The preparer confirms it against the agreement.",
+    "Where a person recorded a deposit kind, it remains a proposal. The preparer confirms it against the agreement.",
 ]
 
 
@@ -46,15 +46,15 @@ def _prepaid_without_treatment(schedules: list[Mapping[str, Any]]) -> list[str]:
     return sorted(r["id"] for r in schedules if r.get("kind") == "prepaid" and "tax_treatment" not in r)
 
 
-def _items(view: Any, fiscal_start: str, fiscal_recorded: bool) -> list[dict[str, str]]:
+def _items(view: Any, fiscal_start: str, fiscal_in_file: bool) -> list[dict[str, str]]:
     """One row per item: what this export did, where that handling came from, and whether the preparer decides."""
     def row(item: str, handling: str, source: str, decides: str) -> dict[str, str]:
         return {"item": item, "handling": handling, "source": source, "preparer_decides": decides}
 
     tax_year = row("Tax year",
-                   f"The fiscal year start is {fiscal_start} ({'set by a person' if fiscal_recorded else 'the default'}). "
+                   f"The fiscal year start is {fiscal_start} ({'a value in entity.json' if fiscal_in_file else 'the default, because entity.json has no value'}). "
                    "The export covers the period that was asked for. The federal tax year is not checked.",
-                   RECORDED if fiscal_recorded else ASSUMED, "Yes")
+                   IN_FILE if fiscal_in_file else ASSUMED, "Yes")
     depreciation = row("Depreciation, section 179, bonus, de minimis",
                        "Not computed. Book depreciation is shown as recorded. The Fixed Assets sheet lists purchases with their cost. "
                        "Cost alone does not decide any of these.", NOT_ADJUSTED, "Yes")
@@ -68,14 +68,21 @@ def _items(view: Any, fiscal_start: str, fiscal_recorded: bool) -> list[dict[str
                 RECORDED_OR_ASSUMED, "Yes"),
             row("Customer deposits",
                 "A deposit recorded as advance_payment is income on receipt. A deposit recorded as refundable is a liability. "
-                "It stays a liability until it is applied to an invoice or forfeited. A deposit with no recorded kind is assumed "
-                "to be an advance_payment.",
+                "It stays a liability until it is applied to an invoice, forfeited, or released by a recognition entry. "
+                "A deposit with no recorded kind is assumed to be an advance_payment.",
                 RECORDED_OR_ASSUMED, "Yes"),
-            row("Deferred revenue", "Income on receipt (cash method). The deferral that the accrual books show is removed.", ASSUMED, "Yes"),
+            row("Deferred revenue",
+                "A deferred schedule recorded as advance_payment, or with no recorded kind, is income on receipt. The deferral that "
+                "the accrual books show is removed. A deferred schedule recorded as refundable keeps its liability. Its income "
+                "follows its recognition entries as they post.",
+                RECORDED_OR_ASSUMED, "Yes"),
             row("Opening receivables and payables",
                 "Counted on the date of the cash movement. Slashbooks does not check whether an earlier return reported them.", ASSUMED, "Yes"),
             row("Credit card charges",
-                "The expense is on the charge date. The payment of the card balance is a transfer.", ASSUMED, "Yes"),
+                "The charge date is used as the payment date. The payment of the card balance is a transfer. Expense recognition "
+                "still follows the item: a card-funded asset or a capitalized prepaid schedule keeps its treatment. "
+                "Whether the charge is deductible, and whether card use is financing, is the preparer's decision.",
+                ASSUMED, "Yes"),
             row("Bad debts",
                 "Not recorded as a deduction. Write-offs, credits and true-ups are left out. Receivables that were never received "
                 "are never in income. The preparer decides if any deduction applies.", ASSUMED, "Yes"),
@@ -107,13 +114,14 @@ def build(conn: Any, config: Mapping[str, Any], view: Any, from_date: date, to_d
     from .currency import company_currency
     from .taxmap import book_basis
     from .taxview import _records
-    # The start is recorded by a person only when it differs from the default. A start of 01-01 is the default either way.
-    fiscal_recorded = view.fiscal_year_start != "01-01"
+    # Tell an absent key from a value in entity.json. A value of 01-01 can be a recorded value. Who wrote it is not known here.
+    fiscal_in_file = "fiscal_year_start" in config
     settings = {
         "tax_method": view.tax_method,
         "tax_method_source": "recorded in entity.json by a person (books entity set-tax-method)",
         "fiscal_year_start": view.fiscal_year_start,
-        "fiscal_year_start_source": "set by a person" if fiscal_recorded else "default",
+        "fiscal_year_start_source": ("value in entity.json (who set it is not recorded here)" if fiscal_in_file
+                                     else "default (entity.json has no value)"),
         "prior_return_method": profile.get("prior_return_method", NOT_RECORDED),
         "entity_type": profile.get("entity_type", NOT_RECORDED),
         "currency": company_currency(config),
@@ -134,7 +142,7 @@ def build(conn: Any, config: Mapping[str, Any], view: Any, from_date: date, to_d
         if flag["code"] != "tax_method":
             open_flags[flag["code"]] = open_flags.get(flag["code"], 0) + 1
     counts["open_flags"] = dict(sorted(open_flags.items()))
-    return {"settings": settings, "items": _items(view, view.fiscal_year_start, fiscal_recorded), "counts": counts,
+    return {"settings": settings, "items": _items(view, view.fiscal_year_start, fiscal_in_file), "counts": counts,
             "preparer_decides": list(PREPARER_DECIDES), "notes": list(NOTES)}
 
 
