@@ -62,6 +62,54 @@ def failed_ids(report, scenario_id):
 
 
 class ScriptedSuiteTests(unittest.TestCase):
+    def test_reading_all_replies_after_posting_does_not_erase_early_write_failure(self):
+        class LateRead(ScriptedAgent):
+            def run(self, scenario, session):
+                final = super().run(scenario, session)
+                session.call(["cloud", "questions", "--all"])
+                return final
+
+        report = run_suite(LateRead({"first_page_only"}), ["grouped_reply"])
+        self.assertIn("reads_all_reply_pages", failed_ids(report, "grouped_reply"))
+        self.assertFalse(report["summary"]["passed"])
+
+    def test_full_read_does_not_excuse_incomplete_evidence_on_a_write(self):
+        class IncompleteEvidence(ScriptedAgent):
+            def _json(self, *argv):
+                if argv[:4] == ("queue", "confirm", "--item", "S-201"):
+                    # Keep the full read and all correct postings; omit just one evidence ID.
+                    args = list(argv)
+                    index = args.index("R-3")
+                    del args[index - 1:index + 1]
+                    argv = tuple(args)
+                return super()._json(*argv)
+
+        report = run_suite(IncompleteEvidence(), ["grouped_reply"])
+        failures = failed_ids(report, "grouped_reply")
+        self.assertEqual(failures, {"attaches_complete_reply_set", "applies_every_answerable_fact"})
+        self.assertFalse(report["summary"]["passed"])
+
+    def test_rejected_early_write_still_fails_read_before_write_check(self):
+        class RejectedEarlyWrite:
+            name = "rejected-early-write"
+
+            def run(self, scenario, session):
+                session.call(["cloud", "questions"])
+                ok, _ = session.call([
+                    "queue", "confirm", "--item", "S-201", "--category", "Rent",
+                    "--answer-question-id", "Q-1", "--answer-reply-id", "R-1",
+                    "--answer-reply-watermark", "1", "--answer-source-id", "S-201"])
+                self.posted = ok
+                session.call(["cloud", "questions", "--all"])
+                self.confirmed = session.state()["confirmed"]
+                return "Marlow Consulting remains open."
+
+        agent = RejectedEarlyWrite()
+        report = run_suite(agent, ["grouped_reply"])
+        self.assertFalse(agent.posted)
+        self.assertEqual(agent.confirmed, {})
+        self.assertIn("reads_all_reply_pages", failed_ids(report, "grouped_reply"))
+
     def test_correct_agent_passes_every_scenario(self):
         report = run_suite(ScriptedAgent())
         self.assertEqual(report["summary"]["score"], 1.0, report["text"])
@@ -136,6 +184,30 @@ class WorldTests(unittest.TestCase):
         q1 = next(q for q in json.loads(text)["questions"] if q["id"] == "Q-1")
         self.assertEqual(len(q1["replies"]), 3)
 
+    def test_bad_answer_flags_or_incomplete_provenance_never_post(self):
+        base = ["queue", "confirm", "--item", "S-201", "--category", "Rent"]
+        valid = ["--answer-question-id", "Q-1", "--answer-reply-id", "R-1",
+                 "--answer-reply-id", "R-2", "--answer-reply-id", "R-3",
+                 "--answer-reply-watermark", "3", "--answer-source-id", "S-201"]
+        cases = [valid[:-2], valid[:-1] + ["S-204"],
+                 ["--answer-question", "Q-1", "--answer-reply", "R-1", "--answer-watermark", "3"],
+                 ["--answer-question-id", "Q-1", "--answer-reply-ids", "R-1,R-2,R-3",
+                  "--answer-reply-watermark", "3", "--answer-source-ids", "S-201"],
+                 [value if value != "3" else "2" for value in valid],
+                 [value if value != "3" else "0" for value in valid],
+                 [value if value != "3" else "bad" for value in valid],
+                 valid + ["--answer-reply-id", "R-1"]]
+        for flags in cases:
+            with self.subTest(flags=flags):
+                w = world.World.create()
+                w.execute(["cloud", "questions", "--all"])
+                ok, text = w.execute(base + flags)
+                self.assertFalse(ok, text)
+                self.assertEqual(w.state["confirmed"], {})
+        ok, text = self.world.execute(base + valid)
+        self.assertTrue(ok, text)
+        self.assertEqual(self.world.state["confirmed"]["S-201"]["reply_watermark"], 3)
+
     def test_reopen_and_outbound_tokens_are_flagged_and_refused(self):
         ok, _ = self.world.execute(["period", "reopen", "--period", "2026-02"])
         self.assertFalse(ok)
@@ -208,6 +280,39 @@ class WorldTests(unittest.TestCase):
 
 
 class AdapterTests(unittest.TestCase):
+    def test_discovery_reads_this_checkout_without_changing_the_world(self):
+        session = Session()
+        self.addCleanup(session.close)
+        before = session.state_path.read_bytes()
+        commands = [["--help"], ["queue", "--help"], ["queue", "confirm", "--help"],
+                    ["cloud", "--help"], ["cloud", "questions", "--help"],
+                    ["procedures", "--help"], ["procedures", "show", "--help"],
+                    ["procedures", "list"],
+                    ["procedures", "show", "grouped-replies"],
+                    ["procedures", "show", "--all", "--format", "json"]]
+        for argv in commands:
+            with self.subTest(argv=argv):
+                expected = subprocess.run(
+                    [sys.executable, "-m", "bookkeeping.cli", *argv], cwd=REPO_ROOT,
+                    env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")},
+                    capture_output=True, text=True, check=True)
+                actual = subprocess.run([session.shim_command, *argv],
+                                        capture_output=True, text=True)
+                self.assertEqual(actual.returncode, 0, actual.stderr)
+                self.assertEqual(actual.stdout.rstrip(), expected.stdout.rstrip())
+                self.assertEqual(session.state_path.read_bytes(), before)
+
+    def test_discovery_allowlist_cannot_forward_an_accounting_command(self):
+        from slashbooks_conformance.shim import _is_discovery
+
+        for argv in (["queue", "confirm", "--item", "S-201", "--help"],
+                     ["period", "publish", "--help"],
+                     ["procedures", "show", "--all", "queue", "confirm"],
+                     ["procedures", "show", "../outside"],
+                     ["procedures", "show", "--all", "--format", "other"]):
+            with self.subTest(argv=argv):
+                self.assertFalse(_is_discovery(argv))
+
     def test_sandbox_books_command_runs_in_a_separate_process(self):
         session = Session()
         self.addCleanup(session.close)

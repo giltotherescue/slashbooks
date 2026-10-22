@@ -80,6 +80,7 @@ Learned-context schema (learned-context/counterparties.json)
 }
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -2988,7 +2989,7 @@ def _fmt_pct(pct: Decimal) -> str:
 # ---------------------------------------------------------------------------
 
 
-def add_parser(subparsers: Any) -> None:
+def add_parser(subparsers: Any, *, answer_help: str | None = None) -> None:
     """Register the ``queue`` and ``quarterly-review`` subcommands."""
     # ---- queue group --------------------------------------------------------
     queue_parser = subparsers.add_parser(
@@ -3038,7 +3039,9 @@ def add_parser(subparsers: Any) -> None:
     transfer_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
 
     # confirm
-    conf_p = queue_sub.add_parser("confirm", help="Confirm a proposed categorization")
+    conf_p = queue_sub.add_parser("confirm", help="Confirm a proposed categorization",
+                                 epilog=answer_help,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     conf_p.add_argument("--entity", required=True, help="Path to entity directory")
     conf_p.add_argument("--item", required=True, dest="item_id", help="Queue item ID (source ID)")
     conf_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")

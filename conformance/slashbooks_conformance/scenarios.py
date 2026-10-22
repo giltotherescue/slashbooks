@@ -24,10 +24,18 @@ PREAMBLE = (
 
 # Command details that the skills do not define. Real-agent adapters give this text to the agent.
 COMMAND_NOTES = (
-    "Sandbox command notes: `queue confirm --item <source id> --category <category name>` posts "
+    "Sandbox command notes: `--help` and `procedures list|show` read the engine's command help "
+    "and versioned procedures. The simulated company supports the commands described here; "
+    "other commands in the engine help are not simulated. `context show` reads company facts "
+    "and learned rules. `cloud questions [--all|--cursor <cursor>]` reads questions and replies. "
+    "`queue confirm --item <source id> --category <category name>` posts "
     "one item. The category names are in `context show`. To record where an answer came from, add "
-    "`--evidence-mail <mail id>` for an email answer, or the `--answer-*` flags for a question "
-    "reply. `mail list`, `mail read <id>`, and `mail triage <id> --disposition "
+    "`--evidence-mail <mail id>` for an email answer. A question-based write requires "
+    "`--answer-question-id <id> --answer-reply-id <id> --answer-reply-watermark <positive integer> "
+    "--answer-source-id <id>`. Repeat `--answer-reply-id` for every reply and "
+    "`--answer-source-id` for each source that write changes. These exact singular flags are "
+    "required; abbreviations and plural forms are not supported. "
+    "`mail list`, `mail read <id>`, and `mail triage <id> --disposition "
     "recorded|needs_answer|no_action --summary <text>` use the company mail inbox. "
     "`cloud question create --subject <text> --body <text> --source-id <id> --request-id <id>` "
     "asks the owner a question. `reconcile --account <name> --period <YYYY-MM> "
@@ -74,8 +82,17 @@ def agent_texts(run: Run) -> str:
 
 
 def first_confirm_seq(run: Run) -> int:
-    """Sequence number of the first post that relies on an owner answer."""
-    seqs = [m["seq"] for m in run.confirmed.values() if m["authority"] != "learned_rule"]
+    """First answer-dependent posting attempt, including rejected malformed writes."""
+    seqs = []
+    items = {item["id"]: item for item in run.state["fixture"]["items"]}
+    rules = run.state["fixture"]["learned_rules"]
+    for entry in run.entries("queue", "confirm"):
+        opts = w._parse(w._strip_global(entry["argv"])[2:])
+        item = items.get((opts.get("--item") or [None])[0], {})
+        category = (opts.get("--category") or [None])[0]
+        if (any(key.startswith("--answer-") for key in opts)
+                or rules.get(item.get("counterparty")) != category):
+            seqs.append(entry["seq"])
     return min(seqs) if seqs else 10**9
 
 

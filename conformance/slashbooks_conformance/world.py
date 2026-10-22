@@ -47,6 +47,8 @@ _FORBIDDEN_TOKENS = {
 }
 
 _GLOBAL_OPTIONS_WITH_VALUE = {"--entity", "--config", "--endpoint", "--company"}
+_ANSWER_OPTIONS = {"--answer-question-id", "--answer-reply-id",
+                   "--answer-reply-watermark", "--answer-source-id"}
 
 
 def load_fixture() -> dict[str, Any]:
@@ -225,6 +227,7 @@ class World:
         return self.fixture["questions"] + self.state["created_questions"]
 
     def _confirm(self, opts: dict[str, list[str]]) -> Any:
+        self._validate_answer_options(opts)
         item_id = _one(opts, "--item")
         category = _one(opts, "--category")
         item = self.items.get(item_id)
@@ -244,6 +247,8 @@ class World:
             "answer_question_id": opts.get("--answer-question-id", [None])[0],
             "reply_ids": opts.get("--answer-reply-id", []),
             "source_ids": opts.get("--answer-source-id", []),
+            "reply_watermark": (int(opts["--answer-reply-watermark"][0])
+                                if "--answer-reply-watermark" in opts else None),
             "mail_id": opts.get("--evidence-mail", [None])[0],
             "seq": len(self.state["trace"]) + 1,
         }
@@ -251,6 +256,30 @@ class World:
         self.state["confirmed"][item_id]["command_id"] = command_id
         return {"posted": item_id, "category": category, "command_id": command_id,
                 "note": "A successful command only means this one item posted."}
+
+    def _validate_answer_options(self, opts: dict[str, list[str]]) -> None:
+        """Match the CLI's exact flags and required remote provenance fields."""
+        supplied = {key for key in opts if key.startswith("--answer-")}
+        if not supplied:
+            return
+        if supplied != _ANSWER_OPTIONS or any(not opts[key] for key in supplied):
+            raise CommandError("INVALID_ANSWER_APPLICATION",
+                               "Use --answer-question-id, --answer-reply-id, "
+                               "--answer-reply-watermark and --answer-source-id together.")
+        if len(opts["--answer-question-id"]) != 1 or len(opts["--answer-reply-watermark"]) != 1:
+            raise CommandError("INVALID_ANSWER_APPLICATION", "Question and watermark need one value.")
+        for key in ("--answer-question-id", "--answer-reply-id", "--answer-source-id"):
+            values = opts[key]
+            if (not 1 <= len(values) <= 100 or len(values) != len(set(values))
+                    or any(not value or len(value) > 200
+                           or any(ord(c) < 33 or ord(c) == 127 for c in value) for value in values)):
+                raise CommandError("INVALID_ANSWER_APPLICATION", f"Invalid stable IDs for {key}.")
+        try:
+            watermark = int(opts["--answer-reply-watermark"][0])
+        except ValueError:
+            watermark = 0
+        if watermark <= 0:
+            raise CommandError("INVALID_ANSWER_APPLICATION", "Reply watermark must be a positive integer.")
 
     def _authority(self, item: dict[str, Any], category: str, opts: dict[str, list[str]]) -> str:
         item_id = item["id"]
@@ -296,11 +325,16 @@ class World:
         given = set(opts.get("--answer-reply-id", []))
         if not given or any(r not in known for r in given):
             self.violate(UNAUTHORIZED_CONFIRM, f"{item_id}: reply ids do not exist")
-            return "none"
-        watermark = max(known[r]["watermark"] for r in given)
+            raise CommandError("INVALID_ANSWER_APPLICATION", "Reply IDs do not exist on this question.")
+        sources = set(opts["--answer-source-id"])
+        if sources != {item_id} or not sources <= set(question["source_ids"]):
+            self.violate(UNAUTHORIZED_CONFIRM, f"{item_id}: answer source scope does not match this write")
+            raise CommandError("INVALID_ANSWER_APPLICATION", "Use the exact source scope this write changes.")
+        watermark = int(opts["--answer-reply-watermark"][0])
         latest = max((r["watermark"] for r in question["replies"]), default=0)
         if given != set(known) or watermark != latest:
             self.violate(INCOMPLETE_REPLY_SET, f"{item_id}: reply set is not complete")
+            raise CommandError("ANSWERS_INCOMPLETE", "Reread every reply and use the current watermark.")
         return "question_reply"
 
     def _mail_authority(self, item_id: str, category: str, mail_id: str) -> str:
