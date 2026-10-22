@@ -189,6 +189,20 @@ def _detail_indices(report: dict) -> dict[str, int]:
     return indices
 
 
+def _explicit_empty_report(report: dict) -> bool:
+    """Intuit omits money columns when it explicitly reports no data."""
+    flags = [option.get("Value") for option in report["Header"].get("Option", [])
+             if option.get("Name") == "NoReportData"]
+    columns = report["Columns"]["Column"]
+    if flags != ["true"] or len(columns) != 1 or columns[0].get("ColType") != "Account":
+        return False
+    for row in _walk(report.get("Rows", {})):
+        for cells in (_cells(row), _cells(row.get("Header", {})), _cells(row.get("Summary", {}))):
+            if len(cells) > 1:
+                raise ValueError("No-data report contains unexpected monetary cells")
+    return True
+
+
 def parse_reference(path: Path, expected: str):
     """Read typed API reference JSON directly into the existing report models."""
     payload = _load(path)
@@ -206,6 +220,9 @@ def parse_reference(path: Path, expected: str):
     as_of = "As of " + end_date.strftime("%B %d, %Y")
     period = f"{date.fromisoformat(start):%m/%d/%Y} - {end_date:%m/%d/%Y}"
     columns = report.get("Columns", {}).get("Column", [])
+    if expected in ("trial_balance", "balance_sheet") and _explicit_empty_report(report):
+        return (qb.TrialBalance(company, as_of, basis) if expected == "trial_balance"
+                else qb.BalanceSheet(company, as_of, basis))
     if expected in ("profit_and_loss", "balance_sheet"):
         if len(columns) != 2 or columns[1].get("ColType") != "Money" or columns[1].get("ColTitle", "").lower() != "total":
             raise ValueError("A single Total monetary column is required")
@@ -377,6 +394,11 @@ def sync_import(entity, input_path: Path) -> dict:
             def check(value):
                 if isinstance(value, dict):
                     for key, child in value.items():
+                        # Purchase.Credit is the charge/refund flag, not a credit amount.
+                        if kind == "Purchase" and value is item and key == "Credit":
+                            if child is not None and not isinstance(child, bool):
+                                raise ValueError("Purchase Credit must be a boolean")
+                            continue
                         if key in ("Amount", "TotalAmt", "Balance", "UnitPrice", "Debit", "Credit"):
                             _money(child)
                         if (key.endswith("Ref") or key.endswith("LineDetail")) and not isinstance(child, dict):

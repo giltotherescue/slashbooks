@@ -30,6 +30,57 @@ class QuickBooksSyncTests(unittest.TestCase):
         source.write_text(json.dumps(self.snapshot))
         return source
 
+    def empty_opening_reports(self):
+        for key in ("OpeningTrialBalance", "OpeningBalanceSheet"):
+            report = self.snapshot["reports"][key]
+            report["Header"]["Option"] = [{"Name": "NoReportData", "Value": "true"}]
+            report["Columns"] = {"Column": [{"ColTitle": "", "ColType": "Account"}]}
+            report["Rows"] = {"Row": [{"ColData": [{"value": "Synthetic account"}]}]}
+
+    def test_explicit_empty_opening_reports_are_valid_empty_models(self):
+        self.empty_opening_reports()
+        result = sync.sync_import(self.entity, self.write())
+        self.assertTrue(result["reference_complete"])
+        reference = self.entity_path / result["reference_path"]
+        self.assertEqual(qb.parse_trial_balance(reference / "OpeningTrialBalance.qbo.json").entries, [])
+        self.assertEqual(qb.parse_balance_sheet(reference / "OpeningBalanceSheet.qbo.json").rows, [])
+
+    def test_empty_report_marker_cannot_hide_money_or_replace_missing_columns(self):
+        for mode in ("missing_marker", "false_marker", "extra_cell", "money_column"):
+            with self.subTest(mode=mode):
+                self.empty_opening_reports()
+                report = self.snapshot["reports"]["OpeningTrialBalance"]
+                if mode == "missing_marker":
+                    report["Header"]["Option"] = []
+                elif mode == "false_marker":
+                    report["Header"]["Option"][0]["Value"] = "false"
+                elif mode == "extra_cell":
+                    report["Rows"]["Row"][0]["ColData"].append({"value": "10.00"})
+                else:
+                    report["Columns"]["Column"].append({"ColTitle": "Total", "ColType": "Money"})
+                result = sync.sync_import(self.entity, self.write())
+                self.assertFalse(result["reference_complete"])
+                self.assertEqual(result["coverage"]["OpeningTrialBalance"]["status"], "blocked")
+
+    def test_purchase_credit_is_a_boolean_flag_not_a_monetary_amount(self):
+        for credit in (True, False, None):
+            with self.subTest(credit=credit):
+                self.snapshot["entities"]["Purchase"] = [{
+                    "Id": "synthetic-purchase", "TxnDate": "2026-01-15",
+                    "Credit": credit, "TotalAmt": "12.00", "Line": [],
+                }]
+                result = sync.sync_import(self.entity, self.write())
+                self.assertTrue(result["success"])
+
+    def test_boolean_amounts_and_non_boolean_purchase_credit_stay_invalid(self):
+        for fields in ({"Credit": "true"}, {"Credit": 1}, {"Amount": True}, {"TotalAmt": False}):
+            with self.subTest(fields=fields):
+                self.snapshot["entities"]["Purchase"] = [{
+                    "Id": "synthetic-purchase", "TxnDate": "2026-01-15", "Line": [], **fields,
+                }]
+                with self.assertRaises(ValueError):
+                    sync.sync_import(self.entity, self.write())
+
     def test_import_is_content_addressed_idempotent_and_never_posts(self):
         before = (self.entity_path / "ledger.sqlite").read_bytes()
         first = sync.sync_import(self.entity, self.write())
