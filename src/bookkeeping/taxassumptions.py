@@ -68,7 +68,8 @@ def _items(view: Any, fiscal_start: str, fiscal_in_file: bool) -> list[dict[str,
                 RECORDED_OR_ASSUMED, "Yes"),
             row("Customer deposits",
                 "A deposit recorded as advance_payment is income on receipt. A deposit recorded as refundable is a liability. "
-                "It stays a liability until it is applied to an invoice, forfeited, or released by a recognition entry. "
+                "It stays a liability until it is applied to an invoice or forfeited. A refund is not income. A refundable deferred "
+                "schedule is released by its recognition entries. "
                 "A deposit with no recorded kind is assumed to be an advance_payment.",
                 RECORDED_OR_ASSUMED, "Yes"),
             row("Deferred revenue",
@@ -118,7 +119,7 @@ def build(conn: Any, config: Mapping[str, Any], view: Any, from_date: date, to_d
     fiscal_in_file = "fiscal_year_start" in config
     settings = {
         "tax_method": view.tax_method,
-        "tax_method_source": "recorded in entity.json by a person (books entity set-tax-method)",
+        "tax_method_source": "value in entity.json (set with books entity set-tax-method)",
         "fiscal_year_start": view.fiscal_year_start,
         "fiscal_year_start_source": ("value in entity.json (who set it is not recorded here)" if fiscal_in_file
                                      else "default (entity.json has no value)"),

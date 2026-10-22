@@ -330,7 +330,7 @@ The cash view for tax:
   balance. One computed row, `Equity:Accrual-To-Cash-Adjustment`, keeps the trial balance balanced.
 - Deferred revenue and customer deposits are income on receipt, except a record that a person
   marked `refundable` (see "Deposits: advance payment or refundable"). A refundable record keeps
-  its liability, and its income follows applications, forfeitures and recognition entries.
+  its liability, and its income follows applications, forfeitures and recognition entries. A refund is not income.
 - A prepaid schedule follows its recorded `tax_treatment` (see `docs/accrual.md`). `expense_when_paid` is
   expense on the payment date. `capitalize` keeps the unused part on the balance sheet and
   deducts the recognition entries as they post. With no recorded value, the view follows the

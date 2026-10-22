@@ -618,7 +618,7 @@ class TaxAssumptions(Base):
         books("entity", "set-tax-profile", str(self.root), "--prior-return-method", "unknown", "--apply")
         result = self.assumptions()
         self.assertEqual(result["settings"], {
-            "tax_method": "cash", "tax_method_source": "recorded in entity.json by a person (books entity set-tax-method)",
+            "tax_method": "cash", "tax_method_source": "value in entity.json (set with books entity set-tax-method)",
             "fiscal_year_start": "01-01",
             "fiscal_year_start_source": "value in entity.json (who set it is not recorded here)", "prior_return_method": "unknown",
             "entity_type": "not recorded", "currency": "USD", "period": "2026-01-01 to 2026-12-31",
@@ -738,7 +738,7 @@ class TaxAssumptions(Base):
         self.assertIn("recorded as refundable keeps its liability", text)
         self.assertIn("follows its recognition entries as they post", text)
         self.assertNotIn("Income on receipt (cash method)", text)
-        self.assertIn("released by a recognition entry", self.item_text("Customer deposits"))
+        self.assertIn("released by its recognition entries", self.item_text("Customer deposits"))
 
     def test_card_row_keeps_the_item_treatment_for_a_card_funded_asset(self):
         # A 2,500.00 machine bought on the card stays an asset: the charge date is the payment date, not an expense.
@@ -753,6 +753,15 @@ class TaxAssumptions(Base):
             self.assertIn(part, text)
         asset = next(r for r in self.handoff()["tax_view"]["fixed_assets"] if r["source"] == "purchase")
         self.assertEqual(asset["cost"], "2500.00")
+
+    def test_card_funded_capitalized_prepaid_keeps_its_unused_balance(self):
+        # 1,200.00 insurance on the card, 2026-01-01 to 2026-12-31, capitalize: 100.00 a month, so 600.00 is unused at 2026-06-30.
+        self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", "Liabilities:CreditCard",
+                      tax_treatment="capitalize")
+        self.due("2026-06-30")
+        self.cash_filer()
+        rows = tb(self.handoff((date(2026, 1, 1), date(2026, 6, 30))))
+        self.assertEqual((rows[PREPAID], rows[INSURANCE]), (D("600.00"), D("600.00")))
 
     def test_deposit_note_is_conditional(self):
         self.cash_filer()
