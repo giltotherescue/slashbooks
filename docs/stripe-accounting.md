@@ -56,8 +56,9 @@ Supported postings are:
 | --- | --- |
 | Settled supported sale | Processor balance increases by net; fees are expense; exact approved revenue allocations total gross |
 | Supported settled refund | Processor balance decreases; approved contra-revenue and any fee adjustment remain separate |
-| Processor fee | Processor balance decreases; processing expense increases |
-| Payout | Processor balance decreases; payout transit increases |
+| Processor fee or fee credit | Processor balance and processing expense move in opposite directions; credits reduce expense |
+| Minimum payout balance hold/release or Connect reserve | Processor balance moves to/from the explicitly approved reserved-balance asset account; no income or expense |
+| Payout | Processor balance decreases; payout transit increases by the amount sent; any payout fee is a separate expense |
 | Exact captured bank arrival | Bank balance increases; payout transit decreases; no income |
 
 Bank matching requires the original bank source ID/digest, payout ID, exact
@@ -169,3 +170,14 @@ A person resolves the row in one of two ways:
   - The audit chain is not intact. Restore the ledger first.
   - A queue item for the source is still actionable (`open`, `reopened` or
     `requires-reproposal`). The error names the item. Withdraw the item first.
+
+## Reserved balances
+
+An optional `reserve_account` policy role must name a distinct, open
+`Assets:Processors:` account in the company currency. Approve this role once
+to record nonzero `payout_minimum_balance_hold`,
+`payout_minimum_balance_release`, and `reserve_transaction` movements. Without
+that role, these movements wait for account setup. This does not authorize
+Connect transfers to recipients or treat those transfers as expenses.
+
+These event meanings follow [Stripe's balance transaction reference](https://docs.stripe.com/reports/balance-transaction-types).
