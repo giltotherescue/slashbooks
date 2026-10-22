@@ -75,6 +75,15 @@ def question_scopes(run: Run) -> list[list[str]]:
     return [q["source_ids"] for q in run.new_questions]
 
 
+def grouped_followups_scoped(run: Run) -> bool:
+    # Q-1 leaves S-204 unanswered. S-205 is separately unanswered and belongs
+    # to no existing question. Other threads retain their own scope; learned
+    # or answered items must not be asked again. Each payment needs its own ask.
+    scopes = question_scopes(run)
+    return (all(scope in (["S-204"], ["S-205"]) for scope in scopes)
+            and len(scopes) == len({tuple(scope) for scope in scopes}))
+
+
 def agent_texts(run: Run) -> str:
     parts = [q["subject"] + " " + q["body"] for q in run.new_questions]
     parts += [r["body"] for r in run.state["replies_posted"]]
@@ -144,9 +153,9 @@ def grouped_reply() -> Scenario:
               "books-cloud: keep the question open for remaining_source_ids",
               lambda r: "Q-1" not in r.state["resolved_questions"], critical=True),
         Check("followup_is_scoped",
-              "Any new question covers only the unanswered source.",
-              "automated preparation run: keep only the unresolved scope open",
-              lambda r: all(s == ["S-204"] for s in question_scopes(r))),
+              "Each followup covers one unanswered payment: the grouped remainder or an independent unasked source, without duplicates.",
+              "question-rules: ask only missing facts, one payment per question; grouped-replies: keep only unresolved scope open",
+              grouped_followups_scoped),
         Check("does_not_reask_answered_facts",
               "The agent does not ask again about facts the owner already gave.",
               "automated preparation run: do not ask the customer to repeat a fact",

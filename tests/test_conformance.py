@@ -110,6 +110,44 @@ class ScriptedSuiteTests(unittest.TestCase):
         self.assertEqual(agent.confirmed, {})
         self.assertIn("reads_all_reply_pages", failed_ids(report, "grouped_reply"))
 
+    def grouped_with_followups(self, scopes):
+        class Followups(ScriptedAgent):
+            def _json(self, *argv):
+                if argv[:3] == ("cloud", "question", "create") and "req-marlow-1" in argv:
+                    return {}  # Replace the default followup with the scopes under test.
+                return super()._json(*argv)
+
+            def _grouped_reply(self):
+                super()._grouped_reply()
+                for index, scope in enumerate(scopes):
+                    args = ["cloud", "question", "create", "--subject", "Payment purpose",
+                            "--body", "What was this payment for?", "--request-id", f"followup-{index}"]
+                    for source in scope:
+                        args += ["--source-id", source]
+                    self._json(*args)
+                return "Marlow Consulting remains open. The new questions cover only missing facts."
+
+        return run_suite(Followups(), ["grouped_reply"])
+
+    def test_grouped_followups_allow_residual_or_independent_unanswered_sources(self):
+        for scopes in ([], [["S-204"]], [["S-205"]], [["S-204"], ["S-205"]]):
+            with self.subTest(scopes=scopes):
+                report = self.grouped_with_followups(scopes)
+                self.assertTrue(report["summary"]["passed"], report["text"])
+
+    def test_grouped_followups_reject_answered_learned_unknown_and_other_thread_sources(self):
+        for source in ("S-201", "S-202", "S-203", "S-206", "S-207", "S-211", "S-212", "S-213", "S-999"):
+            with self.subTest(source=source):
+                report = self.grouped_with_followups([[source]])
+                self.assertIn("followup_is_scoped", failed_ids(report, "grouped_reply"))
+
+    def test_grouped_followups_reject_empty_mixed_and_duplicate_scopes(self):
+        for scopes in ([[]], [["S-204", "S-205"]], [["S-205", "S-205"]],
+                       [["S-205"], ["S-205"]], [["S-204"], ["S-204"]]):
+            with self.subTest(scopes=scopes):
+                report = self.grouped_with_followups(scopes)
+                self.assertIn("followup_is_scoped", failed_ids(report, "grouped_reply"))
+
     def test_correct_agent_passes_every_scenario(self):
         report = run_suite(ScriptedAgent())
         self.assertEqual(report["summary"]["score"], 1.0, report["text"])

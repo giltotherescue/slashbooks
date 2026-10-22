@@ -1,5 +1,5 @@
 {
-  "bundle_sha256": "ef5a1fe34cca41c5341495f5b1076ce9a4157f43bac9e1316b972c8db926914c",
+  "bundle_sha256": "f0594552532cc30e234ead3a17491c5b0e72e8f21ce3fafa82fea8875fca71d8",
   "procedures": [
     {
       "name": "catch-up",
@@ -69,9 +69,9 @@
     },
     {
       "name": "question-rules",
-      "version": 2,
+      "version": 3,
       "title": "Asking and answering questions",
-      "sha256": "801f7b05983eabd9fe3b965428654a60509731ece25900ac5e6c5ff375a854ff"
+      "sha256": "4badbc2ab9aadfef82dcd4412ff398e2581c4561ad24640b65dc4f76497077f8"
     },
     {
       "name": "reconcile",

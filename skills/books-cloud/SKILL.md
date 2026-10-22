@@ -263,7 +263,7 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 - `scripts/books procedures show emailed-answers` (version 2)
 - `scripts/books procedures show mail-triage` (version 2)
 - `scripts/books procedures show grouped-replies` (version 2)
-- `scripts/books procedures show question-rules` (version 2)
+- `scripts/books procedures show question-rules` (version 3)
 - `scripts/books procedures show document-intake` (version 1)
 - `scripts/books procedures show draft-insights` (version 1)
 - `scripts/books procedures show hard-rules` (version 2)

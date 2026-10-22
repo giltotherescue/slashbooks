@@ -1,6 +1,6 @@
 ---
 name: question-rules
-version: 2
+version: 3
 title: Asking and answering questions
 ---
 - Ask only for a missing fact. Name the transaction by date and amount.
@@ -17,3 +17,5 @@ title: Asking and answering questions
 - A drafted question is not a delivered question. Say which one you did.
 - Use a stable request ID for each question. After an uncertain write, read the thread back before you write again.
 - Do not require extra documents when the bank evidence and the explicit answer support an authorized treatment.
+- Pass question text to shell commands as a single-quoted literal, for example `--body 'What was the $120.00 credit on Jan 8 for?'`. Double quotes still expand dollar signs and substitutions. Never run customer text as shell code. For native `cloud question ask` and `reply`, prefer the existing `--body-file` with a private UTF-8 draft for arbitrary text. Scoped `create` supports `--body` only; use an argv-safe caller or correct shell escaping when the text contains apostrophes.
+- Read the saved question back and verify its payee, date, amount and source scope before describing what was saved or sent. If the text is wrong, do not claim the intended question was saved correctly or blindly send a second question.
