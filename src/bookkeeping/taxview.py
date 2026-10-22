@@ -235,8 +235,9 @@ def _money(value: Decimal) -> str:
     return f"{value:.2f}"
 
 
-METHOD_CHANGE_MESSAGE = ("Accrual books or an unknown prior return method do not show the method on the tax return. "
-                         "Confirm the method on the last return. A change from accrual to cash needs IRS consent (Form 3115) "
+METHOD_CHANGE_MESSAGE = ("The method on the last tax return is accrual or not known. "
+                         "The books do not show the method on the return. Confirm it with the last return. "
+                         "A change from accrual to cash generally needs IRS consent (usually Form 3115) "
                          "and a section 481(a) adjustment. The preparer handles it.")
 
 

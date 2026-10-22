@@ -362,9 +362,10 @@ tax profile or to the asset list. It does not block or decide from them.
 
 ### Method change
 
-Accrual books, or an unknown prior return method, do not show the method on the tax return.
-Slashbooks cannot know the method on the last return. The preparer confirms it. A change from accrual
-to cash needs IRS consent (Form 3115) and a section 481(a) adjustment. The preparer handles both.
+The flag appears when the prior return method is accrual or not known. The books do not show the
+method on the tax return. Slashbooks cannot know the method on the last return. The preparer confirms
+it. A change from accrual to cash generally needs IRS consent (usually Form 3115) and a section 481(a)
+adjustment. The preparer handles both.
 Slashbooks does not prepare them, does not name the guidance that applies this year, and does not
 refuse the export. It adds the flag `method_change_possible`.
 
