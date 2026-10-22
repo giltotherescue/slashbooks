@@ -683,31 +683,47 @@ _QB_RETAINED = "retained earnings"
 _QB_NET_INCOME = "Net Income"
 
 
+def _closed_earnings_covered(entity: Entity, as_of: date, coverage: Optional[dict]) -> tuple[bool, bool]:
+    """Whether the books hold (1) the whole current fiscal year and (2) whole earlier fiscal years.
+
+    QuickBooks Net Income is the fiscal year to date and its Retained Earnings holds every earlier year. A company
+    that started its books inside a fiscal year carries the earnings before that day in an opening equity account,
+    so the engine's lines are not the same figures. They are compared only when the books cover the whole year:
+    (1) the books start on or before the current fiscal year start; (2) the books start on the first day of a
+    fiscal year.
+    """
+    from .reports.cache import open_cache
+    from .reports.statements import books_start, fiscal_year_anchor
+    conn = open_cache(entity.path)
+    try:
+        start = books_start(conn, coverage)
+    finally:
+        conn.close()
+    if start is None:
+        return False, False
+    fiscal = entity.entity_config.get("fiscal_year_start")
+    return start <= fiscal_year_anchor(as_of, coverage, fiscal), start == fiscal_year_anchor(start, coverage, fiscal)
+
+
 def _align_closed_earnings(our_balances: dict[str, Decimal], qb_balances: dict[str, Decimal], qb_rows: list,
-                           qb_type_map: dict[str, str], crosswalk: Any) -> None:
+                           qb_accounts: dict[str, str], covered: tuple[bool, bool]) -> None:
     """Compare the engine's computed equity lines with the lines QuickBooks shows for the same figures.
 
     QuickBooks closes earlier fiscal years into Retained Earnings and shows the current year as Net Income (a
     total row). The engine shows "Retained earnings from prior fiscal activity" and "Net Income (current period)".
-    The retained line is added to the account that the QuickBooks Retained Earnings row maps to (an imported
-    retained earnings balance is in that account), and the current year is compared with Net Income. When the
-    QuickBooks file has no such row, the engine line stays under its own name, as before.
+    When the books cover the year (see ``_closed_earnings_covered``), the retained line is added to the account that
+    the QuickBooks Retained Earnings row maps to (an imported retained earnings balance is in that account), and the
+    current year is compared with Net Income. Otherwise, or when the QuickBooks file has no such row, the engine
+    line keeps its own name and stays a mapping difference, as before.
     """
     from .reports.statements import CURRENT_NET_INCOME_LABEL, RETAINED_LABEL
-    retained_target = None
-    net_income = None
-    for row in qb_rows:
-        name = (row.name or "").strip()
-        if row.row_type == "leaf" and name.lower() == _QB_RETAINED and retained_target is None:
-            try:
-                retained_target = _map_qb_name(row.name, qb_type_map, crosswalk)
-            except Exception:
-                retained_target = None
-        elif row.row_type == "subtotal" and name == _QB_NET_INCOME:
-            net_income = row.amount
-    if retained_target is not None and RETAINED_LABEL in our_balances:
+    current_covered, earlier_covered = covered
+    retained_target = next((qb_accounts[row.name] for row in qb_rows if row.row_type == "leaf" and row.name in qb_accounts
+                            and row.name.strip().lower() == _QB_RETAINED), None)
+    net_income = next((row.amount for row in qb_rows if row.row_type == "subtotal" and row.name.strip() == _QB_NET_INCOME), None)
+    if earlier_covered and retained_target is not None and RETAINED_LABEL in our_balances:
         our_balances[retained_target] = our_balances.get(retained_target, Decimal("0.00")) + our_balances.pop(RETAINED_LABEL)
-    if net_income is not None and CURRENT_NET_INCOME_LABEL in our_balances:
+    if current_covered and net_income is not None and CURRENT_NET_INCOME_LABEL in our_balances:
         our_balances[_QB_NET_INCOME] = our_balances.pop(CURRENT_NET_INCOME_LABEL)
         qb_balances[_QB_NET_INCOME] = net_income
 
@@ -774,14 +790,17 @@ def _compare_bs(
 
     # QB leaf balances
     qb_balances: dict[str, Decimal] = {}
+    qb_accounts: dict[str, str] = {}
     for row in qb_bs.rows:
         if row.row_type == "leaf":
             try:
                 bc_account = _map_qb_name(row.name, qb_type_map, crosswalk)
                 qb_balances[bc_account] = row.amount
+                qb_accounts[row.name] = bc_account
             except Exception:
                 pass
-    _align_closed_earnings(our_balances, qb_balances, qb_bs.rows, qb_type_map, crosswalk)
+    _align_closed_earnings(our_balances, qb_balances, qb_bs.rows, qb_accounts,
+                           _closed_earnings_covered(entity, to_date, our_bs.meta.get("coverage")))
 
     material: list[DiffRecord] = []
     immaterial: list[DiffRecord] = []
@@ -885,7 +904,8 @@ def _compare_tb(
         from .reports.statements import RETAINED_LABEL
         retained = next((mapping[row.full_name] for row in qb_tb.entries
                          if row.full_name.strip().lower() == _QB_RETAINED), None)
-        if retained is not None and RETAINED_LABEL in ours:
+        earlier_covered = _closed_earnings_covered(entity, to_date, our_tb.meta.get("coverage"))[1]
+        if earlier_covered and retained is not None and RETAINED_LABEL in ours:
             ours[retained] = ours.get(retained, Decimal(0)) + ours.pop(RETAINED_LABEL)
         for account in sorted(set(reference) | set(ours)):
             own, ref = ours.get(account, Decimal(0)), reference.get(account, Decimal(0))

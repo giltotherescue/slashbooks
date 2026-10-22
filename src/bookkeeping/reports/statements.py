@@ -160,6 +160,11 @@ class StatementResult:
                 message = issue.get("message") or issue.get("code", "Unresolved issue").replace("_", " ")
                 refs = ", ".join(str(ref) for ref in issue.get("refs", []))
                 lines.append(f"  - {message}" + (f" [{refs}]" if refs else ""))
+        # The retained earnings label is longer than the 40-character label column. When it is shown, the column
+        # widens to the longest label so the amounts stay in one column. Other statements keep the 40 characters.
+        labels = [row.get("label", "") for section in self.sections for row in section.get("rows", [])]
+        extra = max(0, max(len(label) for label in labels) - 40) if RETAINED_LABEL in labels else 0
+        width = 40 + extra
         for section in self.sections:
             lines.append("")
             lines.append(section.get("label", ""))
@@ -169,20 +174,20 @@ class StatementResult:
                 label = row.get("label", "")
                 amount = row.get("amount")
                 if amount is not None:
-                    lines.append(f"{indent}{label:<40} {_fmt(amount):>14}")
+                    lines.append(f"{indent}{label:<{width}} {_fmt(amount):>14}")
                 else:
                     lines.append(f"{indent}{label}")
             total = section.get("total")
             if total is not None:
                 label = section.get("total_label", "Total")
-                lines.append(f"{'':>2}{label:<40} {_fmt(total):>14}")
+                lines.append(f"{'':>2}{label:<{width}} {_fmt(total):>14}")
         lines.append("")
         # Overall totals
         if self.totals:
-            lines.append("-" * 56)
+            lines.append("-" * (56 + extra))
             for k, v in self.totals.items():
                 k_readable = k.replace("_", " ").title()
-                lines.append(f"{k_readable:<42} {_fmt(v):>14}")
+                lines.append(f"{k_readable:<{42 + extra}} {_fmt(v):>14}")
         if self.meta.get("tie_out"):
             from .cashview import noncash_lines, tie_out_lines
             lines.extend(noncash_lines(self.meta.get("unresolved_issues", [])))
@@ -568,6 +573,15 @@ def fiscal_year_anchor(as_of: date, coverage: Optional[dict], fiscal_year_start:
     return year_start(as_of, fiscal_year_start or "01-01")
 
 
+def books_start(conn: Any, coverage: Optional[dict]) -> Optional[date]:
+    """First day the books cover. An imported opening summary covers from its summary start (else its cutover);
+    otherwise it is the date of the first entry. None when the books have no entry."""
+    if coverage and (coverage.get("summary_from") or coverage.get("cutover_date")):
+        return date.fromisoformat(coverage.get("summary_from") or coverage["cutover_date"])
+    row = conn.execute("SELECT MIN(e.date) FROM entries e JOIN postings p ON p.entry_id = e.id").fetchone()
+    return date.fromisoformat(str(row[0])[:10]) if row and row[0] else None
+
+
 def _earnings(balances: dict[str, Decimal], start: Decimal = Decimal("0.00")) -> Decimal:
     """Income less expenses of income and expense balances (credit-normal income)."""
     return -sum((n for a, n in balances.items() if _is_income(a) or _is_expense(a)), start)
@@ -703,13 +717,18 @@ def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
     metadata = _label_recorded_balances(conn, _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view), as_of, view)
     balances = _account_balances_as_of(conn, as_of)
     prior = Decimal("0.00")
+    moved = False
     if close_all_views:
         fiscal_start = fiscal_year_anchor(as_of, metadata.get("coverage"), fiscal_year_start)
         before = _account_balances_as_of(conn, fiscal_start - timedelta(days=1))
         for acc, bal in before.items():
-            if _is_income(acc) or _is_expense(acc):
+            if (_is_income(acc) or _is_expense(acc)) and bal:
                 balances[acc] -= bal
                 prior += bal  # debit-positive: a profit makes this negative (a credit)
+                moved = True
+        if moved:
+            # The income and expense rows show the current fiscal year, even when earlier years net to zero.
+            metadata["fiscal_start"] = fiscal_start.isoformat()
 
     rows = []
     total_debits = Decimal("0.00")
@@ -731,7 +750,6 @@ def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
         add(_render_account(acc), bal)
     if prior != Decimal("0.00"):
         add(RETAINED_LABEL, prior, key="retained_earnings_prior", computed=True)
-        metadata["fiscal_start"] = fiscal_start.isoformat()
 
     # Reformat rows to have a single "amount" column for to_text rendering
     display_rows = []

@@ -130,8 +130,11 @@ books report general-ledger --entity "$VERIFY" --from "$FROM" --to "$TO" --forma
   net income line and life-to-date income and expense accounts. A bundle made by
   an earlier version still validates. For a company with more than one fiscal
   year, the `books report balance-sheet` and `trial-balance` JSON therefore
-  differ from the fingerprinted layout in the retained earnings and net income
-  lines only; the amounts behind them and every total are the same.
+  differ from the fingerprinted layout: on the balance sheet in the retained
+  earnings and net income lines only (every total is the same); on the trial
+  balance, income and expense rows show the current fiscal year, a computed
+  retained earnings row is added, and total debits and total credits are lower
+  by the same amount. The ledger and its entries are the same.
 - Check shared `entity.json`, business profile, and context through cloud file
   access. Download each registered document through the authenticated evidence
   download route, `GET /api/v1/companies/:company/evidence/:id/download`, and compare

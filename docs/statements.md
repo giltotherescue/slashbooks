@@ -54,13 +54,15 @@ is made, in every view (cash, recorded and accrual), as QuickBooks and Xero do:
   balances stay account lines. Total equity is the same as one line for all earnings.
 - **Trial balance.** Income and expense accounts show the current fiscal year only. Earlier years are one computed row,
   "Retained earnings from prior fiscal activity", with `key: "retained_earnings_prior"` and `computed: true` in
-  `meta.raw_rows`. Total debits still equal total credits.
+  `meta.raw_rows`. Total debits still equal total credits; for a company with more than one fiscal year they are lower
+  than the life-to-date totals, as in QuickBooks.
 - **Fiscal year.** The year follows `fiscal_year_start` (`books entity set-fiscal-year`, default January 1). A company
   opened from an imported summary (`books accrual migration`) keeps the fiscal start of that summary. A change to the
-  fiscal year changes only the split in later reports, never an entry or a total.
+  fiscal year changes only the split in later reports (and so the trial balance rows and totals), never an entry,
+  a balance sheet total or total equity.
 - **Metadata.** When a balance sheet shows the retained line, `meta` has `fiscal_start`, `cumulative_net_income`
   (all earnings to the as-of date) and `current_fiscal_net_income`. The accrual view always has them. A trial balance
-  with the computed row has `meta.fiscal_start`. A company with one fiscal year of activity gets the same output as before.
+  whose income or expense rows moved to the current fiscal year has `meta.fiscal_start`, even when earlier years net to zero. A company with one fiscal year of activity gets the same output as before.
 - **Profit and loss.** It was always the period that you ask for, so it does not change.
 
 ## Statement of cash flows

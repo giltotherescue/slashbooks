@@ -368,6 +368,113 @@ class ImportedOpeningAnchorTests(unittest.TestCase):
         self.assertEqual(Decimal(rows["Income:Services"]["ours"]), Decimal("-100.00"))
 
 
+def _qb_balance_sheet(folder: Path, as_of: str, equity_rows: list[tuple[str, str]]) -> Path:
+    """A QuickBooks balance sheet export. Only the equity rows matter to these tests."""
+    folder.mkdir()
+    body = "".join(f'{name},"{amount}"\n' for name, amount in equity_rows)
+    (folder / "balance_sheet.csv").write_text(
+        f'"Synthetic Retained Co",\nBalance Sheet,\n"As of {as_of}",\n\n,Total\nAssets,\nTotal for Assets,"$0.00"\n'
+        f'Liabilities and Equity,\nEquity,\n{body}Total for Equity,"$0.00"\nTotal for Liabilities and Equity,"$0.00"\n\n\n'
+        '"Cash Basis Monday, October 19, 2026 10:00 AM GMT-05:00",\n')
+    return folder
+
+
+def _compare_equity(root: Path, folder: Path, as_of: date):
+    matched: list = []
+    material, immaterial = _compare_bs(load_entity(root), folder, as_of, {"Retained Earnings": "Equity"},
+                                       Decimal("1.00"), Decimal("0.01"), matched=matched)
+    return {d.account: d for d in material + immaterial}, {row["name"]: row for row in matched}
+
+
+class MidYearCutoverCompareTests(Fixture):
+    """Books start on 2026-02-01. QuickBooks Net Income (4,750.00) is the fiscal year to date; the engine's current
+    year (1,300.00) starts at the cutover, and January's earnings are in the opening equity. Not the same figure."""
+    entries = [
+        ("2026-02-01", "Opening balance", [(BANK, "20000.00"), (OPENING, "-20000.00")]),
+        ("2026-08-20", "Client payment", [(BANK, "2000.00"), (SERVICES, "-2000.00")]),
+        ("2026-09-10", "Software", [(SOFTWARE, "700.00"), (BANK, "-700.00")]),
+    ]
+
+    def test_net_income_stays_a_mapping_difference(self):
+        folder = _qb_balance_sheet(Path(self.tmp.name) / "qb", "Sep 30, 2026",
+                                   [("Opening Balance Equity", "15250.00"), ("Retained Earnings", "0.00"), ("Net Income", "4750.00")])
+        diffs, matched = _compare_equity(self.root, folder, date(2026, 9, 30))
+        self.assertNotIn("Net Income", diffs)
+        self.assertNotIn("Net Income", matched)
+        self.assertEqual(diffs[CURRENT_NET_INCOME_LABEL].category, "judgment-mapping")
+        self.assertEqual(diffs[CURRENT_NET_INCOME_LABEL].ours, Decimal("1300.00"))
+
+
+class CutoverInEarlierFiscalYearCompareTests(Fixture):
+    """Books start on 2025-07-01, inside fiscal year 2025. QuickBooks Retained Earnings (8,000.00) includes January to
+    June 2025, which the engine carries in the opening equity. The current year (2026) is fully in the books."""
+    entries = [
+        ("2025-07-01", "Opening balance", [(BANK, "10000.00"), (OPENING, "-10000.00")]),
+        ("2025-09-01", "Client payment", [(BANK, "3000.00"), (SERVICES, "-3000.00")]),
+        ("2026-02-01", "Client payment", [(BANK, "1000.00"), (SERVICES, "-1000.00")]),
+    ]
+
+    def test_retained_stays_a_mapping_difference_and_net_income_is_compared(self):
+        folder = _qb_balance_sheet(Path(self.tmp.name) / "qb", "Mar 31, 2026",
+                                   [("Opening Balance Equity", "5000.00"), ("Retained Earnings", "8000.00"), ("Net Income", "1000.00")])
+        diffs, matched = _compare_equity(self.root, folder, date(2026, 3, 31))
+        self.assertEqual(diffs[RETAINED_LABEL].category, "judgment-mapping")
+        self.assertEqual(diffs[RETAINED_LABEL].ours, Decimal("3000.00"))
+        retained_rows = [d for account, d in diffs.items() if account.startswith("Equity:") and d.reference == Decimal("8000.00")]
+        self.assertEqual([(d.ours, d.category) for d in retained_rows], [(Decimal("0.00"), "judgment-mapping")])
+        self.assertEqual(Decimal(matched["Net Income"]["ours"]), Decimal("1000.00"))
+        self.assertEqual(Decimal(matched["Net Income"]["reference"]), Decimal("1000.00"))
+
+
+class WholeYearCoverageCompareTests(Fixture):
+    """Books start on 2025-01-01, the first day of a fiscal year: both lines are compared with QuickBooks."""
+
+    def test_both_lines_are_compared(self):
+        folder = _qb_balance_sheet(Path(self.tmp.name) / "qb", "Sep 30, 2026",
+                                   [("Retained Earnings", "8500.00"), ("Net Income", "3800.00")])
+        diffs, matched = _compare_equity(self.root, folder, date(2026, 9, 30))
+        for label in (RETAINED_LABEL, CURRENT_NET_INCOME_LABEL, "Net Income"):
+            self.assertNotIn(label, diffs)
+        self.assertEqual(Decimal(matched["Net Income"]["ours"]), Decimal("3800.00"))
+        self.assertTrue(any(name.startswith("Equity:") and Decimal(row["ours"]) == Decimal("8500.00") == Decimal(row["reference"])
+                            for name, row in matched.items()), matched)
+
+
+class ZeroNetEarlierYearTests(Fixture):
+    """2025 income and expenses net to zero: no retained row, but the trial balance still shows 2026 only."""
+    entries = [
+        ("2025-03-01", "Client payment", [(BANK, "500.00"), (SERVICES, "-500.00")]),
+        ("2025-04-01", "Rent", [(RENT, "500.00"), (BANK, "-500.00")]),
+        ("2026-02-01", "Client payment", [(BANK, "800.00"), (SERVICES, "-800.00")]),
+    ]
+
+    def test_trial_balance_names_the_fiscal_start_when_rows_moved(self):
+        bs, tb = self.assertBalanced("2026-03-31")
+        self.assertNotIn(RETAINED_LABEL, tb_rows(tb))
+        self.assertNotIn(RETAINED_LABEL, equity(bs))
+        self.assertEqual(tb.meta["fiscal_start"], "2026-01-01")
+        self.assertEqual(tb_rows(tb)["Income › Services"], (Decimal("0.00"), Decimal("800.00")))
+        self.assertNotIn("Expenses › Rent", tb_rows(tb))
+        self.assertNotIn("fiscal_start", self.tb("2025-12-31").meta)
+
+
+class TextLayoutTests(Fixture):
+    def test_amounts_stay_in_one_column_with_the_long_label(self):
+        amount = __import__("re").compile(r"\(?-?[\d,]+\.\d{2}\)?$")
+        bs_lines = [line for line in self.bs("2026-09-30").to_text().splitlines() if amount.search(line) and "  " in line]
+        self.assertTrue(any(RETAINED_LABEL in line for line in bs_lines))
+        self.assertEqual(len({len(line) for line in bs_lines}), 1, bs_lines)
+        tb_text = self.tb("2026-09-30").to_text().splitlines()
+        start = tb_text.index("All Accounts")
+        rows = [line for line in tb_text[start + 2:] if line and not line.startswith("-") and amount.search(line)
+                and not line.startswith(("Total ", "Net "))]
+        self.assertTrue(any(RETAINED_LABEL in line for line in rows))
+        self.assertEqual(len({len(line) for line in rows}), 1, rows)
+        # A statement without the retained line keeps the 40-character label column.
+        first_year = [line for line in self.bs("2025-09-30").to_text().splitlines() if CURRENT_NET_INCOME_LABEL in line]
+        self.assertEqual(first_year[0].index(CURRENT_NET_INCOME_LABEL) + 40 + 1 + 14, len(first_year[0]))
+
+
 class RecordedViewTests(unittest.TestCase):
     """A cash-default company that keeps accrual records ("as recorded (cash view default)") closes earlier fiscal
     years the same way. Fiscal year moved to 04-01, so January to March 2026 is an earlier fiscal year at April 30."""
