@@ -1,0 +1,10 @@
+[
+  {"record": {"source_evidence_refs": ["ingestion/statements/files/test-opening.csv", "ingestion/statements/files/test-checking.csv", "ingestion/statements/files/test-checking.csv"], "source_file": "legacy.csv"}, "expected": "ingestion/statements/files/test-checking.csv; ingestion/statements/files/test-opening.csv"},
+  {"record": {"source_evidence_refs": [], "source_file": "legacy-bank.csv"}, "expected": "legacy-bank.csv"},
+  {"record": {"source_path": "legacy-path.csv"}, "expected": "legacy-path.csv"},
+  {"record": {"statement_file": "legacy-statement.csv"}, "expected": "legacy-statement.csv"},
+  {"record": {"import_source": "legacy-import.csv"}, "expected": "legacy-import.csv"},
+  {"record": {"source_evidence_refs": [null, 42, ""], "source_file": "legacy-bank.csv"}, "expected": "legacy-bank.csv"},
+  {"record": {"source_evidence_refs": "not-a-list", "source_path": "legacy-path.csv"}, "expected": "legacy-path.csv"},
+  {"record": {}, "expected": ""}
+]

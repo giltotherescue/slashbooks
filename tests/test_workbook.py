@@ -1589,6 +1589,45 @@ class TestReconciliationsSheet(unittest.TestCase):
         self.assertIn("Review Status", rows[0])
         self.assertEqual(rows[1][6], "REVIEW")
 
+    def test_reconciliation_source_prefers_canonical_refs_with_legacy_fallback(self):
+        from src.bookkeeping.reports.workbook import _reconciliation_source
+
+        fixture = Path(__file__).parent / "fixtures/workbook/reconciliation_sources.json"
+        for case in json.loads(fixture.read_text()):
+            with self.subTest(record=case["record"]):
+                self.assertEqual(_reconciliation_source(case["record"]), case["expected"])
+
+    def test_evidence_backed_reconciliation_sources_survive_csv_and_xlsx_export(self):
+        from src.bookkeeping.reports.workbook import generate_accountant_package
+        from src.bookkeeping.reconcile import reconcile
+
+        refs = ["ingestion/statements/files/test-opening.csv", "ingestion/statements/files/test-checking.csv"]
+        reconcile(self.entity_dir, "Assets:Bank:Checking", Decimal("10950.00"), TO_DATE,
+                  source_evidence_refs=refs, source_opening_balance=Decimal("500.00"),
+                  source_transaction_total=Decimal("10450.00"),
+                  source_snapshot_at="2026-04-01T00:00:00Z", source_through=TO_DATE.isoformat())
+        result = generate_accountant_package(self.entity_dir, FROM_DATE, TO_DATE,
+                                             sheets="reconciliations,source-index")
+        self.assertTrue(result.success, result.error)
+        expected = "; ".join(sorted(refs))
+        for filename in ("Reconciliations", "Source-Index"):
+            with self.subTest(format="csv", sheet=filename):
+                rows = _read_csv(_find_csv(result.output_dir, filename))
+                self.assertEqual(rows[0][7], "Source")
+                self.assertEqual(rows[1][7], expected)
+                self.assertEqual(rows[1][4:7], ["0.00", "clean", "PASS"])
+        if result.xlsx_file:
+            with ZipFile(result.xlsx_file) as zf:
+                strings_xml = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+                strings = ["".join(item.itertext()) for item in strings_xml]
+                for sheet in ("Reconciliations", "Source Index"):
+                    with self.subTest(format="xlsx", sheet=sheet):
+                        cell = _xlsx_sheet_xml(zf, sheet).find(".//main:c[@r='H2']", _SHEET_NS)
+                        self.assertIsNotNone(cell)
+                        self.assertEqual(cell.get("t"), "s")
+                        self.assertIsNone(cell.find("main:f", _SHEET_NS))
+                        self.assertEqual(strings[int(cell.find("main:v", _SHEET_NS).text)], expected)
+
     def test_reconciliation_records_appear(self):
         """After reconcile(), discrepancy appears in the sheet."""
         from src.bookkeeping.reports.workbook import generate_accountant_package
