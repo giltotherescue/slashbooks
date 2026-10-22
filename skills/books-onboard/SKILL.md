@@ -636,6 +636,25 @@ transaction history."
 
 ## Completion
 
+When the business questions are answered and saved, the company is initialized,
+the account catalog is reviewed, sources are declared, and opening balances are
+posted or the owner chose a fresh start, record that onboarding is complete. Run
+this internal command yourself:
+
+```
+scripts/books entity onboarding-complete <path> --via agent
+```
+
+It writes `onboarding_completed` (date and `via`) to `entity.json` only and
+changes no ledger data. A valid first record is kept, so a second run reports
+`already_complete` and is safe. Do not run it for demo books, in prepare mode,
+or while setup questions are still open. For cloud books, Slashbooks Cloud reads
+this record: until a company has it (or completed the setup meeting, or published
+a month), its To do and Reports stay locked and the hosted automation asks no
+business questions. Inside Cloud, only the setup meeting, staff and a person's
+own connected agent can record it; Slashbooks' own hosted automation cannot. Do
+not mark completion to get past that lock.
+
 Summarize what was set up: company folder, business type, account-catalog
 sections, sources declared, opening balance status. Tell the owner their next
 step with slash commands: `/books-backtest` if migrating from QuickBooks, or
@@ -742,6 +761,10 @@ Steps:
    stop. Do not mark anything applied.
 5. Only after the read-back, `POST /api/v1/companies/{id}/onboarding/facts/applied`
    with `{ "fact_ids": [...], "applied_ref": "<books_revision or version from the put receipt>" }`.
+6. If the meeting was completed (not ended early by the person), record that it
+   completed onboarding: `scripts/books entity onboarding-complete <path> --via meeting`.
+   If onboarding is already recorded, the command keeps the first record and
+   changes nothing.
 
 Never write to `learned-context/` or to categories, mappings, rules or the queue
 in this mode. Counterparty facts stay in the profile section until a person turns
