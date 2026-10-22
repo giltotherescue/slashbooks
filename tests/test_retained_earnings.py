@@ -71,11 +71,12 @@ def _company(root: Path, entries, fiscal_year_start: str | None = None) -> Path:
         config["fiscal_year_start"] = fiscal_year_start
         (root / "entity.json").write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
     entity = load_entity(root)
-    accounts = sorted({account for _, _, postings in entries for account, _ in postings})
+    accounts = sorted({account for _, _, postings, *_ in entries for account, _ in postings})
     opens = [Open(date(2024, 12, 1), account, ("USD",)) for account in accounts]
-    rows = [Entry(date.fromisoformat(day), text, meta=(("source-id", f"synthetic-{index}"),),
+    # An entry may name its source ID as a fourth item, for example a QuickBooks opening.
+    rows = [Entry(date.fromisoformat(day), text, meta=(("source-id", source[0] if source else f"synthetic-{index}"),),
                   postings=tuple(Posting(account, Decimal(amount)) for account, amount in postings))
-            for index, (day, text, postings) in enumerate(entries)]
+            for index, (day, text, postings, *source) in enumerate(entries)]
     _atomic_ledger_write(entity, opens, rows, "synthetic", None, "Synthetic retained earnings fixture")
     return root
 
@@ -438,6 +439,34 @@ class WholeYearCoverageCompareTests(Fixture):
         self.assertEqual(Decimal(matched["Net Income"]["ours"]), Decimal("3800.00"))
         self.assertTrue(any(name.startswith("Equity:") and Decimal(row["ours"]) == Decimal("8500.00") == Decimal(row["reference"])
                             for name, row in matched.items()), matched)
+
+    def test_a_wrong_quickbooks_retained_earnings_is_still_flagged(self):
+        folder = _qb_balance_sheet(Path(self.tmp.name) / "qb", "Sep 30, 2026",
+                                   [("Retained Earnings", "8600.00"), ("Net Income", "3800.00")])
+        diffs, _ = _compare_equity(self.root, folder, date(2026, 9, 30))
+        flagged = [d for account, d in diffs.items() if account.startswith("Equity:") and d.reference == Decimal("8600.00")]
+        self.assertEqual([(d.ours, d.delta, d.category) for d in flagged], [(Decimal("8500.00"), Decimal("-100.00"), "uncategorized")])
+
+
+class CashQuickBooksOpeningCompareTests(Fixture):
+    """A cash QuickBooks opening on 2026-01-01 carries the 9,000.00 earned before the cutover in
+    Equity:Opening-Balances. QuickBooks Retained Earnings at 2027-03-31 is 12,000.00 (9,000.00 plus 2026's 3,000.00);
+    the engine's retained line is 3,000.00. Not the same figure, so it stays a mapping difference."""
+    entries = [
+        ("2026-01-01", "Opening balances from QuickBooks", [(BANK, "9000.00"), (OPENING, "-9000.00")],
+         "quickbooks-opening-trial-balance-2026-01-01"),
+        ("2026-05-01", "Client payment", [(BANK, "3000.00"), (SERVICES, "-3000.00")]),
+        ("2027-02-01", "Client payment", [(BANK, "500.00"), (SERVICES, "-500.00")]),
+    ]
+
+    def test_retained_stays_a_mapping_difference_and_net_income_is_compared(self):
+        folder = _qb_balance_sheet(Path(self.tmp.name) / "qb", "Mar 31, 2027",
+                                   [("Retained Earnings", "12000.00"), ("Net Income", "500.00")])
+        diffs, matched = _compare_equity(self.root, folder, date(2027, 3, 31))
+        self.assertEqual((diffs[RETAINED_LABEL].ours, diffs[RETAINED_LABEL].category), (Decimal("3000.00"), "judgment-mapping"))
+        target = [d for account, d in diffs.items() if account.startswith("Equity:") and d.reference == Decimal("12000.00")]
+        self.assertEqual([(d.ours, d.category) for d in target], [(Decimal("0.00"), "judgment-mapping")])
+        self.assertEqual(Decimal(matched["Net Income"]["ours"]), Decimal("500.00"))
 
 
 class ZeroNetEarlierYearTests(Fixture):

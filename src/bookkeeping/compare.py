@@ -690,19 +690,25 @@ def _closed_earnings_covered(entity: Entity, as_of: date, coverage: Optional[dic
     that started its books inside a fiscal year carries the earnings before that day in an opening equity account,
     so the engine's lines are not the same figures. They are compared only when the books cover the whole year:
     (1) the books start on or before the current fiscal year start; (2) the books start on the first day of a
-    fiscal year.
+    fiscal year with no earnings carried in: an accrual opening (an ``opening`` coverage record) carries earlier
+    earnings in its retained earnings account, but a cash QuickBooks opening (``quickbooks-opening``) carries every
+    earning before the cutover in ``Equity:Opening-Balances``, so (2) is false for it.
     """
     from .reports.cache import open_cache
     from .reports.statements import books_start, fiscal_year_anchor
     conn = open_cache(entity.path)
     try:
         start = books_start(conn, coverage)
+        cash_opening = coverage is None and start is not None and conn.execute(
+            "SELECT 1 FROM entries WHERE date = ? AND source_id LIKE 'quickbooks-opening%' LIMIT 1",
+            (start.isoformat(),)).fetchone() is not None
     finally:
         conn.close()
     if start is None:
         return False, False
     fiscal = entity.entity_config.get("fiscal_year_start")
-    return start <= fiscal_year_anchor(as_of, coverage, fiscal), start == fiscal_year_anchor(start, coverage, fiscal)
+    earlier = start == fiscal_year_anchor(start, coverage, fiscal) and not cash_opening
+    return start <= fiscal_year_anchor(as_of, coverage, fiscal), earlier
 
 
 def _align_closed_earnings(our_balances: dict[str, Decimal], qb_balances: dict[str, Decimal], qb_rows: list,
@@ -712,7 +718,7 @@ def _align_closed_earnings(our_balances: dict[str, Decimal], qb_balances: dict[s
     QuickBooks closes earlier fiscal years into Retained Earnings and shows the current year as Net Income (a
     total row). The engine shows "Retained earnings from prior fiscal activity" and "Net Income (current period)".
     When the books cover the year (see ``_closed_earnings_covered``), the retained line is added to the account that
-    the QuickBooks Retained Earnings row maps to (an imported retained earnings balance is in that account), and the
+    the QuickBooks Retained Earnings row maps to (an accrual opening carries its retained earnings in that account), and the
     current year is compared with Net Income. Otherwise, or when the QuickBooks file has no such row, the engine
     line keeps its own name and stays a mapping difference, as before.
     """
