@@ -502,13 +502,14 @@ def set_taught(entity: Entity, key: str, category: str, *, by: str, by_name: str
     key = str(key or "").strip()
     if not key:
         raise ValueError("A counterparty key is required to teach a category.")
-    opened = _get_opened_accounts(entity)
-    if opened and category not in opened:
-        raise ValueError(f"Category '{category}' is not an account in the account catalog.")
     if category.startswith(_TAUGHT_BLOCKED_PREFIXES):
         raise ValueError(f"Category '{category}' is a bank, cash or card account and cannot be taught.")
     at = ts or _now_iso()
     with _queue_mutation(entity):
+        # Check the catalog under the company lock, so a removal of the account cannot come in between.
+        opened = _get_opened_accounts(entity)
+        if opened and category not in opened:
+            raise ValueError(f"Category '{category}' is not an account in the account catalog.")
         ctx = load_learned_context(entity)
         entry = ctx.get(key)
         if not isinstance(entry, dict):

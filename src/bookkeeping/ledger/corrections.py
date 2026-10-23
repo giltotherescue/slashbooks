@@ -63,11 +63,13 @@ def _postings(values: list[str], *, require_balanced: bool = True, currency: str
 
 
 def _correct(entity: Any, source_id: str, new_source_id: str, corrected: Entry, session: str) -> None:
+    from .importer import _entity_write_lock
     if not new_source_id or new_source_id == source_id:
         raise ValueError("--new-source-id must be a new, non-empty source ID.")
-    if _ensure_ledger_store(entity).source_exists(new_source_id):
-        raise ValueError(f"A posted entry already uses source ID '{new_source_id}'.")
-    reverse_and_correct(entity, source_id, corrected, session)
+    with _entity_write_lock(entity.path):  # The checks and the write see one state of the ledger.
+        if _ensure_ledger_store(entity).source_exists(new_source_id):
+            raise ValueError(f"A posted entry already uses source ID '{new_source_id}'.")
+        reverse_and_correct(entity, source_id, corrected, session)
 
 
 MANAGED_ENTRY_MESSAGE = ("This entry has managed accrual accounting or supporting balances. Use the reviewed accrual journal "
