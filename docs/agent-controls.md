@@ -34,6 +34,24 @@ infer-currency` only reads files, so an agent can run it. Closing and reopening 
 period also need a person. See [the tax handoff](tax-handoff.md) for the tax
 settings and [accrual books](accrual.md) for accrual tracking and the default view.
 
+## Reporting goals and report categories
+
+These commands support the owner's reporting goals. See
+[reporting goals](statements.md#reporting-goals-and-report-categories).
+
+| Command | Changes the books? | What it changes |
+|---|---|---|
+| `books entity set-reporting-goals PATH ... --apply` | No | `reporting_goals` in `entity.json` and one audit event. No entry, account or report changes. |
+| `books entity account-add PATH --account A --category` | No | Adds one empty income or expense category to the account catalog. No entry or amount changes. |
+| `books ledger reclassify ... --apply` | Yes | Writes a reversal and a replacement for each moved entry. |
+
+Without `--apply`, `set-reporting-goals` and `ledger reclassify` preview and write
+nothing. A host can let its automation record goals that the owner confirmed,
+because the goals change no amounts. Standing posting authority does not cover
+`ledger reclassify`, and the trusted preparation runtime refuses it. A person
+approves each move. The command refuses an entry in a locked month
+(`period_locked`).
+
 ## Record that onboarding is complete
 
 `books entity onboarding-complete PATH --via agent|meeting|staff [--on YYYY-MM-DD]`
@@ -117,7 +135,7 @@ check every item first.
 
 **Routes that do not check the limit.** Routine captured decisions (a person
 decided), `backtest` category rules, corrections of posted entries
-(`ledger correct`, `reclassify-bank`, `split-equity`) and the `accrual` commands
+(`ledger correct`, `reclassify-bank`, `reclassify`, `split-equity`) and the `accrual` commands
 do not apply the limit. A payout bank deposit matched by `stripe_plan` is also not checked.
 
 ## Read the amount of an item

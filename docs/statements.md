@@ -210,3 +210,143 @@ again reverses the choice. A later upload remains active until separately review
 Import new corrected files through the usual duplicate check first. Selection
 never repairs incorrect recorded transactions; correct those separately. A
 reconciliation using a replaced document must be run again with the current one.
+
+## Reporting goals and report categories
+
+A reporting goal records what the owner wants the reports to show, for example
+profit for each service line or cash on hand. The engine stores and validates the
+goals. No entry, category, rule or report changes because of them. An agent reads
+the goals and proposes categories or moves, and a person approves the changes.
+
+### The `reporting_goals` key
+
+`entity.json` keeps the goals in one key:
+
+```json
+{"reporting_goals": {"version": 1, "goals": ["profit_by_line", "cash_runway"], "lines": ["Installs", "Repairs"]}}
+```
+
+| Code | What the owner wants to see |
+| --- | --- |
+| `profit_by_line` | Income and direct costs for each service or product line |
+| `profit_by_job` | Profit for each job, client or project |
+| `cash_runway` | Cash on hand and how many months it lasts |
+| `spend_vs_last_year` | Spending by category against the last year |
+| `sales_tax_owed` | Sales tax collected and not paid yet |
+| `owner_pay` | What the owner took out of the business |
+| `recurring_revenue` | Subscription or retainer income each month |
+| `basics` | A standard profit and loss and balance sheet |
+
+- `goals` lists codes from the table in the owner's order, with no repeats (at most 8).
+- `lines` lists the lines that the owner named. Lines are allowed only with
+  `profit_by_line` or `profit_by_job`.
+- At most 12 lines. Each line has 1 to 40 characters: letters, digits, spaces and
+  `& ' . , / ( ) + -`. The command collapses repeated spaces. Two lines that differ
+  only in letter case are the same line.
+
+`bookkeeping.reporting_goals.reporting_goals(config)` returns the validated value,
+or `None` when the key is absent. It raises `ValueError` when the stored value is
+not valid. The key travels in the migration bundle with the rest of `entity.json`,
+and it does not change the report fingerprints of the bundle.
+
+### Record the goals: `books entity set-reporting-goals`
+
+```sh
+books entity set-reporting-goals PATH --goal profit_by_line --goal cash_runway --line Installs --line Repairs
+books entity set-reporting-goals PATH --goal profit_by_line --goal cash_runway --line Installs --line Repairs --apply --plan-hash HASH
+books entity set-reporting-goals PATH --clear --apply
+```
+
+- Without `--apply` the command shows a preview and writes nothing. The preview
+  shows `effects.from` and `effects.to`, and `entries_changed` is 0.
+- A new value replaces the old value. `--clear` removes the key.
+- `--apply --plan-hash H` refuses with `stale_preview` when the company changed
+  after the preview. When the company already holds the requested value (for
+  example an exact retry of the same `--apply --plan-hash H`), the command gives
+  `already_applied` and writes nothing.
+- An apply writes the audit event `reporting-goals-set` with the old value, the new
+  value, the plan hash and a unique `operation_id`. If the apply stops after the
+  file write, a new database connection looks for that `operation_id`. The command
+  puts the original bytes of `entity.json` back (also when the stop comes during the
+  rename or the directory sync) only when the lookup proves that the
+  event is absent and the file still holds the bytes that the command wrote. It
+  checks the bytes again directly before the rename. In all other cases the file
+  stays as it is.
+- The apply holds the company write lock that every engine writer of `entity.json`
+  takes, from the first read to the commit and any recovery. Directly before it
+  replaces `entity.json`, it compares the file with the bytes that it read. If the
+  file changed, the apply stops with `stale_preview` and writes nothing. Editors
+  that change `entity.json` without the company lock are not supported: the byte
+  checks narrow that window but cannot close it.
+- `entity.json` is the state. When it holds a value that no `reporting-goals-set`
+  event records (after a stop before the commit, or after a hand edit), the preview
+  shows the warning `unrecorded_change`. An apply of that same value without a plan
+  hash writes nothing. An apply with the plan hash of that preview writes the event,
+  marked `confirmed_by_apply: true`. A wrong plan hash is refused with
+  `stale_preview`. The plan hash covers the record hash of the last
+  `reporting-goals-set` event, so a used plan hash cannot confirm a later change. An apply of a new value writes a normal event.
+- A stored value that is not valid gives the warning `invalid_stored_value`, and the
+  getter refuses it. Give a new value with `--goal`, or `--clear`, to replace it.
+- Error codes: `unknown_goal`, `repeated_goal`, `too_many_goals`, `no_goals`,
+  `lines_need_line_goal`, `too_many_lines`, `invalid_line`, `repeated_line`,
+  `nothing_to_set`, `clear_with_values`, `stale_preview`, `ledger_integrity`.
+
+### Add a report category: `books entity account-add --category`
+
+`books entity account-add PATH --account ACCOUNT --category` adds an income or
+expense category. With `--category` the command accepts only these shapes:
+
+- `Income:<Line>`
+- `Income:<Group>:<Line>` (one level under an income group)
+- `Expenses:<Name>`
+- `Expenses:Cost-of-Sales:<Line>` (a cost-of-sales group, found by name as
+  `--structure` finds it)
+
+The command refuses all other shapes, and a name with a control character such as
+a final newline, before any write. The usual account checks also apply. Without `--category` the command accepts every valid account name, as
+before. A new account has no postings, so no report amount changes. To move entries
+from earlier months into the new account, give an open date on or before the first
+entry, for example `--open-date 2026-01-01`. For an account that exists, an earlier
+`--open-date` moves its open date back.
+
+### Move entries to another category: `books ledger reclassify`
+
+```sh
+books ledger reclassify --entity PATH --from-account Income:Consulting --to-account Income:Installs --source-id ID --source-id ID
+books ledger reclassify --entity PATH --from-account Income:Consulting --to-account Income:Installs --source-id ID --source-id ID --apply --plan-hash HASH
+```
+
+The command moves the posted entries that you name by source ID from one income or
+expense account to another. Both accounts must be income or expense accounts, and
+the target account must be in the account catalog. For other accounts, use
+`ledger reclassify-bank` or `ledger correct`.
+
+- Without `--apply` the command shows a preview and writes nothing. `moves` lists
+  each entry with its date, payee, amount and tags, and the new source ID of its
+  replacement.
+- Each move writes a reversal and a replacement. The original entry stays. The
+  replacement keeps the date, payee, narration, flag, tags, links and metadata, and
+  gets a new source ID and `correction-of`. The reversal keeps the payee, tags and
+  links, so a total by payee or by tag stays correct.
+- One ledger transaction writes all the moves, or none.
+- The source ID of an entry that moved before also finds its replacement. An entry
+  that is already in the target account goes to `already_moved`. When all entries
+  are already moved, the apply returns `already_applied` and writes nothing.
+- An entry in a locked month refuses the whole request with `period_locked`. A
+  locked month is a month in `closed_periods`, a date on or before `closed_through`,
+  or a closed accrual period. `refs` lists the source IDs. A change in a locked
+  month is a question for the accountant.
+- A `closed_through` that is not a `YYYY-MM-DD` date, or a `closed_periods` value
+  that is not a list of `YYYY-MM` months, refuses the request with
+  `invalid_period_state` before any move.
+- When every entry is already in the target account (for example an exact retry of
+  the same `--apply --plan-hash H`), the command gives `already_applied`.
+- Posting metadata stays on both the reversal and the replacement.
+- Other error codes: `not_category_account`, `same_account`, `unknown_account`,
+  `account_not_open` (the action gives the `account-add --open-date` command),
+  `unknown_entry`, `entry_reversed`, `repeated_entry`, `not_in_from_account`,
+  `managed_accrual_entry`, `too_many_entries` (more than 1000), `stale_preview`,
+  `ledger_integrity`.
+- With `--work-out`, the move is a `corrected` work event.
+
+See [caller controls](agent-controls.md) for which of these commands change the books.

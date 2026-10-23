@@ -126,8 +126,12 @@ def _sha256_text(text: str) -> str:
 
 
 @contextmanager
-def _entity_write_lock(entity_path: Path):
-    """Serialize all entity mutations, allowing nested writers in one context."""
+def _entity_write_lock(entity_path: Path, *, repair: bool = True):
+    """Serialize all entity mutations, allowing nested writers in one context.
+
+    ``repair=False`` takes the lock without the entity.json currency repair, for a command that must not
+    write any company file before its own checks pass.
+    """
     resolved = entity_path.resolve()
     held = _held_entity_locks.get()
     if resolved in held:
@@ -145,8 +149,9 @@ def _entity_write_lock(entity_path: Path):
             token = _held_entity_locks.set((*held, resolved))
             try:
                 # Each write path starts by finishing an entity.json that a stop left behind the ledger currency.
-                from ..currency import repair_on_disk
-                repair_on_disk(resolved)
+                if repair:
+                    from ..currency import repair_on_disk
+                    repair_on_disk(resolved)
                 yield
             finally:
                 _held_entity_locks.reset(token)

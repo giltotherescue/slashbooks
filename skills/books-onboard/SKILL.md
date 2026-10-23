@@ -248,7 +248,19 @@ small related batch at a time, omitting facts already established:
    instead of BankSync?
 12. **Commingling rules** — Are there any personal expenses that sometimes appear on
    business accounts, or vice versa? How should those be handled?
-13. **Entity directory** — For cloud books, use the existing connection or the
+13. **Reporting goals** — Ask one question near the end: "When you look at your
+    numbers, what do you most want to keep an eye on?" Offer four quick answers:
+    Profit by service, Profit per job, Cash on hand, Just the basics. The owner can
+    also name other goals, such as spending against last year, sales tax owed, owner
+    pay or subscription income. Only when the owner picks profit by service or profit
+    per job, ask one follow-up: "What are the main lines you'd split it by?" Use only
+    the lines the owner names; never take lines from transaction data. Map the
+    answers to the codes `profit_by_line`, `profit_by_job`, `cash_runway`,
+    `spend_vs_last_year`, `sales_tax_owed`, `owner_pay`, `recurring_revenue` and
+    `basics`. After initialization, record them (Step 3). Do not promise a report
+    that Slashbooks cannot show yet: profit per job, cash runway and monthly
+    columns come later. If the owner has no preference, record `basics`.
+14. **Entity directory** — For cloud books, use the existing connection or the
     books-cloud default folder silently; do not ask for another path. For local
     books, which company directory should this workflow use?
     For remote books this is a binding and intake/output directory, not the
@@ -290,7 +302,8 @@ this before running any command:
 11. **CSV fallbacks** — None for the demo.
 12. **Commingling rules** — No real commingling; three fictional review items
     are queued to demonstrate judgment calls.
-13. **Entity directory** — `./northstar-demo` under the current books parent, or
+13. **Reporting goals** — Just the basics. The demo records no goals.
+14. **Entity directory** — `./northstar-demo` under the current books parent, or
     another destination the owner chooses. Use the current directory only if the
     owner explicitly opened the intended demo company folder.
 
@@ -430,6 +443,37 @@ do not create or edit an entity-local chart-of-accounts Beancount file as the so
 When a plain ledger file is needed for inspection or another tool, generate a
 Beancount snapshot from the SQLite store. After any account-catalog change, re-run
 the trial balance smoke check to confirm the books are still valid.
+
+### Reporting goals and report categories
+
+Record the confirmed reporting goals. Preview first, then apply the preview that
+the owner confirmed:
+
+```
+scripts/books entity set-reporting-goals <path> --goal profit_by_line --goal cash_runway --line Installs --line Repairs
+scripts/books entity set-reporting-goals <path> --goal profit_by_line --goal cash_runway --line Installs --line Repairs --apply --plan-hash <plan_hash>
+```
+
+The command changes no entries. Lines are allowed only with `profit_by_line` or
+`profit_by_job`, at most 12, each 1 to 40 plain characters. A repeat of the same
+goals reports `already_applied`.
+
+For `profit_by_line`, propose report categories for the lines the owner named, and
+add only the categories the owner approves:
+
+- Propose at most 6 new categories in total. Propose a category only for a line
+  that the owner named.
+- Use `Income:<Line>` for the income of a line, or `Income:<Group>:<Line>` when the
+  starter income category is the group. Use `Expenses:Cost-of-Sales:<Line>` only
+  when the line has direct costs.
+- Never propose one category for each client or job. For `profit_by_job`, record
+  the goal and tell the owner that job reports come later.
+- Add each approved category with
+  `scripts/books entity account-add <path> --account <account> --category --open-date <books start date>`.
+  The open date on or before the books start lets earlier entries move later.
+
+Do not move posted entries during onboarding. Later, `books ledger reclassify`
+moves entries that a person approves; it refuses entries in locked months.
 
 Record confirmed business context in `business-profile.md` and supported entity
 settings, preserving existing and unknown fields. Local templates are starter
@@ -747,6 +791,11 @@ Steps:
    completed onboarding: `scripts/books entity onboarding-complete <path> --via meeting`.
    If onboarding is already recorded, the command keeps the first record and
    changes nothing.
+7. If a confirmed fact gives reporting goals (`reporting_goals`, with
+   `reporting_lines` for a line or job goal), record them with
+   `scripts/books entity set-reporting-goals <path> --goal CODE ... --line NAME ...`:
+   preview first, then `--apply --plan-hash HASH_FROM_PREVIEW`. Use only the lines
+   in the owner's words. This changes no entries and adds no category.
 
 Never write to `learned-context/` or to categories, mappings, rules or the queue
 in this mode. Counterparty facts stay in the profile section until a person turns
