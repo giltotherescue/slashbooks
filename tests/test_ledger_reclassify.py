@@ -167,6 +167,30 @@ class ReclassifyTests(CompanyFixture):
         code, stale, _ = self.reclassify("jan", extra=("--apply", "--plan-hash", plan["plan_hash"]))
         self.assertEqual((code, stale["errors"][0]["code"]), (1, "stale_preview"))
 
+    def test_catalog_is_read_inside_the_company_lock(self):
+        """A removal of the target account that runs while the move waits for the lock refuses the move."""
+        import contextlib
+        from unittest.mock import patch
+        from bookkeeping.accrual.enable import _seal
+        from bookkeeping.ledger import importer
+        real = importer._entity_write_lock
+        store = self.store()
+
+        @contextlib.contextmanager
+        def removal_first(path, **kwargs):
+            with real(path):  # Another writer holds the lock first and removes the account.
+                with store.transaction(immediate=True) as conn:
+                    conn.execute("DELETE FROM accounts WHERE name=?", (INSTALLS,))
+                    _seal(store, conn, "test-remove")
+            with real(path, **kwargs):
+                yield
+
+        with patch.object(importer, "_entity_write_lock", removal_first):
+            code, result, _ = self.reclassify("feb", extra=("--apply",))
+        self.assertEqual((code, result["errors"][0]["code"]), (1, "unknown_account"), result)
+        self.assertFalse(any(p.account == INSTALLS for e in store.load_entries() for p in e.postings))
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
     def test_refusals(self):
         add_account(self.root, "Income:Late-Account", open_date="2026-03-01")
         cases = [
