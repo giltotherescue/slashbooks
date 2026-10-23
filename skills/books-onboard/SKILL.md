@@ -455,7 +455,9 @@ scripts/books entity set-reporting-goals <path> --goal profit_by_line --goal cas
 ```
 
 The command changes no entries. Lines are allowed only with `profit_by_line` or
-`profit_by_job`, at most 12, each 1 to 40 plain characters. A repeat of the same
+`profit_by_job`, each 1 to 40 plain characters. There is no line-count limit. The
+complete normalized goals value must fit 65,536 bytes of compact UTF-8 JSON. An
+oversized value is refused without saving or truncating lines. A repeat of the same
 goals reports `already_applied`.
 
 For `profit_by_line`, propose report categories for the lines the owner named, and
