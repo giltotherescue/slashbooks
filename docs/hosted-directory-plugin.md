@@ -39,8 +39,9 @@ acceptance therefore remain release gates.
 
 This source package is not a submission-ready archive. Before submission:
 
-1. The publisher must approve the listing copy and final `/books` artwork.
-2. Add approved square icons to the package and reference them in the manifest.
+1. The publisher must review the exact final listing packet. The approved `/b`
+   icon is included and referenced by both manifests.
+2. Verify the packaged icon and listing preview in each portal before submission.
 3. Finish and deploy the directory release of the MCP server, then run the review
    cases against the deployed endpoint and record actual outcomes.
 4. Complete the portal's domain, OAuth, reviewer-access, country, commerce, demo,

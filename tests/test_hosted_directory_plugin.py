@@ -1,5 +1,6 @@
 import json
 import re
+import struct
 import unittest
 from pathlib import Path
 
@@ -10,19 +11,23 @@ DEFAULT_SCOPES = [
     "books:read", "questions:write", "proposals:write", "evidence:write",
     "sources:write", "runs:write", "books:write",
 ]
-CANONICAL_DESCRIPTION = (
-    "Keep your business books up to date from ChatGPT. Review transactions, import bank statements, "
-    "reconcile accounts, and get financial reports and cash forecasts using your Slashbooks Cloud company.\n\n"
-    "Slashbooks records routine transactions under the permissions you approve and asks when something "
-    "needs your judgment. You stay in control of approvals and closing the books.\n\n"
-    "Sign in to Slashbooks to choose your company and access. No software installation is needed. "
-    "Requires a Slashbooks Cloud account; request access at slashbooks.co."
+CHATGPT_DESCRIPTION = (
+    "You don’t need a bookkeeper anymore. Slashbooks keeps your books up to date right inside ChatGPT. "
+    "It records transactions, checks your accounts, and prepares reports for your accountant. "
+    "When it needs an answer, it asks. Requires a Slashbooks account."
 )
+CLAUDE_DESCRIPTION = CHATGPT_DESCRIPTION.replace("ChatGPT", "Claude")
 
 
 class HostedDirectoryPluginTests(unittest.TestCase):
     def load(self, relative: str):
         return json.loads((PACKAGE / relative).read_text())
+
+    def png_dimensions(self, relative: str):
+        data = (PACKAGE / relative).read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(data[12:16], b"IHDR")
+        return struct.unpack(">II", data[16:24])
 
     def test_portable_identity_and_endpoint(self):
         manifest = self.load("plugin.json")
@@ -32,9 +37,17 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         interface = manifest["extensions"]["com.openai"]["interface"]
         self.assertLessEqual(len(interface["shortDescription"]), 30)
         self.assertEqual(interface["category"], "Finance")
-        self.assertEqual(interface["longDescription"], CANONICAL_DESCRIPTION)
+        self.assertEqual(interface["longDescription"], CHATGPT_DESCRIPTION)
         self.assertTrue(interface["defaultPrompt"][0].startswith("Update my books"))
+        self.assertEqual(interface["composerIcon"], "./assets/icon.png")
+        self.assertEqual(interface["logo"], "./assets/icon.png")
+        self.assertEqual(interface["composerIconDark"], "./assets/icon-dark.svg")
+        self.assertEqual(interface["logoDark"], "./assets/icon-dark.svg")
+        self.assertEqual(self.png_dimensions("assets/icon.png"), (512, 512))
         self.assertEqual(manifest["author"]["email"], "hi@slashbooks.co")
+        self.assertNotIn("Cloud", manifest["description"])
+        self.assertNotIn("Cloud", interface["longDescription"])
+        self.assertNotIn("—", interface["longDescription"])
 
         mcp = self.load("mcp.json")["mcpServers"]
         self.assertEqual(list(mcp), ["slashbooks"])
@@ -50,6 +63,10 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         manifest = self.load(".claude-plugin/plugin.json")
         self.assertEqual(manifest["name"], "slashbooks-cloud")
         self.assertEqual(manifest["version"], "0.9.0")
+        self.assertEqual(manifest["description"], CLAUDE_DESCRIPTION)
+        self.assertEqual(manifest["icon"], "./assets/icon.png")
+        self.assertNotIn("Cloud", manifest["description"])
+        self.assertNotIn("—", manifest["description"])
         mcp = self.load(".mcp.json")["mcpServers"]
         self.assertEqual(mcp["slashbooks"]["url"], "https://slashbooks.co/mcp")
 
@@ -68,6 +85,9 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         manifest = self.load("plugin.json")
         onboarding = manifest["extensions"]["com.openai"]["onboardingSkill"]
         self.assertTrue((PACKAGE / onboarding.removeprefix("./")).is_file())
+        interface = manifest["extensions"]["com.openai"]["interface"]
+        for field in ("composerIcon", "composerIconDark", "logo", "logoDark"):
+            self.assertTrue((PACKAGE / interface[field].removeprefix("./")).is_file())
         for skill in (PACKAGE / "skills").glob("*/SKILL.md"):
             text = skill.read_text()
             self.assertTrue(text.startswith("---\n"))
