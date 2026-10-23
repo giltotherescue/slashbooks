@@ -1228,6 +1228,17 @@ def add_parser(subparsers: Any) -> None:
              "Expenses:<Name> or Expenses:Cost-of-Sales:<Line>",
     )
 
+    remove_account_parser = entity_sub.add_parser(
+        "account-remove",
+        help="Remove an unused income or expense account that account-add created. Previews unless --apply is given",
+    )
+    remove_account_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    remove_account_parser.add_argument("--account", required=True, help="Account to remove, such as Income:Installs")
+    remove_account_parser.add_argument("--added-event", type=int, default=None, metavar="ID",
+                                       help="The id of the audit event that account-add wrote when it created the account; default: the latest one")
+    remove_account_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    remove_account_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+
     set_view_parser = entity_sub.add_parser(
         "set-view",
         help="Choose the default report view, cash or accrual (person-only). Previews unless --apply is given",
@@ -1412,6 +1423,28 @@ def run(args: Any) -> int:
 
         verb = "Added" if report["status"] == "created" else "Already present"
         print(f"{verb}: {report['account']} (open {report['open_date']})")
+        return 0
+
+    if args.entity_command == "account-remove":
+        # The command reads the company files itself (no load_entity, no entity.json repair), so a refusal
+        # writes nothing and an unreadable settings file gives a structured reference_check_failed.
+        from . import account_remove
+        try:
+            target = _resolve_target(args.path)
+            if args.apply:
+                result = account_remove.apply(target, args.account, args.plan_hash, args.added_event)
+            else:
+                result = account_remove.preview(target, args.account, args.added_event)
+        except (ValueError, OSError) as exc:
+            if hasattr(exc, "as_dict"):
+                result = exc.as_dict()
+            elif isinstance(exc, OSError):
+                result = account_remove._unreadable(getattr(exc, "filename", None) or "company files").as_dict()
+            else:
+                result = {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
         return 0
 
     if args.entity_command == "set-view":

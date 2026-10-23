@@ -326,6 +326,13 @@ def stripe_merge_previews(previous, current):
     return result
 
 
+# The accounts that stripe_prepare opens. engine_accounts.engine_owned_accounts() lists them too.
+STRIPE_ACCOUNTS = dict(clearing_account='Assets:Processors:Stripe',
+                       payout_transit_account='Assets:Transfers:Stripe-Payouts',
+                       reserve_account='Assets:Processors:Stripe-Reserved',
+                       fee_account='Expenses:Payment-Processing:Stripe', refund_account='Income:Refunds:Stripe')
+
+
 def stripe_prepare(entity, *, opening_date):
     """Human-authorized catalog setup using normal audited account creation.
 
@@ -336,10 +343,7 @@ def stripe_prepare(entity, *, opening_date):
     when = date.fromisoformat(opening_date)
     if when.isoformat() != opening_date:
         raise ValueError('Stripe opening_date must use YYYY-MM-DD.')
-    accounts = dict(clearing_account='Assets:Processors:Stripe',
-                    payout_transit_account='Assets:Transfers:Stripe-Payouts',
-                    reserve_account='Assets:Processors:Stripe-Reserved',
-                    fee_account='Expenses:Payment-Processing:Stripe', refund_account='Income:Refunds:Stripe')
+    accounts = dict(STRIPE_ACCOUNTS)
     store = LedgerStore(default_store_path(entity.path))
     opened = {item.account: item for item in store.load_opens()}
     book = entity.currency
