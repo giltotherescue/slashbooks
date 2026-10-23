@@ -15,7 +15,7 @@ if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
 from bookkeeping.cli import build_parser, main  # noqa: E402
-from bookkeeping import hosted_migration, migration_bundle  # noqa: E402
+from bookkeeping import hosted, hosted_migration, migration_bundle, remote  # noqa: E402
 from bookkeeping.remote_contract import (  # noqa: E402
     ContractError, command_spec, parse_command, rewrite_paths,
 )
@@ -103,6 +103,37 @@ class MigrationExportCommandTests(unittest.TestCase):
         self.assertEqual(second_code, 0, second_summary)
         self.assertEqual(second_summary, summary)
         self.assertEqual(second.read_bytes(), first.read_bytes())
+
+    def test_bound_company_export_stays_local_and_offline(self):
+        binding = self.root / remote.CONFIG_NAME
+        binding.write_text(json.dumps({
+            "endpoint": "https://books.example.invalid",
+            "company": "synthetic-company",
+            "token_env": "BOOKS_API_TOKEN",
+        }), encoding="utf-8")
+        args = build_parser().parse_args([
+            "migration", "export", "--entity", str(self.root),
+            "--output", str(self.root.parent / "bound-company.zip"),
+        ])
+        self.assertTrue(remote.is_bound(args))
+
+        destination = self.root.parent / "bound-company.zip"
+        with (
+            patch.object(remote, "maybe_run", side_effect=AssertionError("remote routing is forbidden")),
+            patch.object(hosted, "HostedClient", side_effect=AssertionError("network is forbidden")),
+        ):
+            code, summary = self.run_export(destination)
+
+        self.assertEqual(code, 0, summary)
+        self.assertTrue(summary["bundle_created"])
+        loaded = migration_bundle.load_bundle(destination)
+        self.assertEqual(
+            migration_bundle.validate_files(loaded["manifest"], loaded["files"])["status"],
+            "validated",
+        )
+        self.assertIn("entity.json", loaded["files"])
+        self.assertIn("ledger.sqlite", loaded["files"])
+        self.assertNotIn(remote.CONFIG_NAME, loaded["files"])
 
     def test_unsafe_symlink_and_existing_destination_never_publish_partial_output(self):
         outside = self.root.parent / "outside.pdf"

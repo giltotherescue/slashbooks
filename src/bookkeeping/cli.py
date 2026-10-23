@@ -120,6 +120,12 @@ def _dispatch(
             return hosted_module.run(args)
         if args.command == "procedures":
             return procedures_module.run(args)
+        # A migration bundle is a local, offline snapshot of the named company.
+        # Keep this exact leaf ahead of transparent hosted routing even when the
+        # company directory contains a remote binding.  The same parser contract
+        # remains available to the trusted hosted compute boundary.
+        if args.command == "migration" and args.migration_command == "export":
+            return migration_module.run(args)
         remote_result = remote_module.maybe_run(
             command_argv, args, answer_application=answer_application
         )
@@ -129,8 +135,6 @@ def _dispatch(
             return run_connector(args)
         if args.command == "demo":
             return demo_module.run(args)
-        if args.command == "migration":
-            return migration_module.run(args)
         if args.command == "entity":
             return entity_module.run(args)
         if args.command == "accrual":
