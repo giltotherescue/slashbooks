@@ -976,7 +976,7 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     # Pending categorization is actionable review work even before an agent has
     # produced a proposal.  Surface it alongside queue files so `queue list
     # --status open` cannot incorrectly report an empty close.
-    if status in (None, "open", "staged"):
+    if status in (None, "open", "staged", "actionable"):
         queued_ids = set(recovery_ids or ()) | {
             str(source_id)
             for item in items
@@ -996,7 +996,7 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
                 "proposed_category": None,
                 "confirmed_category": None,
             })
-    if status in (None, "open", "duplicate-candidate"):
+    if status in (None, "open", "duplicate-candidate", "actionable"):
         candidate_path = entity.staging_dir / "duplicate-candidates.json"
         try:
             candidates = json.loads(candidate_path.read_text(encoding="utf-8"))
@@ -1019,11 +1019,11 @@ def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> lis
     and guarded items remain in ``Needs review`` until an agent proposes a
     treatment; confirmed proposals stay in distinct groups.
     """
-    groups: dict[str, dict[str, Any]] = {}
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
     for item in list_queue_items(entity, status=status):
         treatment = str(item.get("proposed_category") or "Needs review")
         group = groups.setdefault(
-            treatment,
+            (treatment, str(item.get("status") or "unknown")),
             {
                 "treatment": treatment,
                 "count": 0,
@@ -3407,7 +3407,7 @@ def run(args: Any) -> int:
                     date_range += f" through {group['date_to']}"
                 samples = ", ".join(group["sample_counterparties"]) or "no sample counterparty"
                 print(
-                    f"  {group['treatment']}: {group['count']} item(s), "
+                    f"  {group['treatment']} [{', '.join(group['statuses'])}]: {group['count']} item(s), "
                     f"{group['total']}, {date_range}; samples: {samples}"
                 )
                 for diagnostic in group.get("diagnostics", []):

@@ -810,5 +810,5 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 
 - `scripts/books procedures show onboarding-profile` (version 2)
 - `scripts/books procedures show question-rules` (version 2)
-- `scripts/books procedures show communication` (version 1)
-- `scripts/books procedures show hard-rules` (version 3)
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)

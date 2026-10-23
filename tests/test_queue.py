@@ -198,6 +198,41 @@ class TestPendingWorkVisibility(unittest.TestCase):
             self.assertEqual(items[0]["source_id"], "staged-1")
             self.assertEqual(items[0]["status"], "staged")
 
+    def test_default_summary_includes_staged_work_and_separates_proposal_states(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            _add_pending_categorization(entity, "posted", "Recorded vendor")
+            propose(entity, "posted", "Expenses:Software", "Subscription")
+            confirm(entity, "posted", SESSION, ts=TS)
+            _add_pending_categorization(entity, "proposed", "Proposed vendor")
+            propose(entity, "proposed", "Expenses:Software", "Subscription")
+            _add_pending_categorization(entity, "staged", "Unclassified vendor")
+
+            before = {str(p): p.read_bytes() for p in entity.path.rglob("*") if p.is_file()}
+            args, _, _ = parse_command(["queue", "summary", "--entity", str(entity.path)])
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(queue_module.run(args), 0)
+            self.assertIn("Needs review [staged]: 1 item(s)", output.getvalue())
+            self.assertIn("Expenses:Software [open]: 1 item(s)", output.getvalue())
+            self.assertNotIn("confirmed", output.getvalue())
+            groups = summarize_queue_items(entity, status=None)
+            software = [g for g in groups if g["treatment"] == "Expenses:Software"]
+            self.assertEqual(len(software), 2)
+            self.assertEqual({tuple(g["statuses"]) for g in software}, {("open",), ("confirmed",)})
+            self.assertEqual(before, {str(p): p.read_bytes() for p in entity.path.rglob("*") if p.is_file()})
+
+    def test_actionable_summary_includes_held_duplicates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            candidate = {"source_id": "held", "status": "duplicate-candidate",
+                         "description": "Possible repeated import"}
+            (entity.staging_dir / "duplicate-candidates.json").write_text(json.dumps([candidate]))
+            self.assertEqual(list_queue_items(entity, status="actionable"), [candidate])
+            groups = summarize_queue_items(entity, status="actionable")
+            self.assertEqual(groups[0]["count"], 1)
+            self.assertEqual(groups[0]["statuses"], ["duplicate-candidate"])
+
     def test_grouped_proposal_and_confirmation_posts_only_the_selected_group(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             entity = _make_entity(Path(tmp))

@@ -1,5 +1,5 @@
 {
-  "bundle_sha256": "ae944f9dba4b842f2e1bc8bc75c0a04d1e3a82b4a3fbae4207cda021c814124d",
+  "bundle_sha256": "9e0646e2176c8ddafe4e1b2eda57433ec1525288d540cfa97eec2cbb4aa9b0b5",
   "procedures": [
     {
       "name": "catch-up",
@@ -15,9 +15,9 @@
     },
     {
       "name": "communication",
-      "version": 1,
+      "version": 2,
       "title": "Clear communication",
-      "sha256": "588c81c748c07b36f6d41afc5b4249f099c70462bb09d2ba03b3afe2ddd9eebf"
+      "sha256": "643197594b0bbd52ed6226d1c0221bb59cb034881787c1d1d7d618d51b52e86b"
     },
     {
       "name": "document-intake",
@@ -45,9 +45,9 @@
     },
     {
       "name": "hard-rules",
-      "version": 3,
+      "version": 4,
       "title": "Hard rules for every agent",
-      "sha256": "8e8e08e4bb232a0111bd2831f732c0c1c83798eab838e56e67414b5e73a86776"
+      "sha256": "a9b863d6c63fd773f10710f7e0e3407a6bb393ac8ee9b5c75bb4fa5cb52e2572"
     },
     {
       "name": "mail-triage",
