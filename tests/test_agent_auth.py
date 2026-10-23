@@ -61,6 +61,27 @@ class AgentAuthTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertFalse((self.directory / "ledger.sqlite").exists())
 
+    def test_adjustments_require_an_explicit_browser_consent_request(self):
+        self.args.scope = ["books:read", "books:write", "adjustments:write"]
+        with patch.object(agent_auth, "_post", side_effect=[self.start, {"error": "access_denied"}]) as post, \
+                patch.object(agent_auth.time, "sleep"), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):
+            agent_auth.login(self.args)
+        self.assertEqual(post.call_args_list[0].args[2]["scope"], "books:read books:write adjustments:write")
+        self.assertFalse(self.directory.exists())
+
+    def test_default_login_does_not_request_adjustment_authority(self):
+        with patch.object(agent_auth, "_post", side_effect=[self.start, {"error": "access_denied"}]) as post, \
+                patch.object(agent_auth.time, "sleep"), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):
+            agent_auth.login(self.args)
+        self.assertNotIn("scope", post.call_args_list[0].args[2])
+
+    def test_explicit_scope_requires_read_permission_and_no_duplicates(self):
+        for scopes in [["adjustments:write"], ["books:read", "books:read"]]:
+            self.args.scope = scopes
+            with patch.object(agent_auth, "_post") as post, self.assertRaises(hosted.HostedError):
+                agent_auth.login(self.args)
+            post.assert_not_called()
+
     def test_denied_grant_does_not_bind_or_print_credentials(self):
         with patch.object(agent_auth, "_post", side_effect=[self.start, {"error": "access_denied"}]), \
                 patch.object(agent_auth.time, "sleep"), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):

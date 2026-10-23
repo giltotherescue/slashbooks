@@ -9,7 +9,7 @@
       "name": "slashbooks",
       "source": "./",
       "description": "Slashbooks — bookkeeping with cash books by default and opt-in accrual for single-company USD SaaS and services. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
-      "version": "0.9.1",
+      "version": "0.9.2",
       "license": "Apache-2.0",
       "homepage": "https://github.com/giltotherescue/slashbooks",
       "repository": "https://github.com/giltotherescue/slashbooks",
