@@ -40,10 +40,14 @@ person-only decision, show its business effect and ask the required person.
 An onboarding action applies to bookkeeping setup. It does not block unrelated
 reads that the connection permits. If the next action requires a person, explain
 that action and use the URL returned by Slashbooks when one is present. If
-Slashbooks offers assistant-led setup, confirm the required business facts,
-sources, and accounts with the user. You may then perform the authorized setup
-through MCP. Record setup as complete only after the user explicitly confirms
-completion. Never invent protected choices or mark setup complete silently.
+Slashbooks offers assistant-led setup, use typed tools only when the current
+permission and the user's direction authorize them. Before recording completion,
+require Slashbooks results to show that the required business facts are durably
+recorded and the required sources and accounts are validated. The user's words
+alone are not durable evidence. Also require the user's explicit confirmation.
+If a prerequisite has no typed, durable MCP path, do not complete onboarding.
+Use a returned Slashbooks URL when present, or ask the person to finish setup in
+Slashbooks. Never invent a protected choice or an unsupported setup path.
 
 Do not request the optional adjustments permission during ordinary connection.
 If an adjustments tool returns an authorization challenge, use the host's OAuth

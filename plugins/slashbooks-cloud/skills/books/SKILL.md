@@ -43,9 +43,13 @@ support that action. For a report or a question about the books, use the period
 and basis returned by Slashbooks and identify them in the answer.
 
 If onboarding is required for bookkeeping work, follow the returned human or
-tool action. Assistant-led setup is allowed when the user supplies and confirms
-the required facts, sources, and accounts. Record completion only after explicit
-confirmation. Do not invent protected choices or silently mark setup complete.
+tool action. Call the completion tool only when Slashbooks results show that the
+required business facts are durably recorded, the required sources and accounts
+are validated, and the user explicitly confirms completion. A conversation alone
+does not establish those prerequisites. If a prerequisite has no typed, durable
+MCP path, hand off through a returned Slashbooks URL when present, or ask the
+person to finish setup in Slashbooks. Do not invent a protected choice or an
+unsupported setup path.
 
 Read current state before proposing work. Use the server's read and preview
 operations when the workflow provides them. Explain a proposal in business

@@ -32,7 +32,7 @@ class HostedDirectoryPluginTests(unittest.TestCase):
     def test_portable_identity_and_endpoint(self):
         manifest = self.load("plugin.json")
         self.assertEqual(manifest["name"], "slashbooks-cloud")
-        self.assertEqual(manifest["version"], "0.9.0")
+        self.assertEqual(manifest["version"], "0.9.1")
         self.assertEqual(manifest["extensions"]["com.openai"]["interface"]["displayName"], "Slashbooks")
         interface = manifest["extensions"]["com.openai"]["interface"]
         self.assertLessEqual(len(interface["shortDescription"]), 30)
@@ -62,7 +62,7 @@ class HostedDirectoryPluginTests(unittest.TestCase):
     def test_claude_compatibility_identity_and_endpoint(self):
         manifest = self.load(".claude-plugin/plugin.json")
         self.assertEqual(manifest["name"], "slashbooks-cloud")
-        self.assertEqual(manifest["version"], "0.9.0")
+        self.assertEqual(manifest["version"], "0.9.1")
         self.assertEqual(manifest["description"], CLAUDE_DESCRIPTION)
         self.assertEqual(manifest["icon"], "./assets/icon.png")
         self.assertNotIn("Cloud", manifest["description"])
@@ -117,6 +117,17 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         self.assertIn("check_close_readiness", books)
         self.assertNotRegex(combined, re.compile(r"(?is)find\s+the companies.*access"))
         self.assertNotRegex(combined, re.compile(r"(?i)more than one company"))
+
+    def test_hosted_onboarding_requires_durable_prerequisites_or_handoff(self):
+        getting_started = (PACKAGE / "skills/get-started/SKILL.md").read_text()
+        books = (PACKAGE / "skills/books/SKILL.md").read_text()
+        combined = getting_started + books
+
+        self.assertIn("durably recorded", combined)
+        self.assertIn("typed, durable MCP path", combined)
+        self.assertIn("finish setup in Slashbooks", combined)
+        self.assertNotIn("user supplies and confirms", combined)
+        self.assertNotIn("You may then perform the authorized setup", combined)
 
 
 if __name__ == "__main__":
