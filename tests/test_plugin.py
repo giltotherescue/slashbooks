@@ -573,7 +573,7 @@ class TestSkillSecurity(unittest.TestCase):
         for skill_name in SKILL_NAMES:
             with self.subTest(skill=skill_name):
                 body = self._body(skill_name)
-                self.assertIn("procedures show communication` (version 1)", body)
+                self.assertIn("procedures show communication` (version 2)", body)
 
     def test_demo_onboarding_does_not_gate_on_an_audience_answer(self):
         body = self._body("books-onboard")
