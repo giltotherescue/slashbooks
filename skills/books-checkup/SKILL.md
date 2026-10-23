@@ -38,22 +38,10 @@ developer command instructions to the owner unless they explicitly ask for them.
 For owner-facing next steps, suggest slash commands or plain English requests,
 not shell commands.
 
-## Audience and language
+## Explain the result
 
-Use the audience established during onboarding. If it is unclear and the answer
-would change by audience, ask whether they are looking at this as the business
-owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
-
-- **Business owner** — answer in everyday business language. Lead with whether
-  setup looks ready and what needs attention. Avoid internal file names, database
-  details, raw account codes, and accounting jargon unless they ask.
-- **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
-  Still keep product internals out unless they ask.
-- **Developer/tester** — it is okay to mention local paths, SQLite, command
-  wrappers, and validation details when they help.
-
-Let the user drift more technical if they ask.
+Follow the shared communication procedure below.
+Explain which setup checks passed and what needs attention.
 
 ---
 
@@ -240,3 +228,11 @@ Avoid phrases like:
 Reserve "not ready yet" for practical blockers, such as missing source data,
 unmapped bank/card accounts, unresolved review queue items, or an incomplete
 month being selected for close.
+
+## Shared procedures
+
+These procedures are the single source for general agent rules and communication.
+Run each command and follow its output. Do not rely on memory of the text.
+
+- `scripts/books procedures show communication` (version 1)
+- `scripts/books procedures show hard-rules` (version 3)

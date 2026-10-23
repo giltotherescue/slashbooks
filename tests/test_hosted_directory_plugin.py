@@ -1,6 +1,8 @@
 import json
 import re
 import struct
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -94,13 +96,20 @@ class HostedDirectoryPluginTests(unittest.TestCase):
             self.assertRegex(text, r"(?m)^name: [a-z0-9-]+$")
             self.assertRegex(text, r"(?m)^description: .+$")
 
+    def test_generated_procedures_are_current_and_package_local(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/hosted_plugin.py"), "check"],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_skills_preserve_authorized_work_and_person_only_boundaries(self):
         getting_started = (PACKAGE / "skills/get-started/SKILL.md").read_text()
         books = (PACKAGE / "skills/books/SKILL.md").read_text()
         combined = getting_started + books
         self.assertNotIn("Ask whether the user is", combined)
-        self.assertIn("Continue the task already requested", getting_started)
-        self.assertIn("already authorized without asking for approval at\nevery step", books)
+        self.assertIn("Continue the user's requested task when it is known", getting_started)
+        self.assertIn("Continue routine actions already allowed", books)
         self.assertIn("person-only", combined)
         self.assertIn("optional adjustments permission", combined)
         self.assertIn("OAuth step-up flow", books)
@@ -124,8 +133,10 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         combined = getting_started + books
 
         self.assertIn("durably recorded", combined)
-        self.assertIn("typed, durable MCP path", combined)
-        self.assertIn("finish setup in Slashbooks", combined)
+        self.assertIn("follow the human action and URL", getting_started)
+        self.assertIn("cannot prove all durable prerequisites", books)
+        self.assertRegex(combined, re.compile(r"do not\s+select or call onboarding completion"))
+        self.assertIn("Do not invent a protected choice", getting_started)
         self.assertNotIn("user supplies and confirms", combined)
         self.assertNotIn("You may then perform the authorized setup", combined)
 

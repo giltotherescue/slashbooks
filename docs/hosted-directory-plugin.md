@@ -19,6 +19,20 @@ command-line workflow.
 - Claude also accepts a remote MCP connector submission that points directly to
   the hosted endpoint. That connector is distinct from the GitHub plugin bundle.
 
+## Shared agent guidance
+
+The versioned Markdown files in `src/bookkeeping/procedures/` are the
+human-authored source for accounting, safety, onboarding, and communication
+rules shared with the local plugin. The hosted skills contain only MCP and OAuth
+routing plus the procedure copies they need under
+`skills/*/references/procedures/`.
+
+Run `python3 scripts/hosted_plugin.py sync` after a canonical procedure changes.
+Run `python3 scripts/hosted_plugin.py check` before packaging. The check requires
+every declared procedure link, compares each copy byte for byte with its source,
+and refuses extra or stale generated files. The built archive is standalone and
+does not need Python or access to this repository at runtime.
+
 Official references checked on 2026-10-22:
 
 - OpenAI, [Package your plugin](https://developers.openai.com/plugins/build/plugins)

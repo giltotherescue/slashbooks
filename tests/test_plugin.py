@@ -561,37 +561,28 @@ class TestSkillSecurity(unittest.TestCase):
     def test_onboarding_is_audience_aware(self):
         body = self._body("books-onboard")
         for phrase in (
-            "Always start onboarding by asking",
-            "business\nowner, an accountant/bookkeeper, or someone developing/testing Slashbooks",
-            "Wait\nfor the answer before asking business setup questions or showing demo answers",
-            "If the user does not answer, continue in business-owner language",
-            "Do not lead with file names",
-            "Developer/tester",
+            "Follow the shared communication procedure",
+            "ask once whether the\nperson is the business owner",
+            "Never make that answer a setup gate",
+            "continue in business-owner language",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, body)
 
-    def test_all_skills_have_audience_language_guidance(self):
+    def test_all_skills_reference_shared_communication_guidance(self):
         for skill_name in SKILL_NAMES:
             with self.subTest(skill=skill_name):
                 body = self._body(skill_name)
-                for phrase in (
-                    "## Audience and language",
-                    "Business owner",
-                    "Accountant/bookkeeper",
-                    "Developer/tester",
-                    "Let the user",
-                ):
-                    self.assertIn(phrase, body)
+                self.assertIn("procedures show communication` (version 1)", body)
 
-    def test_demo_onboarding_asks_audience_before_profile(self):
+    def test_demo_onboarding_does_not_gate_on_an_audience_answer(self):
         body = self._body("books-onboard")
         demo_section = body[body.index("### Northstar demo path"):]
-        audience_prompt = demo_section.index("Before I show the demo setup")
         answer_list = demo_section.index("1. **Business name**")
-        self.assertLess(audience_prompt, answer_list)
+        owner_default = demo_section.index("otherwise use\nbusiness-owner language")
+        self.assertLess(owner_default, answer_list)
         self.assertIn("Do not treat \"demo company\" or\n\"sample books\" as an audience answer.", body)
-        self.assertIn("ask it now\nand wait before showing the Northstar answers", demo_section)
+        self.assertNotIn("wait for the answer", demo_section)
 
     def test_demo_profile_requires_confirmation_before_creation(self):
         body = self._body("books-onboard")
