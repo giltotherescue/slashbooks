@@ -105,6 +105,19 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         self.assertIn("optional adjustments permission", combined)
         self.assertIn("OAuth step-up flow", books)
 
+    def test_skills_route_company_bound_mcp_workflows(self):
+        getting_started = (PACKAGE / "skills/get-started/SKILL.md").read_text()
+        books = (PACKAGE / "skills/books/SKILL.md").read_text()
+        combined = getting_started + books
+
+        self.assertIn("get_bookkeeping_context", combined)
+        self.assertIn("workflow_navigation.next_actions", combined)
+        self.assertIn("start_authorized_bookkeeping", books)
+        self.assertIn("get_bookkeeping_work", books)
+        self.assertIn("check_close_readiness", books)
+        self.assertNotRegex(combined, re.compile(r"(?is)find\s+the companies.*access"))
+        self.assertNotRegex(combined, re.compile(r"(?i)more than one company"))
+
 
 if __name__ == "__main__":
     unittest.main()
