@@ -1,0 +1,28 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "slashbooks": {
+      "type": "streamable-http",
+      "url": "https://slashbooks.co/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": {
+            "type": "oauth",
+            "client": {
+              "mode": "dcr"
+            },
+            "baseScopes": [
+              "books:read",
+              "questions:write",
+              "proposals:write",
+              "evidence:write",
+              "sources:write",
+              "runs:write",
+              "books:write"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

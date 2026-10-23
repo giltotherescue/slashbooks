@@ -1,0 +1,49 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "slashbooks-cloud",
+  "version": "0.9.0",
+  "description": "Keep your books up to date from ChatGPT with Slashbooks.",
+  "author": {
+    "name": "Lower Coast Labs, LLC",
+    "email": "hi@slashbooks.co",
+    "url": "https://slashbooks.co"
+  },
+  "homepage": "https://slashbooks.co",
+  "repository": "https://github.com/giltotherescue/slashbooks",
+  "license": "Apache-2.0",
+  "keywords": [
+    "bookkeeping",
+    "accounting",
+    "finance"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Slashbooks",
+        "shortDescription": "Bookkeeping from your AI chat",
+        "longDescription": "You don’t need a bookkeeper anymore. Slashbooks keeps your books up to date right inside ChatGPT. It records transactions, checks your accounts, and prepares reports for your accountant. When it needs an answer, it asks. Requires a Slashbooks account.",
+        "developerName": "Lower Coast Labs, LLC",
+        "category": "Finance",
+        "capabilities": [
+          "Review bookkeeping work",
+          "Read company reports",
+          "Prepare accountant exports"
+        ],
+        "websiteURL": "https://slashbooks.co",
+        "supportURL": "https://slashbooks.co/support",
+        "privacyPolicyURL": "https://slashbooks.co/privacy",
+        "termsOfServiceURL": "https://slashbooks.co/terms",
+        "composerIcon": "./assets/icon.png",
+        "composerIconDark": "./assets/icon-dark.svg",
+        "logo": "./assets/icon.png",
+        "logoDark": "./assets/icon-dark.svg",
+        "defaultPrompt": [
+          "Update my books through September 30 and tell me what still needs review.",
+          "Import this September bank statement and reconcile it with the books.",
+          "Forecast cash for the next 13 weeks and explain the assumptions."
+        ]
+      },
+      "onboardingSkill": "./skills/get-started/SKILL.md"
+    }
+  }
+}
