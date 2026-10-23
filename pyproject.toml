@@ -1,6 +1,6 @@
 [project]
 name = "agent-books"
-version = "0.9.1"
+version = "0.9.2"
 license = "Apache-2.0"
 description = "Slashbooks — agent-native bookkeeping tools: cash books and opt-in accrual for single-company USD SaaS and services."
 authors = [{ name = "Gil Hildebrand" }]

@@ -137,8 +137,24 @@ disconnected. Do not confuse a connected bank with already-imported history.
 Use only the delegated authority needed. `books:read` permits inspection;
 `books:write` permits authorized normal bookkeeping writes, including confirmation.
 Accrual writes additionally require the explicit `adjustments:write` scope;
-legacy books-write permission alone does not grant it. Human staff keep their
-existing write roles and client-only users remain read-only.
+legacy books-write permission alone does not grant it. If the accountant authorizes
+an accrual setup task and the connection lacks adjustment authority, explain the
+missing permission and ask them to approve a new browser consent request. For the
+same connected company and folder, request only the permissions needed, for example:
+
+```sh
+scripts/books cloud login --company <company-id> --entity <entity-path> --reauthorize --scope books:read books:write evidence:write adjustments:write
+```
+
+Preserve the trusted endpoint (`--endpoint` for a different server). The user must
+approve the browser request themselves. `--scope` is an explicit set, not an
+addition to the defaults; include any other permissions the agreed task needs.
+Check `scripts/books cloud login --help` first. If it has no `--scope`, update the
+plugin before retrying; do not switch to local books or enable Automations.
+Connection consent does not approve a financial preview. Ask for approval of the
+specific opening preview separately, then apply it and read back the saved result.
+Do not claim completion if consent or the financial review is still pending.
+Human staff keep their existing write roles and client-only users remain read-only.
 Existing hosted proposal/source/run operations use their documented scopes. A
 scope does not remove company policy, trust thresholds or the need for missing
 owner/accountant judgment. Review-only keys must not confirm.
@@ -230,8 +246,13 @@ use the version obtained by get. Preserve that version
 or its CLI-managed sidecar; reread and reconcile conflicts instead of overwriting.
 Never file-put ledgers, queues, learned transaction rules or secrets. The documented
 accrual opening workflow separately permits immutable source reports and their
-supporting evidence under a durable company ingestion prefix; follow the accrual
-intake guide, preserve original bytes, and use a new export folder for revisions.
+supporting evidence through its supported intake commands; generic file put does
+not write the ingestion folder. For a supplied report, preserve original bytes with
+`cloud evidence-upload`, then use the returned company file path as an
+`evidence_refs` reference where the opening workflow supports it. An upload ID is
+not an accrual `evidence_ids` ID: obtain that canonical ID with `accrual intake`
+using the documented supporting-document envelope. Follow the accrual intake guide
+and keep revisions separate.
 
 Use available run/checkpoint/history operations for resumable work, with concise
 facts, evidence references, unresolved decisions and next action. Record only

@@ -69,6 +69,9 @@ def add_parser(subparsers: Any) -> None:
     login.add_argument("--entity", type=Path, help="Folder for the connection; default ~/Documents/Slashbooks/online-<id hash>")
     login.add_argument("--allow-localhost", action="store_true")
     login.add_argument("--reauthorize", action="store_true", help="Explicitly reconnect the same company after access expires or is revoked")
+    login.add_argument("--scope", nargs="+", choices=["books:read", "books:write", "sources:write", "proposals:write",
+                       "runs:write", "questions:write", "evidence:write", "adjustments:write"],
+                       help="Explicit permissions to request with browser consent; include books:read. Adjustments are never granted by default")
     configure = commands.add_parser("configure", help="Save endpoint/company, without contacting the server")
     configure.add_argument("--endpoint", required=True, help="HTTPS origin, optionally ending in /api/v1")
     configure.add_argument("--company", required=True)

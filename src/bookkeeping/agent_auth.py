@@ -144,7 +144,13 @@ def login(args) -> int:
     directory = remote._absolute(args.entity) if args.entity is not None else None
     if directory is not None:
         _check_folder(directory, endpoint, args.company, args.reauthorize)
-    started = _post(endpoint, "/oauth/device/authorize", {"client_id": CLIENT, **({"company_id": args.company} if args.company else {})})
+    authorization = {"client_id": CLIENT, **({"company_id": args.company} if args.company else {})}
+    scopes = getattr(args, "scope", None)
+    if scopes is not None:
+        if "books:read" not in scopes or len(scopes) != len(set(scopes)):
+            raise hosted.HostedError("INVALID_INPUT", "Explicit permissions must include books:read without duplicates.")
+        authorization["scope"] = " ".join(scopes)
+    started = _post(endpoint, "/oauth/device/authorize", authorization)
     if started.get("error"):
         raise hosted.HostedError("AUTH_UNAVAILABLE", "Browser sign-in is unavailable for this company. Check the company connection details.")
     device = hosted._token(started.get("device_code"))

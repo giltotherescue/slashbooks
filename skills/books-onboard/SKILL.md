@@ -667,7 +667,10 @@ transaction history."
 When the business questions are answered and saved, the company is initialized,
 the account catalog is reviewed, sources are declared, and opening balances are
 posted or the owner chose a fresh start, record that onboarding is complete. Run
-this internal command yourself:
+this internal command yourself. Check the installed CLI version and that
+`entity onboarding-complete --help` is available; update an old plugin rather than
+substitute a local completion flag for remote books. Automations is optional and
+is never a prerequisite for completion by the person's connected agent:
 
 ```
 scripts/books entity onboarding-complete <path> --via agent
