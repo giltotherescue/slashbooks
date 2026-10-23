@@ -70,22 +70,36 @@ def _correct(entity: Any, source_id: str, new_source_id: str, corrected: Entry, 
     reverse_and_correct(entity, source_id, corrected, session)
 
 
+MANAGED_ENTRY_MESSAGE = ("This entry has managed accrual accounting or supporting balances. Use the reviewed accrual journal "
+                         "correction/reversal, item adjustment/reversal, or schedule change route so financial and supporting "
+                         "lineage remain consistent.")
+
+
+def managed_source_ids(store: Any) -> set[str]:
+    """Source IDs that accrual supporting records own (intents, items, schedules, allocations, opening)."""
+    from ..accrual.store import list_records
+    owned: set[str] = set()
+    for record in list_records(store, "intents"):
+        owned.update(record.get("receipt", {}).get("entry_source_ids", []))
+    for table in ("items", "schedules"):
+        owned.update(record.get("origin", {}).get("source_id") for record in list_records(store, table))
+    owned.update(record.get("source_id") for record in list_records(store, "allocations"))
+    owned.update(record.get("opening_source_id") for record in list_records(store, "coverage"))
+    owned.discard(None)
+    return owned
+
+
+def is_managed_entry(entry: Entry, source_id: str, owned: set[str]) -> bool:
+    metadata = dict(entry.meta)
+    return bool(metadata.get("accrual-intent") or metadata.get("accrual-opening") or source_id_variants(source_id) & owned)
+
+
 def _require_unmanaged_entry(entity: Any, source_id: str) -> None:
     """Keep financial/supporting lineage on the reviewed accrual domain route."""
-    from ..accrual.store import list_records
     store = _ensure_ledger_store(entity)
     original = _find_live_entry(store, source_id)
-    metadata = dict(original.meta)
-    managed = bool(metadata.get("accrual-intent") or metadata.get("accrual-opening"))
-    spellings = source_id_variants(source_id)
-    managed |= any(spellings & set(record.get("receipt", {}).get("entry_source_ids", []))
-                   for record in list_records(store, "intents"))
-    managed |= any(record.get("origin", {}).get("source_id") in spellings
-                   for table in ("items", "schedules") for record in list_records(store, table))
-    managed |= any(record.get("source_id") in spellings for record in list_records(store, "allocations"))
-    managed |= any(record.get("opening_source_id") in spellings for record in list_records(store, "coverage"))
-    if managed:
-        raise ValueError("This entry has managed accrual accounting or supporting balances. Use the reviewed accrual journal correction/reversal, item adjustment/reversal, or schedule change route so financial and supporting lineage remain consistent.")
+    if is_managed_entry(original, source_id, managed_source_ids(store)):
+        raise ValueError(MANAGED_ENTRY_MESSAGE)
 
 
 def run(args: argparse.Namespace) -> int:

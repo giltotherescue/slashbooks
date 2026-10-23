@@ -542,16 +542,47 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
         os.replace(temp, entity.path / "entity.json")
 
 
+_CATEGORY_SEGMENT_RE = re.compile(r"[A-Z0-9][A-Za-z0-9-]*")
+CATEGORY_SHAPES = ("Income:<Line>", "Income:<Group>:<Line>", "Expenses:<Name>", "Expenses:Cost-of-Sales:<Line>")
+
+
+def check_category_account(account: str) -> None:
+    """Raise ValueError unless *account* is an income or expense category of an approved shape.
+
+    The shapes are ``CATEGORY_SHAPES``: an income line, an income line one level under an
+    income group, an expense, or a line under the cost-of-sales group. A cost-of-sales
+    group is found by name, as the profit and loss structure finds it (Cost-of-Sales,
+    COGS, Cost-of-Goods-Sold, Cost-of-Revenue or Cost-of-Goods).
+    """
+    from .reports.structure import is_cost_of_sales
+    # A full match of each name part: `$` in the general account check also matches before a final
+    # newline, so "Income:Consulting\n" would pass it and open a second account.
+    if not isinstance(account, str) or any(not _CATEGORY_SEGMENT_RE.fullmatch(part) for part in account.split(":")[1:]) \
+            or any(ord(char) < 32 or ord(char) == 127 for char in account):
+        raise ValueError(f"A category name may use letters, digits and hyphens only, with each part starting with a "
+                         f"capital letter or a digit. Got {account!r}.")
+    parts = account.split(":")
+    allowed = ((parts[0] == "Income" and len(parts) in (2, 3))
+               or (parts[0] == "Expenses" and (len(parts) == 2 or (len(parts) == 3 and is_cost_of_sales(account)))))
+    if not allowed:
+        raise ValueError(f"A category must have one of these shapes: {', '.join(CATEGORY_SHAPES)}. Got {account!r}.")
+
+
 def add_account(
     entity_path: Path,
     account: str,
     open_date: str = "",
     currency: str | None = None,
+    category: bool = False,
 ) -> dict[str, str]:
     """Add an account to the SQLite account catalog for an existing entity.
 
     The currency defaults to the company currency (USD unless entity.json says otherwise).
+    With ``category`` the account must also be an income or expense category of an
+    approved shape (``check_category_account``). The usual checks apply in both cases.
     """
+    if category:
+        check_category_account(account)
     entity = load_entity(entity_path)
     if currency is None:
         from .currency import company_currency
@@ -1191,6 +1222,11 @@ def add_parser(subparsers: Any) -> None:
         help="Account open date in YYYY-MM-DD format; defaults to the starter catalog date",
     )
     add_account_parser.add_argument("--currency", default=None, help="Currency, default the company currency (USD unless set)")
+    add_account_parser.add_argument(
+        "--category", action="store_true",
+        help="Refuse an account that is not an income or expense category: Income:<Line>, Income:<Group>:<Line>, "
+             "Expenses:<Name> or Expenses:Cost-of-Sales:<Line>",
+    )
 
     set_view_parser = entity_sub.add_parser(
         "set-view",
@@ -1232,6 +1268,20 @@ def add_parser(subparsers: Any) -> None:
                                 help="The kind of business entity")
     profile_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     profile_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+
+    goals_parser = entity_sub.add_parser(
+        "set-reporting-goals",
+        help="Record what the owner wants the reports to show (entity.json reporting_goals). Changes no entries. Previews unless --apply is given",
+    )
+    goals_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    goals_parser.add_argument("--goal", action="append", default=[], metavar="CODE",
+                              help="A reporting goal; repeat in the owner's order. One of: profit_by_line, profit_by_job, "
+                                   "cash_runway, spend_vs_last_year, sales_tax_owed, owner_pay, recurring_revenue, basics")
+    goals_parser.add_argument("--line", action="append", default=[], metavar="NAME",
+                              help="A service or product line the owner named (only with profit_by_line or profit_by_job); repeat, at most 12")
+    goals_parser.add_argument("--clear", action="store_true", help="Remove the recorded goals")
+    goals_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    goals_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
 
     currency_parser = entity_sub.add_parser(
         "set-currency",
@@ -1354,6 +1404,7 @@ def run(args: Any) -> int:
                 account=args.account,
                 open_date=args.open_date,
                 currency=args.currency,
+                category=args.category,
             )
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -1420,6 +1471,21 @@ def run(args: Any) -> int:
                 result = taxview.apply_set_tax_profile(entity, args.prior_return_method, args.entity_type, args.plan_hash)
             else:
                 result = taxview.preview_set_tax_profile(entity, args.prior_return_method, args.entity_type)
+        except (FileNotFoundError, ValueError) as exc:
+            result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+
+    if args.entity_command == "set-reporting-goals":
+        try:
+            from . import reporting_goals as goals_mod
+            entity = load_entity(_resolve_target(args.path))
+            if args.apply:
+                result = goals_mod.apply_set(entity, args.goal, args.line, args.clear, args.plan_hash)
+            else:
+                result = goals_mod.preview_set(entity, args.goal, args.line, args.clear)
         except (FileNotFoundError, ValueError) as exc:
             result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
             print(json.dumps(result, sort_keys=True, indent=2))
