@@ -101,7 +101,12 @@ The reference check does not read these, on purpose:
   `business-profile.md`.
 
 `books queue` teaching checks the account catalog under the same company lock, so a
-removal cannot come between that check and the save.
+removal cannot come between that check and the save. `books ledger reverse`,
+`correct`, `reclassify-bank` and `split-equity` also hold that lock from the entry
+lookup and the catalog read to the commit, so they decide under the lock whether a
+missing account gets an open directive. The reference check walks JSON with its
+own stack; JSON that the parser cannot read at any depth gives
+`reference_check_failed`.
 
 Standing posting authority does not cover the command, and the trusted
 preparation runtime refuses it.

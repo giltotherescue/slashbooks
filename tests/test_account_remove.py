@@ -341,6 +341,60 @@ class AccountRemoveTests(unittest.TestCase):
         result = self.assert_refused("account_referenced")
         self.assertIn("learned-context/escaped.json:oak co.category", result["errors"][0]["refs"])
 
+    def test_correction_and_removal_cannot_leave_a_dangling_posting(self):
+        """A removal that runs while a correction waits for the lock: the correction decides under the lock."""
+        import contextlib
+        from unittest.mock import patch
+        from bookkeeping import account_remove
+        from bookkeeping.ledger import importer
+        self.post("Income:Consulting", "corr")
+        real = importer._entity_write_lock
+        ran = []
+
+        @contextlib.contextmanager
+        def removal_first(path, **kwargs):
+            if not ran:
+                ran.append(True)  # The removal takes the lock first and deletes the unused account.
+                self.assertEqual(account_remove.apply(self.root, INSTALLS)["status"], "applied")
+            with real(path, **kwargs):
+                yield
+
+        with patch.object(importer, "_entity_write_lock", removal_first):
+            code, out, err = books("ledger", "correct", "--entity", str(self.root), "--source-id", "corr",
+                                   "--new-source-id", "corr-2", "--date", "2026-02-03", "--description", "Install",
+                                   "--posting", f"{BANK}=80.00", "--posting", f"{INSTALLS}=-80.00")
+        self.assertEqual((ran, code), ([True], 0), (out, err))
+        posted = {p.account for e in self.store.load_entries() for p in e.postings}
+        self.assertIn(INSTALLS, posted)
+        self.assertLessEqual(posted, self.catalog())  # Every posting has an open directive.
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+        code, out, err = run_cli(["ledger", "snapshot", "--entity", str(self.root), "--output", str(Path(self.tmp.name) / "snap.beancount")])
+        self.assertEqual(code, 0, (out, err))
+
+    def test_deeply_nested_json_is_walked_or_refused(self):
+        deep = 900
+        nested = "[" * deep + json.dumps({"category": INSTALLS}) + "]" * deep
+        path = self.root / "learned-context" / "deep.json"
+        path.write_text(nested, encoding="utf-8")
+        result = self.assert_refused("account_referenced")
+        self.assertTrue(result["errors"][0]["refs"][0].startswith("learned-context/deep.json:[0]"))
+        # Far deeper than the Python call stack: the iterative walk finds the name, or the parser refuses.
+        very_deep = 100000
+        path.write_text("[" * very_deep + json.dumps(INSTALLS) + "]" * very_deep, encoding="utf-8")
+        code, result, _ = self.remove()
+        self.assertEqual(code, 1, result)
+        self.assertIn(result["errors"][0]["code"], {"account_referenced", "reference_check_failed"})
+        # A parser that runs out of stack fails closed.
+        from unittest.mock import patch
+        from bookkeeping import account_remove
+        def out_of_stack(*args, **kwargs):
+            raise RecursionError("maximum recursion depth exceeded")
+
+        with patch.object(account_remove, "json", type("ParserOutOfStack", (), {"loads": staticmethod(out_of_stack)})):
+            code, result, _ = self.remove()
+        self.assertEqual((code, result["errors"][0]["code"]), (1, "reference_check_failed"), result)
+        self.assertIn(INSTALLS, self.catalog())
+
     def test_settings_with_a_wrong_shape_are_refused(self):
         cases = {
             "trust-policy.json": [],

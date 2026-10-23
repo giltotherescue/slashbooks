@@ -109,19 +109,24 @@ def _matches(value: Any, account: str, path: str) -> Iterator[str]:
 
     *value* is parsed JSON, so the comparison uses decoded strings: a name written with JSON escapes
     (``"Income:\\u0049nstalls"``) matches as well. Every JSON source of the scan goes through here.
+    The walk uses its own stack, so a deeply nested document cannot exhaust the Python call stack.
     """
-    if isinstance(value, str):
-        if value == account:
-            yield path
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            child = f"{path}.{key}" if path else str(key)
-            if key == account:
-                yield child
-            yield from _matches(item, account, child)
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            yield from _matches(item, account, f"{path}[{index}]")
+    stack: list[tuple[Any, str]] = [(value, path)]
+    while stack:
+        item, where = stack.pop()
+        if isinstance(item, str):
+            if item == account:
+                yield where
+        elif isinstance(item, dict):
+            children = []
+            for key, child in item.items():
+                child_path = f"{where}.{key}" if where else str(key)
+                if key == account:
+                    yield child_path
+                children.append((child, child_path))
+            stack.extend(reversed(children))
+        elif isinstance(item, list):
+            stack.extend(reversed([(child, f"{where}[{index}]") for index, child in enumerate(item)]))
 
 
 def _rule_prefix_refs(document: Any, account: str, catalog: set[str]) -> list[str]:
@@ -168,7 +173,7 @@ def parse_settings(files: dict[str, bytes]) -> dict[str, Any]:
             continue
         try:
             documents[name] = json.loads(data.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
+        except (UnicodeDecodeError, ValueError, RecursionError):  # Too deeply nested JSON fails closed.
             raise _unreadable(name) from None
         _check_shape(name, documents[name])
     return documents
@@ -199,7 +204,7 @@ def references(documents: dict[str, Any], store: Any, account: str, catalog: set
                 # Parse every row: a raw text search would miss a name written with JSON escapes.
                 try:
                     record = json.loads(raw or "null")
-                except ValueError:
+                except (ValueError, RecursionError):
                     raise _unreadable(f"{table} {record_id}") from None
                 found += [f"{table} {record_id}:{where}" for where in _matches(record, account, "")]
     return found
