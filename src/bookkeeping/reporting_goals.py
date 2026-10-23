@@ -14,6 +14,7 @@ writes the audit event ``reporting-goals-set``.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -31,7 +32,8 @@ GOAL_CODES = (
 )
 LINE_GOALS = ("profit_by_line", "profit_by_job")
 MAX_GOALS = 8
-MAX_LINES = 12
+# Bound persisted metadata and preview/audit payloads, not the owner's number of business lines.
+MAX_REPORTING_GOALS_BYTES = 65_536
 MAX_LINE_CHARS = 40
 LINE_PUNCTUATION = frozenset(" &'.,/()+-")
 SET_REPORTING_GOALS_KIND = "reporting_goals_set"
@@ -65,8 +67,9 @@ def validate(goals: Sequence[Any], lines: Sequence[Any] = ()) -> dict[str, Any]:
     """Return the stored form ``{"version": 1, "goals": [...], "lines": [...]}`` or raise ``GoalsError``.
 
     Goal codes come from ``GOAL_CODES``, with no repeats and at most ``MAX_GOALS``. Lines are allowed
-    only with ``profit_by_line`` or ``profit_by_job``: at most ``MAX_LINES``, each 1 to ``MAX_LINE_CHARS``
+    only with ``profit_by_line`` or ``profit_by_job``, each 1 to ``MAX_LINE_CHARS``
     plain characters after spaces are collapsed, unique without regard to letter case.
+    The compact UTF-8 JSON stored form must fit ``MAX_REPORTING_GOALS_BYTES``.
     """
     goals, lines = list(goals), list(lines)
     if not goals:
@@ -80,12 +83,17 @@ def validate(goals: Sequence[Any], lines: Sequence[Any] = ()) -> dict[str, Any]:
         raise GoalsError("too_many_goals", f"Give at most {MAX_GOALS} goals.")
     if lines and not set(goals) & set(LINE_GOALS):
         raise GoalsError("lines_need_line_goal", "Lines are allowed only with the goal profit_by_line or profit_by_job.")
-    if len(lines) > MAX_LINES:
-        raise GoalsError("too_many_lines", f"Give at most {MAX_LINES} lines.")
     cleaned = [_line(value) for value in lines]
     if len({value.casefold() for value in cleaned}) != len(cleaned):
         raise GoalsError("repeated_line", "Give each line one time (letter case does not make a new line).")
-    return {"version": REPORTING_GOALS_VERSION, "goals": goals, "lines": cleaned}
+    result = {"version": REPORTING_GOALS_VERSION, "goals": goals, "lines": cleaned}
+    payload_bytes = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    if payload_bytes > MAX_REPORTING_GOALS_BYTES:
+        raise GoalsError("reporting_goals_too_large",
+                         f"Reporting goals must fit {MAX_REPORTING_GOALS_BYTES} bytes of compact UTF-8 JSON; "
+                         f"received {payload_bytes} bytes.",
+                         "Shorten the reporting goals and run the preview again. No lines were saved or truncated.")
+    return result
 
 
 def reporting_goals(config: Mapping[str, Any]) -> dict[str, Any] | None:

@@ -240,7 +240,7 @@ the goals and proposes categories or moves, and a person approves the changes.
 - `goals` lists codes from the table in the owner's order, with no repeats (at most 8).
 - `lines` lists the lines that the owner named. Lines are allowed only with
   `profit_by_line` or `profit_by_job`.
-- At most 12 lines. Each line has 1 to 40 characters: letters, digits, spaces and
+- Each line has 1 to 40 characters: letters, digits, spaces and
   `& ' . , / ( ) + -`. The command collapses repeated spaces. Two lines that differ
   only in letter case are the same line.
 
@@ -287,8 +287,12 @@ books entity set-reporting-goals PATH --clear --apply
   `reporting-goals-set` event, so a used plan hash cannot confirm a later change. An apply of a new value writes a normal event.
 - A stored value that is not valid gives the warning `invalid_stored_value`, and the
   getter refuses it. Give a new value with `--goal`, or `--clear`, to replace it.
+- Line names have no count limit. Each name has 1 to 40 characters. The complete
+  normalized stored value must fit 65,536 bytes when serialized as compact UTF-8
+  JSON (`ensure_ascii=False`, separators `,` and `:`). Larger values are refused
+  before any write; lines are never truncated.
 - Error codes: `unknown_goal`, `repeated_goal`, `too_many_goals`, `no_goals`,
-  `lines_need_line_goal`, `too_many_lines`, `invalid_line`, `repeated_line`,
+  `lines_need_line_goal`, `reporting_goals_too_large`, `invalid_line`, `repeated_line`,
   `nothing_to_set`, `clear_with_values`, `stale_preview`, `ledger_integrity`.
 
 ### Add a report category: `books entity account-add --category`

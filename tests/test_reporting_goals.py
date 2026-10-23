@@ -367,7 +367,7 @@ class ReportingGoalsTests(CompanyFixture):
             "unknown_goal": ("--goal", "mrr"),
             "repeated_goal": ("--goal", "basics", "--goal", "basics"),
             "lines_need_line_goal": ("--goal", "cash_runway", "--line", "Installs"),
-            "too_many_lines": ("--goal", "profit_by_line", *[arg for n in range(13) for arg in ("--line", f"Line {n}")]),
+            "reporting_goals_too_large": ("--goal", "profit_by_line", *[arg for n in range(2000) for arg in ("--line", f"{n:04d}" + "界" * 36)]),
             "invalid_line": ("--goal", "profit_by_line", "--line", "x" * 41),
             "repeated_line": ("--goal", "profit_by_line", "--line", "Installs", "--line", "INSTALLS"),
             "nothing_to_set": (),
@@ -390,6 +390,29 @@ class ReportingGoalsTests(CompanyFixture):
                          ["Café & Bar (A/B), 2nd + 3rd - Ltd."])
         self.assertEqual((self.root / "entity.json").read_bytes(), before)
         self.assertNotIn("reporting-goals-set", audit_types(self.root))
+
+    def test_more_than_twelve_lines_survive_preview_apply_and_read(self):
+        lines = [f"Service {n}" for n in range(30)]
+        argv = ("--goal", "profit_by_line", *[arg for line in lines for arg in ("--line", line)])
+        code, preview, _ = self.goals(*argv)
+        self.assertEqual(code, 0, preview)
+        self.assertEqual(preview["effects"]["to"]["lines"], lines)
+        code, applied, _ = self.goals(*argv, "--apply", "--plan-hash", preview["plan_hash"])
+        self.assertEqual(code, 0, applied)
+        self.assertEqual(reporting_goals.reporting_goals(self.entity_json())["lines"], lines)
+        self.assertEqual(self.goal_events()[-1]["to"]["lines"], lines)
+
+    def test_payload_limit_counts_utf8_bytes_including_json_structure(self):
+        from unittest.mock import patch
+        lines = ["界" * 40, "Other"]
+        value = reporting_goals.validate(["profit_by_line"], lines)
+        size = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        with patch.object(reporting_goals, "MAX_REPORTING_GOALS_BYTES", size):
+            self.assertEqual(reporting_goals.validate(["profit_by_line"], lines), value)
+        with patch.object(reporting_goals, "MAX_REPORTING_GOALS_BYTES", size - 1):
+            with self.assertRaises(reporting_goals.GoalsError) as caught:
+                reporting_goals.validate(["profit_by_line"], lines)
+        self.assertEqual(caught.exception.code, "reporting_goals_too_large")
 
     def test_getter_refuses_a_bad_stored_value_and_the_command_repairs_it(self):
         for bad in ({"version": 2, "goals": ["basics"], "lines": []}, ["basics"],

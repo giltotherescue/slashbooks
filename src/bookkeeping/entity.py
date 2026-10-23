@@ -1289,7 +1289,8 @@ def add_parser(subparsers: Any) -> None:
                               help="A reporting goal; repeat in the owner's order. One of: profit_by_line, profit_by_job, "
                                    "cash_runway, spend_vs_last_year, sales_tax_owed, owner_pay, recurring_revenue, basics")
     goals_parser.add_argument("--line", action="append", default=[], metavar="NAME",
-                              help="A service or product line the owner named (only with profit_by_line or profit_by_job); repeat, at most 12")
+                              help="A service or product line the owner named (only with profit_by_line or profit_by_job); "
+                                   "repeat as needed within the 65536-byte reporting goals payload limit")
     goals_parser.add_argument("--clear", action="store_true", help="Remove the recorded goals")
     goals_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     goals_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
