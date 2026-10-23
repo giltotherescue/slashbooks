@@ -62,7 +62,9 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         self.assertNotIn("adjustments:write", auth["baseScopes"])
 
     def test_claude_compatibility_identity_and_endpoint(self):
-        manifest = self.load(".claude-plugin/plugin.json")
+        # A second live Claude manifest nested in this repo breaks marketplace sync.
+        self.assertFalse((PACKAGE / ".claude-plugin/plugin.json").exists())
+        manifest = self.load("claude-plugin.template.json")
         self.assertEqual(manifest["name"], "slashbooks-cloud")
         self.assertEqual(manifest["version"], "0.9.1")
         self.assertEqual(manifest["description"], CLAUDE_DESCRIPTION)
