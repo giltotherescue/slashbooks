@@ -234,5 +234,5 @@ month being selected for close.
 These procedures are the single source for general agent rules and communication.
 Run each command and follow its output. Do not rely on memory of the text.
 
-- `scripts/books procedures show communication` (version 1)
-- `scripts/books procedures show hard-rules` (version 3)
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)
