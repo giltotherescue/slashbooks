@@ -43,21 +43,11 @@ developer command instructions to the owner unless they explicitly ask for them.
 For owner-facing next steps, suggest `/books-backtest`, `/books-onboard`, or a plain
 English request.
 
-## Audience and language
+## Explain the result
 
-Use the audience established during onboarding. If it is unclear and the answer
-would change by audience, ask whether they are looking at this as the business
-owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
-
-- **Business owner** — explain which reports are needed and ask only for decisions
-  or interactive steps that require them. Avoid internal file names and accounting
-  jargon unless they ask.
-- **Accountant/bookkeeper** — use report names, dates, and the confirmed accounting basis
-  when useful.
-- **Developer/tester** — it is okay to mention local paths, browser capabilities,
-  inventory output, and file-validation details.
-
-Let the user drift more technical if they ask.
+Follow the shared communication procedure below.
+Explain which reports are needed. Ask only for decisions or interactive steps
+that need the person. Identify report dates and the confirmed accounting basis.
 
 ## Security and authorization
 
@@ -207,3 +197,11 @@ handoff.
 Never post, repair, reconcile, classify, import, or force-migrate records as part of
 this skill. Those actions belong to the downstream skill and require their own
 checks and authorization.
+
+## Shared procedures
+
+These procedures are the single source for general agent rules and communication.
+Run each command and follow its output. Do not rely on memory of the text.
+
+- `scripts/books procedures show communication` (version 1)
+- `scripts/books procedures show hard-rules` (version 3)

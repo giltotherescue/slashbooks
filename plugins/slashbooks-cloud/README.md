@@ -14,7 +14,7 @@ This folder is source material for review. It includes the approved `/b` icon an
 a preview of the owner-approved listing direction. The exact final listing packet
 still requires publisher review before a public submission.
 
-For Claude's public directory, a remote MCP server can be submitted directly as
-an MCP connector. This GitHub-hosted bundle is a separate submission option when
-the packaged skills should also be distributed. Publishing one does not publish
-the other.
+For Claude's public directory, the remote MCP connector and this plugin bundle
+are separate submissions from the same organization. Pair them in the listing:
+the connector provides the tools and authorization, while this bundle provides
+the workflow skills. Publishing either submission does not publish the other.

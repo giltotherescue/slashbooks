@@ -17,6 +17,7 @@ REQUIRED = {
     "onboarding-profile", "categorize-record", "reconcile", "mail-triage",
     "emailed-answers", "grouped-replies", "question-rules", "non-blocking",
     "month-end-check", "document-intake", "draft-insights", "hard-rules", "catch-up",
+    "communication",
 }
 REF_RE = re.compile(r"procedures show ([a-z][a-z0-9-]*)`\s*\(version (\d+)\)")
 PRIVATE_RE = re.compile(r"sbat_|sba_|hosted/|wrangler|cloudflare|d1|r2 ", re.I)
@@ -27,7 +28,9 @@ def _norm(text: str) -> str:
 
 
 def _skill_files() -> list[Path]:
-    return sorted(SKILLS_DIR.rglob("*.md"))
+    return sorted(SKILLS_DIR.glob("*/SKILL.md")) + sorted(
+        (REPO_ROOT / "plugins/slashbooks-cloud/skills").glob("*/SKILL.md")
+    )
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess:
@@ -68,6 +71,17 @@ class ProcedureSourceTests(unittest.TestCase):
         result = _cli("procedures", "show", "../etc/passwd")
         self.assertEqual(result.returncode, 1)
         self.assertIn("UNKNOWN_PROCEDURE", result.stderr)
+
+    def test_shared_rules_preserve_authority_and_plain_language(self):
+        hard = procedures.get_procedure("hard-rules")["rules"]
+        onboarding = procedures.get_procedure("onboarding-profile")["rules"]
+        communication = procedures.get_procedure("communication")["rules"]
+        self.assertTrue(any("current approved policy" in rule for rule in hard))
+        self.assertTrue(any("person-only" in rule and "grants itself" in rule for rule in hard))
+        self.assertTrue(any("Local files and version-checked CLI file operations" in rule for rule in onboarding))
+        self.assertTrue(any("keep onboarding incomplete" in rule for rule in onboarding))
+        self.assertTrue(any("plain business words" in rule for rule in communication))
+        self.assertTrue(any("without inferring their role, access or authority" in rule for rule in communication))
 
 
 class SkillReferenceTests(unittest.TestCase):

@@ -1,6 +1,6 @@
 {
   "name": "slashbooks-cloud",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "You don’t need a bookkeeper anymore. Slashbooks keeps your books up to date right inside Claude. It records transactions, checks your accounts, and prepares reports for your accountant. When it needs an answer, it asks. Requires a Slashbooks account.",
   "author": {
     "name": "Lower Coast Labs, LLC",

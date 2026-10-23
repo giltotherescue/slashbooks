@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.9.1 — 2026-10-22
+
+- Keep shared agent safety, communication, onboarding, question, non-blocking,
+  and month-end guidance in versioned engine procedures. Hosted plugin builds
+  contain deterministic copies and refuse stale or missing guidance.
+- Clarify that agents can continue routine bookkeeping under an approved policy
+  without asking again, while person-only approvals and authority changes stay
+  protected. Onboarding remains incomplete until required facts are durably
+  recorded and verified.
+- Make the hosted skills short MCP adapters and correct local workflow wording
+  for routine close preparation, review authority, audience selection, and the
+  difference between local and hosted books.
+- Classify procedure list and show as read-only operations so reading guidance
+  does not require permission to change the books.
+
 ## 0.9.0 — 2026-10-22
 
 - Add a distinct hosted-only `slashbooks-cloud` plugin package for ChatGPT/Codex and Claude. It connects to `https://slashbooks.co/mcp` through host-managed OAuth, needs no local executable or Python installation, and includes the `slashbooks-cloud-get-started` and `slashbooks-cloud-books` skills. The existing local Slashbooks CLI plugin remains available.
