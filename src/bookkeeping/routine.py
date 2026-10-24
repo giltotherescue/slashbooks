@@ -109,14 +109,17 @@ def _mapping(entity, txn, opens):
     account_id = txn.get('accountId')
     mappings = entity.entity_config.get('bank_account_mappings') or {}
     ledger_account = flat_bank_account_mappings(entity.entity_config).get(account_id)
-    if not isinstance(ledger_account, str) or ledger_account not in opens:
+    if ledger_account is None and txn.get('csvMappingKey') is None:
         raise ValueError('mapping_required')
     try:
         resolved = _ledger_account_for_txn(txn, mappings, entity.entity_config.get('csv_account_mappings'))
     except ValueError as exc:
         raise ValueError('mapping_conflict') from exc
-    if resolved != ledger_account:
+    if ledger_account is not None and resolved != ledger_account:
         raise ValueError('mapping_conflict')
+    ledger_account = resolved
+    if ledger_account not in opens:
+        raise ValueError('mapping_required')
     kind = str(txn.get('accountType') or '').lower().replace('_', '').replace('-', '').replace(' ', '')
     if kind in {'creditcard', 'credit'}:
         valid_role = ledger_account == 'Liabilities:CreditCard' or ledger_account.startswith('Liabilities:CreditCard:')
@@ -144,6 +147,11 @@ def routine_context(entity):
     pending, opens, posted, _, _ = _state(entity)
     accounts, counterparties = {}, {}
     mappings = flat_bank_account_mappings(entity.entity_config)
+    for mapping in (entity.entity_config.get('csv_account_mappings') or {}).values():
+        if (isinstance(mapping, dict) and mapping.get('confirmed') is True
+                and not mapping.get('proposed') and isinstance(mapping.get('ledger_account'), str)):
+            account = mapping['ledger_account']
+            mappings.setdefault(account, account)
     for sid, account in mappings.items():
         if not isinstance(sid, str) or not sid or not isinstance(account, str) or account not in opens:
             continue
