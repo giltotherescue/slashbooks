@@ -127,6 +127,33 @@ class RoutineTest(unittest.TestCase):
         self.assertEqual('checking', next(row for row in routine_context(self.entity)['source_accounts'] if row['id'] == 'checking')['account_type'])
         self.assertEqual('source_account_type_unknown', routine_plan(self.entity, self.policy)['unresolved'][0]['reason'])
 
+    def test_confirmed_statement_mapping_can_use_bounded_routine_authority(self):
+        self.entity.entity_config['bank_account_mappings'] = {}
+        self.entity.entity_config['csv_account_mappings'] = {
+            'statement:checking': dict(ledger_account=BANK, confirmed=True),
+        }
+        row = txn('csv:statement-one')
+        row.update(accountId=BANK, csvMappingKey='statement:checking')
+        self.stage(row)
+        self.policy['rules'][0]['source_account_id'] = BANK
+        before = self.files()
+        context = routine_context(self.entity)
+        self.assertEqual([BANK], [item['id'] for item in context['source_accounts']])
+        plan = routine_plan(self.entity, self.policy)
+        self.assertEqual(['csv:statement-one'], [item['source_id'] for item in plan['actions']])
+        self.assertEqual(before, self.files(), 'Planning and option reads must remain pure')
+
+        # A raw source account name never grants mapping authority.
+        for change in ({'confirmed': False}, {'proposed': True}, {'ledger_account': CARD}):
+            with self.subTest(change=change):
+                self.entity.entity_config['csv_account_mappings']['statement:checking'] = {
+                    'ledger_account': BANK, 'confirmed': True, **change,
+                }
+                self.assertFalse(routine_plan(self.entity, self.policy)['actions'])
+        self.entity.entity_config['csv_account_mappings']['statement:checking'] = dict(ledger_account=BANK, confirmed=True)
+        self.entity.entity_config['bank_account_mappings'][BANK] = CARD
+        self.assertEqual('mapping_conflict', routine_plan(self.entity, self.policy)['unresolved'][0]['reason'])
+
     def test_learning_is_not_policy_authority(self):
         for sid in ('one', 'two', 'three'):
             self.stage(txn(sid))
