@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Inspect an accounting receipt's stored supporting facts with `accrual receipt
+  --include-evidence`. It includes original source references and explicit later
+  support links, verifies the stored facts and does not change the books.
+
 - Reconcile a saved statement by ID. The engine verifies its original file and uses
   its confirmed source figures, with a recorded observation time, instead of
   requiring copied amounts, dates and evidence hashes. Replaced or incomplete

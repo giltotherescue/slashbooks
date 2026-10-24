@@ -21,7 +21,7 @@
     "accrual rules list --entity PATH [--format json|text]",
     "accrual report --entity PATH --kind schedules|outstanding|aging|adjustments|support|reconciliation [--as-of YYYY-MM-DD] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--format json|text]",
     "accrual accounts --entity PATH [--format json|text]",
-    "accrual receipt --entity PATH --id ID",
+    "accrual receipt --entity PATH --id ID [--include-evidence]",
     "accrual opening preview|apply --entity PATH --input FILE",
     "accrual opening draft --entity PATH --cutover YYYY-MM-DD",
     "accrual enable preview --entity PATH --tracking-start YYYY-MM-DD [--operation-id ID]",

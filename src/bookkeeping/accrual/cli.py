@@ -87,6 +87,7 @@ def add_parser(subparsers: Any) -> None:
     receipt = commands.add_parser("receipt", help="Show the committed receipt for an operation ID (read-only)")
     receipt.add_argument("--entity", required=True, type=Path)
     receipt.add_argument("--id", required=True, help="The operation_id used in the request")
+    receipt.add_argument("--include-evidence", action="store_true", help="Read verified stored supporting facts and explicit later links")
     opening = commands.add_parser("opening", help="Source-neutral opening balances for a new accrual company")
     children = opening.add_subparsers(dest="accrual_opening_command", required=True)
     for verb in ("preview", "apply"):
@@ -502,16 +503,22 @@ def run(args: argparse.Namespace) -> int:
                 from . import accounts
                 result = accounts.list_accounts(entity)
             elif command == "receipt":
-                from .store import operation_receipt
-                record = operation_receipt(_read_only_store(entity), args.id)
-                if record is None:
-                    from .rules import stored_receipt
-                    record = stored_receipt(entity, args.id)
-                if record is None:
-                    raise journals.JournalError("receipt_not_found", f"No committed operation has ID {args.id}.",
-                                                "Check operation_id, or `books accrual report --kind adjustments`. The operation was not applied.")
-                result = {"status": record["status"], "id": args.id, "kind": record["kind"], "request_hash": record["request_hash"],
-                          "plan_hash": record["plan_hash"], "receipt": record["receipt"]}
+                from .store import load_record
+                store = _read_only_store(entity)
+                with store.connection() as conn:
+                    conn.execute("PRAGMA query_only=ON")
+                    conn.execute("BEGIN")
+                    record = load_record(store, "intents", "operation:" + args.id, conn)
+                    if record is None:
+                        from .rules import stored_receipt
+                        record = stored_receipt(entity, args.id)
+                    if record is None:
+                        raise journals.JournalError("receipt_not_found", f"No committed operation has ID {args.id}.",
+                                                    "Check operation_id, or `books accrual report --kind adjustments`. The operation was not applied.")
+                    result = {"status": record["status"], "id": args.id, "kind": record["kind"], "request_hash": record["request_hash"],
+                              "plan_hash": record["plan_hash"], "receipt": record["receipt"]}
+                    if args.include_evidence:
+                        result.update(journals.receipt_supporting_documents(store, args.id, record["receipt"], conn))
             elif command == "enable":
                 from . import enable
                 if args.accrual_enable_command == "preview":

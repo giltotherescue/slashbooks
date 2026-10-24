@@ -58,6 +58,59 @@ class AccrualCliTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(capabilities["authority_action"], "adjust")
 
+    def test_receipt_can_read_original_supporting_facts_without_mutating_books(self) -> None:
+        envelope = {"schema_version": 1, "source": {"namespace": "synthetic", "account_id": "bank",
+            "object_id": "invoice-one", "version": "1"}, "currency": "USD",
+            "amounts": {"invoice_total": "10.00"}, "observed_facts": {"note": "Untrusted source text"},
+            "references": [{"uri": "invoice.txt", "content_hash": "a" * 64}]}
+        evidence = journals.intake_evidence(load_entity(self.root), envelope)
+        argv = ["accrual", "receipt", "--entity", str(self.root), "--id", "evidence:" + evidence["id"]]
+        status, legacy = self.cli(argv)
+        self.assertEqual(status, 0)
+        self.assertNotIn("supporting_documents", legacy)
+        before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        status, result = self.cli([*argv, "--include-evidence"])
+        self.assertEqual(status, 0)
+        self.assertEqual(result["supporting_documents"][0]["id"], evidence["id"])
+        self.assertEqual(result["supporting_documents"][0]["envelope"]["references"], envelope["references"])
+        self.assertEqual(result["supporting_documents"][0]["envelope"]["observed_facts"], envelope["observed_facts"])
+        self.assertEqual(before, {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
+        self.assertFalse(command_spec(["accrual", "receipt", "--entity", "@entity", "--id", "synthetic", "--include-evidence"])["mutates"])
+
+    def test_receipt_includes_explicit_later_support_links_only_for_its_operation(self) -> None:
+        entity = load_entity(self.root)
+        documents = [journals.intake_evidence(entity, {"schema_version": 1, "source": {
+            "namespace": "synthetic", "account_id": "bank", "object_id": name, "version": "1"}, "currency": "USD"})
+            for name in ["original", "later", "unrelated"]]
+        request = {**self.request, "evidence_ids": [documents[0]["id"]]}
+        journals.apply_journal(entity, journals.preview_journal(entity, request))
+        journals.apply_journal(entity, journals.preview_journal(entity, {**request, "id": "unrelated-journal",
+            "evidence_ids": [documents[2]["id"]]}))
+        link = {"operation_id": "later-original-file", "target_operation_id": request["id"],
+            "evidence_ids": [documents[1]["id"]], "reason": "Original supporting file supplied later"}
+        journals.apply_evidence_link(entity, journals.preview_evidence_link(entity, link))
+        status, result = self.cli(["accrual", "receipt", "--entity", str(self.root), "--id", request["id"], "--include-evidence"])
+        self.assertEqual(status, 0)
+        self.assertEqual({row["id"] for row in result["supporting_documents"]}, {row["id"] for row in documents[:2]})
+        self.assertEqual(result["supporting_links"], [{"operation_id": link["operation_id"], "reason": link["reason"],
+            "evidence_ids": link["evidence_ids"]}])
+
+    def test_receipt_refuses_changed_supporting_envelopes(self) -> None:
+        evidence = journals.intake_evidence(load_entity(self.root), {"schema_version": 1, "source": {
+            "namespace": "synthetic", "account_id": "bank", "object_id": "invoice", "version": "1"}, "currency": "USD"})
+        with self.store.connection() as conn:
+            conn.execute("UPDATE accrual_evidence SET payload_json=json_set(payload_json,'$.envelope.currency','EUR') WHERE id=?", (evidence["id"],))
+            conn.commit()
+        status, result = self.cli(["accrual", "receipt", "--entity", str(self.root), "--id", "evidence:" + evidence["id"], "--include-evidence"])
+        self.assertEqual(status, 1)
+        self.assertEqual(result["errors"][0]["code"], "evidence_changed")
+        with self.store.connection() as conn:
+            conn.execute("DELETE FROM accrual_evidence WHERE id=?", (evidence["id"],))
+            conn.commit()
+        status, result = self.cli(["accrual", "receipt", "--entity", str(self.root), "--id", "evidence:" + evidence["id"], "--include-evidence"])
+        self.assertEqual(status, 1)
+        self.assertEqual(result["errors"][0]["code"], "missing_evidence")
+
     def test_preview_apply_and_structured_validation(self) -> None:
         argv = ["accrual", "journal", "preview", "--entity", str(self.root), "--input", str(self.input)]
         status, plan = self.cli(argv)
