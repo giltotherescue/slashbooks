@@ -345,6 +345,29 @@ appears once and every balance has the same effective date. Each row has `status
 combined balance returns `not_aligned`, with `reason` of `duplicate_account_id`
 or `balance_dates_not_aligned`; no combined balance or difference is claimed.
 
+### Reconcile a saved statement
+
+After importing a statement with its confirmed period and both source balances,
+use the saved statement ID from `books statement list --entity PATH`:
+
+```sh
+books reconcile --entity ~/Documents/books/acme-co --statement-id STATEMENT_ID
+```
+
+The engine verifies the archived original file against its saved SHA-256, reads
+its confirmed dates, balances and source-row total, and records when it reads that
+file. It converts bank/card presentation signs and compares those figures with
+the ledger. No balance, activity total, timestamp or evidence hash needs to be
+transcribed. This observes the saved statement; it does not refresh a bank feed.
+
+Missing or changed originals, incomplete source figures, conflicting current
+statements and replaced statements are refused. Choose the current statement or
+recheck its intake before retrying. A ledger difference remains a discrepancy;
+reconciliation does not post missing transactions or close the period. Check each
+month's readiness before claiming the requested period is ready for review.
+Use the captured-source options for provider readings or other supported evidence;
+they cannot be combined with `--statement-id`.
+
 ### Month-end proof from a bank feed
 
 `books balance prove` says, for each finished month of a feed-connected checking
