@@ -137,9 +137,9 @@ Before you prepare a return from Slashbooks books, ask for two outputs. See
   override with the company books.
 
 The mapping uses book amounts. It does not compute tax, depreciation, cost of
-goods sold or deduction limits. When the owner records a cash tax method and turns
-the tax method view on, the tax outputs use the cash view of the books and flag
-what you must check. The owner can also record the prior return method, the entity
+goods sold or deduction limits. When the owner records a cash tax method, the tax
+outputs use the cash view of the books and flag what you must check. The tax export
+adds a Tax Assumptions sheet that states how each item is handled and what you decide. The owner can also record the prior return method, the entity
 type, the fiscal year and whether each deposit is refundable.
 
 ## Limits

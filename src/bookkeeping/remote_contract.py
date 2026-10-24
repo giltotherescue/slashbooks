@@ -88,12 +88,14 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                            "work"}
             or path in {("qb", "inventory"), ("qb", "agreement", "run"), ("entity", "related-entity", "list"),
                         ("entity", "infer-currency"),  # Reads files and proposes; writes nothing.
+                        ("migration", "export"),
                         ("connector", "csv", "inspect"), ("connector", "csv", "propose-mapping"),
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),
                         ("queue", "list"), ("queue", "show"), ("queue", "summary"),
                         ("queue", "split-template-list"), ("queue", "taught"), ("queue", "transfer-candidates"),
                         ("queue", "transfer-exceptions"), ("queue", "duplicates"),
-                        ("bank", "match-account")}  # A proposal; a person confirms before any mapping
+                        ("bank", "match-account"),  # A proposal; a person confirms before any mapping
+                        ("procedures", "list"), ("procedures", "show")}
             # Tax handoff: read-only checks and exports.
             or path in {("coverage", "check"), ("coverage", "statement-list"), ("balance", "check"), ("balance", "prove"), ("import", "check"),
                         ("tax", "lines"), ("tax", "map"), ("tax", "export")})
@@ -109,7 +111,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
         if path[1:] == ("journal", "due-reversals"):
             mutates = args.apply
     if path in {("entity", "set-view"), ("entity", "set-tax-method"), ("entity", "set-fiscal-year"),
-                ("entity", "set-tax-profile"), ("entity", "set-currency")} and not args.apply:
+                ("entity", "set-tax-profile"), ("entity", "set-currency"), ("entity", "set-reporting-goals"),
+                ("ledger", "reclassify"), ("entity", "account-remove")} and not args.apply:
         mutates = False  # The default is a preview; --apply changes the company.
     if path in {("accrual", "schedule", "tax-treatment"), ("accrual", "schedule", "deposit-kind"), ("accrual", "item", "deposit-kind")}:
         mutates = args.apply  # The default is a preview; --apply records the tax treatment or the deposit kind.

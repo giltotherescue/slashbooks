@@ -61,3 +61,11 @@ asking the developer to automate a judgment call.
 End with a short `Developer note` that asks the implementing agent to verify
 the relevant source and tests before changing behavior, and to avoid treating
 the handoff as authorization to alter real company data.
+
+## Shared procedures
+
+These procedures are the single source for general agent rules and communication.
+Run each command and follow its output. Do not rely on memory of the text.
+
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)

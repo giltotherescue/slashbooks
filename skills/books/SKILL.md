@@ -33,7 +33,7 @@ Before company discovery or file access, follow
 A `.slashbooks-remote.json` binding takes precedence over local company files;
 use ordinary commands and never fall back to a stale local ledger.
 
-**Cloud checkpoint:** after each answered batch or meaningful decision, save
+**For remote books, Cloud checkpoint:** after each answered batch or meaningful decision, save
 confirmed company facts, decisions, unresolved questions and next steps to shared
 cloud company records with version-checked file put, then file get to verify the
 saved content before asking more questions. Personal/project AI memory is not
@@ -80,25 +80,10 @@ Save confirmed facts, decisions and unresolved items as part of that work using
 the shared workspace's automatic-save rules. Do not require the user to ask for
 a save or rely on chat memory as the only record.
 
-## Audience and language
+## Explain the result
 
-At the start of onboarding or setup, ask one lightweight audience question unless
-the answer is already obvious: "Are you looking at this as the business owner, an
-accountant, or someone developing/testing Slashbooks?" Use the answer to choose
-language:
-
-- **Business owner** — explain what happened, what it means for the business, and
-  what to do next. Avoid file names, internal folders, "trial balance", "sanity
-  check", "entity metadata", "seeded", "posted entries", and other implementation
-  terms unless the owner asks for technical detail.
-- **Accountant/bookkeeper** — use professional accounting language when useful:
-  P&L, balance sheet, trial balance, review queue, accountant export, opening
-  balances, and the selected accounting basis. Still avoid developer details.
-- **Developer/tester** — it is okay to mention local folders, generated files,
-  SQLite, command wrappers, and validation checks when they help explain setup.
-
-If the user does not answer, default to business-owner language. Let the user
-drift more technical if they ask.
+Follow the shared communication procedure below.
+Use the onboarding skill for setup, including any useful audience question.
 
 ## First Check
 
@@ -161,4 +146,5 @@ These procedures are the single source for the rules they cover. Run each comman
 and follow its output. Do not rely on memory of the text, and do not copy it here.
 
 - `scripts/books procedures show catch-up` (version 2)
-- `scripts/books procedures show hard-rules` (version 2)
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)

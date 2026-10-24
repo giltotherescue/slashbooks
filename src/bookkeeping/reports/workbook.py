@@ -299,6 +299,7 @@ class XlsxSheet:
     total_label_column: Optional[int] = None
     total_label: str = "Account Total"
     autofilter: bool = True
+    wrap_columns: frozenset[int] = frozenset()
 
 
 # ---------------------------------------------------------------------------
@@ -859,7 +860,7 @@ def _cover_basis(entity_path: Path, to_date: date) -> str:
 
 
 def _cover_tax_method(entity_path: Path) -> list[list[str]]:
-    """One cover row when the tax-method view is on; none otherwise, so other covers stay as they were."""
+    """One cover row when a tax method is recorded; none otherwise, so other covers stay as they were."""
     from ..taxview import active_method
     method = active_method(load_entity(entity_path).entity_config)
     if not method:
@@ -1856,6 +1857,7 @@ def _write_xlsx(
         "bg_color": _HEADER_BG_COLOR,
         "border": 1,
     })
+    fmt_wrap = wb.add_format({"text_wrap": True, "valign": "top"})
     fmt_number = wb.add_format({"num_format": _ACCT_NUM_FMT})
     fmt_total = wb.add_format({"bold": True, "top": 1, "num_format": _ACCT_NUM_FMT})
     fmt_pass = wb.add_format({"bold": True, "font_color": "#008000"})
@@ -1946,7 +1948,7 @@ def _write_xlsx(
                         ws.write_url(row_idx, col_idx, cell_str, string=cell_str)
                     else:
                         # Text is always stored as a string, never as a formula.
-                        ws.write_string(row_idx, col_idx, cell_str)
+                        ws.write_string(row_idx, col_idx, cell_str, fmt_wrap if col_idx in spec.wrap_columns else None)
 
         table_added = False
         if spec.table and len(rows) > 1 and max_cols > 0:

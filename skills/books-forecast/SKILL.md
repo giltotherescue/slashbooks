@@ -63,12 +63,18 @@ outside the horizon still matter; report them. Publish the output through normal
 shared report/file paths when authorized and verify read-back. Never post forecast
 items to the ledger or promise a reliable prediction from incomplete books.
 
-## Audience and language
+## Explain the result
 
-Use the saved audience. **Business owner**: explain cash timing and actionable
-shortfalls in plain language. **Accountant/bookkeeper**: include reconciliation,
-coverage and assumption provenance. **Developer/tester**: include engine digests
-and file paths when useful. Let the user choose more technical detail.
+Follow the shared communication procedure below.
+Explain cash timing and shortfalls the person can act on. Include reconciliation,
+coverage, and the sources of assumptions when relevant. Run tools yourself.
+Never show shell commands, plugin cache paths or internal wrappers unless the
+owner asks for technical instructions.
 
-Run tools yourself. Never show shell commands, plugin cache paths or internal
-wrappers unless the owner asks for technical instructions.
+## Shared procedures
+
+These procedures are the single source for general agent rules and communication.
+Run each command and follow its output. Do not rely on memory of the text.
+
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)

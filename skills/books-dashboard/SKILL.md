@@ -39,23 +39,10 @@ not shell commands.
 The owner should not need to know accounting file formats, ledger syntax, or
 database details.
 
-## Audience and language
+## Explain the result
 
-Use the audience established during onboarding. If it is unclear and the answer
-would change by audience, ask whether they are looking at this as the business
-owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
-
-- **Business owner** — answer in everyday business language. Lead with business
-  performance, cash, revenue, expenses, and next actions. Avoid internal file
-  names, database details, raw account codes, and accounting jargon unless they
-  ask.
-- **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
-  Still keep product internals out unless they ask.
-- **Developer/tester** — it is okay to mention local paths, SQLite, command
-  wrappers, and validation details when they help.
-
-Let the user drift more technical if they ask.
+Follow the shared communication procedure below.
+Lead with business performance, cash, revenue, expenses, and next actions.
 
 ---
 
@@ -202,3 +189,11 @@ End with a short confidence note:
 
 Keep the tone calm. The dashboard should help the owner understand the business,
 not make routine bookkeeping caveats feel alarming.
+
+## Shared procedures
+
+These procedures are the single source for general agent rules and communication.
+Run each command and follow its output. Do not rely on memory of the text.
+
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)

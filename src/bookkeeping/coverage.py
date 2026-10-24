@@ -286,7 +286,7 @@ def parse_statement(raw: Any, *, file: str = "") -> StatementRecord:
     )
 
 
-def load_statements(entity_path: Path | str) -> tuple[list[StatementRecord], list[dict[str, Any]]]:
+def load_statements(entity_path: Path | str, *, include_replaced: bool = False) -> tuple[list[StatementRecord], list[dict[str, Any]]]:
     """Return valid records and ``statement_record_invalid`` findings."""
     directory = statements_dir(entity_path)
     records: list[StatementRecord] = []
@@ -314,6 +314,20 @@ def load_statements(entity_path: Path | str) -> tuple[list[StatementRecord], lis
                 continue
             seen[record.statement_id] = ref
             records.append(record)
+    from .statement_selection import load_selection
+    try:
+        replaced = load_selection(entity_path)["replaced"]
+        known = {record.statement_id: record for record in records}
+        for old, new in replaced.items():
+            if old not in known or new not in known or new in replaced:
+                raise ValueError("Statement selection refers to missing or replaced statements.")
+            a, b = known[old], known[new]
+            if (a.account, a.period_start, a.period_end, a.kind) != (b.account, b.period_start, b.period_end, "statement"):
+                raise ValueError("Statement selection does not match its account and period.")
+        if not include_replaced:
+            records = [r for r in records if r.statement_id not in replaced]
+    except ValueError as exc:
+        findings.append(_invalid_finding("selection", str(exc)))
     return records, findings
 
 
@@ -363,9 +377,9 @@ def record_statement(entity_path: Path | str, record: Mapping[str, Any], *, repl
     return {**document, "status": "updated" if existed else "created"}
 
 
-def load_statement_documents(entity_path: Path | str) -> list[dict[str, Any]]:
+def load_statement_documents(entity_path: Path | str, *, include_replaced: bool = False) -> list[dict[str, Any]]:
     """Return the full JSON of each valid record, extra writer fields included."""
-    records, _ = load_statements(entity_path)
+    records, _ = load_statements(entity_path, include_replaced=include_replaced)
     directory = statements_dir(entity_path)
     documents = []
     for record in records:
@@ -579,6 +593,15 @@ def check_coverage(
     entity = load_entity(entity_path)
     declared = _declared(entity.entity_config)
     records, findings = load_statements(entity.path)
+    from .statement_selection import stale_reconciliations
+    try:
+        for rec in stale_reconciliations(entity.path):
+            if from_date.isoformat() <= rec.get("as_of", "") <= to_date.isoformat():
+                findings.append({"code": "statement_reconciliation_outdated", "severity": "error",
+                    "account": rec.get("account"), "refs": [rec.get("account", "")],
+                    "message": "The statement was replaced; reconcile this account with the current statement."})
+    except ValueError as exc:
+        findings.append(_invalid_finding("selection", str(exc)))
     expected = sorted(set(accounts)) if accounts else expected_accounts(entity.path)
     if not expected:
         findings.append({

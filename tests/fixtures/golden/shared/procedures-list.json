@@ -1,5 +1,5 @@
 {
-  "bundle_sha256": "a8f762f1e9ae7779275b0791f9181f428b8678310840759503c8ca0d6b43cb30",
+  "bundle_sha256": "9e0646e2176c8ddafe4e1b2eda57433ec1525288d540cfa97eec2cbb4aa9b0b5",
   "procedures": [
     {
       "name": "catch-up",
@@ -12,6 +12,12 @@
       "version": 2,
       "title": "Categorize and record transactions",
       "sha256": "83e770636a4f9fdcae01abb764387fe37a978193a12c90a8d328324288add047"
+    },
+    {
+      "name": "communication",
+      "version": 2,
+      "title": "Clear communication",
+      "sha256": "643197594b0bbd52ed6226d1c0221bb59cb034881787c1d1d7d618d51b52e86b"
     },
     {
       "name": "document-intake",
@@ -39,9 +45,9 @@
     },
     {
       "name": "hard-rules",
-      "version": 2,
+      "version": 4,
       "title": "Hard rules for every agent",
-      "sha256": "b2de4419cf47b48f99d1d031f8136b3ede0fc786f39adf579ee0a560b1c8a0e0"
+      "sha256": "a9b863d6c63fd773f10710f7e0e3407a6bb393ac8ee9b5c75bb4fa5cb52e2572"
     },
     {
       "name": "mail-triage",
@@ -63,9 +69,9 @@
     },
     {
       "name": "onboarding-profile",
-      "version": 1,
+      "version": 2,
       "title": "Onboarding and business profile",
-      "sha256": "a6444b4a5e33348626b55ff48c7138f9b4d8013e5653996d0923e71b6f93d55d"
+      "sha256": "ff062fc4a7476077c5ce398c120808ce79ec4985205520e16bca771b6c9e8864"
     },
     {
       "name": "question-rules",

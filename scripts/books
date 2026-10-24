@@ -36,5 +36,23 @@ fi
 # ── Export template directory ──────────────────────────────────────────────────
 export BOOKKEEPING_TEMPLATES_DIR="$PLUGIN_ROOT/skills/books-onboard/templates"
 
+# Git Bash uses POSIX paths; native Python needs Windows paths and semicolons.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    export PYTHONPATH="$(cygpath -wp "$PYTHONPATH")"
+    export BOOKKEEPING_TEMPLATES_DIR="$(cygpath -w "$BOOKKEEPING_TEMPLATES_DIR")"
+    ;;
+esac
+
 # ── Hand off to the CLI ────────────────────────────────────────────────────────
-exec python3 -m bookkeeping.cli "$@"
+# Probe the interpreter: Windows Store aliases can exist but not run Python.
+for _python in python3 python; do
+  if command -v "$_python" >/dev/null 2>&1 && "$_python" -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then
+    exec "$_python" -m bookkeeping.cli "$@"
+  fi
+done
+if command -v py >/dev/null 2>&1 && py -3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then
+  exec py -3 -m bookkeeping.cli "$@"
+fi
+printf '%s\n' 'Slashbooks needs Python 3.11 or newer. Install Python, then restart your agent.' >&2
+exit 1

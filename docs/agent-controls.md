@@ -24,7 +24,7 @@ preparation runtime refuses it.
 | `books entity set-view PATH --view cash\|accrual --apply` | The default report view. |
 | `books accrual enable apply` | Accrual tracking from a tracking start date. `enable preview` is read-only. |
 | `books entity set-fiscal-year PATH --start MM-01 --apply` | The fiscal-year start. |
-| `books entity set-tax-method PATH --method cash\|accrual --apply` | The tax method and the tax method view. |
+| `books entity set-tax-method PATH --method cash\|accrual --apply` | The tax method. The tax outputs follow it. |
 | `books entity set-tax-profile PATH ... --apply` | The prior return method and the entity type. |
 | `books accrual schedule tax-treatment ... --apply` | How a cash-method filer deducts a prepaid schedule. |
 | `books accrual schedule\|item deposit-kind ... --apply` | Whether a deposit is an advance payment or refundable. |
@@ -33,6 +33,99 @@ Without `--apply` these commands preview and write nothing. `books entity
 infer-currency` only reads files, so an agent can run it. Closing and reopening a
 period also need a person. See [the tax handoff](tax-handoff.md) for the tax
 settings and [accrual books](accrual.md) for accrual tracking and the default view.
+
+## Reporting goals and report categories
+
+These commands support the owner's reporting goals. See
+[reporting goals](statements.md#reporting-goals-and-report-categories).
+
+| Command | Changes the books? | What it changes |
+|---|---|---|
+| `books entity set-reporting-goals PATH ... --apply` | No | `reporting_goals` in `entity.json` and one audit event. No entry, account or report changes. |
+| `books entity account-add PATH --account A --category` | No | Adds one empty income or expense category to the account catalog. No entry or amount changes. |
+| `books ledger reclassify ... --apply` | Yes | Writes a reversal and a replacement for each moved entry. |
+
+Without `--apply`, `set-reporting-goals` and `ledger reclassify` preview and write
+nothing. A host can let its automation record goals that the owner confirmed,
+because the goals change no amounts. Standing posting authority does not cover
+`ledger reclassify`, and the trusted preparation runtime refuses it. A person
+approves each move. The command refuses an entry in a locked month
+(`period_locked`).
+
+## Remove an unused category
+
+`books entity account-remove PATH --account ACCOUNT [--added-event ID]` removes an
+income or expense account from the account catalog. It does not change the books:
+no entry changes, and the account has no postings. A host can use it to undo a
+category that it added, while nothing uses the category.
+
+The command is narrow. It removes an account only when `books entity account-add`
+created it: the audit log has the event that `account-add` writes when it creates
+an account (an `intent` event of session `entity-account-add` with the description
+`Add account <account>: open <date>, currency <code>`). `--added-event ID` names
+that event. Without it, the command uses the latest such event for the account.
+
+- Without `--apply` the command shows a preview and writes nothing.
+  `--apply --plan-hash H` removes the account and writes the audit event
+  `account-removed` with the account, its open date, its currency, the id of the
+  account-add event and the plan hash.
+- The plan hash covers the audit chain head and a fingerprint of every settings
+  file that the checks read. A change after the preview, for example a removal
+  and a new `account-add` of the same account, or a new `ask_first_above` in
+  `trust-policy.json`, gives `stale_preview`.
+- When the account is not in the catalog, the command gives `already_applied` and
+  writes nothing. This also applies to an exact retry with the same plan hash.
+- The command takes the company write lock without the `entity.json` repair, so a
+  refused or no-op apply writes no company file.
+
+The command refuses before any write:
+
+| Code | Reason |
+|---|---|
+| `invalid_account` | The name is not a valid account name, for example it has a control character such as a final newline. |
+| `protected_account` | The account is not an income or expense account, or the engine creates or names it: the starter catalogs, the accrual starters, the Stripe accounts and the report accounts (one list, `engine_accounts.engine_owned_accounts()`). |
+| `not_added_by_command` | No account-add event shows that `account-add` created the account. |
+| `added_event_mismatch` | `--added-event` does not name the latest account-add event of the account. |
+| `account_in_use` | A posting in any period (reversals too) or a balance assertion uses the account. |
+| `account_referenced` | Company settings or records name the account: `entity.json` (bank mappings, related entities, tax lines and other settings), `trust-policy.json`, learned context (payee rules, accrual rules), an open review item, a staged row, an accrual record, a saved source row (`source_transactions`) or an import session (`import_sessions`). `refs` names the file or the table and record id. The check parses the JSON and compares decoded names, so a name written with JSON escapes is found too. A saved accrual rule that selects the account through a parent account also counts, when the parent would then select no account. `refs` lists up to 20 places. |
+| `reference_check_failed` | A settings file or folder is a symbolic link, cannot be read, is not valid JSON, or does not have the expected shape (for example a `trust-policy.json` that is not an object, or an accrual rule whose `match` is not an object), so the references cannot be checked. |
+| `audit_history_missing` | The ledger has entries and no audit history. |
+
+The reference check does not read these, on purpose:
+
+- the audit log, which keeps historical provenance (earlier `account-add` and
+  `account-removed` events, for example);
+- the narration and metadata of entries and postings (the postings are checked by
+  account);
+- files outside the settings folders: `reports/`, `ingestion/` and
+  `business-profile.md`.
+
+`books queue` teaching checks the account catalog under the same company lock, so a
+removal cannot come between that check and the save. `books ledger reverse`,
+`correct`, `reclassify-bank` and `split-equity` also hold that lock from the entry
+lookup and the catalog read to the commit, so they decide under the lock whether a
+missing account gets an open directive. The reference check walks JSON with its
+own stack; JSON that the parser cannot read at any depth gives
+`reference_check_failed`.
+
+Standing posting authority does not cover the command, and the trusted
+preparation runtime refuses it.
+
+## Record that onboarding is complete
+
+`books entity onboarding-complete PATH --via agent|meeting|staff [--on YYYY-MM-DD]`
+records that the company finished onboarding. It writes `onboarding_completed`
+(`on`, `via`) to `entity.json` only. It changes no ledger data, no other setting
+and no queue item. A valid first record is kept: a second run prints
+`already_complete` and writes nothing. `--on` defaults to the machine date
+(`date.today()`), because the engine keeps no company time zone. A date after
+today (the later of the machine date and the UTC date) is refused.
+
+With local books, the books-onboard skill runs it with `--via agent` when
+onboarding is done. A host can limit who records it. Inside Slashbooks Cloud,
+only the setup meeting, staff and a person's own connected agent can record
+completion. Slashbooks' own hosted automation cannot, so a hosted run cannot
+mark its own company as set up. Outside Cloud, `--via agent` works as written.
 
 ## Who made a suggestion
 
@@ -101,7 +194,7 @@ check every item first.
 
 **Routes that do not check the limit.** Routine captured decisions (a person
 decided), `backtest` category rules, corrections of posted entries
-(`ledger correct`, `reclassify-bank`, `split-equity`) and the `accrual` commands
+(`ledger correct`, `reclassify-bank`, `reclassify`, `split-equity`) and the `accrual` commands
 do not apply the limit. A payout bank deposit matched by `stripe_plan` is also not checked.
 
 ## Read the amount of an item

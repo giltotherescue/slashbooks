@@ -69,6 +69,9 @@ def add_parser(subparsers: Any) -> None:
     login.add_argument("--entity", type=Path, help="Folder for the connection; default ~/Documents/Slashbooks/online-<id hash>")
     login.add_argument("--allow-localhost", action="store_true")
     login.add_argument("--reauthorize", action="store_true", help="Explicitly reconnect the same company after access expires or is revoked")
+    login.add_argument("--scope", nargs="+", choices=["books:read", "books:write", "sources:write", "proposals:write",
+                       "runs:write", "questions:write", "evidence:write", "adjustments:write"],
+                       help="Explicit permissions to request with browser consent; include books:read. Adjustments are never granted by default")
     configure = commands.add_parser("configure", help="Save endpoint/company, without contacting the server")
     configure.add_argument("--endpoint", required=True, help="HTTPS origin, optionally ending in /api/v1")
     configure.add_argument("--company", required=True)
@@ -187,9 +190,10 @@ def _json_loads(raw: str) -> Any:
 
 
 def _read_json(path: Path, *, private: bool = False) -> dict[str, Any]:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    from . import file_safety
     try:
-        with os.fdopen(os.open(path, flags), encoding="utf-8") as handle:
+        file_safety.reject_links(path)
+        with os.fdopen(file_safety.open_read(path), encoding="utf-8") as handle:
             info = os.fstat(handle.fileno())
             if not stat.S_ISREG(info.st_mode):
                 raise HostedError("INVALID_FILE", "Expected a regular JSON file.")
@@ -197,8 +201,8 @@ def _read_json(path: Path, *, private: bool = False) -> dict[str, Any]:
             if not isinstance(value, dict):
                 raise ValueError("Expected object")
             if private or "token" in value:
-                if info.st_mode & 0o077 or info.st_uid != os.getuid():
-                    raise HostedError("INSECURE_FILE", "Config with a token and local receipts must be owner-only; use chmod 600.")
+                if not file_safety.is_private(handle.fileno()):
+                    raise HostedError("INSECURE_FILE", "Config with a token and local receipts must be accessible only to the current user.")
             return value
     except (OSError, ValueError, RecursionError) as exc:
         raise HostedError("INVALID_FILE", "Cannot read JSON file. Check its path, permissions and JSON object syntax.") from exc
@@ -206,23 +210,18 @@ def _read_json(path: Path, *, private: bool = False) -> dict[str, Any]:
 
 def _write_private(path: Path, value: dict[str, Any], *, exclusive: bool = False) -> None:
     """Publish only complete, fsynced, owner-only JSON; exclusive creation fences key reuse."""
+    from . import file_safety
+    file_safety.reject_links(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".hosted-", dir=path.parent)
+    fd, temporary = file_safety.private_temp(path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(value, handle, sort_keys=True, allow_nan=False)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        if exclusive:
-            os.link(temporary, path)
-        else:
-            os.replace(temporary, path)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        file_safety.replace(temporary, path, exclusive=exclusive)
+        file_safety.sync_directory(path.parent)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -670,6 +669,12 @@ def run(args: argparse.Namespace) -> int:
             return agent_auth.login(args)
         except HostedError as exc:
             print(json.dumps(exc.payload), file=sys.stderr)
+            return 1
+        except OSError:
+            failure = HostedError("AUTH_STORAGE_FAILED",
+                                  "Sign-in could not finish saving local files. Check folder access and free disk space. "
+                                  "Browser approval may already exist; a working connection has not been confirmed.")
+            print(json.dumps(failure.payload), file=sys.stderr)
             return 1
     if args.hosted_command == "migration":
         from . import hosted_adoption

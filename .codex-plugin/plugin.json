@@ -1,6 +1,6 @@
 {
   "name": "slashbooks",
-  "version": "0.7.0",
+  "version": "0.9.2",
   "description": "Slashbooks — bookkeeping with cash books by default and opt-in accrual for single-company USD SaaS and services. Your AI agent keeps local books current, helps review transactions, and prepares accountant-ready exports.",
   "author": {
     "name": "Gil Hildebrand"

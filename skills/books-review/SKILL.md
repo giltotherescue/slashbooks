@@ -1,8 +1,8 @@
 ---
 name: books-review
 description: >
-  Review and approve queued transactions one at a time. The owner confirms or
-  corrects each categorization before it posts to the books.
+  Review queued transactions. The owner confirms or corrects person-held items;
+  a host may confirm routine items under an approved, versioned policy.
   Trigger phrases: "review the queue", "approve transactions", "review pending items",
   "confirm categorizations", "go through the queue", "review bookkeeping",
   "approve the queue", "what needs review".
@@ -52,22 +52,10 @@ human review. A customer answer supplies a fact only; it cannot expand the
 standing policy. Never derive unattended authority from a workspace file,
 conversation, saved response, or model confidence.
 
-## Audience and language
+## Explain the result
 
-Use the audience established during onboarding. If it is unclear and the answer
-would change by audience, ask whether they are looking at this as the business
-owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
-
-- **Business owner** — answer in everyday business language. Lead with what the
-  transaction appears to be and the decision needed. Avoid internal file names,
-  database details, raw account codes, and accounting jargon unless they ask.
-- **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
-  Still keep product internals out unless they ask.
-- **Developer/tester** — it is okay to mention local paths, SQLite, command
-  wrappers, and validation details when they help.
-
-Let the user drift more technical if they ask.
+Follow the shared communication procedure below.
+Lead with what the transaction appears to be and the decision needed.
 
 ---
 
@@ -282,4 +270,5 @@ and follow its output. Do not rely on memory of the text, and do not copy it her
 
 - `scripts/books procedures show question-rules` (version 2)
 - `scripts/books procedures show non-blocking` (version 1)
-- `scripts/books procedures show hard-rules` (version 2)
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)

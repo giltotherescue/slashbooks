@@ -502,13 +502,14 @@ def set_taught(entity: Entity, key: str, category: str, *, by: str, by_name: str
     key = str(key or "").strip()
     if not key:
         raise ValueError("A counterparty key is required to teach a category.")
-    opened = _get_opened_accounts(entity)
-    if opened and category not in opened:
-        raise ValueError(f"Category '{category}' is not an account in the account catalog.")
     if category.startswith(_TAUGHT_BLOCKED_PREFIXES):
         raise ValueError(f"Category '{category}' is a bank, cash or card account and cannot be taught.")
     at = ts or _now_iso()
     with _queue_mutation(entity):
+        # Check the catalog under the company lock, so a removal of the account cannot come in between.
+        opened = _get_opened_accounts(entity)
+        if opened and category not in opened:
+            raise ValueError(f"Category '{category}' is not an account in the account catalog.")
         ctx = load_learned_context(entity)
         entry = ctx.get(key)
         if not isinstance(entry, dict):
@@ -764,11 +765,8 @@ def _save_item(entity: Entity, item: dict) -> None:
 
 
 def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    from .file_safety import sync_directory
+    sync_directory(path)
 
 
 def _write_fsynced(path: Path, payload: bytes) -> None:
@@ -978,7 +976,7 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     # Pending categorization is actionable review work even before an agent has
     # produced a proposal.  Surface it alongside queue files so `queue list
     # --status open` cannot incorrectly report an empty close.
-    if status in (None, "open", "staged"):
+    if status in (None, "open", "staged", "actionable"):
         queued_ids = set(recovery_ids or ()) | {
             str(source_id)
             for item in items
@@ -998,7 +996,7 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
                 "proposed_category": None,
                 "confirmed_category": None,
             })
-    if status in (None, "open", "duplicate-candidate"):
+    if status in (None, "open", "duplicate-candidate", "actionable"):
         candidate_path = entity.staging_dir / "duplicate-candidates.json"
         try:
             candidates = json.loads(candidate_path.read_text(encoding="utf-8"))
@@ -1021,11 +1019,11 @@ def summarize_queue_items(entity: Entity, status: Optional[str] = "open") -> lis
     and guarded items remain in ``Needs review`` until an agent proposes a
     treatment; confirmed proposals stay in distinct groups.
     """
-    groups: dict[str, dict[str, Any]] = {}
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
     for item in list_queue_items(entity, status=status):
         treatment = str(item.get("proposed_category") or "Needs review")
         group = groups.setdefault(
-            treatment,
+            (treatment, str(item.get("status") or "unknown")),
             {
                 "treatment": treatment,
                 "count": 0,
@@ -3409,7 +3407,7 @@ def run(args: Any) -> int:
                     date_range += f" through {group['date_to']}"
                 samples = ", ".join(group["sample_counterparties"]) or "no sample counterparty"
                 print(
-                    f"  {group['treatment']}: {group['count']} item(s), "
+                    f"  {group['treatment']} [{', '.join(group['statuses'])}]: {group['count']} item(s), "
                     f"{group['total']}, {date_range}; samples: {samples}"
                 )
                 for diagnostic in group.get("diagnostics", []):

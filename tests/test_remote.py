@@ -223,7 +223,7 @@ class RemoteTests(unittest.TestCase):
         self.assertFalse((self.entity / "ledger.sqlite").exists())
         self.assertFalse((self.entity / "entity.json").exists())
 
-    def test_all_parser_families_route_through_shared_contract(self):
+    def test_all_remote_eligible_parser_families_route_through_shared_contract(self):
         source = self.directory / "input.json"
         source.write_text("{}")
         folder = self.directory / "exports"
@@ -242,6 +242,11 @@ class RemoteTests(unittest.TestCase):
                 for name, child in selectors[0].choices.items():
                     if route or name not in {"cloud", "hosted", "procedures"}:  # procedures is static and local-only
                         walk(child, route + [name], actions)
+                return
+            if route == ["migration", "export"]:
+                # This export is intentionally offline even for a remotely
+                # bound directory; its focused test also covers the shared
+                # contract used by trusted hosted compute.
                 return
             argv = list(route)
             for action in actions:

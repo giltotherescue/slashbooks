@@ -639,6 +639,25 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
             "rows_in_statement": len(txns), "held_for_review": len(plan["held"]),
             **{k: v for k, v in plan["skipped"].items()}, "to_import": len(plan["import"]),
         }
+        # Reuse the import plan for month-end review. All amounts use ledger signs,
+        # including cards; callers must not negate balances or sum rows themselves.
+        from .reports.cache import get_account_balance, open_cache
+        books_balance = None
+        if (entity.path / "ledger.sqlite").exists() or (entity.path / "books.beancount").exists():
+            conn = open_cache(entity.path)
+            try:
+                books_balance = get_account_balance(conn, ledger_account, ext.period_end)
+            finally:
+                conn.close()
+        reconciliation = {
+            "account": ledger_account, "period_start": ext.period_start.isoformat(),
+            "as_of": ext.period_end.isoformat(), "opening": _money(sign * ext.opening),
+            "closing": _money(sign * ext.closing), "activity": _money(total),
+            "books_balance": _money(books_balance),
+            "difference": _money(sign * ext.closing - books_balance) if books_balance is not None else None,
+            "missing": [{k: t[k] for k in ("date", "description", "amount")} for t in plan["import"]],
+            "possible_matches": len(plan["held"]),
+        }
         resolved: list[str] = []
         if not dry_run:
             observe_import(plan["skipped"].get("already_imported", 0) + plan["skipped"].get("confirmed_duplicate", 0))
@@ -664,7 +683,7 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
         "session_id": None if dry_run else session_id, "recorded": not dry_run, "reasons": [],
         "statement": record, "counts": counts, "warnings": warnings, "coverage": "recorded",
         "held": [{k: v for k, v in h.items() if k != "transaction"} for h in plan["held"]],
-        "resolved_reviews": resolved,
+        "resolved_reviews": resolved, "reconciliation": reconciliation,
     }
 
 

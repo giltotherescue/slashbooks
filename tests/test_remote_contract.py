@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 import sys
 import unittest
+from argparse import Namespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from bookkeeping.cli import build_parser
@@ -149,6 +151,28 @@ class RemoteContractTests(unittest.TestCase):
         self.assertNotIn("work_out", command_spec(["queue", "list", "--entity", "@entity"])["output_fields"])
         with self.assertRaises(ContractError):
             command_spec(["queue", "list", "--entity", "@entity", "--work-out"])
+
+    def test_onboarding_complete_is_a_company_write(self):
+        spec = command_spec(["entity", "onboarding-complete", "@entity", "--via", "agent"])
+        self.assertEqual(spec["path"], ("entity", "onboarding-complete"))
+        self.assertEqual(spec["entity_fields"], ["path"])
+        self.assertTrue(spec["mutates"])
+        self.assertFalse(spec["network"])
+
+    def test_only_list_and_show_procedures_are_reads(self):
+        for argv in (["procedures", "list"], ["procedures", "show", "hard-rules"]):
+            with self.subTest(argv=argv):
+                spec = command_spec(argv)
+                self.assertFalse(spec["mutates"])
+                self.assertFalse(spec["network"])
+                self.assertEqual(spec["entity_fields"], [])
+
+        # Keep future procedure actions write-scoped until they are reviewed.
+        with patch(
+            "bookkeeping.remote_contract.parse_command",
+            return_value=(Namespace(work_out=None), [], ("procedures", "future-action")),
+        ):
+            self.assertTrue(command_spec(["procedures", "future-action"])["mutates"])
 
     def test_unsafe_paths_and_commands(self):
         for value in ("../a", "/etc/passwd", "a//b", "a/./b", "a\\b", "C:/x", "%2e%2e/x", ".", "a/../b", "a\x00b"):

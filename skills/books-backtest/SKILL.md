@@ -29,7 +29,9 @@ You are running a backtest to compare the books system's output against the
 owner's QuickBooks records. The purpose is to build trust through evidence: the system
 must demonstrate that it produces the same results as the owner's existing books
 before it takes over. Every difference will be examined and categorized — this is
-how the system earns the right to close the books autonomously.
+how the system supplies evidence before routine close preparation can run under
+an approved policy. A person or the service still establishes readiness and
+gives any required final approval.
 
 Speak in plain business terms. Never ask the owner to read accounting file syntax.
 
@@ -47,23 +49,10 @@ workflow. Do not stop after each report to ask whether to continue. Pause only
 for a material accounting judgment, missing or conflicting evidence, an
 external-data choice, or explicit approval to accept a difference.
 
-## Audience and language
+## Explain the result
 
-Use the audience established during onboarding. If it is unclear and the answer
-would change by audience, ask whether they are looking at this as the business
-owner, an accountant/bookkeeper, or someone developing/testing Slashbooks.
-
-- **Business owner** — answer in everyday business language. Lead with what the
-  comparison means and whether the books are ready to trust. Avoid internal file
-  names, database details, raw account codes, and accounting jargon unless they
-  ask.
-- **Accountant/bookkeeper** — accounting terms are fine when useful: P&L, balance
-  sheet, trial balance, selected accounting basis, review queue, chart of accounts, and exports.
-  Still keep product internals out unless they ask.
-- **Developer/tester** — it is okay to mention local paths, SQLite, command
-  wrappers, and validation details when they help.
-
-Let the user drift more technical if they ask.
+Follow the shared communication procedure below.
+Explain what the comparison establishes and which differences remain.
 
 ---
 
@@ -80,13 +69,14 @@ balances, or customer/vendor patterns in search queries.
 
 ## Step 1 — Explain the trust ramp
 
-Tell the owner: "Before the system closes your books automatically, we need to confirm
+Tell the owner: "Before routine close preparation runs under an approved policy, we need to confirm
 it produces the same results as QuickBooks for the same period. We'll import your
 historical transactions, generate financial statements, and compare them side-by-side
 against your QuickBooks reports. Every difference will be categorized — some are
 timing differences, some may be things QuickBooks got wrong, and some may be things
 we need to fix. Once we've reviewed and accepted all material differences, the system
-has earned the right to close your books going forward."
+has supplied the evidence needed for a person or the service to decide whether
+future routine close preparation is ready."
 
 ---
 
@@ -250,5 +240,14 @@ the date, the amount, and the category both systems assigned.
 
 When all material differences are categorized and accepted, tell the owner: "The
 backtest is complete. Every material difference has been reviewed and accepted. The
-system is ready to close your books going forward." Summarize the match rate and any
-items that were flagged for follow-up.
+comparison is complete for the tested period." Summarize the match rate and any
+items flagged for follow-up. A backtest does not establish readiness for a future
+close; run the relevant readiness checks for each period.
+
+## Shared procedures
+
+These procedures are the single source for general agent rules and communication.
+Run each command and follow its output. Do not rely on memory of the text.
+
+- `scripts/books procedures show communication` (version 2)
+- `scripts/books procedures show hard-rules` (version 4)

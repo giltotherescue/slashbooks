@@ -1,8 +1,8 @@
-"""Local migration capture and read-only assessment; CLI remains assessment-only."""
+"""Local migration capture, assessment and fixed offline bundle export."""
 from __future__ import annotations
 
 import argparse
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, ExitStack
 from datetime import datetime
 import hashlib
 import json
@@ -12,6 +12,7 @@ import re
 import sqlite3
 import stat
 import tempfile
+from . import pinned_files
 import time
 
 from .ledger.projections import render_store_ledger
@@ -46,6 +47,15 @@ SECRET_TEXT = re.compile(
     rb"|(?i:authorization\s*[:=]\s*bearer\s+\S+)")
 
 
+# Exact host-created projection and artifact state. The reserved names stay
+# narrow so an arbitrary hidden customer path remains a migration blocker.
+ENGINE_METADATA_FILES = frozenset({
+    ".engine/bridge.json",
+    ".engine/company-artifacts.json",
+})
+ENGINE_ARTIFACTS_ROOT = ".engine/artifacts"
+
+
 class Rejected(Exception):
     """Only fixed diagnostic codes may cross the output boundary."""
 
@@ -71,8 +81,10 @@ def _excluded(name):
     parts = PurePosixPath(name).parts
     if re.fullmatch(r"backups/ledger\.sqlite\.(?:schema-v1|schema-repair)\.[0-9a-f]{32}\.sqlite", name):
         return "runtime_state"
-    if name == ".books.lock":
+    if name == ".books.lock" or name in ENGINE_METADATA_FILES:
         return "runtime_state"
+    if name == ENGINE_ARTIFACTS_ROOT or name.startswith(ENGINE_ARTIFACTS_ROOT + "/"):
+        return "derived_state"
     if name == ".gitignore" or parts[0] == ".git":
         return "local_vcs"
     if any(p.lower().startswith((".env", ".slashbooks", ".books")) or
@@ -95,34 +107,22 @@ def _excluded(name):
 
 @contextmanager
 def _directory(path):
-    raw = Path(path)
-    require(".." not in raw.parts, "unsafe_entity_path")
-    absolute = Path(os.path.abspath(raw))
-    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        for component in absolute.parts[1:]:
-            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-            os.close(fd)
-            fd = child
-        yield fd, absolute
-    finally:
-        os.close(fd)
+    require(".." not in Path(path).parts, "unsafe_entity_path")
+    with pinned_files.directory(path) as result:
+        yield result
 
 
 def _inventory(fd, prefix="", found=None):
     found = {} if found is None else found
-    for name in sorted(os.listdir(fd)):
+    for name in sorted(pinned_files.names(fd)):
         require(len(found) < MAX_ITEMS, "inventory_limit")
         path = prefix + name
-        info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        info = pinned_files.stat_child(fd, name)
         found[path] = _signature(info)
         if stat.S_ISDIR(info.st_mode) and not _excluded(path):
-            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-            try:
-                require(_signature(os.fstat(child)) == found[path], "source_changed")
+            with pinned_files.child(fd, name) as child:
+                require(_signature(pinned_files.info(child)) == found[path], "source_changed")
                 _inventory(child, path + "/", found)
-            finally:
-                os.close(child)
     return found
 
 
@@ -134,14 +134,12 @@ def _book_inventory(inventory):
 
 def _read(fd, name, expected):
     """Resolve each component relative to pinned directories, never through links."""
-    parent = os.dup(fd)
-    try:
+    with ExitStack() as stack:
+        parent = fd
         parts = name.split("/")
         for part in parts[:-1]:
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
-            os.close(parent)
-            parent = child
-        file_fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            parent = stack.enter_context(pinned_files.child(parent, part))
+        file_fd = pinned_files.open_child(parent, parts[-1])
         with os.fdopen(file_fd, "rb") as handle:
             info = os.fstat(handle.fileno())
             require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "unsafe_file")
@@ -150,8 +148,6 @@ def _read(fd, name, expected):
             data = handle.read(MAX_FILE + 1)
             require(len(data) == info.st_size and _signature(os.fstat(handle.fileno())) == expected, "source_changed")
             return data
-    finally:
-        os.close(parent)
 
 
 def _json(data):
@@ -525,6 +521,8 @@ def _capture(entity_dir, *, for_export=False):
                     reason = "unsafe_file"
                 elif reason in {"runtime_state", "platform_metadata"} and not stat.S_ISREG(mode):
                     reason = "unsafe_file"
+                elif name == ENGINE_ARTIFACTS_ROOT and not stat.S_ISDIR(mode):
+                    reason = "unsafe_file"
                 elif not reason and mode & 0o111:
                     reason = "custom_code"
                 if not reason:
@@ -604,7 +602,7 @@ def _capture(entity_dir, *, for_export=False):
             require(_book_inventory(before) == _book_inventory(_inventory(fd)), "source_changed")
             # Detect replacement of the selected directory as well as its contents.
             with _directory(entity_dir) as (current, _):
-                require(_signature(os.fstat(current)) == _signature(os.fstat(fd)), "source_changed")
+                require(_signature(pinned_files.info(current)) == _signature(pinned_files.info(fd)), "source_changed")
             report["checks"]["source_stable"] = True
     except Rejected as exc:
         blockers.add(str(exc))
@@ -629,6 +627,26 @@ def build_bundle(entity_dir, destination):
     """Export a private portable snapshot; this does not authorize adoption."""
     from .migration_bundle import build_bundle as build
     return build(entity_dir, destination)
+
+
+def add_parser(subparsers):
+    """Add the network-free engine command used by fixed sandbox execution."""
+    parser = subparsers.add_parser(
+        "migration", help="Create a verified offline company snapshot",
+    )
+    commands = parser.add_subparsers(dest="migration_command", required=True)
+    export = commands.add_parser(
+        "export", help="Write a private, portable company snapshot",
+    )
+    export.add_argument("--entity", required=True, type=Path)
+    export.add_argument("--output", required=True, type=Path)
+
+
+def run(args):
+    """Run the fixed export command without provider or transport access."""
+    result = build_bundle(args.entity.expanduser(), args.output.expanduser())
+    print(json.dumps(result, sort_keys=True, allow_nan=False))
+    return 0 if result.get("bundle_created") is True else 1
 
 
 class _Parser(argparse.ArgumentParser):

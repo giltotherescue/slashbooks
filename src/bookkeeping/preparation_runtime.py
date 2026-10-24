@@ -438,11 +438,8 @@ _RECONCILIATION_TRANSACTION_DIR = ".reconciliation-transactions"
 
 
 def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    from .file_safety import sync_directory
+    sync_directory(path)
 
 
 def _write_fsynced(path: Path, payload: bytes) -> None:

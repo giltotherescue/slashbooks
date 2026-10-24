@@ -807,8 +807,8 @@ def preview_tax_treatment(entity: Entity, schedule_id: Any, treatment: Any) -> d
             "record_revision": record_revision(store, "schedules", schedule_id),
             "effects": {"from": record.get("tax_treatment"), "current_effective": current, "current_source": source, "to": treatment,
                         "entries_changed": 0, "published_statements_changed": False,
-                        "note": ("Only the tax outputs of a cash-method filer change (`books tax map` and `books tax export` with the "
-                                 "tax method view on). The books, the reports and the schedule's recognition entries stay as they are.")}}
+                        "note": ("Only the tax outputs of a cash-method filer change (`books tax map` and `books tax export` once a "
+                                 "tax method is recorded). The books, the reports and the schedule's recognition entries stay as they are.")}}
     body["request_hash"] = canonical_hash({"kind": TAX_TREATMENT_KIND, "request": body["request"]})
     body["plan_hash"] = canonical_hash(body)
     return body
@@ -916,7 +916,7 @@ def preview_deposit_kind(entity: Entity, table: str, record_id: Any, kind: Any) 
             "record_revision": record_revision(store, table, record_id),
             "effects": {"from": record.get("deposit_kind"), "current_effective": current, "current_source": source, "to": kind,
                         "entries_changed": 0, "published_statements_changed": False,
-                        "note": ("Only the cash-method tax outputs change (`books tax map` and `books tax export` with the tax method view on). "
+                        "note": ("Only the cash-method tax outputs change (`books tax map` and `books tax export` once a tax method is recorded). "
                                  "The cash view treats advance_payment as income on receipt, and refundable as a liability until it is applied "
                                  "to an invoice or forfeited. The books, the reports and the recorded entries stay as they are.")}}
     body["request_hash"] = canonical_hash({"kind": DEPOSIT_KIND_KIND, "request": body["request"]})

@@ -61,6 +61,27 @@ class AgentAuthTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertFalse((self.directory / "ledger.sqlite").exists())
 
+    def test_adjustments_require_an_explicit_browser_consent_request(self):
+        self.args.scope = ["books:read", "books:write", "adjustments:write"]
+        with patch.object(agent_auth, "_post", side_effect=[self.start, {"error": "access_denied"}]) as post, \
+                patch.object(agent_auth.time, "sleep"), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):
+            agent_auth.login(self.args)
+        self.assertEqual(post.call_args_list[0].args[2]["scope"], "books:read books:write adjustments:write")
+        self.assertFalse(self.directory.exists())
+
+    def test_default_login_does_not_request_adjustment_authority(self):
+        with patch.object(agent_auth, "_post", side_effect=[self.start, {"error": "access_denied"}]) as post, \
+                patch.object(agent_auth.time, "sleep"), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):
+            agent_auth.login(self.args)
+        self.assertNotIn("scope", post.call_args_list[0].args[2])
+
+    def test_explicit_scope_requires_read_permission_and_no_duplicates(self):
+        for scopes in [["adjustments:write"], ["books:read", "books:read"]]:
+            self.args.scope = scopes
+            with patch.object(agent_auth, "_post") as post, self.assertRaises(hosted.HostedError):
+                agent_auth.login(self.args)
+            post.assert_not_called()
+
     def test_denied_grant_does_not_bind_or_print_credentials(self):
         with patch.object(agent_auth, "_post", side_effect=[self.start, {"error": "access_denied"}]), \
                 patch.object(agent_auth.time, "sleep"), redirect_stdout(StringIO()), self.assertRaises(hosted.HostedError):
@@ -159,3 +180,67 @@ class AgentAuthTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SignInErrorResponseTests(unittest.TestCase):
+    def call_error(self, status, body):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        opener = MagicMock()
+        opener.open.side_effect = HTTPError('https://books.example.com/oauth/token', status,
+                                            'Synthetic failure', {}, BytesIO(body))
+        with patch.object(agent_auth.request, 'build_opener', return_value=opener):
+            return agent_auth._post('https://books.example.com', '/oauth/token', {})
+
+    def test_service_errors_are_structured_and_never_expose_bodies(self):
+        for status in [429, 500, 502, 503, 504]:
+            for body in [b'{"error":{"message":"synthetic-secret"}}',
+                         b'{"error":["synthetic-secret"]}', b'<html>synthetic-secret</html>']:
+                with self.subTest(status=status, body=body), self.assertRaises(hosted.HostedError) as caught:
+                    self.call_error(status, body)
+                self.assertEqual(caught.exception.payload['error']['code'], 'AUTH_SERVICE_UNAVAILABLE')
+                self.assertNotIn('synthetic-secret', str(caught.exception.payload))
+
+    def test_unexpected_client_errors_do_not_claim_access_was_declined(self):
+        for value in [{}, [], None, 12, 'unexpected', {'private': 'synthetic-secret'}]:
+            with self.subTest(value=value), self.assertRaises(hosted.HostedError) as caught:
+                self.call_error(400, json.dumps({'error': value}).encode())
+            self.assertEqual(caught.exception.payload['error']['code'], 'AUTH_RESPONSE_INVALID')
+            self.assertNotIn('synthetic-secret', str(caught.exception.payload))
+
+    def test_oauth_polling_and_denial_codes_are_preserved(self):
+        for code in ['authorization_pending', 'slow_down', 'expired_token', 'access_denied',
+                     'invalid_grant', 'invalid_client', 'invalid_scope']:
+            self.assertEqual(self.call_error(400, json.dumps({'error': code}).encode()), {'error': code})
+
+    def test_nested_error_body_is_structured(self):
+        with self.assertRaises(hosted.HostedError) as caught:
+            self.call_error(503, b'{"error":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}')
+        self.assertEqual(caught.exception.payload['error']['code'], 'AUTH_SERVICE_UNAVAILABLE')
+
+    def test_error_body_read_failure_is_structured(self):
+        from urllib.error import HTTPError
+        from io import BytesIO
+        class TimedOutBody(BytesIO):
+            def read(self, *args):
+                raise TimeoutError('synthetic-secret')
+        stream = TimedOutBody()
+        opener = MagicMock()
+        opener.open.side_effect = HTTPError('https://books.example.com', 503, 'Unavailable', {}, stream)
+        with patch.object(agent_auth.request, 'build_opener', return_value=opener), self.assertRaises(hosted.HostedError) as caught:
+            agent_auth._post('https://books.example.com', '/oauth/token', {})
+        self.assertEqual(caught.exception.payload['error']['code'], 'AUTH_CONNECTION_FAILED')
+        self.assertNotIn('synthetic-secret', str(caught.exception.payload))
+
+    def test_login_storage_failure_is_structured_and_does_not_claim_connected(self):
+        from contextlib import redirect_stderr
+        args = SimpleNamespace(hosted_command="login")
+        output, errors = StringIO(), StringIO()
+        with patch.object(agent_auth, "login", side_effect=PermissionError("synthetic-secret-path")), \
+                redirect_stdout(output), redirect_stderr(errors):
+            self.assertEqual(hosted.run(args), 1)
+        result = json.loads(errors.getvalue())
+        self.assertEqual(result["error"]["code"], "AUTH_STORAGE_FAILED")
+        self.assertNotIn("synthetic-secret-path", errors.getvalue())
+        self.assertNotIn("Traceback", errors.getvalue())
+        self.assertNotIn('"connected": true', output.getvalue())

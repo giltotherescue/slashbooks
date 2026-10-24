@@ -126,8 +126,12 @@ def _sha256_text(text: str) -> str:
 
 
 @contextmanager
-def _entity_write_lock(entity_path: Path):
-    """Serialize all entity mutations, allowing nested writers in one context."""
+def _entity_write_lock(entity_path: Path, *, repair: bool = True):
+    """Serialize all entity mutations, allowing nested writers in one context.
+
+    ``repair=False`` takes the lock without the entity.json currency repair, for a command that must not
+    write any company file before its own checks pass.
+    """
     resolved = entity_path.resolve()
     held = _held_entity_locks.get()
     if resolved in held:
@@ -139,18 +143,19 @@ def _entity_write_lock(entity_path: Path):
     lock_path = resolved / _LOCK_FILE
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a", encoding="utf-8") as fh:
-        import fcntl
+        from ..file_safety import locked
 
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-        token = _held_entity_locks.set((*held, resolved))
-        try:
-            # Each write path starts by finishing an entity.json that a stop left behind the ledger currency.
-            from ..currency import repair_on_disk
-            repair_on_disk(resolved)
-            yield
-        finally:
-            _held_entity_locks.reset(token)
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        with locked(fh.fileno()):
+            token = _held_entity_locks.set((*held, resolved))
+            try:
+                # Each write path starts by finishing an entity.json that a stop left behind the ledger currency.
+                if repair:
+                    from ..currency import repair_on_disk
+                    repair_on_disk(resolved)
+                yield
+            finally:
+                _held_entity_locks.reset(token)
+
 
 
 @contextmanager
@@ -165,7 +170,7 @@ def _entity_read_lock(entity_path: Path):
     if resolved in _held_entity_locks.get() or resolved in _held_shared_locks.get():
         yield
         return
-    import fcntl
+    from ..file_safety import locked
 
     lock_path = resolved / _LOCK_FILE
     handle = None
@@ -179,14 +184,12 @@ def _entity_read_lock(entity_path: Path):
     if handle is None:
         yield
         return
-    with handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+    with handle, locked(handle.fileno(), shared=True):
         token = _held_shared_locks.set((*_held_shared_locks.get(), resolved))
         try:
             yield
         finally:
             _held_shared_locks.reset(token)
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _now_iso() -> str:
@@ -1156,77 +1159,81 @@ def reverse_and_correct(
 
     Returns (reversing_entry, corrected_entry_with_meta).
     """
-    from .corrections import _require_unmanaged_entry
-    _require_unmanaged_entry(entity, original_source_id)
-    staging = StagingStore(entity.staging_dir)
+    # One company lock across the live entry lookup, the catalog read, the open directives and the commit:
+    # a catalog change (books entity account-remove) cannot come in between and leave a dangling posting.
+    # _atomic_ledger_write below takes the same lock again; the lock is reentrant in one context.
+    with _entity_write_lock(entity.path):
+        from .corrections import _require_unmanaged_entry
+        _require_unmanaged_entry(entity, original_source_id)
+        staging = StagingStore(entity.staging_dir)
 
-    store = _ensure_ledger_store(entity)
+        store = _ensure_ledger_store(entity)
 
-    original = _find_live_entry(store, original_source_id)
+        original = _find_live_entry(store, original_source_id)
 
-    # Build reversing entry (negate all posting amounts). The reversal's
-    # metadata drops the original `source-id` so source-id lookups never
-    # resolve to a reversal.
-    rev_postings = tuple(
-        Posting(
-            account=p.account,
-            amount=-p.amount,
-            currency=p.currency,
+        # Build reversing entry (negate all posting amounts). The reversal's
+        # metadata drops the original `source-id` so source-id lookups never
+        # resolve to a reversal.
+        rev_postings = tuple(
+            Posting(
+                account=p.account,
+                amount=-p.amount,
+                currency=p.currency,
+            )
+            for p in original.postings
         )
-        for p in original.postings
-    )
-    rev_meta = tuple(
-        (k, v) for k, v in original.meta if k not in ("source-id", "import-session")
-    ) + (
-        ("reverses", original_source_id),
-        ("import-session", session_id),
-    )
-    reversing_entry = Entry(
-        date=original.date,
-        narration=f"Reversal of: {original.narration}",
-        flag="*",
-        meta=rev_meta,
-        postings=rev_postings,
-    )
+        rev_meta = tuple(
+            (k, v) for k, v in original.meta if k not in ("source-id", "import-session")
+        ) + (
+            ("reverses", original_source_id),
+            ("import-session", session_id),
+        )
+        reversing_entry = Entry(
+            date=original.date,
+            narration=f"Reversal of: {original.narration}",
+            flag="*",
+            meta=rev_meta,
+            postings=rev_postings,
+        )
 
-    # Build corrected entry: add correction-of metadata.
-    existing_meta = dict(corrected_entry.meta)
-    existing_meta["correction-of"] = original_source_id
-    existing_meta["import-session"] = session_id
-    corrected_with_meta = Entry(
-        date=corrected_entry.date,
-        narration=corrected_entry.narration,
-        payee=corrected_entry.payee,
-        flag=corrected_entry.flag,
-        meta=tuple(sorted(existing_meta.items())),
-        postings=corrected_entry.postings,
-    )
+        # Build corrected entry: add correction-of metadata.
+        existing_meta = dict(corrected_entry.meta)
+        existing_meta["correction-of"] = original_source_id
+        existing_meta["import-session"] = session_id
+        corrected_with_meta = Entry(
+            date=corrected_entry.date,
+            narration=corrected_entry.narration,
+            payee=corrected_entry.payee,
+            flag=corrected_entry.flag,
+            meta=tuple(sorted(existing_meta.items())),
+            postings=corrected_entry.postings,
+        )
 
-    # Find accounts needed.
-    needed_accounts = set()
-    for e in (reversing_entry, corrected_with_meta):
-        for p in e.postings:
-            needed_accounts.add(p.account)
+        # Find accounts needed.
+        needed_accounts = set()
+        for e in (reversing_entry, corrected_with_meta):
+            for p in e.postings:
+                needed_accounts.add(p.account)
 
-    existing_opens = _get_existing_opens(entity)
-    new_opens = [
-        Open(date=date(2000, 1, 1), account=acc)
-        for acc in sorted(needed_accounts)
-        if acc not in existing_opens
-    ]
+        existing_opens = _get_existing_opens(entity)
+        new_opens = [
+            Open(date=date(2000, 1, 1), account=acc)
+            for acc in sorted(needed_accounts)
+            if acc not in existing_opens
+        ]
 
-    _atomic_ledger_write(
-        entity=entity,
-        new_opens=new_opens,
-        new_entries=[reversing_entry, corrected_with_meta],
-        session_id=session_id,
-        ts=ts,
-        intent_description=(
-            f"reverse_and_correct original_source_id={original_source_id!r}"
-        ),
-    )
+        _atomic_ledger_write(
+            entity=entity,
+            new_opens=new_opens,
+            new_entries=[reversing_entry, corrected_with_meta],
+            session_id=session_id,
+            ts=ts,
+            intent_description=(
+                f"reverse_and_correct original_source_id={original_source_id!r}"
+            ),
+        )
 
-    return reversing_entry, corrected_with_meta
+        return reversing_entry, corrected_with_meta
 
 
 def _find_live_entry(store: LedgerStore, source_id: str) -> Entry:
@@ -1253,29 +1260,30 @@ def reverse_entry(
     ts: str | None = None,
 ) -> Entry:
     """Write one traceable reversing entry without modifying the original."""
-    from .corrections import _require_unmanaged_entry
-    _require_unmanaged_entry(entity, original_source_id)
-    store = _ensure_ledger_store(entity)
-    original = _find_live_entry(store, original_source_id)
-    reversing_entry = Entry(
-        date=original.date,
-        narration=f"Reversal of: {original.narration}",
-        flag="*",
-        meta=tuple((k, v) for k, v in original.meta if k not in ("source-id", "import-session")) + (
-            ("reverses", original_source_id),
-            ("import-session", session_id),
-        ),
-        postings=tuple(
-            Posting(account=p.account, amount=-p.amount, currency=p.currency)
-            for p in original.postings
-        ),
-    )
-    _atomic_ledger_write(
-        entity=entity,
-        new_opens=[],
-        new_entries=[reversing_entry],
-        session_id=session_id,
-        ts=ts,
-        intent_description=f"reverse original_source_id={original_source_id!r}",
-    )
-    return reversing_entry
+    with _entity_write_lock(entity.path):
+        from .corrections import _require_unmanaged_entry
+        _require_unmanaged_entry(entity, original_source_id)
+        store = _ensure_ledger_store(entity)
+        original = _find_live_entry(store, original_source_id)
+        reversing_entry = Entry(
+            date=original.date,
+            narration=f"Reversal of: {original.narration}",
+            flag="*",
+            meta=tuple((k, v) for k, v in original.meta if k not in ("source-id", "import-session")) + (
+                ("reverses", original_source_id),
+                ("import-session", session_id),
+            ),
+            postings=tuple(
+                Posting(account=p.account, amount=-p.amount, currency=p.currency)
+                for p in original.postings
+            ),
+        )
+        _atomic_ledger_write(
+            entity=entity,
+            new_opens=[],
+            new_entries=[reversing_entry],
+            session_id=session_id,
+            ts=ts,
+            intent_description=f"reverse original_source_id={original_source_id!r}",
+        )
+        return reversing_entry

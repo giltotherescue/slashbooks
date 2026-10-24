@@ -118,7 +118,7 @@ The engine produces these kinds:
 | `imported` | `transactions`, `duplicates_skipped` | A source transaction arrives in the books: it is staged for review or posted. `duplicates_skipped` counts rows that the same import skipped. |
 | `categorized` | `suggestions` | A review suggestion is new or changed and waits for review (`queue propose`, `propose-group`, `propose-split`, `propose-transfer`, `propose-related`). |
 | `recorded` | `entries`, `from_suggestions`, `direct` | New ledger entries that are not corrections. `from_suggestions` counts entries from approved suggestions. `direct` counts entries posted without a suggestion, for example by a learned rule during an import. |
-| `corrected` | `entries`, `reversals`, `withdrawn` | Replacement entries (`queue correct`, `ledger correct`, `reclassify-bank`, `split-equity`), reversal entries, and withdrawn suggestions. |
+| `corrected` | `entries`, `reversals`, `withdrawn` | Replacement entries (`queue correct`, `ledger correct`, `reclassify-bank`, `reclassify`, `split-equity`), reversal entries, and withdrawn suggestions. |
 | `reconciled` | `accounts`, `clean`, `open` | A reconciliation record is new or changed in substance. A resolved record counts as `clean`. |
 | `flagged` | `duplicates` | A possible duplicate waits for a decision. |
 

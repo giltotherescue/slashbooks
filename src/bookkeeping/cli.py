@@ -37,6 +37,7 @@ from bookkeeping import bank_accounts as bank_accounts_module
 from bookkeeping import demo as demo_module
 from bookkeeping import entity as entity_module
 from bookkeeping import hosted as hosted_module
+from bookkeeping import hosted_migration as migration_module
 from bookkeeping import import_check as import_check_module
 from bookkeeping import ingest as ingest_module
 from bookkeeping import procedures as procedures_module
@@ -119,6 +120,12 @@ def _dispatch(
             return hosted_module.run(args)
         if args.command == "procedures":
             return procedures_module.run(args)
+        # A migration bundle is a local, offline snapshot of the named company.
+        # Keep this exact leaf ahead of transparent hosted routing even when the
+        # company directory contains a remote binding.  The same parser contract
+        # remains available to the trusted hosted compute boundary.
+        if args.command == "migration" and args.migration_command == "export":
+            return migration_module.run(args)
         remote_result = remote_module.maybe_run(
             command_argv, args, answer_application=answer_application
         )
@@ -326,6 +333,7 @@ def build_parser() -> argparse.ArgumentParser:
     csvsource_module.add_parser(connector_subcommands)
 
     demo_module.add_parser(subcommands)
+    migration_module.add_parser(subcommands)
     hosted_module.add_parser(subcommands)
     entity_module.add_parser(subcommands)
     bank_accounts_module.add_parser(subcommands)
