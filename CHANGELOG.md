@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Reconcile a saved statement by ID. The engine verifies its original file and uses
+  its confirmed source figures, with a recorded observation time, instead of
+  requiring copied amounts, dates and evidence hashes. Replaced or incomplete
+  statements remain blocked, and bank/card signs stay in the engine.
+
+## Unreleased
+
 - Accountant exports retain the saved statement evidence references in the Source columns of Reconciliations and Source Index, in CSV and Excel.
 
 ## 0.9.2 — 2026-10-23

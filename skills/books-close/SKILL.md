@@ -220,6 +220,19 @@ independent safe work without closing the unresolved affected period.
 
 ## Step 4 — Reconcile
 
+For an imported statement, use its saved ID from `scripts/books statement list --entity <entity-path>`:
+
+```sh
+scripts/books reconcile --entity <entity-path> --statement-id <saved-statement-id>
+```
+
+The engine verifies the original archived bytes and reads the saved period, source
+balances and source-row total. It records the time of that read; no manually invented
+capture time or copied hash is needed. This does not fetch a fresh bank balance.
+If the file is missing, changed, replaced or incomplete, resolve that source issue
+before claiming readiness. Use the captured-source form below for provider balances
+or other evidence without a complete imported statement.
+
 Once all staged items, proposals, and duplicate candidates are resolved (or the
 owner explicitly asks to reconcile now), validate the source period before calling a
 ledger difference a bookkeeping discrepancy. A current bank balance with activity
