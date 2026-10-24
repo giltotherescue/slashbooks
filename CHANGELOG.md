@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accountant exports retain the saved statement evidence references in the Source columns of Reconciliations and Source Index, in CSV and Excel.
+
 ## 0.9.2 — 2026-10-23
 
 - Cloud login supports explicit `--scope` permissions with browser approval. Adjustment authority remains off by default. Reconnecting the same company can request permission to save approved accrual opening balances.
