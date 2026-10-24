@@ -1118,6 +1118,11 @@ def _build_general_ledger_rows(
 
 
 def _reconciliation_source(record: dict[str, Any]) -> str:
+    refs = record.get("source_evidence_refs")
+    if isinstance(refs, list):
+        sources = sorted({ref for ref in refs if isinstance(ref, str) and ref})
+        if sources:
+            return "; ".join(sources)
     return str(
         record.get("source_file")
         or record.get("source_path")

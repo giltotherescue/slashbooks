@@ -116,10 +116,10 @@ A50=Liabilities	B50=Liabilities › CreditCard › Company	C50=Company	D50=2026-
 A51=	B51=Liabilities › CreditCard › Company	C51=	D51=	E51=	F51=Account Total	G51=	H51=Account Total	I51=-80.00
 === sheet: Reconciliations
 A1=Account	B1=As Of	C1=Ledger Balance	D1=Source Balance	E1=Difference	F1=Reconciliation Status	G1=Review Status	H1=Source	I1=Notes
-A2=Assets:Bank:Checking	B2=2026-01-31	C2=25782.42	D2=25782.42	E2=0.00	F2=clean	G2=PASS	H2=	I2=
-A3=Assets:Bank:Checking	B3=2026-02-28	C3=27468.87	D3=27468.87	E3=0.00	F3=clean	G3=PASS	H3=	I3=
-A4=Liabilities:CreditCard:Company	B4=2026-01-31	C4=-80.00	D4=-80.00	E4=0.00	F4=clean	G4=PASS	H4=	I4=
-A5=Liabilities:CreditCard:Company	B5=2026-02-28	C5=-81.00	D5=-81.00	E5=0.00	F5=clean	G5=PASS	H5=	I5=
+A2=Assets:Bank:Checking	B2=2026-01-31	C2=25782.42	D2=25782.42	E2=0.00	F2=clean	G2=PASS	H2=evidence/checking-2026-01.json	I2=
+A3=Assets:Bank:Checking	B3=2026-02-28	C3=27468.87	D3=27468.87	E3=0.00	F3=clean	G3=PASS	H3=evidence/checking-2026-02.json	I3=
+A4=Liabilities:CreditCard:Company	B4=2026-01-31	C4=-80.00	D4=-80.00	E4=0.00	F4=clean	G4=PASS	H4=evidence/card-2026-01.json	I4=
+A5=Liabilities:CreditCard:Company	B5=2026-02-28	C5=-81.00	D5=-81.00	E5=0.00	F5=clean	G5=PASS	H5=evidence/card-2026-02.json	I5=
 === sheet: Vendor 1099
 A1=Vendor	B1=Net Paid	C1=1099 Candidate (if >= 2000.00)	D1=Gross Paid	E1=Adjustments	F1=Review Notes
 A2=(no vendor payments in expense accounts for this period)	B2=	C2=	D2=	E2=	F2=
@@ -163,7 +163,7 @@ A6=Open reconciliation item count	B6=0	C6=0
 A7=1099 candidate count	B7=0	C7=0
 === sheet: Source Index
 A1=Account	B1=As Of	C1=Ledger Balance	D1=Source Balance	E1=Difference	F1=Reconciliation Status	G1=Review Status	H1=Source	I1=Notes
-A2=Assets:Bank:Checking	B2=2026-01-31	C2=25782.42	D2=25782.42	E2=0.00	F2=clean	G2=PASS	H2=	I2=
-A3=Assets:Bank:Checking	B3=2026-02-28	C3=27468.87	D3=27468.87	E3=0.00	F3=clean	G3=PASS	H3=	I3=
-A4=Liabilities:CreditCard:Company	B4=2026-01-31	C4=-80.00	D4=-80.00	E4=0.00	F4=clean	G4=PASS	H4=	I4=
-A5=Liabilities:CreditCard:Company	B5=2026-02-28	C5=-81.00	D5=-81.00	E5=0.00	F5=clean	G5=PASS	H5=	I5=
+A2=Assets:Bank:Checking	B2=2026-01-31	C2=25782.42	D2=25782.42	E2=0.00	F2=clean	G2=PASS	H2=evidence/checking-2026-01.json	I2=
+A3=Assets:Bank:Checking	B3=2026-02-28	C3=27468.87	D3=27468.87	E3=0.00	F3=clean	G3=PASS	H3=evidence/checking-2026-02.json	I3=
+A4=Liabilities:CreditCard:Company	B4=2026-01-31	C4=-80.00	D4=-80.00	E4=0.00	F4=clean	G4=PASS	H4=evidence/card-2026-01.json	I4=
+A5=Liabilities:CreditCard:Company	B5=2026-02-28	C5=-81.00	D5=-81.00	E5=0.00	F5=clean	G5=PASS	H5=evidence/card-2026-02.json	I5=
