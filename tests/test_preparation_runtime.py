@@ -81,6 +81,35 @@ class PreparationRuntimeTests(unittest.TestCase):
         self.assertEqual(self.store.load_audit_events(), audit_before)
         self.assertEqual(queue.load_learned_context(self.entity), context_before)
 
+    def test_coverage_and_statement_inspection_are_read_only_preparation_context(self):
+        from bookkeeping import cli
+        commands = [
+            ["coverage", "check", "--from", "2026-09-01", "--to", "2026-09-30", "--format", "json"],
+            ["coverage", "statement-list"],
+            ["statement", "list"],
+        ]
+        for command in commands:
+            argv = [*command, "--entity", str(self.entity.path)]
+            with self.subTest(command=command):
+                spec = supported_preparation_command(argv)
+                self.assertEqual((spec.effect, spec.action), ("read", None))
+                before = self.store.content_digest()
+                audit_before = self.store.load_audit_events()
+                # Coverage reads may create the ordinary process lock, not accounting state.
+                files_before = {str(p.relative_to(self.entity.path)): p.read_bytes()
+                                for p in self.entity.path.rglob("*") if p.is_file() and p.name != ".books.lock"}
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(cli.main(argv), 0)
+                self.assertEqual(self.store.content_digest(), before)
+                self.assertEqual(self.store.load_audit_events(), audit_before)
+                self.assertEqual({str(p.relative_to(self.entity.path)): p.read_bytes()
+                                  for p in self.entity.path.rglob("*") if p.is_file() and p.name != ".books.lock"}, files_before)
+
+        with self.assertRaisesRegex(PreparationDenied, "command_not_supported"):
+            supported_preparation_command(["coverage", "statement-add", "--entity", str(self.entity.path),
+                                           "--statement-id", "unverified", "--account", "Assets:Bank:Checking",
+                                           "--from", "2026-09-01", "--to", "2026-09-30"])
+
     def test_exact_source_intercompany_receipt_posts_liability_without_learning(self):
         from bookkeeping.entity import add_account
         add_account(self.entity.path, "Liabilities:DueTo:Related")
