@@ -256,3 +256,11 @@ them [For accountants](for-accountants.md).
 - Do not treat Slashbooks as tax, legal, payroll-calculation, inventory-costing, or complex revenue-recognition
   advice.
 - Do not bypass the review queue for material or unfamiliar transactions.
+
+
+For a large review history, read bounded JSON pages with
+`books queue list --entity PATH --json --offset 0 --limit 25`. The response
+includes `total_count` and `next_offset`; continue until `next_offset` is null.
+The same options work with `books queue duplicates --json`. Keep the company
+unchanged during a scan, or start again. These reads never post or change queue
+status. Without page options, the existing full result is unchanged.

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Read large queue and duplicate histories in bounded JSON pages with
+  `--offset` and `--limit`, preserving complete records and continuation counts.
+
 - Inspect an accounting receipt's stored supporting facts with `accrual receipt
   --include-evidence`. It includes original source references and explicit later
   support links, verifies the stored facts and does not change the books.

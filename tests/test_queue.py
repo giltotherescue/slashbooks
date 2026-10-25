@@ -1517,5 +1517,85 @@ class TestSessionSummaryIntegration(unittest.TestCase):
         self.assertEqual(data["corrected"], 1)
 
 
+class TestQueueCliPagination(unittest.TestCase):
+    def test_bounded_history_pages_are_lossless_read_only_and_keep_legacy_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            entity = _make_entity(Path(folder))
+            items = [{"source_id": f"synthetic-{index:04d}", "status": "confirmed", "reasoning": "🧾" * 2000}
+                     for index in range(240)]
+            before = {p.relative_to(entity.path): p.read_bytes() for p in entity.path.rglob("*") if p.is_file()}
+            def read_page(offset=None, limit=None):
+                argv = ["queue", "list", "--entity", str(entity.path), "--json"]
+                if offset is not None:
+                    argv += ["--offset", str(offset)]
+                if limit is not None:
+                    argv += ["--limit", str(limit)]
+                args, _, _ = parse_command(argv)
+                output = StringIO()
+                with patch.object(queue_module, "list_queue_items", return_value=items), redirect_stdout(output):
+                    self.assertEqual(queue_module.run(args), 0)
+                return json.loads(output.getvalue())
+            legacy = read_page()
+            self.assertEqual(set(legacy), {"schema_version", "kind", "count", "items"})
+            self.assertGreater(len(json.dumps(legacy).encode()), 1024 * 1024)
+            restored, offset = [], 0
+            while offset is not None:
+                page = read_page(offset, 10)
+                self.assertEqual(page["offset"], offset)
+                self.assertEqual(page["total_count"], len(items))
+                self.assertLess(len(json.dumps(page).encode()), 256 * 1024)
+                restored.extend(page["items"])
+                offset = page["next_offset"]
+            self.assertEqual(restored, items)
+            self.assertEqual(read_page(len(items), 10)["items"], [])
+            after = {p.relative_to(entity.path): p.read_bytes() for p in entity.path.rglob("*") if p.is_file()}
+            self.assertEqual(after, before)
+
+    def test_invalid_page_bounds_and_non_json_pages_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            entity = _make_entity(Path(folder))
+            for flags in [["--json", "--offset", "-1", "--limit", "10"], ["--json", "--limit", "0"],
+                          ["--json", "--limit", "101"], ["--json", "--offset", "1"], ["--limit", "10"]]:
+                args, _, _ = parse_command(["queue", "list", "--entity", str(entity.path), *flags])
+                with redirect_stdout(StringIO()):
+                    self.assertEqual(queue_module.run(args), 1, flags)
+
+    def test_duplicate_pages_reassemble_the_same_complete_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            entity = _make_entity(Path(folder))
+            candidates = [{"source_id": f"synthetic-{i}", "held": {"description": f"Duplicate {i}"}} for i in range(7)]
+            restored = []
+            for offset in [0, 3, 6]:
+                args, _, _ = parse_command(["queue", "duplicates", "--entity", str(entity.path), "--json", "--offset", str(offset), "--limit", "3"])
+                output = StringIO()
+                with patch.object(queue_module, "list_duplicate_candidates", return_value=candidates), redirect_stdout(output):
+                    self.assertEqual(queue_module.run(args), 0)
+                page = json.loads(output.getvalue())
+                self.assertEqual(page["total_count"], 7)
+                self.assertEqual(page["next_offset"], offset + 3 if offset < 6 else None)
+                restored.extend(page["candidates"])
+            self.assertEqual(restored, candidates)
+
+    def test_real_queue_status_pages_are_stable_and_preserve_company_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            entity = _make_entity(Path(folder))
+            for source in ["z-last", "a-first", "m-middle"]:
+                _add_pending_categorization(entity, source, "Synthetic pagination transaction")
+                propose(entity, source, "Expenses:Software", "Confirmed synthetic software purpose")
+            before = {p.relative_to(entity.path): p.read_bytes() for p in entity.path.rglob("*") if p.is_file()}
+            expected = list_queue_items(entity, status="open")
+            found = []
+            for offset in [0, 2]:
+                args, _, _ = parse_command(["queue", "list", "--entity", str(entity.path), "--status", "open", "--json", "--offset", str(offset), "--limit", "2"])
+                output = StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(queue_module.run(args), 0)
+                found.extend(json.loads(output.getvalue())["items"])
+            self.assertEqual(found, expected)
+            self.assertEqual(len(found), 3)
+            after = {p.relative_to(entity.path): p.read_bytes() for p in entity.path.rglob("*") if p.is_file()}
+            self.assertEqual(after, before)
+
+
 if __name__ == "__main__":
     unittest.main()
