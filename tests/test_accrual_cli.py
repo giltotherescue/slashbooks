@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -171,6 +172,80 @@ class AccrualCliTests(unittest.TestCase):
             status = run_preparation_command(argv, denied, entity_path=self.root,
                 expected_ledger_digest=self.store.content_digest(), source_hashes={})
         self.assertEqual(status, 1)
+
+    def test_empty_due_preview_binds_through_without_changing_books(self) -> None:
+        argv = ["accrual", "schedule", "due-preview", "--entity", str(self.root),
+                "--through", "2026-09-30", "--operation-id", "empty-september"]
+        before = {str(p.relative_to(self.root)): p.read_bytes()
+                  for p in self.root.rglob("*") if p.is_file()}
+        output = StringIO()
+        with redirect_stdout(output):
+            status = run_preparation_command(argv, trusted_context(), entity_path=self.root,
+                expected_ledger_digest=self.store.content_digest(), source_hashes={})
+        self.assertEqual(status, 0, output.getvalue())
+        plan = json.loads(output.getvalue())
+        self.assertEqual(plan["entries"], [])
+        self.assertEqual(plan["affected_dates"], ["2026-09-30"])
+        self.assertEqual(plan["authority"]["mode"], "standing_policy")
+        self.assertEqual({str(p.relative_to(self.root)): p.read_bytes()
+                          for p in self.root.rglob("*") if p.is_file()}, before)
+
+    def test_empty_due_preview_preserves_authority_fences(self) -> None:
+        context = trusted_context()
+        cases = [
+            ("2027-01-31", context, "period_outside_policy"),
+            ("2026-09-30", trusted_context(("import",)), "action_not_authorized"),
+            ("2026-09-30", replace(context, current_revision=2), "revision_changed"),
+            ("2026-09-30", replace(context, current_policy_version=2), "policy_changed"),
+            ("2026-09-30", replace(context, expires_at=datetime.now(timezone.utc) - timedelta(seconds=1)),
+             "authority_expired"),
+        ]
+        for through, authority, reason in cases:
+            with self.subTest(reason=reason):
+                before = self.store.content_digest()
+                output = StringIO()
+                with redirect_stdout(output):
+                    status = run_preparation_command(
+                        ["accrual", "schedule", "due-preview", "--entity", str(self.root),
+                         "--through", through, "--operation-id", "empty-denied"],
+                        authority, entity_path=self.root,
+                        expected_ledger_digest=before, source_hashes={})
+                self.assertEqual(status, 1, output.getvalue())
+                self.assertEqual(json.loads(output.getvalue())["errors"][0]["code"], reason)
+                self.assertEqual(self.store.content_digest(), before)
+
+    def test_empty_due_check_cannot_skip_closed_period_or_change_on_replay(self) -> None:
+        config_path = self.root / "entity.json"
+        original = config_path.read_text()
+        config = json.loads(original)
+        config["closed_periods"] = ["2026-09"]
+        config_path.write_text(json.dumps(config))
+        argv = ["accrual", "schedule", "due-preview", "--entity", str(self.root),
+                "--through", "2026-09-30", "--operation-id", "empty-closed"]
+        output = StringIO()
+        with redirect_stdout(output):
+            status = run_preparation_command(argv, trusted_context(), entity_path=self.root,
+                expected_ledger_digest=self.store.content_digest(), source_hashes={})
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output.getvalue())["errors"][0]["code"], "closed_period")
+        config_path.write_text(original)
+        output = StringIO()
+        with redirect_stdout(output):
+            status = run_preparation_command(argv, trusted_context(), entity_path=self.root,
+                expected_ledger_digest=self.store.content_digest(), source_hashes={})
+        self.assertEqual(status, 0)
+        self.input.write_text(output.getvalue())
+        apply = ["accrual", "schedule", "due-apply", "--entity", str(self.root), "--input", str(self.input)]
+        results = []
+        for _ in range(2):
+            output = StringIO()
+            with redirect_stdout(output):
+                status = run_preparation_command(apply, trusted_context(), entity_path=self.root,
+                    expected_ledger_digest=self.store.content_digest(), source_hashes={})
+            self.assertEqual(status, 0, output.getvalue())
+            results.append(json.loads(output.getvalue()))
+        self.assertEqual(results[1], {**results[0], "status": "already_applied"})
+        self.assertEqual(self.store.counts().entries, 0)
 
     def test_host_fingerprint_must_match_canonical_evidence(self) -> None:
         envelope = {"schema_version": 1, "source": {"namespace": "example.any-provider", "account_id": "synthetic",
