@@ -61,6 +61,26 @@ class PreparationRuntimeTests(unittest.TestCase):
             with self.subTest(rejected=argv), self.assertRaisesRegex(PreparationDenied, "command_not_supported"):
                 supported_preparation_command(argv)
 
+    def test_taught_category_lookup_is_read_only_preparation_context(self):
+        from bookkeeping import cli
+        queue.set_taught(self.entity, "SYNTHETIC VENDOR", "Expenses:Software",
+                         by="synthetic-owner", by_name="Synthetic owner", ts="2026-01-01T00:00:00Z")
+        argv = ["queue", "taught", "--entity", str(self.entity.path)]
+        spec = supported_preparation_command(argv)
+        self.assertEqual((spec.effect, spec.action), ("read", None))
+        before = self.store.content_digest()
+        context_before = queue.load_learned_context(self.entity)
+        audit_before = self.store.load_audit_events()
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(cli.main(argv), 0)
+        document = json.loads(output.getvalue())
+        self.assertEqual(document["count"], 1)
+        self.assertEqual(document["instructions"][0]["category"], "Expenses:Software")
+        self.assertEqual(self.store.content_digest(), before)
+        self.assertEqual(self.store.load_audit_events(), audit_before)
+        self.assertEqual(queue.load_learned_context(self.entity), context_before)
+
     def test_exact_source_intercompany_receipt_posts_liability_without_learning(self):
         from bookkeeping.entity import add_account
         add_account(self.entity.path, "Liabilities:DueTo:Related")
