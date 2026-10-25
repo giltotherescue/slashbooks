@@ -518,8 +518,11 @@ def preview_due(entity: Entity, through: str, *, operation_id: str) -> dict[str,
 def _preview_due_request(entity: Entity, payload: Mapping[str, Any]) -> dict[str, Any]:
     request, entries, mutations = _due_effect(entity, payload)
     ids = sorted({i for m in mutations if m.table == "schedules" for i in m.payload.get("evidence_ids", [])})
+    # An empty due check still belongs to the requested accounting period.
+    # Preserve ordinary date and standing-authority checks without inventing an entry.
+    dates = [request["through"]] if not entries and not mutations else []
     return _preview_operation(entity, operation_id=request["operation_id"], kind="schedule_due", request=request,
-                              entries=entries, mutations=mutations, evidence_ids=ids)
+                              entries=entries, mutations=mutations, evidence_ids=ids, affected_dates=dates)
 
 
 def apply_due(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
