@@ -490,7 +490,7 @@ def update_settings(
         if known and account not in known:
             raise ValueError(f"Account '{account}' is not in the account catalog.")
     if line is not None or clear_line:
-        target_form = normalize_form(form) if form else resolve_form(entity.entity_config)[0]
+        target_form = normalize_form(form or return_form) if (form or return_form) else resolve_form(entity.entity_config)[0]
         overrides = dict(settings.get("line_overrides") or {})
         form_overrides = dict(overrides.get(target_form) or {})
         if clear_line:

@@ -238,6 +238,26 @@ class HandoffTests(unittest.TestCase):
         update_settings(self.company, return_form="1065")
         self.assertEqual(build_handoff(self.company, *YEAR)["form"], "1065")
 
+    def test_same_command_return_form_controls_line_validation(self):
+        config_path = self.company / "entity.json"
+        original = json.loads(config_path.read_text())
+        for structure in ("LLC", "S corporation"):
+            with self.subTest(structure=structure):
+                config = {**original, "legal_structure": structure}
+                config_path.write_text(json.dumps(config))
+                result = update_settings(self.company, return_form="schc", account="Expenses:Software", line="schc/II/18")
+                self.assertEqual(result["form"], "schc")
+                saved = json.loads(config_path.read_text())["tax_handoff"]
+                self.assertEqual(saved["return_form"], "schc")
+                self.assertEqual(saved["line_overrides"]["schc"]["Expenses:Software"], "schc/II/18")
+
+    def test_invalid_combined_form_and_line_preserves_configuration(self):
+        config_path = self.company / "entity.json"
+        before = config_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "not a Schedule C"):
+            update_settings(self.company, return_form="schc", account="Expenses:Software", line="1120s/p1/20")
+        self.assertEqual(config_path.read_bytes(), before)
+
     def test_unknown_form_requires_an_explicit_choice(self):
         config = json.loads((self.company / "entity.json").read_text())
         config["legal_structure"] = "LLC"
