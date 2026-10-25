@@ -79,6 +79,14 @@ and its relationship to the replacement. If the books or supporting facts change
 after a preview, the agent must prepare a fresh one. An uncertain result should be
 checked against the saved accounting receipt before the action is repeated.
 
+To inspect the stored facts behind an operation, run
+`books accrual receipt --entity <company> --id <operation-id> --include-evidence`.
+This read includes source references and explicit supporting-document links added
+later. It verifies each stored document's identity and fact hashes without posting
+or changing the books. The default receipt remains compact. Reading stored facts
+does not establish that a source file is still available; inspect that original
+separately when verifying its bytes or interpreting its contents.
+
 ## Bills, customer balances, and payments
 
 Accounts receivable are amounts customers owe for income already recorded.

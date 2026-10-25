@@ -8,13 +8,14 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
+import sqlite3
 from typing import Any, Iterable, Mapping, Sequence
 
 from ..entity import Entity, flat_bank_account_mappings, load_entity
 from .scope import accrual_active, require_write_scope
 from ..ledger.importer import _atomic_ledger_write, _entity_write_lock
 from ..ledger.model import Entry, Posting, Open
-from ..ledger.store import LedgerStore
+from ..ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore
 from .intake import (IntakeValidationError, canonical_hash, canonical_json, evidence_hash,
                      facts_hash, normalize_amount, normalize_evidence, source_identity)
 from .store import SupportingMutation, list_records, load_record, record_revision
@@ -176,14 +177,15 @@ def _check_dates(entity: Entity, store: LedgerStore, dates: Sequence[str], kind:
             raise JournalError("outside_coverage", f"{raw} precedes the supported cutover {cutover}.")
 
 
-def _evidence(store: LedgerStore, ids: Iterable[str], pending: Sequence[SupportingMutation] = ()) -> list[dict[str, Any]]:
+def _evidence(store: LedgerStore, ids: Iterable[str], pending: Sequence[SupportingMutation] = (),
+              conn: sqlite3.Connection | None = None) -> list[dict[str, Any]]:
     if not isinstance(ids, (list, tuple)) or len(ids) > 1000 or any(not isinstance(i, str) for i in ids):
         raise JournalError("invalid_evidence", "`evidence_ids` must be a bounded array of stored supporting document IDs.")
     if len(set(ids)) != len(ids):
         raise JournalError("invalid_evidence", "Supporting document IDs must be unique.")
     result = []
     for record_id in sorted(ids):
-        record = load_record(store, "evidence", record_id)
+        record = load_record(store, "evidence", record_id, conn)
         if record is None:
             record = next((m.payload for m in pending if m.table == "evidence" and m.record_id == record_id), None)
         if not record or record.get("id") != record_id:
@@ -345,6 +347,28 @@ def _check_intake_conflict(store: LedgerStore, incoming: Mapping[str, Any]) -> N
             if stored["source"] == incoming["source"]:
                 view = lambda e: {k: e.get(k) for k in ("source", "dates", "amounts", "service_period", "observed_facts", "settlement_links") if k in e}
                 raise IntakeConflict(view(stored), view(incoming), record["id"])
+
+
+def receipt_supporting_documents(store: LedgerStore, operation_id: str, receipt: Mapping[str, Any],
+                                  conn: sqlite3.Connection) -> dict[str, Any]:
+    """Read immutable source facts, including explicit later links, without posting."""
+    ids = set(receipt.get("evidence_ids", []))
+    links = []
+    if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
+        return {"supporting_documents": [], "supporting_links": []}
+    found = conn.execute("""SELECT id FROM accrual_intents
+        WHERE json_extract(payload_json,'$.kind')='evidence_link'
+        AND json_extract(payload_json,'$.status')='applied'
+        AND json_extract(payload_json,'$.request.target_operation_id')=? ORDER BY id""", (operation_id,))
+    for row in found.fetchall():
+        record = load_record(store, "intents", row["id"], conn)
+        request = record.get("request", {})
+        if not isinstance(request.get("reason"), str):
+            raise JournalError("invalid_receipt", "A stored supporting-document link has no reason.")
+        linked_ids = record["receipt"].get("evidence_ids", [])
+        ids.update(linked_ids)
+        links.append({"operation_id": record["receipt"]["id"], "reason": request["reason"], "evidence_ids": linked_ids})
+    return {"supporting_documents": _evidence(store, sorted(ids), conn=conn), "supporting_links": links}
 
 
 def intake_evidence(entity: Entity, envelope: Mapping[str, Any]) -> dict[str, Any]:
