@@ -371,7 +371,7 @@ class HostedClient:
                     server_error = None
             guidance = {
                 401: "Token is missing, invalid or revoked; check BOOKS_API_TOKEN.",
-                403: "Server denied permission. Check company and scopes; agent API keys cannot confirm proposals. Use the human staff review flow.",
+                403: "Server denied permission. Check company access, credential scopes, and the specific server_error before choosing the next action.",
                 404: "Resource not found or not accessible in the configured company.",
                 409: "Conflict. Refresh and review shared company state before making a new decision. Do not rebase or change input under an existing idempotency key.",
                 422: "Request rejected. Check the JSON fields against the hosted command contract.",

@@ -691,7 +691,9 @@ class HostedTests(unittest.TestCase):
             self.assertEqual(result["server_error"]["error"]["code"], "SERVER_CODE")
             self.assertNotIn("other-secret", err)
             if status == 403:
-                self.assertIn("human staff", result["message"])
+                self.assertIn("company access", result["message"])
+                self.assertNotIn("cannot confirm", result["message"])
+                self.assertNotIn("human staff", result["message"])
 
     def test_confirm_does_not_invent_authority_or_fallback(self) -> None:
         self.api.status = 403
