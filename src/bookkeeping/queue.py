@@ -3096,12 +3096,16 @@ def add_parser(subparsers: Any) -> None:
     duplicates_p = queue_sub.add_parser("duplicates", help="List held duplicate candidates without changing them")
     duplicates_p.add_argument("--entity", required=True, help="Path to entity directory")
     duplicates_p.add_argument("--json", action="store_true", dest="as_json", help="Print the JSON document")
+    duplicates_p.add_argument("--offset", type=int, default=0, help="JSON page start; requires --limit")
+    duplicates_p.add_argument("--limit", type=int, help="Return 1..100 candidates per JSON page")
 
     # list
     list_p = queue_sub.add_parser("list", help="List queue items")
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
     list_p.add_argument("--status", default=None, help="Filter by status, or use actionable for all unresolved review work")
     list_p.add_argument("--json", action="store_true", dest="as_json", help="Print the full items as a JSON document")
+    list_p.add_argument("--offset", type=int, default=0, help="JSON page start; requires --limit")
+    list_p.add_argument("--limit", type=int, help="Return 1..100 items per JSON page")
 
     summary_p = queue_sub.add_parser(
         "summary",
@@ -3143,6 +3147,20 @@ def _print_error(exc: Exception) -> None:
         print(json.dumps({"error": {"code": exc.code, "message": str(exc)}}), file=sys.stderr)
     else:
         print(f"Error: {exc}", file=sys.stderr)
+
+
+def _collection_page(items: list[dict], args: Any, field: str, kind: str) -> dict:
+    offset, limit = getattr(args, "offset", 0), getattr(args, "limit", None)
+    if limit is None:
+        if offset:
+            raise ValueError("--offset requires --limit and --json.")
+        return {"schema_version": 1, "kind": kind, "count": len(items), field: items}
+    if not getattr(args, "as_json", False) or offset < 0 or offset > len(items) or not 1 <= limit <= 100:
+        raise ValueError("Use --json, --limit 1..100 and an --offset within this collection.")
+    page = items[offset:offset + limit]
+    end = offset + len(page)
+    return {"schema_version": 1, "kind": kind, "count": len(page), field: page,
+            "offset": offset, "total_count": len(items), "next_offset": end if end < len(items) else None}
 
 
 def run(args: Any) -> int:
@@ -3326,13 +3344,12 @@ def run(args: Any) -> int:
         elif qcmd == "duplicates":
             try:
                 candidates = list_duplicate_candidates(entity)
+                page = _collection_page(candidates, args, "candidates", "duplicate_candidates")
             except ValueError as exc:
                 _print_error(exc)
                 return 1
             if args.as_json:
-                print(json.dumps({"schema_version": 1, "kind": "duplicate_candidates",
-                                  "count": len(candidates), "candidates": candidates},
-                                 indent=2, sort_keys=True))
+                print(json.dumps(page, indent=2, sort_keys=True))
                 return 0
             if not candidates:
                 print("No held duplicate candidates.")
@@ -3380,9 +3397,13 @@ def run(args: Any) -> int:
 
         elif qcmd == "list":
             items = list_queue_items(entity, status=args.status)
+            try:
+                page = _collection_page(items, args, "items", "queue_items")
+            except ValueError as exc:
+                _print_error(exc)
+                return 1
             if getattr(args, "as_json", False):
-                print(json.dumps({"schema_version": 1, "kind": "queue_items",
-                                  "count": len(items), "items": items}, indent=2, sort_keys=True))
+                print(json.dumps(page, indent=2, sort_keys=True))
                 return 0
             if not items:
                 print("No queue items found.")
