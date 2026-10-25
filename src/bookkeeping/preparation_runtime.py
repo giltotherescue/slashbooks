@@ -33,6 +33,7 @@ _READ_PATHS = frozenset({
     ("queue", "list"), ("queue", "show"), ("queue", "summary"),
     ("queue", "split-template-list"), ("queue", "transfer-candidates"),
     ("queue", "transfer-exceptions"), ("queue", "taught"),
+    ("coverage", "check"), ("coverage", "statement-list"), ("statement", "list"),
     ("sanity-check",),
 })
 _PROPOSAL_ACTIONS = {
