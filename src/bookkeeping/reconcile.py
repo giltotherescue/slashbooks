@@ -287,68 +287,86 @@ def reconcile(
         )
 
 
-def reconcile_statement(entity_path: Path | str, statement_id: str) -> ReconcileResult:
-    """Observe a confirmed archived statement and reconcile its source figures.
-
-    The timestamp records this read of the immutable original, not a fresh bank
-    connection. Activity comes from the imported source rows, never from subtracting
-    the two balances or from the ledger being checked.
-    """
+def _statement_reconciliation_inputs(root: Path, statement_id: str) -> dict:
     from .coverage import load_statements, load_statement_documents, _parse_amount
+    from .tieout import presentation_sign
+
+    records, findings = load_statements(root)
+    if findings:
+        raise ValueError("Check the saved statement history before reconciling.")
+    record = next((item for item in records if item.statement_id == statement_id and item.kind == "statement"), None)
+    if record is None:
+        raise ValueError("Choose a current imported statement; missing or replaced statements cannot be reconciled.")
+    peers = [item for item in records if item.kind == "statement" and
+             (item.account, item.period_start, item.period_end) ==
+             (record.account, record.period_start, record.period_end)]
+    if len(peers) != 1:
+        raise ValueError("Select the current statement before reconciling conflicting statements.")
+    document = next(item for item in load_statement_documents(root) if item["statement_id"] == statement_id)
+    from .entity import load_entity
+    if document.get("currency") != load_entity(root).currency:
+        raise ValueError("The saved statement needs the company currency; recheck its original intake.")
+    if (document.get("period_confirmed") is not True or record.opening_balance is None
+            or record.closing_balance is None
+            or document.get("opening_balance_date") != record.period_start.isoformat()
+            or document.get("closing_balance_date") != record.period_end.isoformat()):
+        raise ValueError("The saved statement needs a confirmed period and both dated source balances.")
+    activity = _parse_amount(document.get("transactions_total"))
+    if activity is None:
+        raise ValueError("The saved statement has no source transaction total; recheck the original file.")
+    sign = presentation_sign(record.account)
+    opening, closing = record.opening_balance * sign, record.closing_balance * sign
+    if opening + activity != closing:
+        raise ValueError("The source activity does not agree with its opening and closing balances.")
+    ref, digest = record.evidence_ref, record.evidence_sha256
+    if not re.fullmatch(r"ingestion/statements/files/[0-9a-f]{64}\.(?:csv|ofx|qfx|qbo|pdf)", ref):
+        raise ValueError("The statement does not identify an archived original source file.")
+    archived = root / ref
+    if not archived.resolve().is_relative_to(root.resolve() / "ingestion/statements/files"):
+        raise ValueError("The original source must remain inside the statement archive.")
+    try:
+        with archived.open("rb") as original:
+            actual = hashlib.file_digest(original, "sha256").hexdigest()
+    except OSError as exc:
+        raise ValueError("The original statement file could not be read.") from exc
+    if actual != digest or archived.stem != digest:
+        raise ValueError("The original statement file does not match its saved source hash.")
+    observed = datetime.now(timezone.utc)
+    if record.period_end > observed.date():
+        raise ValueError("A statement ending in the future cannot establish completed source coverage.")
+    return {"account": record.account, "source_balance": closing, "as_of": record.period_end,
+            "source_opening_balance": opening, "source_transaction_total": activity,
+            "source_snapshot_at": observed.isoformat(), "source_through": record.period_end.isoformat(),
+            "source_evidence_refs": [ref], "source_evidence_hashes": {ref: digest}}
+
+
+def preview_statement_reconciliation(entity_path: Path | str, statement_id: str) -> dict:
+    """Read verified original-source facts without writing a reconciliation.
+
+    The observation time describes this read of the archive, not a new bank sync.
+    """
+    from .ledger.importer import _entity_write_lock
+    from .preparation_runtime import evidence_hash
+
+    root = Path(entity_path)
+    with _entity_write_lock(root):
+        source = _statement_reconciliation_inputs(root, statement_id)
+    facts = {key: value.isoformat() if isinstance(value, date) else str(value)
+             for key, value in source.items() if key not in {"source_evidence_refs", "source_evidence_hashes"}}
+    return {"statement_id": statement_id, "facts": facts, "fact_hash": evidence_hash(facts),
+            "evidence_refs": [{"id": ref, "sha256": source["source_evidence_hashes"][ref]}
+                              for ref in source["source_evidence_refs"]]}
+
+
+def reconcile_statement(entity_path: Path | str, statement_id: str) -> ReconcileResult:
+    """Reconcile from a confirmed original, never from ledger-derived source figures."""
     from .ledger.importer import _entity_write_lock
     from .preparation_runtime import recover_preparation_reconciliations
-    from .tieout import presentation_sign
 
     root = Path(entity_path)
     with _entity_write_lock(root):
         recover_preparation_reconciliations(root)
-        records, findings = load_statements(root)
-        if findings:
-            raise ValueError("Check the saved statement history before reconciling.")
-        record = next((item for item in records if item.statement_id == statement_id and item.kind == "statement"), None)
-        if record is None:
-            raise ValueError("Choose a current imported statement; missing or replaced statements cannot be reconciled.")
-        peers = [item for item in records if item.kind == "statement" and
-                 (item.account, item.period_start, item.period_end) ==
-                 (record.account, record.period_start, record.period_end)]
-        if len(peers) != 1:
-            raise ValueError("Select the current statement before reconciling conflicting statements.")
-        document = next(item for item in load_statement_documents(root) if item["statement_id"] == statement_id)
-        from .entity import load_entity
-        if document.get("currency") != load_entity(root).currency:
-            raise ValueError("The saved statement needs the company currency; recheck its original intake.")
-        if (document.get("period_confirmed") is not True or record.opening_balance is None
-                or record.closing_balance is None
-                or document.get("opening_balance_date") != record.period_start.isoformat()
-                or document.get("closing_balance_date") != record.period_end.isoformat()):
-            raise ValueError("The saved statement needs a confirmed period and both dated source balances.")
-        activity = _parse_amount(document.get("transactions_total"))
-        if activity is None:
-            raise ValueError("The saved statement has no source transaction total; recheck the original file.")
-        sign = presentation_sign(record.account)
-        opening, closing = record.opening_balance * sign, record.closing_balance * sign
-        if opening + activity != closing:
-            raise ValueError("The source activity does not agree with its opening and closing balances.")
-        ref, digest = record.evidence_ref, record.evidence_sha256
-        if not re.fullmatch(r"ingestion/statements/files/[0-9a-f]{64}\.(?:csv|ofx|qfx|qbo|pdf)", ref):
-            raise ValueError("The statement does not identify an archived original source file.")
-        archived = root / ref
-        if not archived.resolve().is_relative_to(root.resolve() / "ingestion/statements/files"):
-            raise ValueError("The original source must remain inside the statement archive.")
-        try:
-            with archived.open("rb") as original:
-                actual = hashlib.file_digest(original, "sha256").hexdigest()
-        except OSError as exc:
-            raise ValueError("The original statement file could not be read.") from exc
-        if actual != digest or archived.stem != digest:
-            raise ValueError("The original statement file does not match its saved source hash.")
-        observed = datetime.now(timezone.utc)
-        if record.period_end > observed.date():
-            raise ValueError("A statement ending in the future cannot establish completed source coverage.")
-        return _reconcile_unlocked(root, record.account, closing, record.period_end,
-            source_opening_balance=opening, source_transaction_total=activity,
-            source_snapshot_at=observed.isoformat(), source_through=record.period_end.isoformat(),
-            source_evidence_refs=[ref], source_evidence_hashes={ref: digest})
+        return _reconcile_unlocked(root, **_statement_reconciliation_inputs(root, statement_id))
 
 
 def _reconcile_unlocked(

@@ -52,6 +52,39 @@ class SavedStatementReconciliationTests(unittest.TestCase):
         from bookkeeping.reconcile import reconcile_statement
         return reconcile_statement(self.company, 'january')
 
+    def test_preview_reads_verified_source_facts_without_changing_workspace(self):
+        from bookkeeping.reconcile import preview_statement_reconciliation
+        from bookkeeping.preparation_runtime import evidence_hash, supported_preparation_command
+        from bookkeeping.remote_contract import command_spec
+        before = {str(p.relative_to(self.company)): p.read_bytes()
+                  for p in self.company.rglob("*") if p.is_file()}
+        result = preview_statement_reconciliation(self.company, "january")
+        self.assertEqual(result["statement_id"], "january")
+        facts = result["facts"]
+        self.assertEqual(facts["account"], CHECKING)
+        self.assertEqual(facts["as_of"], "2026-01-31")
+        self.assertEqual(facts["source_balance"], "10.00")
+        self.assertEqual(facts["source_opening_balance"], "0.00")
+        self.assertEqual(facts["source_transaction_total"], "10.00")
+        self.assertEqual(facts["source_through"], "2026-01-31")
+        self.assertEqual(result["fact_hash"], evidence_hash(facts))
+        argv = ["statement", "reconciliation-preview", "--entity", str(self.company), "--id", "january"]
+        self.assertFalse(command_spec(argv)["mutates"])
+        self.assertEqual(supported_preparation_command(argv).effect, "read")
+        with redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(main(argv), 0)
+        self.assertEqual(json.loads(output.getvalue())["facts"]["source_balance"], "10.00")
+        self.assertEqual({str(p.relative_to(self.company)): p.read_bytes()
+                          for p in self.company.rglob("*") if p.is_file()}, before)
+
+    def test_preview_cannot_attest_changed_original_bytes(self):
+        from bookkeeping.reconcile import preview_statement_reconciliation
+        original = next((self.company / "ingestion/statements/files").glob("*.csv"))
+        original.write_text("changed original")
+        with self.assertRaisesRegex(ValueError, "saved source hash"):
+            preview_statement_reconciliation(self.company, "january")
+        self.assertFalse((self.company / "reports/reconciliation.json").exists())
+
     def test_cli_uses_original_source_and_observes_it_without_changing_books(self):
         original = (self.company / 'ingestion/statements/january.json').read_bytes()
         ledger = (self.company / 'ledger.sqlite').read_bytes()
