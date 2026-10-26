@@ -78,6 +78,26 @@ def _policy(policy, opens, book='USD', account_book=None):
             raise ValueError(f'{field} must support {book}.')
     if len({policy[field] for field in roles}) != len(roles):
         raise ValueError('Stripe account roles require distinct accounts.')
+    transfer_rules = policy.get('transfer_rules', [])
+    if not isinstance(transfer_rules, list) or len(transfer_rules) > 100:
+        raise ValueError('Stripe transfer_rules must be a bounded array.')
+    transfer_ids = set()
+    for rule in transfer_rules:
+        if not isinstance(rule, dict) or _id(rule.get('id'), 'transfer rule ID') in transfer_ids:
+            raise ValueError('Transfer rules require unique IDs.')
+        transfer_ids.add(rule['id'])
+        match = rule.get('match')
+        if not isinstance(match, dict) or len(match) != 1 or next(iter(match)) not in {'transfer_id', 'destination'}:
+            raise ValueError('Transfer rules require one exact transfer or destination.')
+        field, value = next(iter(match.items()))
+        if not _id(value, field).startswith('tr_' if field == 'transfer_id' else 'acct_'):
+            raise ValueError('Invalid transfer selector.')
+        category = rule.get('category')
+        if category not in opens or not category.startswith(('Expenses:', 'Income:', 'Liabilities:')) or category in {policy[k] for k in roles}:
+            raise ValueError('Transfer rules require a separate expense, income or liability account.')
+        note = rule.get('accounting_note')
+        if not isinstance(note, str) or not note.strip() or len(note) > 1000:
+            raise ValueError('Transfer rules require the confirmed accounting treatment.')
     if policy['clearing_account'].startswith('Assets:Bank:') or policy['payout_transit_account'].startswith('Assets:Bank:'):
         raise ValueError('Processor and payout transit accounts cannot be bank cash accounts.')
     rules = policy.get('revenue_rules')
@@ -122,6 +142,44 @@ def _revenue(item, policy, context=None):
     if len(matches) != 1:
         raise ValueError('ambiguous_revenue_mapping' if matches else 'missing_revenue_mapping')
     return matches[0]
+
+
+def _transfer_treatment(bt, connect, policy, cur):
+    """Validate provider relationships; only trusted rules choose the account."""
+    transfers = _objects(connect, 'transfers')
+    reversals = _objects(connect, 'transferReversals')
+    source = _object_id(bt.get('source'))
+    reversal = None
+    if bt['type'] == 'transfer_refund':
+        matches = [row for row in reversals.values()
+                   if _object_id(row.get('balance_transaction')) == bt['id']]
+        if len(matches) != 1:
+            raise ValueError('missing_transfer_reversal_evidence')
+        reversal = matches[0]
+        parent = _object_id(reversal.get('transfer'))
+        if (source not in {parent, reversal['id']} or reversal.get('object') != 'transfer_reversal'
+                or reversal.get('currency') != cur or type(reversal.get('amount')) is not int
+                or reversal['amount'] != bt['amount'] or bt['amount'] <= 0):
+            raise ValueError('transfer_reversal_identity_conflict')
+    else:
+        parent = source
+    transfer = transfers.get(parent)
+    if (not transfer or transfer.get('object') != 'transfer' or transfer.get('livemode') is not policy['livemode']
+            or transfer.get('currency') != cur or type(transfer.get('amount')) is not int or transfer['amount'] <= 0
+            or not isinstance(_object_id(transfer.get('destination')), str)
+            or not _object_id(transfer['destination']).startswith('acct_') or bt['fee'] != 0):
+        raise ValueError('missing_or_invalid_transfer_evidence')
+    if reversal:
+        if reversal['amount'] > transfer['amount']:
+            raise ValueError('transfer_reversal_exceeds_original')
+    elif _object_id(transfer.get('balance_transaction')) != bt['id'] or transfer['amount'] != -bt['amount']:
+        raise ValueError('transfer_identity_conflict')
+    matches = [rule for rule in policy.get('transfer_rules', [])
+               if rule['match'].get('transfer_id') == parent
+               or rule['match'].get('destination') == _object_id(transfer['destination'])]
+    if len(matches) != 1:
+        raise ValueError('ambiguous_transfer_mapping' if matches else 'missing_transfer_mapping')
+    return transfer, reversal, matches[0]
 
 
 def _invoice_for_charge(charge, invoices, invoice_payments, gross, mode, cur='usd'):
@@ -252,8 +310,11 @@ def stripe_preview(evidence):
               or kind == 'payout_minimum_balance_hold' and amount < 0 and fee == 0
               or kind == 'payout_minimum_balance_release' and amount > 0 and fee == 0):
             pass  # Asset movements do not change sales, refunds, fees or payouts.
-        elif kind == 'payout' and amount < 0 and fee >= 0:
+        elif kind == 'payout' and amount <= 0 and fee >= 0:
             row['payouts'] -= amount
+        elif kind in {'transfer', 'transfer_refund'} and fee == 0 and (
+                kind == 'transfer' and amount < 0 or kind == 'transfer_refund' and amount > 0):
+            pass  # Accounting treatment comes from an explicit transfer rule.
         else:
             unsupported.append(dict(balance_transaction_id=bt['id'], type=kind, currency=currency))
     metadata = []
@@ -264,12 +325,17 @@ def stripe_preview(evidence):
             for key, value in (item.get('metadata') or {}).items():
                 if isinstance(key, str) and isinstance(value, str) and key and value and len(key) <= 200 and len(value) <= 200:
                     metadata.append(dict(object=kind, key=key, value=value, source_id=item['id']))
+    connect = evidence.get('connectEvidence') or {}
+    transfer_options = [{key: row.get(key) for key in ('id', 'destination', 'source_transaction',
+                        'balance_transaction', 'amount', 'currency')}
+                        for row in _objects(connect, 'transfers').values()]
     return dict(stripe_account_id=(evidence.get('account') or {}).get('id'),
                 livemode=evidence.get('livemode', (evidence.get('account') or {}).get('livemode')),
                 coverage=evidence.get('coverage'), transaction_count=len(bts), balance_transaction_ids=sorted(bts),
                 by_currency=[totals[key] for key in sorted(totals)], unsupported=unsupported,
                 metadata_options=metadata[:500], prices=list(_objects(evidence, 'prices').values())[:500],
-                products=list(_objects(evidence, 'products').values())[:500])
+                products=list(_objects(evidence, 'products').values())[:500],
+                transfer_options=transfer_options[:500])
 
 
 def stripe_merge_previews(previous, current):
@@ -311,11 +377,12 @@ def stripe_merge_previews(previous, current):
             for field in fields: merged[field] = _minor(merged[field] + row[field])
     result = dict(current, transaction_count=len(old_ids | new_ids), balance_transaction_ids=sorted(old_ids | new_ids),
                   by_currency=[totals[key] for key in sorted(totals)])
-    for field, identity in (('prices', 'id'), ('products', 'id'), ('unsupported', 'balance_transaction_id')):
+    for field, identity in (('prices', 'id'), ('products', 'id'), ('transfer_options', 'id'), ('unsupported', 'balance_transaction_id')):
         rows = {}
         for summary in (previous, current):
-            if not isinstance(summary.get(field), list): raise ValueError('Invalid preview discovery array.')
-            for row in summary[field]:
+            discovered = summary.get(field, [] if field == 'transfer_options' else None)
+            if not isinstance(discovered, list): raise ValueError('Invalid preview discovery array.')
+            for row in discovered:
                 if not isinstance(row, dict): raise ValueError('Invalid preview discovery row.')
                 key = _id(row.get(identity), identity)
                 if key in rows and rows[key] != row: raise ValueError('Conflicting preview discovery evidence.')
@@ -488,6 +555,18 @@ def _source_capture_digest(bt, objects):
         charge(refund.get('charge'))
     elif kind == 'payout':
         remember('payouts', source)
+    elif kind in {'transfer', 'transfer_refund'}:
+        # Include the complete captured relationship, including duplicates that
+        # would make a reversal ambiguous. Future reversal totals are mutable.
+        connect = objects['connectEvidence']
+        source_id = _object_id(source)
+        reversals = [row for row in connect.get('transferReversals', [])
+                     if _object_id(row.get('balance_transaction')) == bt['id']]
+        parents = {source_id, *(_object_id(row.get('transfer')) for row in reversals)}
+        captured['connect'] = dict(reversals=reversals, transfers=[
+            {key: row.get(key) for key in ('id', 'object', 'amount', 'currency', 'livemode',
+             'balance_transaction', 'destination', 'source_transaction')}
+            for row in connect.get('transfers', []) if row.get('id') in parents])
     return _digest(captured)
 
 
@@ -556,12 +635,12 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         if po in by_payout or sid in claimed:
             raise ValueError('A payout and bank source can each be matched only once.')
         by_payout[po] = match; claimed.add(sid)
-    result = dict(actions=[], normalized_sources=[], unresolved=[], skipped=[], next_cursor=None,
+    result = dict(actions=[], no_effect=[], normalized_sources=[], unresolved=[], skipped=[], next_cursor=None,
                   source_capture_digests={},
                   policy_digest=_digest(policy), evidence_digest=_digest(evidence), ledger_digest=store.content_digest())
     objects = dict(charges=charges, refunds=refunds, invoices=invoices, payouts=payouts, prices=prices,
                    products=products, paymentIntents=intents, invoicePayments=invoice_payments,
-                   checkoutSessions=sessions)
+                   checkoutSessions=sessions, connectEvidence=evidence.get('connectEvidence') or {})
     all_ids = sorted(sid for sid in validated if sid > after_source_id)
     selected = all_ids[:limit]
     result['next_cursor'] = selected[-1] if len(all_ids) > limit else None
@@ -578,6 +657,14 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         previous = pending.get(sid) or saved.get(sid)
         if previous and (previous.get('stripe_financial_digest') != normalized['stripe_financial_digest'] or not _same_source(previous, normalized)):
             result['unresolved'].append(dict(source_id=sid, reason='changed_source')); continue
+        recorded_no_effect = (saved.get(sid) or {}).get('stripe_no_effect_capture_digest')
+        if recorded_no_effect:
+            if recorded_no_effect != result['source_capture_digests'][sid]:
+                result['unresolved'].append(dict(source_id=sid, reason='changed_no_effect_evidence'))
+            else:
+                result['no_effect'].append(dict(source_id=sid, already_recorded=True,
+                    normalized_source={**normalized, 'stripe_no_effect_capture_digest': recorded_no_effect}))
+            continue
         if sid in posted:
             result['skipped'].append(dict(source_id=sid, reason='already_posted')); continue
         result['normalized_sources'].append(normalized)
@@ -649,11 +736,32 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                     raise ValueError('invalid_reserve_direction')
                 postings.append((policy['reserve_account'], -bt['amount']))
                 authority = ['reserve-account-policy']
-            elif kind == 'payout' and bt['amount'] < 0 and bt['fee'] >= 0:
+            elif kind in {'transfer', 'transfer_refund'}:
+                transfer, reversal, rule = _transfer_treatment(bt, objects['connectEvidence'], policy, cur)
+                if reversal:
+                    original_id = f"stripe:{account}:{_object_id(transfer.get('balance_transaction'))}"
+                    original = entries.get(original_id)
+                    if original and (original_id in reversed_ids or
+                            not any(p.account == rule['category'] and p.amount == Decimal(_amount(transfer['amount']))
+                                    for p in original.postings)):
+                        raise ValueError('transfer_reversal_treatment_changed')
+                postings.append((rule['category'], -bt['amount']))
+                authority = ['transfer-rule:' + rule['id']]
+            elif kind == 'payout' and bt['amount'] <= 0 and bt['fee'] >= 0:
                 payout = source or payouts.get(source_id)
                 if (not payout or _object_id(payout.get('balance_transaction')) != bt['id'] or payout.get('amount') != -bt['amount']
                         or payout.get('currency') != cur or payout.get('status') not in {'paid', 'in_transit', 'pending'}):
                     raise ValueError('missing_or_failed_payout')
+                if bt['amount'] == 0:
+                    if bt['fee'] != 0 or payout.get('status') != 'paid' or payout.get('failure_balance_transaction'):
+                        raise ValueError('invalid_zero_payout')
+                    capture = result['source_capture_digests'][sid]
+                    previous_effect = (saved.get(sid) or {}).get('stripe_no_effect_capture_digest')
+                    if sid in saved and previous_effect != capture:
+                        raise ValueError('changed_no_effect_evidence')
+                    result['no_effect'].append(dict(source_id=sid, already_recorded=bool(previous_effect),
+                        normalized_source={**normalized, 'stripe_no_effect_capture_digest': capture}))
+                    continue
                 postings.append((policy['payout_transit_account'], -bt['amount']))
                 if bt['fee']:
                     postings.append((policy['fee_account'], bt['fee']))
@@ -840,11 +948,17 @@ def stripe_apply(entity, evidence, policy, *, expected_plan_digest, bank_matches
             _atomic_ledger_write_unlocked(entity, [], entries, session_id, ts, 'Apply approved Stripe clearing batch',
                                          [action['normalized_source'] for action in plan['actions']],
                                          finalization_receipt=receipt)
-        ids = sorted({*recovered, *(action['source_id'] for action in plan['actions'])})
+        no_effect = [row['normalized_source'] for row in plan['no_effect'] if not row['already_recorded']]
+        if no_effect:
+            _atomic_ledger_write_unlocked(entity, [], [], session_id, ts, 'Verify zero-value Stripe payouts',
+                                         no_effect, source_status='no_financial_effect')
+        ids = sorted({*recovered, *(action['source_id'] for action in plan['actions']),
+                      *(row['source_id'] for row in plan['no_effect'])})
         if ids:
             StagingStore(entity.staging_dir).bulk_mark_seen(ids)
             queue._remove_many_from_pending_categorization(entity, ids)
-        return dict(posted=len(entries), skipped=len(plan['skipped']), held=len(plan['unresolved']),
+        return dict(posted=len(entries), no_financial_effect=len(plan['no_effect']),
+                    skipped=len(plan['skipped']), held=len(plan['unresolved']),
                     next_cursor=plan['next_cursor'], plan_digest=plan['plan_digest'],
                     unresolved=[dict(row) for row in plan['unresolved']],
                     needs_review=[dict(row) for row in needs_review])
