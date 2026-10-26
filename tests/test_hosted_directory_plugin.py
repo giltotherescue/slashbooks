@@ -13,11 +13,8 @@ DEFAULT_SCOPES = [
     "books:read", "questions:write", "proposals:write", "evidence:write",
     "sources:write", "runs:write", "books:write",
 ]
-CHATGPT_DESCRIPTION = (
-    "You don’t need a bookkeeper anymore. Slashbooks keeps your books up to date right inside ChatGPT. "
-    "It records transactions, checks your accounts, and prepares reports for your accountant. "
-    "When it needs an answer, it asks. Requires a Slashbooks account."
-)
+CHATGPT_DESCRIPTION = 'Slashbooks helps you handle your small business accounting through ChatGPT. Sync your business bank accounts, categorize transactions, close your books monthly, and prepare financial reports for your accountant. Ask questions about your finances and forecast cash flow.\n\nSlashbooks gives ChatGPT a double-entry accounting system that handles the calculations and checks that entries balance. Built-in workflows guide the bookkeeping for different types of businesses, from recording daily transactions to preparing for month-end close.\n\nRequires a Slashbooks Cloud account.'
+
 CLAUDE_DESCRIPTION = CHATGPT_DESCRIPTION.replace("ChatGPT", "Claude")
 
 
@@ -34,7 +31,7 @@ class HostedDirectoryPluginTests(unittest.TestCase):
     def test_portable_identity_and_endpoint(self):
         manifest = self.load("plugin.json")
         self.assertEqual(manifest["name"], "slashbooks-cloud")
-        self.assertEqual(manifest["version"], "0.9.1")
+        self.assertEqual(manifest["version"], "0.9.2")
         self.assertEqual(manifest["extensions"]["com.openai"]["interface"]["displayName"], "Slashbooks")
         interface = manifest["extensions"]["com.openai"]["interface"]
         self.assertLessEqual(len(interface["shortDescription"]), 30)
@@ -48,7 +45,7 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         self.assertEqual(self.png_dimensions("assets/icon.png"), (512, 512))
         self.assertEqual(manifest["author"]["email"], "hi@slashbooks.co")
         self.assertNotIn("Cloud", manifest["description"])
-        self.assertNotIn("Cloud", interface["longDescription"])
+        self.assertIn("Requires a Slashbooks Cloud account.", interface["longDescription"])
         self.assertNotIn("—", interface["longDescription"])
 
         mcp = self.load("mcp.json")["mcpServers"]
@@ -66,10 +63,10 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         self.assertFalse((PACKAGE / ".claude-plugin/plugin.json").exists())
         manifest = self.load("claude-plugin.template.json")
         self.assertEqual(manifest["name"], "slashbooks-cloud")
-        self.assertEqual(manifest["version"], "0.9.1")
+        self.assertEqual(manifest["version"], "0.9.2")
         self.assertEqual(manifest["description"], CLAUDE_DESCRIPTION)
         self.assertEqual(manifest["icon"], "./assets/icon.png")
-        self.assertNotIn("Cloud", manifest["description"])
+        self.assertIn("Requires a Slashbooks Cloud account.", manifest["description"])
         self.assertNotIn("—", manifest["description"])
         mcp = self.load(".mcp.json")["mcpServers"]
         self.assertEqual(mcp["slashbooks"]["url"], "https://slashbooks.co/mcp")

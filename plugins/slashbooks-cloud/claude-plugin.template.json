@@ -1,7 +1,7 @@
 {
   "name": "slashbooks-cloud",
-  "version": "0.9.1",
-  "description": "You don’t need a bookkeeper anymore. Slashbooks keeps your books up to date right inside Claude. It records transactions, checks your accounts, and prepares reports for your accountant. When it needs an answer, it asks. Requires a Slashbooks account.",
+  "version": "0.9.2",
+  "description": "Slashbooks helps you handle your small business accounting through Claude. Sync your business bank accounts, categorize transactions, close your books monthly, and prepare financial reports for your accountant. Ask questions about your finances and forecast cash flow.\n\nSlashbooks gives Claude a double-entry accounting system that handles the calculations and checks that entries balance. Built-in workflows guide the bookkeeping for different types of businesses, from recording daily transactions to preparing for month-end close.\n\nRequires a Slashbooks Cloud account.",
   "author": {
     "name": "Lower Coast Labs, LLC",
     "email": "hi@slashbooks.co"
