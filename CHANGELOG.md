@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.9.2 — 2026-10-26
+
+- Preserve original statement proof through reconciliation, approval receipts and
+  accountant exports. CSV and OFX source figures are checked against archived
+  bytes rather than treating manual overrides as original evidence. Unchanged
+  evidence rereads retain their original intake time.
+- Enforce correction and reversal amount limits on original and replacement
+  effects, and reserve known bank-source identities to prevent a replacement
+  entry from impersonating unposted imported activity.
+- Allow a due-entry check that has no entries to record under existing standing
+  authority, without asking for unrelated adjustment permissions.
 
 - Read large queue and duplicate histories in bounded JSON pages with
   `--offset` and `--limit`, preserving complete records and continuation counts.
@@ -14,11 +24,7 @@
   requiring copied amounts, dates and evidence hashes. Replaced or incomplete
   statements remain blocked, and bank/card signs stay in the engine.
 
-## Unreleased
-
 - Accountant exports retain the saved statement evidence references in the Source columns of Reconciliations and Source Index, in CSV and Excel.
-
-## 0.9.2 — 2026-10-23
 
 - Cloud login supports explicit `--scope` permissions with browser approval. Adjustment authority remains off by default. Reconnecting the same company can request permission to save approved accrual opening balances.
 - Cloud onboarding guidance checks the installed completion and permission commands, keeps approval of balances separate from connection consent, and explains how a connected agent can finish setup with Automations off.
