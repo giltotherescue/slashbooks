@@ -328,7 +328,29 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
             ),
         )
     elif path == ("reconcile",):
-        intent = _reconciliation_intent(args, source_hashes)
+        statement_id = args.statement_id
+        checked_hashes = dict(source_hashes)
+        if statement_id is not None:
+            if any((args.account, args.as_of, args.all_accounts, args.balances_json,
+                    args.source_balance is not None, args.source_opening_balance is not None,
+                    args.source_transaction_total is not None, args.source_snapshot_at,
+                    args.source_through, args.source_evidence_refs, args.source_evidence_hashes)):
+                raise PreparationDenied(0, "statement_source_override_forbidden")
+            preview = reconcile.preview_statement_reconciliation(resolved, statement_id)
+            if checked_hashes.pop(statement_id, None) != evidence_hash(preview):
+                raise PreparationDenied(0, "source_evidence_changed")
+            if any(checked_hashes.get(f"evidence:{item['id']}") != item["sha256"]
+                   for item in preview["evidence_refs"]):
+                raise PreparationDenied(0, "source_evidence_changed")
+            args.statement_id = None
+            for field, value in preview["facts"].items():
+                setattr(args, field, value)
+            args.source_evidence_refs = [item["id"] for item in preview["evidence_refs"]]
+            args.source_evidence_hashes = {item["id"]: item["sha256"] for item in preview["evidence_refs"]}
+        intent = _reconciliation_intent(args, checked_hashes)
+        if statement_id is not None:
+            intent = replace(intent, source_ids=tuple(sorted((*intent.source_ids, statement_id))),
+                             evidence_hashes=tuple(sorted((*intent.evidence_hashes, source_hashes[statement_id]))))
         authorize_batch(context, [intent])
         bound = _Boundary(
             context, resolved, expected_ledger_digest, tuple(sorted(source_hashes.items())),

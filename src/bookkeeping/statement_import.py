@@ -838,6 +838,17 @@ def _store_record(entity_path: Path, record: JsonObject) -> None:
     from . import coverage
 
     pending = _unconfirmed_path(entity_path, record["statement_id"])
+    existing = coverage.statements_dir(entity_path) / f"{record['statement_id']}.json"
+    try:
+        previous = json.loads(existing.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        previous = None
+    if (isinstance(previous, dict) and previous.get("evidence_ref") == record.get("evidence_ref")
+            and previous.get("evidence_sha256") == record.get("evidence_sha256")
+            and isinstance(previous.get("imported_at"), str)):
+        # A duplicate intake observes the same original; it is not a new bank
+        # reading and must not invalidate a resolved discrepancy by time alone.
+        record["imported_at"] = previous["imported_at"]
     if record["period_confirmed"]:
         contract = {k: record[k] for k in coverage.CONTRACT_FIELDS if k in record}
         coverage.record_statement(entity_path, contract, replace=True, extra=record, check_catalog=False)
