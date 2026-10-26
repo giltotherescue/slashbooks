@@ -1,5 +1,12 @@
 # Changelog
 
+## Slashbooks Cloud plugin 0.9.2 — 2026-10-26
+
+- Update the Claude and ChatGPT directory descriptions to explain small business
+  accounting, bank sync, monthly close and the double-entry system.
+- Keep the hosted skills and MCP connection in the standalone Cloud package.
+  This package release does not change the accounting engine.
+
 ## 0.9.2 — 2026-10-26
 
 - Preserve original statement proof through reconciliation, approval receipts and
