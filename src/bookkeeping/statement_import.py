@@ -1247,6 +1247,10 @@ def add_parser(subparsers: Any) -> None:
         "statement", help="Import historical bank and card statements (CSV, OFX, QFX, QBO)")
     sub = parser.add_subparsers(dest="statement_command", required=True)
 
+    reconcile_p = sub.add_parser("reconciliation-preview", help="Read verified source facts from one saved statement (no changes)")
+    reconcile_p.add_argument("--entity", type=Path, required=True)
+    reconcile_p.add_argument("--id", dest="statement_id", required=True)
+
     inspect_p = sub.add_parser("inspect", help="Detect a statement file and propose a mapping (no changes)")
     inspect_p.add_argument("file", type=Path)
     inspect_p.add_argument("--entity", type=Path, default=None, help="Company books directory")
@@ -1316,7 +1320,13 @@ def run(args: argparse.Namespace) -> int:
 
     command = args.statement_command
     try:
-        if command == "inspect":
+        if command == "reconciliation-preview":
+            from .reconcile import preview_statement_reconciliation
+            try:
+                result = preview_statement_reconciliation(args.entity, args.statement_id)
+            except ValueError as exc:
+                raise StatementImportError("statement_reconciliation", str(exc)) from exc
+        elif command == "inspect":
             config = load_entity(args.entity).entity_config if args.entity else None
             result = inspect_file(args.file, entity_config=config, profile=args.profile,
                                   ledger_account=args.ledger_account)
