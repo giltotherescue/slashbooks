@@ -664,3 +664,16 @@ class CorrectionAmountControlTests(ControlTestCase):
         allowed = replace(original, meta=(("source-id", "replacement-allowed"),))
         reverse_and_correct(self.entity, original.source_id, allowed, "synthetic-agent")
         self.assertEqual(len(store.load_entries()), 3)
+
+    def test_replacement_id_cannot_impersonate_an_unposted_bank_source(self):
+        from dataclasses import replace
+        from bookkeeping.ledger.importer import reverse_and_correct
+        store, original = self.posted("100.00")
+        self.pending("reserved-source", amount="20.00")
+        before = store.content_digest()
+        for source_id in ("reserved-source", "banksync:reserved-source"):
+            with self.subTest(source_id=source_id):
+                replacement = replace(original, meta=(("source-id", source_id),))
+                with self.assertRaisesRegex(ValueError, "reserved by source intake"):
+                    reverse_and_correct(self.entity, original.source_id, replacement, "synthetic-agent")
+                self.assertEqual(store.content_digest(), before)

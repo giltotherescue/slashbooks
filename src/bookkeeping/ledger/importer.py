@@ -1172,6 +1172,15 @@ def reverse_and_correct(
         original = _find_live_entry(store, original_source_id)
         from ..queue import _refuse_entries_above_ask_first
         _refuse_entries_above_ask_first(entity, original, corrected_entry)
+        replacement_id = corrected_entry.source_id
+        if replacement_id:
+            from ..queue import list_duplicate_candidates
+            reserved = {str(row.get("id") or "") for row in
+                        [*_load_pending_categorization(entity), *staging.get_pending()]}
+            reserved.update(str(row.get("source_id") or "") for row in list_duplicate_candidates(entity))
+            if staging.is_seen(replacement_id) or any(
+                    source_id_variants(replacement_id) & source_id_variants(source) for source in reserved if source):
+                raise ValueError("The replacement source ID is already reserved by source intake; choose a fresh correction ID.")
 
         # Build reversing entry (negate all posting amounts). The reversal's
         # metadata drops the original `source-id` so source-id lookups never
