@@ -52,14 +52,29 @@ class SavedStatementReconciliationTests(unittest.TestCase):
         from bookkeeping.reconcile import reconcile_statement
         return reconcile_statement(self.company, 'january')
 
+    def import_original(self, *, closing="10.00", **options):
+        from bookkeeping import statement_import as si
+        (self.company / "ingestion/statements/january.json").unlink(missing_ok=True)
+        path = Path(self.temp.name) / "original.ofx"
+        path.write_text("<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>USD"
+                        "<BANKACCTFROM><BANKID>000000000<ACCTID>SYNTHETIC-1234<ACCTTYPE>CHECKING</BANKACCTFROM>"
+                        "<BANKTRANLIST><DTSTART>20260101<DTEND>20260131"
+                        "<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260115<TRNAMT>10.00<FITID>synthetic-original-1<NAME>Synthetic receipt</STMTTRN>"
+                        "</BANKTRANLIST><LEDGERBAL><BALAMT>" + closing + "<DTASOF>20260131</LEDGERBAL>"
+                        "</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>")
+        si.save_profile(self.company, path, name="original-checking", ledger_account=CHECKING)
+        result = si.import_file(self.company, path, profile="original-checking", ts="2026-02-01T12:00:00Z", **options)
+        return result["statements"][0]["statement"]["statement_id"]
+
     def test_preview_reads_verified_source_facts_without_changing_workspace(self):
         from bookkeeping.reconcile import preview_statement_reconciliation
         from bookkeeping.preparation_runtime import evidence_hash, supported_preparation_command
         from bookkeeping.remote_contract import command_spec
+        statement_id = self.import_original()
         before = {str(p.relative_to(self.company)): p.read_bytes()
                   for p in self.company.rglob("*") if p.is_file()}
-        result = preview_statement_reconciliation(self.company, "january")
-        self.assertEqual(result["statement_id"], "january")
+        result = preview_statement_reconciliation(self.company, statement_id)
+        self.assertEqual(result["statement_id"], statement_id)
         facts = result["facts"]
         self.assertEqual(facts["account"], CHECKING)
         self.assertEqual(facts["as_of"], "2026-01-31")
@@ -68,7 +83,7 @@ class SavedStatementReconciliationTests(unittest.TestCase):
         self.assertEqual(facts["source_transaction_total"], "10.00")
         self.assertEqual(facts["source_through"], "2026-01-31")
         self.assertEqual(result["fact_hash"], evidence_hash(facts))
-        argv = ["statement", "reconciliation-preview", "--entity", str(self.company), "--id", "january"]
+        argv = ["statement", "reconciliation-preview", "--entity", str(self.company), "--id", statement_id]
         self.assertFalse(command_spec(argv)["mutates"])
         self.assertEqual(supported_preparation_command(argv).effect, "read")
         with redirect_stdout(io.StringIO()) as output:
@@ -76,6 +91,78 @@ class SavedStatementReconciliationTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())["facts"]["source_balance"], "10.00")
         self.assertEqual({str(p.relative_to(self.company)): p.read_bytes()
                           for p in self.company.rglob("*") if p.is_file()}, before)
+
+    def test_preview_rejects_manual_balance_or_period_overrides_against_unchanged_original(self):
+        from bookkeeping.reconcile import preview_statement_reconciliation
+        for options in [dict(opening_balance="1000.00", closing_balance="1010.00"),
+                        dict(period_start="2026-01-01", period_end="2026-09-30",
+                             opening_balance="0.00", closing_balance="10.00")]:
+            with self.subTest(options=options):
+                statement_id = self.import_original(**options)
+                with self.assertRaisesRegex(ValueError, "original does not establish"):
+                    preview_statement_reconciliation(self.company, statement_id)
+                self.assertFalse((self.company / "reports/reconciliation.json").exists())
+
+    def test_unchanged_saved_original_keeps_a_persons_discrepancy_resolution(self):
+        from bookkeeping.reconcile import reconcile_statement, resolve
+        statement_id = self.import_original(closing="20.00")
+        self.assertEqual(reconcile_statement(self.company, statement_id).status, "discrepancy")
+        resolve(self.company, CHECKING, "2026-01-31", "Synthetic documented opening difference")
+        reconcile_statement(self.company, statement_id)
+        [record] = list_discrepancies(self.company)
+        self.assertEqual(record["status"], "resolved")
+        self.assertEqual(record["resolution_note"], "Synthetic documented opening difference")
+        self.assertEqual(record["source_snapshot_at"], "2026-02-01T12:00:00+00:00")
+
+    def test_duplicate_import_keeps_original_intake_time_and_discrepancy_resolution(self):
+        from bookkeeping import statement_import as si
+        from bookkeeping.reconcile import reconcile_statement, resolve, preview_statement_reconciliation
+        statement_id = self.import_original(closing="20.00")
+        reconcile_statement(self.company, statement_id)
+        resolve(self.company, CHECKING, "2026-01-31", "Synthetic opening difference")
+        before = preview_statement_reconciliation(self.company, statement_id)
+        si.import_file(self.company, Path(self.temp.name) / "original.ofx", profile="original-checking",
+                       ts="2026-02-02T12:00:00Z")
+        self.assertEqual(preview_statement_reconciliation(self.company, statement_id), before)
+        reconcile_statement(self.company, statement_id)
+        [record] = list_discrepancies(self.company)
+        self.assertEqual(record["status"], "resolved")
+        self.assertEqual(record["resolution_note"], "Synthetic opening difference")
+
+    def test_protected_native_statement_preserves_holds_and_receipt_identity(self):
+        from datetime import timedelta
+        from dataclasses import replace
+        from bookkeeping.automation_policy import ExecutionContext, PreparationDenied, StandingPolicy
+        from bookkeeping.preparation_runtime import evidence_hash, run_preparation_command
+        from bookkeeping.reconcile import preview_statement_reconciliation
+        statement_id = self.import_original()
+        preview = preview_statement_reconciliation(self.company, statement_id)
+        facts = preview["facts"]
+        hashes = {statement_id: evidence_hash(preview),
+                  f"reconciliation:{CHECKING}:2026-01-31": preview["fact_hash"],
+                  **{f"evidence:{ref['id']}": ref["sha256"] for ref in preview["evidence_refs"]}}
+        policy = StandingPolicy.from_document(dict(schema_version=1, policy_id="synthetic-policy", version=1,
+            entity_key="synthetic", start_period="2026-01", end_period="2026-12", actions=["reconcile"],
+            held_source_ids=[statement_id], held_entry_ids=[]))
+        context = ExecutionContext("synthetic", "native-statement-test", policy, 1, 1, 1,
+                                   datetime.now(timezone.utc) + timedelta(minutes=5))
+        argv = ["reconcile", "--entity", str(self.company), "--statement-id", statement_id]
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with self.assertRaises(PreparationDenied):
+            run_preparation_command(argv, context, entity_path=self.company,
+                                    expected_ledger_digest=store.content_digest(), source_hashes=hashes)
+        self.assertFalse((self.company / "reports/reconciliation.json").exists())
+        context = replace(context, policy=replace(policy, held_source_ids=()))
+        wrong = {**hashes, f"evidence:{preview['evidence_refs'][0]['id']}": "b" * 64}
+        with self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
+            run_preparation_command(argv, context, entity_path=self.company,
+                                    expected_ledger_digest=store.content_digest(), source_hashes=wrong)
+        self.assertFalse((self.company / "reports/reconciliation.json").exists())
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(run_preparation_command(argv, context, entity_path=self.company,
+                expected_ledger_digest=store.content_digest(), source_hashes=hashes), 0)
+        events = store.load_audit_events()
+        self.assertIn(statement_id, json.dumps(events))
 
     def test_preview_cannot_attest_changed_original_bytes(self):
         from bookkeeping.reconcile import preview_statement_reconciliation

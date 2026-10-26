@@ -92,7 +92,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .ledger.model import Entry
 from functools import wraps
 
 from .entity import Entity, load_entity
@@ -297,6 +300,16 @@ def _refuse_above_ask_first(entity: Entity, amount: Optional[Decimal]) -> None:
 def _refuse_item_above_ask_first(entity: Entity, item: dict) -> None:
     if _enforced_ask_first(entity) is not None:
         _refuse_above_ask_first(entity, _amount_for_loaded_item(entity, item))
+
+
+def _refuse_entries_above_ask_first(entity: Entity, *entries: Entry) -> None:
+    """Fence both sides of a correction, including a replacement split into postings."""
+    if _enforced_ask_first(entity) is None:
+        return
+    for entry in entries:
+        amount = (sum((posting.amount for posting in entry.postings if posting.amount > 0), Decimal("0"))
+                  if all(posting.amount.is_finite() for posting in entry.postings) else None)
+        _refuse_above_ask_first(entity, amount)
 
 
 def _forbid_self_approval(item: dict) -> None:

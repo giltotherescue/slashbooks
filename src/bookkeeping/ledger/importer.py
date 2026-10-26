@@ -1170,6 +1170,8 @@ def reverse_and_correct(
         store = _ensure_ledger_store(entity)
 
         original = _find_live_entry(store, original_source_id)
+        from ..queue import _refuse_entries_above_ask_first
+        _refuse_entries_above_ask_first(entity, original, corrected_entry)
 
         # Build reversing entry (negate all posting amounts). The reversal's
         # metadata drops the original `source-id` so source-id lookups never
@@ -1265,6 +1267,8 @@ def reverse_entry(
         _require_unmanaged_entry(entity, original_source_id)
         store = _ensure_ledger_store(entity)
         original = _find_live_entry(store, original_source_id)
+        from ..queue import _refuse_entries_above_ask_first
+        _refuse_entries_above_ask_first(entity, original)
         reversing_entry = Entry(
             date=original.date,
             narration=f"Reversal of: {original.narration}",

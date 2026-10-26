@@ -287,7 +287,7 @@ def reconcile(
         )
 
 
-def _statement_reconciliation_inputs(root: Path, statement_id: str) -> dict:
+def _statement_reconciliation_inputs(root: Path, statement_id: str, *, original_only: bool = False) -> dict:
     from .coverage import load_statements, load_statement_documents, _parse_amount
     from .tieout import presentation_sign
 
@@ -331,13 +331,60 @@ def _statement_reconciliation_inputs(root: Path, statement_id: str) -> dict:
         raise ValueError("The original statement file could not be read.") from exc
     if actual != digest or archived.stem != digest:
         raise ValueError("The original statement file does not match its saved source hash.")
+    if original_only:
+        _verify_statement_original(root, archived, document)
     observed = datetime.now(timezone.utc)
     if record.period_end > observed.date():
         raise ValueError("A statement ending in the future cannot establish completed source coverage.")
+    imported_at = document.get("imported_at")
+    if imported_at is not None:
+        try:
+            snapshot = datetime.fromisoformat(imported_at.replace("Z", "+00:00"))
+            if snapshot.utcoffset() is None or snapshot > observed:
+                raise ValueError
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("The saved statement needs a valid original intake time.") from exc
+    elif original_only:
+        raise ValueError("The saved statement needs its original intake time for unattended reconciliation.")
+    else:
+        snapshot = observed
     return {"account": record.account, "source_balance": closing, "as_of": record.period_end,
             "source_opening_balance": opening, "source_transaction_total": activity,
-            "source_snapshot_at": observed.isoformat(), "source_through": record.period_end.isoformat(),
+            "source_snapshot_at": snapshot.isoformat(), "source_through": record.period_end.isoformat(),
             "source_evidence_refs": [ref], "source_evidence_hashes": {ref: digest}}
+
+
+def _verify_statement_original(root: Path, archived: Path, document: dict) -> None:
+    """Reparse deterministic originals without reusing manual intake overrides."""
+    from . import statement_import as si
+    from .entity import load_entity
+    from .connectors import ofx
+
+    entity = load_entity(root)
+    profiles = si._profiles(entity.entity_config)
+    name = document.get("profile")
+    profile = profiles.get(name)
+    if not profile or profile.get("ledger_account") != document.get("account"):
+        raise ValueError("The saved statement needs its current source mapping.")
+    fmt, text = si._load(archived)
+    if fmt == "ofx":
+        matches = [stmt for stmt in ofx.parse_ofx(text)
+                   if si._ofx_profile_for(profiles, stmt.account_identity) == name]
+        if len(matches) != 1:
+            raise ValueError("The original must identify exactly one mapped statement account.")
+        parsed = si._ofx_statement(matches[0], document["evidence_sha256"], name, profile, entity.currency)
+    elif fmt == "csv":
+        parsed = si._csv_statement(archived, text, document["evidence_sha256"], name, profile, entity.currency)
+    else:
+        raise ValueError("Extracted statement figures need owner-attested source facts for unattended reconciliation.")
+    original, _ = si._contract_record(parsed, fmt=fmt, ledger_account=profile["ledger_account"],
+                                      label=profile.get("account_name") or name,
+                                      confirmed_period=None, balances=(None, None))
+    fields = ("statement_id", "account", "period_start", "period_end", "period_confirmed",
+              "opening_balance", "closing_balance", "opening_balance_date", "closing_balance_date",
+              "transactions_total", "currency")
+    if original.get("period_confirmed") is not True or any(original.get(key) != document.get(key) for key in fields):
+        raise ValueError("The original does not establish these saved dates and balances; owner-attested source facts are needed.")
 
 
 def preview_statement_reconciliation(entity_path: Path | str, statement_id: str) -> dict:
@@ -350,7 +397,7 @@ def preview_statement_reconciliation(entity_path: Path | str, statement_id: str)
 
     root = Path(entity_path)
     with _entity_write_lock(root):
-        source = _statement_reconciliation_inputs(root, statement_id)
+        source = _statement_reconciliation_inputs(root, statement_id, original_only=True)
     facts = {key: value.isoformat() if isinstance(value, date) else str(value)
              for key, value in source.items() if key not in {"source_evidence_refs", "source_evidence_hashes"}}
     return {"statement_id": statement_id, "facts": facts, "fact_hash": evidence_hash(facts),

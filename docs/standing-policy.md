@@ -86,6 +86,15 @@ fresh model upload or model-provided balance. The host retains the operation
 receipt and workspace revision guard for proposal and reconciliation metadata
 writes.
 
+For native `reconcile --statement-id`, the host verifies the engine's read-only
+`statement reconciliation-preview`. In addition to the numeric/timing and archive
+fingerprints above, the trusted source map includes the statement ID, with
+`evidence_hash(preview)` as its value. The engine reparses the original again and
+includes that statement ID in policy holds and effect receipts. Manually supplied
+dates or balances that the original does not establish require the existing
+attested-facts path instead. A stable original intake time keeps an unchanged
+statement from invalidating a person's prior discrepancy resolution.
+
 The host supplies the expected ledger digest and fingerprints of previously
 verified source records. The write path rechecks the digest inside the ledger
 transaction, the proposal snapshot, the still-present staged sources and all

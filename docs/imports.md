@@ -355,8 +355,9 @@ books reconcile --entity ~/Documents/books/acme-co --statement-id STATEMENT_ID
 ```
 
 The engine verifies the archived original file against its saved SHA-256, reads
-its confirmed dates, balances and source-row total, and records when it reads that
-file. It converts bank/card presentation signs and compares those figures with
+its confirmed dates, balances and source-row total, and retains the original
+intake time when available. Re-reading unchanged evidence does not reopen a
+person's resolved discrepancy. It converts bank/card presentation signs and compares those figures with
 the ledger. No balance, activity total, timestamp or evidence hash needs to be
 transcribed. This observes the saved statement; it does not refresh a bank feed.
 
@@ -367,6 +368,14 @@ reconciliation does not post missing transactions or close the period. Check eac
 month's readiness before claiming the requested period is ready for review.
 Use the captured-source options for provider readings or other supported evidence;
 they cannot be combined with `--statement-id`.
+
+An embedding host can read `books statement reconciliation-preview --entity PATH
+--id STATEMENT_ID` before unattended reconciliation. This stricter preview
+reparses the archived CSV or OFX without manual overrides and checks its original
+period and balances against the saved record. A CSV without those source figures,
+or a manually transcribed or extracted statement, needs owner-attested facts
+through the host's protected confirmation path. The preview does not promote
+manually supplied figures into original-source proof.
 
 ### Month-end proof from a bank feed
 

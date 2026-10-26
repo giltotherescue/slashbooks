@@ -616,3 +616,51 @@ class ReviewFixTests(ControlTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CorrectionAmountControlTests(ControlTestCase):
+    def posted(self, amount):
+        self.pending("correction-original", amount=amount)
+        propose(self.entity, "correction-original", "Expenses:Software", "Synthetic original")
+        confirm(self.entity, "correction-original", "synthetic-person", ts=TS)
+        from bookkeeping.ledger.store import LedgerStore
+        store = LedgerStore(self.entity.path / "ledger.sqlite")
+        return store, store.load_entries()[0]
+
+    def test_correction_refuses_original_or_replacement_over_limit_without_writes(self):
+        from dataclasses import replace
+        from bookkeeping.ledger.importer import reverse_and_correct, reverse_entry
+        from bookkeeping.ledger.model import Posting
+        store, original = self.posted("100.00")
+        _set_ask_first(self.entity, "100.00")
+        os.environ["SLASHBOOKS_ENFORCE_ASK_FIRST"] = "1"
+        replacement = replace(original, meta=(("source-id", "replacement"),), postings=(
+            Posting("Assets:Bank:Checking", Decimal("50000.00")),
+            Posting("Expenses:Software", Decimal("-50000.00"))))
+        before = store.content_digest()
+        with self.assertRaises(queue_module.AskFirstError):
+            reverse_and_correct(self.entity, original.source_id, replacement, "synthetic-agent")
+        self.assertEqual(store.content_digest(), before)
+        _set_ask_first(self.entity, "99.99")
+        with self.assertRaises(queue_module.AskFirstError):
+            reverse_entry(self.entity, original.source_id, "synthetic-agent")
+        self.assertEqual(store.content_digest(), before)
+
+    def test_split_postings_do_not_bypass_limit_and_exact_limit_is_allowed(self):
+        from dataclasses import replace
+        from bookkeeping.ledger.importer import reverse_and_correct
+        from bookkeeping.ledger.model import Posting
+        store, original = self.posted("100.00")
+        _set_ask_first(self.entity, "100.00")
+        os.environ["SLASHBOOKS_ENFORCE_ASK_FIRST"] = "1"
+        replacement = replace(original, meta=(("source-id", "replacement"),), postings=(
+            Posting("Assets:Bank:Checking", Decimal("60.00")),
+            Posting("Expenses:Software", Decimal("60.00")),
+            Posting("Income:Consulting", Decimal("-120.00"))))
+        before = store.content_digest()
+        with self.assertRaises(queue_module.AskFirstError):
+            reverse_and_correct(self.entity, original.source_id, replacement, "synthetic-agent")
+        self.assertEqual(store.content_digest(), before)
+        allowed = replace(original, meta=(("source-id", "replacement-allowed"),))
+        reverse_and_correct(self.entity, original.source_id, allowed, "synthetic-agent")
+        self.assertEqual(len(store.load_entries()), 3)
