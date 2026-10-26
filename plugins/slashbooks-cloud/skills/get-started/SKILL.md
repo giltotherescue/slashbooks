@@ -25,8 +25,17 @@ are ready. A setup action does not block an unrelated read that the connection
 permits. On an older server without navigation, use the context, workflow
 exceptions, and tool descriptions without inventing authority.
 
-For setup, follow the human action and URL returned by Slashbooks. The current
-hosted tools cannot prove that all setup facts were durably recorded, so do not select or call onboarding completion. Do not invent a protected choice or an
+For setup, use the available MCP tools to save confirmed business facts and
+source references. Verify that required facts are durably recorded: read back
+the business profile and inspect the saved sources and accounts. After the user
+explicitly confirms completion, call `complete_bookkeeping_onboarding` with the
+current books revision and a stable request ID, then read back the setup receipt
+through `get_bookkeeping_context`. Completion records a status; it does not save
+missing facts or validate the accounts for you.
+
+If the tools, permission, confirmed facts, or saved support are missing, keep
+setup unfinished and use `handoff_to_slashbooks` when available. Follow the human
+action and URL returned by Slashbooks. Do not invent a protected choice or an
 unsupported setup route.
 
 Continue the user's requested task when it is known. Route ongoing review,
