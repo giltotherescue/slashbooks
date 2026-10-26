@@ -251,6 +251,7 @@ def _atomic_ledger_write_unlocked(
     supporting_mutations: Sequence[SupportingMutation] = (),
     expected_digest: str | None = None,
     adopt_currency: str | None = None,
+    source_status: str = "posted",
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
 
@@ -319,7 +320,7 @@ def _atomic_ledger_write_unlocked(
         )
         store.insert_opens(new_opens, conn)
         store.insert_entries(new_entries, conn)
-        store.insert_source_transactions(source_transactions, conn, imported_at=ts)
+        store.insert_source_transactions(source_transactions, conn, imported_at=ts, status=source_status)
         if supporting_mutations:
             from ..accrual.store import apply_mutations
             apply_mutations(store, supporting_mutations, conn)

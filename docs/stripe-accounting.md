@@ -181,3 +181,29 @@ that role, these movements wait for account setup. This does not authorize
 Connect transfers to recipients or treat those transfers as expenses.
 
 These event meanings follow [Stripe's balance transaction reference](https://docs.stripe.com/reports/balance-transaction-types).
+
+## Connected-account transfers
+
+Captured `connectEvidence.transfers` and `transferReversals` support outgoing
+transfers and their returns. The engine validates identity, mode, currency,
+direction, amount and reversal parent before applying an explicit policy rule:
+
+```json
+{"transfer_rules":[{"id":"recipient-funds","match":{"destination":"acct_example"},"category":"Liabilities:Recipient-Funds","accounting_note":"Recipient funds are payable; related customer receipts are recorded separately under the confirmed treatment."}]}
+```
+
+Use exactly one `destination` or `transfer_id` selector. The category must be an
+open expense, income or liability account, separate from the processor roles.
+Overlapping rules hold the movement. This rule classifies the transfer only;
+it does not split the customer charge, select gross versus net presentation,
+or calculate commission. Confirm that treatment and check the related charge
+and fees first. Provider metadata is evidence, never accounting authority.
+
+Returns use the parent transfer's rule. A return cannot use a category that
+conflicts with its already-recorded original transfer. Discovery exposes bounded
+`transfer_options` without customer names, contact details or arbitrary metadata.
+
+A paid zero-value payout with matching evidence and no fees is retained as a
+source with status `no_financial_effect`. It creates no journal entry and returns
+`no_financial_effect` separately from `posted`. Replays verify the source and
+evidence before finishing queue cleanup; changed evidence remains held.

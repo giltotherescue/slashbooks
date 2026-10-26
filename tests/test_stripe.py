@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -67,6 +68,122 @@ class StripeTests(unittest.TestCase):
             for posting in entry.postings:
                 result[posting.account] = result.get(posting.account, Decimal(0)) + posting.amount
         return result
+
+    def connect_flow(self):
+        self.raw['balanceTransactions'] = [dict(evidence()['balanceTransactions'][0],
+            id='txn_transfer', type='transfer', source='tr_one', amount=-9000, fee=0, net=-9000)]
+        self.raw['connectEvidence'] = {'transfers': [dict(id='tr_one', object='transfer',
+            amount=9000, currency='usd', livemode=False, destination='acct_seller',
+            balance_transaction='txn_transfer')], 'transferReversals': []}
+        self.policy['transfer_rules'] = [dict(id='seller', match={'destination': 'acct_seller'},
+            category='Income:Subscriptions', accounting_note='Confirmed contra-revenue treatment.')]
+
+    def test_transfer_and_partial_reversal_use_explicit_treatment_once(self):
+        self.connect_flow()
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual({CLEARING: Decimal('-90'), 'Income:Subscriptions': Decimal('90')}, self.balances())
+        self.assertEqual(0, self.apply()['posted'])
+        self.raw['balanceTransactions'] = [dict(self.raw['balanceTransactions'][0],
+            id='txn_reversal', type='transfer_refund', amount=2000, net=2000)]
+        self.raw['connectEvidence']['transferReversals'] = [dict(id='trr_one', object='transfer_reversal',
+            transfer='tr_one', balance_transaction='txn_reversal', amount=2000, currency='usd')]
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual({CLEARING: Decimal('-70'), 'Income:Subscriptions': Decimal('70')}, self.balances())
+        self.assertEqual(0, self.apply()['posted'])
+
+    def test_transfer_requires_unambiguous_mapping_and_provider_evidence(self):
+        self.connect_flow()
+        rule = self.policy.pop('transfer_rules')[0]
+        self.assertEqual('missing_transfer_mapping', self.stage()['unresolved'][0]['reason'])
+        self.policy['transfer_rules'] = [rule, {**rule, 'id': 'overlap', 'match': {'transfer_id': 'tr_one'}}]
+        self.assertEqual('ambiguous_transfer_mapping', self.stage()['unresolved'][0]['reason'])
+        self.policy['transfer_rules'] = [rule]
+        transfer = self.raw['connectEvidence']['transfers'][0]
+        for field, value in [('amount', 1), ('livemode', True), ('currency', 'eur'), ('balance_transaction', 'txn_other')]:
+            old = transfer[field]; transfer[field] = value
+            with self.subTest(field=field):
+                self.assertEqual([], self.stage()['actions'])
+            transfer[field] = old
+        self.assertEqual([], self.store.load_entries())
+
+    def test_transfer_rule_cannot_map_to_bank_or_omit_decision(self):
+        self.connect_flow()
+        for field, value in [('category', BANK), ('accounting_note', '')]:
+            old = self.policy['transfer_rules'][0][field]
+            self.policy['transfer_rules'][0][field] = value
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.stage()
+            self.policy['transfer_rules'][0][field] = old
+
+    def test_reversal_cannot_change_original_treatment(self):
+        self.connect_flow(); self.stage(); self.apply()
+        self.raw['balanceTransactions'] = [dict(self.raw['balanceTransactions'][0],
+            id='txn_reversal', type='transfer_refund', amount=2000, net=2000)]
+        self.raw['connectEvidence']['transferReversals'] = [dict(id='trr_one', object='transfer_reversal',
+            transfer='tr_one', balance_transaction='txn_reversal', amount=2000, currency='usd')]
+        self.policy['transfer_rules'][0]['category'] = INCOME
+        self.assertEqual('transfer_reversal_treatment_changed', self.stage()['unresolved'][0]['reason'])
+
+    def test_zero_payout_has_durable_no_effect_receipt_without_journal(self):
+        self.raw['balanceTransactions'] = [dict(evidence()['balanceTransactions'][0],
+            id='txn_zero', type='payout', source='po_zero', amount=0, fee=0, net=0)]
+        self.raw['payouts'] = [dict(id='po_zero', amount=0, currency='usd', status='paid', balance_transaction='txn_zero')]
+        self.stage(); result = self.apply()
+        self.assertEqual((0, 0, 1), (result['posted'], result['held'], result['no_financial_effect']))
+        self.assertEqual([], self.store.load_entries())
+        with self.store.connection() as conn:
+            self.assertEqual('no_financial_effect', conn.execute('SELECT status FROM source_transactions').fetchone()[0])
+        before = self.store.content_digest(); audits = self.store.load_audit_events()
+        self.stage(); self.apply()
+        self.assertEqual(before, self.store.content_digest())
+        self.assertEqual(audits, self.store.load_audit_events())
+        self.assertEqual([], self.store.verify_audit_chain())
+        self.raw['payouts'][0]['status'] = 'failed'
+        self.assertEqual('changed_no_effect_evidence', self.stage()['unresolved'][0]['reason'])
+
+    def test_zero_payout_requires_matching_evidence(self):
+        self.raw['balanceTransactions'] = [dict(evidence()['balanceTransactions'][0],
+            id='txn_zero', type='payout', source='po_zero', amount=0, fee=0, net=0)]
+        self.assertEqual('missing_or_failed_payout', self.stage()['unresolved'][0]['reason'])
+
+    def test_zero_payout_cleanup_recovers_after_commit_without_second_receipt(self):
+        self.raw['balanceTransactions'] = [dict(evidence()['balanceTransactions'][0],
+            id='txn_zero', type='payout', source='po_zero', amount=0, fee=0, net=0)]
+        self.raw['payouts'] = [dict(id='po_zero', amount=0, currency='usd', status='paid', balance_transaction='txn_zero')]
+        self.stage()
+        with patch('bookkeeping.stripe.queue._remove_many_from_pending_categorization', side_effect=OSError('interrupted')):
+            with self.assertRaises(OSError): self.apply()
+        audits = self.store.load_audit_events()
+        self.policy['enabled'] = False
+        result = self.apply(closed_through='2026-12-31')
+        self.assertEqual(1, result['no_financial_effect'])
+        self.assertEqual(audits, self.store.load_audit_events())
+        from bookkeeping.ledger.importer import check_store_integrity, _load_pending_categorization
+        self.assertEqual('ok', check_store_integrity(self.store).status)
+        self.assertEqual([], _load_pending_categorization(self.entity))
+
+    def test_preview_merges_older_summary_without_transfer_options(self):
+        old = stripe_preview(evidence()); old.pop('transfer_options')
+        self.connect_flow()
+        current = stripe_preview(self.raw)
+        merged = stripe_merge_previews(old, current)
+        self.assertEqual('acct_seller', merged['transfer_options'][0]['destination'])
+        self.assertEqual([], merged['unsupported'])
+
+    def test_transfer_reversal_rejects_ambiguous_or_mismatched_parent(self):
+        self.connect_flow()
+        self.raw['balanceTransactions'] = [dict(self.raw['balanceTransactions'][0],
+            id='txn_return', type='transfer_refund', source='trr_one', amount=2000, net=2000)]
+        reversal = dict(id='trr_one', object='transfer_reversal', transfer='tr_one',
+                        balance_transaction='txn_return', amount=2000, currency='usd')
+        self.raw['connectEvidence']['transferReversals'] = [reversal]
+        self.assertEqual(1, len(self.stage()['actions']))
+        for field, value in [('transfer', 'tr_other'), ('amount', 3000), ('currency', 'eur')]:
+            old = reversal[field]; reversal[field] = value
+            with self.subTest(field=field): self.assertEqual([], self.stage()['actions'])
+            reversal[field] = old
+        self.raw['connectEvidence']['transferReversals'].append({**reversal, 'id': 'trr_other'})
+        self.assertEqual('missing_transfer_reversal_evidence', self.stage()['unresolved'][0]['reason'])
 
     def full_flow(self):
         self.raw['balanceTransactions'].extend([
