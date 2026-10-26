@@ -42,8 +42,14 @@ For **Update my books**:
 
 Use the question tools for open questions and the report tools for financial
 answers. Use the company, period, basis, currency, and scope returned by
-Slashbooks. For setup, follow the returned human action and URL; the current
-hosted tools cannot prove all durable prerequisites, so do not select or call onboarding completion.
+Slashbooks. For setup, save confirmed facts and source references through the
+available tools, then read back the profile, sources and accounts. Required
+facts must be durably recorded before completion. After the user explicitly
+confirms completion, use `complete_bookkeeping_onboarding` with the current
+books revision and a stable request ID, then read back the setup receipt with
+`get_bookkeeping_context`. Completion saves status only, not missing facts.
+When a prerequisite, tool or permission is missing, keep setup unfinished and
+use `handoff_to_slashbooks` when available, following its returned action and URL.
 
 Read state before proposing work. Continue routine actions already allowed by
 the current approved policy and authenticated authority. Stop for a person-only

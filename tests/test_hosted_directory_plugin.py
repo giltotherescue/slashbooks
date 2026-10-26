@@ -132,15 +132,15 @@ class HostedDirectoryPluginTests(unittest.TestCase):
     def test_hosted_onboarding_requires_durable_prerequisites_or_handoff(self):
         getting_started = (PACKAGE / "skills/get-started/SKILL.md").read_text()
         books = (PACKAGE / "skills/books/SKILL.md").read_text()
-        combined = getting_started + books
-
-        self.assertIn("durably recorded", combined)
-        self.assertIn("follow the human action and URL", getting_started)
-        self.assertIn("cannot prove all durable prerequisites", books)
-        self.assertRegex(combined, re.compile(r"do not\s+select or call onboarding completion"))
+        for text in (getting_started, books):
+            skill = " ".join(text.split())
+            self.assertIn("durably recorded", skill)
+            self.assertIn("complete_bookkeeping_onboarding", skill)
+            self.assertIn("explicitly confirms completion", skill)
+            self.assertIn("read back", skill)
+            self.assertIn("handoff_to_slashbooks", skill)
+            self.assertNotIn("do not select or call onboarding completion", skill)
         self.assertIn("Do not invent a protected choice", getting_started)
-        self.assertNotIn("user supplies and confirms", combined)
-        self.assertNotIn("You may then perform the authorized setup", combined)
 
 
 if __name__ == "__main__":
