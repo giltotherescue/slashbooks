@@ -1231,8 +1231,10 @@ class TestIndustryStarterCharts(unittest.TestCase):
               "Expenses:Meals", "Expenses:Travel", "Expenses:Professional-Fees",
               "Equity:Owner-Draws", "Equity:Owner-Contributions", "Assets:Bank:Checking"}
     INDUSTRY = {
-        "retail": {"Income:Sales", "Assets:Other:Inventory", "Expenses:Cost-of-Goods-Sold", "Expenses:Payment-Fees"},
-        "restaurant": {"Income:Sales", "Assets:Other:Inventory", "Expenses:Cost-of-Goods-Sold", "Expenses:Payment-Fees"},
+        "retail": {"Income:Sales", "Assets:Other:Inventory", "Expenses:Cost-of-Goods-Sold", "Expenses:Payment-Fees",
+                   "Liabilities:Sales-Tax-Payable"},
+        "restaurant": {"Income:Sales", "Assets:Other:Inventory", "Expenses:Cost-of-Goods-Sold", "Expenses:Payment-Fees",
+                       "Liabilities:Sales-Tax-Payable"},
         "trades": {"Income:Services", "Expenses:Cost-of-Sales:Materials", "Expenses:Cost-of-Sales:Subcontractors",
                    "Expenses:Tools-and-Equipment"},
         "real_estate": {"Income:Rental-Income", "Expenses:Repairs", "Expenses:Property-Taxes",
@@ -1328,10 +1330,12 @@ class TestStarterAccounts(unittest.TestCase):
             before = self._opens(target)
             result = apply_starter_accounts(target, "restaurant")
             after = self._opens(target)
-            self.assertEqual(set(after), set(before) | set(starter_chart("restaurant")))
+            self.assertEqual(set(after), set(starter_chart("restaurant")))
             self.assertEqual(set(result["added"]), set(after) - set(before))
+            self.assertEqual(set(result["removed"]), set(before) - set(after))
+            self.assertEqual(set(result["removed"]), {"Income:Consulting", "Expenses:Subcontractors", "Expenses:Fees", "Income:Services"})
             self.assertIn("Expenses:Cost-of-Goods-Sold", result["added"])
-            self.assertTrue(all(after[a] == before[a] for a in before))
+            self.assertTrue(all(after[a] == before[a] for a in before if a in after))
             self.assertEqual({after[a] for a in result["added"]}, {date(2025, 3, 1)})
             self.assertEqual(load_entity(target).business_type, "restaurant")
             self.assertEqual(LedgerStore(target / "ledger.sqlite").get_meta("business_type"), "restaurant")
@@ -1371,6 +1375,25 @@ class TestStarterAccounts(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "already has entries"):
                 apply_starter_accounts(target, "retail")
             self.assertEqual({n: (target / n).read_bytes() for n in files}, files)
+
+    def test_keeps_user_added_referenced_and_new_chart_accounts(self) -> None:
+        from bookkeeping.entity import add_account, apply_starter_accounts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp, business_type="consulting")
+            add_account(target, "Expenses:Flour")  # not a starter account
+            config = json.loads((target / "entity.json").read_text(encoding="utf-8"))
+            config["bank_account_mappings"] = {"acct-1": "Expenses:Subcontractors"}  # named in settings
+            (target / "entity.json").write_text(json.dumps(config), encoding="utf-8")
+            result = apply_starter_accounts(target, "retail")
+            opens = self._opens(target)
+            self.assertIn("Expenses:Flour", opens)
+            self.assertIn("Expenses:Subcontractors", opens)
+            self.assertNotIn("Expenses:Subcontractors", result["removed"])
+            self.assertIn("Income:Consulting", result["removed"])
+            self.assertNotIn("Income:Consulting", opens)
+            self.assertIn("Liabilities:Sales-Tax-Payable", opens)
+            self.assertEqual(apply_starter_accounts(target, "retail")["removed"], [])
 
     def test_unknown_type_is_refused(self) -> None:
         from bookkeeping.entity import apply_starter_accounts

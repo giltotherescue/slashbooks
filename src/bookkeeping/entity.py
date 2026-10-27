@@ -266,6 +266,7 @@ _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
     + ("Income:Services",) + _COMMON_EXPENSE_ACCOUNTS,
     "retail": _CORE_ACCOUNTS + (
         "Income:Sales",
+        "Liabilities:Sales-Tax-Payable",
         "Assets:Other:Inventory",
         "Expenses:Cost-of-Goods-Sold",
         "Expenses:Shipping",
@@ -273,6 +274,7 @@ _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
     ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
     "restaurant": _CORE_ACCOUNTS + (
         "Income:Sales",
+        "Liabilities:Sales-Tax-Payable",
         "Assets:Other:Inventory",
         "Expenses:Cost-of-Goods-Sold",
         "Expenses:Supplies",
@@ -700,10 +702,14 @@ def add_account(
 def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[str, Any]:
     """Set the business type of a company that has no entries yet and add the starter accounts it lacks.
 
-    This is for a company that was created before its business type was known. It only adds
-    accounts: an account that already exists is not changed, and no account is removed. It
+    This is for a company that was created before its business type was known. An account that
+    already exists is not changed. It
     refuses a company that has entries, balance assertions or source transactions, and a
-    company whose ledger integrity is invalid. A repeat with the same type adds nothing.
+    company whose ledger integrity is invalid. A repeat with the same type changes nothing.
+
+    It also removes an account of the company's previous starter chart that the new chart lacks,
+    when no posting or balance assertion uses it and entity.json does not name it. An account
+    outside the previous starter chart is never removed.
     """
     from .currency import company_currency
     from .ledger.importer import _entity_write_lock, check_integrity
@@ -735,17 +741,33 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
                 chart = chart + tuple(a for a in _ACCRUAL_STARTER_ACCOUNTS if a not in chart)
             existing = {str(row[0]).lower() for row in conn.execute("SELECT name FROM accounts")}
             missing = [account for account in chart if account.lower() not in existing]
+            # Remove an unused account of the previous starter chart that the new chart lacks. An account
+            # that has postings or assertions, or that entity.json names, or that is not in the previous chart, stays.
+            config_text = json.dumps(entity.entity_config, sort_keys=True)
+            wanted = {a.lower() for a in chart}
+            removable = [a for a in starter_chart(entity.business_type) if a.lower() not in wanted]
+            removed: list[str] = []
+            for account in removable:
+                row = conn.execute("SELECT name FROM accounts WHERE name=?", (account,)).fetchone()
+                if row is None or json.dumps(account) in config_text:
+                    continue
+                if conn.execute("SELECT 1 FROM postings WHERE account=? UNION ALL SELECT 1 FROM balance_assertions "
+                                "WHERE account=? LIMIT 1", (account, account)).fetchone():
+                    continue
+                removed.append(account)
             opens = [Open(date=open_day, account=account,
                           currencies=(currency,) if not account.startswith(("Equity:", "Income:")) else ())
                      for account in missing]
-            if opens:
+            if opens or removed:
                 store.append_audit_event("intent", {
                     "session_id": "entity-starter-accounts", "entries": 0,
-                    "description": f"Add {len(opens)} starter accounts for business type {business_type}",
+                    "description": f"Add {len(opens)} and remove {len(removed)} starter accounts for business type {business_type}",
                 }, conn)
                 store.insert_opens(opens, conn)
+                for account in removed:
+                    conn.execute("DELETE FROM accounts WHERE name=?", (account,))
             store.set_meta("business_type", business_type, conn)
-            if opens:
+            if opens or removed:
                 store.append_audit_event("ledger-store-sealed", {
                     "session_id": "entity-starter-accounts", "entries": 0, "source_ids": [],
                     "store_sha256": store.content_digest(conn),
@@ -756,7 +778,7 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
             temp = entity.path / "entity.json.starter.tmp"
             temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
             os.replace(temp, entity.path / "entity.json")
-    return {"business_type": business_type, "added": missing,
+    return {"business_type": business_type, "added": missing, "removed": removed,
             "already_present": [a for a in chart if a not in missing]}
 
 
@@ -1553,9 +1575,11 @@ def run(args: Any) -> int:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             print(f"Business type: {report['business_type']}")
-            print(f"Added {len(report['added'])} accounts; {len(report['already_present'])} already present.")
+            print(f"Added {len(report['added'])} accounts, removed {len(report['removed'])}; {len(report['already_present'])} already present.")
             for account in report["added"]:
                 print(f"  + {account}")
+            for account in report["removed"]:
+                print(f"  - {account}")
         return 0
 
     if args.entity_command == "account-remove":
