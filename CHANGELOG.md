@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add `books statement import --period-from-rows` for a file with no printed
+  period. It records the first and last transaction dates as the period with
+  `coverage_basis: "transactions"`, never as a person-confirmed period.
+
 - Add industry starter charts: `services`, `saas`, `retail`, `restaurant`, `trades`,
   `real_estate` and `other`. Every chart now includes rent, payroll, payroll taxes,
   utilities, insurance, bank fees and professional fees. `consulting` is an alias of
