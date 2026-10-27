@@ -1,7 +1,7 @@
 {
   "as_of": "2026-03-31",
   "basis": "accrual",
-  "canonical_digest": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097",
+  "canonical_digest": "3c9a5d9b0c9d3693df1d547582ee3d12f12312d61dcea5229dc399af2fa9b860",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -75,8 +75,8 @@
     "cutover_date": "2026-01-01",
     "fiscal_start": "2026-01-01",
     "id": "opening",
-    "intent_hash": "c5a5b6722167a6b339a7c3a1c5a5aaec7673b6b1e865b024ac00c4da0e2dc0b3",
-    "mapping_hash": "ccfa0f94f1b65e3a500b1ab4b82ed95ffe2bbfbbc0cde171510318713b5ffd44",
+    "intent_hash": "a15d2bb65f109f17a60cf71f0e2cc0c9cf719dfac87387624869b6156300127f",
+    "mapping_hash": "b1dfdac55fcf42bfb57bb58b0e713e515af0fbb9d7a5e99550488629dc03cfcb",
     "opening_source_id": "golden-opening",
     "source_as_of": "2025-12-31",
     "source_hashes": {},
@@ -89,7 +89,7 @@
     "verified": true
   },
   "currency": "USD",
-  "fingerprint": "9646382d37a46c00d4c6ee03085d395861b316644cc19c587aa509e879ffc5ed",
+  "fingerprint": "f0db957d297e08b486c4d6d9b0b5dbffd8539ea30d490688a54e4ca9657444a6",
   "from_date": "2026-03-01",
   "issues": [],
   "kind": "support",

@@ -107,6 +107,17 @@
     },
     {
       "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Bank-Fees",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
       "has_postings": true,
       "name": "Expenses:Bonus",
       "open_date": "2025-12-31",
@@ -184,6 +195,50 @@
     },
     {
       "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Payroll",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Payroll-Taxes",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Professional-Fees",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Expenses:Rent",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "expense",
+      "subtype": "expense",
+      "support_records": {},
+      "type": "Expenses"
+    },
+    {
+      "currency": "USD",
       "has_postings": true,
       "name": "Expenses:Software",
       "open_date": "2026-01-01",
@@ -241,6 +296,17 @@
       "currency": "USD",
       "has_postings": true,
       "name": "Income:Consulting",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "income",
+      "subtype": "income",
+      "support_records": {},
+      "type": "Income"
+    },
+    {
+      "currency": "USD",
+      "has_postings": false,
+      "name": "Income:Services",
       "open_date": "2026-01-01",
       "reconciles_to_support": false,
       "role": "income",

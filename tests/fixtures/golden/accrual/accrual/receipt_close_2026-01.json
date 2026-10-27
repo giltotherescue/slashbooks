@@ -1,7 +1,7 @@
 {
   "id": "close-2026-01",
   "kind": "period_close",
-  "plan_hash": "94400a6594c652b602a6dcfa54bb7879f98cf649045c067af4fb6cda61e05894",
+  "plan_hash": "636bf51798523b3581d1684ec7dddeadc3c07ebebf73be5a66b3d28bd389e7e1",
   "receipt": {
     "authority": {
       "mode": "local_operator"
@@ -10,11 +10,11 @@
     "evidence_ids": [],
     "id": "close-2026-01",
     "kind": "period_close",
-    "plan_hash": "94400a6594c652b602a6dcfa54bb7879f98cf649045c067af4fb6cda61e05894",
-    "request_hash": "8e8429d6dfba6f8aa66d78c5232d2a9c3944f6288b5332883826349a96a96d7c",
+    "plan_hash": "636bf51798523b3581d1684ec7dddeadc3c07ebebf73be5a66b3d28bd389e7e1",
+    "request_hash": "f053c86f2e7fac1285f90c36e279fc37cbe882b3a1e52a207581c1111ca52a90",
     "status": "applied",
     "warnings": []
   },
-  "request_hash": "8e8429d6dfba6f8aa66d78c5232d2a9c3944f6288b5332883826349a96a96d7c",
+  "request_hash": "f053c86f2e7fac1285f90c36e279fc37cbe882b3a1e52a207581c1111ca52a90",
   "status": "applied"
 }

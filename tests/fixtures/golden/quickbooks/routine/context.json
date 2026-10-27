@@ -37,12 +37,20 @@
       "name": "Equity:Retained-Earnings"
     },
     {
+      "label": "Expenses:Bank-Fees",
+      "name": "Expenses:Bank-Fees"
+    },
+    {
       "label": "Expenses:Depreciation",
       "name": "Expenses:Depreciation"
     },
     {
       "label": "Expenses:Fees",
       "name": "Expenses:Fees"
+    },
+    {
+      "label": "Expenses:Insurance",
+      "name": "Expenses:Insurance"
     },
     {
       "label": "Expenses:Marketing",
@@ -61,6 +69,22 @@
       "name": "Expenses:Operating-Costs"
     },
     {
+      "label": "Expenses:Payroll",
+      "name": "Expenses:Payroll"
+    },
+    {
+      "label": "Expenses:Payroll-Taxes",
+      "name": "Expenses:Payroll-Taxes"
+    },
+    {
+      "label": "Expenses:Professional-Fees",
+      "name": "Expenses:Professional-Fees"
+    },
+    {
+      "label": "Expenses:Rent",
+      "name": "Expenses:Rent"
+    },
+    {
       "label": "Expenses:Software",
       "name": "Expenses:Software"
     },
@@ -75,6 +99,10 @@
     {
       "label": "Expenses:Travel",
       "name": "Expenses:Travel"
+    },
+    {
+      "label": "Expenses:Utilities",
+      "name": "Expenses:Utilities"
     },
     {
       "label": "Income:Consulting",

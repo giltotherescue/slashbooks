@@ -94,12 +94,12 @@
   ],
   "format": "slashbooks-company-snapshot",
   "ledger": {
-    "content_sha256": "9a88c6c190049292805ee8c75a0bfd554c76d7dd90c1f4dccb5812176d539e23",
+    "content_sha256": "1d30529b9e761d4e43dd5c48c442c7e76de3713458f0828147a7aca693cebf73",
     "schema_version": 2,
     "tables": {
       "accounts": {
-        "rows": 28,
-        "sha256": "465df1e1d80e2244a492d0d92e1af08aa6dc6cae6a8be63b63093a96837b5ce6"
+        "rows": 35,
+        "sha256": "ca936a5cdc1c809f0e785164ef87616ac8fbe6cd23575e6ab14c252a52e80a8d"
       },
       "accrual_allocations": {
         "rows": 5,
@@ -115,7 +115,7 @@
       },
       "accrual_intents": {
         "rows": 21,
-        "sha256": "0960c0051fa7cab1d1110caa01847ee3319c55bbb88592b95b0ac2126b997e73"
+        "sha256": "a5683b806f7ae9a5810a019cdac790260fd393351e6ee12750348a9b47cc9a76"
       },
       "accrual_items": {
         "rows": 3,
@@ -123,7 +123,7 @@
       },
       "accrual_periods": {
         "rows": 1,
-        "sha256": "c5c064051f59d94bd0fe2d407eab39ceba327b7cd395636b421a50c7fe9c3332"
+        "sha256": "1a61c34db50b3f2e1aa1e507db0accb65ee16135a324821109e0097086445482"
       },
       "accrual_schedules": {
         "rows": 2,
@@ -131,7 +131,7 @@
       },
       "audit_events": {
         "rows": 58,
-        "sha256": "bbd63d641ce2bc614b58fa1dc36a5038f210b6ef80501e74a372215d4b596b59"
+        "sha256": "4806f176c522c8c3dc654ec54b16796c2435f9ee1f106a869c83e6f4e21d49b0"
       },
       "balance_assertions": {
         "rows": 0,
@@ -159,7 +159,7 @@
       },
       "sqlite_sequence": {
         "rows": 4,
-        "sha256": "51ac28d761a4d82c19ec5088025b60dff4632f74e2a33e7be252dd88bba86bd4"
+        "sha256": "0246fa9c7b16585d06151a6d0733cd916b28ae3e9a8580454b2189a58e223289"
       }
     }
   },

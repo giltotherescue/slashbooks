@@ -40,9 +40,9 @@
       "verified": true
     }
   ],
-  "evidence_fingerprint": "277553f83287fc5914234ca9608a963614bc8b0a6bce780264ce19ffb8b3a31c",
+  "evidence_fingerprint": "fa8fc68cfaf50f1cfdf287411a1756771220def9c1007ec7c25113c6cb6277c5",
   "imported_summary_through": null,
-  "package_id": "149521e9e9ca72b58abcbc3eb64de53581072ade94b0b8d072674dcb9030068a",
+  "package_id": "c0c3bcab1cc8046505690b2c503ff590af611ec49656b05e5c2b6f28e98894bd",
   "partial_post_cutover": false,
   "period": "2026-03",
   "period_status": "completed",
@@ -55,7 +55,7 @@
       "period_from": "2026-03-01",
       "period_to": "2026-03-31",
       "provisional": true,
-      "sha256": "4cf1d0c36c0d9036e63feaf7d5795df12fefe559f5581dd7a02d6908c5130e00",
+      "sha256": "cfbb850ff4a2c403434de6e573977edd95b8d068172dee416c98c6bf30cb632f",
       "totals": {
         "net_income": "-170.00"
       }
@@ -65,7 +65,7 @@
       "period_from": "2026-03-01",
       "period_to": "2026-03-31",
       "provisional": true,
-      "sha256": "a8b9fa4c87557d83fa2e0e0dfdbd054577e444a90599d267e7a428bb1c50116a",
+      "sha256": "c3d56609b0a89ca42157d486267bfa43ed746bb28dae0b2ecd4df4cc6680541c",
       "totals": {
         "total_assets": "45200.00",
         "total_liabilities_and_equity": "45200.00"
@@ -76,7 +76,7 @@
       "period_from": "2026-03-01",
       "period_to": "2026-03-31",
       "provisional": true,
-      "sha256": "88cbe1894d9a9f64544b66ec1c7c9b20016445d9c4aa959e7b6a3f6bb80bf225",
+      "sha256": "d15b237e9253a1727bf9f693857bb9093d20002918d0c448bd85be3d58ff3f5f",
       "totals": {
         "net": "0.00",
         "total_credits": "49970.00",

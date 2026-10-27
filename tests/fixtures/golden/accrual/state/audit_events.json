@@ -4,11 +4,11 @@
     "payload": {
       "backup": "ledger.sqlite.schema-v1.00000000000040008000000000000001.sqlite",
       "from_version": 1,
-      "prior_store_sha256": "5f6760151073c9910a5ca674856fc5affcf98025f45562343586e89d0ea8d07b",
+      "prior_store_sha256": "b2ee1f1b0b01046d3096bc12f7a69d1d02eaf6afd7c73f7c736e539d01a364d8",
       "to_version": 2
     },
     "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
-    "record_hash": "caeabe53b8b6a19a9caf9d44869843c103c1c129b9525aa3809f2c25c6b31a25",
+    "record_hash": "430f8f72718b70054653b1855b0ea391e30a07a8762621145c971af6f89a6f1e",
     "ts": "2026-08-05T12:00:00Z",
     "type": "schema-upgraded"
   },
@@ -17,22 +17,22 @@
     "payload": {
       "entries": 0,
       "session_id": "schema-upgrade",
-      "store_sha256": "680ee555c22fdaabdc5a9ac0bd719895882b5d07065b7799262104429ad84bea"
+      "store_sha256": "62e6f944c9835438142266d36fda17e50c2949d0ec56fa010f039c2848a87690"
     },
-    "prev_hash": "caeabe53b8b6a19a9caf9d44869843c103c1c129b9525aa3809f2c25c6b31a25",
-    "record_hash": "92a0dbd3c8f0796e9ec1ee08a49a16c8fa8a5b4b450d25dd5ac67c7d6b7ca4a9",
+    "prev_hash": "430f8f72718b70054653b1855b0ea391e30a07a8762621145c971af6f89a6f1e",
+    "record_hash": "6d2601a35e38f06993597a96718c3ffce6884101776f4ad20acfba3a63cb63d8",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
   {
     "id": 3,
     "payload": {
-      "description": "Add account Expenses:Utilities: open 2025-12-31, currency USD",
+      "description": "Update account Expenses:Utilities: open 2025-12-31, currency USD",
       "entries": 0,
       "session_id": "entity-account-add"
     },
-    "prev_hash": "92a0dbd3c8f0796e9ec1ee08a49a16c8fa8a5b4b450d25dd5ac67c7d6b7ca4a9",
-    "record_hash": "b8909c21fb50df13e547dd2d2ecfecb791999fddcd227c81793383513acacfe5",
+    "prev_hash": "6d2601a35e38f06993597a96718c3ffce6884101776f4ad20acfba3a63cb63d8",
+    "record_hash": "9fd9e33f74de58bae9fc974e6c1437f370f7766b4a3dfb456ed8360eb6fb9ba4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -42,10 +42,10 @@
       "entries": 0,
       "session_id": "entity-account-add",
       "source_ids": [],
-      "store_sha256": "e29bae622917fee5b437fe8f96fb0afbfeb5fefcfb6b82a877b8c99227c5da51"
+      "store_sha256": "978190ca83aeaabae66c19ab21c2783c2438059974505f496563798334f863c7"
     },
-    "prev_hash": "b8909c21fb50df13e547dd2d2ecfecb791999fddcd227c81793383513acacfe5",
-    "record_hash": "4ed0d7a0562eac5fd551ad8283bfd4bf49e64ffbd3f7f333fbd71f88e95a9271",
+    "prev_hash": "9fd9e33f74de58bae9fc974e6c1437f370f7766b4a3dfb456ed8360eb6fb9ba4",
+    "record_hash": "cb25bb9abc89d5f5276552c89f095bc320e7ebc62beaca9700f5ca22c58c5898",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -56,8 +56,8 @@
       "entries": 0,
       "session_id": "entity-account-add"
     },
-    "prev_hash": "4ed0d7a0562eac5fd551ad8283bfd4bf49e64ffbd3f7f333fbd71f88e95a9271",
-    "record_hash": "ceffaa502582fe4351cdc1fd1a3be5a0d4f2d8a5b335c8081db44d44587458b9",
+    "prev_hash": "cb25bb9abc89d5f5276552c89f095bc320e7ebc62beaca9700f5ca22c58c5898",
+    "record_hash": "64f90567883346aa52de490cb1083980d4078cefc999d7da349732aefa9b446d",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -67,10 +67,10 @@
       "entries": 0,
       "session_id": "entity-account-add",
       "source_ids": [],
-      "store_sha256": "7591c55277fbc573156b33497d5378b60b1c20ea26f1ce0d598206d73e83e312"
+      "store_sha256": "350c7f7a709a0e032ba606decb6d31d7b7479f699bbe5538ee76d8d836b01603"
     },
-    "prev_hash": "ceffaa502582fe4351cdc1fd1a3be5a0d4f2d8a5b335c8081db44d44587458b9",
-    "record_hash": "e00ccd483c44cb38ed45caa55848cd0657c08caf21a2a45df2762b365c13f26f",
+    "prev_hash": "64f90567883346aa52de490cb1083980d4078cefc999d7da349732aefa9b446d",
+    "record_hash": "26710c3421de71d9a009b9969043ee26e11c3d23e258e9eaee9f66aee8e3c69f",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -81,8 +81,8 @@
       "entries": 0,
       "session_id": "entity-account-add"
     },
-    "prev_hash": "e00ccd483c44cb38ed45caa55848cd0657c08caf21a2a45df2762b365c13f26f",
-    "record_hash": "30adeccaa7dadb15a65eba81a047651239f77d4b788040f54c8942ac3f99260b",
+    "prev_hash": "26710c3421de71d9a009b9969043ee26e11c3d23e258e9eaee9f66aee8e3c69f",
+    "record_hash": "27017b2051c35d74c6a3ab958291dc2cc105cd99727732910fcfe404130f9fce",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -92,22 +92,22 @@
       "entries": 0,
       "session_id": "entity-account-add",
       "source_ids": [],
-      "store_sha256": "c6bc930d22ab2443f31fbe99e218e42eca4442b3f25c0d2d5bb39e547092e4ac"
+      "store_sha256": "70103a3fc80ff9abd319e95e49cc2b596a6094f63c141903be504a1c1df72771"
     },
-    "prev_hash": "30adeccaa7dadb15a65eba81a047651239f77d4b788040f54c8942ac3f99260b",
-    "record_hash": "b68596114b0382f43d4b7a57c0d53b0e437395a5e4f3bd0d3d0c624b7accf099",
+    "prev_hash": "27017b2051c35d74c6a3ab958291dc2cc105cd99727732910fcfe404130f9fce",
+    "record_hash": "beca37750d72de128a8f2cf228210db6eec313304ce4dcb2001b5229e0924583",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
   {
     "id": 9,
     "payload": {
-      "description": "Add account Expenses:Insurance: open 2025-12-31, currency USD",
+      "description": "Update account Expenses:Insurance: open 2025-12-31, currency USD",
       "entries": 0,
       "session_id": "entity-account-add"
     },
-    "prev_hash": "b68596114b0382f43d4b7a57c0d53b0e437395a5e4f3bd0d3d0c624b7accf099",
-    "record_hash": "4771d5fef083faa48a869c9b6252f2f0c4c62c0ca33c3e09846e07e1452ab66c",
+    "prev_hash": "beca37750d72de128a8f2cf228210db6eec313304ce4dcb2001b5229e0924583",
+    "record_hash": "b2c4824ccc589036db643edad03faa8e14f87b7fdc13e14dd0aa97ac01735894",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -117,10 +117,10 @@
       "entries": 0,
       "session_id": "entity-account-add",
       "source_ids": [],
-      "store_sha256": "3ffbc9c18bee4b814d0bbff5d7b4c8d5f26bec136bd80504703b65bd3bf1bfbd"
+      "store_sha256": "b9b55b834fc8b658eb9e0697599a6629ee0b3291d99670b1e5a375c45315a6df"
     },
-    "prev_hash": "4771d5fef083faa48a869c9b6252f2f0c4c62c0ca33c3e09846e07e1452ab66c",
-    "record_hash": "a986ecca476d3827ecf21cd482db2ddb7c2fea257cbff84caa8c81b1d43632b8",
+    "prev_hash": "b2c4824ccc589036db643edad03faa8e14f87b7fdc13e14dd0aa97ac01735894",
+    "record_hash": "beb6f6c13d471da61ca0e81356fe7d098b1b00eb3e5248ff83beb6172545376e",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -131,8 +131,8 @@
       "entries": 1,
       "session_id": "golden-opening"
     },
-    "prev_hash": "a986ecca476d3827ecf21cd482db2ddb7c2fea257cbff84caa8c81b1d43632b8",
-    "record_hash": "94088d17298c9b2fb061e98b16c63a0db6648cd2fd1b836b0bd09bc60bd1c8e6",
+    "prev_hash": "beb6f6c13d471da61ca0e81356fe7d098b1b00eb3e5248ff83beb6172545376e",
+    "record_hash": "2fd13ae06afd144f45c93bdf12955a99b7b5a21d423d3687d0d6290a0bbfbf75",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -183,8 +183,8 @@
       ],
       "session_id": "golden-opening"
     },
-    "prev_hash": "94088d17298c9b2fb061e98b16c63a0db6648cd2fd1b836b0bd09bc60bd1c8e6",
-    "record_hash": "275c1b7c0cc071840b058a08b70e53201f080183b8e49be91e3d0bbfefcccee1",
+    "prev_hash": "2fd13ae06afd144f45c93bdf12955a99b7b5a21d423d3687d0d6290a0bbfbf75",
+    "record_hash": "d0d17d8b6b8d6232ddfb9b9e98b6b38ca336cc82518830da09bbccc449370957",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -194,8 +194,8 @@
       "session_id": "golden-opening",
       "source_id": "golden-opening"
     },
-    "prev_hash": "275c1b7c0cc071840b058a08b70e53201f080183b8e49be91e3d0bbfefcccee1",
-    "record_hash": "f73684d4eb22fe63e5e1ac7e516d995c753fd12c5b704890de6a967a3912082f",
+    "prev_hash": "d0d17d8b6b8d6232ddfb9b9e98b6b38ca336cc82518830da09bbccc449370957",
+    "record_hash": "844f9dacc184cfb4a6ba331ab3fda4c4d88b4b314250d369eb540a59cae33764",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -207,10 +207,10 @@
       "source_ids": [
         "golden-opening"
       ],
-      "store_sha256": "4c5578aae67da91e62ce75a2b0e595fe60841211cec8dbb2cabbcfcbb01ec962"
+      "store_sha256": "a7b83dbb360b27912b180d9014e29a10349475b3ef141b02d6ae2a7fd8711f37"
     },
-    "prev_hash": "f73684d4eb22fe63e5e1ac7e516d995c753fd12c5b704890de6a967a3912082f",
-    "record_hash": "b572761e031611c2ab82c14b570faba09d6a0784aab73aa28ad194bde82b1d8b",
+    "prev_hash": "844f9dacc184cfb4a6ba331ab3fda4c4d88b4b314250d369eb540a59cae33764",
+    "record_hash": "7dab29a89cbcbed96e168bfcd522999869efd00a2f8990d37fa79f74cf3e89f8",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -221,8 +221,8 @@
       "entries": 0,
       "session_id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"
     },
-    "prev_hash": "b572761e031611c2ab82c14b570faba09d6a0784aab73aa28ad194bde82b1d8b",
-    "record_hash": "f0a27be3c7587421924b89ce44ddbdcfe2fb947ae2dda69255f00dd1a58fab10",
+    "prev_hash": "7dab29a89cbcbed96e168bfcd522999869efd00a2f8990d37fa79f74cf3e89f8",
+    "record_hash": "0c55556707c990a1acabfcc808698ceb671922b307109f331d142bebd5e3d939",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -243,8 +243,8 @@
       ],
       "session_id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0"
     },
-    "prev_hash": "f0a27be3c7587421924b89ce44ddbdcfe2fb947ae2dda69255f00dd1a58fab10",
-    "record_hash": "3efba1f82a87efc3968a2d13a0e1b72086714f05ef15dfe05316610911cca88e",
+    "prev_hash": "0c55556707c990a1acabfcc808698ceb671922b307109f331d142bebd5e3d939",
+    "record_hash": "d5fa0379642cabb9a3b0e6bf05c3dc6046efc263a6e9c65ac0c07ec292a97fb4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -254,10 +254,10 @@
       "entries": 0,
       "session_id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0",
       "source_ids": [],
-      "store_sha256": "c911809433ff05afe14ca174e69f797d2669ed454cdd3a50cd0567d191610db9"
+      "store_sha256": "9a43771d431c25f765feb1ec0ef7de3fa80a611d18d01de03c9eedbd22e9d09a"
     },
-    "prev_hash": "3efba1f82a87efc3968a2d13a0e1b72086714f05ef15dfe05316610911cca88e",
-    "record_hash": "6ff41e017b0c5d41d968d263b044c623e235e076797cd0d309c9b66dd8d28197",
+    "prev_hash": "d5fa0379642cabb9a3b0e6bf05c3dc6046efc263a6e9c65ac0c07ec292a97fb4",
+    "record_hash": "80fef09a40cde499eb69a2a97ece3fe48243686c2cb17b1ca1ce243b59e65d27",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -268,8 +268,8 @@
       "entries": 1,
       "session_id": "inv-1001-create"
     },
-    "prev_hash": "6ff41e017b0c5d41d968d263b044c623e235e076797cd0d309c9b66dd8d28197",
-    "record_hash": "5bd4c3a08e340e303b14797e04dddbe523142ab783cd3058a2c8bf76d641f689",
+    "prev_hash": "80fef09a40cde499eb69a2a97ece3fe48243686c2cb17b1ca1ce243b59e65d27",
+    "record_hash": "03920e1b80b59446c77c8afa080977c1b81cf2936943e8aa71369d3af51fc2f2",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -295,8 +295,8 @@
       ],
       "session_id": "inv-1001-create"
     },
-    "prev_hash": "5bd4c3a08e340e303b14797e04dddbe523142ab783cd3058a2c8bf76d641f689",
-    "record_hash": "40439ea80fa8b1774e005ede16a1713dbc34e32eb5061ae8559d58a55d7bbdad",
+    "prev_hash": "03920e1b80b59446c77c8afa080977c1b81cf2936943e8aa71369d3af51fc2f2",
+    "record_hash": "392256b250730e698b6293d6b7ccd8de9c7194f8d09d6a4251b09329dff588d8",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -306,8 +306,8 @@
       "session_id": "inv-1001-create",
       "source_id": "accrual:inv-1001-create"
     },
-    "prev_hash": "40439ea80fa8b1774e005ede16a1713dbc34e32eb5061ae8559d58a55d7bbdad",
-    "record_hash": "4bd07c1eb9010ae24f85e01e7e8c60c90e5604d49476e8418f62d7fc415960c7",
+    "prev_hash": "392256b250730e698b6293d6b7ccd8de9c7194f8d09d6a4251b09329dff588d8",
+    "record_hash": "429e909fb05b7abadfc4ec65490df47b77d029498c97de7c53220b7e87449c03",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -319,10 +319,10 @@
       "source_ids": [
         "accrual:inv-1001-create"
       ],
-      "store_sha256": "84e12687081ab61fd5c4f89dc458edced4ee188c7c8f29d234b06dc5265c5b8f"
+      "store_sha256": "8b9e387e00fa1c046bf73a90fd02aa8e1520fb290594726a4a9118bb4dd9594c"
     },
-    "prev_hash": "4bd07c1eb9010ae24f85e01e7e8c60c90e5604d49476e8418f62d7fc415960c7",
-    "record_hash": "95de5661c3bc2135bb7b6c118ebdca02ec2d6e79fa6f256e30419df8552a5096",
+    "prev_hash": "429e909fb05b7abadfc4ec65490df47b77d029498c97de7c53220b7e87449c03",
+    "record_hash": "619108f096d3036b486063e5d044884203cc86f89e6f251619d024f7b6baeeea",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -333,8 +333,8 @@
       "entries": 0,
       "session_id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"
     },
-    "prev_hash": "95de5661c3bc2135bb7b6c118ebdca02ec2d6e79fa6f256e30419df8552a5096",
-    "record_hash": "81db6a4dd25e3396328384f1200af2096e44c4e7cc8c2878d8f1a8c668a164f9",
+    "prev_hash": "619108f096d3036b486063e5d044884203cc86f89e6f251619d024f7b6baeeea",
+    "record_hash": "29280aa0b6457345205b524aeabb43af1f97eb9902f696533935e83fff82a2af",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -355,8 +355,8 @@
       ],
       "session_id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b"
     },
-    "prev_hash": "81db6a4dd25e3396328384f1200af2096e44c4e7cc8c2878d8f1a8c668a164f9",
-    "record_hash": "292cfe92898983016c56cac2784ae02e4bceb7d995e91dc14ebf84cce7abd704",
+    "prev_hash": "29280aa0b6457345205b524aeabb43af1f97eb9902f696533935e83fff82a2af",
+    "record_hash": "53ed2bc6a9cc26c44e9aff38bb34df9016ce13b4b40355d825eda9163eda89e1",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -366,10 +366,10 @@
       "entries": 0,
       "session_id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b",
       "source_ids": [],
-      "store_sha256": "ae2c7e479fa3bca0466ff969e5c4829f1ceb920810c567502dec65bed7d9104c"
+      "store_sha256": "f1541d688ffc429164d1926963adc79df0f422de774413bb8ccdae53d3f405c7"
     },
-    "prev_hash": "292cfe92898983016c56cac2784ae02e4bceb7d995e91dc14ebf84cce7abd704",
-    "record_hash": "79d494f5975f0e5d42daa0089d1c59e0fe037fd5c1de7a1ba0cc7ac806a05306",
+    "prev_hash": "53ed2bc6a9cc26c44e9aff38bb34df9016ce13b4b40355d825eda9163eda89e1",
+    "record_hash": "606cad2e69f626488de578fe5a1eb184dde5081b96558ed14e6dcbec820243eb",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -380,8 +380,8 @@
       "entries": 1,
       "session_id": "inv-1003-create"
     },
-    "prev_hash": "79d494f5975f0e5d42daa0089d1c59e0fe037fd5c1de7a1ba0cc7ac806a05306",
-    "record_hash": "560105aad8424028ebf7c3b86d5cfeda0d9b4e0592d52af84f2f4d497b7eaef1",
+    "prev_hash": "606cad2e69f626488de578fe5a1eb184dde5081b96558ed14e6dcbec820243eb",
+    "record_hash": "a8fd4873d13d6faca8aa1ef21dde87610f743ab0ea047b017da3ec92895aeddc",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -407,8 +407,8 @@
       ],
       "session_id": "inv-1003-create"
     },
-    "prev_hash": "560105aad8424028ebf7c3b86d5cfeda0d9b4e0592d52af84f2f4d497b7eaef1",
-    "record_hash": "eb84770baa98d85a257081ad4547c3b91946aa293b2b99639af43a9555f89dfd",
+    "prev_hash": "a8fd4873d13d6faca8aa1ef21dde87610f743ab0ea047b017da3ec92895aeddc",
+    "record_hash": "d2f13af381181dec67db87875a17b7a88bdf025bf12de48b8d96fe98d9e5d837",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -418,8 +418,8 @@
       "session_id": "inv-1003-create",
       "source_id": "accrual:inv-1003-create"
     },
-    "prev_hash": "eb84770baa98d85a257081ad4547c3b91946aa293b2b99639af43a9555f89dfd",
-    "record_hash": "f7daf1d9e2f3afef909d042a859da88934490383d55c3658820b27ba8cc42d16",
+    "prev_hash": "d2f13af381181dec67db87875a17b7a88bdf025bf12de48b8d96fe98d9e5d837",
+    "record_hash": "d09b7803cce9468fd55090a09008484cf2e4e7b6a0f76be2589318f0563a8fcd",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -431,10 +431,10 @@
       "source_ids": [
         "accrual:inv-1003-create"
       ],
-      "store_sha256": "7cf797c473f916f47c264d240ff0b05056bfab18fd9e4e6a59ac9a4370fb85b0"
+      "store_sha256": "b967b53e8c5efb3bde670f770d07e25bc8db110aeeed2105d91b033a2f9a09c6"
     },
-    "prev_hash": "f7daf1d9e2f3afef909d042a859da88934490383d55c3658820b27ba8cc42d16",
-    "record_hash": "83e7637c05bd2eaa18c50da7cd66c432666a0550823887ac65069480d45f7b6c",
+    "prev_hash": "d09b7803cce9468fd55090a09008484cf2e4e7b6a0f76be2589318f0563a8fcd",
+    "record_hash": "d2af0bf9413a6c72d3be59a467210843511263ad4d08efa359910a39fb01a962",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -445,8 +445,8 @@
       "entries": 0,
       "session_id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058"
     },
-    "prev_hash": "83e7637c05bd2eaa18c50da7cd66c432666a0550823887ac65069480d45f7b6c",
-    "record_hash": "a4d7b54eccb6248d0a47ead9c31894026734f6e8a721303a6812361e8a6c7834",
+    "prev_hash": "d2af0bf9413a6c72d3be59a467210843511263ad4d08efa359910a39fb01a962",
+    "record_hash": "dd82d9bdc9ff03de80eefd1e0cdbc36d770daba8ded6d697af4dd158b9101332",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -467,8 +467,8 @@
       ],
       "session_id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058"
     },
-    "prev_hash": "a4d7b54eccb6248d0a47ead9c31894026734f6e8a721303a6812361e8a6c7834",
-    "record_hash": "ec2a14dde3c6628ac9efd684b2bee4c813012d4cd2e9268594d5cde33fcc958c",
+    "prev_hash": "dd82d9bdc9ff03de80eefd1e0cdbc36d770daba8ded6d697af4dd158b9101332",
+    "record_hash": "48261dec107600546cf42021117504adc0719790010d799722106e0920fddb1e",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -478,10 +478,10 @@
       "entries": 0,
       "session_id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058",
       "source_ids": [],
-      "store_sha256": "4f4b06f9368786263e9a2a502b05c3dbcd7d722d52d05cb17d52b6afbf8ec75a"
+      "store_sha256": "bb0d4f54bba2eb0d134221e270be8524a8e75af0cc7668c7652572f59c757827"
     },
-    "prev_hash": "ec2a14dde3c6628ac9efd684b2bee4c813012d4cd2e9268594d5cde33fcc958c",
-    "record_hash": "82caafbdc97354d6a1ef4875316ea6501b1215b74eda56b3ca81e89a53ac8e00",
+    "prev_hash": "48261dec107600546cf42021117504adc0719790010d799722106e0920fddb1e",
+    "record_hash": "323f5ff72f2e07f3da0079235ace5739e716f643a25c87cf5ad6975db0b33baf",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -492,8 +492,8 @@
       "entries": 1,
       "session_id": "pay-bill-open-1"
     },
-    "prev_hash": "82caafbdc97354d6a1ef4875316ea6501b1215b74eda56b3ca81e89a53ac8e00",
-    "record_hash": "6f7200d0645f0d0e96c67022446ec9c27cdda1032d3070a87a57abea356b3817",
+    "prev_hash": "323f5ff72f2e07f3da0079235ace5739e716f643a25c87cf5ad6975db0b33baf",
+    "record_hash": "a3a943c5030aa2d6ab56ff28df2593fb533efbf78eee3f085116caaed1ca0660",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -524,8 +524,8 @@
       ],
       "session_id": "pay-bill-open-1"
     },
-    "prev_hash": "6f7200d0645f0d0e96c67022446ec9c27cdda1032d3070a87a57abea356b3817",
-    "record_hash": "a949af25faa19aabe0aca98c8084d36a4bc10662197b09cea8ababb588614932",
+    "prev_hash": "a3a943c5030aa2d6ab56ff28df2593fb533efbf78eee3f085116caaed1ca0660",
+    "record_hash": "c8bf076b9d536ceb7db36234c8995ef34a538ee8ec6e4ab474e69e1151f3f6bc",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -535,8 +535,8 @@
       "session_id": "pay-bill-open-1",
       "source_id": "pay-bill-open-1-bank"
     },
-    "prev_hash": "a949af25faa19aabe0aca98c8084d36a4bc10662197b09cea8ababb588614932",
-    "record_hash": "b6463d9694aa224ea0af36719063bc3ee49172f938f1d9735f4127baf17c20a9",
+    "prev_hash": "c8bf076b9d536ceb7db36234c8995ef34a538ee8ec6e4ab474e69e1151f3f6bc",
+    "record_hash": "8f59fcfd3e824a98b65140c41a1829217ef4a3657f655645745ac5bea276f2b7",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -548,10 +548,10 @@
       "source_ids": [
         "pay-bill-open-1-bank"
       ],
-      "store_sha256": "f581a52482979071cf0499b85a26c820b8e22baff427d82a4d5262d2a006f7b8"
+      "store_sha256": "51dfa704fac7ed179f6b638e9fa4d0fa4988912f6330440f251ed58cf0855e7b"
     },
-    "prev_hash": "b6463d9694aa224ea0af36719063bc3ee49172f938f1d9735f4127baf17c20a9",
-    "record_hash": "1bb885ffce3dde6767f571bb7717c9b43ba435f7cf53a52fe72f1c2c992c78be",
+    "prev_hash": "8f59fcfd3e824a98b65140c41a1829217ef4a3657f655645745ac5bea276f2b7",
+    "record_hash": "ece43821d7a57592d068de954a6a4fb38962461ee8498da2e4d35810f95a3465",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -562,8 +562,8 @@
       "entries": 0,
       "session_id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913"
     },
-    "prev_hash": "1bb885ffce3dde6767f571bb7717c9b43ba435f7cf53a52fe72f1c2c992c78be",
-    "record_hash": "9c37aaed5a5e24cd055bb69755737d3ab8bcfc14fc1769eb39a93f3c76504889",
+    "prev_hash": "ece43821d7a57592d068de954a6a4fb38962461ee8498da2e4d35810f95a3465",
+    "record_hash": "ba59dfb284a5699ffd25115a4be803bec3f5739f03cf8d237350e7bf42c82100",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -584,8 +584,8 @@
       ],
       "session_id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913"
     },
-    "prev_hash": "9c37aaed5a5e24cd055bb69755737d3ab8bcfc14fc1769eb39a93f3c76504889",
-    "record_hash": "fce149861d6beade86853b72ff2d565ca2ffa5850ec2948ed4b91a44707b92b6",
+    "prev_hash": "ba59dfb284a5699ffd25115a4be803bec3f5739f03cf8d237350e7bf42c82100",
+    "record_hash": "96a0eabfdcafc0599a4e31b5f5c342776b90c136de1c99dc9efe355c36a27889",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -595,10 +595,10 @@
       "entries": 0,
       "session_id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913",
       "source_ids": [],
-      "store_sha256": "a6dd8bf099b0ab2ff8937b3e62fdda82e018050ba04224fe7b8c33b574dd8a16"
+      "store_sha256": "fa6bc0bf2bdd64033e9f9ebf0b54844d3ff1ce8bbebf452367c83c6d4f6514a3"
     },
-    "prev_hash": "fce149861d6beade86853b72ff2d565ca2ffa5850ec2948ed4b91a44707b92b6",
-    "record_hash": "2d72e2e0e2693bc97f32c36560c2e0b1c8a8bfebb6ffdc529b0908f9321e8ba0",
+    "prev_hash": "96a0eabfdcafc0599a4e31b5f5c342776b90c136de1c99dc9efe355c36a27889",
+    "record_hash": "1480ac0727e14b5608f6bafe241f2318b523f14d0bfb6809e0109437226bb824",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -609,8 +609,8 @@
       "entries": 1,
       "session_id": "pay-inv-open-1"
     },
-    "prev_hash": "2d72e2e0e2693bc97f32c36560c2e0b1c8a8bfebb6ffdc529b0908f9321e8ba0",
-    "record_hash": "f631f5248f8fb86c72da4ac7cff4cdaa576948ebb9848bad27a84acc2b0d89a8",
+    "prev_hash": "1480ac0727e14b5608f6bafe241f2318b523f14d0bfb6809e0109437226bb824",
+    "record_hash": "9157f0573f330eebeef97d0316bc943093c7e9b3b1aa3ee32cdab4a6e799ed28",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -641,8 +641,8 @@
       ],
       "session_id": "pay-inv-open-1"
     },
-    "prev_hash": "f631f5248f8fb86c72da4ac7cff4cdaa576948ebb9848bad27a84acc2b0d89a8",
-    "record_hash": "267df5ce754e65488f19edc22b22b77f5fecc548042256ff0524ff31869fb3c9",
+    "prev_hash": "9157f0573f330eebeef97d0316bc943093c7e9b3b1aa3ee32cdab4a6e799ed28",
+    "record_hash": "80456d48659067ee68d2ae2dcfd14fdd0d6d9c69af1e3bc0ffa90ccc56ac277c",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -652,8 +652,8 @@
       "session_id": "pay-inv-open-1",
       "source_id": "pay-inv-open-1-bank"
     },
-    "prev_hash": "267df5ce754e65488f19edc22b22b77f5fecc548042256ff0524ff31869fb3c9",
-    "record_hash": "9128d572acc2ab1c3869a82ad634eb7121172d683ec6b1529ecb06adbca3e8bb",
+    "prev_hash": "80456d48659067ee68d2ae2dcfd14fdd0d6d9c69af1e3bc0ffa90ccc56ac277c",
+    "record_hash": "13eef5730ce559f35a5295c1dd0dd8b56e17f26745833b104d49f23a42fa9770",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -665,10 +665,10 @@
       "source_ids": [
         "pay-inv-open-1-bank"
       ],
-      "store_sha256": "ee4cf927a0ee3cec27e91c00b408fb16849e8410406834c4844cb5eea04f37a9"
+      "store_sha256": "b5cb09ddb0964d3111bb76daf3c2fd41cc88abda457e00cca7a279b368ce8a67"
     },
-    "prev_hash": "9128d572acc2ab1c3869a82ad634eb7121172d683ec6b1529ecb06adbca3e8bb",
-    "record_hash": "2f4403c4c882f6b950fc964acf6732cb3d32b58ea7ef5dc6be7a2d76de3b34ef",
+    "prev_hash": "13eef5730ce559f35a5295c1dd0dd8b56e17f26745833b104d49f23a42fa9770",
+    "record_hash": "47539a467ee436cd5e43ce869c229b21f696848847388ccc2d53d99f21cc10d1",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -679,8 +679,8 @@
       "entries": 1,
       "session_id": "utilities-estimate-jan"
     },
-    "prev_hash": "2f4403c4c882f6b950fc964acf6732cb3d32b58ea7ef5dc6be7a2d76de3b34ef",
-    "record_hash": "bda0ab9c99b5342502eb49f939534af17a50265b481984fa7c8ed96d17dd853f",
+    "prev_hash": "47539a467ee436cd5e43ce869c229b21f696848847388ccc2d53d99f21cc10d1",
+    "record_hash": "b6f49aed0f86f6bb73681f9e3e0a98fd553abd36f037791486edb3e690226cd3",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -701,8 +701,8 @@
       ],
       "session_id": "utilities-estimate-jan"
     },
-    "prev_hash": "bda0ab9c99b5342502eb49f939534af17a50265b481984fa7c8ed96d17dd853f",
-    "record_hash": "28a5fc8a7e03e5291a9cf9d000efe8faee65436d06b31ef1e2acbaf314969832",
+    "prev_hash": "b6f49aed0f86f6bb73681f9e3e0a98fd553abd36f037791486edb3e690226cd3",
+    "record_hash": "a4f71649322b0b502e5df7859992c775eecf78dd651e0550355493ff57884625",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -712,8 +712,8 @@
       "session_id": "utilities-estimate-jan",
       "source_id": "accrual:utilities-estimate-jan"
     },
-    "prev_hash": "28a5fc8a7e03e5291a9cf9d000efe8faee65436d06b31ef1e2acbaf314969832",
-    "record_hash": "26d828017065ff13e1d160f68c7cba713e3fd22063675ee31019bc26a55dccb9",
+    "prev_hash": "a4f71649322b0b502e5df7859992c775eecf78dd651e0550355493ff57884625",
+    "record_hash": "a9028c3aab98207c02164a8839c0550a30577220d4df363600d98dfdd6f51500",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -725,10 +725,10 @@
       "source_ids": [
         "accrual:utilities-estimate-jan"
       ],
-      "store_sha256": "de31a8c87dd7aa2f013be0b5f61d05427b241fc191a7ffc8ed40073dccd6daf0"
+      "store_sha256": "86028bfb1340ccac2793d84021e821f1efd87c4a4840a92f907afb42ebde2002"
     },
-    "prev_hash": "26d828017065ff13e1d160f68c7cba713e3fd22063675ee31019bc26a55dccb9",
-    "record_hash": "4f639a52dc5ad939f498a22dc7788a3c0ed0d07bc087cdc135ab6a8a9c7de9c3",
+    "prev_hash": "a9028c3aab98207c02164a8839c0550a30577220d4df363600d98dfdd6f51500",
+    "record_hash": "153d9652323ad2c16f41ea63624532041659d76f86281fcf1af88daa199b93d6",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -739,8 +739,8 @@
       "entries": 0,
       "session_id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127"
     },
-    "prev_hash": "4f639a52dc5ad939f498a22dc7788a3c0ed0d07bc087cdc135ab6a8a9c7de9c3",
-    "record_hash": "c53250560ee590f2fc0fd67272320eedc26cff5590c0c3d2ffab2f057c6e795e",
+    "prev_hash": "153d9652323ad2c16f41ea63624532041659d76f86281fcf1af88daa199b93d6",
+    "record_hash": "80dba10dfd4c324da07e1d5f6019ca2b0ec5039b58236003d46bc4e2b4255e74",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -761,8 +761,8 @@
       ],
       "session_id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127"
     },
-    "prev_hash": "c53250560ee590f2fc0fd67272320eedc26cff5590c0c3d2ffab2f057c6e795e",
-    "record_hash": "649a85c5e97f0493c64fa222db1edf981baae87e73aacfe790b56a08880bdaa6",
+    "prev_hash": "80dba10dfd4c324da07e1d5f6019ca2b0ec5039b58236003d46bc4e2b4255e74",
+    "record_hash": "e7e13bbe3d85ec455be0acd546250db21f324b686e05f6e692ab9e8e7f495893",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -772,10 +772,10 @@
       "entries": 0,
       "session_id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127",
       "source_ids": [],
-      "store_sha256": "fe4100d58e3269aaa2772c8463f3d4d1c26dc2497e5ab8d6e32a93bb9d57cae7"
+      "store_sha256": "a7e651af2418e16b25ddb4840f08e1a0c1d846d646de99d44706644f7c69fb21"
     },
-    "prev_hash": "649a85c5e97f0493c64fa222db1edf981baae87e73aacfe790b56a08880bdaa6",
-    "record_hash": "0714b9d5e06b275bd7b2341f26900598d5216361fee06580e027275dfe2ca8c9",
+    "prev_hash": "e7e13bbe3d85ec455be0acd546250db21f324b686e05f6e692ab9e8e7f495893",
+    "record_hash": "c0df773fb5afabdc948877b687f4382bbac19959dd532ffaa15bf20fcc35675b",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -786,8 +786,8 @@
       "entries": 1,
       "session_id": "pay-inv-1001"
     },
-    "prev_hash": "0714b9d5e06b275bd7b2341f26900598d5216361fee06580e027275dfe2ca8c9",
-    "record_hash": "a305672c1263db2821d6f2cdbb7d976325a5e0864780193adb002d62945dbbe1",
+    "prev_hash": "c0df773fb5afabdc948877b687f4382bbac19959dd532ffaa15bf20fcc35675b",
+    "record_hash": "b0192107efcf3e1f8ce993821c56e2a75b02d5572d1e73f3d1700c93b3b9c918",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -828,8 +828,8 @@
       ],
       "session_id": "pay-inv-1001"
     },
-    "prev_hash": "a305672c1263db2821d6f2cdbb7d976325a5e0864780193adb002d62945dbbe1",
-    "record_hash": "d58f55751f7d0e7dbd2261173e57ef06bc73d1291d62287b9a2cef020e6798b4",
+    "prev_hash": "b0192107efcf3e1f8ce993821c56e2a75b02d5572d1e73f3d1700c93b3b9c918",
+    "record_hash": "fe14022e60e4c5e49c87c81ae50ea2065ad08bf3802e9e27e9274e0588e05203",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -839,8 +839,8 @@
       "session_id": "pay-inv-1001",
       "source_id": "pay-inv-1001-bank"
     },
-    "prev_hash": "d58f55751f7d0e7dbd2261173e57ef06bc73d1291d62287b9a2cef020e6798b4",
-    "record_hash": "ada53466cbf3a3238011450e9e0c98e135126d8b9f94a538c9a2adf5fd9b7d0e",
+    "prev_hash": "fe14022e60e4c5e49c87c81ae50ea2065ad08bf3802e9e27e9274e0588e05203",
+    "record_hash": "8007f676ccdd31ee25917a7f273035a50d1ebdb71aaee50210eaedcffdae5b03",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -852,10 +852,10 @@
       "source_ids": [
         "pay-inv-1001-bank"
       ],
-      "store_sha256": "84595eeecf93f9f87821dd743c022355396a3502413b649c31075f26b26562a6"
+      "store_sha256": "4bb72124fefefde2f8dbf921d894b591da88aadca5cf592a43dffc04983f9191"
     },
-    "prev_hash": "ada53466cbf3a3238011450e9e0c98e135126d8b9f94a538c9a2adf5fd9b7d0e",
-    "record_hash": "b9f9384e5d8bc4dbe72797eec186a82dba31dc1da84095045c4a038b13524e80",
+    "prev_hash": "8007f676ccdd31ee25917a7f273035a50d1ebdb71aaee50210eaedcffdae5b03",
+    "record_hash": "393255ae80146270fd726af6aeb712e6ede42b8ad38170f26c9309cb52f940c2",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -866,8 +866,8 @@
       "entries": 1,
       "session_id": "due:utilities-estimate-jan"
     },
-    "prev_hash": "b9f9384e5d8bc4dbe72797eec186a82dba31dc1da84095045c4a038b13524e80",
-    "record_hash": "cc5de32d72aa493d31a7ed56cd0b87dd80ef56f986d8687bb55e824a57d48c4f",
+    "prev_hash": "393255ae80146270fd726af6aeb712e6ede42b8ad38170f26c9309cb52f940c2",
+    "record_hash": "bf4b89dad3e158c27b8936b73412a78f960a4c72450539c03f1d31d5903f4f4c",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -893,8 +893,8 @@
       ],
       "session_id": "due:utilities-estimate-jan"
     },
-    "prev_hash": "cc5de32d72aa493d31a7ed56cd0b87dd80ef56f986d8687bb55e824a57d48c4f",
-    "record_hash": "13b4ca6e9154f7aa36c4961dfb78708753dd2491e09cbbde1c77d7464427cda7",
+    "prev_hash": "bf4b89dad3e158c27b8936b73412a78f960a4c72450539c03f1d31d5903f4f4c",
+    "record_hash": "d4153b5cc86057762b569ebe55709194861c380af2f7b701e1de4015628a6852",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -904,8 +904,8 @@
       "session_id": "due:utilities-estimate-jan",
       "source_id": "accrual:due:utilities-estimate-jan"
     },
-    "prev_hash": "13b4ca6e9154f7aa36c4961dfb78708753dd2491e09cbbde1c77d7464427cda7",
-    "record_hash": "8bca8bce072ef23c479da1c1eae655cdd39f0f5dab56b8221694e6586e1cb9c4",
+    "prev_hash": "d4153b5cc86057762b569ebe55709194861c380af2f7b701e1de4015628a6852",
+    "record_hash": "9a9efd8441de55eb2bbbb03a5a3b3270612a7638db160da62d60aee42dc35181",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -917,10 +917,10 @@
       "source_ids": [
         "accrual:due:utilities-estimate-jan"
       ],
-      "store_sha256": "e3cdc004f623c4ee64cc3ab82aa3c7a5555a75b5e3cbb40a437d8ec36a70343f"
+      "store_sha256": "c82f778013510560807185ea3649ac872e46e27c37951ae4a45cc1729e0c950f"
     },
-    "prev_hash": "8bca8bce072ef23c479da1c1eae655cdd39f0f5dab56b8221694e6586e1cb9c4",
-    "record_hash": "a3086fccb6eb00157d9dd6ac54fce64e5ac8a76b052100b3da64e417566b2848",
+    "prev_hash": "9a9efd8441de55eb2bbbb03a5a3b3270612a7638db160da62d60aee42dc35181",
+    "record_hash": "673c727adf79ee170c188d4e72ada6875b24fe37b8c0e1b882cc9f4e177936f6",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -931,8 +931,8 @@
       "entries": 0,
       "session_id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e"
     },
-    "prev_hash": "a3086fccb6eb00157d9dd6ac54fce64e5ac8a76b052100b3da64e417566b2848",
-    "record_hash": "7431d3c44e3360aca2feedf818675630cd36e575eedefed91f7511c0408d1fde",
+    "prev_hash": "673c727adf79ee170c188d4e72ada6875b24fe37b8c0e1b882cc9f4e177936f6",
+    "record_hash": "483d755a8d41eab29f8e4a5efdcdfb7636f53faa2231fc72b14b1a7faeadb670",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -953,8 +953,8 @@
       ],
       "session_id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e"
     },
-    "prev_hash": "7431d3c44e3360aca2feedf818675630cd36e575eedefed91f7511c0408d1fde",
-    "record_hash": "18f9ee07adddfc071988c6107ad21a1342b07c0a8bc098f18fdb130e4cee1f3e",
+    "prev_hash": "483d755a8d41eab29f8e4a5efdcdfb7636f53faa2231fc72b14b1a7faeadb670",
+    "record_hash": "dd4b257abfde7509ce1c8e075e8e48fee2a6043b0be44275002a82dffb4ea543",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -964,10 +964,10 @@
       "entries": 0,
       "session_id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e",
       "source_ids": [],
-      "store_sha256": "7e8c17099a18eca66561d3743acf91e44cf34088fccbaaa5bc709a5f919a5639"
+      "store_sha256": "4a1cdce30e064827dcd7781181dd030a57c749e4bdc2f36b326acfa0d291f896"
     },
-    "prev_hash": "18f9ee07adddfc071988c6107ad21a1342b07c0a8bc098f18fdb130e4cee1f3e",
-    "record_hash": "dff46062a24d49d32d1a2b613701fee7bb9a19911d22ef13826d8a9de9695029",
+    "prev_hash": "dd4b257abfde7509ce1c8e075e8e48fee2a6043b0be44275002a82dffb4ea543",
+    "record_hash": "0dd925e79b23e51cbaf8ad059de33ff481e350c5f681958767108e6675045894",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -978,8 +978,8 @@
       "entries": 1,
       "session_id": "bill-2001-create"
     },
-    "prev_hash": "dff46062a24d49d32d1a2b613701fee7bb9a19911d22ef13826d8a9de9695029",
-    "record_hash": "406bc887c5db959e6451d73674c811d3888fece39ce61635c8ce5883c677965f",
+    "prev_hash": "0dd925e79b23e51cbaf8ad059de33ff481e350c5f681958767108e6675045894",
+    "record_hash": "52311c8e45e9b98cf17c2cdeeebe477e8845a3298fe6bd53a9ef01f8291e8a22",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1005,8 +1005,8 @@
       ],
       "session_id": "bill-2001-create"
     },
-    "prev_hash": "406bc887c5db959e6451d73674c811d3888fece39ce61635c8ce5883c677965f",
-    "record_hash": "5a5adf7255ed8428822c122b1fc03adf81a20ecf9f97f0366ea342e9686eca10",
+    "prev_hash": "52311c8e45e9b98cf17c2cdeeebe477e8845a3298fe6bd53a9ef01f8291e8a22",
+    "record_hash": "f3adb3297224a74ec802be1706bf2573839c786fd2abfc1a5ce61c5a8ab524f1",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1016,8 +1016,8 @@
       "session_id": "bill-2001-create",
       "source_id": "accrual:bill-2001-create"
     },
-    "prev_hash": "5a5adf7255ed8428822c122b1fc03adf81a20ecf9f97f0366ea342e9686eca10",
-    "record_hash": "c720d870502edfd7c4e49a8efda1777ec33611787b5d59a29f06dbe957502b47",
+    "prev_hash": "f3adb3297224a74ec802be1706bf2573839c786fd2abfc1a5ce61c5a8ab524f1",
+    "record_hash": "0585779ac5919da756644e3fdf90f3abb76b3ffc786a4856a36590d99885e2c4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1029,10 +1029,10 @@
       "source_ids": [
         "accrual:bill-2001-create"
       ],
-      "store_sha256": "7242b5f9997b19f4a9b2d4f3b82f56f6da0eea1f76b66698d65906ca4f83b41a"
+      "store_sha256": "b35643d7947bf164e35c2199077ff8347d85b8741143f2ff7f727e6139faaf64"
     },
-    "prev_hash": "c720d870502edfd7c4e49a8efda1777ec33611787b5d59a29f06dbe957502b47",
-    "record_hash": "f55f797ea7cd1c1991d0658512f549b8578dca5765cc7fe28914746174bea205",
+    "prev_hash": "0585779ac5919da756644e3fdf90f3abb76b3ffc786a4856a36590d99885e2c4",
+    "record_hash": "ea6062b31c8ff49c5085a74b2c75ba9703bc8b50efd1c0e7a2824023f0b781f1",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1043,8 +1043,8 @@
       "entries": 0,
       "session_id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6"
     },
-    "prev_hash": "f55f797ea7cd1c1991d0658512f549b8578dca5765cc7fe28914746174bea205",
-    "record_hash": "10f94970a41a9edffeb3a0e654fd3c00f4e9df908f7de9c3b896b3365da3c5b8",
+    "prev_hash": "ea6062b31c8ff49c5085a74b2c75ba9703bc8b50efd1c0e7a2824023f0b781f1",
+    "record_hash": "7753cbcf94319d5587703df7226345a0427acdba6cde528acbd468df455b7ea4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1065,8 +1065,8 @@
       ],
       "session_id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6"
     },
-    "prev_hash": "10f94970a41a9edffeb3a0e654fd3c00f4e9df908f7de9c3b896b3365da3c5b8",
-    "record_hash": "75766c690a301c2273830e2c43c09e93e77ff86b62892e5505e3eb2ad269c881",
+    "prev_hash": "7753cbcf94319d5587703df7226345a0427acdba6cde528acbd468df455b7ea4",
+    "record_hash": "b2acbe62e94f7f4c19f018aac67bc0d0bf405481e829060a21bf7584687ff714",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1076,10 +1076,10 @@
       "entries": 0,
       "session_id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6",
       "source_ids": [],
-      "store_sha256": "17879874c7ea8e30ddb73cbbea174333b1a8d2820be934c112297ea92e2d55a8"
+      "store_sha256": "8a841706b03d28203e2ee398ff9ee3ed3efdd779fcdbeba0a7c0e4354359ab4e"
     },
-    "prev_hash": "75766c690a301c2273830e2c43c09e93e77ff86b62892e5505e3eb2ad269c881",
-    "record_hash": "19eb848ec5d7237b7e09b17539d86b8a0689171a80a8084d61800ee63ac095f6",
+    "prev_hash": "b2acbe62e94f7f4c19f018aac67bc0d0bf405481e829060a21bf7584687ff714",
+    "record_hash": "e015e064edc158e00cb3b787ed4957e862a9ee63c81e5600140df9448e507e45",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1090,8 +1090,8 @@
       "entries": 1,
       "session_id": "inv-1002-create"
     },
-    "prev_hash": "19eb848ec5d7237b7e09b17539d86b8a0689171a80a8084d61800ee63ac095f6",
-    "record_hash": "0831a00b36553b71889d5bac806b293a48048ef037c37d94c2fb98d0e3fb87c5",
+    "prev_hash": "e015e064edc158e00cb3b787ed4957e862a9ee63c81e5600140df9448e507e45",
+    "record_hash": "52b30d0b9b5e2e99e50013ad6af3aea5fc0808bdf69ffa589a08d99f4b2d5248",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1117,8 +1117,8 @@
       ],
       "session_id": "inv-1002-create"
     },
-    "prev_hash": "0831a00b36553b71889d5bac806b293a48048ef037c37d94c2fb98d0e3fb87c5",
-    "record_hash": "68f5d33a3737ffad2b350a3644bad95a787875f5413aec44664d3f9a9d432655",
+    "prev_hash": "52b30d0b9b5e2e99e50013ad6af3aea5fc0808bdf69ffa589a08d99f4b2d5248",
+    "record_hash": "8fa2efb0aef91d20e400e9eb3f7eea24c0388ee82e5d90ac99e2d339f2f6841a",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1128,8 +1128,8 @@
       "session_id": "inv-1002-create",
       "source_id": "accrual:inv-1002-create"
     },
-    "prev_hash": "68f5d33a3737ffad2b350a3644bad95a787875f5413aec44664d3f9a9d432655",
-    "record_hash": "9be357754fab97b3b8843ae7243473d440621525b00ce2069751fb7ba8f731b3",
+    "prev_hash": "8fa2efb0aef91d20e400e9eb3f7eea24c0388ee82e5d90ac99e2d339f2f6841a",
+    "record_hash": "2adbded457124b6b99a8d622df08d4e970b2944be2a30e3ba8eaf828de2624a7",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1141,10 +1141,10 @@
       "source_ids": [
         "accrual:inv-1002-create"
       ],
-      "store_sha256": "6546ddd0d093eac7ea2ef72ad5b1abcc48ac10050bb109cecf49ddb62fcd6075"
+      "store_sha256": "040e86cb745a0a00987a265c55bcfb5234fb7351e7654f86a746a2fb50a6205d"
     },
-    "prev_hash": "9be357754fab97b3b8843ae7243473d440621525b00ce2069751fb7ba8f731b3",
-    "record_hash": "a5bfeb8fbfcfd80d7484124eef4566cc94d0ee35d74e60e0a439dc763ba93922",
+    "prev_hash": "2adbded457124b6b99a8d622df08d4e970b2944be2a30e3ba8eaf828de2624a7",
+    "record_hash": "ffb77612d499539c05564807ff6858c72bf0de118653486c546e71efbbb84243",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1155,8 +1155,8 @@
       "entries": 0,
       "session_id": "apply-orbit-credit"
     },
-    "prev_hash": "a5bfeb8fbfcfd80d7484124eef4566cc94d0ee35d74e60e0a439dc763ba93922",
-    "record_hash": "cf91541edc95ecce782f82af1272716bf118713f1d9ad70bf065ddf9650803ac",
+    "prev_hash": "ffb77612d499539c05564807ff6858c72bf0de118653486c546e71efbbb84243",
+    "record_hash": "e6a7473d7eb43a2918a6dc9af53af6f1e5a552d17509a3fd3dd911fd22ca0808",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1192,8 +1192,8 @@
       ],
       "session_id": "apply-orbit-credit"
     },
-    "prev_hash": "cf91541edc95ecce782f82af1272716bf118713f1d9ad70bf065ddf9650803ac",
-    "record_hash": "34545dc2ec85893eb513a1c6c00a9b517d6437a5bc8592cc6c2feebedb7e1aae",
+    "prev_hash": "e6a7473d7eb43a2918a6dc9af53af6f1e5a552d17509a3fd3dd911fd22ca0808",
+    "record_hash": "a5136c7174f856c49fc64a9ec47f5909211c2a506dccb0b120f7154a6d2924ed",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1203,10 +1203,10 @@
       "entries": 0,
       "session_id": "apply-orbit-credit",
       "source_ids": [],
-      "store_sha256": "0b9ec415be8909df5a67bba4ac8799929a09b75944c2d3de0882a0dedf5a00d7"
+      "store_sha256": "df26a9c4127c3d668a7d5fb8070938ce83e4202b6f9dd65ed279ddad82fbc335"
     },
-    "prev_hash": "34545dc2ec85893eb513a1c6c00a9b517d6437a5bc8592cc6c2feebedb7e1aae",
-    "record_hash": "be933fc489d2f6f5df0e9dbf0e3ab9cca980e0be117fca744defb08252debbb0",
+    "prev_hash": "a5136c7174f856c49fc64a9ec47f5909211c2a506dccb0b120f7154a6d2924ed",
+    "record_hash": "41747320a5558391d7a64ca0613d381edb2be697bb5a866a0599bc6131e9b696",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1217,8 +1217,8 @@
       "entries": 0,
       "session_id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21"
     },
-    "prev_hash": "be933fc489d2f6f5df0e9dbf0e3ab9cca980e0be117fca744defb08252debbb0",
-    "record_hash": "877e1087c4ec571ec72c569e779e9e1dbf6bdc8380137cefd12e72833f02b6d8",
+    "prev_hash": "41747320a5558391d7a64ca0613d381edb2be697bb5a866a0599bc6131e9b696",
+    "record_hash": "074820ef3176ffeaf54b4d33267e437ce9bfcf75b8f1ad10fe6a44d04f362297",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1239,8 +1239,8 @@
       ],
       "session_id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21"
     },
-    "prev_hash": "877e1087c4ec571ec72c569e779e9e1dbf6bdc8380137cefd12e72833f02b6d8",
-    "record_hash": "a765f3e76aa11d695df531068500334cacb6926e4128d0a9f4c4f156950937bd",
+    "prev_hash": "074820ef3176ffeaf54b4d33267e437ce9bfcf75b8f1ad10fe6a44d04f362297",
+    "record_hash": "748ef9590dbc5918a6d6be3f92effbfbaaf3d3e3d529e932a0851d09cfecf1d5",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1250,10 +1250,10 @@
       "entries": 0,
       "session_id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21",
       "source_ids": [],
-      "store_sha256": "cd360842aaefb3f618bd575f106fc9942de8ca2596a9cab15c4afd02b72ea272"
+      "store_sha256": "a853af0928bb3294e78ab0a3e800b1eb701fbaf4f1abcb1f7e6f13b6c8f00ac8"
     },
-    "prev_hash": "a765f3e76aa11d695df531068500334cacb6926e4128d0a9f4c4f156950937bd",
-    "record_hash": "0ad11afeac153facc81e773606785a1f12720ad49400d79f7e1bbb28626baf45",
+    "prev_hash": "748ef9590dbc5918a6d6be3f92effbfbaaf3d3e3d529e932a0851d09cfecf1d5",
+    "record_hash": "68090047c04e1703d629238820cdfa9ed85494848c15592dfb55d7fc392d9eb8",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1264,8 +1264,8 @@
       "entries": 1,
       "session_id": "sw-annual-create"
     },
-    "prev_hash": "0ad11afeac153facc81e773606785a1f12720ad49400d79f7e1bbb28626baf45",
-    "record_hash": "c5b3d9b01959ecb47a19d1e725085e1ddb4b170ed693b37edfbc9ab330846726",
+    "prev_hash": "68090047c04e1703d629238820cdfa9ed85494848c15592dfb55d7fc392d9eb8",
+    "record_hash": "ca8cb54d85000f3dcccd06fbb66e40746b5712473bafda1009a5c4daef4a0ca4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1291,8 +1291,8 @@
       ],
       "session_id": "sw-annual-create"
     },
-    "prev_hash": "c5b3d9b01959ecb47a19d1e725085e1ddb4b170ed693b37edfbc9ab330846726",
-    "record_hash": "d99df9987464bc67e40c6da2e407f5bc839586d20f603bffd4261b71aedbbba5",
+    "prev_hash": "ca8cb54d85000f3dcccd06fbb66e40746b5712473bafda1009a5c4daef4a0ca4",
+    "record_hash": "8967b701285cdd71fda65cd4f445be214326ad2323f18a903f540c2ca2b26360",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1302,8 +1302,8 @@
       "session_id": "sw-annual-create",
       "source_id": "sw-annual-payment"
     },
-    "prev_hash": "d99df9987464bc67e40c6da2e407f5bc839586d20f603bffd4261b71aedbbba5",
-    "record_hash": "e909cf08dcb30e394eaca796765b9d78da02cbeef4bfce4556aa953556ef144d",
+    "prev_hash": "8967b701285cdd71fda65cd4f445be214326ad2323f18a903f540c2ca2b26360",
+    "record_hash": "6d86f94f64c04837198c638d1340b7170f1d81bbdf53efdda0f8098c396c4595",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1315,10 +1315,10 @@
       "source_ids": [
         "sw-annual-payment"
       ],
-      "store_sha256": "d797c3882ef0ee81bb73b554953b592bd0b972364bed93ea771bafe93b193647"
+      "store_sha256": "0a772843afb13682219c4111d424b9ec0fe2f442afbf75e079b0caeedf4eb33b"
     },
-    "prev_hash": "e909cf08dcb30e394eaca796765b9d78da02cbeef4bfce4556aa953556ef144d",
-    "record_hash": "1a4f2c4aca85ba543ce890a4de274d3871cd2b5d8d1c24198712833cfd696914",
+    "prev_hash": "6d86f94f64c04837198c638d1340b7170f1d81bbdf53efdda0f8098c396c4595",
+    "record_hash": "e3a31f721e62d0ccae567476989a82e897a55770cf855954888a61086133e207",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1329,8 +1329,8 @@
       "entries": 0,
       "session_id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6"
     },
-    "prev_hash": "1a4f2c4aca85ba543ce890a4de274d3871cd2b5d8d1c24198712833cfd696914",
-    "record_hash": "aa6c82bdc03ed7202c0584baf9b712057a79f51c92caa59b8db39c9df3381654",
+    "prev_hash": "e3a31f721e62d0ccae567476989a82e897a55770cf855954888a61086133e207",
+    "record_hash": "4b077dee5ec7acc607ecf7d9670951c1377c0f55f901db533ad2285d09f07b68",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1351,8 +1351,8 @@
       ],
       "session_id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6"
     },
-    "prev_hash": "aa6c82bdc03ed7202c0584baf9b712057a79f51c92caa59b8db39c9df3381654",
-    "record_hash": "0a8e8831b4d314154c461eeeb21e4a47d95d8eea8e70b9c22e59aed1cb22d332",
+    "prev_hash": "4b077dee5ec7acc607ecf7d9670951c1377c0f55f901db533ad2285d09f07b68",
+    "record_hash": "237ed989ee8ad867baf036d62c7d2f08d6665be0201cfcdcaf414b4060407c39",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1362,10 +1362,10 @@
       "entries": 0,
       "session_id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6",
       "source_ids": [],
-      "store_sha256": "2e6373b1d28e1f2efd2fd2f60fa1da3bd9f5ac544afafbb359371d69a74cd87c"
+      "store_sha256": "3d486d2fe2aa1ef1c3b1143ef60b7dc02438b98225fc5e3332de3201d6dc60fb"
     },
-    "prev_hash": "0a8e8831b4d314154c461eeeb21e4a47d95d8eea8e70b9c22e59aed1cb22d332",
-    "record_hash": "6874069942830f1a66078ae619bcd0e242ddb0f6f2e844258e9e4f808b687945",
+    "prev_hash": "237ed989ee8ad867baf036d62c7d2f08d6665be0201cfcdcaf414b4060407c39",
+    "record_hash": "42a340de9bd814117181e021d5bda7d06c290dc9211a852edef092e85a6339a8",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1376,8 +1376,8 @@
       "entries": 1,
       "session_id": "retainer-new-create"
     },
-    "prev_hash": "6874069942830f1a66078ae619bcd0e242ddb0f6f2e844258e9e4f808b687945",
-    "record_hash": "294132496b9299728403f7c4542ea99cb98ea7c6d927ffa8a6f280d638626351",
+    "prev_hash": "42a340de9bd814117181e021d5bda7d06c290dc9211a852edef092e85a6339a8",
+    "record_hash": "c271e3e10685868b944dcde8e0f2cb014b526bf0428a471ef7b9730debabd779",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1403,8 +1403,8 @@
       ],
       "session_id": "retainer-new-create"
     },
-    "prev_hash": "294132496b9299728403f7c4542ea99cb98ea7c6d927ffa8a6f280d638626351",
-    "record_hash": "8da79bbc2d2f56d0c32838e65c4cb27fc7c1f69abaae909edc7751b749b7fa47",
+    "prev_hash": "c271e3e10685868b944dcde8e0f2cb014b526bf0428a471ef7b9730debabd779",
+    "record_hash": "cc2023f96d2ebda09ecdcde491fd2dab84dc832ce077be4394db66e160e6ad5c",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1414,8 +1414,8 @@
       "session_id": "retainer-new-create",
       "source_id": "retainer-new-receipt"
     },
-    "prev_hash": "8da79bbc2d2f56d0c32838e65c4cb27fc7c1f69abaae909edc7751b749b7fa47",
-    "record_hash": "5c10af2dcaf88be76569997aaa42e8369940adb0c57c1b4401e9f5556ca45f46",
+    "prev_hash": "cc2023f96d2ebda09ecdcde491fd2dab84dc832ce077be4394db66e160e6ad5c",
+    "record_hash": "e493641e6d34776797254a0f7fc8ad1eb046e967824148f443cb3e9194e89a2d",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1427,10 +1427,10 @@
       "source_ids": [
         "retainer-new-receipt"
       ],
-      "store_sha256": "6926685ebbc75746293b5ee5a784c383dcdeaeafcae00eabb8b041f8a7c3325a"
+      "store_sha256": "701ccc4a47932600b8919c2c0511986b67c5e0aee5bc4f57e53777c6c1c7dd05"
     },
-    "prev_hash": "5c10af2dcaf88be76569997aaa42e8369940adb0c57c1b4401e9f5556ca45f46",
-    "record_hash": "dd6b2a4726ba7418b6e9fc8ce1936297f7f9e5958d7e1448f4e549a48d3bc7ab",
+    "prev_hash": "e493641e6d34776797254a0f7fc8ad1eb046e967824148f443cb3e9194e89a2d",
+    "record_hash": "66d933fb37bc5c82572bd024541fc2edd4dfb68c78b00ad5d6a917c054583176",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1441,8 +1441,8 @@
       "entries": 0,
       "session_id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95"
     },
-    "prev_hash": "dd6b2a4726ba7418b6e9fc8ce1936297f7f9e5958d7e1448f4e549a48d3bc7ab",
-    "record_hash": "71efa9a92d8cf429907e457de935d61ac116fa984b8129e351f26faa5939716b",
+    "prev_hash": "66d933fb37bc5c82572bd024541fc2edd4dfb68c78b00ad5d6a917c054583176",
+    "record_hash": "3b80a1c7041f048ad536a714f9a3ea5f36df925b5b76b1ceef63999f1a963f33",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1463,8 +1463,8 @@
       ],
       "session_id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95"
     },
-    "prev_hash": "71efa9a92d8cf429907e457de935d61ac116fa984b8129e351f26faa5939716b",
-    "record_hash": "ed9abfe199db28a251dc9e0be3323fc4a2540659883d9b14a36872d606b65fb2",
+    "prev_hash": "3b80a1c7041f048ad536a714f9a3ea5f36df925b5b76b1ceef63999f1a963f33",
+    "record_hash": "dbbff58540e2d3caa51a5eef9309e0da0448c4373e92b8fb41c47072c5a901e1",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1474,10 +1474,10 @@
       "entries": 0,
       "session_id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95",
       "source_ids": [],
-      "store_sha256": "4e2f461582485cff766dc9bcbe3f3d6ee05f897b7344cefb48eed0ff43544b7c"
+      "store_sha256": "1f712b1bb97299c38f4fd7d4f78b7cc9511c0f9ae880fd47d38bfb4c699b9415"
     },
-    "prev_hash": "ed9abfe199db28a251dc9e0be3323fc4a2540659883d9b14a36872d606b65fb2",
-    "record_hash": "f03fcf3a323a9413359fe4d1598d81172c61f51d08563089ca610ffccb959fea",
+    "prev_hash": "dbbff58540e2d3caa51a5eef9309e0da0448c4373e92b8fb41c47072c5a901e1",
+    "record_hash": "d9ec6910edbdae0295ab6d3181b8399580bf94dab8d97b8621141e6ab946f13a",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1488,8 +1488,8 @@
       "entries": 1,
       "session_id": "laptop-new-create"
     },
-    "prev_hash": "f03fcf3a323a9413359fe4d1598d81172c61f51d08563089ca610ffccb959fea",
-    "record_hash": "dcbd761e20856ce5cd0b22a00b4cb58af5a346f07d39e977127bc05db1fa5280",
+    "prev_hash": "d9ec6910edbdae0295ab6d3181b8399580bf94dab8d97b8621141e6ab946f13a",
+    "record_hash": "036a5b444fd309e67a8ee3d37e4aae0ec015b4c4eaee982808f3d2bdd40d337b",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1515,8 +1515,8 @@
       ],
       "session_id": "laptop-new-create"
     },
-    "prev_hash": "dcbd761e20856ce5cd0b22a00b4cb58af5a346f07d39e977127bc05db1fa5280",
-    "record_hash": "f3d68006911ab19daadb9600f66219b9d8ed18857cf9718de70346e9b0e227eb",
+    "prev_hash": "036a5b444fd309e67a8ee3d37e4aae0ec015b4c4eaee982808f3d2bdd40d337b",
+    "record_hash": "68509b2a587e37239a8298b371abeff531960da2d11da556ce53108d26d3d86e",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1526,8 +1526,8 @@
       "session_id": "laptop-new-create",
       "source_id": "laptop-new-purchase"
     },
-    "prev_hash": "f3d68006911ab19daadb9600f66219b9d8ed18857cf9718de70346e9b0e227eb",
-    "record_hash": "2d0e160adc9b5c0d939e21efb9a53909de37097508042216cf21b637bec091b1",
+    "prev_hash": "68509b2a587e37239a8298b371abeff531960da2d11da556ce53108d26d3d86e",
+    "record_hash": "c0bf04cb107236c617ac2f0c2f0dfbed6fc3016c19a05a3ce9f2abc27a4a8847",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1539,10 +1539,10 @@
       "source_ids": [
         "laptop-new-purchase"
       ],
-      "store_sha256": "c7e6bc720302933c0975d63fbcb8c970a48ab3e6d3ff606307dd70d2da6de13e"
+      "store_sha256": "0c00f1c25bacda9f93d264ad197d20101ad94a4f72baebcf7d947e74b9bf8c10"
     },
-    "prev_hash": "2d0e160adc9b5c0d939e21efb9a53909de37097508042216cf21b637bec091b1",
-    "record_hash": "cd7395138035a759d35b1506a2fc56c9a0e2dc0a9bf7ce387ee50b7fee6a1270",
+    "prev_hash": "c0bf04cb107236c617ac2f0c2f0dfbed6fc3016c19a05a3ce9f2abc27a4a8847",
+    "record_hash": "398e13af3a6ff1b81ea0244aa5fb84be14e18efd1c3db3784cd424020e0b379d",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1553,8 +1553,8 @@
       "entries": 0,
       "session_id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050"
     },
-    "prev_hash": "cd7395138035a759d35b1506a2fc56c9a0e2dc0a9bf7ce387ee50b7fee6a1270",
-    "record_hash": "38d6d5214edefa3a37140aa2c7e579d7d80ea81b97ad604dc61aeb5ca627bf6d",
+    "prev_hash": "398e13af3a6ff1b81ea0244aa5fb84be14e18efd1c3db3784cd424020e0b379d",
+    "record_hash": "490d3b31ec183d8dabfe526a3e42bf4ca4e34ebedc74d2a17a06904397c823ed",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1575,8 +1575,8 @@
       ],
       "session_id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050"
     },
-    "prev_hash": "38d6d5214edefa3a37140aa2c7e579d7d80ea81b97ad604dc61aeb5ca627bf6d",
-    "record_hash": "be08c280c4ed73548ceff083c7a225c9e7c66d3d3d163bd6b30f544b6c6ecc6d",
+    "prev_hash": "490d3b31ec183d8dabfe526a3e42bf4ca4e34ebedc74d2a17a06904397c823ed",
+    "record_hash": "d14e675af47c9cc2ba4446e70c073a69fa102497b8df93826cd9fccd193e5469",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1586,10 +1586,10 @@
       "entries": 0,
       "session_id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050",
       "source_ids": [],
-      "store_sha256": "3672870d252b8a4bb2942823a2da719663872e6b158d707257750f87f457dd16"
+      "store_sha256": "6aa22c0479c53a036f14ad5647a820661691eac1308035d03077487bd59b2ca9"
     },
-    "prev_hash": "be08c280c4ed73548ceff083c7a225c9e7c66d3d3d163bd6b30f544b6c6ecc6d",
-    "record_hash": "94a4e72840c7db63487c88beac99bd96697d125e09a1fdac7ca3c4c2cd24a635",
+    "prev_hash": "d14e675af47c9cc2ba4446e70c073a69fa102497b8df93826cd9fccd193e5469",
+    "record_hash": "9eb6cb6e25116dfa99b95d12d7cdb47af3b5273be422c7f053654193e7144653",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1600,8 +1600,8 @@
       "entries": 1,
       "session_id": "pay-bill-2001"
     },
-    "prev_hash": "94a4e72840c7db63487c88beac99bd96697d125e09a1fdac7ca3c4c2cd24a635",
-    "record_hash": "fb1ae5809ba6f8b3f93846771dc7d054ac7d84e43b0700a01fa220effc32ab24",
+    "prev_hash": "9eb6cb6e25116dfa99b95d12d7cdb47af3b5273be422c7f053654193e7144653",
+    "record_hash": "806cc16510ddb13547e2d547b4caa60529dab78cc36b0637dbd0518f67e8ad6d",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1632,8 +1632,8 @@
       ],
       "session_id": "pay-bill-2001"
     },
-    "prev_hash": "fb1ae5809ba6f8b3f93846771dc7d054ac7d84e43b0700a01fa220effc32ab24",
-    "record_hash": "db3504ef892b7b05cfe10946899d8aa8833e17d03231fc263cbceaf9491b8910",
+    "prev_hash": "806cc16510ddb13547e2d547b4caa60529dab78cc36b0637dbd0518f67e8ad6d",
+    "record_hash": "3bf996df409ab4e29651bcea9dcc0ab203d8a1cf49f69c2a2d17546007bc1fc0",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1643,8 +1643,8 @@
       "session_id": "pay-bill-2001",
       "source_id": "pay-bill-2001-bank"
     },
-    "prev_hash": "db3504ef892b7b05cfe10946899d8aa8833e17d03231fc263cbceaf9491b8910",
-    "record_hash": "74b0fbca6db1b0aa4f24c0db063f76c42f84e72b074ba1629ca87a713b16655c",
+    "prev_hash": "3bf996df409ab4e29651bcea9dcc0ab203d8a1cf49f69c2a2d17546007bc1fc0",
+    "record_hash": "9bdf3fa5430f74fe360a66707d61e0b2480d2df5d6ecd908d546e48be14133c5",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1656,10 +1656,10 @@
       "source_ids": [
         "pay-bill-2001-bank"
       ],
-      "store_sha256": "5c357687e8ede12411eae30d24ee12d6177b082d4a5d045a257e1d11e4e1ba9b"
+      "store_sha256": "6542e60974635be9aab47d9384e09f3d3a49532f6ad78740757d61f3ef396b2a"
     },
-    "prev_hash": "74b0fbca6db1b0aa4f24c0db063f76c42f84e72b074ba1629ca87a713b16655c",
-    "record_hash": "35d2cfa7ebd1e5ebf7151a1891f6d98cb99280a04e99246ffa33267462090233",
+    "prev_hash": "9bdf3fa5430f74fe360a66707d61e0b2480d2df5d6ecd908d546e48be14133c5",
+    "record_hash": "78bebd7a1069ae6a544ed89bb40eee1893698632991a05f69ce2fd84fe5aa5f3",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1670,8 +1670,8 @@
       "entries": 0,
       "session_id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18"
     },
-    "prev_hash": "35d2cfa7ebd1e5ebf7151a1891f6d98cb99280a04e99246ffa33267462090233",
-    "record_hash": "5311edabdd6d5adc18503dbbb1640ad208db126160f51a4596acef1970b9fbf6",
+    "prev_hash": "78bebd7a1069ae6a544ed89bb40eee1893698632991a05f69ce2fd84fe5aa5f3",
+    "record_hash": "522c762ae829a72ecfd80d4925ea25ff6c13d5e686f0b5e77adcd5a2b8febfdb",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1692,8 +1692,8 @@
       ],
       "session_id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18"
     },
-    "prev_hash": "5311edabdd6d5adc18503dbbb1640ad208db126160f51a4596acef1970b9fbf6",
-    "record_hash": "9310596c68f2a166ad219d751a1bd8360d38102b6b4ba4e95e7ec34ffdb07b51",
+    "prev_hash": "522c762ae829a72ecfd80d4925ea25ff6c13d5e686f0b5e77adcd5a2b8febfdb",
+    "record_hash": "d8094890d7c1c08162d9f1d3739c2cf5257bc6c7dac70e42748b82dcc09b1401",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1703,10 +1703,10 @@
       "entries": 0,
       "session_id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18",
       "source_ids": [],
-      "store_sha256": "2c5610e8d915839ee648424d7feec138b3807152f1525bf9e44c7733bc98d607"
+      "store_sha256": "7aa8efb89bc33f163b5088012bc3f7f05b2efd8ca70c17006c344d241b5b4312"
     },
-    "prev_hash": "9310596c68f2a166ad219d751a1bd8360d38102b6b4ba4e95e7ec34ffdb07b51",
-    "record_hash": "20dd2afe8c8daca6047b9003a5af9fe9c8c3d7f3076c33b41c3ff00335f63f57",
+    "prev_hash": "d8094890d7c1c08162d9f1d3739c2cf5257bc6c7dac70e42748b82dcc09b1401",
+    "record_hash": "595b145920da763db347a53d59262242b3cb23aa7bc3a18f39165e9cc9fbf2b7",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1717,8 +1717,8 @@
       "entries": 1,
       "session_id": "bonus-estimate-create"
     },
-    "prev_hash": "20dd2afe8c8daca6047b9003a5af9fe9c8c3d7f3076c33b41c3ff00335f63f57",
-    "record_hash": "9491048e4cc9bfa314051561ede004966c816119dd70f4a5862d306aaeaa17a7",
+    "prev_hash": "595b145920da763db347a53d59262242b3cb23aa7bc3a18f39165e9cc9fbf2b7",
+    "record_hash": "11e95692564e33f603380eb9503776894a36bbabab4b2792dc06fc0213821c17",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1739,8 +1739,8 @@
       ],
       "session_id": "bonus-estimate-create"
     },
-    "prev_hash": "9491048e4cc9bfa314051561ede004966c816119dd70f4a5862d306aaeaa17a7",
-    "record_hash": "d93ed7e6efea4bc3be60f2e0fc0e39823e9266bdde758da0f0a720dedec3f791",
+    "prev_hash": "11e95692564e33f603380eb9503776894a36bbabab4b2792dc06fc0213821c17",
+    "record_hash": "c5e759e7337c2f00f636ed35581e99a96077d6eb125261fd3b4cef887a0cc5b7",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1750,8 +1750,8 @@
       "session_id": "bonus-estimate-create",
       "source_id": "accrual:bonus-estimate-create"
     },
-    "prev_hash": "d93ed7e6efea4bc3be60f2e0fc0e39823e9266bdde758da0f0a720dedec3f791",
-    "record_hash": "c67984e5c94bbd1326db94c3e81aa7523231099a7e0a7ba22588bf91d09183c9",
+    "prev_hash": "c5e759e7337c2f00f636ed35581e99a96077d6eb125261fd3b4cef887a0cc5b7",
+    "record_hash": "53ef31754ce2d2b29ef0465a9c7783d073755d8dde80d35e8751708d150c9468",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1763,10 +1763,10 @@
       "source_ids": [
         "accrual:bonus-estimate-create"
       ],
-      "store_sha256": "d4f88d7e014e94da424d5fe577b53113b5064d06d006e80f6af69b14969fa8d2"
+      "store_sha256": "89c435bd5f65cb62e516382707e62b4b46fbe23e5a635527abc4d1ac1c9ff8ff"
     },
-    "prev_hash": "c67984e5c94bbd1326db94c3e81aa7523231099a7e0a7ba22588bf91d09183c9",
-    "record_hash": "feb8584dc29d0fc5ef5ea8a9ab2a64e460eb4bf50a4cab600edfda3c570f215f",
+    "prev_hash": "53ef31754ce2d2b29ef0465a9c7783d073755d8dde80d35e8751708d150c9468",
+    "record_hash": "36298ba13f60e8691ea9e81a4d54841a70a2c85a2eeadffec965752b9dfac0bf",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1777,8 +1777,8 @@
       "entries": 0,
       "session_id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb"
     },
-    "prev_hash": "feb8584dc29d0fc5ef5ea8a9ab2a64e460eb4bf50a4cab600edfda3c570f215f",
-    "record_hash": "75743f408b7110eb536b60793d9e8e2071531d78e8be23e9b536b9f385c9d5cf",
+    "prev_hash": "36298ba13f60e8691ea9e81a4d54841a70a2c85a2eeadffec965752b9dfac0bf",
+    "record_hash": "3609e49683920e399677aac8e9248db1c954fe6a8d64d22a7589efb09d1b2b08",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1799,8 +1799,8 @@
       ],
       "session_id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb"
     },
-    "prev_hash": "75743f408b7110eb536b60793d9e8e2071531d78e8be23e9b536b9f385c9d5cf",
-    "record_hash": "b3f138c7bb4c5509fa562df2bd7ed03e9e8779a3df45f7363bace2741155a0af",
+    "prev_hash": "3609e49683920e399677aac8e9248db1c954fe6a8d64d22a7589efb09d1b2b08",
+    "record_hash": "e8be0aa3342e291e588632508229abeb7c6ba3658ab32d3db6495ad35c8bf8c1",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1810,10 +1810,10 @@
       "entries": 0,
       "session_id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb",
       "source_ids": [],
-      "store_sha256": "a75395392bbbb39d99ffc00ad203e2d3be6bd7926a1e86e83c6978791c6f722b"
+      "store_sha256": "18f78fc0cc968781fc0a00664551cab0555389e6dbf0d9f1bd18aa3ad6c1f060"
     },
-    "prev_hash": "b3f138c7bb4c5509fa562df2bd7ed03e9e8779a3df45f7363bace2741155a0af",
-    "record_hash": "c20146e1d69f6fcb24de0f2b21608c623defc2a0465c8b52392356755b5aa754",
+    "prev_hash": "e8be0aa3342e291e588632508229abeb7c6ba3658ab32d3db6495ad35c8bf8c1",
+    "record_hash": "7cf96d084b7ec28ac3bc7992d5c1cbdf6139c1b604c8fa4806cdaf1cb3400299",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1824,8 +1824,8 @@
       "entries": 1,
       "session_id": "bonus-actual-create"
     },
-    "prev_hash": "c20146e1d69f6fcb24de0f2b21608c623defc2a0465c8b52392356755b5aa754",
-    "record_hash": "3e259a55fd4f8b4f4affcd25f72ccfb166bc5f958899003fa43a58635cae7392",
+    "prev_hash": "7cf96d084b7ec28ac3bc7992d5c1cbdf6139c1b604c8fa4806cdaf1cb3400299",
+    "record_hash": "422905b6ea52734e333bfa982f3cf10633fdf5ccd0c602f6ba778d14416a3360",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1851,8 +1851,8 @@
       ],
       "session_id": "bonus-actual-create"
     },
-    "prev_hash": "3e259a55fd4f8b4f4affcd25f72ccfb166bc5f958899003fa43a58635cae7392",
-    "record_hash": "f60f74659e7a40940be3a2f5f6a2aac47a954f5a6775dcbe6742175238e48db1",
+    "prev_hash": "422905b6ea52734e333bfa982f3cf10633fdf5ccd0c602f6ba778d14416a3360",
+    "record_hash": "ea6fc3a20e28540d2b24cd697782e04d05b37b25aaf1b9943a7cb64d0519d4cb",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1862,8 +1862,8 @@
       "session_id": "bonus-actual-create",
       "source_id": "accrual:bonus-actual-create"
     },
-    "prev_hash": "f60f74659e7a40940be3a2f5f6a2aac47a954f5a6775dcbe6742175238e48db1",
-    "record_hash": "362d0f1a40e0fb7c8f28b3445e1522158665f7ff24a9f91dc4e8fc0dbb9cd79a",
+    "prev_hash": "ea6fc3a20e28540d2b24cd697782e04d05b37b25aaf1b9943a7cb64d0519d4cb",
+    "record_hash": "16682e0f839d647956bc90a0e5449d7914a17015ebd2018b0ef55613d0960e9f",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1875,10 +1875,10 @@
       "source_ids": [
         "accrual:bonus-actual-create"
       ],
-      "store_sha256": "1dc9b4a48d78cd1f50a4e463fc11079ad7768c7a1e665bf3559a09a07d467166"
+      "store_sha256": "490e1f6e10f74dccfc03da117c89f4be99574fa96c8785c791bba46b767624c1"
     },
-    "prev_hash": "362d0f1a40e0fb7c8f28b3445e1522158665f7ff24a9f91dc4e8fc0dbb9cd79a",
-    "record_hash": "4962d51b429d739bd92ff20aa0f9a00c78d3fca287d434ca521243d11355138e",
+    "prev_hash": "16682e0f839d647956bc90a0e5449d7914a17015ebd2018b0ef55613d0960e9f",
+    "record_hash": "d5d06f58bd3b260fa73e69f0f35aa753bb19a9d2740da930e09faf1a3bc07952",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1889,8 +1889,8 @@
       "entries": 1,
       "session_id": "bonus-true-up"
     },
-    "prev_hash": "4962d51b429d739bd92ff20aa0f9a00c78d3fca287d434ca521243d11355138e",
-    "record_hash": "9b23f183093a2686e9b2b7c669e9ca6207615fbe1c613e182b14feea1cc5efb7",
+    "prev_hash": "d5d06f58bd3b260fa73e69f0f35aa753bb19a9d2740da930e09faf1a3bc07952",
+    "record_hash": "a820d5052804c8c85929e76a615d3abea9e4f2be668b270da143d277ca3a7eeb",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1916,8 +1916,8 @@
       ],
       "session_id": "bonus-true-up"
     },
-    "prev_hash": "9b23f183093a2686e9b2b7c669e9ca6207615fbe1c613e182b14feea1cc5efb7",
-    "record_hash": "764fa456350186798fbd3c379efb4b0c231c29424b7d438e11b27cc7e91038c8",
+    "prev_hash": "a820d5052804c8c85929e76a615d3abea9e4f2be668b270da143d277ca3a7eeb",
+    "record_hash": "74db5a32b435a2fd1d055b63072b8ba2ff4be93faecb9b134f81feee0309b7ab",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1927,8 +1927,8 @@
       "session_id": "bonus-true-up",
       "source_id": "adjustment:bonus-true-up"
     },
-    "prev_hash": "764fa456350186798fbd3c379efb4b0c231c29424b7d438e11b27cc7e91038c8",
-    "record_hash": "649c6f202d23d23e355e7eb51be38ccf343530de8e8f315f762184c6dc661207",
+    "prev_hash": "74db5a32b435a2fd1d055b63072b8ba2ff4be93faecb9b134f81feee0309b7ab",
+    "record_hash": "7a9f8268038791035700b8d076200e1acb7e3aa35fbd864006db3294af261006",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -1940,10 +1940,10 @@
       "source_ids": [
         "adjustment:bonus-true-up"
       ],
-      "store_sha256": "35830b1f9cffa1a50de9d4193e900993c2676af7b9c5c38a2523031a12d2adcb"
+      "store_sha256": "164086f7c48316c8133742eae547346d2adad790bf190775abbdee6468ec301e"
     },
-    "prev_hash": "649c6f202d23d23e355e7eb51be38ccf343530de8e8f315f762184c6dc661207",
-    "record_hash": "d46c20d97fb5e54f9f5c78711482025dc48cd867da07793e233a14cf305f4a1d",
+    "prev_hash": "7a9f8268038791035700b8d076200e1acb7e3aa35fbd864006db3294af261006",
+    "record_hash": "1621e32d46b134ea328b33e77c2cdad2f30bc73ebfc74a0f6b368bcbdf346696",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -1954,8 +1954,8 @@
       "entries": 0,
       "session_id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9"
     },
-    "prev_hash": "d46c20d97fb5e54f9f5c78711482025dc48cd867da07793e233a14cf305f4a1d",
-    "record_hash": "d3a2e2f65c03d4ecad36fd40a691d7287aa13e944288738b810db1b608982778",
+    "prev_hash": "1621e32d46b134ea328b33e77c2cdad2f30bc73ebfc74a0f6b368bcbdf346696",
+    "record_hash": "7f253af0dbeab41e0924a5e598117cbc4d8bb431dbfce652b3fac7ba2c9c52fc",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -1976,8 +1976,8 @@
       ],
       "session_id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9"
     },
-    "prev_hash": "d3a2e2f65c03d4ecad36fd40a691d7287aa13e944288738b810db1b608982778",
-    "record_hash": "b3f18e5ff78b7363bdbed29fe00946483b02d11a165dc6a367e7eb0358a08ccd",
+    "prev_hash": "7f253af0dbeab41e0924a5e598117cbc4d8bb431dbfce652b3fac7ba2c9c52fc",
+    "record_hash": "e42dfc3713b82efc7adad6b2bbd43f30c090b0e36f11b6b1e5f910da5341c719",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -1987,10 +1987,10 @@
       "entries": 0,
       "session_id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9",
       "source_ids": [],
-      "store_sha256": "17da6ef0dd96d76b660fd8fc340f59a7a69f1668539056c0aef02f1fa152013e"
+      "store_sha256": "4e43737f441b69f61bca10c759d43e959ecad804b2c7c5a069bc57b9968e396b"
     },
-    "prev_hash": "b3f18e5ff78b7363bdbed29fe00946483b02d11a165dc6a367e7eb0358a08ccd",
-    "record_hash": "2b714a4085aded1bc46899804172f4aa4e5d3cbaab4497c526b76ad3757b5700",
+    "prev_hash": "e42dfc3713b82efc7adad6b2bbd43f30c090b0e36f11b6b1e5f910da5341c719",
+    "record_hash": "054bde6b372bbb111f96e6292c132c07f2a5677d5111ec2ac6f8012ff0f2e8e8",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2001,8 +2001,8 @@
       "entries": 1,
       "session_id": "inv-1003-writeoff"
     },
-    "prev_hash": "2b714a4085aded1bc46899804172f4aa4e5d3cbaab4497c526b76ad3757b5700",
-    "record_hash": "e73113419055cf64ffb56c974a76dacffef41efaa6a4711d7a95acabfc8008d9",
+    "prev_hash": "054bde6b372bbb111f96e6292c132c07f2a5677d5111ec2ac6f8012ff0f2e8e8",
+    "record_hash": "8bdd3ab5999ad2f89d21262da35817cd586cbe86754dcd309fbeb08466c48e17",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2033,8 +2033,8 @@
       ],
       "session_id": "inv-1003-writeoff"
     },
-    "prev_hash": "e73113419055cf64ffb56c974a76dacffef41efaa6a4711d7a95acabfc8008d9",
-    "record_hash": "08518e14d2dd4cfa38e1b416e62d9c1cdbfc3a80eb6394700b2128537b058aaa",
+    "prev_hash": "8bdd3ab5999ad2f89d21262da35817cd586cbe86754dcd309fbeb08466c48e17",
+    "record_hash": "e06a28e5cf8ec404bded5bebfe14c99205ab87513ea9aa5bc9a0d33bfcecafe7",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2044,8 +2044,8 @@
       "session_id": "inv-1003-writeoff",
       "source_id": "adjustment:inv-1003-writeoff"
     },
-    "prev_hash": "08518e14d2dd4cfa38e1b416e62d9c1cdbfc3a80eb6394700b2128537b058aaa",
-    "record_hash": "182f97a903868d40ac49da38b5eccd5fda47899c99c3ac2a84221e15cd071672",
+    "prev_hash": "e06a28e5cf8ec404bded5bebfe14c99205ab87513ea9aa5bc9a0d33bfcecafe7",
+    "record_hash": "88281c76734496a4545f48fb0aa7e7da9899e18a0bfb8bf72910e6dbc8cf38a2",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2057,10 +2057,10 @@
       "source_ids": [
         "adjustment:inv-1003-writeoff"
       ],
-      "store_sha256": "f2893c7f5a057abfb19cf3aa772296de03bef7ee0747d94d6986d5c1520a4d29"
+      "store_sha256": "838e23e93e116bef51a47c3c972f007fc1fb1de6805c0549be10dbdcbd01dcfd"
     },
-    "prev_hash": "182f97a903868d40ac49da38b5eccd5fda47899c99c3ac2a84221e15cd071672",
-    "record_hash": "007e86e75b6f1dcd57c69b8d4bb9ff0423c07714e049bfcd991be86aa0e22b2c",
+    "prev_hash": "88281c76734496a4545f48fb0aa7e7da9899e18a0bfb8bf72910e6dbc8cf38a2",
+    "record_hash": "516816087f9e083722aa22c49b6ff3130a8ef17dabee9aa6f6fa5a297753364f",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2071,8 +2071,8 @@
       "entries": 0,
       "session_id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b"
     },
-    "prev_hash": "007e86e75b6f1dcd57c69b8d4bb9ff0423c07714e049bfcd991be86aa0e22b2c",
-    "record_hash": "5294a008f5f0fe44a2969cda7865dd87bc37d22da9c1eb81ca07c029b34d54d6",
+    "prev_hash": "516816087f9e083722aa22c49b6ff3130a8ef17dabee9aa6f6fa5a297753364f",
+    "record_hash": "94ff9fc2b12a1fe61e6ef9d426b739b08a0934320992c386cd524290f1310d85",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2093,8 +2093,8 @@
       ],
       "session_id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b"
     },
-    "prev_hash": "5294a008f5f0fe44a2969cda7865dd87bc37d22da9c1eb81ca07c029b34d54d6",
-    "record_hash": "e65ab99f9d84c8e0aee37b046207018512342cf6a84a916a063aa54b0f9b75da",
+    "prev_hash": "94ff9fc2b12a1fe61e6ef9d426b739b08a0934320992c386cd524290f1310d85",
+    "record_hash": "28a108d635162f4d85b5098fee5cbbe8d84dd418db1ebe34527c4624a61d152e",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2104,10 +2104,10 @@
       "entries": 0,
       "session_id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b",
       "source_ids": [],
-      "store_sha256": "41fd1054a906b0eef19fdaef7a411a760f86c9255f494b9697c472f18273dd0d"
+      "store_sha256": "fcbab7070954052efd5e13d2529e689da6884b4b7a21eb6e9be91cc75ea4949e"
     },
-    "prev_hash": "e65ab99f9d84c8e0aee37b046207018512342cf6a84a916a063aa54b0f9b75da",
-    "record_hash": "f5771f116eaadc174ab90d3a4c3eb5a80dc965bf60f4f26f9c3d544aebb2c368",
+    "prev_hash": "28a108d635162f4d85b5098fee5cbbe8d84dd418db1ebe34527c4624a61d152e",
+    "record_hash": "3d7d94e953ad3b8e5be711cb23c782b00deb289b00849ede79144a9937fa6eaa",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2118,8 +2118,8 @@
       "entries": 1,
       "session_id": "pay-inv-1002"
     },
-    "prev_hash": "f5771f116eaadc174ab90d3a4c3eb5a80dc965bf60f4f26f9c3d544aebb2c368",
-    "record_hash": "6f1fe1af6010b72679a3d8ee91dcf828bd4f10b9a810fd7854d9f223377b4eb4",
+    "prev_hash": "3d7d94e953ad3b8e5be711cb23c782b00deb289b00849ede79144a9937fa6eaa",
+    "record_hash": "30b8daffc82692f8de09b82e1c7eee6d2d048ec2ed63289629ae1abe6291e561",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2150,8 +2150,8 @@
       ],
       "session_id": "pay-inv-1002"
     },
-    "prev_hash": "6f1fe1af6010b72679a3d8ee91dcf828bd4f10b9a810fd7854d9f223377b4eb4",
-    "record_hash": "0e187eb12ac9aec84f86e9714d9fd7e256dc8be5f02097b2223cefee52e9b60f",
+    "prev_hash": "30b8daffc82692f8de09b82e1c7eee6d2d048ec2ed63289629ae1abe6291e561",
+    "record_hash": "0518cff83c78825fe05ad861e7b8bb39c07253d824bf4c12ac437f91ae91ee33",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2161,8 +2161,8 @@
       "session_id": "pay-inv-1002",
       "source_id": "pay-inv-1002-bank"
     },
-    "prev_hash": "0e187eb12ac9aec84f86e9714d9fd7e256dc8be5f02097b2223cefee52e9b60f",
-    "record_hash": "32ac1ba08ad980d851a7d4f33de08b9ade12ec5790334b33639cf2b8802a3ad9",
+    "prev_hash": "0518cff83c78825fe05ad861e7b8bb39c07253d824bf4c12ac437f91ae91ee33",
+    "record_hash": "1d2ef0e99fccfe498ac6d29c9c8ef60b9bc21fcb29ae972f2336295d346db222",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2174,10 +2174,10 @@
       "source_ids": [
         "pay-inv-1002-bank"
       ],
-      "store_sha256": "f31433ef2d5ef55704cf0d64f943f62219cbaf5e98e3939cab7e696a8cc22177"
+      "store_sha256": "22c47de5f3dda46de4312308f334d81b9ec307146472d7b10acb81aae0634a7d"
     },
-    "prev_hash": "32ac1ba08ad980d851a7d4f33de08b9ade12ec5790334b33639cf2b8802a3ad9",
-    "record_hash": "dfbd85accd07e751fe06d930e762f48a90ce7475c09e4b8e7bab0cafd85573a5",
+    "prev_hash": "1d2ef0e99fccfe498ac6d29c9c8ef60b9bc21fcb29ae972f2336295d346db222",
+    "record_hash": "c9b87eef122791a82e235e8d5b6a6c394a8310f77adb2b4f0ab6f1817e7d6e0a",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2188,8 +2188,8 @@
       "entries": 0,
       "session_id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353"
     },
-    "prev_hash": "dfbd85accd07e751fe06d930e762f48a90ce7475c09e4b8e7bab0cafd85573a5",
-    "record_hash": "6395a82acca7598086e7c7db97dd9730c80519a047543a1b70f3a360c200cc65",
+    "prev_hash": "c9b87eef122791a82e235e8d5b6a6c394a8310f77adb2b4f0ab6f1817e7d6e0a",
+    "record_hash": "5abc9c3c2f065a4b412b3bea1d048096817cc45059d4518df8aecf46c2919a4c",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2210,8 +2210,8 @@
       ],
       "session_id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353"
     },
-    "prev_hash": "6395a82acca7598086e7c7db97dd9730c80519a047543a1b70f3a360c200cc65",
-    "record_hash": "bed8db6171054da11d53f61fc3abf5f758348ddb687017dfecd79cec1cb8a790",
+    "prev_hash": "5abc9c3c2f065a4b412b3bea1d048096817cc45059d4518df8aecf46c2919a4c",
+    "record_hash": "a442a6be8dd407f633788f4c8f4cabe38f6e16e26da53526555e2a15e2343a3c",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2221,10 +2221,10 @@
       "entries": 0,
       "session_id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353",
       "source_ids": [],
-      "store_sha256": "079ac53c969fd755712b95b06c266c9779d3981b3c65b04453ff9d5da466fb55"
+      "store_sha256": "d3059d5817b716c5e6871f55706709623b47f18a766aecab155566782b23667f"
     },
-    "prev_hash": "bed8db6171054da11d53f61fc3abf5f758348ddb687017dfecd79cec1cb8a790",
-    "record_hash": "57f5f3fe83c09466be20c4239874ff6ceef25c546e62517cf929b473eb36e963",
+    "prev_hash": "a442a6be8dd407f633788f4c8f4cabe38f6e16e26da53526555e2a15e2343a3c",
+    "record_hash": "c5f807ff2f79957761223148706e6c99dd6b7474953084d2392712930e58f1b7",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2235,8 +2235,8 @@
       "entries": 1,
       "session_id": "pay-bonus-actual"
     },
-    "prev_hash": "57f5f3fe83c09466be20c4239874ff6ceef25c546e62517cf929b473eb36e963",
-    "record_hash": "478ffe8abdee9e9e804679abc289ad896b5a17fd9a9ecd16cb6f94c31461b914",
+    "prev_hash": "c5f807ff2f79957761223148706e6c99dd6b7474953084d2392712930e58f1b7",
+    "record_hash": "41d22e1f044133f5085b5858f20ef504ecf8de4427c5ad6359eee656592bec31",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2267,8 +2267,8 @@
       ],
       "session_id": "pay-bonus-actual"
     },
-    "prev_hash": "478ffe8abdee9e9e804679abc289ad896b5a17fd9a9ecd16cb6f94c31461b914",
-    "record_hash": "5f53f73d4f361c1c83563f9c67d4a3a1391146d7ab45ed7aa49e36e1812a5e34",
+    "prev_hash": "41d22e1f044133f5085b5858f20ef504ecf8de4427c5ad6359eee656592bec31",
+    "record_hash": "b21accd229038a071a9d2ada051e887b6dde686a64307603c7fedc0265f05b17",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2278,8 +2278,8 @@
       "session_id": "pay-bonus-actual",
       "source_id": "pay-bonus-actual-bank"
     },
-    "prev_hash": "5f53f73d4f361c1c83563f9c67d4a3a1391146d7ab45ed7aa49e36e1812a5e34",
-    "record_hash": "24df27996f0e1f9b42a6f9824037f427b09f9cb5669acea761213dcfa67d4fba",
+    "prev_hash": "b21accd229038a071a9d2ada051e887b6dde686a64307603c7fedc0265f05b17",
+    "record_hash": "456b07f7e0f158105d05ba388247b0be5411bbc222e322b5994daa42d2957068",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2291,10 +2291,10 @@
       "source_ids": [
         "pay-bonus-actual-bank"
       ],
-      "store_sha256": "5015d1dd39e4f1fddef33340d01a7c98cfe3abfec3ddae46bcd8459bda24c1ad"
+      "store_sha256": "899bfa622156fff5fca83d8aba6e5054a09aec0a32b075d1d8dbc729903e426e"
     },
-    "prev_hash": "24df27996f0e1f9b42a6f9824037f427b09f9cb5669acea761213dcfa67d4fba",
-    "record_hash": "e6036eea854ff1027551f2f5a795287be91f74e53fbc7b4dbb8e0173abfd60eb",
+    "prev_hash": "456b07f7e0f158105d05ba388247b0be5411bbc222e322b5994daa42d2957068",
+    "record_hash": "436cf5f2edc356139aaf12c5fc4de86bc353fd8cc227e5f2a4052611bad7df06",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2305,8 +2305,8 @@
       "entries": 1,
       "session_id": "utilities-estimate-mar"
     },
-    "prev_hash": "e6036eea854ff1027551f2f5a795287be91f74e53fbc7b4dbb8e0173abfd60eb",
-    "record_hash": "337bc684639276f1a2a0f427c9344af78cfae68cdbcf236884de16b1c7ca1dff",
+    "prev_hash": "436cf5f2edc356139aaf12c5fc4de86bc353fd8cc227e5f2a4052611bad7df06",
+    "record_hash": "954470a5e3bd173e44dccfb791057d5b9a1becba032cb9c5cea842fda70f2f0c",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2327,8 +2327,8 @@
       ],
       "session_id": "utilities-estimate-mar"
     },
-    "prev_hash": "337bc684639276f1a2a0f427c9344af78cfae68cdbcf236884de16b1c7ca1dff",
-    "record_hash": "318d33bd413d1affc5d5feb8757088d7da9860ec06e0763529f136146b8f32ba",
+    "prev_hash": "954470a5e3bd173e44dccfb791057d5b9a1becba032cb9c5cea842fda70f2f0c",
+    "record_hash": "7b9c3b5b08d88039536b1293bae8db0147d76157af8fc71b21d3e864aea356e2",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2338,8 +2338,8 @@
       "session_id": "utilities-estimate-mar",
       "source_id": "accrual:utilities-estimate-mar"
     },
-    "prev_hash": "318d33bd413d1affc5d5feb8757088d7da9860ec06e0763529f136146b8f32ba",
-    "record_hash": "22ebebb606187a9cab8c3270e55d7a09b0af5187464c61d4e1c47d7c93e1d88b",
+    "prev_hash": "7b9c3b5b08d88039536b1293bae8db0147d76157af8fc71b21d3e864aea356e2",
+    "record_hash": "378a1612dddd9524eec7514108dfe754e9be11c6edd20e3e4497f0ed4284ca48",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2351,10 +2351,10 @@
       "source_ids": [
         "accrual:utilities-estimate-mar"
       ],
-      "store_sha256": "fefb0b163e326ef8dc9097c156a8794c4759e9440b257fe3d4dbd9292a319517"
+      "store_sha256": "b1b1422271503aaececeacf35f860e77f62b7cbdf9306166d1b64c6e4921fcd8"
     },
-    "prev_hash": "22ebebb606187a9cab8c3270e55d7a09b0af5187464c61d4e1c47d7c93e1d88b",
-    "record_hash": "bf7e1652587abd3be700a14c77b734b2d7f055d06b8b95f1338df4b6dc3c16a1",
+    "prev_hash": "378a1612dddd9524eec7514108dfe754e9be11c6edd20e3e4497f0ed4284ca48",
+    "record_hash": "dd4fe2a84ae717bb0058f25027eb25d569bdafa41e17c8f1d2b7288218f42efd",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2365,8 +2365,8 @@
       "entries": 3,
       "session_id": "recognize-2026-01-31"
     },
-    "prev_hash": "bf7e1652587abd3be700a14c77b734b2d7f055d06b8b95f1338df4b6dc3c16a1",
-    "record_hash": "ace4e31f09cb4bf5c9019868edad1672ba1e3c1b5978dff18622309019d2dcd5",
+    "prev_hash": "dd4fe2a84ae717bb0058f25027eb25d569bdafa41e17c8f1d2b7288218f42efd",
+    "record_hash": "d11746f6de7f3fc1a40a84acfc5a327b7ddb6ebb50adf5f1acfb51da74bf9817",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2412,8 +2412,8 @@
       ],
       "session_id": "recognize-2026-01-31"
     },
-    "prev_hash": "ace4e31f09cb4bf5c9019868edad1672ba1e3c1b5978dff18622309019d2dcd5",
-    "record_hash": "660fd24665206f2ba1ff3f008ac5018f480a3d671c723f37fb0fa666f49315d7",
+    "prev_hash": "d11746f6de7f3fc1a40a84acfc5a327b7ddb6ebb50adf5f1acfb51da74bf9817",
+    "record_hash": "6ebdba78515087573879394f0997f9f936ba19f2f8611a436b3d7a5fb3f5a027",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2423,8 +2423,8 @@
       "session_id": "recognize-2026-01-31",
       "source_id": "schedule:recognition:insurance-h2:0:2026-01-31"
     },
-    "prev_hash": "660fd24665206f2ba1ff3f008ac5018f480a3d671c723f37fb0fa666f49315d7",
-    "record_hash": "202a532fd2aeaaa31b4e71e5f32e1d9b02d058ac8f02f11fc64a1c418ab3c8ff",
+    "prev_hash": "6ebdba78515087573879394f0997f9f936ba19f2f8611a436b3d7a5fb3f5a027",
+    "record_hash": "10cc15b8e0cbdf985ad561f70f4fabbc7aa049a9bf816f3e3130ba9cc3d27533",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2434,8 +2434,8 @@
       "session_id": "recognize-2026-01-31",
       "source_id": "schedule:recognition:laptop-old:0:2026-01-31"
     },
-    "prev_hash": "202a532fd2aeaaa31b4e71e5f32e1d9b02d058ac8f02f11fc64a1c418ab3c8ff",
-    "record_hash": "9271588b35d53edd3eb4b0a56e3bd48cc46f76b0e8461f0cbb254fdedcb8b608",
+    "prev_hash": "10cc15b8e0cbdf985ad561f70f4fabbc7aa049a9bf816f3e3130ba9cc3d27533",
+    "record_hash": "67d5af3ef914ec9ef28046ebd363288bfa59736c3a44dd4db68019c2b58ed0c3",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2445,8 +2445,8 @@
       "session_id": "recognize-2026-01-31",
       "source_id": "schedule:recognition:retainer-h2:0:2026-01-31"
     },
-    "prev_hash": "9271588b35d53edd3eb4b0a56e3bd48cc46f76b0e8461f0cbb254fdedcb8b608",
-    "record_hash": "a1be86f594fd3618d12d3376267f9caa6cb8c068ca1e1a2ce43bcc71727c23ae",
+    "prev_hash": "67d5af3ef914ec9ef28046ebd363288bfa59736c3a44dd4db68019c2b58ed0c3",
+    "record_hash": "9eb267449e930c14b85b44d55552b54d843952c5278f88cfbf7ea99402079ab4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2460,10 +2460,10 @@
         "schedule:recognition:laptop-old:0:2026-01-31",
         "schedule:recognition:retainer-h2:0:2026-01-31"
       ],
-      "store_sha256": "cb4cd202c4b2db246b5cfde3f77c9a70d8d0fbe203044716076d6ca4b9c17527"
+      "store_sha256": "cde5b515a9f7b6653b851c67cbaca49c77bf60194dd83185183c335aa731c395"
     },
-    "prev_hash": "a1be86f594fd3618d12d3376267f9caa6cb8c068ca1e1a2ce43bcc71727c23ae",
-    "record_hash": "acba05c24ed56a6b17effa8e1a117753173b89e6477670f859d808078390adca",
+    "prev_hash": "9eb267449e930c14b85b44d55552b54d843952c5278f88cfbf7ea99402079ab4",
+    "record_hash": "af89f210d9ac84ebd571af00f5f2463315ab7abb3cc3abb1b047718dfaa82d1a",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2474,8 +2474,8 @@
       "entries": 6,
       "session_id": "recognize-2026-02-28"
     },
-    "prev_hash": "acba05c24ed56a6b17effa8e1a117753173b89e6477670f859d808078390adca",
-    "record_hash": "e724e6e7d0d02c8f8bc85de088af70d22bc3b45d89cc16e00928befd63b4680a",
+    "prev_hash": "af89f210d9ac84ebd571af00f5f2463315ab7abb3cc3abb1b047718dfaa82d1a",
+    "record_hash": "4762019c3b5e19eac3d989561f0057794288f9b3cdf1b9696072494893cd7254",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2551,8 +2551,8 @@
       ],
       "session_id": "recognize-2026-02-28"
     },
-    "prev_hash": "e724e6e7d0d02c8f8bc85de088af70d22bc3b45d89cc16e00928befd63b4680a",
-    "record_hash": "d156ae7c52dc8ef58c689f767a81d0d72f2d6028fc637c30e2b949116b82fa4c",
+    "prev_hash": "4762019c3b5e19eac3d989561f0057794288f9b3cdf1b9696072494893cd7254",
+    "record_hash": "f962910c668764766a5aab537b63a0890acf51c34066d11fd09f0e7f4e2f5859",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2562,8 +2562,8 @@
       "session_id": "recognize-2026-02-28",
       "source_id": "schedule:recognition:insurance-h2:0:2026-02-28"
     },
-    "prev_hash": "d156ae7c52dc8ef58c689f767a81d0d72f2d6028fc637c30e2b949116b82fa4c",
-    "record_hash": "d4b08a35f33e4691b0c2e585d8753de486d3719477f793429e643937410f5c9b",
+    "prev_hash": "f962910c668764766a5aab537b63a0890acf51c34066d11fd09f0e7f4e2f5859",
+    "record_hash": "bd46f17b690dc2bbf69e05315e550e0ee093f718d0abc8a8532db11d8862073a",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2573,8 +2573,8 @@
       "session_id": "recognize-2026-02-28",
       "source_id": "schedule:recognition:laptop-new:0:2026-02-28"
     },
-    "prev_hash": "d4b08a35f33e4691b0c2e585d8753de486d3719477f793429e643937410f5c9b",
-    "record_hash": "24c8373c53bfe3a60680fe7b3aa124dcfaabd801e0b8685c4201feccf928cd39",
+    "prev_hash": "bd46f17b690dc2bbf69e05315e550e0ee093f718d0abc8a8532db11d8862073a",
+    "record_hash": "22dffde13542607370deaae3461c26d99b51323529d7dcec39fbe2e50566e228",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2584,8 +2584,8 @@
       "session_id": "recognize-2026-02-28",
       "source_id": "schedule:recognition:laptop-old:0:2026-02-28"
     },
-    "prev_hash": "24c8373c53bfe3a60680fe7b3aa124dcfaabd801e0b8685c4201feccf928cd39",
-    "record_hash": "92bd4fae0f7ef4fa8cd7455fa70e6cc50a18527b11a194d3fb3eb6893dedf34a",
+    "prev_hash": "22dffde13542607370deaae3461c26d99b51323529d7dcec39fbe2e50566e228",
+    "record_hash": "1d419db8af1fc75adbd860b6406cc794b9841aca5933a782fc7cacb711e3ef41",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2595,8 +2595,8 @@
       "session_id": "recognize-2026-02-28",
       "source_id": "schedule:recognition:retainer-h2:0:2026-02-28"
     },
-    "prev_hash": "92bd4fae0f7ef4fa8cd7455fa70e6cc50a18527b11a194d3fb3eb6893dedf34a",
-    "record_hash": "5581fdc82ebeea4bcdecee2e2eeaa2566f4b294db0f761ed798be8f6b38659f1",
+    "prev_hash": "1d419db8af1fc75adbd860b6406cc794b9841aca5933a782fc7cacb711e3ef41",
+    "record_hash": "352aeaa141baaefb3f204814ae3ceee5a0c50530dd429c769a3fdce7680865e9",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2606,8 +2606,8 @@
       "session_id": "recognize-2026-02-28",
       "source_id": "schedule:recognition:retainer-new:0:2026-02-28"
     },
-    "prev_hash": "5581fdc82ebeea4bcdecee2e2eeaa2566f4b294db0f761ed798be8f6b38659f1",
-    "record_hash": "49bde434f9ba4e0b0b303c7622a043d04eb247a42e76d3759790a742c6e86e47",
+    "prev_hash": "352aeaa141baaefb3f204814ae3ceee5a0c50530dd429c769a3fdce7680865e9",
+    "record_hash": "6db27c050632bc16959137514d8555cb64bf11a58d210b8c38dafceb8a8063c4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2617,8 +2617,8 @@
       "session_id": "recognize-2026-02-28",
       "source_id": "schedule:recognition:sw-annual:0:2026-02-28"
     },
-    "prev_hash": "49bde434f9ba4e0b0b303c7622a043d04eb247a42e76d3759790a742c6e86e47",
-    "record_hash": "ffc211b932114cf7aafe833d7f07783fdbaa5f88233d6cd10c74b67ef51651ff",
+    "prev_hash": "6db27c050632bc16959137514d8555cb64bf11a58d210b8c38dafceb8a8063c4",
+    "record_hash": "eadcb955577c23f2394de57369f64d6602f9dced1d47ef72319159462738508f",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2635,10 +2635,10 @@
         "schedule:recognition:retainer-new:0:2026-02-28",
         "schedule:recognition:sw-annual:0:2026-02-28"
       ],
-      "store_sha256": "412a42441bb07ad0bf463db8ad436c425520d590dcb735aeb5726d5f83b72ca2"
+      "store_sha256": "3a70828446e6376197907ebfd904a7cc252be929672fb0f8990ce44e5005033b"
     },
-    "prev_hash": "ffc211b932114cf7aafe833d7f07783fdbaa5f88233d6cd10c74b67ef51651ff",
-    "record_hash": "fba64334e3dbe79d28cbdd54fceea63950850e639d43a4c1d0485df000f575e7",
+    "prev_hash": "eadcb955577c23f2394de57369f64d6602f9dced1d47ef72319159462738508f",
+    "record_hash": "2872d95e28990c6e2cf8489e5e5911d34b9d0541dde8f52b76017d995be98517",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2649,8 +2649,8 @@
       "entries": 6,
       "session_id": "recognize-2026-03-31"
     },
-    "prev_hash": "fba64334e3dbe79d28cbdd54fceea63950850e639d43a4c1d0485df000f575e7",
-    "record_hash": "0671c73107465cc839c46f76e49378a8c2cdf24dc19e36c3e6dba0880ad19719",
+    "prev_hash": "2872d95e28990c6e2cf8489e5e5911d34b9d0541dde8f52b76017d995be98517",
+    "record_hash": "31c5ed54e671bfb52a08c0b8dffed35591adfbd9a616b9cb61c16fb2af97e393",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2726,8 +2726,8 @@
       ],
       "session_id": "recognize-2026-03-31"
     },
-    "prev_hash": "0671c73107465cc839c46f76e49378a8c2cdf24dc19e36c3e6dba0880ad19719",
-    "record_hash": "365bd822bdc6ed2b306a22803f94622b606028414ec3f0404339fb05c2954013",
+    "prev_hash": "31c5ed54e671bfb52a08c0b8dffed35591adfbd9a616b9cb61c16fb2af97e393",
+    "record_hash": "77d676c2cdf9a2e27f51e8909647f6816fc246bfb082c72ed2946bc75b059219",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2737,8 +2737,8 @@
       "session_id": "recognize-2026-03-31",
       "source_id": "schedule:recognition:insurance-h2:0:2026-03-31"
     },
-    "prev_hash": "365bd822bdc6ed2b306a22803f94622b606028414ec3f0404339fb05c2954013",
-    "record_hash": "8f8c48b7b40b19ba7781e2ee2e4dbfba010e1ad1b9afcb757ce8c743bded5fe4",
+    "prev_hash": "77d676c2cdf9a2e27f51e8909647f6816fc246bfb082c72ed2946bc75b059219",
+    "record_hash": "04001605a31ebffc2c6b1a0a0741ce159e9ce8d41f7a89d84386dda0bb39eb10",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2748,8 +2748,8 @@
       "session_id": "recognize-2026-03-31",
       "source_id": "schedule:recognition:laptop-new:0:2026-03-31"
     },
-    "prev_hash": "8f8c48b7b40b19ba7781e2ee2e4dbfba010e1ad1b9afcb757ce8c743bded5fe4",
-    "record_hash": "72026411400dc249a4ed9a9a2f4b70bc98f201571dd5e78bcfb1585bf649c0e8",
+    "prev_hash": "04001605a31ebffc2c6b1a0a0741ce159e9ce8d41f7a89d84386dda0bb39eb10",
+    "record_hash": "ac494b2d7006f44c3d9825b4e4e839e4c971d8367ff51fe69f3d599e06063750",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2759,8 +2759,8 @@
       "session_id": "recognize-2026-03-31",
       "source_id": "schedule:recognition:laptop-old:0:2026-03-31"
     },
-    "prev_hash": "72026411400dc249a4ed9a9a2f4b70bc98f201571dd5e78bcfb1585bf649c0e8",
-    "record_hash": "0f5ab8d0a1951bc60d8628bf3c53bde1ab9d437772eb5d5b1556d7e38043ee3e",
+    "prev_hash": "ac494b2d7006f44c3d9825b4e4e839e4c971d8367ff51fe69f3d599e06063750",
+    "record_hash": "80583c0ee3339312beb01d99776c8e0a23c521ac0e14b407a053ec65b390762c",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2770,8 +2770,8 @@
       "session_id": "recognize-2026-03-31",
       "source_id": "schedule:recognition:retainer-h2:0:2026-03-31"
     },
-    "prev_hash": "0f5ab8d0a1951bc60d8628bf3c53bde1ab9d437772eb5d5b1556d7e38043ee3e",
-    "record_hash": "2122a2fb92e371bba7c4b3dd7a155dc4f727867b3540ec52818ef2538a875272",
+    "prev_hash": "80583c0ee3339312beb01d99776c8e0a23c521ac0e14b407a053ec65b390762c",
+    "record_hash": "a2c2eedebe519eff473eba091a6e03fd8a522127f9dde0aec5fa0700f6082c57",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2781,8 +2781,8 @@
       "session_id": "recognize-2026-03-31",
       "source_id": "schedule:recognition:retainer-new:0:2026-03-31"
     },
-    "prev_hash": "2122a2fb92e371bba7c4b3dd7a155dc4f727867b3540ec52818ef2538a875272",
-    "record_hash": "f6dbaf9b3bfd1074a3cf8a5c26f97c405c90c0dba571df6ad046017621b4cb73",
+    "prev_hash": "a2c2eedebe519eff473eba091a6e03fd8a522127f9dde0aec5fa0700f6082c57",
+    "record_hash": "d934bd28beabf204a27bec393e848b546ddd0e517efcb63ba20ff3bbae524257",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2792,8 +2792,8 @@
       "session_id": "recognize-2026-03-31",
       "source_id": "schedule:recognition:sw-annual:0:2026-03-31"
     },
-    "prev_hash": "f6dbaf9b3bfd1074a3cf8a5c26f97c405c90c0dba571df6ad046017621b4cb73",
-    "record_hash": "8e5baed922f0e6f6571edd8c28b23635921ed616384a4e72a75045da27e09802",
+    "prev_hash": "d934bd28beabf204a27bec393e848b546ddd0e517efcb63ba20ff3bbae524257",
+    "record_hash": "8c02d2028083a052fd700f31b48b169dbf92adc56a50175af5e4a1a2d29bb8fd",
     "ts": "2026-08-05T12:00:00Z",
     "type": "entry-written"
   },
@@ -2810,10 +2810,10 @@
         "schedule:recognition:retainer-new:0:2026-03-31",
         "schedule:recognition:sw-annual:0:2026-03-31"
       ],
-      "store_sha256": "2c111e423b1c39cc789e6742fa49fa72a5bca410af6b7e7114628b6ffaf65c49"
+      "store_sha256": "ad15af579b8382da5b3d4d3b3ff9ffde93f22c83f5cc19bcb5db44a664de950d"
     },
-    "prev_hash": "8e5baed922f0e6f6571edd8c28b23635921ed616384a4e72a75045da27e09802",
-    "record_hash": "5800cfa639c61964fcdf699a12b8895d1be18ec2b089073a86c6a417204f0229",
+    "prev_hash": "8c02d2028083a052fd700f31b48b169dbf92adc56a50175af5e4a1a2d29bb8fd",
+    "record_hash": "f0f0126cf02d29e26d490ad6be4ac374fb9ae164d13ab2d0b04d86a3ba9b69c5",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   },
@@ -2824,8 +2824,8 @@
       "entries": 0,
       "session_id": "close-2026-01"
     },
-    "prev_hash": "5800cfa639c61964fcdf699a12b8895d1be18ec2b089073a86c6a417204f0229",
-    "record_hash": "2a7a8a8eafca5876af2eab047af68f125f33c05db7b029d742eca552bb624490",
+    "prev_hash": "f0f0126cf02d29e26d490ad6be4ac374fb9ae164d13ab2d0b04d86a3ba9b69c5",
+    "record_hash": "db32984c0b473ebd6428b45bf04b19bed03d02167c8099310792f44ed60476c4",
     "ts": "2026-08-05T12:00:00Z",
     "type": "intent"
   },
@@ -2846,8 +2846,8 @@
       ],
       "session_id": "close-2026-01"
     },
-    "prev_hash": "2a7a8a8eafca5876af2eab047af68f125f33c05db7b029d742eca552bb624490",
-    "record_hash": "6f9a24b68bfa0a925287a7a2847b8732956b408dce4362ddcb726d57d9d84ec3",
+    "prev_hash": "db32984c0b473ebd6428b45bf04b19bed03d02167c8099310792f44ed60476c4",
+    "record_hash": "cee80c1845b3689d67f97f7cfe151ef50e866707b71c869280540c809c87b277",
     "ts": "2026-08-05T12:00:00Z",
     "type": "supporting-records-written"
   },
@@ -2857,10 +2857,10 @@
       "entries": 0,
       "session_id": "close-2026-01",
       "source_ids": [],
-      "store_sha256": "545af7a291f9033d3037d8befcc5a6f1e2f7f1a2c028920583a328e6d30e8097"
+      "store_sha256": "3c9a5d9b0c9d3693df1d547582ee3d12f12312d61dcea5229dc399af2fa9b860"
     },
-    "prev_hash": "6f9a24b68bfa0a925287a7a2847b8732956b408dce4362ddcb726d57d9d84ec3",
-    "record_hash": "7b33b0d018ca160ec08e361d4e6fbcfe6136e1ffa9743fac78fcd0cb45692ac9",
+    "prev_hash": "cee80c1845b3689d67f97f7cfe151ef50e866707b71c869280540c809c87b277",
+    "record_hash": "5d99a12bf8bd51121415a0c93692733ff06c862d16cc1d020b4bc74cc6ebbf68",
     "ts": "2026-08-05T12:00:00Z",
     "type": "ledger-store-sealed"
   }
