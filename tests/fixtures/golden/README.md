@@ -36,3 +36,9 @@ and include accounting coverage: accrual exports no longer claim cash basis.
 The cash manifest also records its cash basis explicitly. These are intended
 audit and export-description changes, with unchanged statement amounts. Carry
 this reason into the pull request when publishing these local fixes.
+
+2026-10-27 industry starter charts: regenerated because every starter chart now
+opens the common overhead accounts (rent, payroll, payroll taxes, utilities,
+insurance, bank fees, professional fees) and the services chart opens
+Income:Services. The diffs add zero-balance accounts and change audit and
+ledger digests. Statement amounts are unchanged.

@@ -10,6 +10,7 @@ Tax line mapping for Form 1120-S (form from workspace)
   Equity:Owner-Contributions  0.00 -> 1120s/L/23  Additional paid-in capital (name) [review]
   Equity:Owner-Draws  0.00 -> 1120s/M-2/7  Distributions (name) [review]
   Expenses:Bad-Debt  300.00 -> 1120s/p1/10  Bad debts (name) [review]
+  Expenses:Bank-Fees  0.00 -> 1120s/p1/20  Other deductions — Bank Fees (name) [review]
   Expenses:Bonus  700.00 -> UNMAPPED (unmapped)
   Expenses:Depreciation  500.00 -> 1120s/p1/14  Depreciation (name) [review]
   Expenses:Fees  0.00 -> 1120s/p1/20  Other deductions — Fees (name) [review]
@@ -17,12 +18,17 @@ Tax line mapping for Form 1120-S (form from workspace)
   Expenses:Marketing  0.00 -> 1120s/p1/16  Advertising (name) [review]
   Expenses:Meals  0.00 -> 1120s/p1/20  Other deductions — Meals (full book amount) (name) [review]
   Expenses:Office  0.00 -> 1120s/p1/20  Other deductions — Office expense (name) [review]
+  Expenses:Payroll  0.00 -> 1120s/p1/8  Salaries and wages (name) [review]
+  Expenses:Payroll-Taxes  0.00 -> 1120s/p1/12  Taxes and licenses (name) [review]
+  Expenses:Professional-Fees  0.00 -> 1120s/p1/20  Other deductions — Legal and professional services (name) [review]
+  Expenses:Rent  0.00 -> 1120s/p1/11  Rents (name) [review]
   Expenses:Software  1000.00 -> 1120s/p1/20  Other deductions — Software (name) [review]
   Expenses:Subcontractors  0.00 -> 1120s/p1/20  Other deductions — Contract labor (name) [review]
   Expenses:Taxes  0.00 -> 1120s/p1/12  Taxes and licenses (name) [review]
   Expenses:Travel  0.00 -> 1120s/p1/20  Other deductions — Travel (name) [review]
   Expenses:Utilities  470.00 -> 1120s/p1/20  Other deductions — Utilities (name) [review]
   Income:Consulting  -11400.00 -> 1120s/p1/1a  Gross receipts or sales (account_type) [review]
+  Income:Services  0.00 -> 1120s/p1/1a  Gross receipts or sales (account_type) [review]
   Liabilities:CreditCard  0.00 -> 1120s/L/18  Other current liabilities (name) [review]
   Liabilities:Other:Accrued-Liabilities  -470.00 -> 1120s/L/18  Other current liabilities (name) [review]
   Liabilities:Other:Customer-Deposits  0.00 -> UNMAPPED (unmapped)
@@ -30,4 +36,4 @@ Tax line mapping for Form 1120-S (form from workspace)
   Liabilities:Payable:Accounts-Payable  0.00 -> 1120s/L/16  Accounts payable (name) [review]
 
 Unmapped: 2: Expenses:Bonus, Liabilities:Other:Customer-Deposits
-Needs review: 25
+Needs review: 31

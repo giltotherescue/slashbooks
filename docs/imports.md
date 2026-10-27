@@ -158,6 +158,15 @@ books statement import ~/Downloads/checking-2026-q2.csv \
   --period-start 2026-04-01 --period-end 2026-06-30
 ```
 
+When nobody has the printed period, pass `--period-from-rows`. The importer
+takes the first and last transaction dates as the period and stores the record
+as coverage with `"period_source": "transactions"`, `"coverage_basis":
+"transactions"` and `"period_confirmed": false`, and the result says
+`"coverage": "from_transactions"`. Nobody confirmed this period, and a quiet day
+at the start or end is not proven covered, so a month-end check must treat the
+edge days with care. A printed or person-confirmed period always wins, and the
+option is refused for a file with a printed period or with no transactions.
+
 Every transaction in the file must fall inside the period. To add or correct
 the balances from the printed statement, pass `--opening-balance` and
 `--closing-balance`. Use the statement presentation: money held for a bank

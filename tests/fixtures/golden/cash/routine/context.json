@@ -13,6 +13,10 @@
       "name": "Equity:Owner-Draws"
     },
     {
+      "label": "Expenses:Bank-Fees",
+      "name": "Expenses:Bank-Fees"
+    },
+    {
       "label": "Expenses:Fees",
       "name": "Expenses:Fees"
     },
@@ -31,6 +35,18 @@
     {
       "label": "Expenses:Office",
       "name": "Expenses:Office"
+    },
+    {
+      "label": "Expenses:Payroll",
+      "name": "Expenses:Payroll"
+    },
+    {
+      "label": "Expenses:Payroll-Taxes",
+      "name": "Expenses:Payroll-Taxes"
+    },
+    {
+      "label": "Expenses:Professional-Fees",
+      "name": "Expenses:Professional-Fees"
     },
     {
       "label": "Expenses:Rent",
@@ -53,8 +69,16 @@
       "name": "Expenses:Travel"
     },
     {
+      "label": "Expenses:Utilities",
+      "name": "Expenses:Utilities"
+    },
+    {
       "label": "Income:Consulting",
       "name": "Income:Consulting"
+    },
+    {
+      "label": "Income:Services",
+      "name": "Income:Services"
     }
   ],
   "counterparties": [

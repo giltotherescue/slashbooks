@@ -33,6 +33,10 @@
       "name": "Expenses:Bad-Debt"
     },
     {
+      "label": "Expenses:Bank-Fees",
+      "name": "Expenses:Bank-Fees"
+    },
+    {
       "label": "Expenses:Bonus",
       "name": "Expenses:Bonus"
     },
@@ -61,6 +65,22 @@
       "name": "Expenses:Office"
     },
     {
+      "label": "Expenses:Payroll",
+      "name": "Expenses:Payroll"
+    },
+    {
+      "label": "Expenses:Payroll-Taxes",
+      "name": "Expenses:Payroll-Taxes"
+    },
+    {
+      "label": "Expenses:Professional-Fees",
+      "name": "Expenses:Professional-Fees"
+    },
+    {
+      "label": "Expenses:Rent",
+      "name": "Expenses:Rent"
+    },
+    {
       "label": "Expenses:Software",
       "name": "Expenses:Software"
     },
@@ -83,6 +103,10 @@
     {
       "label": "Income:Consulting",
       "name": "Income:Consulting"
+    },
+    {
+      "label": "Income:Services",
+      "name": "Income:Services"
     },
     {
       "label": "Liabilities:Other:Accrued-Liabilities",

@@ -412,7 +412,7 @@
       "2026-08-05"
     ],
     "exit": 0,
-    "stdout_sha256": "cbe4a682a1c60c5c425e7d9b7b62d5501869de20c26855b7b0a22d2ac415edf8"
+    "stdout_sha256": "05aab407a7729cb2da0471d20c11373583a9855dc7267e695622271d92779eaa"
   },
   "readiness/2026-02.json": {
     "argv": [
@@ -425,7 +425,7 @@
       "2026-08-05"
     ],
     "exit": 0,
-    "stdout_sha256": "aee1b884ffff0c9bf5ab341d50ba4961a3c04e1576ed8f44648eb7cd9db168e9"
+    "stdout_sha256": "a7ca0c7b1e4954c059988d3a829bb80f00422d18da77c277a05c645211b3233a"
   },
   "readiness/2026-03.json": {
     "argv": [
@@ -438,7 +438,7 @@
       "2026-08-05"
     ],
     "exit": 0,
-    "stdout_sha256": "f827febbb9a537f4cad8fc7cd7f1b042906c0ed0fed7dc98a8f1369c25710fb9"
+    "stdout_sha256": "b7444806a8291d5435257c7de415e7108d7b1de8fdbfff1cd371ec469e938637"
   },
   "reports/balance-sheet_2026-01-31_json.json": {
     "argv": [
@@ -943,7 +943,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "3904ff8f7a8eff2f970258cf4058f5100a6eb8877779dcf7a09aee7bf8184ccc"
+    "stdout_sha256": "a96f2d74c28616535eb4f845302fd15ef2a16fc7f8c2071a6862b413e2f749f5"
   },
   "tax/map_text.txt": {
     "argv": [
@@ -959,7 +959,7 @@
       "text"
     ],
     "exit": 0,
-    "stdout_sha256": "5379b90ed3d3572eb99d677e80d7bb16058e074c17c644403a4f18909ba1034e"
+    "stdout_sha256": "2a8ba656726340d54897b0f4d8b1d9eed74f2b82c482b586dbc49ec208967f6a"
   },
   "work/summary_json.json": {
     "argv": [

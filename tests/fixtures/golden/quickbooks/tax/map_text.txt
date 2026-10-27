@@ -11,16 +11,23 @@ Tax line mapping for Form 1065 (form from workspace)
   Equity:Owner-Contributions  0.00 -> 1065/L/21  Partners' capital accounts (name) [review]
   Equity:Owner-Draws  0.00 -> 1065/M-2/6a  Distributions: cash (name) [review]
   Equity:Retained-Earnings  -9000.00 -> 1065/L/21  Partners' capital accounts (name) [review]
+  Expenses:Bank-Fees  0.00 -> 1065/p1/21  Other deductions — Bank Fees (name) [review]
   Expenses:Depreciation  0.00 -> 1065/p1/16a  Depreciation (name) [review]
   Expenses:Fees  0.00 -> 1065/p1/21  Other deductions — Fees (name) [review]
+  Expenses:Insurance  0.00 -> 1065/p1/21  Other deductions — Insurance (name) [review]
   Expenses:Marketing  0.00 -> 1065/p1/21  Other deductions — Advertising (name) [review]
   Expenses:Meals  0.00 -> 1065/p1/21  Other deductions — Meals (full book amount) (name) [review]
   Expenses:Office  0.00 -> 1065/p1/21  Other deductions — Office expense (name) [review]
   Expenses:Operating-Costs  9540.00 -> UNMAPPED (unmapped)
+  Expenses:Payroll  0.00 -> 1065/p1/9  Salaries and wages (other than to partners) (name) [review]
+  Expenses:Payroll-Taxes  0.00 -> 1065/p1/14  Taxes and licenses (name) [review]
+  Expenses:Professional-Fees  0.00 -> 1065/p1/21  Other deductions — Legal and professional services (name) [review]
+  Expenses:Rent  0.00 -> 1065/p1/13  Rent (name) [review]
   Expenses:Software  0.00 -> 1065/p1/21  Other deductions — Software (name) [review]
   Expenses:Subcontractors  0.00 -> 1065/p1/21  Other deductions — Contract labor (name) [review]
   Expenses:Taxes  0.00 -> 1065/p1/14  Taxes and licenses (name) [review]
   Expenses:Travel  0.00 -> 1065/p1/21  Other deductions — Travel (name) [review]
+  Expenses:Utilities  0.00 -> 1065/p1/21  Other deductions — Utilities (name) [review]
   Income:Consulting  0.00 -> 1065/p1/1a  Gross receipts or sales (account_type) [review]
   Income:Services  -12100.00 -> 1065/p1/1a  Gross receipts or sales (account_type) [review]
   Liabilities:CreditCard  0.00 -> 1065/L/17  Other current liabilities (name) [review]
@@ -31,4 +38,4 @@ Tax line mapping for Form 1065 (form from workspace)
   Liabilities:Payable:Accounts-Payable  -300.00 -> 1065/L/15  Accounts payable (name) [review]
 
 Unmapped: 2: Expenses:Operating-Costs, Liabilities:Other:Customer-Deposits
-Needs review: 26
+Needs review: 33

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Add `books statement import --period-from-rows` for a file with no printed
+  period. It records the first and last transaction dates as the period with
+  `coverage_basis: "transactions"`, never as a person-confirmed period.
+
+- Add industry starter charts: `services`, `saas`, `retail`, `restaurant`, `trades`,
+  `real_estate` and `other`. Every chart now includes rent, payroll, payroll taxes,
+  utilities, insurance, bank fees and professional fees. `consulting` is an alias of
+  `services`. Existing companies keep their accounts.
+- Add `books entity starter-accounts PATH --business-type TYPE`. It sets the business
+  type of a company that has no entries yet, adds the missing starter accounts and removes
+  unused accounts of its previous starter chart. Retail and restaurant charts include
+  Liabilities:Sales-Tax-Payable.
+
 ## Slashbooks Cloud plugin 0.9.2 — 2026-10-26
 
 - Update the Claude and ChatGPT directory descriptions to explain small business

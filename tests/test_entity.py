@@ -1223,5 +1223,205 @@ class TestOnboardingComplete(unittest.TestCase):
             parent.parse_args(["entity", "onboarding-complete", "/tmp/foo", "--via", "robot"])
 
 
+class TestIndustryStarterCharts(unittest.TestCase):
+    """Each business type opens a chart with the common accounts and its own industry accounts."""
+
+    COMMON = {"Expenses:Rent", "Expenses:Payroll", "Expenses:Payroll-Taxes", "Expenses:Utilities",
+              "Expenses:Insurance", "Expenses:Bank-Fees", "Expenses:Software", "Expenses:Marketing",
+              "Expenses:Meals", "Expenses:Travel", "Expenses:Professional-Fees",
+              "Equity:Owner-Draws", "Equity:Owner-Contributions", "Assets:Bank:Checking"}
+    INDUSTRY = {
+        "retail": {"Income:Sales", "Assets:Other:Inventory", "Expenses:Cost-of-Goods-Sold", "Expenses:Payment-Fees",
+                   "Liabilities:Sales-Tax-Payable"},
+        "restaurant": {"Income:Sales", "Assets:Other:Inventory", "Expenses:Cost-of-Goods-Sold", "Expenses:Payment-Fees",
+                       "Liabilities:Sales-Tax-Payable"},
+        "trades": {"Income:Services", "Expenses:Cost-of-Sales:Materials", "Expenses:Cost-of-Sales:Subcontractors",
+                   "Expenses:Tools-and-Equipment"},
+        "real_estate": {"Income:Rental-Income", "Expenses:Repairs", "Expenses:Property-Taxes",
+                        "Expenses:Mortgage-Interest", "Liabilities:Loans:Mortgage"},
+        "services": {"Income:Services", "Income:Consulting"},
+        "saas": {"Income:Subscriptions", "Expenses:Hosting"},
+        "other": {"Income:Sales", "Income:Services"},
+    }
+
+    def test_every_chart_is_valid_and_has_common_accounts(self) -> None:
+        from bookkeeping.entity import _ACCRUAL_STARTER_ACCOUNTS, _STARTER_ACCOUNTS, BUSINESS_TYPES
+
+        self.assertTrue({"services", "saas", "retail", "restaurant", "trades", "real_estate", "other",
+                         "consulting", "services_and_subscriptions"} <= set(BUSINESS_TYPES))
+        for key, chart in _STARTER_ACCOUNTS.items():
+            with self.subTest(chart=key):
+                self.assertEqual(len(chart), len(set(chart)))
+                self.assertTrue(self.COMMON <= set(chart), self.COMMON - set(chart))
+                self.assertTrue(all(a.split(":")[0] in {"Assets", "Liabilities", "Equity", "Income", "Expenses"} for a in chart))
+                self.assertTrue(any(a.startswith("Income:") for a in chart))
+                # No name may match an accrual starter account under another root: accrual enable refuses that.
+                tails = {a.split(":", 1)[1].lower() for a in _ACCRUAL_STARTER_ACCOUNTS}
+                self.assertFalse(tails & {a.split(":", 1)[1].lower() for a in chart})
+
+    def test_industry_accounts_by_type(self) -> None:
+        from bookkeeping.entity import starter_chart
+
+        for key, expected in self.INDUSTRY.items():
+            with self.subTest(business_type=key):
+                self.assertTrue(expected <= set(starter_chart(key)), expected - set(starter_chart(key)))
+
+    def test_cost_of_goods_accounts_are_found_as_cost_of_sales(self) -> None:
+        from bookkeeping.reports.structure import is_cost_of_sales
+        from bookkeeping.entity import check_category_account, starter_chart
+
+        for key in ("retail", "restaurant", "trades"):
+            names = [a for a in starter_chart(key) if is_cost_of_sales(a)]
+            self.assertTrue(names, key)
+            for name in names:
+                check_category_account(name)
+
+    def test_existing_types_keep_their_earlier_accounts_in_order(self) -> None:
+        from bookkeeping.entity import starter_chart
+
+        earlier_consulting = ["Assets:Bank:Checking", "Liabilities:CreditCard", "Equity:Opening-Balances",
+                              "Equity:Owner-Contributions", "Equity:Owner-Draws", "Income:Consulting",
+                              "Expenses:Software", "Expenses:Subcontractors", "Expenses:Meals", "Expenses:Marketing",
+                              "Expenses:Travel", "Expenses:Office", "Expenses:Fees", "Expenses:Taxes"]
+        self.assertEqual(list(starter_chart("consulting"))[:len(earlier_consulting)], earlier_consulting)
+        self.assertEqual(starter_chart("consulting"), starter_chart("services"))
+        self.assertEqual(starter_chart("no-such-type"), starter_chart("services"))
+
+    def test_init_with_each_type_creates_its_chart(self) -> None:
+        from bookkeeping.entity import BUSINESS_TYPES, starter_chart
+        from bookkeeping.ledger.store import LedgerStore
+
+        for key in BUSINESS_TYPES:
+            with self.subTest(business_type=key), tempfile.TemporaryDirectory() as tmp:
+                target = Path(tmp) / "company"
+                init_entity(target, business_type=key)
+                names = {o.account for o in LedgerStore(target / "ledger.sqlite").load_opens()}
+                self.assertEqual(names, set(starter_chart(key)))
+
+    def test_cli_accepts_every_business_type(self) -> None:
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        add_parser(parser.add_subparsers(dest="command"))
+        for key in ("retail", "restaurant", "trades", "real_estate", "other", "services", "consulting"):
+            self.assertEqual(parser.parse_args(["entity", "init", "/tmp/x", "--business-type", key]).business_type, key)
+            self.assertEqual(parser.parse_args(["entity", "starter-accounts", "/tmp/x", "--business-type", key]).business_type, key)
+
+
+class TestStarterAccounts(unittest.TestCase):
+    """books entity starter-accounts applies a chart to a company that has no entries."""
+
+    def _company(self, tmp: str, **kwargs: object) -> Path:
+        target = Path(tmp) / "company"
+        init_entity(target, name="Bakery", **kwargs)
+        return target
+
+    def _opens(self, target: Path) -> dict[str, date]:
+        from bookkeeping.ledger.store import LedgerStore
+        return {o.account: o.date for o in LedgerStore(target / "ledger.sqlite").load_opens()}
+
+    def test_adds_missing_accounts_and_sets_the_type(self) -> None:
+        from bookkeeping.entity import apply_starter_accounts, starter_chart
+        from bookkeeping.ledger.importer import check_integrity
+        from bookkeeping.ledger.store import LedgerStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp, business_type="consulting", cutover_date="2025-03-01")
+            before = self._opens(target)
+            result = apply_starter_accounts(target, "restaurant")
+            after = self._opens(target)
+            self.assertEqual(set(after), set(starter_chart("restaurant")))
+            self.assertEqual(set(result["added"]), set(after) - set(before))
+            self.assertEqual(set(result["removed"]), set(before) - set(after))
+            self.assertEqual(set(result["removed"]), {"Income:Consulting", "Expenses:Subcontractors", "Expenses:Fees", "Income:Services"})
+            self.assertIn("Expenses:Cost-of-Goods-Sold", result["added"])
+            self.assertTrue(all(after[a] == before[a] for a in before if a in after))
+            self.assertEqual({after[a] for a in result["added"]}, {date(2025, 3, 1)})
+            self.assertEqual(load_entity(target).business_type, "restaurant")
+            self.assertEqual(LedgerStore(target / "ledger.sqlite").get_meta("business_type"), "restaurant")
+            self.assertEqual(check_integrity(load_entity(target)).status, "ok")
+
+    def test_repeat_adds_nothing(self) -> None:
+        from bookkeeping.entity import apply_starter_accounts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp)
+            apply_starter_accounts(target, "retail")
+            before = self._opens(target)
+            again = apply_starter_accounts(target, "retail")
+            self.assertEqual(again["added"], [])
+            self.assertEqual(self._opens(target), before)
+
+    def test_accrual_company_keeps_accrual_accounts(self) -> None:
+        from bookkeeping.entity import _ACCRUAL_STARTER_ACCOUNTS, apply_starter_accounts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp, basis="accrual")
+            apply_starter_accounts(target, "trades")
+            self.assertTrue(set(_ACCRUAL_STARTER_ACCOUNTS) <= set(self._opens(target)))
+
+    def test_refuses_a_company_with_entries_and_changes_nothing(self) -> None:
+        from bookkeeping.entity import apply_starter_accounts
+        from bookkeeping.ledger.importer import import_transactions
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp)
+            result = import_transactions(load_entity(target), [{"id": "synthetic-1", "date": "2026-01-02",
+                "description": "Synthetic income", "amount": "100.00", "accountName": "Checking", "pending": False}],
+                "session", categorizer=lambda _: ("Income:Consulting", "high"),
+                session_date=date(2026, 1, 2), ts="2026-01-02T00:00:00Z")
+            self.assertEqual(result.new_entries, 1)
+            files = {n: (target / n).read_bytes() for n in ("ledger.sqlite", "entity.json")}
+            with self.assertRaisesRegex(ValueError, "already has entries"):
+                apply_starter_accounts(target, "retail")
+            self.assertEqual({n: (target / n).read_bytes() for n in files}, files)
+
+    def test_keeps_user_added_referenced_and_new_chart_accounts(self) -> None:
+        from bookkeeping.entity import add_account, apply_starter_accounts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp, business_type="consulting")
+            add_account(target, "Expenses:Flour")  # not a starter account
+            config = json.loads((target / "entity.json").read_text(encoding="utf-8"))
+            config["bank_account_mappings"] = {"acct-1": "Expenses:Subcontractors"}  # named in settings
+            (target / "entity.json").write_text(json.dumps(config), encoding="utf-8")
+            result = apply_starter_accounts(target, "retail")
+            opens = self._opens(target)
+            self.assertIn("Expenses:Flour", opens)
+            self.assertIn("Expenses:Subcontractors", opens)
+            self.assertNotIn("Expenses:Subcontractors", result["removed"])
+            self.assertIn("Income:Consulting", result["removed"])
+            self.assertNotIn("Income:Consulting", opens)
+            self.assertIn("Liabilities:Sales-Tax-Payable", opens)
+            self.assertEqual(apply_starter_accounts(target, "retail")["removed"], [])
+
+    def test_unknown_type_is_refused(self) -> None:
+        from bookkeeping.entity import apply_starter_accounts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp)
+            with self.assertRaisesRegex(ValueError, "Unknown business type"):
+                apply_starter_accounts(target, "bakery")
+
+    def test_cli_json_and_refusal_exit_code(self) -> None:
+        import argparse
+        import contextlib
+        import io
+
+        parser = argparse.ArgumentParser()
+        add_parser(parser.add_subparsers(dest="command"))
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = run(parser.parse_args(["entity", "starter-accounts", str(target), "--business-type", "retail", "--json"]))
+            self.assertEqual(code, 0)
+            self.assertIn("Expenses:Cost-of-Goods-Sold", json.loads(out.getvalue())["added"])
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                code = run(parser.parse_args(["entity", "starter-accounts", str(Path(tmp) / "missing"), "--business-type", "retail"]))
+            self.assertEqual(code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

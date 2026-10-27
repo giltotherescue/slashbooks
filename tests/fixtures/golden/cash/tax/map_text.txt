@@ -5,19 +5,25 @@ Tax line mapping for Schedule C (Form 1040) (form from workspace)
   Equity:Opening-Balances  0.00 -> schc/none/owner_equity  Owner contributions and draws (not on Schedule C) (name) [review]
   Equity:Owner-Contributions  -20000.00 -> schc/none/owner_equity  Owner contributions and draws (not on Schedule C) (name) [review]
   Equity:Owner-Draws  2000.00 -> schc/none/owner_equity  Owner contributions and draws (not on Schedule C) (name) [review]
+  Expenses:Bank-Fees  0.00 -> schc/II/27b  Other expenses (Part V, line 48) — Bank Fees (name) [review]
   Expenses:Fees  45.00 -> schc/II/27b  Other expenses (Part V, line 48) — Fees (name) [review]
   Expenses:Insurance  420.80 -> schc/II/15  Insurance (other than health) (name) [review]
   Expenses:Marketing  150.57 -> schc/II/8  Advertising (name) [review]
   Expenses:Meals  300.45 -> schc/II/24b  Deductible meals (name) [review]
   Expenses:Office  131.75 -> schc/II/18  Office expense (name) [review]
+  Expenses:Payroll  0.00 -> schc/II/26  Wages (name) [review]
+  Expenses:Payroll-Taxes  0.00 -> schc/II/23  Taxes and licenses (name) [review]
+  Expenses:Professional-Fees  0.00 -> schc/II/17  Legal and professional services (name) [review]
   Expenses:Rent  5400.00 -> schc/II/20b  Rent or lease: other business property (name) [review]
   Expenses:Software  309.09 -> schc/II/27b  Other expenses (Part V, line 48) — Software (name) [review]
   Expenses:Subcontractors  4000.00 -> schc/II/11  Contract labor (name) [review]
   Expenses:Taxes  480.00 -> schc/II/23  Taxes and licenses (name) [review]
   Expenses:Travel  568.40 -> schc/II/24a  Travel (name) [review]
+  Expenses:Utilities  0.00 -> schc/II/25  Utilities (name) [review]
   Income:Consulting  -26350.00 -> schc/I/1  Gross receipts or sales (account_type) [review]
+  Income:Services  0.00 -> schc/I/1  Gross receipts or sales (account_type) [review]
   Liabilities:CreditCard  0.00 -> schc/none/balance_sheet  Balance sheet account (Schedule C has no balance sheet) (name)
   Liabilities:CreditCard:Company  -499.53 -> schc/none/balance_sheet  Balance sheet account (Schedule C has no balance sheet) (name)
 
 Unmapped: 0
-Needs review: 14
+Needs review: 20

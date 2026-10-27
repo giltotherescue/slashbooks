@@ -9,6 +9,7 @@ Equity:Opening-Balances                        Equity       equity         equit
 Equity:Owner-Contributions                     Equity       equity         equity                    2026-01-01
 Equity:Owner-Draws                             Equity       equity         equity                    2026-01-01
 Expenses:Bad-Debt                              Expenses     expense        expense                   2025-12-31
+Expenses:Bank-Fees                             Expenses     expense        expense                   2026-01-01
 Expenses:Bonus                                 Expenses     expense        expense                   2025-12-31
 Expenses:Depreciation                          Expenses     expense        expense                   2026-01-01
 Expenses:Fees                                  Expenses     expense        expense                   2026-01-01
@@ -16,12 +17,17 @@ Expenses:Insurance                             Expenses     expense        expen
 Expenses:Marketing                             Expenses     expense        expense                   2026-01-01
 Expenses:Meals                                 Expenses     expense        expense                   2026-01-01
 Expenses:Office                                Expenses     expense        expense                   2026-01-01
+Expenses:Payroll                               Expenses     expense        expense                   2026-01-01
+Expenses:Payroll-Taxes                         Expenses     expense        expense                   2026-01-01
+Expenses:Professional-Fees                     Expenses     expense        expense                   2026-01-01
+Expenses:Rent                                  Expenses     expense        expense                   2026-01-01
 Expenses:Software                              Expenses     expense        expense                   2026-01-01
 Expenses:Subcontractors                        Expenses     expense        expense                   2026-01-01
 Expenses:Taxes                                 Expenses     expense        expense                   2026-01-01
 Expenses:Travel                                Expenses     expense        expense                   2026-01-01
 Expenses:Utilities                             Expenses     expense        expense                   2025-12-31
 Income:Consulting                              Income       income         income                    2026-01-01
+Income:Services                                Income       income         income                    2026-01-01
 Liabilities:CreditCard                         Liabilities  card           credit_card               2026-01-01
 Liabilities:Other:Accrued-Liabilities          Liabilities  control        accrued_liabilities       2026-01-01
 Liabilities:Other:Customer-Deposits            Liabilities  control        customer_deposits         2026-01-01

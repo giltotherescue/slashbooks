@@ -98,6 +98,13 @@
     "date": "2026-01-01"
   },
   {
+    "account": "Expenses:Bank-Fees",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
     "account": "Expenses:Depreciation",
     "currencies": [
       "USD"
@@ -133,6 +140,34 @@
     "date": "2026-01-01"
   },
   {
+    "account": "Expenses:Payroll",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Payroll-Taxes",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Professional-Fees",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Expenses:Rent",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
     "account": "Expenses:Software",
     "currencies": [
       "USD"
@@ -162,6 +197,13 @@
   },
   {
     "account": "Income:Consulting",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
+    "account": "Income:Services",
     "currencies": [
       "USD"
     ],

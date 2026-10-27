@@ -433,6 +433,72 @@ class ImportTests(unittest.TestCase):
         [listed] = si.load_statement_records(self.entity)
         self.assertEqual((listed["period_start"], listed["period_source"]), ("2026-01-01", "person"))
 
+    def test_period_from_rows_records_coverage_from_transactions_not_a_confirmation(self):
+        from bookkeeping import coverage
+
+        self.map("chase_like_checking.csv", "chase-checking")
+        stmt = self.imp("chase_like_checking.csv", "chase-checking", period_from_rows=True)["statements"][0]
+        record = stmt["statement"]
+        self.assertEqual(stmt["coverage"], "from_transactions")
+        self.assertNotIn("next_step", stmt)
+        self.assertEqual((record["period_start"], record["period_end"]),
+                         (record["first_transaction_date"], record["last_transaction_date"]))
+        self.assertEqual((record["period_source"], record["coverage_basis"], record["period_confirmed"]),
+                         ("transactions", "transactions", False))
+        self.assertIn("not proven", record["period_note"])
+        [covered], findings = coverage.load_statements(self.entity)
+        self.assertEqual(findings, [])
+        self.assertEqual(covered.statement_id, record["statement_id"])
+        self.assertEqual((covered.period_start.isoformat(), covered.period_end.isoformat()),
+                         (record["first_transaction_date"], record["last_transaction_date"]))
+        [listed] = si.load_statement_records(self.entity)
+        self.assertEqual((listed["coverage_basis"], listed["period_confirmed"]), ("transactions", False))
+        self.assertFalse((self.entity / "ingestion" / "statements" / "unconfirmed" / f"{record['statement_id']}.json").exists())
+
+    def test_person_confirmed_period_replaces_a_rows_period_and_wins_on_repeat(self):
+        from bookkeeping import coverage
+
+        self.map("chase_like_checking.csv", "chase-checking")
+        self.imp("chase_like_checking.csv", "chase-checking", period_from_rows=True)
+        confirmed = self.imp("chase_like_checking.csv", "chase-checking",
+                             period_start="2026-01-01", period_end="2026-01-31")["statements"][0]
+        self.assertEqual(confirmed["coverage"], "recorded")
+        self.assertNotIn("coverage_basis", confirmed["statement"])
+        repeat = self.imp("chase_like_checking.csv", "chase-checking", period_from_rows=True)["statements"][0]
+        self.assertEqual(repeat["coverage"], "recorded")
+        self.assertNotIn("coverage_basis", repeat["statement"])
+        [record], _ = coverage.load_statements(self.entity)
+        self.assertEqual((record.period_start.isoformat(), record.period_end.isoformat()), ("2026-01-01", "2026-01-31"))
+
+    def test_period_from_rows_is_refused_with_a_printed_period_or_no_rows(self):
+        self.map("bofa_like_checking.csv", "bofa-checking", account="Assets:Bank:Savings")
+        with self.assertRaises(si.StatementImportError) as ctx:
+            self.imp("bofa_like_checking.csv", "bofa-checking", period_from_rows=True)
+        self.assertEqual(ctx.exception.code, "period_from_rows_refused")
+        self.map("checking.ofx", "checking-ofx")
+        with self.assertRaises(si.StatementImportError) as ctx:
+            self.imp("checking.ofx", period_from_rows=True)
+        self.assertEqual(ctx.exception.code, "period_from_rows_refused")
+        self.map("chase_like_checking.csv", "chase-checking")
+        with self.assertRaises(si.StatementImportError) as ctx:
+            self.imp("chase_like_checking.csv", "chase-checking", period_from_rows=True,
+                     period_start="2026-01-01", period_end="2026-01-31")
+        self.assertEqual(ctx.exception.code, "period_from_rows_refused")
+        empty = {"statement_id": "s", "profile": "p", "transactions": [], "account": {}, "metadata": {"period_source": "transactions"}}
+        with self.assertRaises(si.StatementImportError) as ctx:
+            si._contract_record(empty, fmt="csv", ledger_account=CHECKING, label="x", confirmed_period=None,
+                                balances=(None, None), period_from_rows=True)
+        self.assertEqual(ctx.exception.code, "period_from_rows_refused")
+        self.assertEqual(si.load_statement_records(self.entity), [])
+
+    def test_cli_accepts_period_from_rows(self):
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        si.add_parser(parser.add_subparsers(dest="command"))
+        args = parser.parse_args(["statement", "import", "f.csv", "--entity", "e", "--profile", "p", "--period-from-rows"])
+        self.assertTrue(args.period_from_rows)
+
     def test_person_supplied_card_balances_use_statement_presentation(self):
         from bookkeeping import coverage
 
