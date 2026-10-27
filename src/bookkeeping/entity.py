@@ -219,61 +219,104 @@ _DIRS = [
     "reports",
 ]
 
+_CORE_ACCOUNTS: tuple[str, ...] = (
+    "Assets:Bank:Checking",
+    "Liabilities:CreditCard",
+    "Equity:Opening-Balances",
+    "Equity:Owner-Contributions",
+    "Equity:Owner-Draws",
+)
+# Overhead that every small business has, whatever it sells. A chart adds these after its own accounts.
+_COMMON_EXPENSE_ACCOUNTS: tuple[str, ...] = (
+    "Expenses:Rent",
+    "Expenses:Payroll",
+    "Expenses:Payroll-Taxes",
+    "Expenses:Utilities",
+    "Expenses:Insurance",
+    "Expenses:Bank-Fees",
+    "Expenses:Professional-Fees",
+)
+_LEGACY_SERVICE_ACCOUNTS: tuple[str, ...] = (
+    "Expenses:Software",
+    "Expenses:Subcontractors",
+    "Expenses:Meals",
+    "Expenses:Marketing",
+    "Expenses:Travel",
+    "Expenses:Office",
+    "Expenses:Fees",
+    "Expenses:Taxes",
+)
+_SHOP_OVERHEAD_ACCOUNTS: tuple[str, ...] = (
+    "Expenses:Software",
+    "Expenses:Meals",
+    "Expenses:Marketing",
+    "Expenses:Travel",
+    "Expenses:Office",
+    "Expenses:Taxes",
+)
+# The first part of each chart keeps its earlier order, so an existing business type opens the same
+# accounts as before and gains the common accounts at the end.
 _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
-    "consulting": (
-        "Assets:Bank:Checking",
-        "Liabilities:CreditCard",
-        "Equity:Opening-Balances",
-        "Equity:Owner-Contributions",
-        "Equity:Owner-Draws",
-        "Income:Consulting",
-        "Expenses:Software",
-        "Expenses:Subcontractors",
-        "Expenses:Meals",
-        "Expenses:Marketing",
-        "Expenses:Travel",
-        "Expenses:Office",
-        "Expenses:Fees",
-        "Expenses:Taxes",
-    ),
-    "saas": (
-        "Assets:Bank:Checking",
-        "Liabilities:CreditCard",
-        "Equity:Opening-Balances",
-        "Equity:Owner-Contributions",
-        "Equity:Owner-Draws",
-        "Income:Subscriptions",
-        "Expenses:Software",
-        "Expenses:Subcontractors",
-        "Expenses:Meals",
-        "Expenses:Marketing",
-        "Expenses:Travel",
-        "Expenses:Office",
-        "Expenses:Fees",
-        "Expenses:Taxes",
-        "Expenses:Hosting",
+    "services": _CORE_ACCOUNTS + ("Income:Consulting",) + _LEGACY_SERVICE_ACCOUNTS
+    + ("Income:Services",) + _COMMON_EXPENSE_ACCOUNTS,
+    "saas": _CORE_ACCOUNTS + ("Income:Subscriptions",) + _LEGACY_SERVICE_ACCOUNTS
+    + ("Expenses:Hosting", "Expenses:Payment-Fees") + _COMMON_EXPENSE_ACCOUNTS,
+    "services_and_subscriptions": _CORE_ACCOUNTS + ("Income:Consulting", "Income:Subscriptions")
+    + _LEGACY_SERVICE_ACCOUNTS + ("Expenses:Hosting", "Expenses:Payment-Fees")
+    + ("Income:Services",) + _COMMON_EXPENSE_ACCOUNTS,
+    "retail": _CORE_ACCOUNTS + (
+        "Income:Sales",
+        "Assets:Other:Inventory",
+        "Expenses:Cost-of-Goods-Sold",
+        "Expenses:Shipping",
         "Expenses:Payment-Fees",
-    ),
-    "services_and_subscriptions": (
-        "Assets:Bank:Checking",
-        "Liabilities:CreditCard",
-        "Equity:Opening-Balances",
-        "Equity:Owner-Contributions",
-        "Equity:Owner-Draws",
-        "Income:Consulting",
-        "Income:Subscriptions",
-        "Expenses:Software",
-        "Expenses:Subcontractors",
-        "Expenses:Meals",
-        "Expenses:Marketing",
-        "Expenses:Travel",
-        "Expenses:Office",
-        "Expenses:Fees",
-        "Expenses:Taxes",
-        "Expenses:Hosting",
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    "restaurant": _CORE_ACCOUNTS + (
+        "Income:Sales",
+        "Assets:Other:Inventory",
+        "Expenses:Cost-of-Goods-Sold",
+        "Expenses:Supplies",
+        "Expenses:Repairs",
+        "Expenses:Licenses-and-Permits",
         "Expenses:Payment-Fees",
-    ),
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    "trades": _CORE_ACCOUNTS + (
+        "Income:Services",
+        "Expenses:Cost-of-Sales:Materials",
+        "Expenses:Cost-of-Sales:Subcontractors",
+        "Expenses:Tools-and-Equipment",
+        "Expenses:Vehicle",
+        "Expenses:Licenses-and-Permits",
+        "Expenses:Payment-Fees",
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    "real_estate": _CORE_ACCOUNTS + (
+        "Liabilities:Loans:Mortgage",
+        "Assets:Fixed:Property",
+        "Income:Rental-Income",
+        "Expenses:Repairs",
+        "Expenses:Property-Taxes",
+        "Expenses:Mortgage-Interest",
+        "Expenses:Property-Management",
+        "Expenses:Payment-Fees",
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    "other": _CORE_ACCOUNTS + (
+        "Income:Sales",
+        "Income:Services",
+        "Expenses:Payment-Fees",
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
 }
+# Older names for a business type. The alias opens the chart of the type it names.
+_BUSINESS_TYPE_ALIASES: dict[str, str] = {"consulting": "services"}
+DEFAULT_BUSINESS_TYPE = "consulting"
+BUSINESS_TYPES: tuple[str, ...] = tuple(_STARTER_ACCOUNTS) + tuple(_BUSINESS_TYPE_ALIASES)
+
+
+def starter_chart(business_type: str) -> tuple[str, ...]:
+    """The cash starter chart for ``business_type``; an alias or an unknown type opens the services chart."""
+    key = _BUSINESS_TYPE_ALIASES.get(business_type, business_type)
+    return _STARTER_ACCOUNTS.get(key, _STARTER_ACCOUNTS["services"])
+
+
 # Added to the starter chart of an accrual company only; cash companies are unchanged.
 _ACCRUAL_STARTER_ACCOUNTS: tuple[str, ...] = (
     "Assets:Receivable:Accounts-Receivable",
@@ -295,7 +338,7 @@ def _starter_account_opens(business_type: str, open_date: date = _DEFAULT_ACCOUN
     """Return starter SQLite account definitions for a business type and basis."""
     from .ledger.model import Open
 
-    accounts = _STARTER_ACCOUNTS.get(business_type, _STARTER_ACCOUNTS["consulting"])
+    accounts = starter_chart(business_type)
     if basis == "accrual":
         accounts = accounts + _ACCRUAL_STARTER_ACCOUNTS
     return [
@@ -651,6 +694,70 @@ def add_account(
         "currency": currency,
         "status": "existed" if existed_before else "created",
     }
+
+
+@_locked_entity_operation
+def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[str, Any]:
+    """Set the business type of a company that has no entries yet and add the starter accounts it lacks.
+
+    This is for a company that was created before its business type was known. It only adds
+    accounts: an account that already exists is not changed, and no account is removed. It
+    refuses a company that has entries, balance assertions or source transactions, and a
+    company whose ledger integrity is invalid. A repeat with the same type adds nothing.
+    """
+    from .currency import company_currency
+    from .ledger.importer import _entity_write_lock, check_integrity
+    from .ledger.model import Open
+    from .ledger.store import SUPPORTED_SCHEMA_VERSIONS, LedgerStore, default_store_path
+
+    if business_type not in BUSINESS_TYPES:
+        raise ValueError(f"Unknown business type {business_type!r}. Choose one of: {', '.join(BUSINESS_TYPES)}.")
+    entity = load_entity(entity_path)
+    currency = company_currency(entity.entity_config)
+    open_day = date.fromisoformat(_normalize_optional_date(str(entity.entity_config.get("cutover_date") or ""))
+                                  or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat())
+    with _entity_write_lock(entity.path):
+        store = LedgerStore(default_store_path(entity.path))
+        if not store.path.exists():
+            raise ValueError("Starter accounts need an initialized SQLite ledger; run books entity init first.")
+        if check_integrity(entity).status != "ok":
+            raise ValueError("Starter accounts cannot be added while ledger integrity is invalid.")
+        with store.transaction(immediate=True) as conn:
+            schema = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+            if schema is None or schema[0] not in {str(v) for v in SUPPORTED_SCHEMA_VERSIONS}:
+                raise ValueError("Unsupported ledger schema; upgrade or migrate explicitly before changing the account catalog.")
+            if any(conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
+                   for table in ("entries", "postings", "balance_assertions", "source_transactions")):
+                raise ValueError("This company already has entries, so its starter accounts are not changed. "
+                                 "Add single accounts with books entity account-add.")
+            chart = starter_chart(business_type)
+            if resolve_basis(entity.entity_config) == "accrual":
+                chart = chart + tuple(a for a in _ACCRUAL_STARTER_ACCOUNTS if a not in chart)
+            existing = {str(row[0]).lower() for row in conn.execute("SELECT name FROM accounts")}
+            missing = [account for account in chart if account.lower() not in existing]
+            opens = [Open(date=open_day, account=account,
+                          currencies=(currency,) if not account.startswith(("Equity:", "Income:")) else ())
+                     for account in missing]
+            if opens:
+                store.append_audit_event("intent", {
+                    "session_id": "entity-starter-accounts", "entries": 0,
+                    "description": f"Add {len(opens)} starter accounts for business type {business_type}",
+                }, conn)
+                store.insert_opens(opens, conn)
+            store.set_meta("business_type", business_type, conn)
+            if opens:
+                store.append_audit_event("ledger-store-sealed", {
+                    "session_id": "entity-starter-accounts", "entries": 0, "source_ids": [],
+                    "store_sha256": store.content_digest(conn),
+                }, conn)
+        if entity.entity_config.get("business_type") != business_type:
+            config = dict(entity.entity_config)
+            config["business_type"] = business_type
+            temp = entity.path / "entity.json.starter.tmp"
+            temp.write_text(json.dumps(config, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            os.replace(temp, entity.path / "entity.json")
+    return {"business_type": business_type, "added": missing,
+            "already_present": [a for a in chart if a not in missing]}
 
 
 # Fields a mapped bank account can carry besides the ledger account. The key of
@@ -1200,8 +1307,8 @@ def add_parser(subparsers: Any) -> None:
     )
     init_parser.add_argument(
         "--business-type",
-        choices=list(_STARTER_ACCOUNTS.keys()),
-        default="consulting",
+        choices=list(BUSINESS_TYPES),
+        default=DEFAULT_BUSINESS_TYPE,
         help="Business type; selects the starter account catalog",
     )
     init_parser.add_argument(
@@ -1227,6 +1334,15 @@ def add_parser(subparsers: Any) -> None:
         help="Refuse an account that is not an income or expense category: Income:<Line>, Income:<Group>:<Line>, "
              "Expenses:<Name> or Expenses:Cost-of-Sales:<Line>",
     )
+
+    starter_parser = entity_sub.add_parser(
+        "starter-accounts",
+        help="Set the business type of a company with no entries and add the starter accounts it lacks",
+    )
+    starter_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    starter_parser.add_argument("--business-type", required=True, choices=list(BUSINESS_TYPES),
+                                help="Business type; selects the starter account catalog")
+    starter_parser.add_argument("--json", action="store_true", help="Print the result as JSON")
 
     remove_account_parser = entity_sub.add_parser(
         "account-remove",
@@ -1424,6 +1540,22 @@ def run(args: Any) -> int:
 
         verb = "Added" if report["status"] == "created" else "Already present"
         print(f"{verb}: {report['account']} (open {report['open_date']})")
+        return 0
+
+    if args.entity_command == "starter-accounts":
+        target = _resolve_target(args.path)
+        try:
+            report = apply_starter_accounts(target, args.business_type)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            print(f"Business type: {report['business_type']}")
+            print(f"Added {len(report['added'])} accounts; {len(report['already_present'])} already present.")
+            for account in report["added"]:
+                print(f"  + {account}")
         return 0
 
     if args.entity_command == "account-remove":

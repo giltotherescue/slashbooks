@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Add industry starter charts: `services`, `saas`, `retail`, `restaurant`, `trades`,
+  `real_estate` and `other`. Every chart now includes rent, payroll, payroll taxes,
+  utilities, insurance, bank fees and professional fees. `consulting` is an alias of
+  `services`. Existing companies keep their accounts.
+- Add `books entity starter-accounts PATH --business-type TYPE`. It sets the business
+  type of a company that has no entries yet and adds only the missing starter accounts.
+
 ## Slashbooks Cloud plugin 0.9.2 — 2026-10-26
 
 - Update the Claude and ChatGPT directory descriptions to explain small business
