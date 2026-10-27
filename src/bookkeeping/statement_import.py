@@ -1364,7 +1364,14 @@ def add_parser(subparsers: Any) -> None:
     opening_p = sub.add_parser("record-opening",
                                help="Record an account's opening balance from its first saved statement")
     opening_p.add_argument("--entity", type=Path, required=True)
-    opening_p.add_argument("--statement-id", required=True)
+    opening_p.add_argument("--statement-id", default=None,
+                           help="Saved statement whose first day carries the opening balance")
+    opening_p.add_argument("--account", default=None,
+                           help="Assets: or Liabilities: account, for an amount a person enters without a statement")
+    opening_p.add_argument("--on", default=None, help="First day the books cover for --account (YYYY-MM-DD)")
+    opening_p.add_argument("--amount", default=None,
+                           help="Opening balance a person entered, in statement presentation (money held, or "
+                                "money owed for a card). Refused when the statement has a printed opening balance.")
     opening_p.add_argument("--dry-run", action="store_true", help="Show the entry without changes")
 
     list_p = sub.add_parser("list", help="List recorded statements and their periods and balances")
@@ -1414,7 +1421,8 @@ def run(args: argparse.Namespace) -> int:
         elif command == "record-opening":
             from .statement_opening import StatementOpeningError, record_opening
             try:
-                result = record_opening(args.entity, args.statement_id, dry_run=args.dry_run)
+                result = record_opening(args.entity, args.statement_id, account=args.account, on=args.on,
+                                        amount=args.amount, dry_run=args.dry_run)
             except StatementOpeningError as exc:
                 raise StatementImportError(exc.code, str(exc)) from exc
         elif command == "list":

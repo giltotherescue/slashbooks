@@ -139,11 +139,84 @@ class RecordOpeningTests(unittest.TestCase):
             record_opening(self.entity, record["statement_id"])
         self.assertEqual(caught.exception.code, "statement_not_found")
 
+    def test_printed_entry_is_marked_printed(self):
+        record = self.imp("chase_like_checking.csv", "checking", period_start="2026-01-01", period_end="2026-01-31")
+        self.assertEqual(record_opening(self.entity, record["statement_id"])["opening_source"], "printed")
+        with LedgerStore(default_store_path(self.entity)).connection() as conn:
+            meta = dict(json.loads(conn.execute("SELECT metadata_json FROM entries").fetchone()[0]))
+        self.assertEqual(meta["opening-source"], "printed")
+
+    def test_typed_amount_is_refused_when_the_statement_has_a_printed_opening(self):
+        record = self.imp("chase_like_checking.csv", "checking", period_start="2026-01-01", period_end="2026-01-31")
+        refused = record_opening(self.entity, record["statement_id"], amount="5000.00")
+        self.assertEqual((refused["status"], refused["reason"]), ("not_eligible", "printed_opening_exists"))
+        self.assertEqual(refused["printed_opening"], "1000.00")
+        by_account = record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="5000.00")
+        self.assertEqual((by_account["status"], by_account["reason"]), ("not_eligible", "printed_opening_exists"))
+        self.assertEqual(by_account["statement_id"], record["statement_id"])
+        with LedgerStore(default_store_path(self.entity)).connection() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0], 0)
+
+    def test_statement_without_a_printed_opening_takes_a_typed_amount(self):
+        # A card CSV with no balance column has no printed opening balance.
+        record = self.imp("card_debit_credit.csv", "card", account=CARD, period_start="2026-01-01",
+                          period_end="2026-01-31")
+        self.assertIsNone(record["opening_balance"])
+        asked = record_opening(self.entity, record["statement_id"])
+        self.assertEqual((asked["status"], asked["reason"]), ("not_eligible", "no_opening_balance"))
+        done = record_opening(self.entity, record["statement_id"], amount="250.00")
+        self.assertEqual((done["status"], done["opening_source"]), ("recorded", "person"))
+        self.assertEqual(done["postings"][0], {"account": CARD, "amount": "-250.00"})
+        with LedgerStore(default_store_path(self.entity)).connection() as conn:
+            meta = dict(json.loads(conn.execute("SELECT metadata_json FROM entries").fetchone()[0]))
+        self.assertEqual((meta["opening-source"], meta["statement-id"]), ("person", record["statement_id"]))
+        self.assertEqual(record_opening(self.entity, record["statement_id"], amount="250.00")["status"],
+                         "already_recorded")
+        changed = record_opening(self.entity, record["statement_id"], amount="300.00")
+        self.assertEqual((changed["status"], changed["reason"]), ("not_eligible", "opening_exists"))
+
+    def test_account_and_day_take_a_typed_amount_under_the_same_rules(self):
+        store = LedgerStore(default_store_path(self.entity))
+        store.initialize()
+        with store.transaction() as conn:
+            store.insert_opens([Open(date=date(2026, 1, 1), account=CHECKING),
+                                Open(date=date(2026, 1, 1), account="Expenses:Software")], conn)
+            store.insert_entries([Entry(date=date(2026, 1, 5), narration="Later", meta=(("source-id", "t-1"),),
+                                        postings=(Posting(CHECKING, Decimal("-10.00")),
+                                                  Posting("Expenses:Software", Decimal("10.00"))))], conn)
+        late = record_opening(self.entity, account=CHECKING, on="2026-01-06", amount="7907.82")
+        self.assertEqual((late["status"], late["reason"]), ("not_eligible", "books_before_statement"))
+        preview = record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="7,907.82", dry_run=True)
+        self.assertEqual((preview["status"], preview["opening_source"]), ("dry_run", "person"))
+        self.assertIsNone(preview["statement_id"])
+        done = record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="7907.82")
+        self.assertEqual(done["status"], "recorded")
+        self.assertEqual(self.balances("2026-01-05")[CHECKING], Decimal("7897.82"))
+        self.assertEqual(record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="7907.82")["status"],
+                         "already_recorded")
+        unknown = record_opening(self.entity, account="Assets:Bank:Nowhere", on="2026-01-01", amount="1.00")
+        self.assertEqual(unknown["reason"], "unknown_account")
+        income = record_opening(self.entity, account="Expenses:Software", on="2026-01-01", amount="1.00")
+        self.assertEqual(income["reason"], "not_a_balance_account")
+        for kwargs in ({"account": CHECKING, "on": "2026-01-01"}, {"amount": "1.00"},
+                       {"account": CHECKING, "on": "2026-13-01", "amount": "1.00"},
+                       {"account": CHECKING, "on": "2026-01-01", "amount": "1.001"}):
+            with self.assertRaises(StatementOpeningError):
+                record_opening(self.entity, **kwargs)
+
     def test_cli_and_remote_contract(self):
         record = self.imp("chase_like_checking.csv", "checking", period_start="2026-01-01", period_end="2026-01-31")
         argv = ["statement", "record-opening", "--entity", str(self.entity), "--statement-id", record["statement_id"]]
         self.assertFalse(command_spec([*argv, "--dry-run"])["mutates"])
         self.assertTrue(command_spec(argv)["mutates"])
+        typed = ["statement", "record-opening", "--entity", str(self.entity), "--account", CHECKING,
+                 "--on", "2026-01-01", "--amount", "5.00"]
+        self.assertFalse(command_spec([*typed, "--dry-run"])["mutates"])
+        self.assertTrue(command_spec(typed)["mutates"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(main([*typed, "--dry-run"]), 0)
+        self.assertEqual(json.loads(out.getvalue())["reason"], "printed_opening_exists")
         out = io.StringIO()
         with redirect_stdout(out):
             self.assertEqual(main(argv), 0)
