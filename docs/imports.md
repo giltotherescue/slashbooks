@@ -173,6 +173,34 @@ the balances from the printed statement, pass `--opening-balance` and
 account and money owed for a card. If the balances do not agree with the
 transactions in the file, the result has a warning.
 
+### Opening balance from the first statement
+
+An import records the statement's balances in the statement record only. It
+writes no ledger entry for them. When the books of an account start at its
+first statement, record the opening balance from that statement:
+
+```sh
+books statement record-opening --entity PATH --statement-id ID --dry-run
+books statement record-opening --entity PATH --statement-id ID
+```
+
+The command writes one entry on the first statement day: the account against
+`Equity:Opening-Balances`, for the printed opening balance (a card balance owed
+is a credit). It writes the entry only when all of these are true:
+
+- The statement has a confirmed period and an opening balance, in the company
+  currency.
+- No other statement for the account starts earlier.
+- The books have no entry for the account before the statement starts.
+- The account has no opening entry yet.
+
+Otherwise the result is `"status": "not_eligible"` with a `reason`
+(`not_first_statement`, `books_before_statement`, `opening_exists`,
+`period_unconfirmed`, `no_opening_balance`, `currency_differs`) and nothing is
+written. A repeat returns `already_recorded`. A cash flow statement that starts
+on that day counts the entry as a beginning balance, and the statement tie-out
+leaves it out of the period movement.
+
 ### Tie-out
 
 Each statement in the result has a `tieout` that checks the file alone: the

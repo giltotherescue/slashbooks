@@ -354,14 +354,14 @@ def build_cash_flow(
     return CashflowResult(from_date, to_date, lines, totals, reconciliation, needs, dict(meta or {}), warnings)
 
 
-_OPENING_SOURCES = {"quickbooks-opening", "accrual-opening"}
+_OPENING_SOURCES = {"quickbooks-opening", "accrual-opening", "statement-opening"}
 
 
 def opening_entries(conn: Any, from_date: date, to_date: date) -> list[dict]:
     """Imported opening-balance entries dated in [from_date, to_date].
 
-    An entry is an opening entry when its ``import-source`` is ``quickbooks-opening``
-    or ``accrual-opening``, or its ``accrual-opening`` metadata is ``true``.  A ledger
+    An entry is an opening entry when its ``import-source`` is ``quickbooks-opening``,
+    ``accrual-opening`` or ``statement-opening``, or its ``accrual-opening`` metadata is ``true``.  A ledger
     cache without entry metadata is matched by the QuickBooks opening ``source_id``.
     """
     columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}

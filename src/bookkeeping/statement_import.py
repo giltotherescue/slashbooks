@@ -1361,6 +1361,12 @@ def add_parser(subparsers: Any) -> None:
     choose.add_argument("--expected-revision", required=True)
     choose.add_argument("--expected", action="append", required=True, help="Each saved statement reviewed for this period")
 
+    opening_p = sub.add_parser("record-opening",
+                               help="Record an account's opening balance from its first saved statement")
+    opening_p.add_argument("--entity", type=Path, required=True)
+    opening_p.add_argument("--statement-id", required=True)
+    opening_p.add_argument("--dry-run", action="store_true", help="Show the entry without changes")
+
     list_p = sub.add_parser("list", help="List recorded statements and their periods and balances")
     list_p.add_argument("--entity", type=Path, required=True)
     list_p.add_argument("--all", action="store_true", dest="include_all", help="Include manually recorded statement metadata")
@@ -1405,6 +1411,12 @@ def run(args: argparse.Namespace) -> int:
                 result = select_statement(args.entity, args.statement_id, expected=args.expected, expected_revision=args.expected_revision)
             except ValueError as exc:
                 raise StatementImportError("statement_selection", str(exc)) from exc
+        elif command == "record-opening":
+            from .statement_opening import StatementOpeningError, record_opening
+            try:
+                result = record_opening(args.entity, args.statement_id, dry_run=args.dry_run)
+            except StatementOpeningError as exc:
+                raise StatementImportError(exc.code, str(exc)) from exc
         elif command == "list":
             load_entity(args.entity)
             records = load_statement_records(args.entity, include_all=args.include_all)
