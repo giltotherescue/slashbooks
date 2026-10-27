@@ -634,6 +634,13 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
 
     with _entity_write_lock(entity.path):
         entity = load_entity(entity_path)
+        # Rows before the account's opening balance would count twice: refuse before any write.
+        from .statement_opening import before_opening_refusal
+        refusal = before_opening_refusal(entity.path, ledger_account, [str(t["date"]) for t in txns],
+                                         statement_period_start=record["period_start"],
+                                         statement_opening_balance=record["opening_balance"])
+        if refusal is not None:
+            return {"status": "error", "error": refusal}
         plan = si.plan_duplicates(entity, txns, ledger_account, mapping_key)
         counts: JsonObject = {
             "rows_in_statement": len(txns), "held_for_review": len(plan["held"]),

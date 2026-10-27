@@ -399,6 +399,10 @@ def run(args: argparse.Namespace) -> int:
               "go to review, none are posted"
               + (f"; {item['pending_skipped']} pending skipped" if item["pending_skipped"] else "")
               + " (--backfill imports them normally)")
+    if result.before_opening:
+        first = min(item["date"] for item in result.before_opening)
+        print(f"  before opening:      {len(result.before_opening)} row(s) from {first} are dated before their "
+              "account's opening balance, which already includes them; none are posted or queued")
     if result.duplicate_candidates:
         print(f"  duplicate candidates:{result.duplicate_candidates}")
     if result.late_arrivals:

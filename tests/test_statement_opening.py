@@ -23,6 +23,7 @@ if str(SRC) not in sys.path:
 from bookkeeping import statement_import as si  # noqa: E402
 from bookkeeping import tieout  # noqa: E402
 from bookkeeping.cli import main  # noqa: E402
+from bookkeeping.entity import load_entity  # noqa: E402
 from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore, default_store_path  # noqa: E402
 from bookkeeping.remote_contract import command_spec  # noqa: E402
@@ -44,6 +45,11 @@ def _make_entity(root: Path) -> Path:
     (entity_dir / "trust-policy.json").write_text(
         json.dumps({"auto_post_threshold": 3, "queue_all_until_confirmed": True}) + "\n", encoding="utf-8")
     return entity_dir
+
+
+def _queue_ids(entity_dir: Path) -> list[str]:
+    path = entity_dir / "staging" / "pending-categorization.json"
+    return [item["id"] for item in json.loads(path.read_text(encoding="utf-8"))] if path.exists() else []
 
 
 class RecordOpeningTests(unittest.TestCase):
@@ -203,6 +209,164 @@ class RecordOpeningTests(unittest.TestCase):
                        {"account": CHECKING, "on": "2026-01-01", "amount": "1.001"}):
             with self.assertRaises(StatementOpeningError):
                 record_opening(self.entity, **kwargs)
+
+    def write_csv(self, name: str, rows: list[tuple[str, str, str, str]]) -> Path:
+        """Synthetic Chase-like checking export: (MM/DD/YYYY, description, amount, running balance), newest first."""
+        lines = ["Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #"]
+        for day, text, amount, balance in rows:
+            kind = "CREDIT" if not amount.startswith("-") else "DEBIT"
+            lines.append(f'{kind},{day},"{text}",{amount},ACH_{kind},{balance},,')
+        path = Path(self._tmp.name) / name
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def import_path(self, path: Path, profile: str, account: str = CHECKING, **kwargs) -> dict:
+        si.save_profile(self.entity, path, name=profile, ledger_account=account, overrides={})
+        return si.import_file(self.entity, path, profile=profile, ts="2026-09-01T00:00:00Z", **kwargs)
+
+    def july_august(self) -> tuple[Path, Path]:
+        # July opens at 1000.00 and closes at 1300.00; August opens at 1300.00 and closes at 1250.00.
+        july = self.write_csv("july.csv", [("07/15/2026", "NORTHWIND COFFEE", "-200.00", "1300.00"),
+                                           ("07/02/2026", "ACME PAYROLL", "500.00", "1500.00")])
+        august = self.write_csv("august.csv", [("08/20/2026", "INTEREST PAYMENT", "50.00", "1250.00"),
+                                               ("08/03/2026", "CONTOSO SOFTWARE", "-100.00", "1200.00")])
+        return july, august
+
+    def books_balance(self, account: str, day: str) -> Decimal:
+        """Posted rows plus rows waiting in review, as the statement tie-out counts the books."""
+        end = date.fromisoformat(day)
+        posted = tieout.load_postings(self.entity, [account])[account].through(end)
+        waiting = tieout.load_waiting(load_entity(self.entity), [account])[account].through(end)
+        return posted + waiting
+
+    def test_rows_before_the_opening_are_refused_with_nothing_written(self):
+        july, august = self.july_august()
+        aug = self.import_path(august, "aug", period_start="2026-08-01", period_end="2026-08-31")
+        self.assertEqual(record_opening(self.entity, aug["statements"][0]["statement"]["statement_id"])["status"],
+                         "recorded")
+        queued = _queue_ids(self.entity)
+        statements_before = sorted(p.name for p in (self.entity / "ingestion" / "statements").glob("*.json"))
+        for dry_run in (True, False):
+            refused = self.import_path(july, "jul", period_start="2026-07-01", period_end="2026-07-31", dry_run=dry_run)
+            self.assertEqual(refused["status"], "error")
+            error = refused["error"]
+            self.assertEqual(error["code"], "before_opening_balance")
+            self.assertEqual((error["opening_date"], error["first_row_date"], error["rows_before_opening"]),
+                             ("2026-08-01", "2026-07-02", 2))
+            self.assertIn("2026-08-01", error["message"])
+            self.assertEqual((error["statement_period_start"], error["statement_opening_balance"]),
+                             ("2026-07-01", "1000.00"))
+            self.assertIn("--replace", error["action"])
+        self.assertEqual(_queue_ids(self.entity), queued)
+        self.assertEqual(sorted(p.name for p in (self.entity / "ingestion" / "statements").glob("*.json")),
+                         statements_before)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main(["statement", "import", str(july), "--entity", str(self.entity), "--profile", "jul",
+                         "--period-start", "2026-07-01", "--period-end", "2026-07-31"])
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(out.getvalue())["error"]["code"], "before_opening_balance")
+
+    def test_replace_moves_the_opening_earlier_and_the_balance_ties_to_the_latest_statement(self):
+        july, august = self.july_august()
+        aug = self.import_path(august, "aug", period_start="2026-08-01", period_end="2026-08-31")
+        aug_id = aug["statements"][0]["statement"]["statement_id"]
+        self.assertEqual(record_opening(self.entity, aug_id)["status"], "recorded")
+        self.assertEqual(self.books_balance(CHECKING, "2026-08-31"), Decimal("1250.00"))
+        self.assertEqual(self.import_path(july, "jul", period_start="2026-07-01",
+                                          period_end="2026-07-31")["error"]["code"], "before_opening_balance")
+
+        # Without --replace the existing opening wins; a later day is refused even with --replace.
+        self.assertEqual(record_opening(self.entity, account=CHECKING, on="2026-07-01", amount="1000.00")["reason"],
+                         "opening_exists")
+        self.assertEqual(record_opening(self.entity, account=CHECKING, on="2026-08-05", amount="1000.00",
+                                        replace=True)["reason"], "replace_not_earlier")
+        preview = record_opening(self.entity, account=CHECKING, on="2026-07-01", amount="1000.00", replace=True,
+                                 dry_run=True)
+        self.assertEqual((preview["status"], preview["replaces"]["date"]), ("dry_run", "2026-08-01"))
+        moved = record_opening(self.entity, account=CHECKING, on="2026-07-01", amount="1000.00", replace=True)
+        self.assertEqual((moved["status"], moved["date"], moved["replaces"]["amount"]),
+                         ("replaced", "2026-07-01", "1300.00"))
+        self.assertEqual(record_opening(self.entity, account=CHECKING, on="2026-07-01", amount="1000.00",
+                                        replace=True)["status"], "already_recorded")
+
+        jul = self.import_path(july, "jul", period_start="2026-07-01", period_end="2026-07-31")
+        self.assertEqual(jul["status"], "imported")
+        self.assertEqual(self.books_balance(CHECKING, "2026-07-31"), Decimal("1300.00"))
+        self.assertEqual(self.books_balance(CHECKING, "2026-08-31"), Decimal("1250.00"))
+        balances = self.balances("2026-08-31")
+        self.assertEqual(balances["Equity:Opening-Balances"], Decimal("-1000.00"))
+        # Both statements still tie out: the moved opening and its reversal are not period movement.
+        for statement_id, start, end, opening, closing in (
+                (jul["statements"][0]["statement"]["statement_id"], "2026-07-01", "2026-07-31", "1000.00", "1300.00"),
+                (aug_id, "2026-08-01", "2026-08-31", "1300.00", "1250.00")):
+            period = tieout.period_tieout(
+                account=CHECKING, statement_id=statement_id, start=date.fromisoformat(start),
+                end=date.fromisoformat(end), opening=Decimal(opening), closing=Decimal(closing),
+                postings=tieout.load_postings(self.entity, [CHECKING])[CHECKING],
+                waiting=tieout.load_waiting(load_entity(self.entity), [CHECKING])[CHECKING])
+            # Rows waiting in review count with the posted rows, as the import check counts them.
+            books = Decimal(period["books_balance_through"]) + Decimal(period["waiting_total"])
+            self.assertEqual(books, Decimal(closing), statement_id)
+        conn = open_cache(self.entity)
+        try:
+            self.assertEqual([o["date"] for o in opening_entries(conn, date(2026, 7, 1), date(2026, 8, 31))],
+                             [date(2026, 7, 1)])
+        finally:
+            conn.close()
+        # Once the July statement is saved, its printed opening balance wins over a typed one.
+        self.assertEqual(record_opening(self.entity, account=CHECKING, on="2026-07-01", amount="1000.00",
+                                        replace=True)["reason"], "printed_opening_exists")
+        self.assertEqual(record_opening(self.entity, aug_id)["reason"], "opening_exists")
+
+    def test_replace_needs_an_opening_and_no_earlier_entries(self):
+        self.assertEqual(record_opening(self.entity, account=CHECKING, on="2026-07-01", amount="1.00",
+                                        replace=True)["reason"], "unknown_account")
+        july, august = self.july_august()
+        aug = self.import_path(august, "aug", period_start="2026-08-01", period_end="2026-08-31")
+        self.assertEqual(record_opening(self.entity, aug["statements"][0]["statement"]["statement_id"],
+                                        replace=True)["reason"], "no_opening_to_replace")
+        record_opening(self.entity, aug["statements"][0]["statement"]["statement_id"])
+        store = LedgerStore(default_store_path(self.entity))
+        with store.transaction() as conn:
+            store.insert_opens([Open(date=date(2026, 6, 1), account="Expenses:Software")], conn)
+            store.insert_entries([Entry(date=date(2026, 7, 10), narration="Earlier", meta=(("source-id", "t-1"),),
+                                        postings=(Posting(CHECKING, Decimal("-10.00")),
+                                                  Posting("Expenses:Software", Decimal("10.00"))))], conn)
+        refused = record_opening(self.entity, account=CHECKING, on="2026-07-15", amount="1000.00", replace=True)
+        self.assertEqual((refused["status"], refused["reason"]), ("not_eligible", "books_before_statement"))
+
+    def test_accounts_without_an_opening_are_not_affected(self):
+        july, august = self.july_august()
+        aug = self.import_path(august, "aug", period_start="2026-08-01", period_end="2026-08-31")
+        record_opening(self.entity, aug["statements"][0]["statement"]["statement_id"])
+        savings = "Assets:Bank:Savings"
+        store = LedgerStore(default_store_path(self.entity))
+        with store.transaction() as conn:
+            store.insert_opens([Open(date=date(2026, 1, 1), account=savings)], conn)
+        other = self.import_path(july, "jul-savings", account=savings, period_start="2026-07-01",
+                                 period_end="2026-07-31")
+        self.assertEqual(other["status"], "imported")
+        self.assertEqual(self.books_balance(savings, "2026-07-31"), Decimal("300.00"))
+
+    def test_shared_importer_skips_rows_before_the_opening_for_every_source(self):
+        from bookkeeping.ledger.importer import import_transactions
+
+        july, august = self.july_august()
+        aug = self.import_path(august, "aug", period_start="2026-08-01", period_end="2026-08-31")
+        record_opening(self.entity, aug["statements"][0]["statement"]["statement_id"])
+        entity = load_entity(self.entity)
+        rows = [{"id": f"feed-{n}", "date": day, "amount": "-5.00", "description": "FEED ROW", "account": "Checking",
+                 "accountId": "feed-chk", "currency": "USD"} for n, day in enumerate(("2026-07-20", "2026-08-10"))]
+        config = json.loads((self.entity / "entity.json").read_text())
+        config["bank_account_mappings"] = {"feed-chk": CHECKING}
+        (self.entity / "entity.json").write_text(json.dumps(config) + "\n", encoding="utf-8")
+        entity = load_entity(self.entity)
+        result = import_transactions(entity, rows, session_id="feed-test")
+        self.assertEqual([(r["source_id"], r["opening_date"]) for r in result.before_opening],
+                         [("feed-0", "2026-08-01")])
+        self.assertEqual(result.pending_categorization, 1)
+        self.assertNotIn("feed-0", _queue_ids(self.entity))
 
     def test_cli_and_remote_contract(self):
         record = self.imp("chase_like_checking.csv", "checking", period_start="2026-01-01", period_end="2026-01-31")

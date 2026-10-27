@@ -186,6 +186,8 @@ books statement record-opening --entity PATH --statement-id ID [--dry-run]
 books statement record-opening --entity PATH --statement-id ID --amount AMOUNT [--dry-run]
 # No saved statement: the first day the books cover for the account
 books statement record-opening --entity PATH --account ACCOUNT --on YYYY-MM-DD --amount AMOUNT [--dry-run]
+# Any form with --replace moves an existing opening balance to the same or an earlier day
+books statement record-opening ... --replace [--dry-run]
 ```
 
 The command writes one entry on that day: the account against
@@ -207,10 +209,38 @@ The command writes the entry only when all of these are true:
 Otherwise the result is `"status": "not_eligible"` with a `reason`
 (`not_first_statement`, `books_before_statement`, `opening_exists`,
 `printed_opening_exists`, `no_opening_balance`, `period_unconfirmed`,
-`currency_differs`, `unknown_account`, `not_a_balance_account`) and nothing is
+`currency_differs`, `unknown_account`, `not_a_balance_account`,
+`rows_waiting_before`) and nothing is
 written. A repeat returns `already_recorded`. A cash flow statement that starts
 on that day counts the entry as a beginning balance, and the statement tie-out
 leaves it out of the period movement.
+
+The opening balance already includes every earlier row of the account. So an
+import refuses rows dated before it:
+
+- `books statement import` and `books statement import-extracted` refuse the
+  whole file with `"code": "before_opening_balance"` and import nothing. The
+  error names the opening date, the first early row, and the file's period start
+  and opening balance when it has them.
+- Every other path that writes bank rows (`books ingest`, a released duplicate)
+  posts and queues none of those rows. The result lists them in
+  `before_opening`, and `books ingest` prints a `before opening` line.
+
+To add an earlier statement, move the opening balance to its first day, then
+import it:
+
+```sh
+books statement record-opening --entity PATH --account ACCOUNT --on 2026-07-01 --amount 1000.00 --replace
+books statement import july.csv --entity PATH --profile PROFILE --period-start 2026-07-01 --period-end 2026-07-31
+```
+
+`--replace` reverses the opening entry in force and records the new one in one
+write (`"status": "replaced"`). It refuses with `replace_not_earlier` when the
+new day is later, with `no_opening_to_replace` when the account has none, and
+with the usual reasons when an entry or a row in review for the account is dated
+before the new day (`rows_waiting_before` for a row in review). A cash flow
+statement treats the moved opening and its reversal as ordinary entries that
+net to zero.
 
 ### Tie-out
 

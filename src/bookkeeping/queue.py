@@ -1195,6 +1195,11 @@ def resolve_duplicate_candidate(
         )
         if result.errors:
             raise ValueError("Could not release distinct activity: " + "; ".join(result.errors))
+        if result.before_opening:
+            raise ValueError(
+                f"Could not release distinct activity: it is dated before the opening balance of "
+                f"{result.before_opening[0]['account']} on {result.before_opening[0]['opening_date']}, "
+                "which already includes it.")
 
     resolved_at = _now_iso()
     candidate["status"] = f"confirmed-{decision}"

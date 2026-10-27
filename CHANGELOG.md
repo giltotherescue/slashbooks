@@ -12,6 +12,13 @@
   has an opening entry. The cash flow statement and the statement tie-out treat the
   entry as an opening entry. Before this, an import kept the opening balance only in
   the statement record, so the account balance left it out.
+- Refuse rows dated before an account's opening balance entry, because the opening
+  balance already includes them. A statement import refuses the whole file with
+  `before_opening_balance` and imports nothing; `books ingest` and other shared import
+  paths post and queue none of those rows and report them as `before_opening`. To add
+  an earlier statement, move the opening with `books statement record-opening ...
+  --replace`, which reverses the opening entry in force and records the new one on the
+  same or an earlier day in one write.
 
 - Add `books statement import --period-from-rows` for a file with no printed
   period. It records the first and last transaction dates as the period with
