@@ -7,6 +7,10 @@
   sends every plain categorization through the split workflow got "Split transaction" for
   each one in the `categorized` and `recorded` breakdowns.
 
+- Work events and `books work` no longer count an opening balance entry from
+  `books statement record-opening` (or its reversal under `--replace`) as an imported
+  or recorded transaction. Before this, a 10-row statement import followed by its
+  opening balance showed as 11 imported transactions.
 - `books statement record-opening --statement-id ID` now records the opening balance of a
   statement imported with `--period-from-rows` when the file gives one (for example a balance
   column), dated on the first row day. Before this, both forms of the command refused such a

@@ -517,6 +517,61 @@ class WorkCommandTests(unittest.TestCase):
         self.assertEqual(spec["entity_fields"], ["entity"])
 
 
+class OpeningBalanceTests(unittest.TestCase):
+    """An opening balance entry is the account's starting balance, not a bank transaction."""
+
+    def setUp(self) -> None:
+        from bookkeeping import statement_import as si
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.entity = self.root / "co"
+        (self.entity / "staging").mkdir(parents=True)
+        (self.entity / "entity.json").write_text(json.dumps({"name": "Synthetic Co", "business_type": "consulting"}),
+                                                 encoding="utf-8")
+        fixture = ROOT / "tests" / "fixtures" / "statements" / "chase_like_checking.csv"
+        si.save_profile(self.entity, fixture, name="checking", ledger_account="Assets:Bank:Checking", overrides={})
+        out = self.root / "import-work.json"
+        code, stdout, stderr = run_cli(["--work-out", str(out), "statement", "import", str(fixture), "--entity",
+                                        str(self.entity), "--profile", "checking", "--period-start", "2026-01-01",
+                                        "--period-end", "2026-01-31"])
+        self.assertEqual(code, 0, stdout + stderr)
+        self.imported = json.loads(out.read_text(encoding="utf-8"))["work"]
+        self.statement_id = json.loads(stdout)["statements"][0]["statement"]["statement_id"]
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def record_opening(self, *extra: str) -> tuple[dict, list[dict]]:
+        out = self.root / f"opening-{len(extra)}.json"
+        code, stdout, stderr = run_cli(["--work-out", str(out), "statement", "record-opening", "--entity",
+                                        str(self.entity), *extra])
+        self.assertEqual(code, 0, stdout + stderr)
+        return json.loads(stdout), json.loads(out.read_text(encoding="utf-8"))["work"]
+
+    def test_opening_entry_is_not_an_import_or_a_recorded_transaction(self) -> None:
+        self.assertEqual(by_kind(self.imported, "imported")["counts"]["transactions"], 6)
+        result, events = self.record_opening("--statement-id", self.statement_id)
+        self.assertEqual(result["status"], "recorded")
+        self.assertEqual(ledger_entry_count(self.entity), 1)
+        self.assertEqual(events, [])
+        code, stdout, _ = run_cli(["work", "--entity", str(self.entity)])
+        self.assertEqual((code, stdout.splitlines()), (0, ["Imported 6 transactions."]))
+
+    def test_replaced_opening_and_its_reversal_are_not_counted(self) -> None:
+        self.record_opening("--statement-id", self.statement_id)
+        result, events = self.record_opening("--account", "Assets:Bank:Checking", "--on", "2025-12-01",
+                                             "--amount=900.00", "--replace")
+        self.assertEqual(result["status"], "replaced")
+        self.assertEqual(ledger_entry_count(self.entity), 3)
+        self.assertEqual(events, [])
+
+    def test_marker_matches_the_opening_module(self) -> None:
+        from bookkeeping import statement_opening
+
+        self.assertEqual(work._OPENING_IMPORT_SOURCE, statement_opening.IMPORT_SOURCE)
+
+
 class SummaryTests(unittest.TestCase):
     def test_summary_adds_counts_and_merges_breakdowns(self) -> None:
         events = [

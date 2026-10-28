@@ -130,7 +130,11 @@ The schema also defines kinds that a host or a later engine version produces:
 
 Each new ledger entry is counted one time:
 `recorded.entries + corrected.entries + corrected.reversals` equals the number
-of new rows in the ledger.
+of new rows in the ledger. The one exception is an opening balance entry
+(`books statement record-opening`, `import-source: statement-opening`) and its
+reversal when `--replace` moves it. That entry is the account's balance on its
+first day, not a bank transaction, so no event counts it: it is not `imported`,
+`recorded` or `corrected`.
 
 ## Determinism and replay
 
