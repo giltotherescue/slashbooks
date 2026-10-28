@@ -233,13 +233,17 @@ def _queue_item(raw: Any) -> dict | None:
                     if isinstance(posting, dict) and posting.get("account")]
     else:
         accounts = [str(raw.get("confirmed_category") or raw.get("proposed_category") or "")]
+    proposed_category = str(raw.get("proposed_category") or "")
+    if proposal_type == "split" and len(set(accounts)) == 1:
+        # A split proposal with one category is a plain categorization.
+        proposed_category = accounts[0]
     return {
         "id": str(raw["source_id"]),
         "amount": str(raw.get("amount") or ""),
         "accounts": [value for value in accounts if value],
         "status": str(raw.get("status") or ""),
         "proposal_type": proposal_type,
-        "proposed_category": str(raw.get("proposed_category") or ""),
+        "proposed_category": proposed_category,
         "confirmed_category": str(raw.get("confirmed_category") or ""),
         "date": str(raw.get("date") or "")[:10],
         "sources": sources,
@@ -462,11 +466,11 @@ def _event(kind: str, counts: dict[str, int], *, dates: Iterable[str], accounts:
 
 
 def _entry_category(entry: EntryRow) -> str:
-    workflow = entry.meta.get("review-workflow")
-    if workflow == "transfer-pair":
+    # A split is an entry with more than one category. An entry from the split
+    # workflow with one category line (a host can send every plain categorize
+    # that way) is labeled with that category.
+    if entry.meta.get("review-workflow") == "transfer-pair":
         return "Internal transfer"
-    if workflow == "split":
-        return "Split transaction"
     others = sorted(set(entry.accounts[1:]))
     if len(others) == 1:
         return others[0]

@@ -308,6 +308,64 @@ class ScenarioTests(unittest.TestCase):
         self.assertNotIn("amount", json.dumps(work.summarize(events)))
 
 
+class OneCategorySplitTests(unittest.TestCase):
+    """A split proposal with one category line is a plain categorization, not a split."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.books = Books(Path(self.tmp.name))
+        self.books.init()
+        self.books.ingest("first.json", FIRST_IMPORT)
+        self.entity = str(self.books.entity)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def propose(self, source_id: str, *postings: str) -> list[dict]:
+        argv = ["queue", "propose-split", "--entity", self.entity, "--source-id", source_id,
+                "--reasoning", "Categorized by a person."]
+        for posting in postings:
+            argv += ["--posting", posting]
+        return self.books.run(*argv)
+
+    def test_one_category_split_is_labeled_with_its_category(self) -> None:
+        proposed = self.propose("syn-004", "Expenses:Software=42.00")
+        self.assertEqual(by_kind(proposed, "categorized")["breakdown"],
+                         [{"label": "Expenses:Software", "count": 1}])
+        recorded = by_kind(self.books.run("queue", "confirm-split", "--entity", self.entity,
+                                          "--item", "syn-004"), "recorded")
+        self.assertEqual(recorded["breakdown"], [{"label": "Expenses:Software", "count": 1}])
+
+    def test_one_category_split_lines_on_the_same_category_are_not_a_split(self) -> None:
+        proposed = self.propose("syn-004", "Expenses:Software=30.00", "Expenses:Software=12.00")
+        self.assertEqual(by_kind(proposed, "categorized")["breakdown"],
+                         [{"label": "Expenses:Software", "count": 1}])
+        recorded = by_kind(self.books.run("queue", "confirm-split", "--entity", self.entity,
+                                          "--item", "syn-004"), "recorded")
+        self.assertEqual(recorded["breakdown"], [{"label": "Expenses:Software", "count": 1}])
+
+    def test_many_one_category_splits_count_by_category(self) -> None:
+        self.propose("syn-001", "Expenses:Software=54.99")
+        self.propose("syn-004", "Expenses:Software=42.00")
+        self.propose("syn-003", "Expenses:Meals=180.00")
+        recorded = []
+        for item in ("syn-001", "syn-004", "syn-003"):
+            recorded += self.books.run("queue", "confirm-split", "--entity", self.entity, "--item", item)
+        labels: dict[str, int] = {}
+        for event in recorded:
+            for row in event["breakdown"]:
+                labels[row["label"]] = labels.get(row["label"], 0) + row["count"]
+        self.assertEqual(labels, {"Expenses:Software": 2, "Expenses:Meals": 1})
+
+    def test_two_category_split_is_still_a_split(self) -> None:
+        proposed = self.propose("syn-004", "Expenses:Software=30.00", "Expenses:Fees=12.00")
+        self.assertEqual(by_kind(proposed, "categorized")["breakdown"],
+                         [{"label": "Split transaction", "count": 1}])
+        recorded = by_kind(self.books.run("queue", "confirm-split", "--entity", self.entity,
+                                          "--item", "syn-004"), "recorded")
+        self.assertEqual(recorded["breakdown"], [{"label": "Split transaction", "count": 1}])
+
+
 class ReplayTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()

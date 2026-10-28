@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Work events label a split proposal or entry with one category by that category, not as
+  "Split transaction". A split now means more than one category. Before this, a host that
+  sends every plain categorization through the split workflow got "Split transaction" for
+  each one in the `categorized` and `recorded` breakdowns.
+
 - `books statement record-opening --statement-id ID` now records the opening balance of a
   statement imported with `--period-from-rows` when the file gives one (for example a balance
   column), dated on the first row day. Before this, both forms of the command refused such a
