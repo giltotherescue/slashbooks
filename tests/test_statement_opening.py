@@ -368,6 +368,35 @@ class RecordOpeningTests(unittest.TestCase):
         self.assertEqual(result.pending_categorization, 1)
         self.assertNotIn("feed-0", _queue_ids(self.entity))
 
+    def test_period_from_rows_uses_the_balance_column_opening_on_the_first_row_day(self):
+        record = self.imp("chase_like_checking.csv", "checking", period_from_rows=True)
+        self.assertEqual((record["period_confirmed"], record["coverage_basis"]), (False, "transactions"))
+        self.assertEqual((record["period_start"], record["opening_balance"], record["closing_balance"]),
+                         ("2026-01-02", "1000.00", "3142.26"))
+        sid = record["statement_id"]
+        # The printed (file) balance wins, so a typed amount is refused and the plain form succeeds.
+        typed = record_opening(self.entity, sid, amount="5.00")
+        self.assertEqual((typed["status"], typed["reason"]), ("not_eligible", "printed_opening_exists"))
+        done = record_opening(self.entity, sid)
+        self.assertEqual((done["status"], done["date"], done["opening_source"], done["period_source"]),
+                         ("recorded", "2026-01-02", "printed", "transactions"))
+        self.assertIn("first row day", done["notes"][0])
+        with LedgerStore(default_store_path(self.entity)).connection() as conn:
+            meta = dict(json.loads(conn.execute("SELECT metadata_json FROM entries").fetchone()[0]))
+        self.assertEqual((meta["opening-source"], meta["period-source"]), ("printed", "transactions"))
+        self.assertEqual(self.books_balance(CHECKING, "2026-01-31"), Decimal("3142.26"))
+
+    def test_period_from_rows_without_a_balance_takes_a_typed_amount(self):
+        record = self.imp("card_debit_credit.csv", "card", account=CARD, period_from_rows=True)
+        self.assertEqual((record["coverage_basis"], record["opening_balance"]), ("transactions", None))
+        sid = record["statement_id"]
+        asked = record_opening(self.entity, sid)
+        self.assertEqual((asked["status"], asked["reason"]), ("not_eligible", "no_opening_balance"))
+        done = record_opening(self.entity, sid, amount="1000.00")
+        self.assertEqual((done["status"], done["date"], done["opening_source"]), ("recorded", "2026-01-04", "person"))
+        # The card owes 1000.00, then 49.99 + 120.00 in charges and a 400.00 payment: 769.99 owed.
+        self.assertEqual(self.books_balance(CARD, "2026-01-31"), Decimal("-769.99"))
+
     def test_cli_and_remote_contract(self):
         record = self.imp("chase_like_checking.csv", "checking", period_start="2026-01-01", period_end="2026-01-31")
         argv = ["statement", "record-opening", "--entity", str(self.entity), "--statement-id", record["statement_id"]]

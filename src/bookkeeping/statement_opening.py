@@ -231,7 +231,10 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
             if record.get("kind", "statement") != "statement":
                 return _not_eligible(ref, account, "not_a_statement",
                                      "Only a bank or card statement has an opening balance.")
-            if record.get("coverage_basis") == "transactions" or record.get("period_confirmed") is False:
+            # A period taken from the rows (--period-from-rows) starts on the first row day. An opening balance
+            # from the file (for example a balance column) is the balance on that day, so it can be used too.
+            from_rows = "transactions" in (record.get("coverage_basis"), record.get("period_source"))
+            if record.get("period_confirmed") is False and not from_rows:
                 return _not_eligible(ref, account, "period_unconfirmed",
                                      "The statement period is not confirmed from the printed statement.")
             printed = record.get("opening_balance")
@@ -250,6 +253,7 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
             start = date.fromisoformat(str(record["period_start"]))
             presented = typed if typed is not None else Decimal(str(printed))
         else:
+            from_rows = False
             assert account is not None
             try:
                 _validate_account_name(account)
@@ -332,7 +336,11 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                          {"account": OPENING_EQUITY, "amount": format(-amount_ledger + Decimal("0.00"), "f")}],
             "books_start": facts["books_start"],
             **({"replaces": replaced} if replaced else {}),
+            **({"period_source": "transactions"} if from_rows else {}),
         }
+        if from_rows:
+            result["notes"] = [f"The statement period comes from its rows, so the opening balance is dated on the "
+                               f"first row day, {start.isoformat()}."]
         if facts["books_start"] and facts["books_start"] < start.isoformat():
             result["warnings"] = [
                 f"Other accounts have entries from {facts['books_start']}, before {start.isoformat()}. A cash flow "
@@ -349,6 +357,8 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                 ("opening-balance", format(presented, "f"))]
         if statement_id:
             meta.append(("statement-id", statement_id))
+        if from_rows:
+            meta.append(("period-source", "transactions"))
         opens = [Open(date=start, account=account), Open(date=start, account=OPENING_EQUITY)]
         entry = Entry(
             date=start, narration=narration, meta=tuple(meta),
