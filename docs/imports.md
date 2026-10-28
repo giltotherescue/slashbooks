@@ -173,6 +173,75 @@ the balances from the printed statement, pass `--opening-balance` and
 account and money owed for a card. If the balances do not agree with the
 transactions in the file, the result has a warning.
 
+### Opening balance from the first statement
+
+An import records the statement's balances in the statement record only. It
+writes no ledger entry for them. When the books of an account start at its
+first statement, record the opening balance on that day:
+
+```sh
+# The printed opening balance of a saved statement
+books statement record-opening --entity PATH --statement-id ID [--dry-run]
+# A saved statement with no printed opening balance (most CSV exports)
+books statement record-opening --entity PATH --statement-id ID --amount AMOUNT [--dry-run]
+# No saved statement: the first day the books cover for the account
+books statement record-opening --entity PATH --account ACCOUNT --on YYYY-MM-DD --amount AMOUNT [--dry-run]
+# Any form with --replace moves an existing opening balance to the same or an earlier day
+books statement record-opening ... --replace [--dry-run]
+```
+
+The command writes one entry on that day: the account against
+`Equity:Opening-Balances` (a card balance owed is a credit). `--amount` is the
+balance a person read from the bank, in statement presentation: money held for
+a bank account, money owed for a card. The entry metadata says where the amount
+came from: `opening-source: printed` or `opening-source: person`. A printed
+opening balance wins: `--amount` is refused with `printed_opening_exists` when
+the statement, or a statement that starts on `--on`, has one.
+
+The command writes the entry only when all of these are true:
+
+- A statement has a confirmed period, in the company currency, or a person
+  names an Assets: or Liabilities: account from the chart of accounts and a day.
+- No statement for the account starts earlier.
+- The books have no entry for the account before that day.
+- The account has no opening entry yet.
+
+Otherwise the result is `"status": "not_eligible"` with a `reason`
+(`not_first_statement`, `books_before_statement`, `opening_exists`,
+`printed_opening_exists`, `no_opening_balance`, `period_unconfirmed`,
+`currency_differs`, `unknown_account`, `not_a_balance_account`,
+`rows_waiting_before`) and nothing is
+written. A repeat returns `already_recorded`. A cash flow statement that starts
+on that day counts the entry as a beginning balance, and the statement tie-out
+leaves it out of the period movement.
+
+The opening balance already includes every earlier row of the account. So an
+import refuses rows dated before it:
+
+- `books statement import` and `books statement import-extracted` refuse the
+  whole file with `"code": "before_opening_balance"` and import nothing. The
+  error names the opening date, the first early row, and the file's period start
+  and opening balance when it has them.
+- Every other path that writes bank rows (`books ingest`, a released duplicate)
+  posts and queues none of those rows. The result lists them in
+  `before_opening`, and `books ingest` prints a `before opening` line.
+
+To add an earlier statement, move the opening balance to its first day, then
+import it:
+
+```sh
+books statement record-opening --entity PATH --account ACCOUNT --on 2026-07-01 --amount 1000.00 --replace
+books statement import july.csv --entity PATH --profile PROFILE --period-start 2026-07-01 --period-end 2026-07-31
+```
+
+`--replace` reverses the opening entry in force and records the new one in one
+write (`"status": "replaced"`). It refuses with `replace_not_earlier` when the
+new day is later, with `no_opening_to_replace` when the account has none, and
+with the usual reasons when an entry or a row in review for the account is dated
+before the new day (`rows_waiting_before` for a row in review). A cash flow
+statement treats the moved opening and its reversal as ordinary entries that
+net to zero.
+
 ### Tie-out
 
 Each statement in the result has a `tieout` that checks the file alone: the

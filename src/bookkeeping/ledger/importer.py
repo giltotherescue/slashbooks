@@ -100,6 +100,9 @@ class ImportResult:
     pending_categorization: int = 0
     duplicate_candidates: int = 0
     late_arrivals: int = 0
+    # Rows dated before their account's opening balance entry: not posted and not queued,
+    # because the opening balance already includes them (see statement_opening).
+    before_opening: list[dict[str, Any]] = field(default_factory=list)
     orphaned_tmps: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -605,6 +608,10 @@ def _import_transactions_unlocked(
         entity.staging_dir / _DUPLICATE_CANDIDATES_FILE) if c.get("status") == "duplicate-candidate"}
         if guarded else set())
 
+    # An account whose opening balance is recorded already includes every earlier row.
+    from ..statement_opening import opening_dates
+    openings = opening_dates(entity.path)
+
     # Accumulate entries to write in this session.
     entries_to_write: list[Entry] = []
     # Track accounts that need open directives.
@@ -648,6 +655,11 @@ def _import_transactions_unlocked(
             txn, entity.entity_config.get("bank_account_mappings"),
             entity.entity_config.get("csv_account_mappings"),
         )
+        opening_day = openings.get(bank_account)
+        if opening_day is not None and str(txn.get("date") or "")[:10] < opening_day.isoformat():
+            result.before_opening.append({"source_id": source_id, "date": str(txn.get("date") or "")[:10],
+                                          "account": bank_account, "opening_date": opening_day.isoformat()})
+            continue
         if legacy_duplicate_guard or source_id in cutover_hold_ids:
             if spellings & open_hold_ids:
                 result.skipped_duplicate += 1

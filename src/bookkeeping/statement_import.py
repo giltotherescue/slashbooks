@@ -1198,6 +1198,19 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             txns, outside = _apply_boundary(statement["transactions"], prof)
             planned.append((statement, txns, outside, plan_duplicates(
                 entity, txns, prof["ledger_account"], MAPPING_PREFIX + statement["profile"])))
+        # Rows before an account's opening balance would count twice: refuse the file before any write.
+        from .statement_opening import before_opening_refusal, opening_dates
+        openings = opening_dates(entity.path)
+        for statement, txns, _outside, _plan in planned:
+            meta = statement["metadata"]
+            account = profiles[statement["profile"]]["ledger_account"]
+            refusal = before_opening_refusal(
+                entity.path, account, [str(t["date"]) for t in txns], openings,
+                statement_period_start=confirmed_period[0] if confirmed_period else meta.get("period_start"),
+                statement_opening_balance=balances[0] if balances[0] is not None
+                else _presented(meta.get("opening_balance"), account))
+            if refusal is not None:
+                return {"status": "error", "file": path.name, "error": refusal}
         # One file, one currency decision, under the lock, before any record or row is written.
         resolved = selected[0]["currency"] if selected else entity.currency
         if resolved != entity.currency:
@@ -1361,6 +1374,22 @@ def add_parser(subparsers: Any) -> None:
     choose.add_argument("--expected-revision", required=True)
     choose.add_argument("--expected", action="append", required=True, help="Each saved statement reviewed for this period")
 
+    opening_p = sub.add_parser("record-opening",
+                               help="Record an account's opening balance from its first saved statement")
+    opening_p.add_argument("--entity", type=Path, required=True)
+    opening_p.add_argument("--statement-id", default=None,
+                           help="Saved statement whose first day carries the opening balance")
+    opening_p.add_argument("--account", default=None,
+                           help="Assets: or Liabilities: account, for an amount a person enters without a statement")
+    opening_p.add_argument("--on", default=None, help="First day the books cover for --account (YYYY-MM-DD)")
+    opening_p.add_argument("--amount", default=None,
+                           help="Opening balance a person entered, in statement presentation (money held, or "
+                                "money owed for a card). Refused when the statement has a printed opening balance.")
+    opening_p.add_argument("--replace", action="store_true",
+                           help="Reverse the account's opening balance entry and record this one on the same or an "
+                                "earlier day (to add earlier statements)")
+    opening_p.add_argument("--dry-run", action="store_true", help="Show the entry without changes")
+
     list_p = sub.add_parser("list", help="List recorded statements and their periods and balances")
     list_p.add_argument("--entity", type=Path, required=True)
     list_p.add_argument("--all", action="store_true", dest="include_all", help="Include manually recorded statement metadata")
@@ -1405,6 +1434,13 @@ def run(args: argparse.Namespace) -> int:
                 result = select_statement(args.entity, args.statement_id, expected=args.expected, expected_revision=args.expected_revision)
             except ValueError as exc:
                 raise StatementImportError("statement_selection", str(exc)) from exc
+        elif command == "record-opening":
+            from .statement_opening import StatementOpeningError, record_opening
+            try:
+                result = record_opening(args.entity, args.statement_id, account=args.account, on=args.on,
+                                        amount=args.amount, replace=args.replace, dry_run=args.dry_run)
+            except StatementOpeningError as exc:
+                raise StatementImportError(exc.code, str(exc)) from exc
         elif command == "list":
             load_entity(args.entity)
             records = load_statement_records(args.entity, include_all=args.include_all)

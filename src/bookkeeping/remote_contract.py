@@ -81,7 +81,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                 raise ContractError(f"Path field {action.dest} has no transport classification.")
     network = path[0] == "connector" and path[1] != "csv"
     statement_read = path in {("statement", "inspect"), ("statement", "list"), ("statement", "validate"), ("statement", "reconciliation-preview")} or (
-        path in {("statement", "import"), ("statement", "import-extracted")} and args.dry_run)
+        path in {("statement", "import"), ("statement", "import-extracted"), ("statement", "record-opening")} and args.dry_run)
     # Every ``report`` subcommand is a read (pnl, balance-sheet, cashflow, trial-balance,
     # general-ledger), including with --compare and --structure; --output is its only file field.
     read = statement_read or (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast",

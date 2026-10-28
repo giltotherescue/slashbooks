@@ -217,7 +217,7 @@ def load_postings(entity_path: Path | str, accounts: Sequence[str]) -> dict[str,
                 root = source_root(dict(json.loads(raw_meta)), metadata)
                 opening = entries.get(root)
                 if opening and opening[1].get("import-source") in {
-                        "quickbooks-opening", "accrual-opening", "accrual-tracking-opening"}:
+                        "quickbooks-opening", "accrual-opening", "accrual-tracking-opening", "statement-opening"}:
                     openings[str(account)].setdefault(opening[0], []).append((day, amount))
     result = {account: Series(values) for account, values in items.items()}
     for account, states in openings.items():

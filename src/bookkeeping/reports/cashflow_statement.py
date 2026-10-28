@@ -354,19 +354,31 @@ def build_cash_flow(
     return CashflowResult(from_date, to_date, lines, totals, reconciliation, needs, dict(meta or {}), warnings)
 
 
-_OPENING_SOURCES = {"quickbooks-opening", "accrual-opening"}
+_OPENING_SOURCES = {"quickbooks-opening", "accrual-opening", "statement-opening"}
 
 
 def opening_entries(conn: Any, from_date: date, to_date: date) -> list[dict]:
     """Imported opening-balance entries dated in [from_date, to_date].
 
-    An entry is an opening entry when its ``import-source`` is ``quickbooks-opening``
-    or ``accrual-opening``, or its ``accrual-opening`` metadata is ``true``.  A ledger
+    An entry is an opening entry when its ``import-source`` is ``quickbooks-opening``,
+    ``accrual-opening`` or ``statement-opening``, or its ``accrual-opening`` metadata is ``true``.  A ledger
     cache without entry metadata is matched by the QuickBooks opening ``source_id``.
     """
     columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
     meta_column = "metadata_json" if "metadata_json" in columns else "'[]'"
     found = []
+    # A statement opening that a later entry reverses (it moved to another day) is not an opening, and
+    # neither is its reversal: the pair nets to zero as ordinary entries.
+    reversed_ids = set()
+    if meta_column != "'[]'":
+        for (raw,) in conn.execute("SELECT metadata_json FROM entries WHERE metadata_json LIKE '%reverses%'"):
+            try:
+                decoded = json.loads(raw or "[]")
+                pairs = dict(decoded.items() if isinstance(decoded, dict) else decoded)
+            except (TypeError, ValueError):
+                continue
+            if pairs.get("reverses"):
+                reversed_ids.add(pairs["reverses"])
     rows = conn.execute(
         f"SELECT id, date, source_id, {meta_column} FROM entries WHERE date >= ? AND date <= ? ORDER BY id",
         (from_date.isoformat(), to_date.isoformat()),
@@ -377,6 +389,8 @@ def opening_entries(conn: Any, from_date: date, to_date: date) -> list[dict]:
             meta = dict(decoded.items() if isinstance(decoded, dict) else decoded)
         except (TypeError, ValueError):
             meta = {}
+        if meta.get("import-source") == "statement-opening" and ("reverses" in meta or source_id in reversed_ids):
+            continue
         if (meta.get("import-source") in _OPENING_SOURCES or meta.get("accrual-opening") == "true"
                 or str(source_id or "").startswith("quickbooks-opening-")):
             found.append({"id": entry_id, "date": date.fromisoformat(entry_date)})

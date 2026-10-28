@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Add `books statement record-opening`. It records an account's opening balance as
+  one entry against `Equity:Opening-Balances` on the first day the books cover for
+  the account. The amount is the printed opening balance of the first saved statement
+  (`--statement-id ID`), or a balance a person enters when the file has none
+  (`--statement-id ID --amount AMOUNT`, or `--account ACCOUNT --on DATE --amount AMOUNT`).
+  A printed balance wins over a typed one. The command refuses when an earlier
+  statement or an earlier entry exists for the account, or when the account already
+  has an opening entry. The cash flow statement and the statement tie-out treat the
+  entry as an opening entry. Before this, an import kept the opening balance only in
+  the statement record, so the account balance left it out.
+- Refuse rows dated before an account's opening balance entry, because the opening
+  balance already includes them. A statement import refuses the whole file with
+  `before_opening_balance` and imports nothing; `books ingest` and other shared import
+  paths post and queue none of those rows and report them as `before_opening`. To add
+  an earlier statement, move the opening with `books statement record-opening ...
+  --replace`, which reverses the opening entry in force and records the new one on the
+  same or an earlier day in one write.
+
 - Add `books statement import --period-from-rows` for a file with no printed
   period. It records the first and last transaction dates as the period with
   `coverage_basis: "transactions"`, never as a person-confirmed period.
