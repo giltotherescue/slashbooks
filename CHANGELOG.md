@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `books statement record-opening --statement-id ID` now records the opening balance of a
+  statement imported with `--period-from-rows` when the file gives one (for example a balance
+  column), dated on the first row day. Before this, both forms of the command refused such a
+  statement, so its opening balance could not be recorded.
 - Add `books statement record-opening`. It records an account's opening balance as
   one entry against `Equity:Opening-Balances` on the first day the books cover for
   the account. The amount is the printed opening balance of the first saved statement

@@ -200,8 +200,11 @@ the statement, or a statement that starts on `--on`, has one.
 
 The command writes the entry only when all of these are true:
 
-- A statement has a confirmed period, in the company currency, or a person
-  names an Assets: or Liabilities: account from the chart of accounts and a day.
+- A statement has a confirmed period or a period from its rows
+  (`--period-from-rows`), in the company currency, or a person names an
+  Assets: or Liabilities: account from the chart of accounts and a day. For a
+  period from its rows, the entry is dated on the first row day, and its metadata
+  also says `period-source: transactions`.
 - No statement for the account starts earlier.
 - The books have no entry for the account before that day.
 - The account has no opening entry yet.
