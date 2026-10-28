@@ -102,6 +102,11 @@ AMOUNT_ROW_FIELDS = ("type", "id", "source_id", "accounts", *AMOUNT_MONEY_FIELDS
 _UNFINGERPRINTED = frozenset({"fingerprint", "amounts", "amounts_truncated"})
 _MONEY = re.compile(r"-?[0-9]+(?:\.[0-9]+)?\Z")
 
+# The ``import-source`` of an opening balance entry (``books statement record-opening``;
+# ``statement_opening.IMPORT_SOURCE``). The entry is the account's balance on its first
+# day, not a bank transaction, so no work event counts it or its reversal.
+_OPENING_IMPORT_SOURCE = "statement-opening"
+
 _OPEN_STATUSES = frozenset({"open", "reopened"})
 _CLEAN_RECONCILIATION = frozenset({"clean", "resolved"})
 _RECONCILIATION_FIELDS = (
@@ -525,7 +530,7 @@ def work_events(
     corrections: list[EntryRow] = []
     reversals: list[EntryRow] = []
     for entry in after.entries:
-        if entry.id <= before.max_entry_id:
+        if entry.id <= before.max_entry_id or entry.meta.get("import-source") == _OPENING_IMPORT_SOURCE:
             continue
         entry_sources = {entry.source_id, entry.paired_source_id} - {""}
         if "reverses" in entry.meta:
