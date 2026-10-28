@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Work events label a split proposal or entry with one category by that category, not as
+  "Split transaction". A split now means more than one category. Before this, a host that
+  sends every plain categorization through the split workflow got "Split transaction" for
+  each one in the `categorized` and `recorded` breakdowns.
+
 - Work events and `books work` no longer count an opening balance entry from
   `books statement record-opening` (or its reversal under `--replace`) as an imported
   or recorded transaction. Before this, a 10-row statement import followed by its
