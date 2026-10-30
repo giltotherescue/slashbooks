@@ -237,7 +237,7 @@ def books_activity(entity_path: Path | str, exclude: Iterable[str] = ()) -> list
                                      ("source_transactions", "imported source rows")):
                     if conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone():
                         found.append(label)
-                if store.schema_version(conn) == ACCRUAL_SCHEMA_VERSION:
+                if store.schema_version(conn) in {ACCRUAL_SCHEMA_VERSION, 3}:
                     from .accrual.store import TABLES
                     for table in TABLES:
                         rows = conn.execute(f"SELECT payload_json FROM accrual_{table}").fetchall()

@@ -243,6 +243,10 @@ class RemoteTests(unittest.TestCase):
                     if route or name not in {"cloud", "hosted", "procedures"}:  # procedures is static and local-only
                         walk(child, route + [name], actions)
                 return
+            if route == ["business", "tax-recipient"]:
+                # Recipient identity uses a separate privileged host export,
+                # never the generic command transcript or its input uploads.
+                return
             if route == ["migration", "export"]:
                 # This export is intentionally offline even for a remotely
                 # bound directory; its focused test also covers the shared
@@ -287,6 +291,24 @@ class RemoteTests(unittest.TestCase):
                     self.assertNotIn(str(self.entity), sent)
             self.assertTrue(all(not runner.called for runner in runners))
         self.assertGreater(len(cases), 60)
+
+    def test_bound_recipient_export_is_rejected_before_upload_or_network(self):
+        source = self.directory / "protected-recipient.json"
+        source.write_text(json.dumps({"protected_profile": {"recipient": {"tin": "000-00-0000"}}}))
+        output = self.directory / "recipient.pdf"
+        with patch.object(Path, "cwd", return_value=self.entity), \
+                patch.object(hosted.HostedClient, "request", side_effect=AssertionError("network request")) as request, \
+                patch.object(cli.business_module, "run", side_effect=AssertionError("local fallback")) as local:
+            code, out, err = self.invoke("business", "tax-recipient", "--input", str(source), "--output", str(output), "--id", "synthetic-recipient")
+        self.assertEqual(code, 1)
+        self.assertIn("REMOTE_LOCAL_ERROR", err)
+        self.assertIn("No local fallback", err)
+        self.assertNotIn("000-00-0000", out + err)
+        request.assert_not_called()
+        local.assert_not_called()
+        self.assertEqual(self.api.calls, [])
+        self.assertEqual(self.receipts(), [])
+        self.assertFalse(output.exists())
 
     def test_no_binding_keeps_local_dispatch(self):
         with patch.object(cli.queue_module, "run", return_value=23) as local:

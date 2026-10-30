@@ -65,7 +65,7 @@ def capability(source: Any) -> int:
     """Return 1 when accrual features are available, otherwise 0."""
     if isinstance(source, sqlite3.Connection):
         try:
-            return 1 if str(_meta(source).get("schema_version")) == "2" else 0
+            return 1 if str(_meta(source).get("schema_version")) in {"2", "3"} else 0
         except sqlite3.Error:
             return 0
     resolve_basis(_config(source))

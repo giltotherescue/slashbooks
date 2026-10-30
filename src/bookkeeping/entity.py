@@ -555,7 +555,7 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
         with store.connection() as conn:
             populated = any(conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
                             for table in ("entries", "balance_assertions", "source_transactions"))
-            if store.schema_version(conn) == ACCRUAL_SCHEMA_VERSION:
+            if store.schema_version(conn) in {ACCRUAL_SCHEMA_VERSION, 3}:
                 populated = populated or any(list_records(store, table, conn)
                                              for table in ("intents", "schedules", "items", "allocations", "coverage"))
         if populated:

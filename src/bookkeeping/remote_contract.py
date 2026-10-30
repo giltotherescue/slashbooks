@@ -100,6 +100,10 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             or path in {("coverage", "check"), ("coverage", "statement-list"), ("balance", "check"), ("balance", "prove"), ("import", "check"),
                         ("tax", "lines"), ("tax", "map"), ("tax", "export")})
     mutates = not read and not network
+    if path[0] == "business":
+        if path[1] == "tax-recipient":
+            raise ContractError("Protected recipient copies require the host's explicit tax export operation.")
+        mutates = path[1] == "apply"
     if path[0] == "accrual":
         mutates = path[1:] not in {("schema",), ("capabilities",), ("journal", "preview"),
             ("journal", "correct-preview"), ("journal", "reverse-preview"), ("schedule", "preview"),

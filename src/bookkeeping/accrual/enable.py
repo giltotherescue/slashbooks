@@ -273,7 +273,7 @@ def preview_set_view(entity: Entity, view: Any) -> dict[str, Any]:
     current = resolve_basis(config)
     store = LedgerStore(default_store_path(entity.path))
     capability = 1 if (config.get("accrual_capability_version") == ACCRUAL_CAPABILITY_VERSION
-                       and store.schema_version() == ACCRUAL_SCHEMA_VERSION) else 0
+                       and store.schema_version() in {ACCRUAL_SCHEMA_VERSION, 3}) else 0
     if view == "accrual" and not capability:
         raise _err("accrual_not_enabled", "Accrual is not turned on for this company, so accrual cannot be the default view.",
                    "Run `books accrual enable preview --entity PATH --tracking-start YYYY-MM-DD` first.")

@@ -95,6 +95,12 @@ class RemoteContractTests(unittest.TestCase):
                     walk(child, argv + [name], path + (name,))
                 return
             with self.subTest(command=path):
+                if path == ("business", "tax-recipient"):
+                    # Full recipient identity never enters a generic command
+                    # transcript. Hosts expose a separate protected export.
+                    with self.assertRaises(ContractError):
+                        command_spec(argv)
+                    return
                 spec = command_spec(argv)
                 self.assertEqual(spec["path"], path)
                 self.assertEqual(set(spec), {"path", "entity_fields", "input_fields", "output_fields", "mutates", "network"})
