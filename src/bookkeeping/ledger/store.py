@@ -26,7 +26,8 @@ from .model import Balance, Entry, Open, Posting
 SCHEMA_VERSION = 1
 # Cash stores retain their v1 digest until an explicit, backed-up upgrade.
 ACCRUAL_SCHEMA_VERSION = 2
-SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION})
+BUSINESS_SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION})
 STORE_FILENAME = "ledger.sqlite"
 
 
@@ -194,11 +195,16 @@ class LedgerStore:
             version = None
         if version not in SUPPORTED_SCHEMA_VERSIONS:
             raise ValueError("Unsupported ledger schema; use a compatible engine and do not downgrade.")
-        if version == ACCRUAL_SCHEMA_VERSION:
+        if version in {ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION}:
             from ..accrual.store import RECORD_VERSION, TABLES
             for table in TABLES:
                 if conn.execute(f"SELECT 1 FROM accrual_{table} WHERE version<>? LIMIT 1", (RECORD_VERSION,)).fetchone():
                     raise ValueError("Unsupported accrual record version; use a compatible engine.")
+        if version == BUSINESS_SCHEMA_VERSION:
+            from ..business import BUSINESS_TABLES
+            for table in BUSINESS_TABLES:
+                if conn.execute(f"SELECT 1 FROM business_{table} WHERE version<>1 LIMIT 1").fetchone():
+                    raise ValueError("Unsupported business record version; use a compatible engine.")
         return version
 
     @contextmanager
@@ -285,7 +291,7 @@ class LedgerStore:
         with _entity_write_lock(self.path.parent):
             self.initialize()
             with self.transaction(immediate=True) as conn:
-                if self.schema_version(conn) == ACCRUAL_SCHEMA_VERSION:
+                if self.schema_version(conn) in {ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION}:
                     return None
                 integrity = check_store_integrity(self)
                 if integrity.status != "ok":
@@ -511,12 +517,17 @@ class LedgerStore:
         )
         for table, sql in queries.items():
             payload[table] = [dict(row) for row in conn.execute(sql).fetchall()]
-        if self.schema_version(conn) == ACCRUAL_SCHEMA_VERSION:
+        if self.schema_version(conn) in {ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION}:
             from ..accrual.store import TABLES
             for table in TABLES:
                 payload[f"accrual_{table}"] = [dict(row) for row in conn.execute(
                     f"SELECT id, version, revision, payload_json FROM accrual_{table} ORDER BY id"
                 ).fetchall()]
+        if self.schema_version(conn) == BUSINESS_SCHEMA_VERSION:
+            from ..business import BUSINESS_TABLES
+            for table in BUSINESS_TABLES:
+                payload[f"business_{table}"] = [dict(row) for row in conn.execute(
+                    f"SELECT id, version, revision, payload_json FROM business_{table} ORDER BY id").fetchall()]
         return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
 
     def append_audit_event(

@@ -517,7 +517,7 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
              "support": [row for row in mutations if row["table"] != "evidence"]}
     coverage["intent_hash"] = _hash(facts)
     with store.connection() as conn:
-        if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
+        if store.schema_version(conn) not in {ACCRUAL_SCHEMA_VERSION, 3}:
             raise ValueError("Opening accrual import requires an explicit schema upgrade.")
         existing = load_record(store, "coverage", coverage_id, conn)
         if existing and existing.get("intent_hash") != coverage["intent_hash"]:

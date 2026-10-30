@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -38,9 +39,21 @@ class TestPackagedTemplates(unittest.TestCase):
             config = tomllib.load(handle)
         self.assertEqual(
             set(config["tool"]["setuptools"]["package-data"]["bookkeeping"]),
-            {f"templates/{name}" for name in TEMPLATES} | {"procedures/*.md"},
+            {f"templates/{name}" for name in TEMPLATES} | {"procedures/*.md", "tax1099_templates/*"},
         )
         self.assertEqual(config["project"]["dependencies"], [])
+
+    def test_tax_template_manifest_covers_exact_supported_form_year_inventory(self) -> None:
+        directory = ROOT / "src" / "bookkeeping" / "tax1099_templates"
+        expected = {f"1099-{form}-{year}.pdf" for form in ("misc", "nec") for year in (2025, 2026)}
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(manifest["templates"]), expected)
+        self.assertEqual({path.name for path in directory.iterdir() if path.is_file()}, expected | {"manifest.json"})
+        for name in sorted(expected):
+            with self.subTest(template=name):
+                content = (directory / name).read_bytes()
+                self.assertTrue(content.startswith(b"%PDF-"))
+                self.assertEqual(hashlib.sha256(content).hexdigest(), manifest["templates"][name]["sha256"])
 
     def test_env_override_takes_precedence_even_if_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -12,6 +12,7 @@ books = "bookkeeping.cli:main"
 
 [project.optional-dependencies]
 xlsx = ["xlsxwriter==3.2.9"]
+pdf = ["pypdf==6.21.4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -23,4 +24,5 @@ bookkeeping = [
     "templates/trust-policy.json",
     "templates/gitignore-template",
     "procedures/*.md",
+    "tax1099_templates/*",
 ]

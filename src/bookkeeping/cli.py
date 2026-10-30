@@ -47,6 +47,7 @@ from bookkeeping import readiness as readiness_module
 from bookkeeping import reconcile as reconcile_module
 from bookkeeping import remote as remote_module
 from bookkeeping.accrual import cli as accrual_module
+from bookkeeping import business as business_module
 from bookkeeping import statement_import as statement_import_module
 from bookkeeping import work as work_module
 from bookkeeping.connectors import csvsource as csvsource_module
@@ -139,6 +140,8 @@ def _dispatch(
             return entity_module.run(args)
         if args.command == "accrual":
             return accrual_module.run(args)
+        if args.command == "business":
+            return business_module.run(args)
         if args.command == "bank":
             return bank_accounts_module.run(args)
         if args.command == "ingest":
@@ -355,6 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
     work_module.add_parser(subcommands)
 
     accrual_module.add_parser(subcommands)
+    business_module.add_parser(subcommands)
     return parser
 
 

@@ -20,6 +20,11 @@ MAX_PAYLOAD_BYTES = 2 * 1024 * 1024
 
 
 def _table(table: str) -> str:
+    if table.startswith("business_"):
+        from ..business import BUSINESS_TABLES
+        if table.removeprefix("business_") not in BUSINESS_TABLES:
+            raise ValueError(f"Unsupported business record table: {table}")
+        return table
     if table not in TABLES:
         raise ValueError(f"Unsupported accrual record table: {table}")
     return f"accrual_{table}"
@@ -50,7 +55,7 @@ class SupportingMutation:
 
 
 def _require_schema(store: LedgerStore, conn: sqlite3.Connection) -> None:
-    if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
+    if store.schema_version(conn) not in {ACCRUAL_SCHEMA_VERSION, 3}:
         raise ValueError("Accrual records require an explicit ledger schema upgrade.")
 
 
@@ -69,7 +74,7 @@ def load_record(store: LedgerStore, table: str, record_id: str,
     if conn is None:
         with store.connection() as tx:
             return load_record(store, table, record_id, tx)
-    if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
+    if store.schema_version(conn) not in {ACCRUAL_SCHEMA_VERSION, 3}:
         return None
     row = conn.execute(f"SELECT * FROM {name} WHERE id=?", (record_id,)).fetchone()
     return _record(row) if row else None
@@ -81,7 +86,7 @@ def record_revision(store: LedgerStore, table: str, record_id: str,
     if conn is None:
         with store.connection() as tx:
             return record_revision(store, table, record_id, tx)
-    if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
+    if store.schema_version(conn) not in {ACCRUAL_SCHEMA_VERSION, 3}:
         return 0
     row = conn.execute(f"SELECT version, revision FROM {name} WHERE id=?", (record_id,)).fetchone()
     if row and row["version"] != RECORD_VERSION:
@@ -95,7 +100,7 @@ def list_records(store: LedgerStore, table: str,
     if conn is None:
         with store.connection() as tx:
             return list_records(store, table, tx)
-    if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
+    if store.schema_version(conn) not in {ACCRUAL_SCHEMA_VERSION, 3}:
         return []
     return [_record(row) for row in conn.execute(f"SELECT * FROM {name} ORDER BY id").fetchall()]
 
@@ -109,6 +114,8 @@ def apply_mutations(store: LedgerStore, mutations: Sequence[SupportingMutation],
     writing; replacing an existing identity with revision zero is a conflict.
     """
     _require_schema(store, conn)
+    if any(m.table.startswith("business_") for m in mutations) and store.schema_version(conn) != 3:
+        raise ValueError("Business records require an explicit ledger schema upgrade.")
     if not conn.in_transaction:
         raise ValueError("Supporting mutations require an active ledger transaction.")
     if len(mutations) > MAX_MUTATIONS:

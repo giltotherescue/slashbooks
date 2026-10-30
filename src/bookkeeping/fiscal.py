@@ -33,7 +33,7 @@ def preview(entity: Any, start: Any) -> dict[str, Any]:
     _integrity(entity, "set the fiscal year")
     store = LedgerStore(default_store_path(entity.path))
     # Imported summaries cannot be split or reinterpreted with a different calendar.
-    if store.schema_version() == 2:
+    if store.schema_version() in {2, 3}:
         opening = load_record(store, "coverage", "opening")
         if opening and opening.get("fiscal_start", "")[5:] != start:
             raise JournalError("fiscal_year_conflicts_with_opening", "The fiscal year differs from the imported opening summary.",

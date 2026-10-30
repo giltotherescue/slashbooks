@@ -1,0 +1,53 @@
+{
+  "checked_on": "2026-10-30",
+  "templates": {
+    "1099-misc-2025.pdf": {
+      "url": "https://www.irs.gov/pub/irs-prior/f1099msc--2025.pdf",
+      "sha256": "a56d3bc3b224eb38ab4b85c793beed7eeafa4efa278a4833ac53918f746340be",
+      "revision": "April 2025",
+      "tax_year": 2025,
+      "recipient_pages": [
+        3,
+        4,
+        5
+      ],
+      "instruction_page": 4
+    },
+    "1099-misc-2026.pdf": {
+      "url": "https://www.irs.gov/pub/irs-pdf/f1099msc.pdf",
+      "sha256": "38051fe1cdce8fac5183a7e7b182b1a0de590dcfec3e4f66a156eba3f98943fa",
+      "revision": "December 2026",
+      "tax_year": 2026,
+      "recipient_pages": [
+        3,
+        4,
+        5
+      ],
+      "instruction_page": 4
+    },
+    "1099-nec-2025.pdf": {
+      "url": "https://www.irs.gov/pub/irs-prior/f1099nec--2025.pdf",
+      "sha256": "7cf3272e27de046a92346375601f3211b711a9c800f9185034dd70badcab0abe",
+      "revision": "April 2025",
+      "tax_year": 2025,
+      "recipient_pages": [
+        3,
+        4,
+        5
+      ],
+      "instruction_page": 4
+    },
+    "1099-nec-2026.pdf": {
+      "url": "https://www.irs.gov/pub/irs-pdf/f1099nec.pdf",
+      "sha256": "68a8f00078be6dd6a4912cc4209df317b31840d5fe19560222d39df9f2f7ff49",
+      "revision": "December 2026",
+      "tax_year": 2026,
+      "recipient_pages": [
+        3,
+        4,
+        5
+      ],
+      "instruction_page": 4
+    }
+  }
+}

@@ -282,11 +282,15 @@ def _schema(sql):
     with closing(sqlite3.connect(":memory:")) as expected:
         expected.executescript(_DDL)
         version = sql.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-        require(version is not None and version[0] in {str(SCHEMA_VERSION), str(ACCRUAL_SCHEMA_VERSION)}, "unsupported_schema")
-        if version[0] == str(ACCRUAL_SCHEMA_VERSION):
+        require(version is not None and version[0] in {str(SCHEMA_VERSION), str(ACCRUAL_SCHEMA_VERSION), "3"}, "unsupported_schema")
+        if version[0] in {str(ACCRUAL_SCHEMA_VERSION), "3"}:
             from .accrual.store import TABLES, table_ddl
             for table in TABLES:
                 expected.execute(table_ddl(table))
+        if version[0] == "3":
+            from .business import BUSINESS_TABLES
+            for table in BUSINESS_TABLES:
+                expected.execute(f"CREATE TABLE business_{table} (id TEXT PRIMARY KEY, version INTEGER NOT NULL CHECK(version=1), revision INTEGER NOT NULL CHECK(revision>0), payload_json TEXT NOT NULL)")
         tables = {row[0] for row in expected.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         require({row[0] for row in sql.execute("SELECT name FROM sqlite_master WHERE type='table'")} == tables,
                 "unsupported_schema")
@@ -320,7 +324,7 @@ def _carried_accrual_facts(config, version=None, ledger_tracking=None, ledger_kn
     capability = config.get("accrual_capability_version")
     require(capability is None or (type(capability) is int and capability in {0, 1}), "unsupported_capability")
     if ledger_known and capability == 1:
-        require(version == ACCRUAL_SCHEMA_VERSION, "unsupported_schema")
+        require(version in {ACCRUAL_SCHEMA_VERSION, 3}, "unsupported_schema")
     try:
         tracking = _tracking_start(config.get("accrual_tracking_start"))
     except ValueError:
@@ -358,14 +362,14 @@ def _ledger(files, report, references, blockers):
             require(sql.execute("PRAGMA foreign_key_check").fetchone() is None, "sqlite_foreign_keys")
             report["checks"]["sqlite_integrity"] = True
             version = store.schema_version(sql)
-            require(version in {SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION}, "unsupported_schema")
+            require(version in {SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, 3}, "unsupported_schema")
             if "entity.json" in files:
                 config = _json(files["entity.json"])
                 try:
                     basis = resolve_basis(config)
                     if basis == "accrual":
                         require(config.get("accrual_capability_version") in {0, 1}, "unsupported_capability")
-                        require(version == ACCRUAL_SCHEMA_VERSION, "unsupported_schema")
+                        require(version in {ACCRUAL_SCHEMA_VERSION, 3}, "unsupported_schema")
                     recorded = dict(sql.execute("SELECT key,value FROM meta WHERE key IN ('basis','accounting_basis')"))
                     if recorded:
                         resolve_basis(config, authoritative_basis=resolve_basis(recorded))
@@ -414,7 +418,16 @@ def _ledger(files, report, references, blockers):
                                   ("audit_events", "payload_json")):
                 for row in sql.execute(f"SELECT {column} FROM {table}"):
                     _inspect(_json(row[0]), references, local)
-            if version == ACCRUAL_SCHEMA_VERSION:
+            if version == 3:
+                from .business import BUSINESS_TABLES, _reject_sensitive
+                for table in BUSINESS_TABLES:
+                    for row in sql.execute(f"SELECT version,revision,payload_json FROM business_{table}"):
+                        require(row[0] == 1 and row[1] > 0, "unsupported_business_record")
+                        payload = _json(row[2])
+                        require(isinstance(payload, dict), "unsupported_business_record")
+                        _reject_sensitive(payload)
+                        _inspect(payload, references, local)
+            if version in {ACCRUAL_SCHEMA_VERSION, 3}:
                 from .accrual.store import TABLES
                 for table in TABLES:
                     for row in sql.execute(f"SELECT version,revision,payload_json FROM accrual_{table}"):

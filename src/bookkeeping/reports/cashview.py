@@ -393,7 +393,12 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
         rows = events.get(allocation_id, [])
         applied.add(allocation_id)
         for account, net in rows:
-            emit(day, account, -net, rule, source)
+            if _is_ie(account) or account.startswith("~"):
+                emit(day, account, -net, rule, source)
+            else:
+                # Explicit tax/asset lines settle with the invoice or bill,
+                # but are never income or expense in the derived cash view.
+                reconciling.append((day, "other_control", net))
         if allocation_id in withheld:
             # Removing net income from the cash view moves the same amount into the reconciling items.
             amount, account = withheld[allocation_id]
@@ -454,6 +459,12 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
                 group = _SUBTYPE_GROUPS.get(_subtype(account, usage), "other_control")
             reconciling.append((day, group, amount))
         cash = sum((n for a, n in entry_postings if not _is_ie(a) and a not in control), Decimal(0))
+        item_origin = items.get(entry["meta"].get("item-id", ""))
+        if item_origin and not entry["meta"].get("settlement-id"):
+            non_income = sum((n for a, n in entry_postings if not _is_ie(a) and a not in control and not a.startswith(_CASH_LIKE)), Decimal(0))
+            cash -= non_income
+            if non_income:
+                reconciling.append((day, "other_control", non_income))
         if not cash:
             continue
         allocated = settlements_by_source.get(source, [])
@@ -461,6 +472,11 @@ def derive(conn: Any, through: date, capitalized: frozenset[str] | set[str] = fr
         credit = credit_by_source.get(source)
         if allocated:
             net = sum((add_events(a["id"], day, "settlement", source) for a in allocated), Decimal(0))
+            # Explicit settlement fees are paid expenses beside gross AR/AP.
+            for fee_account, fee_amount in entry_postings:
+                if _is_ie(fee_account):
+                    emit(day, fee_account, fee_amount, "payment_component", source)
+                    net -= fee_amount
             if net != cash:
                 unclassified(entry, cash - net, "cash from this payment is not matched to an invoice, bill or credit")
         elif schedule:

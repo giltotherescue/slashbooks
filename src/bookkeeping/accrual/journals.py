@@ -35,7 +35,7 @@ class JournalError(ValueError):
 def _store(entity: Entity) -> LedgerStore:
     require_write_scope(entity)
     store = LedgerStore(entity.path / "ledger.sqlite")
-    if store.schema_version() != 2:
+    if store.schema_version() not in {2, 3}:
         raise JournalError("upgrade_required", "Accrual writes require an explicit ledger schema upgrade.")
     return store
 
@@ -46,7 +46,7 @@ def _read_store(entity: Entity) -> LedgerStore:
     if not accrual_active(entity):
         raise JournalError("accrual_basis_required", "Accrual records require accrual-basis books.")
     store = LedgerStore(entity.path / "ledger.sqlite")
-    if store.schema_version() != 2:
+    if store.schema_version() not in {2, 3}:
         raise JournalError("unsupported_read_schema", "Use an engine that can read this accrual ledger schema.")
     return store
 
@@ -354,7 +354,7 @@ def receipt_supporting_documents(store: LedgerStore, operation_id: str, receipt:
     """Read immutable source facts, including explicit later links, without posting."""
     ids = set(receipt.get("evidence_ids", []))
     links = []
-    if store.schema_version(conn) != ACCRUAL_SCHEMA_VERSION:
+    if store.schema_version(conn) not in {ACCRUAL_SCHEMA_VERSION, 3}:
         return {"supporting_documents": [], "supporting_links": []}
     found = conn.execute("""SELECT id FROM accrual_intents
         WHERE json_extract(payload_json,'$.kind')='evidence_link'

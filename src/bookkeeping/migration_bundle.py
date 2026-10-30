@@ -231,9 +231,12 @@ def _anchors(files, inventory=None):
         with store.connection() as sql:
             version = store.schema_version(sql)
             additional = ()
-            if version == capture.ACCRUAL_SCHEMA_VERSION:
+            if version in {capture.ACCRUAL_SCHEMA_VERSION, 3}:
                 from .accrual.store import TABLES as supporting_tables
                 additional = tuple("accrual_" + name for name in supporting_tables)
+            if version == 3:
+                from .business import BUSINESS_TABLES
+                additional += tuple("business_" + name for name in BUSINESS_TABLES)
             tables = {}
             for table in TABLES + additional:
                 order = "key" if table == "meta" else "name" if table == "sqlite_sequence" else "id"
@@ -277,7 +280,7 @@ def _anchors(files, inventory=None):
 
 def _manifest(files, excluded, inventory=None):
     identity, ledger, reports = _anchors(files, inventory)
-    version = VERSION if ledger["schema_version"] == capture.ACCRUAL_SCHEMA_VERSION else LEGACY_VERSION
+    version = VERSION if ledger["schema_version"] in {capture.ACCRUAL_SCHEMA_VERSION, 3} else LEGACY_VERSION
     return {"format": FORMAT, "version": version,
             "source_entity": identity, "ledger": ledger, "reports": reports, "excluded": excluded,
             "files": [{"path": name, "size": len(data), "sha256": _sha(data)} for name, data in sorted(files.items())]}
