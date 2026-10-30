@@ -201,3 +201,15 @@ Export the exact frozen `preparation` through `tax-export` or the protected
 recipient-copy operation. A preparation/report does not imply government filing
 or recipient distribution. Recipient templates, supported years and preparation
 limits are documented in [tax1099.md](tax1099.md).
+
+Issued document credits, voids and write-offs expose the canonical correction in
+`preview.details.business_correction` and the committed receipt's matching
+`details.business_correction`. It binds document ID, operation ID, action,
+resulting document revision, issued snapshot hash and exact gross amount.
+`lines` preserves every original zero-based line index with separate `net_amount`
+and `tax_amount`, including zero shares. Corresponding `net_minor_units`,
+`tax_minor_units` and gross `amount_minor_units` are exact integer strings.
+Repeated accounts and partial-cent cumulative rounding never require a host to
+infer line identity from journal account names. An explicit counter-account
+correction has `lines:null`; it must not be presented as an allocated invoice
+credit without further supported evidence.

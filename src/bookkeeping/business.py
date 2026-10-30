@@ -363,18 +363,20 @@ def _document_effect(entity: Entity, request: dict):
         _error("partial_void_forbidden", "Voiding must reverse the whole unpaid document; use a credit for a partial reduction.")
     counter = request.get("counter_account")
     correction = {}
+    indexed_lines = None
     if counter is not None:
         correction["counter_account"] = counter
     elif action == "document.writeoff":
         _error("writeoff_account_required", "Confirm the write-off account; tax liability remains as recorded.")
     else:
-        weights = []
-        for line in doc["lines"]:
-            if Decimal(line["net_amount"]):
-                weights.append((line["account"], int(Decimal(line["net_amount"]) * 100)))
-            if Decimal(line["tax_amount"]):
-                weights.append((line["tax_account"], int(Decimal(line["tax_amount"]) * 100)))
-        cents, original_cents = int(amount * 100), sum(n for _, n in weights)
+        weights, indices = [], []
+        indexed_lines = [{"line_index": index, "net_amount": "0.00", "tax_amount": "0.00", "net_minor_units": "0", "tax_minor_units": "0"} for index in range(len(doc["lines"]))]
+        for index, line in enumerate(doc["lines"]):
+            for field, account_field in (("net", "account"), ("tax", "tax_account")):
+                if Decimal(line[field + "_amount"]):
+                    weights.append((line[account_field], int(Decimal(line[field + "_amount"]) * 100)))
+                    indices.append((index, field))
+        cents = int(amount * 100)
         # Credits have cumulative per-line rounding: repeated partial credits
         # cannot accumulate more tax/expense than the original document.
         already = sum((int(Decimal(a["amount"]) * 100) for a in list_records(store, "allocations") if a.get("item_id") == doc["item_id"] and a.get("kind") == "credit"), 0)
@@ -382,12 +384,19 @@ def _document_effect(entity: Entity, request: dict):
         before = _cumulative(weights, already)
         after = _cumulative(weights, already + cents)
         correction["counter_lines"] = [{"account": a, "amount": f"{Decimal(new-old)/100:.2f}"} for (a, _), old, new in zip(weights, before, after) if new != old]
+        for (index, field), old, new in zip(indices, before, after):
+            indexed_lines[index][field + "_amount"] = f"{Decimal(new-old)/100:.2f}"
+            indexed_lines[index][field + "_minor_units"] = str(new-old)
     payload = {"operation_id": request["operation_id"], "item_id": doc["item_id"], "action": "writeoff" if action == "document.writeoff" else "credit", "amount": f"{amount:.2f}", "date": when, **correction, "evidence_ids": request.get("evidence_ids", []), "reason": request.get("reason"), "source_id": request["operation_id"]}
     _, entries, mutations, replay = items._adjustment_effect(entity, payload)
     if replay:
         _error("duplicate_adjustment", "This adjustment already has an accounting receipt.")
     state = "void" if action == "document.void" else "uncollectible" if action == "document.writeoff" and amount == Decimal(item["remaining_amount"]) else doc["status"]
-    record = {**doc, "status": state, "last_adjustment_id": request["operation_id"], "last_adjustment_date": when, "last_adjustment_action": action}
+    allocated = {"document_id": identity, "operation_id": request["operation_id"], "action": action.removeprefix("document."),
+                 "document_revision": revision + 1, "issued_snapshot_hash": doc["issued_snapshot_hash"],
+                 "amount": f"{amount:.2f}", "amount_minor_units": str(int(amount * 100)), "lines": indexed_lines}
+    record = {**doc, "status": state, "last_adjustment_id": request["operation_id"], "last_adjustment_date": when, "last_adjustment_action": action,
+              "last_adjustment": allocated}
     return request, entries, [*mutations, SupportingMutation("business_documents", identity, record, revision)], None
 
 
@@ -768,6 +777,9 @@ def preview(entity: Entity, payload: Mapping[str, Any]) -> dict:
     dates = sorted({e.date.isoformat() for e in entries})
     # A draft's date is editable commercial context, not a journal posting.
     details = {"action": request["action"], "records": [{"resource": m.table, "id": m.record_id, "revision": m.expected_revision + 1} for m in mutations]}
+    for mutation in mutations:
+        if mutation.table == "business_documents" and mutation.payload.get("last_adjustment_id") == request["operation_id"]:
+            details["business_correction"] = mutation.payload["last_adjustment"]
     if request["action"] in {"document.save", "document.issue"}:
         doc = next(m.payload for m in mutations if m.table == "business_documents")
         details["document"] = doc
