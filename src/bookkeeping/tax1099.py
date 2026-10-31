@@ -39,6 +39,10 @@ def _hash(value: Any) -> str:
 
 def reject_protected_data(value: Any, *, allow_opaque_ids: bool = False) -> None:
     """Reject identifiers before hashing, logging, or persisting routine inputs."""
+    _reject_protected_data(value, allow_opaque_ids, ())
+
+
+def _reject_protected_data(value: Any, allow_opaque_ids: bool, path: tuple) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
             normalized = re.sub(r"[^a-z]", "", str(key).lower())
@@ -49,15 +53,25 @@ def reject_protected_data(value: Any, *, allow_opaque_ids: bool = False) -> None
             # must still validate linkage; arbitrary free text is not an ID.
             if allow_opaque_ids and key in {"id", "party_id", "item_id", "source_id", "refund_of", "w9_evidence_id", "operation_id"} and isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9_.:~-]+", item) and not re.search(r"\d{3}-\d{2}-\d{4}|\d{2}-\d{7}", item):
                 continue
+            # Canonical journal metadata uses hyphenated reference keys. A
+            # generated reference can contain a nine-digit run, but a bare or
+            # formatted taxpayer identifier is never a journal reference.
+            if (allow_opaque_ids and len(path) == 3 and path[0] == "entries"
+                    and isinstance(path[1], int) and path[2] == "meta"
+                    and key in {"item-id", "source-id", "origin-source-id"}
+                    and isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9_.:~-]{1,220}", item)
+                    and re.search(r"[A-Za-z]", item)
+                    and not re.search(r"\d{3}-\d{2}-\d{4}|\d{2}-\d{7}", item)):
+                continue
             if allow_opaque_ids and key in {"evidence_ids", "coverage_evidence_ids", "payment_ids", "source_ids"} and isinstance(item, list):
                 for identity in item:
                     if not isinstance(identity, str) or not re.fullmatch(r"[A-Za-z0-9_.:~-]+", identity) or re.search(r"\d{3}-\d{2}-\d{4}|\d{2}-\d{7}", identity):
-                        reject_protected_data(identity)
+                        _reject_protected_data(identity, False, ())
                 continue
-            reject_protected_data(item, allow_opaque_ids=allow_opaque_ids)
+            _reject_protected_data(item, allow_opaque_ids, (*path, key))
     elif isinstance(value, (list, tuple)):
-        for item in value:
-            reject_protected_data(item, allow_opaque_ids=allow_opaque_ids)
+        for index, item in enumerate(value):
+            _reject_protected_data(item, allow_opaque_ids, (*path, index))
     elif isinstance(value, str) and not re.fullmatch(r"[0-9a-f]{64}", value) and TIN_PATTERN.search(value):
         raise ValueError("Possible protected tax identifier in routine input")
     elif type(value) is int and 100000000 <= abs(value) <= 999999999:

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from bookkeeping.tax1099 import export_cpa_package, prepare_1099, verify_preparation
+from bookkeeping.tax1099 import export_cpa_package, prepare_1099, reject_protected_data, verify_preparation
 
 
 def payload(year=2026, category="nonemployee_compensation", amount="2000.00"):
@@ -103,6 +103,26 @@ class Tax1099Tests(unittest.TestCase):
             with self.assertRaises(ValueError): prepare_1099(changed)
         p["payments"][0]["source"]["source_id"] = "123" + "-45-" + "6789"
         with self.assertRaises(ValueError): prepare_1099(p)
+
+    def test_journal_reference_ids_with_digit_runs_preserve_tax_identity_checks(self):
+        for key in ("item-id", "source-id", "origin-source-id"):
+            reference = "invoice-12345678-abcd-4abc-8abc-a123456789bc"
+            reject_protected_data({"entries": [{"meta": {key: reference}}]}, allow_opaque_ids=True)
+            with self.assertRaises(ValueError):
+                reject_protected_data({"entries": [{"meta": {key: reference}}]})
+            for value in ({"notes": {key: reference}}, {"meta": {key: reference}},
+                          {"notes": {"entries": [{"meta": {key: reference}}]}}):
+                with self.subTest(key=key, context=value), self.assertRaises(ValueError):
+                    reject_protected_data(value, allow_opaque_ids=True)
+            for value in ("123" + "456" + "789", "123" + "-45-" + "6789", "12" + "-" + "3456789",
+                          "source:123" + "-45-" + "6789", "source:12" + "-" + "3456789", "note 123" + "456" + "789",
+                          ["123" + "456" + "789"], {"description": "123" + "456" + "789"}, 123_456_789,
+                          "reference-" + "a" * 220 + "123456789"):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    reject_protected_data({"entries": [{"meta": {key: value}}]}, allow_opaque_ids=True)
+        for key in ("description", "legal_name", "reason", "address", "unrecognized-id"):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                reject_protected_data({key: reference}, allow_opaque_ids=True)
 
     def test_unknown_tax_fields_are_not_silently_discarded(self):
         for path, key in [("payment", "state_tax_amount"), ("allocation", "tax_exempt"), ("profile", "foreign_tax_status"), ("source", "withholding_amount")]:
