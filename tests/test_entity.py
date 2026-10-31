@@ -1360,6 +1360,57 @@ class TestStarterAccounts(unittest.TestCase):
             apply_starter_accounts(target, "trades")
             self.assertTrue(set(_ACCRUAL_STARTER_ACCOUNTS) <= set(self._opens(target)))
 
+    def test_type_only_change_preserves_seal_and_repeat_is_noop(self) -> None:
+        from bookkeeping.entity import apply_starter_accounts
+        from bookkeeping.ledger.importer import check_integrity
+        from bookkeeping.ledger.store import LedgerStore
+
+        for basis in ("cash", "accrual"):
+            with self.subTest(basis=basis), tempfile.TemporaryDirectory() as tmp:
+                target = self._company(tmp, basis=basis, business_type="consulting")
+                store = LedgerStore(target / "ledger.sqlite")
+                accounts = self._opens(target)
+                before = store.load_audit_events()
+                result = apply_starter_accounts(target, "services")
+                self.assertEqual(result["added"], [])
+                self.assertEqual(result["removed"], [])
+                self.assertEqual(self._opens(target), accounts)
+                self.assertEqual(store.get_meta("business_type"), "services")
+                self.assertEqual(load_entity(target).business_type, "services")
+                self.assertEqual(check_integrity(load_entity(target)).status, "ok")
+                events = store.load_audit_events()
+                self.assertEqual(len(events), len(before) + 2)
+                self.assertEqual(events[:len(before)], before)
+                self.assertEqual(events[-1]["type"], "ledger-store-sealed")
+                digest = store.content_digest()
+                again = apply_starter_accounts(target, "services")
+                self.assertEqual(again["added"], [])
+                self.assertEqual(again["removed"], [])
+                self.assertEqual(store.load_audit_events(), events)
+                self.assertEqual(store.content_digest(), digest)
+                self.assertEqual(check_integrity(load_entity(target)).status, "ok")
+
+    def test_type_config_recovery_does_not_change_sealed_ledger(self) -> None:
+        from bookkeeping.entity import apply_starter_accounts
+        from bookkeeping.ledger.importer import check_integrity
+        from bookkeeping.ledger.store import LedgerStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = self._company(tmp, basis="accrual", business_type="consulting")
+            apply_starter_accounts(target, "services")
+            store = LedgerStore(target / "ledger.sqlite")
+            digest, events = store.content_digest(), store.load_audit_events()
+            config = json.loads((target / "entity.json").read_text())
+            config["business_type"] = "consulting"
+            (target / "entity.json").write_text(json.dumps(config))
+            result = apply_starter_accounts(target, "services")
+            self.assertEqual(result["added"], [])
+            self.assertEqual(result["removed"], [])
+            self.assertEqual(load_entity(target).business_type, "services")
+            self.assertEqual(store.content_digest(), digest)
+            self.assertEqual(store.load_audit_events(), events)
+            self.assertEqual(check_integrity(load_entity(target)).status, "ok")
+
     def test_refuses_a_company_with_entries_and_changes_nothing(self) -> None:
         from bookkeeping.entity import apply_starter_accounts
         from bookkeeping.ledger.importer import import_transactions

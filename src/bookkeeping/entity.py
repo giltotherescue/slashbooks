@@ -758,7 +758,10 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
             opens = [Open(date=open_day, account=account,
                           currencies=(currency,) if not account.startswith(("Equity:", "Income:")) else ())
                      for account in missing]
-            if opens or removed:
+            previous_type = conn.execute("SELECT value FROM meta WHERE key='business_type'").fetchone()
+            type_changed = previous_type is None or previous_type[0] != business_type
+            changed = bool(opens or removed or type_changed)
+            if changed:
                 store.append_audit_event("intent", {
                     "session_id": "entity-starter-accounts", "entries": 0,
                     "description": f"Add {len(opens)} and remove {len(removed)} starter accounts for business type {business_type}",
@@ -766,8 +769,9 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
                 store.insert_opens(opens, conn)
                 for account in removed:
                     conn.execute("DELETE FROM accounts WHERE name=?", (account,))
-            store.set_meta("business_type", business_type, conn)
-            if opens or removed:
+            if type_changed:
+                store.set_meta("business_type", business_type, conn)
+            if changed:
                 store.append_audit_event("ledger-store-sealed", {
                     "session_id": "entity-starter-accounts", "entries": 0, "source_ids": [],
                     "store_sha256": store.content_digest(conn),
