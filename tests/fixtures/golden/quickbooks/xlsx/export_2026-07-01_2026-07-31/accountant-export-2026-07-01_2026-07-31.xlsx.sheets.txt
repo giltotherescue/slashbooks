@@ -17,9 +17,9 @@ A16=7. Vendor 1099	B16=Vendor totals and potential 1099 candidates
 A17=8. Adjustment Log	B17=Corrected and reversed entries
 A18=9. Open Questions	B18=Structured questions and owner responses for accountant review
 A20=Sanity checks	B20=
-A21=entity_metadata	B21=[WARN] Entity setup is missing country, tax jurisdiction, operating currency. Add this context before relying on the accountant export.
+A21=entity_metadata	B21=[WARN] Entity setup is missing country, tax jurisdiction. Add this context before relying on the accountant export.
 A22=indirect_tax_scope	B22=[PASS] No VAT/GST/sales-tax registration is marked in entity.json.
-A23=currency_scope	B23=[WARN] No operating currency is set in entity.json.
+A23=currency_scope	B23=[PASS] All inspected ledger postings use the operating currency USD.
 A24=payroll_reports	B24=[PASS] Payroll is not marked as enabled in entity.json.
 A25=yoy_pnl_variance	B25=[WARN] No prior-year P&L transaction history is available in Slashbooks for year-over-year comparison. QuickBooks reference exports or opening balance snapshots may still exist, but this check only compares Slashbooks ledger activity.
 A26=equity_reconciliation	B26=[PASS] The balance sheet is in balance as of 2026-07-31: assets equal liabilities plus equity (12,660.00).
@@ -184,11 +184,11 @@ A7=Tax prep scope	B7=Handoff support only; tax treatment and filing positions re
 A8=Legal structure	B8=
 A9=Country	B9=
 A10=Tax jurisdiction	B10=
-A11=Operating currency	B11=
+A11=Operating currency	B11=USD
 A12=Period start	B12=2026-07-01
 A13=Period end	B13=2026-07-31
 A14=Package status	B14=WARN
-A15=Warnings	B15=3
+A15=Warnings	B15=2
 A16=Failures	B16=0
 A17=Net income	B17=0
 A18=Ending cash	B18=0

@@ -8,11 +8,11 @@ Tax prep scope,Handoff support only; tax treatment and filing positions remain p
 Legal structure,
 Country,
 Tax jurisdiction,
-Operating currency,
+Operating currency,USD
 Period start,2026-07-01
 Period end,2026-07-31
 Package status,WARN
-Warnings,3
+Warnings,2
 Failures,0
 Net income,-640.00
 Ending cash,9600.00

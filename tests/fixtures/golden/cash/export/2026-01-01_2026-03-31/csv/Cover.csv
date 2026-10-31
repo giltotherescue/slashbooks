@@ -18,9 +18,9 @@ Sheet index,
 9. Open Questions,Structured questions and owner responses for accountant review
 
 Sanity checks,
-entity_metadata,"[WARN] Entity setup is missing country, tax jurisdiction, operating currency. Add this context before relying on the accountant export."
+entity_metadata,"[WARN] Entity setup is missing country, tax jurisdiction. Add this context before relying on the accountant export."
 indirect_tax_scope,[PASS] No VAT/GST/sales-tax registration is marked in entity.json.
-currency_scope,[WARN] No operating currency is set in entity.json.
+currency_scope,[PASS] All inspected ledger postings use the operating currency USD.
 payroll_reports,[PASS] Payroll is not marked as enabled in entity.json.
 yoy_pnl_variance,"[WARN] No prior-year P&L transaction history is available in Slashbooks for year-over-year comparison. QuickBooks reference exports or opening balance snapshots may still exist, but this check only compares Slashbooks ledger activity."
 equity_reconciliation,"[PASS] The balance sheet is in balance as of 2026-03-31: assets equal liabilities plus equity (33,043.47)."

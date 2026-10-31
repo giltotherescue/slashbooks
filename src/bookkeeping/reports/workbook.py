@@ -456,7 +456,7 @@ def _run_entity_metadata_check(entity_path: Path) -> SanityCheck:
             ("tax_jurisdiction", "tax jurisdiction"),
             ("operating_currency", "operating currency"),
         )
-        if not str(config.get(key) or (_non_usd_currency(config) if key == "operating_currency" else "") or "").strip()
+        if not str((_company_currency(config) if key == "operating_currency" else config.get(key)) or "").strip()
     ]
     if missing:
         return SanityCheck(
@@ -474,7 +474,7 @@ def _run_entity_metadata_check(entity_path: Path) -> SanityCheck:
         detail=(
             "Entity jurisdiction context is present: "
             f"{config.get('country')} / {config.get('tax_jurisdiction')}, "
-            f"currency {config.get('operating_currency') or _non_usd_currency(config)}."
+            f"currency {_company_currency(config)}."
         ),
     )
 
@@ -507,18 +507,19 @@ def _run_indirect_tax_scope_check(entity_path: Path) -> SanityCheck:
     )
 
 
-def _non_usd_currency(config: dict) -> str:
-    """The company currency when it is not USD, else "". A recorded USD reads like an absent key."""
+def _company_currency(config: dict) -> str:
+    """The canonical books currency, including the documented USD default."""
     from ..currency import company_currency
-    code = company_currency(config)
-    return "" if code == "USD" else code
+    if config.get("currency") is not None:
+        return company_currency(config)
+    return str(config.get("operating_currency") or company_currency(config)).strip().upper()
 
 
 def _run_currency_scope_check(entity_path: Path) -> SanityCheck:
     """Check: flag transaction currencies outside the operating currency."""
     config = _load_entity_config(entity_path)
-    # The company currency (entity.json currency) stands in when operating_currency is not set.
-    operating_currency = str(config.get("operating_currency") or _non_usd_currency(config) or "").strip().upper()
+    # The canonical currency wins; older companies can still carry only operating_currency.
+    operating_currency = _company_currency(config)
     if not operating_currency:
         return SanityCheck(
             check="currency_scope",
@@ -1594,7 +1595,7 @@ def _build_summary_rows(
         ["Legal structure", str(entity_config.get("legal_structure", ""))],
         ["Country", str(entity_config.get("country", ""))],
         ["Tax jurisdiction", str(entity_config.get("tax_jurisdiction", ""))],
-        ["Operating currency", str(entity_config.get("operating_currency", _non_usd_currency(entity_config)))],
+        ["Operating currency", _company_currency(entity_config)],
         ["Period start", str(from_date)],
         ["Period end", str(to_date)],
         ["Package status", status],
