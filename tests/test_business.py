@@ -9,10 +9,12 @@ import unittest
 
 from bookkeeping import business
 from bookkeeping.accrual import reports
+from bookkeeping.accrual.intake import canonical_hash
 from bookkeeping.entity import add_account, init_entity, load_entity
 from bookkeeping.ledger.importer import check_integrity
 from bookkeeping.ledger.store import LedgerStore
 from bookkeeping.reports.cashview import compute
+from bookkeeping.tax1099 import reject_protected_data
 from tests.test_accrual_schedules import AccrualFixture, AR, AP, BANK, INCOME, EXPENSE
 
 
@@ -55,6 +57,29 @@ class BusinessTests(AccrualFixture):
         self.assertNotIn("Liabilities:Sales-Tax", cash["balances"])
         self.assertEqual(self.balances()[AR], Decimal("550.00"))
         self.assertTrue(cash["tie_out"]["ties"])
+
+    def test_issue_preview_with_digit_run_reference_passes_routine_privacy_guard(self):
+        identity = "invoice-12345678-abcd-4abc-8abc-a123456789bc"
+        self.change({"operation_id": "save-digit-run", "action": "document.save", "id": identity,
+                     "expected_revision": 0, "kind": "invoice", "party_id": "party-1", "date": "2026-01-01",
+                     "due_date": "2026-02-01", "currency": "USD", "control_account": AR,
+                     "lines": [{"description": "Synthetic service", "quantity": "1", "unit_price": "1000.00", "account": INCOME}]})
+        plan = business.preview(self.entity, {"operation_id": "issue-87654321-abcd-4abc-8abc-b987654321cd", "action": "document.issue",
+                                              "id": identity, "expected_revision": 1})
+        reject_protected_data(plan, allow_opaque_ids=True)
+        tampered = deepcopy(plan)
+        tampered["entries"][0]["meta"]["origin-source-id"] = "business-document:other"
+        tampered["plan_hash"] = canonical_hash({key: value for key, value in tampered.items() if key != "plan_hash"})
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "changed"):
+            business.apply(self.entity, tampered)
+        self.assertEqual(self.store.content_digest(), before)
+        receipt = business.apply(self.entity, plan)
+        self.assertEqual(receipt["status"], "applied")
+        self.assertEqual(self.store.counts().entries, 1)
+        self.assertEqual(business.apply(self.entity, plan)["status"], "already_applied")
+        self.assertEqual(self.store.counts().entries, 1)
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
 
     def test_bill_partial_payment(self):
         self.document(kind="bill", amount="1200.00")
