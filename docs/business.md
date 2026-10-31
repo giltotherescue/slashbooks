@@ -101,7 +101,7 @@ attempts belong to the host and cannot change accounting/payment state.
 `id,expected_revision,date,reason,evidence_ids`, with applicable `amount` and
 `counter_account`. Paid amounts require an explicit refund, not deletion. Closed
 periods remain binding. Corrections preserve the issued snapshot and operation
-history. The normal records read derives open, partially paid and paid states
+history. The normal records read derives open, partially paid, paid and fully credited states
 from allocation history rather than trusting provider status.
 
 ## Payments
@@ -131,7 +131,12 @@ Gross equals allocation totals and cash plus federal withholding. Direction is
 `pay` or `receive`. Rails are `bank_transfer`, `check`, `cash`, `card`,
 `payment_network` or `unknown`; network qualification requires the separate
 explicit boolean `network_qualifies_1099k`. Missing tax classification remains
-`unknown` and blocks tax readiness.
+`unknown` and blocks tax readiness. An unknown payment method also blocks tax
+readiness. A canonical credit-card account or a bank mapping explicitly typed
+as credit cannot be labeled bank transfer, check, cash or payment network.
+Processor accounts alone do not establish the payment rail or 1099-K treatment.
+Previously recorded conflicting credit-card methods block current tax
+preparation until a person corrects the facts; preparation never rewrites them.
 
 `payment.record` settles linked items using the existing ledger item primitives.
 For a direct payment without a bill, omit item_id and supply `counter_account`.
@@ -149,6 +154,43 @@ of a new payment; retry the same operation and inspect its receipt.
 Refunds cannot exceed the original payment. An explicit correction/credit and
 refund are separate facts; a provider refund alone does not prove that the books
 have been corrected.
+
+`payment.classify` corrects reviewed tax facts on an existing payment:
+
+```json
+{
+  "operation_id": "review-payment-tax-facts",
+  "action": "payment.classify",
+  "id": "synthetic-payment",
+  "party_id": "synthetic-vendor",
+  "expected_revision": 1,
+  "expected_source_fingerprint": "exact source_fingerprint from payments read",
+  "classifications": [{"allocation_index": 0, "tax_category": "nonemployee_compensation", "classification_verified": true}],
+  "payment_method": "check",
+  "reason": "Reviewed the payment evidence and vendor classification",
+  "evidence_ids": ["stored-evidence-id"]
+}
+```
+
+Every payment read includes a derived `source_fingerprint` binding its immutable
+source, amounts, date, party and item links. Classification requires its exact
+value and current payment revision. `classifications` is nonempty, uses unique
+zero-based indexes into the original allocations, and changes only category and
+verification. For a method-only correction, repeat the current allocation facts.
+Optional `payment_method` and `network_qualifies_1099k` correct the reviewed rail;
+the network boolean is permitted only with a payment-network method. Unknown
+categories cannot be verified. No amount, source, date, party or item can change.
+
+A person must confirm this operation; hosts must refuse agent or automation
+assertions even when verification is being withdrawn. The preview and receipt
+retain before/after facts, reason, supporting evidence and the current source
+entry hash. Reversed sources are refused. Apply revalidates all source and plan
+bindings and is replay-safe. This metadata-only correction creates no journal
+entry and may occur after a financial period is closed, subject to current
+company write access. Existing tax preparations and artifacts remain frozen;
+their source hash is stale, so prepare a new version before reviewing current
+payments. Unmatched source payee text is omitted from the tax snapshot to keep
+untrusted identity text out of ordinary tax preparation state.
 
 ## Accounting and permissions
 

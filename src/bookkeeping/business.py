@@ -28,7 +28,7 @@ from .accrual.store import SupportingMutation, load_record, list_records, record
 BUSINESS_TABLES = ("parties", "documents", "payments", "tax_preparations")
 PAYMENT_METHODS = {"bank_transfer", "check", "cash", "card", "payment_network", "unknown"}
 TAX_CATEGORIES = {"nonemployee_compensation", "legal_services", "medical_healthcare", "rent", "royalties", "other_income", "attorney_gross_proceeds", "not_reportable", "unknown"}
-ACTIONS = ("party.save", "party.archive", "party.link_legacy", "party.import", "document.save", "document.issue", "document.void", "document.writeoff", "document.credit", "payment.record", "payment.link", "payment.refund", "credit.apply", "tax.prepare", "tax.review", "tracking.enable")
+ACTIONS = ("party.save", "party.archive", "party.link_legacy", "party.import", "document.save", "document.issue", "document.void", "document.writeoff", "document.credit", "payment.record", "payment.link", "payment.refund", "payment.classify", "credit.apply", "tax.prepare", "tax.review", "tracking.enable")
 SENSITIVE_KEYS = {"tin", "ssn", "ein", "tax_id", "taxpayer_identification_number", "full_tin"}
 
 
@@ -324,7 +324,7 @@ def _document_effect(entity: Entity, request: dict):
             _error("immutable_document", "This document has already been issued or voided.")
         default_number = doc.get("reference", identity)
         if doc["kind"] == "invoice" and "reference" not in doc:
-            previous_numbers = [int(d["number"][4:]) for d in list_records(store, "business_documents") if d.get("number", "").startswith("INV-") and d["number"][4:].isdigit()]
+            previous_numbers = [int(d["number"][4:]) for d in list_records(store, "business_documents") if re.fullmatch(r"INV-[0-9]+", d.get("number", ""))]
             default_number = f"INV-{max(previous_numbers, default=0)+1:06d}"
         number = _bounded(request.get("number", default_number), "number", 200)
         if doc["kind"] == "invoice" and any(d.get("number") == number and d["id"] != identity and d["kind"] == "invoice" for d in list_records(store, "business_documents")):
@@ -400,6 +400,85 @@ def _document_effect(entity: Entity, request: dict):
     return request, entries, [*mutations, SupportingMutation("business_documents", identity, record, revision)], None
 
 
+def _payment_source_fingerprint(payment: Mapping[str, Any]) -> str:
+    """Bind immutable payment facts without scanning the ledger on every read."""
+    facts = deepcopy(dict(payment))
+    for field in ("payment_method", "network_qualifies_1099k"):
+        facts.pop(field, None)
+    facts["allocations"] = [{k: v for k, v in row.items() if k not in {"tax_category", "classification_verified"}} for row in facts["allocations"]]
+    return canonical_hash(facts)
+
+
+def _payment_classification_effect(entity: Entity, request: dict):
+    request = _fields(request, {"operation_id", "action", "id", "party_id", "expected_revision", "expected_source_fingerprint", "classifications", "payment_method", "network_qualifies_1099k", "reason", "evidence_ids"},
+                      {"id", "party_id", "expected_revision", "expected_source_fingerprint", "classifications", "reason"})
+    from .preparation_runtime import is_preparation
+    if is_preparation():
+        _error("payment_classification_requires_person", "A person must confirm payment tax classifications.")
+    store = _store(entity)
+    identity = journals._id(request["id"])
+    revision = _revision(store, "payments", identity, request["expected_revision"])
+    payment = load_record(store, "business_payments", identity)
+    if not payment or payment["party_id"] != journals._id(request["party_id"]):
+        _error("payment_party_mismatch", "Read the payment for this exact stable party first.")
+    fingerprint = _payment_source_fingerprint(payment)
+    if request["expected_source_fingerprint"] != fingerprint:
+        _error("payment_source_changed", "Payment source facts changed; read the payment and preview again.")
+    source = payment["source"]
+    entry = items._find_live_entry(store, source["source_id"])
+    matching = [p for p in entry.postings if p.account == source["bank_account"] and p.currency == payment["currency"] and p.amount == Decimal(source["amount"])]
+    if entry.date.isoformat() != payment["date"] or len(matching) != 1:
+        _error("payment_source_changed", "The posted source no longer matches this payment's immutable facts.")
+    rows = request["classifications"]
+    if not isinstance(rows, list) or not 1 <= len(rows) <= len(payment["allocations"]):
+        _error("invalid_payment_classifications", "Supply exact indexed payment allocation classifications.")
+    changed = deepcopy(payment)
+    before, after, seen = [], [], set()
+    for row in rows:
+        row = _fields(row, {"allocation_index", "tax_category", "classification_verified"}, {"allocation_index", "tax_category", "classification_verified"})
+        index = row["allocation_index"]
+        if type(index) is not int or not 0 <= index < len(payment["allocations"]) or index in seen:
+            _error("invalid_allocation_index", "Each classification must identify a different existing allocation index.")
+        seen.add(index)
+        if not isinstance(row["tax_category"], str) or row["tax_category"] not in TAX_CATEGORIES or type(row["classification_verified"]) is not bool or row["tax_category"] == "unknown" and row["classification_verified"]:
+            _error("invalid_tax_classification", "Choose a supported category and its explicit verification state; unknown cannot be verified.")
+        prior = payment["allocations"][index]
+        before.append({"allocation_index": index, "tax_category": prior["tax_category"], "classification_verified": prior["classification_verified"]})
+        after.append(row)
+        changed["allocations"][index].update({k: row[k] for k in ("tax_category", "classification_verified")})
+    if "payment_method" in request:
+        if not isinstance(request["payment_method"], str) or request["payment_method"] not in PAYMENT_METHODS:
+            _error("invalid_payment_facts", "Choose a supported payment method.")
+        changed["payment_method"] = request["payment_method"]
+        changed.pop("network_qualifies_1099k", None)
+    if "network_qualifies_1099k" in request:
+        if changed["payment_method"] != "payment_network" or type(request["network_qualifies_1099k"]) is not bool:
+            _error("invalid_payment_network", "Only a payment-network method accepts an explicit 1099-K qualification fact.")
+        changed["network_qualifies_1099k"] = request["network_qualifies_1099k"]
+    _payment_method_source(entity, source["bank_account"], changed["payment_method"])
+    request["reason"] = _bounded(request["reason"], "reason")
+    request["evidence_ids"] = schedules._evidence_ids(request.get("evidence_ids", []))
+    journals._evidence(store, request["evidence_ids"])
+    details = {"payment_id": identity, "party_id": payment["party_id"], "source_fingerprint": fingerprint,
+               "source_entry_hash": canonical_hash(journals._entry_document(entry)), "before": before, "after": after,
+               "method_before": {k: payment[k] for k in ("payment_method", "network_qualifies_1099k") if k in payment},
+               "method_after": {k: changed[k] for k in ("payment_method", "network_qualifies_1099k") if k in changed},
+               "reason": request["reason"], "evidence_ids": request["evidence_ids"]}
+    return request, [], [SupportingMutation("business_payments", identity, changed, revision)], details
+
+
+def _payment_method_source(entity: Entity, account: str, method: str) -> None:
+    """Reject a known credit-card source mislabeled as a direct bank payment."""
+    from .entity import bank_mapping_account
+    mappings = entity.entity_config.get("bank_account_mappings", {})
+    card = account == "Liabilities:CreditCard" or account.startswith("Liabilities:CreditCard:")
+    for mapping in mappings.values() if isinstance(mappings, dict) else ():
+        if bank_mapping_account(mapping) == account and isinstance(mapping, dict) and mapping.get("account_type") in {"credit", "credit_card"}:
+            card = True
+    if card and method not in {"card", "unknown"}:
+        _error("payment_method_source_mismatch", "This credit-card source requires card or an unresolved unknown payment method.")
+
+
 def _payment_effect(entity: Entity, request: dict):
     request = _fields(request, {"operation_id", "action", "id", "party_id", "date", "currency", "direction", "gross_amount", "cash_amount", "federal_withholding", "payment_method", "network_qualifies_1099k", "source", "allocations", "evidence_ids", "refund_of", "fee_amount", "fee_account", "withholding_account", "counter_account", "excess"}, {"id", "party_id", "date", "currency", "direction", "gross_amount", "cash_amount", "federal_withholding", "payment_method", "source", "allocations"})
     store = _store(entity)
@@ -468,6 +547,7 @@ def _payment_effect(entity: Entity, request: dict):
     if not bank_account.startswith(("Assets:Bank:", "Assets:Cash", "Assets:Processors:", "Liabilities:CreditCard")) and bank_account not in mapped_banks:
         _error("invalid_bank_account", "Payment source must be a mapped bank, cash, processor or credit-card account.")
     source["bank_account"] = bank_account
+    _payment_method_source(entity, bank_account, request["payment_method"])
     bank_amount = Decimal(normalize_amount(source["amount"]))
     sign = Decimal(-1 if request["direction"] == "pay" else 1)
     fee = _money(request.get("fee_amount", "0.00"))
@@ -688,7 +768,10 @@ def _tax_effect(entity: Entity, request: dict):
         if not party or "vendor" not in party["roles"]:
             _error("recipient_party_required", "Every recipient needs a stable vendor party.")
     payments = list_records(store, "business_payments")
-    unmatched = payment_candidates(entity, year)
+    # Payee text is untrusted source data and may contain protected identity.
+    # The source remains available through its ordinary permissioned records;
+    # tax preparations need only the stable source references and amounts.
+    unmatched = [{k: v for k, v in candidate.items() if k != "historical_payee"} for candidate in payment_candidates(entity, year)]
     coverage = deepcopy(request["coverage"])
     if not isinstance(coverage, dict):
         _error("invalid_coverage", "Calendar-year coverage must be confirmed with supporting evidence.")
@@ -696,10 +779,24 @@ def _tax_effect(entity: Entity, request: dict):
         coverage["complete"] = False
     by_id = {payment["id"]: payment for payment in payments}
     vendor_payments = [payment for payment in payments if (payment["direction"] == "pay" and not payment.get("refund_of")) or (payment.get("refund_of") and by_id.get(payment["refund_of"], {}).get("direction") == "pay")]
-    payload = {"tax_year": year, "payer_profile": request["payer_profile"], "recipients": recipients, "payments": vendor_payments, "coverage": coverage}
+    effective_payments, method_conflicts = [], []
+    for payment in vendor_payments:
+        try:
+            if payment["date"][:4] == str(year):
+                _payment_method_source(entity, payment["source"]["bank_account"], payment["payment_method"])
+        except journals.JournalError as exc:
+            if exc.code != "payment_method_source_mismatch":
+                raise
+            # Older recorded facts remain immutable until a person corrects
+            # them. A conflicting rail cannot make the current tax year ready.
+            payment = {**payment, "payment_method": "unknown"}
+            method_conflicts.append({"code": "payment_method_source_mismatch", "payment_id": payment["id"], "party_id": payment["party_id"]})
+        effective_payments.append(payment)
+    payload = {"tax_year": year, "payer_profile": request["payer_profile"], "recipients": recipients, "payments": effective_payments, "coverage": coverage}
     if "rule_version" in request:
         payload["rule_version"] = request["rule_version"]
     preparation = prepare_1099(payload)
+    preparation["issues"].extend(method_conflicts)
     preparation["unmatched_sources"] = unmatched
     preparation["coverage_evidence_ids"] = coverage_ids
     preparation["source_payments_hash"] = canonical_hash(payments)
@@ -759,6 +856,8 @@ def _effect(entity: Entity, payload: Mapping[str, Any]):
         return _document_save(entity, request)
     if action.startswith("document."):
         return _document_effect(entity, request)
+    if action == "payment.classify":
+        return _payment_classification_effect(entity, request)
     if action.startswith("payment."):
         return _payment_effect(entity, request)
     if action.startswith("tax."):
@@ -771,12 +870,14 @@ def _effect(entity: Entity, payload: Mapping[str, Any]):
 def preview(entity: Entity, payload: Mapping[str, Any]) -> dict:
     if payload.get("action") == "tracking.enable":
         return _enable_preview(entity, payload)
-    request, entries, mutations, _ = _effect(entity, payload)
+    request, entries, mutations, classification = _effect(entity, payload)
     ids = sorted({e for m in mutations if m.table == "business_payments" for e in m.payload.get("evidence_ids", [])} | {m.record_id for m in mutations if m.table == "evidence"})
     ids = sorted(set(ids) | set(request.get("evidence_ids", [])) | set(request.get("coverage_evidence_ids", [])))
     dates = sorted({e.date.isoformat() for e in entries})
     # A draft's date is editable commercial context, not a journal posting.
     details = {"action": request["action"], "records": [{"resource": m.table, "id": m.record_id, "revision": m.expected_revision + 1} for m in mutations]}
+    if request["action"] == "payment.classify":
+        details["payment_classification"] = classification
     for mutation in mutations:
         if mutation.table == "business_documents" and mutation.payload.get("last_adjustment_id") == request["operation_id"]:
             details["business_correction"] = mutation.payload["last_adjustment"]
@@ -818,6 +919,12 @@ def _records_all(entity: Entity, resource: str, *, record_id: str | None = None,
         from .accrual.reports import report
         supported = report(entity, "outstanding", as_of=as_of or date.today().isoformat())["rows"]
     supported_by_id = {item["id"]: item for item in supported}
+    credits = {}
+    if resource == "documents":
+        for allocation in list_records(store, "allocations"):
+            if allocation.get("kind") == "credit" and allocation.get("date", "") <= (as_of or date.today().isoformat()):
+                item_id = allocation.get("item_id")
+                credits[item_id] = credits.get(item_id, Decimal(0)) + Decimal(allocation["amount"])
     by_party = {}
     for item in supported:
         by_party.setdefault(item.get("party_id"), []).append(item)
@@ -834,6 +941,8 @@ def _records_all(entity: Entity, resource: str, *, record_id: str | None = None,
         if as_of is not None and resource in {"documents", "payments"} and value.get("date", "") > as_of:
             continue
         row = {**value, "revision": record_revision(store, _table(resource), value["id"])}
+        if resource == "payments":
+            row["source_fingerprint"] = _payment_source_fingerprint(value)
         if resource == "documents" and value.get("item_id"):
             item = supported_by_id.get(value["item_id"])
             remaining = item["remaining_amount"] if item else "0.00"
@@ -841,7 +950,8 @@ def _records_all(entity: Entity, resource: str, *, record_id: str | None = None,
             if as_of and row.get("last_adjustment_date", "") > as_of:
                 row["status"] = "open"
             if row["status"] not in {"void", "uncollectible"}:
-                row["status"] = "paid" if Decimal(remaining) == 0 else "partially_paid" if Decimal(remaining) < Decimal(row["total_amount"]) else "open"
+                fully_credited = credits.get(value["item_id"], Decimal(0)) == Decimal(row["total_amount"])
+                row["status"] = "credited" if Decimal(remaining) == 0 and fully_credited else "paid" if Decimal(remaining) == 0 else "partially_paid" if Decimal(remaining) < Decimal(row["total_amount"]) else "open"
         if resource == "parties":
             row["balances"] = {"receivable": "0.00", "payable": "0.00", "customer_credit": "0.00", "vendor_credit": "0.00"}
             for item in by_party.get(row["id"], []):
