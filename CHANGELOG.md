@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Accountant exports use the company's currency, including the standard USD default,
+  when the older operating-currency field is absent or empty. USD books no longer
+  receive a false missing-currency warning or a blank currency in the summary.
+  An explicitly set company currency also takes precedence over stale legacy metadata.
+
 - Work events label a split proposal or entry with one category by that category, not as
   "Split transaction". A split now means more than one category. Before this, a host that
   sends every plain categorization through the split workflow got "Split transaction" for

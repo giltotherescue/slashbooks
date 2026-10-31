@@ -3,7 +3,7 @@
     {
       "check": "entity_metadata",
       "status": "warn",
-      "detail": "Entity setup is missing country, tax jurisdiction, operating currency. Add this context before relying on the accountant export."
+      "detail": "Entity setup is missing country, tax jurisdiction. Add this context before relying on the accountant export."
     },
     {
       "check": "indirect_tax_scope",
@@ -12,8 +12,8 @@
     },
     {
       "check": "currency_scope",
-      "status": "warn",
-      "detail": "No operating currency is set in entity.json."
+      "status": "pass",
+      "detail": "All inspected ledger postings use the operating currency USD."
     },
     {
       "check": "payroll_reports",

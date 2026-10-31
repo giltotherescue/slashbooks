@@ -1053,6 +1053,48 @@ class TestSanityChecks(unittest.TestCase):
         self.assertEqual(check.status, "warn")
         self.assertIn("does not calculate", check.detail)
 
+    def test_company_currency_is_known_without_legacy_operating_currency(self):
+        from src.bookkeeping.reports.workbook import run_sanity_checks
+
+        entity_dir = _make_entity(self.tmp_path)
+        entity_json = entity_dir / "entity.json"
+        original = json.loads(entity_json.read_text(encoding="utf-8"))
+        original.pop("operating_currency")
+        ledger_before = (entity_dir / "books.beancount").read_bytes()
+        for settings in ({}, {"currency": "USD", "currency_source": "set"},
+                         {"currency": "USD", "currency_source": "inferred"}):
+            with self.subTest(settings=settings):
+                config = {**original, **settings}
+                entity_json.write_text(json.dumps(config), encoding="utf-8")
+                result = run_sanity_checks(entity_dir, FROM_DATE, TO_DATE)
+                for name in ("entity_metadata", "currency_scope"):
+                    check = next(item for item in result.checks if item.check == name)
+                    self.assertEqual(check.status, "pass", check.detail)
+                self.assertEqual(json.loads(entity_json.read_text(encoding="utf-8")), config)
+                self.assertEqual((entity_dir / "books.beancount").read_bytes(), ledger_before)
+
+    def test_canonical_non_usd_currency_wins_over_stale_legacy_metadata(self):
+        from src.bookkeeping.reports.workbook import _run_currency_scope_check, _run_entity_metadata_check
+
+        entity_dir = _make_entity(self.tmp_path, FIXTURE_LEDGER.replace("USD", "EUR"))
+        entity_json = entity_dir / "entity.json"
+        config = json.loads(entity_json.read_text(encoding="utf-8"))
+        for legacy in (None, "USD"):
+            with self.subTest(legacy=legacy):
+                config.update(currency="EUR", currency_source="set")
+                config.pop("operating_currency", None)
+                if legacy:
+                    config["operating_currency"] = legacy
+                entity_json.write_text(json.dumps(config), encoding="utf-8")
+                before = entity_json.read_bytes()
+                self.assertEqual(_run_currency_scope_check(entity_dir).status, "pass")
+                self.assertIn("currency EUR", _run_entity_metadata_check(entity_dir).detail)
+                self.assertEqual(entity_json.read_bytes(), before)
+        (entity_dir / "books.beancount").write_text(FIXTURE_LEDGER, encoding="utf-8")
+        mismatch = _run_currency_scope_check(entity_dir)
+        self.assertEqual(mismatch.status, "warn")
+        self.assertIn("USD", mismatch.detail)
+
     def test_mixed_currency_ledger_warns(self):
         from src.bookkeeping.reports.workbook import run_sanity_checks
 
@@ -1209,6 +1251,22 @@ class TestCoverSheetJargonFree(unittest.TestCase):
                 token, all_text,
                 f"Cover sheet contains jargon token '{token}': {all_text[:200]}",
             )
+
+    def test_summary_uses_company_currency_when_legacy_field_is_missing_or_empty(self):
+        from src.bookkeeping.reports.workbook import generate_accountant_package
+
+        entity_json = self.entity_dir / "entity.json"
+        config = json.loads(entity_json.read_text(encoding="utf-8"))
+        for legacy in (None, ""):
+            with self.subTest(legacy=legacy):
+                config.pop("operating_currency", None)
+                if legacy is not None:
+                    config["operating_currency"] = legacy
+                config.update(currency="USD", currency_source="set")
+                entity_json.write_text(json.dumps(config), encoding="utf-8")
+                result = generate_accountant_package(self.entity_dir, FROM_DATE, TO_DATE, override=True)
+                rows = _read_csv(_find_csv(result.output_dir, "Summary"))
+                self.assertIn(["Operating currency", "USD"], rows)
 
     def test_cover_has_entity_name(self):
         from src.bookkeeping.reports.workbook import generate_accountant_package
