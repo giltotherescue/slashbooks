@@ -86,7 +86,7 @@ def _private_fields(value):
     if isinstance(value, dict):
         for key, child in value.items():
             normalized = re.sub(r"[^a-z]", "", key.lower())
-            if (normalized in {"metadata", "clientsecret", "confirmationsecret", "taxids", "customertaxids", "accounttaxids",
+            if (normalized in {"metadata", "clientsecret", "confirmationsecret", "taxid", "taxids", "customertaxids", "accounttaxids",
                                "taxiddata", "customfields", "invoicepdf", "hostedinvoiceurl"}
                     or normalized.endswith(("tin", "ssn", "ein", "taxidentifier", "taxpayerid"))):
                 _hold("private_provider_fields_not_allowed")
@@ -432,6 +432,9 @@ def _existing_payment(payment, candidates, doc, bank, fee_account, store):
     item = load_record(store, "items", doc["item_id"])
     from .reports.cashview import _cumulative
     weights = [(r["account"], int(Decimal(r["amount"]) * 100)) for r in item["origin"].get("lines", [])]
+    # Ordinary payment.record/link stores a per-payment recognition split.
+    # Later allocations are already present here; cumulative report timing is
+    # derived separately by cashview and must not rewrite these original facts.
     shares = _cumulative(weights, payment["gross"])
     expected = {}
     for (account, _), amount in zip(weights, shares):

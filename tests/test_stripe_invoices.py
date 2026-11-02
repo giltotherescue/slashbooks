@@ -289,6 +289,68 @@ class StripeInvoiceTests(unittest.TestCase):
         self.assertIs(imported["provider_managed"], False)
         self.assertEqual(len(business.records(self.entity, "payments")["records"]), 1)
 
+    def test_existing_installments_keep_original_rounding_with_later_payments_present(self):
+        for basis in ("cash", "accrual"):
+            for order in ((0, 1, 2), (2, 0, 1)):
+                with self.subTest(basis=basis, order=order):
+                    self.company(basis)
+                    draft = {"operation_id": "installment-draft", "action": "document.save", "id": "installment-invoice", "expected_revision": 0,
+                        "kind": "invoice", "party_id": "customer", "date": "2026-01-10", "due_date": "2026-02-10", "currency": "USD", "control_account": AR,
+                        "lines": [{"description": "Synthetic line " + str(i), "quantity": "1", "unit_price": amount, "account": account}
+                                  for i, amount, account in ((0, "0.01", INCOME), (1, "0.02", OTHER))]}
+                    business.apply(self.entity, business.preview(self.entity, draft))
+                    business.apply(self.entity, business.preview(self.entity, {"operation_id": "installment-issue", "action": "document.issue",
+                        "id": draft["id"], "expected_revision": 1, "number": "SYN-100"}))
+                    for index in order:
+                        identity = "ordinary-installment-" + str(index)
+                        evidence = intake_evidence(self.entity, {"schema_version": 1, "source": {"namespace": "example.synthetic", "account_id": "synthetic",
+                            "object_id": identity, "version": "1"}, "currency": "USD", "observed_facts": {"description": "Synthetic installment"}})
+                        request = {"operation_id": identity, "action": "payment.record", "id": identity, "party_id": "customer", "date": "2026-01-15",
+                            "direction": "receive", "currency": "USD", "gross_amount": "0.01", "cash_amount": "0.01", "federal_withholding": "0.00", "payment_method": "unknown",
+                            "source": {"mode": "new", "source_id": "stripe:acct_synthetic:txn_synthetic" + str(index), "bank_account": BANK, "amount": "0.01"},
+                            "allocations": [{"item_id": draft["id"], "amount": "0.01"}], "evidence_ids": [evidence["id"]]}
+                        business.apply(self.entity, business.preview(self.entity, request))
+                        # Ordinary payment records use their own amount's split.
+                        self.assertEqual(load_record(self.store, "business_payments", identity)["recognition_lines"], [{"account": OTHER, "amount": "0.01"}])
+                    original = load_record(self.store, "business_documents", draft["id"])
+                    packet = self.packet(amount=3, payments=[(1, 0), (1, 0), (1, 0)])
+                    first = packet["invoice"]["lines"]["data"][0]
+                    first.update(amount=1, description="Synthetic line 0", pricing={"unit_amount_decimal": "1"})
+                    second = deepcopy(first)
+                    second.update(id="il_second", amount=2, description="Synthetic line 1", pricing={"unit_amount_decimal": "2"})
+                    packet["invoice"]["lines"]["data"].append(second)
+                    request = self.request(packet, mode="existing", match={"document_id": original["id"], "expected_revision": 2,
+                        "issued_snapshot_hash": original["issued_snapshot_hash"]})
+                    request["line_mappings"][1]["account"] = OTHER
+                    entries, cash = self.store.load_entries(), self.cash()
+                    plan, receipt = self.apply(request)
+                    self.assertEqual(plan["entries"], [])
+                    self.assertEqual(len(receipt["details"]["document_import"]["payment_matches"]), 3)
+                    self.assertEqual(business.apply(self.entity, plan)["status"], "already_applied")
+                    self.assertEqual(self.store.load_entries(), entries)
+                    self.assertEqual(self.cash(), cash)
+                    self.assertEqual(self.totals()[INCOME], Decimal("-0.01"))
+                    self.assertEqual(self.totals()[OTHER], Decimal("-0.02"))
+
+    def test_singular_tax_id_is_rejected_at_provider_evidence_admission(self):
+        for key in ("tax_id", "tax-id", "Tax ID"):
+            packet = self.packet()
+            packet["customer"][key] = "synthetic-protected-identity"
+            with self.subTest(key=key):
+                self.assertEqual(self.held(packet), "private_provider_fields_not_allowed")
+
+    def test_existing_payment_with_changed_recognition_still_holds(self):
+        from bookkeeping.accrual.store import list_records
+        original = self.ordinary_invoice_and_payment()
+        def changed_records(store, table):
+            rows = deepcopy(list_records(store, table))
+            if table == "business_payments":
+                rows[0]["recognition_lines"] = [{"account": OTHER, "amount": "100.00"}]
+            return rows
+        with patch("bookkeeping.stripe_invoices.list_records", side_effect=changed_records):
+            self.assertEqual(self.held(self.packet(payments=[(10000, 300)]), mode="existing", match={"document_id": original["id"],
+                "expected_revision": 2, "issued_snapshot_hash": original["issued_snapshot_hash"]}), "existing_payment_recognition_mismatch")
+
     def test_existing_ordinary_payment_with_different_actual_money_is_held(self):
         original = self.ordinary_invoice_and_payment(gross=9900)
         self.assertEqual(self.held(self.packet(payments=[(10000, 300)]), mode="existing", match={"document_id": original["id"], "expected_revision": 2, "issued_snapshot_hash": original["issued_snapshot_hash"]}), "existing_payment_facts_mismatch")
