@@ -37,6 +37,14 @@ def _hash(value: Any) -> str:
     return hashlib.sha256(_json(value).encode()).hexdigest()
 
 
+def _routine_reference(value: Any) -> bool:
+    """A bounded engine reference, never a bare or formatted tax number."""
+    return (isinstance(value, str)
+            and re.fullmatch(r"[A-Za-z0-9:._/-]{1,160}", value) is not None
+            and re.search(r"[A-Za-z]", value) is not None
+            and re.search(r"\d{3}-\d{2}-\d{4}|\d{2}-\d{7}", value) is None)
+
+
 def reject_protected_data(value: Any, *, allow_opaque_ids: bool = False) -> None:
     """Reject identifiers before hashing, logging, or persisting routine inputs."""
     _reject_protected_data(value, allow_opaque_ids, ())
@@ -60,6 +68,23 @@ def _reject_protected_data(value: Any, allow_opaque_ids: bool, path: tuple) -> N
                             "payment_id": "inpay_", "provider_customer_id": "cus_", "object_id": "(?:cus_|in_|inpay_|il_)"}
             if (allow_opaque_ids and key in provider_ids and isinstance(item, str)
                     and re.fullmatch(provider_ids[key] + r"[A-Za-z0-9_]{1,200}", item)):
+                continue
+            # These reference fields are emitted by document.import, including
+            # explicit matches to existing documents/payments. Keep exceptions
+            # at their typed plan paths rather than trusting arbitrary keys.
+            if (allow_opaque_ids and _routine_reference(item)
+                    and ((key == "document_id" and path in {
+                        ("details", "document_import"), ("request", "match")})
+                         or (key == "business_payment_id" and len(path) == 4
+                             and path[:3] == ("details", "document_import", "payment_matches")
+                             and isinstance(path[3], int))
+                         or (key == "settlement-id" and len(path) == 3
+                             and path[0] == "entries" and isinstance(path[1], int)
+                             and path[2] == "meta"))):
+                continue
+            # Apply receipts expose the journal source references as a list.
+            if (allow_opaque_ids and not path and key == "entry_source_ids"
+                    and isinstance(item, list) and all(_routine_reference(v) for v in item)):
                 continue
             # Canonical journal metadata uses hyphenated reference keys. A
             # generated reference can contain a nine-digit run, but a bare or

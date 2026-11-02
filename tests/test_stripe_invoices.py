@@ -101,6 +101,34 @@ class StripeInvoiceTests(unittest.TestCase):
         self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
         return plan, receipt
 
+    def test_full_paid_plan_and_receipt_pass_routine_privacy_guard(self):
+        from bookkeeping.tax1099 import reject_protected_data
+
+        packet = self.packet(payments=((10000, 300),))
+        request = self.request(packet)
+        # Force a valid hash with a nine-digit run in both generated references.
+        digest = "123456789" + "a" * 55
+        def reference_hash(value):
+            if isinstance(value, dict) and set(value) in (
+                    {"account_id", "livemode", "invoice_id"},
+                    {"account_id", "livemode", "payment_id"}):
+                return digest
+            return canonical_hash(value)
+
+        with patch("bookkeeping.stripe_invoices.canonical_hash", side_effect=reference_hash):
+            plan, receipt = self.apply(request)
+            self.assertEqual(plan["details"]["document_import"]["document_id"], "stripe-invoice-" + digest)
+            self.assertEqual(plan["entries"][1]["meta"]["settlement-id"], "stripe-payment-" + digest)
+            reject_protected_data(plan, allow_opaque_ids=True)
+            reject_protected_data(receipt, allow_opaque_ids=True)
+            replay = business.preview(self.entity, request)
+            reject_protected_data(replay, allow_opaque_ids=True)
+        for field in ("number", "description"):
+            changed = deepcopy(plan)
+            changed["details"]["document"][field] = "123456789"
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                reject_protected_data(changed, allow_opaque_ids=True)
+
     def totals(self):
         balances = {}
         for entry in self.store.load_entries():
