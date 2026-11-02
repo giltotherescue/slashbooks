@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Accept generated document and settlement references in routine invoice import
+  privacy checks when their hashes contain nine consecutive digits. Tax numbers,
+  billing headers and free text remain subject to the protected-data checks.
+
 - Import finalized Stripe invoices through the existing commercial preview/apply
   workflow with explicit customer and account mappings. Recognition and proved
   payments commit together, preserve the existing cash/accrual view, and reuse

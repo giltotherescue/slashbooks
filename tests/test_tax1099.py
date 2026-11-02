@@ -124,6 +124,34 @@ class Tax1099Tests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 reject_protected_data({key: reference}, allow_opaque_ids=True)
 
+    def test_import_reference_paths_preserve_protected_data_checks(self):
+        reference = "stripe-invoice-" + "123456789" + "a" * 55
+        contexts = [
+            lambda v: {"details": {"document_import": {"document_id": v}}},
+            lambda v: {"request": {"match": {"document_id": v}}},
+            lambda v: {"details": {"document_import": {"payment_matches": [{"business_payment_id": v}]}}},
+            lambda v: {"entries": [{"meta": {"settlement-id": v}}]},
+            lambda v: {"entry_source_ids": [v]},
+        ]
+        for context in contexts:
+            reject_protected_data(context(reference), allow_opaque_ids=True)
+            with self.assertRaises(ValueError):
+                reject_protected_data(context(reference))
+            for value in ("123456789", "123-45-6789", "12-3456789", "ref-123-45-6789",
+                          "ref-12-3456789", "note 123456789", "ref-" + "a" * 160 + "123456789",
+                          123456789, [reference], {"note": "123456789"}):
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    reject_protected_data(context(value), allow_opaque_ids=True)
+        for key in ("document_id", "business_payment_id", "settlement-id", "entry_source_ids",
+                    "description", "number", "name", "email", "address", "tax_id"):
+            value = [reference] if key == "entry_source_ids" else reference
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                reject_protected_data({"notes": {key: value}}, allow_opaque_ids=True)
+        for field in ("name", "email", "address", "tax_id"):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                reject_protected_data({"details": {"document_import": {
+                    "document": {"provider_billing_snapshot": {field: "123456789"}}}}}, allow_opaque_ids=True)
+
     def test_unknown_tax_fields_are_not_silently_discarded(self):
         for path, key in [("payment", "state_tax_amount"), ("allocation", "tax_exempt"), ("profile", "foreign_tax_status"), ("source", "withholding_amount")]:
             p = payload()
