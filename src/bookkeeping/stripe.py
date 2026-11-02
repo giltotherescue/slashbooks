@@ -646,6 +646,21 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
     result['next_cursor'] = selected[-1] if len(all_ids) > limit else None
     for sid in selected:
         bt, normalized = validated[sid]
+        # Invoice imports own exact processor cash events in both book views.
+        # Never turn an imported AR settlement back into another cash sale.
+        from .accrual.store import load_record
+        from .accrual.items import _find_live_entry
+        claim = load_record(store, 'intents', 'stripe-balance:' + _digest({'account': account, 'livemode': mode, 'id': bt['id']}))
+        if claim:
+            try:
+                if claim.get('financial_digest') != normalized['stripe_financial_digest']:
+                    raise ValueError('changed_invoice_payment_source')
+                _find_live_entry(store, sid)
+            except ValueError:
+                result['unresolved'].append(dict(source_id=sid, reason='changed_invoice_payment_source'))
+            else:
+                result['skipped'].append(dict(source_id=sid, reason='invoice_settlement_recorded'))
+            continue
         try:
             result['source_capture_digests'][sid] = _source_capture_digest(bt, objects)
         except (ValueError, KeyError, TypeError, AttributeError):

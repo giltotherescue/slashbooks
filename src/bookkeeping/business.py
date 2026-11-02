@@ -28,7 +28,7 @@ from .accrual.store import SupportingMutation, load_record, list_records, record
 BUSINESS_TABLES = ("parties", "documents", "payments", "tax_preparations")
 PAYMENT_METHODS = {"bank_transfer", "check", "cash", "card", "payment_network", "unknown"}
 TAX_CATEGORIES = {"nonemployee_compensation", "legal_services", "medical_healthcare", "rent", "royalties", "other_income", "attorney_gross_proceeds", "not_reportable", "unknown"}
-ACTIONS = ("party.save", "party.archive", "party.link_legacy", "party.import", "document.save", "document.issue", "document.void", "document.writeoff", "document.credit", "payment.record", "payment.link", "payment.refund", "payment.classify", "credit.apply", "tax.prepare", "tax.review", "tracking.enable")
+ACTIONS = ("party.save", "party.archive", "party.link_legacy", "party.import", "document.save", "document.import", "document.issue", "document.void", "document.writeoff", "document.credit", "payment.record", "payment.link", "payment.refund", "payment.classify", "credit.apply", "tax.prepare", "tax.review", "tracking.enable")
 SENSITIVE_KEYS = {"tin", "ssn", "ein", "tax_id", "taxpayer_identification_number", "full_tin"}
 
 
@@ -854,6 +854,9 @@ def _effect(entity: Entity, payload: Mapping[str, Any]):
         return request, [], mutations, None
     if action == "document.save":
         return _document_save(entity, request)
+    if action == "document.import":
+        from .stripe_invoices import effect
+        return effect(entity, request)
     if action.startswith("document."):
         return _document_effect(entity, request)
     if action == "payment.classify":
@@ -873,11 +876,19 @@ def preview(entity: Entity, payload: Mapping[str, Any]) -> dict:
     request, entries, mutations, classification = _effect(entity, payload)
     ids = sorted({e for m in mutations if m.table == "business_payments" for e in m.payload.get("evidence_ids", [])} | {m.record_id for m in mutations if m.table == "evidence"})
     ids = sorted(set(ids) | set(request.get("evidence_ids", [])) | set(request.get("coverage_evidence_ids", [])))
+    if request["action"] == "document.import":
+        source_evidence = request["source"]["evidence_id"]
+        if load_record(_store(entity), "evidence", source_evidence):
+            ids = sorted(set(ids) | {source_evidence})
     dates = sorted({e.date.isoformat() for e in entries})
     # A draft's date is editable commercial context, not a journal posting.
     details = {"action": request["action"], "records": [{"resource": m.table, "id": m.record_id, "revision": m.expected_revision + 1} for m in mutations]}
     if request["action"] == "payment.classify":
         details["payment_classification"] = classification
+    if request["action"] == "document.import":
+        details["document_import"] = classification
+        if classification.get("document"):
+            details["document"] = classification["document"]
     for mutation in mutations:
         if mutation.table == "business_documents" and mutation.payload.get("last_adjustment_id") == request["operation_id"]:
             details["business_correction"] = mutation.payload["last_adjustment"]
@@ -891,9 +902,16 @@ def apply(entity: Entity, plan: Mapping[str, Any]) -> dict:
     if plan.get("kind") == "business_enable":
         return _enable_apply(entity, plan)
     with _entity_write_lock(entity.path):
+        if (plan.get("request", {}).get("action") == "document.import"
+                and plan.get("details", {}).get("document_import", {}).get("status") == "held"):
+            _error("provider_import_held", "Resolve the invoice import blockers before applying.")
         receipt = schedules._apply(entity, plan, "business_change", preview, _effect)
         if plan["request"]["action"] == "payment.record" and plan["request"].get("allocations") and any(a.get("item_id") for a in plan["request"]["allocations"]):
             journals._complete_linked_source_review(entity, plan["request"]["source"]["source_id"], receipt, "settlement")
+        if plan["request"]["action"] == "document.import":
+            for payment in plan.get("details", {}).get("document_import", {}).get("payment_matches", []):
+                if payment["status"] == "settled":
+                    journals._complete_linked_source_review(entity, payment["source_id"], receipt, "settlement")
         return receipt
 
 

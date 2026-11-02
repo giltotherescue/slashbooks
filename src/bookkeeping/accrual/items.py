@@ -175,10 +175,12 @@ def _payment_narration(cash: Decimal, counterparties: set, refs: list) -> str:
     return (head + (": " + ", ".join(unique) if unique else ""))[:2000]
 
 
-def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
+def _settlement_effect(entity: Entity, payload: Mapping[str, Any], *, pending_mutations=()):
     request = _request(payload, {"operation_id", "date", "source", "allocations", "evidence_ids", "excess"})
     operation_id, when = _id(request.get("operation_id")), _day(request.get("date"), "date")
     store = _store(entity)
+    from .store import projected_reads
+    read, rows_for, revision = projected_reads(store, pending_mutations)
     source = request.get("source")
     if not isinstance(source, Mapping) or set(source) - {"mode", "source_id", "bank_account", "amount", "fee_amount", "fee_account", "withholding_amount", "withholding_account"} or not {"mode", "source_id", "bank_account", "amount"} <= set(source) or source["mode"] not in {"new", "existing"}:
         raise JournalError("invalid_settlement_source", "Settlement source needs mode, source_id, bank_account and signed amount.")
@@ -230,7 +232,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         seen.add(item_id)
         normalized_rows.append({"item_id": item_id, "amount": f"{amount:.2f}"})
     request.update(operation_id=operation_id, source={**source, "amount": f"{cash:.2f}"}, allocations=normalized_rows, evidence_ids=ids)
-    records = _evidence(store, ids)
+    records = _evidence(store, ids, pending_mutations)
     claims = []
     if source["mode"] == "new":
         staged = next((t for t in _load_pending_categorization(entity) if t.get("id") in source_id_variants(source_id)), None)
@@ -267,9 +269,9 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
                 continue
             by_source[identity] = record["facts_hash"]
             claim_id = "source:" + identity
-            prior = load_record(store, "intents", claim_id)
+            prior = read("intents", claim_id)
             if prior:
-                owner = load_record(store, "intents", "operation:" + prior["operation_id"])
+                owner = read("intents", "operation:" + prior["operation_id"])
                 owned_sources = (owner or {}).get("receipt", {}).get("entry_source_ids", [])
                 if prior["facts_hash"] != record["facts_hash"] or (prior["financial_hash"] != financial_hash and source_id not in owned_sources):
                     raise JournalError("source_conflict", "This supporting document belongs to a different payment or financial treatment.")
@@ -277,7 +279,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
                 claims.append(SupportingMutation("intents", claim_id, {"id": claim_id, "kind": "source_claim",
                     "source_identity": identity, "facts_hash": record["facts_hash"], "financial_hash": financial_hash,
                     "operation_id": operation_id}))
-    allocations = list_records(store, "allocations")
+    allocations = rows_for("allocations")
     existing_sources = [a for a in allocations if a.get("kind") in {"settlement", "unapplied_receipt"} and a.get("source_id") == source_id]
     if any(a.get("bank_account") != bank or a.get("bank_amount") != f"{cash:.2f}" for a in existing_sources):
         raise JournalError("source_conflict", "The payment identity already has different bank facts.")
@@ -287,7 +289,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
     stable_parties, legacy_party_missing = set(), False
     for row in normalized_rows:
         item_id, amount = _id(row["item_id"]), _money(row["amount"])
-        item = load_record(store, "items", item_id)
+        item = read("items", item_id)
         if not item or item.get("status", "open") in {"settled", "closed", "reversed"}:
             raise JournalError("inactive_item", "The selected item is absent or already extinguished.")
         if when.isoformat() < item["as_of"]:
@@ -312,13 +314,13 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         control_postings.append((item["account"], -signed))
         changed = {**item, "base_remaining_amount": item.get("base_remaining_amount", item["remaining_amount"]),
                    "remaining_amount": f"{remaining - amount:.2f}", "status": "settled" if remaining == amount else "open"}
-        mutations.append(SupportingMutation("items", item_id, changed, record_revision(store, "items", item_id)))
+        mutations.append(SupportingMutation("items", item_id, changed, revision("items", item_id)))
         allocation_id = "settlement:" + operation_id + ":" + item_id
         allocation = {"id": allocation_id, "kind": "settlement", "item_id": item_id, "amount": f"{amount:.2f}",
                       "signed_amount": f"{signed:.2f}", "date": when.isoformat(), "source_id": source_id,
                       "source_mode": source["mode"], "bank_account": bank, "bank_amount": f"{cash:.2f}", "evidence_ids": ids}
         mutations.append(SupportingMutation("allocations", allocation_id, allocation))
-    prior_party_ids = {load_record(store, "items", a["item_id"]).get("party_id") for a in existing_sources if load_record(store, "items", a["item_id"])}
+    prior_party_ids = {read("items", a["item_id"]).get("party_id") for a in existing_sources if read("items", a["item_id"])}
     if len(stable_parties | (prior_party_ids - {None})) > 1 or (stable_parties and (legacy_party_missing or None in prior_party_ids)):
         raise JournalError("payment_party_mismatch", "A payment with stable party support cannot mix different parties or unassociated legacy balances.")
     if abs(used + total) > abs(gross_cash) or (used + total) * gross_cash < 0:
@@ -329,7 +331,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         if excess_cash == 0:
             raise JournalError("no_excess", "The allocations use the whole payment, so excess has nothing to record.",
                                "Remove the excess field, or lower an allocation amount.")
-        if load_record(store, "items", excess["id"]):
+        if read("items", excess["id"]):
             raise JournalError("identity_conflict", "excess.id already names an item.", "Choose a new excess.id.")
         who = excess.get("counterparty") or (next(iter(counterparties)) if len(counterparties) == 1 else "")
         if not who:
@@ -363,7 +365,7 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
         entries.append(_entry(when, source_id, _payment_narration(cash, counterparties, refs), [(bank, cash), *extras, *control_postings], settlement_id=operation_id, currency=entity.currency))
     else:
         original = _find_live_entry(store, source_id)
-        if original.date != when or len(original.postings) != 2 + len(extras):
+        if original.date != when or len(original.postings) < 2 + len(extras):
             raise JournalError("ambiguous_payment", "Existing settlement needs the exact date and explicit bank, fee/withholding and offset postings.")
         bank_postings = [p for p in original.postings if p.account == bank and p.amount == cash and p.currency == entity.currency]
         if len(bank_postings) != 1:
@@ -375,21 +377,33 @@ def _settlement_effect(entity: Entity, payload: Mapping[str, Any]):
             if matching is None:
                 raise JournalError("payment_component_mismatch", "Fee or withholding facts differ from the original payment.")
             remaining_postings.remove(matching)
-        other = remaining_postings[0]
+        if any(p.currency != entity.currency for p in remaining_postings):
+            raise JournalError("payment_mismatch", "Existing offsets must use the payment currency.")
         grouped = {}
         for account, amount in control_postings:
             grouped[account] = grouped.get(account, Decimal(0)) + amount
-        if set(grouped) == {other.account}:
-            if other.amount != -gross_cash:
+        original_offsets = {}
+        for posting in remaining_postings:
+            original_offsets[posting.account] = original_offsets.get(posting.account, Decimal(0)) + posting.amount
+        if len(original_offsets) == 1 and set(grouped) == set(original_offsets):
+            if sum(original_offsets.values()) != -gross_cash:
                 raise JournalError("payment_mismatch", "Existing control payment is not balanced to its bank movement.")
             # It already reduced this control. This operation supplies support,
             # not another financial or cash effect.
         else:
             expected_root = "Income:" if cash > 0 else "Expenses:"
-            if not other.account.startswith(expected_root):
+            if (sum(original_offsets.values()) != -gross_cash or
+                    any(not account.startswith(expected_root) or amount * gross_cash >= 0
+                        for account, amount in original_offsets.items())):
                 raise JournalError("ambiguous_existing_treatment", "Existing payment is neither the exact control settlement nor a simple cash income/expense needing reclassification.")
+            from ..reports.cashview import _cumulative
+            weights = [(account, int(abs(amount) * 100)) for account, amount in original_offsets.items()]
+            before = _cumulative(weights, int(abs(used) * 100))
+            after = _cumulative(weights, int(abs(used + total + excess_cash) * 100))
+            direction = Decimal(1) if gross_cash > 0 else Decimal(-1)
             entries.append(_entry(when, "settlement:" + operation_id + ":reclass", "Reclassified: " + _payment_narration(cash, counterparties, refs),
-                                  [(other.account, total + excess_cash), *control_postings], origin_source_id=source_id, settlement_id=operation_id, currency=entity.currency))
+                                  [(account, direction * Decimal(new-old)/100) for (account, _), old, new in zip(weights, before, after) if new != old] + control_postings,
+                                  origin_source_id=source_id, settlement_id=operation_id, currency=entity.currency))
     return request, entries, mutations, None
 
 
@@ -411,7 +425,7 @@ def apply_settlement(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]:
         return receipt
 
 
-def _adjustment_effect(entity: Entity, payload: Mapping[str, Any]):
+def _adjustment_effect(entity: Entity, payload: Mapping[str, Any], *, pending_mutations=()):
     request = _request(payload, {"operation_id", "item_id", "action", "amount", "date", "counter_account", "source_id", "evidence_ids", "reason", "actual_item_id", "counter_lines"})
     operation_id, item_id = _id(request.get("operation_id")), _id(request.get("item_id"))
     when = _day(request.get("date"), "date")
@@ -423,18 +437,20 @@ def _adjustment_effect(entity: Entity, payload: Mapping[str, Any]):
     if not isinstance(reason, str) or not reason.strip():
         raise JournalError("missing_reason", "Credit, writeoff and true-up need a disclosed reason.", "Set reason to a short text.")
     store = _store(entity)
-    item = load_record(store, "items", item_id)
+    from .store import projected_reads
+    read, rows_for, revision = projected_reads(store, pending_mutations)
+    item = read("items", item_id)
     actual = None
     if action == "true_up":
         if "actual_item_id" not in request:
             raise JournalError("actual_item_required", "A true-up needs the actual item that replaces the estimate.",
                                "Set actual_item_id to the item ID of the real bill or invoice, and item_id to the accrual item.")
-        actual = load_record(store, "items", _id(request["actual_item_id"]))
+        actual = read("items", _id(request["actual_item_id"]))
         if not actual or not item or actual["id"] == item["id"] or item.get("kind") != "accrual" or actual.get("kind") not in {"receivable", "payable"} or item_sign(actual) != item_sign(item):
             raise JournalError("invalid_true_up", "A true-up links an accrual item to an actual payable (or receivable) item on the same side.",
                                "Set item_id to a kind accrual item and actual_item_id to a kind payable or receivable item.")
         if "amount" not in request and item.get("status", "open") not in {"settled", "closed"}:
-            request["amount"] = f"{_remaining(item, list_records(store, 'allocations')):.2f}"
+            request["amount"] = f"{_remaining(item, rows_for('allocations')):.2f}"
     elif "actual_item_id" in request:
         raise JournalError("invalid_adjustment", "actual_item_id applies only to action true_up.")
     request.setdefault("source_id", operation_id)
@@ -464,14 +480,14 @@ def _adjustment_effect(entity: Entity, payload: Mapping[str, Any]):
     if counter is not None:
         request["counter_account"] = counter
     logical = {k: v for k, v in request.items() if k not in {"operation_id", "evidence_ids"}}
-    claims, replay = _source_claims(store, _evidence(store, ids), canonical_hash(logical), operation_id)
+    claims, replay = _source_claims(store, _evidence(store, ids, pending_mutations), canonical_hash(logical), operation_id)
     if replay:
         return request, [], [], replay
     if not item or item.get("status", "open") in {"settled", "closed", "reversed"}:
         raise JournalError("inactive_item", "Adjustment needs an open item.")
     if when.isoformat() < item["as_of"]:
         raise JournalError("adjustment_precedes_origin", "Adjustment cannot precede the outstanding balance.")
-    remaining = _remaining(item, list_records(store, "allocations"))
+    remaining = _remaining(item, rows_for("allocations"))
     if amount > remaining:
         raise JournalError("overallocated_item", "Credit/writeoff exceeds the supported remaining amount.")
     sign = item_sign(item)
@@ -494,9 +510,9 @@ def _adjustment_effect(entity: Entity, payload: Mapping[str, Any]):
         allocation.update(actual_item_id=actual["id"], estimate_amount=f"{amount:.2f}",
                           actual_amount=actual["original_amount"], variance=f"{variance:.2f}")
         changed["actual_item_id"] = actual["id"]
-    if load_record(store, "allocations", allocation_id):
+    if read("allocations", allocation_id):
         raise JournalError("source_conflict", "This adjustment source is already allocated; use its original receipt or a correction.")
-    return request, [entry], [SupportingMutation("items", item_id, changed, record_revision(store, "items", item_id)),
+    return request, [entry], [SupportingMutation("items", item_id, changed, revision("items", item_id)),
                              SupportingMutation("allocations", allocation_id, allocation), *claims], None
 
 

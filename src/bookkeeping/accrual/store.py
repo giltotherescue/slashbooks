@@ -54,6 +54,32 @@ class SupportingMutation:
     version: int = RECORD_VERSION
 
 
+def projected_reads(store: LedgerStore, pending: Sequence[SupportingMutation]):
+    """Read a compiler's uncommitted records without writing company state.
+
+    Replacements retain their committed revision: the domain compiler coalesces
+    each identity to one final mutation before the atomic writer sees it.
+    """
+    def one(table, identity):
+        for mutation in reversed(pending):
+            if (mutation.table, mutation.record_id) == (table, identity):
+                return mutation.payload
+        return load_record(store, table, identity)
+
+    def all_rows(table):
+        rows = {row["id"]: row for row in list_records(store, table)}
+        rows.update({m.record_id: m.payload for m in pending if m.table == table})
+        return list(rows.values())
+
+    def revision(table, identity):
+        for mutation in pending:
+            if (mutation.table, mutation.record_id) == (table, identity):
+                return mutation.expected_revision
+        return record_revision(store, table, identity)
+
+    return one, all_rows, revision
+
+
 def _require_schema(store: LedgerStore, conn: sqlite3.Connection) -> None:
     if store.schema_version(conn) not in {ACCRUAL_SCHEMA_VERSION, 3}:
         raise ValueError("Accrual records require an explicit ledger schema upgrade.")

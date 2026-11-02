@@ -53,6 +53,14 @@ def _reject_protected_data(value: Any, allow_opaque_ids: bool, path: tuple) -> N
             # must still validate linkage; arbitrary free text is not an ID.
             if allow_opaque_ids and key in {"id", "party_id", "item_id", "source_id", "refund_of", "w9_evidence_id", "operation_id"} and isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9_.:~-]+", item) and not re.search(r"\d{3}-\d{2}-\d{4}|\d{2}-\d{7}", item):
                 continue
+            # Invoice imports expose typed provider identities, not free text.
+            # Exact prefixes prevent a bare/formatted tax number gaining this
+            # exception; import validation separately proves account linkage.
+            provider_ids = {"account_id": "acct_", "invoice_id": "in_", "line_id": "il_", "source_line_id": "il_",
+                            "payment_id": "inpay_", "provider_customer_id": "cus_", "object_id": "(?:cus_|in_|inpay_|il_)"}
+            if (allow_opaque_ids and key in provider_ids and isinstance(item, str)
+                    and re.fullmatch(provider_ids[key] + r"[A-Za-z0-9_]{1,200}", item)):
+                continue
             # Canonical journal metadata uses hyphenated reference keys. A
             # generated reference can contain a nine-digit run, but a bare or
             # formatted taxpayer identifier is never a journal reference.
