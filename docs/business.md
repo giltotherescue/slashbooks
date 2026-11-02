@@ -106,6 +106,12 @@ from allocation history rather than trusting provider status.
 
 ## Payments
 
+Stripe-origin documents use the source-bound `document.import` action described
+in [Stripe invoice imports](stripe-invoices.md). It uses these same item and
+payment primitives, without sending or changing anything at Stripe. Imports
+require explicit customer, income, receivables, tax and processor mappings;
+provider descriptions never choose an accounting category.
+
 `payment.record`, `payment.link` and `payment.refund` use:
 
 ```json

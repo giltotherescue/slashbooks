@@ -18,6 +18,24 @@ Read the selected company basis first. For accrual books, follow
 categorization, QBO opening, reporting, or close steps below. Cash remains the
 default; existing basis and delegated authority are preserved.
 
+## Invoices captured from Stripe
+
+Use the existing commercial `business preview/apply` workflow with
+`action: document.import` when a host provides a complete immutable Stripe
+invoice packet. Follow [the source contract](../../docs/stripe-invoices.md).
+Choose the customer and account mappings from confirmed company context or
+approved rules; never select an income account from provider descriptions or
+invent a default. Review the engine's document, entries and blockers. A held
+plan cannot be applied. Preserve the current cash/accrual view and reuse exact
+existing processor sources instead of recording a payment or fee twice.
+
+Existing provider bindings take precedence over a new import. Match only with
+verified document/source identity and the current canonical revision. An invoice
+marked provider-managed already exists at Stripe: importing does not authorize
+sending, editing, refunding or creating a replacement there. Inspect the original
+receipt and reuse its operation after an uncertain outcome. Ask for missing
+proof or an opening/reopen decision instead of backdating or forcing a balance.
+
 ## Company workspace
 
 Before company discovery or file access, follow

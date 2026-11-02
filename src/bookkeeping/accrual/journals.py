@@ -326,6 +326,10 @@ def _apply_operation(entity: Entity, plan: Mapping[str, Any], *, entries: Sequen
         payment_classification = (plan.get("details") or {}).get("payment_classification")
         if plan["kind"] == "business_change" and payment_classification:
             receipt.setdefault("details", {})["payment_classification"] = dict(payment_classification)
+        document_import = (plan.get("details") or {}).get("document_import")
+        if plan["kind"] == "business_change" and document_import:
+            receipt.setdefault("details", {})["document_import"] = {
+                **document_import, "status": "imported" if document_import["status"] == "ready" else "matched"}
         if replay_receipt is not None:
             if entries or mutations or opens:
                 raise JournalError("invalid_replay", "An alias receipt cannot add financial or supporting effects.")

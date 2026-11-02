@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Import finalized Stripe invoices through the existing commercial preview/apply
+  workflow with explicit customer and account mappings. Recognition and proved
+  payments commit together, preserve the existing cash/accrual view, and reuse
+  existing processor sources without recording cash, revenue or fees twice.
+  Captured billing facts and provider identities remain inspectable. Unsupported
+  or incomplete source histories return explicit holds without financial effects.
+
 - Accountant exports use the company's currency, including the standard USD default,
   when the older operating-currency field is absent or empty. USD books no longer
   receive a false missing-currency warning or a blank currency in the summary.
