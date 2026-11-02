@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Refuse singular tax-ID fields in captured Stripe invoice evidence, including
+  alternate capitalization and punctuation, before invoice accounting effects.
+
 - Accept generated document and settlement references in routine invoice import
   privacy checks when their hashes contain nine consecutive digits. Tax numbers,
   billing headers and free text remain subject to the protected-data checks.
