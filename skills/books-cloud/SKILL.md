@@ -27,6 +27,27 @@ when cwd is elsewhere. Never show shell commands, `scripts/books`, or plugin cac
 paths to the owner unless explicitly requested. Use `/books`, the relevant
 existing workflow, or plain-English next steps after setup.
 
+## Already-connected unattended sessions
+
+When the host identifies an unattended session, use its authenticated briefing
+for orientation and its supported reads for further evidence. The interactive
+company overview and held-mail routes may be unavailable; do not repeat sign-in
+or call `cloud context` to replace that briefing. For collection reads use
+`cloud --config <bound-directory>/.slashbooks-remote.json questions --all`
+(and the corresponding `entries` or `sources` command). These read commands use
+`--config` before the subcommand, not `--entity` after it.
+
+Pass explanatory or customer text as data: use an argument array with
+`subprocess.run(..., shell=False)` or a literal file input supported by the command.
+Do not interpolate prose into shell source: dollar amounts, quotes and backticks
+can change meaning or execute commands. Check saved explanations as well as
+postings, using evidence already returned when sufficient.
+
+The agent still decides what evidence is relevant and when to investigate more.
+For unattended questions, use the scoped create/resolve forms below. The human
+handoff forms with `--request-id` are a different receipt protocol; do not mix
+that flag with explicit reply flags or `--command-id`.
+
 ## Connect the selected company
 
 ### Check the runtime first
@@ -172,7 +193,7 @@ guidance, not a banned-word list or mandatory accountant-send step. Use the curr
 authorized conversation or a supported question channel; distinguish drafted
 questions from delivered ones.
 
-For an authorized owner handoff, use the native company question commands:
+For an interactive owner/staff handoff, use the native company question commands:
 `cloud question ask`, `reply`, `resolve` and `recover`. Read existing threads
 with `cloud --config <bound-directory>/.slashbooks-remote.json questions --all`.
 Follow the [shared cloud question contract](../books/references/company-workspace.md#shared-cloud-questions)
@@ -180,8 +201,8 @@ for typed flags, private drafts, stable request IDs, staff authorship and
 read-back-only recovery. A question in a work note is not a delivered message.
 Do not invent HTTP calls, question versions or an accounting command envelope.
 After an uncertain question write, use its saved receipt to read back; these
-routes do not provide server idempotency, so never blindly resend. A resolve
-needs `--request-id` like an ask or a reply. The command reads the question and
+routes do not provide server idempotency, so never blindly resend. An interactive
+resolve without explicit answer-application flags needs `--request-id` like an ask or a reply. The command reads the question and
 sends every reply ID and the reply watermark itself; read the question through
 its final cursor first so the set is current. A question with no replies resolves
 with an empty set and watermark 0.
@@ -193,13 +214,15 @@ conversation cannot supply the missing fact:
 
 ```sh
 scripts/books cloud question create --subject "<short subject>" \
-  --body "<one scoped business question>" --source-id <source-id>
+  --entity <company-dir> --body "<one scoped business question>" \
+  --source-id <source-id> --idempotency-key <stable-operation-key>
 ```
 
 Repeat `--source-id` for every source whose treatment the answer may change;
-source-less questions are only for ordinary human-managed general facts and
-cannot use the automated apply-and-resolve flow. Read `cloud questions` through
-its final cursor before applying replies. Attach the question, complete reply
+omit source flags for a general evidence request, such as a missing bank
+statement. Source-less questions do not authorize an accounting mutation. The
+host decides whether and how their informational replies can be resolved. Read
+`cloud questions` through its final cursor before applying replies. Attach the question, complete reply
 set, current watermark, and a nonempty exact subset of that declared source
 scope which one ordinary remote accounting mutation intends to apply:
 
@@ -219,12 +242,15 @@ application, resolve the question with the exact reply set and server watermark
 plus the latest command receipt:
 
 ```sh
-scripts/books cloud question resolve <question-id> \
-  --reply-id <reply-id> --reply-watermark <positive-watermark> \
+scripts/books cloud question resolve <question-id> --entity <company-dir> \
+  --idempotency-key <stable-operation-key> --reply-id <reply-id> \
+  --reply-watermark <positive-watermark> \
   --command-id <committed-command-id>
 ```
 
-The service needs the command ID only for a question that declares source IDs.
+Do not add `--request-id` to this scoped form. Preserve the same idempotency key
+and input when reconciling an uncertain result. The service needs the command ID
+only for a question that declares source IDs.
 
 Repeat `--reply-id` for every reply through the watermark. If resolve returns
 `remaining_source_ids`, keep the question open and apply only the verified

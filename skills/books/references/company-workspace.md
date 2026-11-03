@@ -208,6 +208,11 @@ remote. A genuinely missing channel is a capability gap, not a new approval rule
 
 ### Shared cloud questions
 
+The examples in this subsection are for interactive owner/staff sessions.
+For host-declared unattended sessions, use the scoped create/resolve forms in
+[books-cloud](../../books-cloud/SKILL.md#scoped-automated-answer-application),
+with `--idempotency-key`; do not mix `--request-id` with explicit reply flags.
+
 Use the native company question channel when the user has authorized a client
 handoff. Do not leave a question only in a work note and call it sent. Read the
 selected company's existing questions first; avoid asking for facts already
@@ -267,9 +272,9 @@ do not claim a draft or a matching read-back candidate was delivered.
 
 For hosted books, `cloud question create --subject <subject> --body <question>
 --source-id <source-id>` sends one scoped question through the normal company
-credential; repeat the source flag. Source-less creation remains available for
-ordinary human-managed general questions, but those questions cannot use the
-automated apply-and-resolve flow. Read the paginated `cloud questions`
+credential; repeat the source flag. Source-less creation is available for general
+evidence requests, such as a missing statement. It does not authorize an accounting mutation; the host controls
+resolution of informational replies. Read the paginated `cloud questions`
 collection for replies. On the ordinary remote mutation that applies those
 replies, pass `--answer-question-id`, every
 `--answer-reply-id`, `--answer-reply-watermark`, and repeated
