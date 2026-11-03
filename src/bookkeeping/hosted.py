@@ -698,7 +698,7 @@ def run(args: argparse.Namespace) -> int:
                 from . import hosted_questions
                 return hosted_questions.run(args)
             if getattr(args, "request_id", None) is not None:
-                raise HostedError("INVALID_QUESTION", "Do not mix human question receipt flags with scoped answer application flags.")
+                raise HostedError("INVALID_QUESTION", "Scoped question create/resolve uses --idempotency-key, not --request-id. Remove --request-id when supplying reply flags or --command-id; keep the original operation key when reconciling an uncertain result.")
             if getattr(args, "entity", None) is not None:
                 args.config = args.entity.expanduser() / remote.CONFIG_NAME
         if args.hosted_command == "file":

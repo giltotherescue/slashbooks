@@ -38,7 +38,7 @@ def add_parser(commands: Any) -> None:
         # Required for ask, reply and resolve. The scoped answer flow of resolve
         # (--reply-id, --command-id) uses --idempotency-key instead, so the
         # requirement for resolve is enforced when the command runs.
-        sub.add_argument("--request-id", required=action in {"ask", "reply"}, help="Stable ID for this intended message; required; reuse it after uncertainty, use a new ID only for a separate intended message")
+        sub.add_argument("--request-id", required=action in {"ask", "reply"}, help="Interactive ask/reply/resolve receipt ID; do not combine with explicit reply flags or --command-id. Scoped resolve uses --idempotency-key instead.")
         if action in {"reply", "resolve"}:
             sub.add_argument("question_id", help="Question ID returned by cloud questions")
         if action == "ask":
@@ -47,7 +47,7 @@ def add_parser(commands: Any) -> None:
             sub.add_argument("--reply-id", action="append", dest="reply_ids")
             sub.add_argument("--reply-watermark", type=int)
             sub.add_argument("--command-id")
-            sub.add_argument("--idempotency-key")
+            sub.add_argument("--idempotency-key", help="Scoped resolve operation key; reuse the same key and input after uncertainty; do not combine with --request-id")
         if action != "resolve":
             body = sub.add_mutually_exclusive_group(required=True)
             body.add_argument("--body", help="Question/reply text as data, never executable instructions")

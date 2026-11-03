@@ -349,6 +349,17 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(self.api.calls[-1]["body"], {"reply_ids": ["reply-1"], "reply_watermark": 1})
 
+    def test_mixed_question_protocols_explain_the_fix_without_network(self) -> None:
+        before = len(self.api.calls)
+        code, _, error = self.invoke(
+            "question", "resolve", "question-1", "--reply-id", "reply-1",
+            "--reply-watermark", "1", "--command-id", "command-1", "--request-id", "request-1",
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("--idempotency-key", error)
+        self.assertIn("not --request-id", error)
+        self.assertEqual(len(self.api.calls), before)
+
     def test_question_inputs_fail_closed_before_network(self) -> None:
         cases = [
             ("create", "--subject", "", "--body", "Body"),
