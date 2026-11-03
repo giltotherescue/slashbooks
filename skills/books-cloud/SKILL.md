@@ -37,6 +37,12 @@ or call `cloud context` to replace that briefing. For collection reads use
 (and the corresponding `entries` or `sources` command). These read commands use
 `--config` before the subcommand, not `--entity` after it.
 
+Pass explanatory or customer text as data: use an argument array with
+`subprocess.run(..., shell=False)` or a literal file input supported by the command.
+Do not interpolate prose into shell source: dollar amounts, quotes and backticks
+can change meaning or execute commands. Check saved explanations as well as
+postings, using evidence already returned when sufficient.
+
 The agent still decides what evidence is relevant and when to investigate more.
 For unattended questions, use the scoped create/resolve forms below. The human
 handoff forms with `--request-id` are a different receipt protocol; do not mix
