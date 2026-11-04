@@ -192,7 +192,7 @@ class WorldTests(unittest.TestCase):
 
     def test_timeout_fault_fires_once_and_same_request_id_replays(self):
         w = world.World.create(["question_create_timeout_once"])
-        args = ["cloud", "question", "create", "--subject", "s", "--body", "b?",
+        args = ["cloud", "question", "create", "--answer-kind", "business_context", "--subject", "s", "--body", "b?",
                 "--source-id", "S-205", "--request-id", "r1"]
         ok, text = w.execute(args)
         self.assertFalse(ok)

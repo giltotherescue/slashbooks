@@ -20,6 +20,8 @@ import uuid
 from . import __version__
 
 
+QUESTION_ANSWER_KINDS = ("business_context", "accounting_treatment")
+
 OPERATIONS = {
     "run-start": "run.start",
     "run-checkpoint": "run.checkpoint",
@@ -476,10 +478,13 @@ def _stable_reply_id(value: Any) -> str:
 def _question_body(route: str, body: dict[str, Any]) -> dict[str, Any]:
     """Validate the immutable public question request used for submit and retry."""
     if route == "/questions":
-        if set(body) != {"subject", "body", "source_ids"}:
+        # Older saved receipts must replay the exact original request.
+        if set(body) - {"answer_kind"} != {"subject", "body", "source_ids"}:
             raise HostedError(
                 "INVALID_QUESTION", "Question create requires subject, body and source_ids."
             )
+        if "answer_kind" in body and body["answer_kind"] not in QUESTION_ANSWER_KINDS:
+            raise HostedError("INVALID_QUESTION", "Invalid question answer kind.")
         if (not isinstance(body["subject"], str) or not body["subject"].strip()
                 or len(body["subject"]) > 200):
             raise HostedError("INVALID_QUESTION", "Question subject must be 1-200 characters.")
@@ -619,6 +624,7 @@ def _mutate_question(args: argparse.Namespace, client: HostedClient) -> dict[str
         route = "/questions"
         body = _question_body(route, {
             "subject": args.subject, "body": args.body, "source_ids": list(args.source_ids),
+            "answer_kind": args.answer_kind,
         })
     else:
         route = "/questions/" + _segment(args.question_id) + "/resolve"

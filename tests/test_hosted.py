@@ -300,7 +300,7 @@ class HostedTests(unittest.TestCase):
     def test_question_create_and_resolve_use_scoped_routes_and_durable_receipts(self) -> None:
         self.api.response = {"question": {"id": "question-1", "status": "open"}}
         code, out, _ = self.invoke(
-            "question", "create", "--subject", "September charge",
+            "question", "create", "--answer-kind", "business_context", "--subject", "September charge",
             "--body", "Was the Acme payment for business use?",
             "--source-id", "receipt-2", "--source-id", "bank-transaction-1",
             "--idempotency-key", "question-create-1",
@@ -310,7 +310,7 @@ class HostedTests(unittest.TestCase):
         self.assertEqual(self.api.calls[-1]["method"], "POST")
         self.assertEqual(self.api.calls[-1]["path"], "/api/v1/companies/company-A/questions")
         self.assertEqual(self.api.calls[-1]["body"], {
-            "subject": "September charge",
+            "subject": "September charge", "answer_kind": "business_context",
             "body": "Was the Acme payment for business use?",
             "source_ids": ["bank-transaction-1", "receipt-2"],
         })
@@ -362,10 +362,10 @@ class HostedTests(unittest.TestCase):
 
     def test_question_inputs_fail_closed_before_network(self) -> None:
         cases = [
-            ("create", "--subject", "", "--body", "Body"),
-            ("create", "--subject", "x" * 201, "--body", "Body"),
-            ("create", "--subject", "Subject", "--body", "x" * 10001),
-            ("create", "--subject", "Subject", "--body", "Body",
+            ("create", "--answer-kind", "business_context", "--subject", "", "--body", "Body"),
+            ("create", "--answer-kind", "business_context", "--subject", "x" * 201, "--body", "Body"),
+            ("create", "--answer-kind", "business_context", "--subject", "Subject", "--body", "x" * 10001),
+            ("create", "--answer-kind", "business_context", "--subject", "Subject", "--body", "Body",
              "--source-id", "same", "--source-id", "same"),
             ("resolve", "question-1", "--reply-id", "same", "--reply-id", "same",
              "--reply-watermark", "2", "--command-id", "command-1"),
@@ -379,14 +379,30 @@ class HostedTests(unittest.TestCase):
                 self.assertEqual(self.invoke("question", *arguments)[0], 1)
         self.assertEqual(self.api.calls, [])
 
+    def test_create_requires_a_supported_answer_kind_and_describes_both_choices(self) -> None:
+        args = ["cloud", "question", "create"]
+        for options, expected in ((["--help"], 0), ([], 2), (["--answer-kind", "unsupported"], 2)):
+            text = StringIO()
+            with redirect_stdout(text), redirect_stderr(text), self.assertRaises(SystemExit) as exit_code:
+                cli.main([*args, "--subject", "Treatment", "--body", "Which treatment applies?", *options])
+            self.assertEqual(exit_code.exception.code, expected)
+            self.assertIn("--answer-kind", text.getvalue())
+            self.assertIn("business_context", text.getvalue())
+            self.assertIn("accounting_treatment", text.getvalue())
+        self.assertFalse(self.api.calls)
+        self.assertEqual(self.invoke("question", "create", "--answer-kind", "accounting_treatment",
+                                    "--subject", "Treatment", "--body", "Which treatment applies?")[0], 0)
+        self.assertEqual(self.api.calls[-1]["body"], {"answer_kind": "accounting_treatment", "subject": "Treatment",
+                                                    "body": "Which treatment applies?", "source_ids": []})
+
     def test_question_key_cannot_be_reused_for_different_input(self) -> None:
         self.assertEqual(self.invoke(
-            "question", "create", "--subject", "First", "--body", "First question",
+            "question", "create", "--answer-kind", "business_context", "--subject", "First", "--body", "First question",
             "--idempotency-key", "same-question-key",
         )[0], 0)
         self.assertEqual(self.api.calls[-1]["body"]["source_ids"], [])
         code, _, err = self.invoke(
-            "question", "create", "--subject", "Second", "--body", "Different question",
+            "question", "create", "--answer-kind", "business_context", "--subject", "Second", "--body", "Different question",
             "--idempotency-key", "same-question-key",
         )
         self.assertEqual(code, 1)
