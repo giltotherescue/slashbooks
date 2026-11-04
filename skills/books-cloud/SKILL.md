@@ -213,10 +213,12 @@ For a remote company, use the ordinary hosted question channel when the current
 conversation cannot supply the missing fact:
 
 ```sh
-scripts/books cloud question create --subject "<short subject>" \
+scripts/books cloud question create --answer-kind business_context --subject "<short subject>" \
   --entity <company-dir> --body "<one scoped business question>" \
   --source-id <source-id> --idempotency-key <stable-operation-key>
 ```
+
+Choose `business_context` for facts or documents and `accounting_treatment` for an accounting decision.
 
 Repeat `--source-id` for every source whose treatment the answer may change;
 omit source flags for a general evidence request, such as a missing bank

@@ -29,7 +29,7 @@ COMMAND_NOTES = (
     "`--evidence-mail <mail id>` for an email answer, or the `--answer-*` flags for a question "
     "reply. `mail list`, `mail read <id>`, and `mail triage <id> --disposition "
     "recorded|needs_answer|no_action --summary <text>` use the company mail inbox. "
-    "`cloud question create --subject <text> --body <text> --source-id <id> --request-id <id>` "
+    "`cloud question create --answer-kind business_context --subject <text> --body <text> --source-id <id> --request-id <id>` "
     "asks the owner a question. `reconcile --account <name> --period <YYYY-MM> "
     "--statement-balance <amount>` reconciles one account. `readiness --period <YYYY-MM>` "
     "assesses readiness. `period publish --period <YYYY-MM>` publishes and locks a period, and "

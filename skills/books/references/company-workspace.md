@@ -270,7 +270,9 @@ do not claim a draft or a matching read-back candidate was delivered.
 
 ### Scoped automated answer application
 
-For hosted books, `cloud question create --subject <subject> --body <question>
+Choose `business_context` for facts or documents and `accounting_treatment` for an accounting decision.
+
+For hosted books, `cloud question create --answer-kind business_context --subject <subject> --body <question>
 --source-id <source-id>` sends one scoped question through the normal company
 credential; repeat the source flag. Source-less creation is available for general
 evidence requests, such as a missing statement. It does not authorize an accounting mutation; the host controls

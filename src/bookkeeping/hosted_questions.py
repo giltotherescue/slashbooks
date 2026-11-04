@@ -22,6 +22,8 @@ def add_parser(commands: Any) -> None:
     create.add_argument("--entity", type=Path, help="Use this folder's company binding")
     create.add_argument("--subject", required=True)
     create.add_argument("--body", required=True)
+    create.add_argument("--answer-kind", required=True, choices=hosted.QUESTION_ANSWER_KINDS,
+                        help="Use business_context for facts or documents, accounting_treatment for an accounting decision")
     create.add_argument("--source-id", action="append", default=[], dest="source_ids")
     create.add_argument("--idempotency-key")
     for action in ("ask", "reply", "resolve", "recover"):

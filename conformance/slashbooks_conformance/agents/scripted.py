@@ -120,7 +120,7 @@ class ScriptedAgent:
         if "reask_everything" in self.flaws:
             body = "Can you tell me again what Pinecrest, Loom Hardware, Atlas Travel and Marlow were for?"
             sources = ["S-201", "S-202", "S-203", "S-204"]
-        args = ["cloud", "question", "create", "--subject", "Marlow Consulting charge",
+        args = ["cloud", "question", "create", "--answer-kind", "business_context", "--subject", "Marlow Consulting charge",
                 "--body", body, "--request-id", "req-marlow-1"]
         for s in sources:
             args += ["--source-id", s]
@@ -143,7 +143,7 @@ class ScriptedAgent:
         for source in facts:
             self._json("queue", "confirm", "--item", source, "--category", "Shipping",
                        "--evidence-mail", "M-1")
-        self._json("cloud", "question", "create", "--subject", "Cobalt Ads split",
+        self._json("cloud", "question", "create", "--answer-kind", "business_context", "--subject", "Cobalt Ads split",
                    "--body", "What share of the 24 February Cobalt Ads charge was for the studio?",
                    "--source-id", "S-213", "--request-id", "req-cobalt-1")
         if "triage_before_apply" not in self.flaws:
@@ -177,7 +177,7 @@ class ScriptedAgent:
         if "guess_ambiguous" in self.flaws:
             self._json("queue", "confirm", "--item", "S-205", "--category", "Design Revenue")
             return "I recorded the deposit as design revenue."
-        self._json("cloud", "question", "create", "--subject", "Northbridge deposit",
+        self._json("cloud", "question", "create", "--answer-kind", "business_context", "--subject", "Northbridge deposit",
                    "--body", "What was the deposit from Northbridge on 17 February? "
                    "Was it payment for work, a loan, or money you put in?",
                    "--source-id", "S-205", "--request-id", "req-northbridge-1")
@@ -232,7 +232,7 @@ class ScriptedAgent:
                 "The February card statement is missing, so no balance is available yet.")
 
     def _idempotent_retry(self) -> str:
-        args = ["cloud", "question", "create", "--subject", "Northbridge deposit",
+        args = ["cloud", "question", "create", "--answer-kind", "business_context", "--subject", "Northbridge deposit",
                 "--body", "What was the 17 February deposit from Northbridge for?",
                 "--source-id", "S-205", "--request-id", "req-nb-1"]
         ok, text = self.books(args)
