@@ -81,6 +81,40 @@ class PreparationRuntimeTests(unittest.TestCase):
         self.assertEqual(self.store.load_audit_events(), audit_before)
         self.assertEqual(queue.load_learned_context(self.entity), context_before)
 
+    def test_duplicate_inspection_is_read_only_and_duplicate_decisions_remain_protected(self):
+        from bookkeeping import cli
+        from bookkeeping.remote_contract import command_spec
+        candidate = {"source_id": "synthetic-held", "status": "duplicate-candidate",
+                     "existing_source_id": "synthetic-original", "account": "Assets:Bank:Checking",
+                     "date": "2026-09-10", "amount": "-25.00", "description": "Synthetic possible repeat"}
+        path = self.entity.staging_dir / "duplicate-candidates.json"
+        for items in ([], [candidate]):
+            path.write_text(json.dumps(items))
+            for flags in ([], ["--json"], ["--json", "--offset", "0", "--limit", "1"]):
+                argv = ["queue", "duplicates", "--entity", str(self.entity.path), *flags]
+                with self.subTest(items=len(items), flags=flags):
+                    spec = supported_preparation_command(argv)
+                    self.assertEqual((spec.effect, spec.action), ("read", None))
+                    self.assertFalse(command_spec(argv)["mutates"])
+                    before = self.store.content_digest()
+                    files_before = {p.relative_to(self.entity.path): p.read_bytes()
+                                    for p in self.entity.path.rglob("*") if p.is_file() and p.name != ".books.lock"}
+                    output = StringIO()
+                    with redirect_stdout(output):
+                        self.assertEqual(cli.main(argv), 0)
+                    if "--json" in flags:
+                        document = json.loads(output.getvalue())
+                        self.assertEqual(document["count"], len(items))
+                        if items:
+                            self.assertEqual(document["candidates"][0]["source_id"], candidate["source_id"])
+                    self.assertEqual(self.store.content_digest(), before)
+                    self.assertEqual({p.relative_to(self.entity.path): p.read_bytes()
+                                      for p in self.entity.path.rglob("*") if p.is_file() and p.name != ".books.lock"}, files_before)
+        for decision in ("duplicate", "distinct"):
+            with self.subTest(decision=decision), self.assertRaisesRegex(PreparationDenied, "command_not_supported"):
+                supported_preparation_command(["queue", "resolve-duplicate", "--entity", str(self.entity.path),
+                                               "--source-id", candidate["source_id"], "--decision", decision])
+
     def test_coverage_and_statement_inspection_are_read_only_preparation_context(self):
         from bookkeeping import cli
         commands = [
