@@ -30,7 +30,7 @@ _READ_PATHS = frozenset({
     ("readiness",),
     ("report", "pnl"), ("report", "balance-sheet"),
     ("report", "trial-balance"), ("report", "general-ledger"),
-    ("queue", "list"), ("queue", "show"), ("queue", "summary"),
+    ("queue", "list"), ("queue", "show"), ("queue", "summary"), ("queue", "duplicates"),
     ("queue", "split-template-list"), ("queue", "transfer-candidates"),
     ("queue", "transfer-exceptions"), ("queue", "taught"),
     ("coverage", "check"), ("coverage", "statement-list"), ("statement", "list"),
