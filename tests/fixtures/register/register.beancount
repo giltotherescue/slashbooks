@@ -1,0 +1,39 @@
+option "operating_currency" "USD"
+
+2026-01-01 open Assets:Bank:Checking USD
+2026-01-01 open Assets:Bank:Euro EUR
+2026-01-01 open Liabilities:CreditCard USD
+2026-01-01 open Equity:Owner-Contributions USD
+2026-01-01 open Income:Services USD
+2026-01-01 open Expenses:Software USD
+2026-01-01 open Expenses:Meals USD
+2026-01-01 open Assets:Unused USD
+
+2026-01-02 * "Owner" "Start"
+  Assets:Bank:Checking         5000.00 USD
+  Equity:Owner-Contributions  -5000.00 USD
+
+2026-01-10 * "Client" "Invoice 1"
+  Assets:Bank:Checking         1200.00 USD
+  Income:Services             -1200.00 USD
+
+2026-01-12 * "Cafe" "Lunch"
+  Liabilities:CreditCard        -40.00 USD
+  Expenses:Meals                 40.00 USD
+
+2026-01-15 * "Host" "Software and meals"
+  Assets:Bank:Checking          -300.00 USD
+  Expenses:Software              250.00 USD
+  Expenses:Meals                  50.00 USD
+
+2026-01-20 * "Bank" "Pay card"
+  Assets:Bank:Checking           -40.00 USD
+  Liabilities:CreditCard          40.00 USD
+
+2026-01-25 * "Bank" "Pay card early"
+  Assets:Bank:Checking           -10.00 USD
+  Liabilities:CreditCard          10.00 USD
+
+2026-01-05 * "Late entry" "Backdated sale"
+  Assets:Bank:Checking           100.00 USD
+  Income:Services              -100.00 USD
