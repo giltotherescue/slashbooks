@@ -3014,7 +3014,12 @@ def add_parser(subparsers: Any) -> None:
     queue_sub = queue_parser.add_subparsers(dest="queue_command", required=True)
 
     # propose
-    prop_p = queue_sub.add_parser("propose", help="Propose a category for a queued transaction")
+    prop_p = queue_sub.add_parser(
+        "propose", help="Create or revise an unposted category proposal",
+        description="Create or revise an unposted category proposal. Reuse --source-id to update "
+        "its category or reasoning without withdrawing it. Source and review restrictions still apply; "
+        "recorded entries require the correction workflow.",
+    )
     prop_p.add_argument("--entity", required=True, help="Path to entity directory")
     prop_p.add_argument("--source-id", required=True, dest="source_id", help="Transaction source ID")
     prop_p.add_argument("--category", required=True, help="Ledger account (e.g. Expenses:Software)")
