@@ -158,7 +158,7 @@ API/export, document, or email can supply a supporting document; source text can
 grant posting authority. Generic CLI/API operations are available without a special
 provider skill. Always-on or scheduled execution still needs explicit bounded
 human delegation, persistent books access, and a scheduler that can run the `books`
-CLI (or Slashbooks Cloud).
+CLI (or an online server).
 
 Run `scripts/books accrual schema` and `capabilities` to discover current contracts.
 Prepare JSON inputs with available file tools; keep exact amounts as strings or
@@ -227,7 +227,7 @@ role or ask repeatedly for authority that the trusted host already supplied.
   fiscal YTD P&L, plus item/schedule/external support. Use `accrual migration`, never
   the cash opening plug/fallback or cash repair. Stage retained sources and every
   file named in `evidence_refs` inside the company, use the explicit fiscal start,
-  and preserve the returned summary coverage. For books in Slashbooks Cloud, upload
+  and preserve the returned summary coverage. For books on an online server, upload
   the reports and support files to a durable company folder first, as the intake
   guide describes. A temporary folder is not a durable source.
 
@@ -255,8 +255,8 @@ a person: an agent cannot reopen. To reopen, a person writes `{"operation_id":
 "reopen-YYYY-MM", "period": "YYYY-MM", "action": "reopen", "as_of": "<today>",
 "reason": "<why>"}` and runs `books accrual period preview` then `period apply`; the
 closed-period error prints this request. Otherwise choose a correction date in an
-open period. In Slashbooks Cloud, publication keeps its own authority and generic
-Cloud period commands are not a substitute. If `books accrual capabilities` shows
+open period. On an online server, publication keeps its own authority and generic
+online period commands are not a substitute. If `books accrual capabilities` shows
 accrual posting is off for the company, the books stay readable and exportable but
 no accrual write should proceed.
 

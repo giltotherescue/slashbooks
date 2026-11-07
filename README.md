@@ -27,8 +27,8 @@ Your books are local: a folder of files on your own computer, with a SQLite ledg
 you own. Slashbooks works from QuickBooks exports and live bank/card feeds (via
 BankSync) and exports the Excel/CSV files your accountant needs; it does not sync
 back to QuickBooks or Google Sheets. Optionally, you and your accountant can share
-the same books in a Slashbooks Cloud workspace; see
-[Local books and Slashbooks Cloud](docs/cloud.md).
+the same books on an online server that supports the Slashbooks client; see
+[Local books and online books](docs/cloud.md).
 
 **[Install for Claude Cowork, Claude Code, or Codex →](#install)**
 
@@ -321,10 +321,9 @@ acme-co/
 
 By default, Slashbooks stores company data locally in the company directory you
 choose, and the plugin does not host your books. Optionally, during onboarding you can
-connect a folder to Slashbooks Cloud, a hosted service where you and your
-accountant share the same books. Cloud is free during the beta, with at least
-30 days' notice before any charge. The plugin, commands and accounting rules are the
-same in both cases. See [Local books and Slashbooks Cloud](docs/cloud.md).
+connect a folder to an online server that supports the Slashbooks client, where you and your
+accountant share the same books. The plugin, commands and accounting rules are the
+same in both cases. See [Local books and online books](docs/cloud.md).
 
 Context and preferences live there too:
 

@@ -1,12 +1,12 @@
 ---
 name: books-cloud
 description: >
-  Connect to Slashbooks Cloud books shared with an accountant or firm: browser
+  Connect to online books, on a server that supports the Slashbooks client, shared with an accountant or firm: browser
   sign-in, company choice, shared company context, and troubleshooting of cloud
   access. After setup, use the existing books skills and ordinary CLI commands.
 ---
 
-# Slashbooks Cloud Books
+# Online Books
 
 ## Accounting basis
 
@@ -114,8 +114,9 @@ while the login command is waiting; the user must open it and approve themselves
 Never approve on their behalf, request tokens in chat, print configuration or
 environment secrets, or use browser cookies as agent credentials.
 
-`--endpoint` defaults to the official Slashbooks Cloud, `https://slashbooks.co`.
-Pass the endpoint from the connection details when it is a different server.
+The client has no built-in server address. Pass `--endpoint` with the address
+from the connection details, or set `BOOKS_ENDPOINT`. Without one, the command
+stops with `ENDPOINT_REQUIRED`; ask the user for the address.
 
 ```sh
 scripts/books cloud login

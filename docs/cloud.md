@@ -1,7 +1,7 @@
-# Local Books and Slashbooks Cloud
+# Local Books and Online Books
 
 Company creation explicitly selects cash (default) or supported accrual basis.
-A cloud company uses the same engine contract as local books after that. A person
+An online company uses the same engine contract as local books after that. A person
 can turn accrual on later (`books accrual enable`) and change the default report
 view (`books entity set-view`); both are previews until a person applies them, and
 standing posting authority never covers them. When the company has no entries and
@@ -16,16 +16,16 @@ separate authority boundary. See [accrual books](accrual.md).
 Slashbooks is one plugin and one `books` CLI. A company's books live in one of
 two places, chosen during onboarding:
 
-| | Local books | Slashbooks Cloud |
+| | Local books | Online books |
 | --- | --- | --- |
-| Where the books are | A folder on your computer (`entity.json`, `ledger.sqlite`) | Slashbooks servers at slashbooks.co |
-| Cost and license | Free and open source | Hosted service with an account |
+| Where the books are | A folder on your computer (`entity.json`, `ledger.sqlite`) | A server that supports the Slashbooks client |
+| Cost and license | Free and open source | Set by the server operator |
 | Who works on them | You, through your AI agent | You and your accountant or firm, through the agent or the website |
 | Backups | Yours to manage | Automatic |
-| Bank connections | Optional BankSync, Stripe, Mercury or CSV, with your own keys | Set up on the website |
+| Bank connections | Optional BankSync, Stripe, Mercury or CSV, with your own keys | Set up on the server's website |
 
 Both use the same commands, skills and accounting rules. Local books can move to
-the cloud later; see [Move existing local books to a hosted company](hosted-migration.md).
+an online server later; see [Move existing local books to a hosted company](hosted-migration.md).
 
 ## Windows setup
 
@@ -71,11 +71,12 @@ books cloud login
 The command prints a sign-in link and a code. The user opens the link, checks
 the code, chooses the company, and chooses **Allow access**. The CLI then links
 the folder `~/Documents/Slashbooks/online-<id hash>` and prints its path. To use
-a known company or folder, pass `--company <company-id>` (from **Agent setup** on
-slashbooks.co) or `--entity <folder>`. The agent never sees a
+a known company or folder, pass `--company <company-id>` (from the server's
+agent setup page) or `--entity <folder>`. The agent never sees a
 password or key. The credential is stored in an owner-only file in
-`~/.config/slashbooks/agents/`, outside the company folder. `--endpoint`
-defaults to `https://slashbooks.co`; pass it only for another server.
+`~/.config/slashbooks/agents/`, outside the company folder. The client has no
+built-in server address. Pass `--endpoint <https-origin>` or set `BOOKS_ENDPOINT`. Without
+one, the command stops and says how to set it.
 
 To reconnect the same company after access expires, use `--reauthorize`. A
 folder linked to one company is never relinked to a different company.

@@ -51,13 +51,25 @@ class HostedError(Exception):
         self.payload = {"error": {"code": code, "message": message, **details}}
 
 
-# The official Slashbooks Cloud service. Self-hosted servers pass --endpoint.
-CLOUD_ENDPOINT = "https://slashbooks.co"
+# The client has no built-in server address. The address comes from --endpoint
+# or from this environment variable.
+ENDPOINT_ENV = "BOOKS_ENDPOINT"
+
+
+def _endpoint_argument(value: Any) -> str:
+    """Return the --endpoint value, or the environment value when the flag is absent."""
+    chosen = value if value else os.environ.get(ENDPOINT_ENV)
+    if not chosen:
+        raise HostedError(
+            "ENDPOINT_REQUIRED",
+            f"No server address. Pass --endpoint https://<server> or set {ENDPOINT_ENV}.",
+        )
+    return chosen
 
 
 def add_parser(subparsers: Any) -> None:
     # "hosted" stays an alias so existing connections, prompts and scripts keep working.
-    parser = subparsers.add_parser("cloud", aliases=["hosted"], help="Connect to and use Slashbooks Cloud books")
+    parser = subparsers.add_parser("cloud", aliases=["hosted"], help="Connect to and use books on a compatible online server")
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/slashbooks/hosted.json")
     parser.add_argument("--timeout", type=float, help=f"Request timeout in seconds (default {DEFAULT_TIMEOUT:g}, or {TIMEOUT_ENV}); no automatic retries")
     commands = parser.add_subparsers(dest="hosted_command", required=True)
@@ -66,7 +78,7 @@ def add_parser(subparsers: Any) -> None:
     from . import hosted_stripe
     hosted_stripe.add_parser(commands)
     login = commands.add_parser("login", help="Connect online books with browser approval; no API key needed")
-    login.add_argument("--endpoint", default=CLOUD_ENDPOINT, help=f"Slashbooks Cloud server (default {CLOUD_ENDPOINT})")
+    login.add_argument("--endpoint", help=f"Server HTTPS origin (or set {ENDPOINT_ENV})")
     login.add_argument("--company", help="Company ID; omit it to choose the company in the browser")
     login.add_argument("--entity", type=Path, help="Folder for the connection; default ~/Documents/Slashbooks/online-<id hash>")
     login.add_argument("--allow-localhost", action="store_true")
@@ -75,7 +87,7 @@ def add_parser(subparsers: Any) -> None:
                        "runs:write", "questions:write", "evidence:write", "adjustments:write"],
                        help="Explicit permissions to request with browser consent; include books:read. Adjustments are never granted by default")
     configure = commands.add_parser("configure", help="Save endpoint/company, without contacting the server")
-    configure.add_argument("--endpoint", required=True, help="HTTPS origin, optionally ending in /api/v1")
+    configure.add_argument("--endpoint", help=f"HTTPS origin, optionally ending in /api/v1 (or set {ENDPOINT_ENV})")
     configure.add_argument("--company", required=True)
     configure.add_argument("--entity", type=Path, help="Bind this company directory for ordinary books commands")
     configure.add_argument("--tokenref", help="Credential environment reference, for example env:BOOKS_API_TOKEN")
@@ -672,6 +684,7 @@ def run(args: argparse.Namespace) -> int:
     if args.hosted_command == "login":
         from . import agent_auth
         try:
+            args.endpoint = _endpoint_argument(getattr(args, "endpoint", None))
             return agent_auth.login(args)
         except HostedError as exc:
             print(json.dumps(exc.payload), file=sys.stderr)
@@ -722,7 +735,7 @@ def run(args: argparse.Namespace) -> int:
                 return remote.retry(args)
         config_path = args.config.expanduser()
         if args.hosted_command == "configure":
-            config = {"endpoint": _endpoint(args.endpoint, args.allow_localhost), "company": args.company, "allow_localhost": args.allow_localhost}
+            config = {"endpoint": _endpoint(_endpoint_argument(args.endpoint), args.allow_localhost), "company": args.company, "allow_localhost": args.allow_localhost}
             _segment(args.company)
             if args.tokenref is not None and args.store_token:
                 raise HostedError("INVALID_CONFIG", "Use --tokenref or --store-token, not both.")

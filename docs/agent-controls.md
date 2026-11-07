@@ -122,10 +122,10 @@ and no queue item. A valid first record is kept: a second run prints
 today (the later of the machine date and the UTC date) is refused.
 
 With local books, the books-onboard skill runs it with `--via agent` when
-onboarding is done. A host can limit who records it. Inside Slashbooks Cloud,
+onboarding is done. A host can limit who records it. On an online server,
 only the setup meeting, staff and a person's own connected agent can record
-completion. Slashbooks' own hosted automation cannot, so a hosted run cannot
-mark its own company as set up. Outside Cloud, `--via agent` works as written.
+completion. The server's own automation cannot, so an automated run cannot
+mark its own company as set up. Outside an online server, `--via agent` works as written.
 
 ## Who made a suggestion
 

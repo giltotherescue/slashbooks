@@ -234,7 +234,7 @@ class SignInErrorResponseTests(unittest.TestCase):
 
     def test_login_storage_failure_is_structured_and_does_not_claim_connected(self):
         from contextlib import redirect_stderr
-        args = SimpleNamespace(hosted_command="login")
+        args = SimpleNamespace(hosted_command="login", endpoint="https://books.example.com")
         output, errors = StringIO(), StringIO()
         with patch.object(agent_auth, "login", side_effect=PermissionError("synthetic-secret-path")), \
                 redirect_stdout(output), redirect_stderr(errors):
