@@ -1,4 +1,4 @@
-Account Number,Account Name,Account Type,Balance,Slashbooks Tax Line
+Account Number,Account Name,Account Type,Balance,Tax Line
 1010,Assets › Accumulated-Depreciation,A,-600.00,1120s/L/10b Less accumulated depreciation
 1001,Assets › Bank › Checking,A,24507.34,1120s/L/1 Cash
 1020,Assets › Crypto-Wallet,A,50.00,UNMAPPED

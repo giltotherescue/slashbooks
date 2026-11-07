@@ -18,6 +18,8 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .brand import product_name
+
 REPORTING_GOALS_KEY = "reporting_goals"
 REPORTING_GOALS_VERSION = 1
 GOAL_CODES = (
@@ -37,8 +39,9 @@ MAX_REPORTING_GOALS_BYTES = 65_536
 MAX_LINE_CHARS = 40
 LINE_PUNCTUATION = frozenset(" &'.,/()+-")
 SET_REPORTING_GOALS_KIND = "reporting_goals_set"
-GOALS_NOTE = ("Records what the owner wants the reports to show. Slashbooks stores the goals only: "
-              "no entry, category, rule or report changes because of them.")
+def goals_note() -> str:
+    return (f"Records what the owner wants the reports to show. {product_name()} stores the goals only: "
+            "no entry, category, rule or report changes because of them.")
 
 
 class GoalsError(ValueError):
@@ -156,7 +159,7 @@ def preview_set(entity: Any, goals: Sequence[str] | None = None, lines: Sequence
         # binds the plan to it, so a used plan hash cannot confirm a later change.
         "last_goals_event": last_event,
         "effects": {"from": current, "to": target, "entries_changed": 0, "accounts_changed": 0,
-                    "period_locks_changed": 0, "published_statements_changed": False, "note": GOALS_NOTE}}
+                    "period_locks_changed": 0, "published_statements_changed": False, "note": goals_note()}}
     warnings = []
     if not stored_valid:
         warnings.append({"code": "invalid_stored_value", "refs": [REPORTING_GOALS_KEY],

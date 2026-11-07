@@ -32,6 +32,7 @@ from .compare import (
     compare_categories,
 )
 from .entity import Entity
+from .brand import product_name
 
 SCHEMA_VERSION = 1
 REPORT_JSON = "accuracy-report.json"
@@ -217,7 +218,7 @@ def render_accuracy_markdown(report: dict) -> str:
     ca = report["category_agreement"]
     cov = report["coverage"]
     lines = [
-        "# Slashbooks accuracy report",
+        f"# {product_name()} accuracy report",
         "",
         f"**Period:** {report['period']['from']} through {report['period']['to']}",
         f"**Engine:** {report['engine']['version']}"

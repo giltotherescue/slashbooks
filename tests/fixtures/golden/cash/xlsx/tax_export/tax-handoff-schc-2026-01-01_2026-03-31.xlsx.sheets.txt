@@ -5,7 +5,7 @@ A3=Company	B3=Harbor Studio Cash
 A4=Return	B4=Schedule C (Form 1040) (schc, chosen by workspace)
 A5=Line numbers	B5=Tax year 2025 federal forms; confirm against the current year's form
 A6=Period	B6=2026-01-01 to 2026-03-31
-A7=Basis	B7=Cash basis book balances computed by the Slashbooks engine
+A7=Basis	B7=Cash basis book balances computed by the accounting engine
 A8=Total debits	B8=46849.53
 A9=Total credits	B9=46849.53
 A10=Unmapped accounts	B10=0
@@ -47,7 +47,7 @@ A14=Schedule C (Form 1040)	B14=none	C14=owner_equity	D14=schc/none/owner_equity	
 === sheet: Unmapped Accounts
 A1=Account Number	B1=Account	C1=Account Type	D1=Balance	E1=Reason	F1=How to fix
 === sheet: Lacerte TBU
-A1=Account Number	B1=Account Name	C1=Account Type	D1=Balance	E1=Slashbooks Tax Line
+A1=Account Number	B1=Account Name	C1=Account Type	D1=Balance	E1=Tax Line
 A2=1010	B2=Assets › Bank › Checking	C2=A	D2=33043.47	E2=schc/none/balance_sheet Balance sheet account (Schedule C has no balance sheet)
 A3=3010	B3=Equity › Owner-Contributions	C3=L	D3=-20000.00	E3=schc/none/owner_equity Owner contributions and draws (not on Schedule C)
 A4=3020	B4=Equity › Owner-Draws	C4=L	D4=2000.00	E4=schc/none/owner_equity Owner contributions and draws (not on Schedule C)

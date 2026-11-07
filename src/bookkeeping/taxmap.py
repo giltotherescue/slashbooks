@@ -639,7 +639,7 @@ def _coverage_metadata(conn: Any, from_date: date, to_date: date) -> dict[str, A
 
 
 _MIXED_LABEL_NO_START = ("Cash basis, accrual tracking for selected accounts from a start date that is not recorded; "
-                         "book balances computed by the Slashbooks engine")
+                         "book balances computed by the accounting engine")
 
 
 def book_basis(conn: Any, config: Mapping[str, Any], to_date: date) -> tuple[str, str | None]:
@@ -1034,7 +1034,7 @@ _LACERTE_TYPES = {"Assets": "A", "Liabilities": "L", "Equity": "L", "Income": "R
 
 
 def _lacerte_table(handoff: Mapping[str, Any]) -> list[list[str]]:
-    rows = [["Account Number", "Account Name", "Account Type", "Balance", "Slashbooks Tax Line"]]
+    rows = [["Account Number", "Account Name", "Account Type", "Balance", "Tax Line"]]
     for row in handoff["trial_balance"]:
         m: AccountMapping = row["mapping"]
         rows.append([
@@ -1075,7 +1075,7 @@ def _readme_table(handoff: Mapping[str, Any], files: Mapping[str, str]) -> list[
         ["Return", f"{FORMS[handoff['form']]} ({handoff['form']}, chosen by {handoff['form_basis']})"],
         ["Line numbers", f"Tax year {TAX_YEAR_BASIS} federal forms; confirm against the current year's form"],
         ["Period", f"{handoff['from'].isoformat()} to {handoff['to'].isoformat()}"],
-        ["Basis", handoff.get("basis_label") or handoff["accounting_basis"].title() + " basis book balances computed by the Slashbooks engine"],
+        ["Basis", handoff.get("basis_label") or handoff["accounting_basis"].title() + " basis book balances computed by the accounting engine"],
         ["Total debits", _money(totals["debit"])],
         ["Total credits", _money(totals["credit"])],
         ["Unmapped accounts", str(len(handoff["unmapped"]))],

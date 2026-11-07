@@ -94,7 +94,7 @@ class ReportViewIntegrityTests(CashViewFixture):
         self.cash_default()
         handoff = taxmap.build_handoff(self.root, *JAN, form="1120s")
         self.assertEqual(handoff["accounting_basis"], "accrual")
-        self.assertIn(["Basis", "Accrual basis book balances computed by the Slashbooks engine"], taxmap._readme_table(handoff, {}))
+        self.assertIn(["Basis", "Accrual basis book balances computed by the accounting engine"], taxmap._readme_table(handoff, {}))
         income = next(row for row in handoff["trial_balance"] if row["account"] == SERVICES)
         self.assertEqual(income["balance"], D("-1000.00"))
         manifest = taxmap.export_handoff(self.root, *JAN, form="1120s", output_dir=self.root / "tax", formats=("csv",))
@@ -108,7 +108,7 @@ class ReportViewIntegrityTests(CashViewFixture):
         root = make_company(parent)
         handoff = taxmap.build_handoff(root, *JAN)
         self.assertEqual(handoff["accounting_basis"], "cash")
-        self.assertIn(["Basis", "Cash basis book balances computed by the Slashbooks engine"], taxmap._readme_table(handoff, {}))
+        self.assertIn(["Basis", "Cash basis book balances computed by the accounting engine"], taxmap._readme_table(handoff, {}))
 
 
 class TaxCoverageIntegrityTests(unittest.TestCase):

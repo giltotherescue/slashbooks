@@ -96,6 +96,7 @@ from .ledger.normalize import normalize_description
 from .tieout import presentation_sign, statement_tieout
 from .source_ids import same_family, source_family, source_id_variants
 from .work import observe_import
+from .brand import product_name
 
 JsonObject = dict[str, Any]
 
@@ -289,7 +290,7 @@ def _currency_view(result: JsonObject, named: set[str], company: str, config: Js
         "file": code, "company": company,
         "note": (f"The file is in {code}. If the company has no entries yet, the import makes {code} the company "
                  f"currency. If the company already has entries in {company}, the import refuses. "
-                 "Slashbooks does not convert currencies.")}
+                 f"{product_name()} does not convert currencies.")}
 
 
 def _detection_view(detected: JsonObject) -> JsonObject:

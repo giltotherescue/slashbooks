@@ -66,6 +66,7 @@ from .staging import StagingStore
 from .store import LedgerStore, default_store_path
 from .normalize import normalize_description
 from ..source_ids import source_id_variants
+from ..brand import product_name
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -304,7 +305,7 @@ def _atomic_ledger_write_unlocked(
         foreign = sorted({p.currency for entry in new_entries for p in entry.postings if p.currency != book})
         if foreign:
             raise ValueError(f"The entries are in {', '.join(foreign)}, but the company keeps its books in {book}. "
-                             "Slashbooks does not convert currencies. Nothing was written.")
+                             f"{product_name()} does not convert currencies. Nothing was written.")
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
         if finalization_receipt is not None:

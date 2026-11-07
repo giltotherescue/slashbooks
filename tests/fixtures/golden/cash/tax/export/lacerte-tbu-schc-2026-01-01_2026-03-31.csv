@@ -1,4 +1,4 @@
-Account Number,Account Name,Account Type,Balance,Slashbooks Tax Line
+Account Number,Account Name,Account Type,Balance,Tax Line
 1010,Assets › Bank › Checking,A,33043.47,schc/none/balance_sheet Balance sheet account (Schedule C has no balance sheet)
 3010,Equity › Owner-Contributions,L,-20000.00,schc/none/owner_equity Owner contributions and draws (not on Schedule C)
 3020,Equity › Owner-Draws,L,2000.00,schc/none/owner_equity Owner contributions and draws (not on Schedule C)

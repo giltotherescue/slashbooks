@@ -549,7 +549,7 @@ class MixedCompanyRealPathTests(unittest.TestCase):
         self.assertEqual(handoff["accounting_basis"], "cash")
         self.assertIsNone(handoff["basis_label"])
         self.assertEqual(manifest["accounting_basis"], "cash")
-        self.assertIn("Basis: Cash basis book balances computed by the Slashbooks engine", readme)
+        self.assertIn("Basis: Cash basis book balances computed by the accounting engine", readme)
         self.assertNotIn("accrual tracking", readme)
         self.assertIn("Accounting basis,Cash basis", cover)
         self.assertNotIn("accrual tracking", cover)

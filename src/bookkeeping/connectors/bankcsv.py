@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import currency as currency_mod
+from ..brand import product_name
 
 JsonObject = dict[str, Any]
 
@@ -250,16 +251,16 @@ def _foreign_currency(value: str, currency: str = "USD") -> str | None:
 def _foreign_message(value: str, mark: str, currency: str) -> str:
     if mark == "$":
         return (f"The file shows amounts with a dollar sign ({value}), but the company keeps its books in {currency}, "
-                f"which does not use \"$\". Slashbooks does not convert currencies. Ask for a file in {currency}.")
+                f"which does not use \"$\". {product_name()} does not convert currencies. Ask for a file in {currency}.")
     return (f"The file contains an amount ({value}) in {mark}, not in {currency}, the company currency. "
-            "Slashbooks does not convert currencies.")
+            f"{product_name()} does not convert currencies.")
 
 
 def _mixed_error(found: set[str], what: str = "The file") -> StatementFileError:
     return StatementFileError(
         "unsupported_currency",
         f"{what} has amounts in more than one currency ({', '.join(sorted(found))}). Each company keeps "
-        "its books in one currency and Slashbooks does not convert currencies. Ask for a separate file "
+        f"its books in one currency and {product_name()} does not convert currencies. Ask for a separate file "
         "for each currency, or a file already converted to the company currency.")
 
 
@@ -281,7 +282,7 @@ def check_currency_headers(rows: list[list[str]], currency: str | None = None) -
     if currency is not None and found - {currency}:
         raise StatementFileError(
             "unsupported_currency",
-            f"A money column is in {next(iter(found))}, not in {currency}. Slashbooks does not convert currencies.")
+            f"A money column is in {next(iter(found))}, not in {currency}. {product_name()} does not convert currencies.")
 
 
 def file_currencies(text: str, layout: JsonObject | None = None) -> set[str]:
@@ -824,7 +825,7 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None,
                 raise StatementFileError(
                     "unsupported_currency",
                     f"Line {line} is in {cell(row, 'currency')}, not in {currency}. "
-                    "Slashbooks does not convert currencies.",
+                    f"{product_name()} does not convert currencies.",
                     [line])
             if sign == "debit_credit":
                 debit = parse_money(cell(row, "debit"), decimal, currency)

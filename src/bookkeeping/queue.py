@@ -101,6 +101,7 @@ from functools import wraps
 from .entity import Entity, load_entity
 from .source_ids import source_id_variants
 from .ledger.normalize import normalize_description
+from .brand import product_name
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -583,7 +584,7 @@ def check_taught(entity: Entity, source_ids: list[str], category: str) -> None:
         taught = taught_for(entity, key)
         if taught and taught["category"] != category:
             raise ValueError(
-                f"A person told Slashbooks to use {taught['category']} for {key} on "
+                f"A person told {product_name()} to use {taught['category']} for {key} on "
                 f"{str(taught.get('at') or '')[:10]}. Propose that category, "
                 f"or leave the item open and ask a question.")
 
@@ -1182,7 +1183,7 @@ def resolve_duplicate_candidate(
         if not isinstance(txn, dict):
             raise ValueError(
                 "This candidate predates the safe review workflow and lacks its source transaction. "
-                "Re-download and ingest the source after updating Slashbooks."
+                f"Re-download and ingest the source after updating {product_name()}."
             )
         from .ledger.importer import import_transactions
 
