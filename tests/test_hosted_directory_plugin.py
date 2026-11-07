@@ -13,7 +13,7 @@ DEFAULT_SCOPES = [
     "books:read", "questions:write", "proposals:write", "evidence:write",
     "sources:write", "runs:write", "books:write",
 ]
-CHATGPT_DESCRIPTION = 'Slashbooks helps you handle your small business accounting through ChatGPT. Sync your business bank accounts, categorize transactions, close your books monthly, and prepare financial reports for your accountant. Ask questions about your finances and forecast cash flow.\n\nSlashbooks gives ChatGPT a double-entry accounting system that handles the calculations and checks that entries balance. Built-in workflows guide the bookkeeping for different types of businesses, from recording daily transactions to preparing for month-end close.\n\nRequires a Slashbooks Cloud account.'
+CHATGPT_DESCRIPTION = 'Slashbooks helps you handle your small business accounting through ChatGPT. Sync your business bank accounts, categorize transactions, close your books monthly, and prepare financial reports for your accountant. Ask questions about your finances and forecast cash flow.\n\nSlashbooks gives ChatGPT a double-entry accounting system that handles the calculations and checks that entries balance. Built-in workflows guide the bookkeeping for different types of businesses, from recording daily transactions to preparing for month-end close.\n\nRequires a Clozy account.'
 
 CLAUDE_DESCRIPTION = CHATGPT_DESCRIPTION.replace("ChatGPT", "Claude")
 
@@ -43,15 +43,15 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         self.assertEqual(interface["composerIconDark"], "./assets/icon-dark.svg")
         self.assertEqual(interface["logoDark"], "./assets/icon-dark.svg")
         self.assertEqual(self.png_dimensions("assets/icon.png"), (512, 512))
-        self.assertEqual(manifest["author"]["email"], "hi@slashbooks.co")
+        self.assertEqual(manifest["author"]["email"], "hi@heyclozy.com")
         self.assertNotIn("Cloud", manifest["description"])
-        self.assertIn("Requires a Slashbooks Cloud account.", interface["longDescription"])
+        self.assertIn("Requires a Clozy account.", interface["longDescription"])
         self.assertNotIn("—", interface["longDescription"])
 
         mcp = self.load("mcp.json")["mcpServers"]
         self.assertEqual(list(mcp), ["slashbooks"])
         self.assertEqual(mcp["slashbooks"]["type"], "streamable-http")
-        self.assertEqual(mcp["slashbooks"]["url"], "https://slashbooks.co/mcp")
+        self.assertEqual(mcp["slashbooks"]["url"], "https://heyclozy.com/mcp")
         auth = mcp["slashbooks"]["extensions"]["com.openai"]["auth"]
         self.assertEqual(auth["type"], "oauth")
         self.assertEqual(auth["client"], {"mode": "dcr"})
@@ -66,10 +66,10 @@ class HostedDirectoryPluginTests(unittest.TestCase):
         self.assertEqual(manifest["version"], "0.9.2")
         self.assertEqual(manifest["description"], CLAUDE_DESCRIPTION)
         self.assertEqual(manifest["icon"], "./assets/icon.png")
-        self.assertIn("Requires a Slashbooks Cloud account.", manifest["description"])
+        self.assertIn("Requires a Clozy account.", manifest["description"])
         self.assertNotIn("—", manifest["description"])
         mcp = self.load(".mcp.json")["mcpServers"]
-        self.assertEqual(mcp["slashbooks"]["url"], "https://slashbooks.co/mcp")
+        self.assertEqual(mcp["slashbooks"]["url"], "https://heyclozy.com/mcp")
 
     def test_package_has_no_local_runtime_or_secrets(self):
         paths = [p for p in PACKAGE.rglob("*") if p.is_file()]

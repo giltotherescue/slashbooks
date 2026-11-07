@@ -56,11 +56,11 @@ they do not answer.
 ## Choose where the books live
 
 After the optional audience question and before business questions, help the user choose
-local books or Slashbooks Cloud. Do not ask when the answer is already known:
+local books or Clozy. Do not ask when the answer is already known:
 
 - The folder already has `.slashbooks-remote.json`: the books are in the cloud.
 - The folder already has `entity.json`: the books are local.
-- The user pasted a Slashbooks Cloud connection message, or clearly asked for
+- The user pasted a Clozy connection message, or clearly asked for
   local or cloud books.
 - The user wants the Northstar demo, or is a developer/tester: use local books.
 
@@ -74,13 +74,13 @@ which one they want. Use this content, not this exact wording:
 - The user keeps their own backups and shares results by exporting files.
 - Good fit: an owner who keeps their own books and wants full control.
 
-**Slashbooks Cloud — hosted service at slashbooks.co**
-- The books are stored by Slashbooks, with automatic backups.
+**Clozy — hosted service at heyclozy.com**
+- The books are stored by Clozy, with automatic backups.
 - The owner and their accountant or bookkeeping firm work on the same books
   from anywhere, through this agent or the website.
 - Bank connections and a receipt email address are set up on the website.
-- It needs a Slashbooks Cloud account. At this time, accounts come through an
-  accounting firm that uses Slashbooks Cloud.
+- It needs a Clozy account. At this time, accounts come through an
+  accounting firm that uses Clozy.
 - Good fit: a business that works with an accountant or firm, or that wants
   shared books without local files to manage.
 
@@ -88,13 +88,13 @@ Both options use the same accounting engine and rules. Local books use the
 bundled command runner and local files. Hosted books use a company-bound
 connection, named Cloud operations, and shared storage. Local books can move to
 the cloud later. If the user is unsure, ask
-whether they work with an accountant who uses Slashbooks Cloud. If not,
+whether they work with an accountant who uses Clozy. If not,
 recommend local books; they can move later.
 
 If the user chooses the cloud:
 - An accountant or firm staff member can connect now: follow the books-cloud
   skill to start browser sign-in. They choose the company in the browser. A
-  connection message from **Agent setup** on slashbooks.co also works.
+  connection message from **Agent setup** on heyclozy.com also works.
 - A business owner asks their accountant to connect the books, or for an
   invitation if they do not have an account yet.
 - After sign-in, continue onboarding against the cloud books.
@@ -679,7 +679,7 @@ scripts/books entity onboarding-complete <path> --via agent
 It writes `onboarding_completed` (date and `via`) to `entity.json` only and
 changes no ledger data. A valid first record is kept, so a second run reports
 `already_complete` and is safe. Do not run it for demo books, in prepare mode,
-or while setup questions are still open. For cloud books, Slashbooks Cloud reads
+or while setup questions are still open. For cloud books, Clozy reads
 this record: until a company has it (or completed the setup meeting, or published
 a month), its To do and Reports stay locked and the hosted automation asks no
 business questions. Inside Cloud, only the setup meeting, staff and a person's

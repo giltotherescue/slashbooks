@@ -8,7 +8,7 @@ narrative never contribute to a count.
 
 The engine produces only books facts. Who did the work (``actor``), through
 which surface (``via``), in which run (``run``), and when the host committed it
-(``occurred_at``) are host facts. A host such as Slashbooks Cloud adds them;
+(``occurred_at``) are host facts. A host such as Clozy adds them;
 the engine never sets them. See ``docs/work-events.md`` and
 ``docs/work-event.schema.json``.
 

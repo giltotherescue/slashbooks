@@ -58,7 +58,7 @@
         </a>
       </section>
 
-      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity SaaS or service business in one currency (USD by default). Your books live in local files you own. A shared Slashbooks Cloud workspace is optional.</p>
+      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity SaaS or service business in one currency (USD by default). Your books live in local files you own. A shared Clozy workspace is optional.</p>
 
       <p>The <code>/books</code> plugin guides setup, imports, review, reconciliation, and export in Claude Cowork, Claude Code, and Codex. Other agents can use the same command-line interface. The accounting engine calculates the numbers; you decide what work the agent may do.</p>
 
@@ -150,51 +150,51 @@
 
       <section class="compare-teaser" aria-labelledby="cloud-title">
         <h2 id="cloud-title">Local or Cloud</h2>
-        <p>Slashbooks is an AI bookkeeper. This site is the free open-source plugin. Slashbooks Cloud hosts the same engine and adds bank connections in the browser, automatic backups, and shared access for an accountant or firm. Both keep cash-basis books for small businesses whose money moves through bank accounts, cards, Stripe, or Mercury. Opt-in accrual is for services and SaaS businesses. The local plugin keeps one company's books. Cloud is in beta. Neither one does payroll or inventory.</p>
+        <p>Slashbooks is an AI bookkeeper. This site is the free open-source plugin. Clozy hosts the same engine and adds bank connections in the browser, automatic backups, and shared access for an accountant or firm. Both keep cash-basis books for small businesses whose money moves through bank accounts, cards, Stripe, or Mercury. Opt-in accrual is for services and SaaS businesses. The local plugin keeps one company's books. Cloud is in beta. Neither one does payroll or inventory.</p>
         <table class="comparison">
           <thead>
             <tr>
               <th scope="col"><span class="visually-hidden">Aspect</span></th>
               <th scope="col">Local plugin</th>
-              <th scope="col">Slashbooks Cloud</th>
+              <th scope="col">Clozy</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>Where your books live</td>
               <td data-label="Local plugin">On your computer.</td>
-              <td data-label="Slashbooks Cloud">Hosted by Slashbooks.</td>
+              <td data-label="Clozy">Hosted by Clozy.</td>
             </tr>
             <tr>
               <td>Who runs the agent</td>
               <td data-label="Local plugin">You run your own agent.</td>
-              <td data-label="Slashbooks Cloud">Slashbooks does the monthly work for you, after you turn it on.</td>
+              <td data-label="Clozy">Clozy does the monthly work for you, after you turn it on.</td>
             </tr>
             <tr>
               <td>Bank connections</td>
               <td data-label="Local plugin">You set them up with your own keys.</td>
-              <td data-label="Slashbooks Cloud">You connect your bank in the browser. Slashbooks never sees your bank login.</td>
+              <td data-label="Clozy">You connect your bank in the browser. Clozy never sees your bank login.</td>
             </tr>
             <tr>
               <td>Backups</td>
               <td data-label="Local plugin">You make them.</td>
-              <td data-label="Slashbooks Cloud">Automatic.</td>
+              <td data-label="Clozy">Automatic.</td>
             </tr>
             <tr>
               <td>Accountant or firm access</td>
               <td data-label="Local plugin">You share files.</td>
-              <td data-label="Slashbooks Cloud">Shared access for an accountant or firm.</td>
+              <td data-label="Clozy">Shared access for an accountant or firm.</td>
             </tr>
             <tr>
               <td>Price</td>
               <td data-label="Local plugin">Free.</td>
-              <td data-label="Slashbooks Cloud">Free during the beta, with at least 30 days' notice before any charge.</td>
+              <td data-label="Clozy">Free during the beta, with at least 30 days' notice before any charge.</td>
             </tr>
           </tbody>
         </table>
         <div class="cta-row">
-          <a class="btn btn-secondary" href="https://slashbooks.co/">Try Slashbooks Cloud</a>
-          <a class="btn btn-secondary" href="https://slashbooks.co/for-firms/">Slashbooks Cloud for firms</a>
+          <a class="btn btn-secondary" href="https://heyclozy.com/">Try Clozy</a>
+          <a class="btn btn-secondary" href="https://heyclozy.com/for-firms/">Clozy for firms</a>
         </div>
       </section>
 
@@ -213,7 +213,7 @@
             <tr>
               <td>Where your books live</td>
               <td data-label="QuickBooks">Intuit's cloud, reached through their app.</td>
-              <td data-label="Slashbooks">Local files you own, or a shared Slashbooks Cloud workspace.</td>
+              <td data-label="Slashbooks">Local files you own, or a shared Clozy workspace.</td>
             </tr>
             <tr>
               <td>How you work</td>
@@ -228,7 +228,7 @@
             <tr>
               <td>Cost</td>
               <td data-label="QuickBooks">Monthly subscription.</td>
-              <td data-label="Slashbooks">Free local plugin, Apache-2.0. Slashbooks Cloud is free during the beta. Your AI tools and data providers have their own costs.</td>
+              <td data-label="Slashbooks">Free local plugin, Apache-2.0. Clozy is free during the beta. Your AI tools and data providers have their own costs.</td>
             </tr>
           </tbody>
         </table>
@@ -252,7 +252,7 @@
       </ul>
 
       <h2>Your books persist between conversations</h2>
-      <p>Each local company directory holds its own <code>ledger.sqlite</code>, supporting documents, review queue, schedules, and reports. Optionally, link a folder to Slashbooks Cloud, where authorized people and agents share the company state. Switching conversations does not reset the books.</p>
+      <p>Each local company directory holds its own <code>ledger.sqlite</code>, supporting documents, review queue, schedules, and reports. Optionally, link a folder to Clozy, where authorized people and agents share the company state. Switching conversations does not reset the books.</p>
       <p>An always-on assistant can inspect activity, prepare changes, and bring back exceptions using the <code>books</code> CLI or Cloud API. Give it access to the company and explicitly delegate the actions it may perform. A recurring task supplies a schedule; it does not grant accounting authority. Source documents supply facts, not approval.</p>
       <p>Start with a reviewed run, then schedule the supported preparation steps if your assistant provides scheduling. Final close and publication have their own authority. Slashbooks records accounting; it does not move money.</p>
 
@@ -270,7 +270,7 @@
 
         <details>
           <summary>What does it cost?</summary>
-          <p>The local plugin is free and open source under Apache-2.0. Your AI assistant and any data providers have their own costs. Slashbooks Cloud is a hosted service. It is free during the beta. Slashbooks gives at least 30 days' notice before any charge. <a href="https://slashbooks.co/">Learn about Slashbooks Cloud</a></p>
+          <p>The local plugin is free and open source under Apache-2.0. Your AI assistant and any data providers have their own costs. Clozy is a hosted service. It is free during the beta. Clozy gives at least 30 days' notice before any charge. <a href="https://heyclozy.com/">Learn about Clozy</a></p>
         </details>
 
         <details>
@@ -357,7 +357,7 @@
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Accrual books and opening balances</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-recipes.md">Accrual recipes: a tested request for each pattern</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-intake.md">Using supporting documents from any provider</a></li>
-        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/cloud.md">Local books and Slashbooks Cloud</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/cloud.md">Local books and Clozy</a></li>
       </ul>
 
       <h2>License</h2>

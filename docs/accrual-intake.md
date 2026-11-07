@@ -309,10 +309,10 @@ which later reports are available. Import replay is idempotent; changing source
 facts, mapping, or target state invalidates the preview. This is not universal
 QuickBooks history reconstruction or a basis conversion.
 
-## Remote books (optional Slashbooks Cloud)
+## Remote books (optional, Clozy)
 
 Everything above runs locally with no account. If the company's books are in a
-Slashbooks Cloud workspace, the same commands run against the bound company. Use
+Clozy workspace, the same commands run against the bound company. Use
 the selected binding and ordinary company-relative paths, and do not insert
 internal transport placeholders into commands. A remote preview needs durable
 company inputs, so upload each file first. For example, from the binding directory:

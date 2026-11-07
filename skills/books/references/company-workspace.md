@@ -320,4 +320,4 @@ cookies, other-company tokens or broader scopes to evade denials.
 These instructions describe the compatibility contract. They do not prove the
 server supports every operation. Report unsupported commands, CAS, input transfer
 or artifact delivery explicitly, retaining local functionality and the user's
-intended remote workflow. See [local books and Slashbooks Cloud](../../../docs/cloud.md).
+intended remote workflow. See [local books and Clozy](../../../docs/cloud.md).

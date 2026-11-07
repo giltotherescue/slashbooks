@@ -959,7 +959,7 @@ class CloudEndpointDefaultTest(unittest.TestCase):
     def test_login_uses_the_official_cloud_unless_another_server_is_given(self) -> None:
         parser = cli.build_parser()
         default = parser.parse_args(["hosted", "login", "--company", "company", "--entity", "/tmp/books"])
-        self.assertEqual(default.endpoint, "https://slashbooks.co")
+        self.assertEqual(default.endpoint, "https://heyclozy.com")
         custom = parser.parse_args(["hosted", "login", "--endpoint", "https://books.example.com",
                                     "--company", "company", "--entity", "/tmp/books"])
         self.assertEqual(custom.endpoint, "https://books.example.com")

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Call the hosted service Clozy, at `https://heyclozy.com`. The default
+  `books cloud login --endpoint` is now `https://heyclozy.com`; `--endpoint`
+  still selects another server. The hosted plugin package connects to
+  `https://heyclozy.com/mcp` and lists `hi@heyclozy.com` as its contact.
+  Skills, docs and the public site say Clozy for the hosted service. The engine,
+  `books` CLI, plugin, repository and every identifier (`slashbooks-cloud`, the
+  `slashbooks` MCP server name, `ui://slashbooks/...`) keep the name Slashbooks.
+
 - Let a host choose the product name that reports, exports and messages show.
   Set it for one run with `books --product-name "Example Books" ...`, for one
   block of in-process calls with `bookkeeping.brand.use_product_name`, or for a

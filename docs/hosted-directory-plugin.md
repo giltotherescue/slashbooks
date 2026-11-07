@@ -1,7 +1,7 @@
 # Hosted directory plugin package
 
 `plugins/slashbooks-cloud/` is the hosted-only Slashbooks package. It connects to
-`https://slashbooks.co/mcp` and has no local runtime. It is separate from the
+`https://heyclozy.com/mcp` and has no local runtime. It is separate from the
 repository-root plugin, which continues to package the open-source engine and
 command-line workflow.
 

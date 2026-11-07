@@ -51,13 +51,13 @@ class HostedError(Exception):
         self.payload = {"error": {"code": code, "message": message, **details}}
 
 
-# The official Slashbooks Cloud service. Self-hosted servers pass --endpoint.
-CLOUD_ENDPOINT = "https://slashbooks.co"
+# The official Clozy service. Self-hosted servers pass --endpoint.
+CLOUD_ENDPOINT = "https://heyclozy.com"
 
 
 def add_parser(subparsers: Any) -> None:
     # "hosted" stays an alias so existing connections, prompts and scripts keep working.
-    parser = subparsers.add_parser("cloud", aliases=["hosted"], help="Connect to and use Slashbooks Cloud books")
+    parser = subparsers.add_parser("cloud", aliases=["hosted"], help="Connect to and use Clozy books")
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/slashbooks/hosted.json")
     parser.add_argument("--timeout", type=float, help=f"Request timeout in seconds (default {DEFAULT_TIMEOUT:g}, or {TIMEOUT_ENV}); no automatic retries")
     commands = parser.add_subparsers(dest="hosted_command", required=True)
@@ -66,7 +66,7 @@ def add_parser(subparsers: Any) -> None:
     from . import hosted_stripe
     hosted_stripe.add_parser(commands)
     login = commands.add_parser("login", help="Connect online books with browser approval; no API key needed")
-    login.add_argument("--endpoint", default=CLOUD_ENDPOINT, help=f"Slashbooks Cloud server (default {CLOUD_ENDPOINT})")
+    login.add_argument("--endpoint", default=CLOUD_ENDPOINT, help=f"Clozy server (default {CLOUD_ENDPOINT})")
     login.add_argument("--company", help="Company ID; omit it to choose the company in the browser")
     login.add_argument("--entity", type=Path, help="Folder for the connection; default ~/Documents/Slashbooks/online-<id hash>")
     login.add_argument("--allow-localhost", action="store_true")

@@ -1,7 +1,8 @@
-# Slashbooks Cloud plugin package
+# Clozy plugin package
 
-This package connects supported AI hosts to the hosted Slashbooks MCP endpoint at
-`https://slashbooks.co/mcp`. It contains instructions and connection metadata. It
+This package (directory and plugin id `slashbooks-cloud`) connects supported AI
+hosts to Clozy, the hosted service built on the open-source Slashbooks engine, at
+`https://heyclozy.com/mcp`. It contains instructions and connection metadata. It
 does not contain the Slashbooks engine, a local executable, Python dependencies,
 credentials, or private service identifiers.
 

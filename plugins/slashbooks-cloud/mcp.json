@@ -3,7 +3,7 @@
   "mcpServers": {
     "slashbooks": {
       "type": "streamable-http",
-      "url": "https://slashbooks.co/mcp",
+      "url": "https://heyclozy.com/mcp",
       "extensions": {
         "com.openai": {
           "auth": {

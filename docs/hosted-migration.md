@@ -205,5 +205,5 @@ with private evidence instead of creating a replacement write.
   authorized provider setup separately; never claim a migrated bank connection
   from preserved source identifiers.
 
-See [local books and Slashbooks Cloud](cloud.md) for ongoing remote commands and
+See [local books and Clozy](cloud.md) for ongoing remote commands and
 file-update rules. Existing local-only onboarding remains unchanged.

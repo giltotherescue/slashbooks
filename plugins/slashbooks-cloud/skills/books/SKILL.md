@@ -1,6 +1,6 @@
 ---
 name: slashbooks-cloud-books
-description: Use Slashbooks Cloud for bookkeeping review, questions, reports, close preparation, and accountant handoff.
+description: Use Clozy for bookkeeping review, questions, reports, close preparation, and accountant handoff.
 ---
 
 # Work with hosted Slashbooks books
@@ -35,14 +35,14 @@ For **Update my books**:
 1. Use the exact current approved routine policy. Call
    `start_authorized_bookkeeping` only when the request and policy cover it.
 2. Refresh a source only when the task needs current data, the source is stale,
-   and Slashbooks permits the action.
+   and Clozy permits the action.
 3. Follow the run with `get_bookkeeping_work`. Keep open questions and
    exceptions visible.
 4. Use `check_close_readiness` only when the task needs a readiness claim.
 
 Use the question tools for open questions and the report tools for financial
 answers. Use the company, period, basis, currency, and scope returned by
-Slashbooks. For setup, save confirmed facts and source references through the
+Clozy. For setup, save confirmed facts and source references through the
 available tools, then read back the profile, sources and accounts. Required
 facts must be durably recorded before completion. After the user explicitly
 confirms completion, use `complete_bookkeeping_onboarding` with the current

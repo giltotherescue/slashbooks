@@ -1,9 +1,9 @@
 ---
 name: slashbooks-cloud-get-started
-description: Connect to Slashbooks Cloud and begin hosted bookkeeping without installing local software.
+description: Connect to Clozy and begin hosted bookkeeping without installing local software.
 ---
 
-# Get started with Slashbooks Cloud
+# Get started with Clozy
 
 Read and follow the generated [communication rules](references/procedures/communication.md)
 and [hard rules](references/procedures/hard-rules.md). When setup is relevant,
@@ -16,8 +16,8 @@ ask the user to connect it through the host's OAuth flow. Never request or
 handle passwords, access tokens, client secrets, or recovery codes in chat.
 
 Call `get_bookkeeping_context` first. The connection is bound to the company
-returned by Slashbooks. Do not enumerate or switch companies. To use another
-company, ask the user to reconnect Slashbooks in the host and select it there.
+returned by Clozy. Do not enumerate or switch companies. To use another
+company, ask the user to reconnect Clozy in the host and select it there.
 
 Use `workflow_navigation.next_actions` when they are relevant to the user's
 task. They are advisory: they do not grant authority or prove that the books
@@ -35,7 +35,7 @@ missing facts or validate the accounts for you.
 
 If the tools, permission, confirmed facts, or saved support are missing, keep
 setup unfinished and use `handoff_to_slashbooks` when available. Follow the human
-action and URL returned by Slashbooks. Do not invent a protected choice or an
+action and URL returned by Clozy. Do not invent a protected choice or an
 unsupported setup route.
 
 Continue the user's requested task when it is known. Route ongoing review,

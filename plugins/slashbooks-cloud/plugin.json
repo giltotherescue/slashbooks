@@ -5,10 +5,10 @@
   "description": "Small business accounting with ChatGPT.",
   "author": {
     "name": "Lower Coast Labs, LLC",
-    "email": "hi@slashbooks.co",
-    "url": "https://slashbooks.co"
+    "email": "hi@heyclozy.com",
+    "url": "https://heyclozy.com"
   },
-  "homepage": "https://slashbooks.co",
+  "homepage": "https://heyclozy.com",
   "repository": "https://github.com/giltotherescue/slashbooks",
   "license": "Apache-2.0",
   "keywords": [
@@ -21,7 +21,7 @@
       "interface": {
         "displayName": "Slashbooks",
         "shortDescription": "Small business accounting",
-        "longDescription": "Slashbooks helps you handle your small business accounting through ChatGPT. Sync your business bank accounts, categorize transactions, close your books monthly, and prepare financial reports for your accountant. Ask questions about your finances and forecast cash flow.\n\nSlashbooks gives ChatGPT a double-entry accounting system that handles the calculations and checks that entries balance. Built-in workflows guide the bookkeeping for different types of businesses, from recording daily transactions to preparing for month-end close.\n\nRequires a Slashbooks Cloud account.",
+        "longDescription": "Slashbooks helps you handle your small business accounting through ChatGPT. Sync your business bank accounts, categorize transactions, close your books monthly, and prepare financial reports for your accountant. Ask questions about your finances and forecast cash flow.\n\nSlashbooks gives ChatGPT a double-entry accounting system that handles the calculations and checks that entries balance. Built-in workflows guide the bookkeeping for different types of businesses, from recording daily transactions to preparing for month-end close.\n\nRequires a Clozy account.",
         "developerName": "Lower Coast Labs, LLC",
         "category": "Finance",
         "capabilities": [
@@ -29,10 +29,10 @@
           "Read company reports",
           "Prepare accountant exports"
         ],
-        "websiteURL": "https://slashbooks.co",
-        "supportURL": "https://slashbooks.co/support",
-        "privacyPolicyURL": "https://slashbooks.co/privacy",
-        "termsOfServiceURL": "https://slashbooks.co/terms",
+        "websiteURL": "https://heyclozy.com",
+        "supportURL": "https://heyclozy.com/support",
+        "privacyPolicyURL": "https://heyclozy.com/privacy",
+        "termsOfServiceURL": "https://heyclozy.com/terms",
         "composerIcon": "./assets/icon.png",
         "composerIconDark": "./assets/icon-dark.svg",
         "logo": "./assets/icon.png",
