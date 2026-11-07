@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Remove the hosted connector plugin (`plugins/slashbooks-cloud/`), its
+  packaging script and tests, and the directory plugin page. Remove the default
+  server address from `books cloud` (alias `books hosted`). `books cloud login`
+  and `books cloud configure` now need `--endpoint https://<server>` or the
+  environment variable `BOOKS_ENDPOINT`. Without one, the command stops with
+  `ENDPOINT_REQUIRED` and says how to set it. Existing saved connections keep
+  their stored address and keep working. The client still works with any server
+  that implements the documented protocol.
+
 - Let a host choose the product name that reports, exports and messages show.
   Set it for one run with `books --product-name "Example Books" ...`, for one
   block of in-process calls with `bookkeeping.brand.use_product_name`, or for a

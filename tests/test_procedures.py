@@ -28,9 +28,7 @@ def _norm(text: str) -> str:
 
 
 def _skill_files() -> list[Path]:
-    return sorted(SKILLS_DIR.glob("*/SKILL.md")) + sorted(
-        (REPO_ROOT / "plugins/slashbooks-cloud/skills").glob("*/SKILL.md")
-    )
+    return sorted(SKILLS_DIR.glob("*/SKILL.md"))
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess:

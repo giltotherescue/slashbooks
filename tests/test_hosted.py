@@ -956,10 +956,20 @@ class CloudTimeoutTests(unittest.TestCase):
 
 
 class CloudEndpointDefaultTest(unittest.TestCase):
-    def test_login_uses_the_official_cloud_unless_another_server_is_given(self) -> None:
+    def test_login_has_no_built_in_server_address(self) -> None:
         parser = cli.build_parser()
         default = parser.parse_args(["hosted", "login", "--company", "company", "--entity", "/tmp/books"])
-        self.assertEqual(default.endpoint, "https://slashbooks.co")
+        self.assertIsNone(default.endpoint)
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(hosted.ENDPOINT_ENV, None)
+            with self.assertRaises(hosted.HostedError) as caught:
+                hosted._endpoint_argument(default.endpoint)
+        self.assertEqual(caught.exception.payload["error"]["code"], "ENDPOINT_REQUIRED")
+        self.assertIn("--endpoint", caught.exception.payload["error"]["message"])
+        self.assertIn(hosted.ENDPOINT_ENV, caught.exception.payload["error"]["message"])
+        with patch.dict(os.environ, {hosted.ENDPOINT_ENV: "https://env.example.com"}):
+            self.assertEqual(hosted._endpoint_argument(None), "https://env.example.com")
+            self.assertEqual(hosted._endpoint_argument("https://flag.example.com"), "https://flag.example.com")
         custom = parser.parse_args(["hosted", "login", "--endpoint", "https://books.example.com",
                                     "--company", "company", "--entity", "/tmp/books"])
         self.assertEqual(custom.endpoint, "https://books.example.com")

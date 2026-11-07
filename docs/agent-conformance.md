@@ -174,7 +174,7 @@ use the suite as its own acceptance test:
 A pass is evidence about agent behavior on these traps. It does not prove that an
 agent is safe on real books. Server-side limits remain the main protection:
 credentials with narrow scopes, the service readiness check, and standing policy. See
-[Standing policy](standing-policy.md) and [Local books and Slashbooks Cloud](cloud.md).
+[Standing policy](standing-policy.md) and [Local books and online books](cloud.md).
 
 ## Change the suite
 

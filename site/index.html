@@ -58,7 +58,7 @@
         </a>
       </section>
 
-      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity SaaS or service business in one currency (USD by default). Your books live in local files you own. A shared Slashbooks Cloud workspace is optional.</p>
+      <p class="lead">Slashbooks is an open-source bookkeeping engine your AI agent can use. Keep cash books, or opt into accrual for a straightforward, single-entity SaaS or service business in one currency (USD by default). Your books live in local files you own. Shared books on an online server are optional.</p>
 
       <p>The <code>/books</code> plugin guides setup, imports, review, reconciliation, and export in Claude Cowork, Claude Code, and Codex. Other agents can use the same command-line interface. The accounting engine calculates the numbers; you decide what work the agent may do.</p>
 
@@ -135,7 +135,7 @@
         <div class="difference-grid">
           <article>
             <h3>Your books stay with you</h3>
-            <p>Each local company has its own folder, ledger, supporting documents, review queue, and reports. An optional Cloud workspace shares the same books with your accountant.</p>
+            <p>Each local company has its own folder, ledger, supporting documents, review queue, and reports. An optional online server can share the same books with your accountant.</p>
           </article>
           <article>
             <h3>The AI is the interface, not the accountant</h3>
@@ -145,56 +145,6 @@
             <h3>Built to work with professional review</h3>
             <p>Slashbooks prepares structured books and exports. Your accountant or tax professional still provides professional judgment.</p>
           </article>
-        </div>
-      </section>
-
-      <section class="compare-teaser" aria-labelledby="cloud-title">
-        <h2 id="cloud-title">Local or Cloud</h2>
-        <p>Slashbooks is an AI bookkeeper. This site is the free open-source plugin. Slashbooks Cloud hosts the same engine and adds bank connections in the browser, automatic backups, and shared access for an accountant or firm. Both keep cash-basis books for small businesses whose money moves through bank accounts, cards, Stripe, or Mercury. Opt-in accrual is for services and SaaS businesses. The local plugin keeps one company's books. Cloud is in beta. Neither one does payroll or inventory.</p>
-        <table class="comparison">
-          <thead>
-            <tr>
-              <th scope="col"><span class="visually-hidden">Aspect</span></th>
-              <th scope="col">Local plugin</th>
-              <th scope="col">Slashbooks Cloud</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Where your books live</td>
-              <td data-label="Local plugin">On your computer.</td>
-              <td data-label="Slashbooks Cloud">Hosted by Slashbooks.</td>
-            </tr>
-            <tr>
-              <td>Who runs the agent</td>
-              <td data-label="Local plugin">You run your own agent.</td>
-              <td data-label="Slashbooks Cloud">Slashbooks does the monthly work for you, after you turn it on.</td>
-            </tr>
-            <tr>
-              <td>Bank connections</td>
-              <td data-label="Local plugin">You set them up with your own keys.</td>
-              <td data-label="Slashbooks Cloud">You connect your bank in the browser. Slashbooks never sees your bank login.</td>
-            </tr>
-            <tr>
-              <td>Backups</td>
-              <td data-label="Local plugin">You make them.</td>
-              <td data-label="Slashbooks Cloud">Automatic.</td>
-            </tr>
-            <tr>
-              <td>Accountant or firm access</td>
-              <td data-label="Local plugin">You share files.</td>
-              <td data-label="Slashbooks Cloud">Shared access for an accountant or firm.</td>
-            </tr>
-            <tr>
-              <td>Price</td>
-              <td data-label="Local plugin">Free.</td>
-              <td data-label="Slashbooks Cloud">Free during the beta, with at least 30 days' notice before any charge.</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="cta-row">
-          <a class="btn btn-secondary" href="https://slashbooks.co/">Try Slashbooks Cloud</a>
-          <a class="btn btn-secondary" href="https://slashbooks.co/for-firms/">Slashbooks Cloud for firms</a>
         </div>
       </section>
 
@@ -213,7 +163,7 @@
             <tr>
               <td>Where your books live</td>
               <td data-label="QuickBooks">Intuit's cloud, reached through their app.</td>
-              <td data-label="Slashbooks">Local files you own, or a shared Slashbooks Cloud workspace.</td>
+              <td data-label="Slashbooks">Local files you own, or shared books on an online server.</td>
             </tr>
             <tr>
               <td>How you work</td>
@@ -228,7 +178,7 @@
             <tr>
               <td>Cost</td>
               <td data-label="QuickBooks">Monthly subscription.</td>
-              <td data-label="Slashbooks">Free local plugin, Apache-2.0. Slashbooks Cloud is free during the beta. Your AI tools and data providers have their own costs.</td>
+              <td data-label="Slashbooks">Free local plugin, Apache-2.0. Your AI tools and data providers have their own costs.</td>
             </tr>
           </tbody>
         </table>
@@ -252,8 +202,8 @@
       </ul>
 
       <h2>Your books persist between conversations</h2>
-      <p>Each local company directory holds its own <code>ledger.sqlite</code>, supporting documents, review queue, schedules, and reports. Optionally, link a folder to Slashbooks Cloud, where authorized people and agents share the company state. Switching conversations does not reset the books.</p>
-      <p>An always-on assistant can inspect activity, prepare changes, and bring back exceptions using the <code>books</code> CLI or Cloud API. Give it access to the company and explicitly delegate the actions it may perform. A recurring task supplies a schedule; it does not grant accounting authority. Source documents supply facts, not approval.</p>
+      <p>Each local company directory holds its own <code>ledger.sqlite</code>, supporting documents, review queue, schedules, and reports. Optionally, link a folder to an online server that supports the Slashbooks client, where authorized people and agents share the company state. Switching conversations does not reset the books.</p>
+      <p>An always-on assistant can inspect activity, prepare changes, and bring back exceptions using the <code>books</code> CLI or an online server's API. Give it access to the company and explicitly delegate the actions it may perform. A recurring task supplies a schedule; it does not grant accounting authority. Source documents supply facts, not approval.</p>
       <p>Start with a reviewed run, then schedule the supported preparation steps if your assistant provides scheduling. Final close and publication have their own authority. Slashbooks records accounting; it does not move money.</p>
 
       <h2>Bring over existing books with a clear start date</h2>
@@ -270,12 +220,12 @@
 
         <details>
           <summary>What does it cost?</summary>
-          <p>The local plugin is free and open source under Apache-2.0. Your AI assistant and any data providers have their own costs. Slashbooks Cloud is a hosted service. It is free during the beta. Slashbooks gives at least 30 days' notice before any charge. <a href="https://slashbooks.co/">Learn about Slashbooks Cloud</a></p>
+          <p>The local plugin is free and open source under Apache-2.0. Your AI assistant and any data providers have their own costs.</p>
         </details>
 
         <details>
           <summary>Is my financial data private?</summary>
-          <p>Local books stay in your company folder. If you choose Cloud, the shared books live in the hosted service. Your AI assistant and the connections you enable see the data needed for their work, so choose their access deliberately.</p>
+          <p>Local books stay in your company folder. If you link a folder to an online server, the shared books live on that server. Your AI assistant and the connections you enable see the data needed for their work, so choose their access deliberately.</p>
         </details>
 
         <details>
@@ -290,17 +240,17 @@
 
         <details>
           <summary>What if I stop using it?</summary>
-          <p>Local books are ordinary files you keep: a SQLite ledger, supporting records, and plain-text, Excel, or CSV exports. Cloud books can be exported too. Keep the supporting documents and backups with the accounting state.</p>
+          <p>Local books are ordinary files you keep: a SQLite ledger, supporting records, and plain-text, Excel, or CSV exports. Online books can be exported too. Keep the supporting documents and backups with the accounting state.</p>
         </details>
 
         <details>
           <summary>Do I need to be technical?</summary>
-          <p>The plugin guides you in plain English through Claude Cowork, Claude Code, or Codex. A different assistant needs access to the documented CLI or Cloud API and the company workspace. Start with the demo to check the setup.</p>
+          <p>The plugin guides you in plain English through Claude Cowork, Claude Code, or Codex. A different assistant needs access to the documented CLI or an online server's API and the company workspace. Start with the demo to check the setup.</p>
         </details>
 
         <details>
           <summary>Can my Grok Bot, OpenAI dot, or Meta Muse use it?</summary>
-          <p><a href="https://docs.x.ai/grok-bot/get-started">Grok Bot</a>, an <a href="https://help.openai.com/en/articles/20001530-getting-started-with-your-dot">OpenAI dot</a>, and <a href="https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/">Meta Muse</a> are personal agents with their own tools and access controls. For Slashbooks, your assistant needs a working CLI or Cloud API connection, persistent company access, and permission for the intended operations.</p>
+          <p><a href="https://docs.x.ai/grok-bot/get-started">Grok Bot</a>, an <a href="https://help.openai.com/en/articles/20001530-getting-started-with-your-dot">OpenAI dot</a>, and <a href="https://about.fb.com/news/2026/09/introducing-muse-personal-ai-agent/">Meta Muse</a> are personal agents with their own tools and access controls. For Slashbooks, your assistant needs a working CLI or an online server's API connection, persistent company access, and permission for the intended operations.</p>
           <p>The plugin installs below cover Claude and Codex. Other assistant setups use the documented interfaces and should be checked with a demo workflow. A product name alone does not establish compatibility or grant permission to post entries.</p>
         </details>
       </section>
@@ -357,7 +307,7 @@
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual.md">Accrual books and opening balances</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-recipes.md">Accrual recipes: a tested request for each pattern</a></li>
         <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/accrual-intake.md">Using supporting documents from any provider</a></li>
-        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/cloud.md">Local books and Slashbooks Cloud</a></li>
+        <li><a href="https://github.com/giltotherescue/slashbooks/blob/main/docs/cloud.md">Local books and online books</a></li>
       </ul>
 
       <h2>License</h2>
