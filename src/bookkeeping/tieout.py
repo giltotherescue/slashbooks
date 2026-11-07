@@ -37,6 +37,7 @@ from typing import Any, Mapping, Sequence
 
 from .entity import _locked_entity_operation
 from .ledger.store import LedgerStore, default_store_path
+from .brand import product_name
 
 _CENT = Decimal("0.01")
 _ZERO = Decimal("0.00")
@@ -188,7 +189,7 @@ class LedgerUnreadableError(ValueError):
 
     def __init__(self, detail: str = "") -> None:
         message = ("ledger_unreadable: the ledger file cannot be read. Restore it from a backup "
-                   "or check that the file is a Slashbooks ledger.")
+                   f"or check that the file is a {product_name()} ledger.")
         super().__init__(f"{message} ({detail})" if detail else message)
 
 

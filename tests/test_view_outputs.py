@@ -227,7 +227,7 @@ class CanonicalReportsCrossTheTrackingStart(TrackedCompany):
         code, text, err = books("tax", "export", "--entity", entity, "--from", self.FROM, "--to", self.TO, "--output-dir", str(tax))
         self.assertEqual(code, 0, err)
         # No accrual record exists, so every entry is a cash entry and the original label is still true.
-        self.assertIn("Cash basis book balances computed by the Slashbooks engine", (tax / "README.txt").read_text())
+        self.assertIn("Cash basis book balances computed by the accounting engine", (tax / "README.txt").read_text())
 
 
 class AccrualDefaultCrossesTheTrackingStart(TrackedCompany):

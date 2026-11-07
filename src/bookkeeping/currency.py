@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterable, Mapping
+from .brand import product_name
 
 DEFAULT_CURRENCY = "USD"
 CURRENCY_KEY = "currency"
@@ -90,7 +91,7 @@ def normalize_code(value: Any) -> str:
         raise CurrencyError("invalid_currency", f"{value!r} is not a three-letter currency code such as USD or EUR.",
                             "Use an ISO 4217 code such as USD, EUR, GBP or CAD.")
     if text not in CURRENCIES:
-        raise CurrencyError("unknown_currency", f"{text} is not a currency that Slashbooks knows.",
+        raise CurrencyError("unknown_currency", f"{text} is not a currency that {product_name()} knows.",
                             "Use an ISO 4217 code such as USD, EUR, GBP or CAD.")
     return text
 
@@ -107,7 +108,7 @@ def require_supported(currency: Any) -> str:
     if digits != SUPPORTED_MINOR_UNITS:
         raise CurrencyError(
             "unsupported_currency_decimals",
-            f"{code} has {digits} decimal places. This version of Slashbooks keeps books only in currencies "
+            f"{code} has {digits} decimal places. This version of {product_name()} keeps books only in currencies "
             "with two decimal places, such as USD, EUR, GBP or CAD.",
             "Keep these books in a two-decimal currency, or wait for a version that supports this currency.",
             currency=code, minor_units=digits)
@@ -203,7 +204,7 @@ def strip_amount(text: str, code: str | None = None) -> str:
         others.add("$")
     if others:
         raise CurrencyError("unsupported_currency",
-                            f"The amount {text!r} is not in {code}, the company currency. Slashbooks does not convert currencies.",
+                            f"The amount {text!r} is not in {code}, the company currency. {product_name()} does not convert currencies.",
                             f"Use a report in {code}.", company_currency=code)
     symbol = CURRENCIES[code].symbol if code in CURRENCIES else None
     if symbol:
@@ -363,7 +364,7 @@ def mismatch_error(company: str, found: str, source: str, *, source_set: bool) -
     return CurrencyError(
         "unsupported_currency",
         f"The {source} is in {found}, but the company keeps its books in {company} and {why}. "
-        "Slashbooks does not convert currencies. Nothing was imported.",
+        f"{product_name()} does not convert currencies. Nothing was imported.",
         f"Ask for a file in {company}, or, if the company keeps its books in {found} and has no entries yet, "
         f"run books entity set-currency PATH --currency {found} before importing.",
         reason="currency_mismatch", company_currency=company, file_currency=found)
@@ -374,7 +375,7 @@ def mixed_error(found: Iterable[str], source: str) -> CurrencyError:
     return CurrencyError(
         "unsupported_currency",
         f"The {source} has amounts in more than one currency ({', '.join(codes)}). Each company keeps its books "
-        "in one currency and Slashbooks does not convert currencies. Nothing was imported.",
+        f"in one currency and {product_name()} does not convert currencies. Nothing was imported.",
         "Ask for a separate file for each currency, or a file already converted to the company currency.",
         reason="mixed_currency", currencies=codes)
 
@@ -418,7 +419,7 @@ def resolve_import_currency(entity: Any, found: Iterable[str], source: str, *, a
     try:
         normalize_code(code)
     except CurrencyError:
-        raise CurrencyError("unsupported_currency", f"The {source} names the currency {code}, which Slashbooks does not know. "
+        raise CurrencyError("unsupported_currency", f"The {source} names the currency {code}, which {product_name()} does not know. "
                             "Nothing was imported.", "Ask for a file in the company currency.",
                             reason="unknown_currency", file_currency=code) from None
     with _entity_write_lock(entity.path):
@@ -457,9 +458,10 @@ def check_rows(entity: Any, rows: Iterable[Mapping[str, Any]], source: str, *, a
 # ---------------------------------------------------------------------------
 
 SET_CURRENCY_KIND = "entity_set_currency"
-SET_CURRENCY_NOTE = ("Sets the one currency the company keeps its books in. Slashbooks does not convert currencies, keep "
-                     "exchange rates or compute exchange gains. Every import, report and entry uses this currency. "
-                     "It can change only while the company has no entries.")
+def set_currency_note() -> str:
+    return (f"Sets the one currency the company keeps its books in. {product_name()} does not convert currencies, keep "
+            "exchange rates or compute exchange gains. Every import, report and entry uses this currency. "
+            "It can change only while the company has no entries.")
 
 
 def preview_set_currency(entity: Any, currency: Any) -> dict[str, Any]:
@@ -479,7 +481,7 @@ def preview_set_currency(entity: Any, currency: Any) -> dict[str, Any]:
     if activity and changes:
         raise CurrencyError("company_has_entries",
                             f"The company already has {', '.join(activity)} in {current}. The company currency can change "
-                            "only while the company has no entries. Slashbooks does not convert currencies.",
+                            f"only while the company has no entries. {product_name()} does not convert currencies.",
                             "Start a new company folder for books in another currency.",
                             company_currency=current, requested_currency=code)
     store = LedgerStore(default_store_path(entity.path))
@@ -489,7 +491,7 @@ def preview_set_currency(entity: Any, currency: Any) -> dict[str, Any]:
             "effects": {"from": {"currency": current, "currency_source": current_source},
                         "to": {"currency": code, "currency_source": "set"},
                         "minor_units": CURRENCIES[code].minor_units, "entries_changed": 0,
-                        "published_statements_changed": False, "note": SET_CURRENCY_NOTE}}
+                        "published_statements_changed": False, "note": set_currency_note()}}
     body["request_hash"] = canonical_hash({"kind": SET_CURRENCY_KIND, "request": body["request"]})
     body["plan_hash"] = canonical_hash(body)
     return body

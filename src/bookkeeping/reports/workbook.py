@@ -67,6 +67,7 @@ from ..queue import ACTIONABLE_QUEUE_STATUSES, list_queue_items
 from ..ledger.store import LedgerStore, default_store_path
 from ..ledger.validator import parse_ledger
 from ..connectors.payroll import provider_spec
+from ..brand import product_name, is_default_name
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -495,7 +496,7 @@ def _run_indirect_tax_scope_check(entity_path: Path) -> SanityCheck:
             status="warn",
             detail=(
                 f"This entity is marked as {label}-registered/applicable. "
-                "Slashbooks does not calculate, file, or advise on VAT, GST, sales tax, "
+                f"{product_name()} does not calculate, file, or advise on VAT, GST, sales tax, "
                 "reverse charge, recoverability, or invoice requirements. Have a local "
                 "accountant review the treatment."
             ),
@@ -563,7 +564,7 @@ def _run_currency_scope_check(entity_path: Path) -> SanityCheck:
             status="warn",
             detail=(
                 f"The ledger contains currencies outside the operating currency "
-                f"{operating_currency}: {', '.join(extra)}. Slashbooks preserves these "
+                f"{operating_currency}: {', '.join(extra)}. {product_name()} preserves these "
                 "amounts but does not calculate foreign-exchange gains/losses or "
                 "multi-currency reporting."
             ),
@@ -605,7 +606,7 @@ def _run_payroll_reports_check(entity_path: Path, from_date: date, to_date: date
                 f"Payroll is enabled with {spec.display_name}, but no payroll report files "
                 f"were found in ingestion/payroll for {from_date} to {to_date}. "
                 f"{spec.report_hint} Payroll journal entries should be draft/accountant-confirmed; "
-                "Slashbooks does not calculate wages, withholdings, benefits, taxes, or filings."
+                f"{product_name()} does not calculate wages, withholdings, benefits, taxes, or filings."
             ),
         )
 
@@ -615,7 +616,7 @@ def _run_payroll_reports_check(entity_path: Path, from_date: date, to_date: date
         detail=(
             f"Found {len(candidates)} payroll report file(s) in ingestion/payroll for "
             f"{spec.display_name}. Review them before confirming any draft payroll journal entries; "
-            "Slashbooks does not calculate payroll or compliance obligations."
+            f"{product_name()} does not calculate payroll or compliance obligations."
         ),
     )
 
@@ -627,10 +628,10 @@ def _run_yoy_pnl_check(
 ) -> SanityCheck:
     """Check year-over-year P&L variance when prior-period data exists."""
     no_prior_detail = (
-        "No prior-year P&L transaction history is available in Slashbooks for "
+        f"No prior-year P&L transaction history is available in {product_name()} for "
         "year-over-year comparison. QuickBooks reference exports or opening "
         "balance snapshots may still exist, but this check only compares "
-        "Slashbooks ledger activity."
+        f"{product_name()} ledger activity."
     )
     period_days = (to_date - from_date).days + 1
     prior_to = date(from_date.year - 1, from_date.month, from_date.day) - __import__("datetime").timedelta(days=1)
@@ -1582,8 +1583,8 @@ def _build_summary_rows(
     rows: list[list[str]] = [
         ["Metric", "Value"],
         ["Business", entity_name],
-        ["Produced by", "Slashbooks"],
-        ["Project link", "https://github.com/giltotherescue/slashbooks"],
+        ["Produced by", product_name()],
+        *([["Project link", "https://github.com/giltotherescue/slashbooks"]] if is_default_name() else []),
         ["Accounting basis", accounting_basis_text or str(entity_config.get("basis", entity_config.get("accounting_basis", "cash"))).title() + " basis"],
         *([["Basis before tracking start", f"Cash basis: entries before {tracking_start} are cash entries, and the opening income is the recorded net income"]]
           if tracking_start and from_date.isoformat() < tracking_start else []),

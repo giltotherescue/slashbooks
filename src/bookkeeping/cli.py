@@ -59,12 +59,26 @@ from bookkeeping.reports import workbook as workbook_module
 from bookkeeping import coverage as coverage_module
 from bookkeeping import tieout as tieout_module
 from bookkeeping import taxmap as taxmap_module
+from bookkeeping import brand as brand_module
 
 
 def main(argv: list[str] | None = None) -> int:
+    command_argv = list(sys.argv[1:] if argv is None else argv)
+    name_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
+    name_parser.add_argument("--product-name")
+    name_args, command_argv = name_parser.parse_known_args(command_argv)
+    try:
+        with brand_module.use_product_name(name_args.product_name):
+            return _main(command_argv)
+    except brand_module.ProductNameError as exc:
+        print(json.dumps({"error": {"code": "PRODUCT_NAME_INVALID", "message": str(exc)}}), file=sys.stderr)
+        return 1
+
+
+def _main(argv: list[str]) -> int:
     load_dotenv(Path.cwd() / ".env")
     parser = build_parser()
-    command_argv = list(sys.argv[1:] if argv is None else argv)
+    command_argv = list(argv)
     answer_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
     answer_parser.add_argument("--answer-question-id")
     answer_parser.add_argument("--answer-reply-id", action="append")

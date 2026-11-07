@@ -31,6 +31,7 @@ from .scope import accrual_active, require_write_scope
 from .intake import IntakeValidationError, canonical_hash, normalize_amount
 from .journals import JournalError, _day
 from .schedules import _account, _request
+from ..brand import product_name
 
 RULES_FILE = "learned-context/accrual-rules.json"
 RULES_VERSION = 1
@@ -175,7 +176,7 @@ def _load_company(entity: Entity) -> dict[str, Any]:
     if (not isinstance(doc, dict) or doc.get("version") != RULES_VERSION or not isinstance(doc.get("rules"), list)
             or not isinstance(doc.get("receipts", []), list)):
         raise JournalError("rules_file_unsupported", f"{RULES_FILE} has an unsupported shape or version.",
-                           "Use a Slashbooks engine that supports this file, or restore it from a backup.")
+                           f"Use a {product_name()} engine that supports this file, or restore it from a backup.")
     doc.setdefault("receipts", [])
     return doc
 
@@ -264,7 +265,7 @@ def _rule_body(entity: Entity, request: Mapping[str, Any]) -> dict[str, Any]:
         body["term_months"] = term
     elif treatment == "depreciation":
         raise JournalError("term_required", "A depreciation rule needs term_months, the useful life in months.",
-                           "Add term_months, for example 36. Slashbooks does not choose a useful life.")
+                           f"Add term_months, for example 36. {product_name()} does not choose a useful life.")
     if "method" in request:
         if not scheduled:
             raise JournalError("method_not_allowed", f"method applies only to {', '.join(SCHEDULE_TREATMENTS)}, not {treatment}.",

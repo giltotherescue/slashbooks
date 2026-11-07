@@ -12,6 +12,7 @@ import tempfile
 from typing import Any
 
 from .tax1099 import verify_preparation
+from .brand import product_name
 
 TEMPLATES = Path(__file__).with_name("tax1099_templates")
 
@@ -160,7 +161,7 @@ def render_recipient_pdf(preparation: dict, recipient_id: str, protected_profile
                 else: contents = [existing]
                 page[NameObject("/Contents")] = ArrayObject(contents + [writer._add_object(stream)])
         sources.append({"form": form["form"], "template_sha256": expected["sha256"], "revision": expected["revision"]})
-    writer.add_metadata({"/Title": "Recipient tax copies", "/Subject": "Preparation only; no filing or delivery", "/Author": "Slashbooks"})
+    writer.add_metadata({"/Title": "Recipient tax copies", "/Subject": "Preparation only; no filing or delivery", "/Author": product_name()})
     target = Path(output).resolve()
     repo = Path(__file__).resolve().parents[2]
     if target.is_relative_to(repo): raise ValueError("Protected exports must be outside the source repository")

@@ -4,7 +4,7 @@ Company: Synthetic Tax Co
 Return: Form 1120-S (1120s, chosen by legal_structure)
 Line numbers: Tax year 2025 federal forms; confirm against the current year's form
 Period: 2026-01-01 to 2026-12-31
-Basis: Cash basis book balances computed by the Slashbooks engine
+Basis: Cash basis book balances computed by the accounting engine
 Total debits: 63552.34
 Total credits: 63552.34
 Unmapped accounts: 2

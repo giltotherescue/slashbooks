@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from typing import Any, Mapping
+from .brand import product_name
 
 TAX_METHOD_KEY = "tax_method"
 LEGACY_VIEW_KEY = "tax_method_view"   # an old switch. Ignored on read, dropped when the method is set, never written.
@@ -52,9 +53,9 @@ DERIVED_ACCOUNTS = {
 
 LABELS = {
     "derived": ("Cash method (tax): cash view derived from the accrual records. Income when received, expenses when paid; "
-                "capitalized prepaid expenses are deducted as used. Computed by the Slashbooks engine"),
-    "recorded_cash": "Cash method (tax): the recorded books are cash books. Book balances computed by the Slashbooks engine",
-    "accrual": "Accrual method (tax): accrual view of the recorded books. Book balances computed by the Slashbooks engine",
+                "capitalized prepaid expenses are deducted as used. Computed by the accounting engine"),
+    "recorded_cash": "Cash method (tax): the recorded books are cash books. Book balances computed by the accounting engine",
+    "accrual": "Accrual method (tax): accrual view of the recorded books. Book balances computed by the accounting engine",
 }
 
 
@@ -548,7 +549,7 @@ PROFILE_FIELDS = {PRIOR_RETURN_METHOD_KEY: PRIOR_RETURN_METHODS, ENTITY_TYPE_KEY
 SET_TAX_PROFILE_KIND = "tax_profile_set"
 PROFILE_NOTE = ("Records facts about the company for the tax preparer: the method of the last tax return filed "
                 f"({PRIOR_RETURN_METHOD_KEY}; none for a first-year business) and the kind of business entity ({ENTITY_TYPE_KEY}). "
-                "The tax export lists them. Slashbooks applies no tax rule to them: it does not decide, block or compute anything from them.")
+                f"The tax export lists them. {product_name()} applies no tax rule to them: it does not decide, block or compute anything from them.")
 
 
 def tax_profile(config: Mapping[str, Any]) -> dict[str, str]:

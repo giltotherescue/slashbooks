@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Let a host choose the product name that reports, exports and messages show.
+  Set it for one run with `books --product-name "Example Books" ...`, for one
+  block of in-process calls with `bookkeeping.brand.use_product_name`, or for a
+  process with `SLASHBOOKS_PRODUCT_NAME`. The default stays "Slashbooks". A
+  name must be 1 to 40 printable characters on one line and cannot start with
+  `=`, `+`, `-` or `@`. The accountant export cover omits the project link when
+  the name is not the default. Tax export text that only said the engine
+  computed the balances now says "the accounting engine", and the Lacerte
+  trial balance column header is now "Tax Line". The tax software import maps
+  columns by position, and the documented step marks that column "Do Not
+  Import".
+
 - Refuse singular tax-ID fields in captured Stripe invoice evidence, including
   alternate capitalization and punctuation, before invoice accounting effects.
 

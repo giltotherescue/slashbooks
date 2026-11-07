@@ -5,7 +5,7 @@ A3=Company	B3=Synthetic Acceptance Services
 A4=Return	B4=Form 1065 (1065, chosen by workspace)
 A5=Line numbers	B5=Tax year 2025 federal forms; confirm against the current year's form
 A6=Period	B6=2026-01-01 to 2026-07-31
-A7=Basis	B7=Accrual basis book balances computed by the Slashbooks engine
+A7=Basis	B7=Accrual basis book balances computed by the accounting engine
 A8=Total debits	B8=22640.00
 A9=Total credits	B9=22640.00
 A10=Unmapped accounts	B10=1
@@ -41,7 +41,7 @@ A10=Form 1065	B10=L	C10=21	D10=1065/L/21	E10=Partners' capital accounts	F10=	G10
 A1=Account Number	B1=Account	C1=Account Type	D1=Balance	E1=Reason	F1=How to fix
 A2=6010	B2=Expenses › Operating-Costs	C2=Expenses	D2=9540.00	E2=No name rule or safe default matches this account.	F2=books tax set --entity <company> --form 1065 --account Expenses:Operating-Costs --line <code>
 === sheet: Lacerte TBU
-A1=Account Number	B1=Account Name	C1=Account Type	D1=Balance	E1=Slashbooks Tax Line
+A1=Account Number	B1=Account Name	C1=Account Type	D1=Balance	E1=Tax Line
 A2=1010	B2=Assets › Bank › Checking	C2=A	D2=9600.00	E2=1065/L/1 Cash
 A3=1020	B3=Assets › Fixed › Accumulated-Depreciation	C3=A	D3=-440.00	E3=1065/L/9b Less accumulated depreciation
 A4=1030	B4=Assets › Fixed › Equipment	C4=A	D4=2400.00	E4=1065/L/9a Buildings and other depreciable assets

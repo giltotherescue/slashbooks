@@ -1,4 +1,4 @@
-Account Number,Account Name,Account Type,Balance,Slashbooks Tax Line
+Account Number,Account Name,Account Type,Balance,Tax Line
 1010,Assets › Bank › Checking,A,37300.00,1120s/L/1 Cash
 1020,Assets › Fixed › Accumulated-Depreciation,A,-1500.00,1120s/L/10b Less accumulated depreciation
 1030,Assets › Fixed › Equipment,A,6000.00,1120s/L/10a Buildings and other depreciable assets

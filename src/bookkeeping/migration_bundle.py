@@ -22,6 +22,7 @@ import zipfile
 from . import hosted_migration as capture
 from .remote_contract import ContractError, relative_path
 from .reports import statements
+from .brand import product_name
 
 FORMAT = "slashbooks-company-snapshot"
 VERSION = 2
@@ -428,7 +429,7 @@ def require_target_currency(manifest, target_config):
     if bundle_currency != target:
         error = BundleError("unsupported_currency")
         error.message = (f"The bundle keeps its books in {bundle_currency}, but the target company keeps its books in "
-                         f"{target}. Slashbooks does not convert currencies.")
+                         f"{target}. {product_name()} does not convert currencies.")
         error.bundle_currency, error.target_currency = bundle_currency, target
         raise error
     return bundle_currency

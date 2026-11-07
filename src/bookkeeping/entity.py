@@ -21,6 +21,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
+from .brand import product_name
 
 ACCRUAL_CAPABILITY_VERSION = 1
 
@@ -560,7 +561,7 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
                                              for table in ("intents", "schedules", "items", "allocations", "coverage"))
         if populated:
             raise ValueError(
-                "A populated company (one that already has entries) cannot change accounting basis, and Slashbooks does not convert in place. "
+                f"A populated company (one that already has entries) cannot change accounting basis, and {product_name()} does not convert in place. "
                 "To keep these books and add accrual records from a date, run books accrual enable preview --entity THIS_DIR --tracking-start YYYY-MM-DD. "
                 "Prior periods stay in this company. Or start a new accrual company at the cutover date and open it with balances: "
                 "1) books entity init NEW_DIR --name NAME --basis accrual --cutover-date YYYY-MM-DD; "

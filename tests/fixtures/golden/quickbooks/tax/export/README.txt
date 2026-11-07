@@ -4,7 +4,7 @@ Company: Synthetic Acceptance Services
 Return: Form 1065 (1065, chosen by workspace)
 Line numbers: Tax year 2025 federal forms; confirm against the current year's form
 Period: 2026-01-01 to 2026-07-31
-Basis: Accrual basis book balances computed by the Slashbooks engine
+Basis: Accrual basis book balances computed by the accounting engine
 Total debits: 22640.00
 Total credits: 22640.00
 Unmapped accounts: 1

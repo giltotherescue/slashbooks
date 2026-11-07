@@ -98,11 +98,11 @@
   "disclaimer": "Draft for review. Prepared from the data in these books only. It is not tax advice and does not replace preparation or review by a qualified tax professional.",
   "files": {
     "README.txt": {
-      "sha256": "9bdfda59f40d10caf3c877b0b6c69987e5b547b1f52b40803e4c7c373e33370f",
+      "sha256": "6aa8d7211bef5c1006be68570bbe9f287be4e7981ac825d5ffd38bd13f102be0",
       "sheet": "Read Me"
     },
     "lacerte-tbu-1120s-2026-01-01_2026-03-31.csv": {
-      "sha256": "9706a74e5086a0fbd1ea594bb949ea9fc17df20508b8b5308d7d87c805eb8163",
+      "sha256": "b92d2758c031afba5cbf980607733372cd412d284783e2b7d5997ba9a3cde5ec",
       "sheet": "Lacerte TBU"
     },
     "tax-line-summary-1120s-2026-01-01_2026-03-31.csv": {
