@@ -51,14 +51,25 @@ def policy(state: str = "authorized", start: str = "2026-03-01", version: int = 
     return {"schema_version": 1, "mode": mode, "epoch": epoch, "accounts": {CHECKING: account, **(extra or {})}}
 
 
+def opening(source_id: str = "statement-opening-s2", day: str = "2026-03-01", amount: str = "1000.00", *,
+            account: str = CHECKING, equity: str = "Equity:Opening-Balances", currency: str = "USD",
+            statement_id: str = "s2") -> dict:
+    """A complete opening entry in the context JSON format (every Entry and Posting field)."""
+    negative = amount[1:] if amount.startswith("-") else "-" + amount
+    entry = {"date": day, "narration": "Opening balance", "payee": None, "flag": "*", "tags": [], "links": [],
+             "meta": [["source-id", source_id], ["import-source", "statement-opening"], ["statement-id", statement_id]],
+             "postings": [{"account": account, "amount": amount, "currency": currency, "meta": []},
+                          {"account": equity, "amount": negative, "currency": currency, "meta": []}]}
+    return {"account": account, "entry": entry}
+
+
 def context(**overrides) -> dict:
     doc = {
         "rows": [feed_row()],
         "bank_account_mappings": {"feed-chk": CHECKING, "feed-sav": SAVINGS},
         "csv_account_mappings": {"statement:chk": {"ledger_account": CHECKING, "confirmed": True}},
         "open_dates": {CHECKING: "2026-01-01", SAVINGS: "2026-01-01"},
-        "openings": [{"account": CHECKING, "date": "2026-03-01", "source_id": "statement-opening-s2",
-                      "kind": "statement", "statement_id": "s2", "amount": "1000.00"}],
+        "openings": [opening()],
         "statements": [
             {"statement_id": "s1", "account": CHECKING, "period_start": "2026-02-01", "period_end": "2026-02-28",
              "evidence_sha256": SHA_A},
@@ -150,8 +161,7 @@ class ConflictTests(unittest.TestCase):
         self.assertEqual(self.codes(), ["OPENING_AFTER_ROW"])
 
     def test_opening_and_open_dates_that_differ_from_the_start_are_shown(self):
-        openings = [{"account": CHECKING, "date": "2026-03-05", "source_id": "o", "kind": "statement",
-                     "statement_id": "s2", "amount": "1.00"}]
+        openings = [opening("o", "2026-03-05", "1.00")]
         self.assertEqual(self.codes(openings=openings, open_dates={CHECKING: "2026-03-03"}),
                          ["OPENING_AFTER_ROW", "OPENING_DATE_NOT_START", "OPEN_DATE_AFTER_START"])
         # An open date before the start is normal: the catalog lifespan is not the books start.
@@ -405,11 +415,8 @@ class ExpectedOpeningTransitionTests(unittest.TestCase):
     """
 
     PENDING = dict(policy=policy("authorized_pending_opening", version=2), openings=[])
-    OPENING_A = {"account": CHECKING, "date": "2026-03-01", "source_id": "statement-opening-a", "kind": "statement",
-                 "statement_id": "s2", "amount": "1000.00",
-                 "postings": [[CHECKING, "1000.00"], ["Equity:Opening-Balances", "-1000.00"]]}
-    OPENING_B = dict(OPENING_A, source_id="statement-opening-b", amount="1200.00",
-                     postings=[[CHECKING, "1200.00"], ["Equity:Opening-Balances", "-1200.00"]])
+    OPENING_A = opening("statement-opening-a")
+    OPENING_B = opening("statement-opening-b", amount="1200.00")
 
     def claim(self):
         result = sd.preview(ctx(**self.PENDING), "r1", "outside_books")
@@ -487,12 +494,49 @@ class ExpectedOpeningTransitionTests(unittest.TestCase):
     def test_the_opening_digest_covers_every_posting(self):
         claim = self.claim()
         transitions = self.completed(claim)
-        changed = dict(self.OPENING_A, postings=[[CHECKING, "1000.00"], ["Equity:Owner", "-1000.00"]])
+        changed = opening("statement-opening-a", equity="Equity:Owner")
         self.assertEqual(self.evaluate(claim, transitions, openings=[changed])["triggers"], ["OPENING_CHANGED"])
+
+    @staticmethod
+    def resign(evidence):
+        body = {k: v for k, v in evidence.items() if k != "evidence_digest"}
+        return {**body, "evidence_digest": sd._sha(body)}
+
+    def test_malformed_evidence_is_refused_even_with_a_recomputed_digest(self):
+        claim = self.claim()
+        evidence = self.completed(claim)[claim["preview_digest"]]
+
+        def nested(**changes):
+            return self.resign({**evidence, "opening": {**evidence["opening"], **changes}})
+
+        def posting(**changes):
+            entry = copy.deepcopy(evidence["opening"]["entry"])
+            entry["postings"][0].update(changes)
+            return nested(entry=entry)
+
+        missing = {k: v for k, v in evidence["opening"].items() if k != "digest"}
+        cases = {
+            "schema_version": self.resign({**evidence, "schema_version": 2}),
+            "missing nested key": self.resign({**evidence, "opening": missing}),
+            "extra nested key": nested(extra=True),
+            "wrong type": nested(date=20260301),
+            "non-finite amount": posting(amount="NaN"),
+            "infinite amount": posting(amount="Infinity"),
+            "number instead of text": posting(amount=1000),
+            "extra posting field": posting(note="x"),
+            "entry without a field": nested(entry={k: v for k, v in evidence["opening"]["entry"].items()
+                                                   if k != "payee"}),
+            "digest of another entry": nested(entry=self.OPENING_B["entry"]),
+            "version as text": self.resign({**evidence, "account_version": "3"}),
+        }
+        for name, bad in cases.items():
+            with self.subTest(name):
+                result = self.evaluate(claim, {claim["preview_digest"]: bad})
+                self.assertEqual(result["triggers"], ["TRANSITION_EVIDENCE_INVALID"], result)
 
     def test_material_changes_still_invalidate(self):
         claim = self.claim()
-        moved_opening = dict(self.OPENING_A, date="2026-03-05")
+        moved_opening = opening("statement-opening-a", "2026-03-05")
         savings = {SAVINGS: {"state": "authorized", "start_day": "2026-03-01", "version": 1}}
         cases = {
             "opening on another day": ({"openings": [moved_opening]}, "OPENING_CHANGED"),
@@ -543,6 +587,86 @@ class ReclassifyTests(unittest.TestCase):
     def test_a_changed_row_is_not_restored(self):
         result = sd.reclassify(ctx(), "r1", "0" * 64)
         self.assertEqual((result["status"], result["code"]), ("refused", "SOURCE_ROW_CHANGED"))
+
+
+class OpeningFingerprintWorkspaceTests(unittest.TestCase):
+    """The completing opening is fingerprinted as a complete ledger entry, read from a real company ledger.
+
+    Each variant is a separate synthetic company whose opening differs from opening A in one way only.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.count = 0
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @staticmethod
+    def opening_entry(*, currency="USD", posting_meta=(), payee=None, narration="Opening balance",
+                      entry_meta=(), amount="1000.00"):
+        from decimal import Decimal
+        from bookkeeping.ledger.model import Entry, Posting
+
+        return Entry(date=date(2026, 3, 1), narration=narration, payee=payee,
+                     meta=(("source-id", "statement-opening-a"), ("import-source", "statement-opening"),
+                           *entry_meta),
+                     postings=(Posting(CHECKING, Decimal(amount), currency, tuple(posting_meta)),
+                               Posting("Equity:Opening-Balances", -Decimal(amount), currency)))
+
+    def company(self, opening=None) -> Path:
+        from bookkeeping.entity import load_entity
+        from bookkeeping.ledger.importer import import_transactions
+        from bookkeeping.ledger.model import Open
+        from bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        self.count += 1
+        entity = self.root / f"co{self.count}"
+        (entity / "staging").mkdir(parents=True)
+        (entity / "entity.json").write_text(json.dumps({
+            "name": "Synthetic Co", "business_type": "consulting",
+            "bank_account_mappings": {"feed-chk": CHECKING}}) + "\n", encoding="utf-8")
+        (entity / "trust-policy.json").write_text(json.dumps({"auto_post_threshold": 3}) + "\n", encoding="utf-8")
+        store = LedgerStore(default_store_path(entity))
+        store.initialize()
+        with store.transaction() as conn:
+            store.insert_opens([Open(date=date(2026, 1, 1), account=CHECKING),
+                                Open(date=date(2026, 1, 1), account="Equity:Opening-Balances")], conn)
+        import_transactions(load_entity(entity), [feed_row()], session_id="t")
+        if opening is not None:
+            with store.transaction() as conn:
+                store.insert_entries([opening], conn)
+        return entity
+
+    def run_case(self, variant):
+        pending = policy("authorized_pending_opening", version=2)
+        authorized = policy("authorized", version=3, epoch=5)
+        claim = sd.preview(sd.load_context(self.company(), pending), "r1", "outside_books")["claim"]
+        first = sd.evaluate(sd.load_context(self.company(self.opening_entry()), authorized), [claim])[0]
+        self.assertEqual(first["status"], "transition_pending", first)
+        transitions = {claim["preview_digest"]: first["transition_evidence"]}
+        return sd.evaluate(sd.load_context(self.company(variant), authorized), [claim], transitions)[0]
+
+    def test_an_unchanged_opening_stays_resolved(self):
+        result = self.run_case(self.opening_entry())
+        self.assertEqual((result["status"], result["triggers"]), ("resolved", []))
+
+    def test_a_currency_only_change_is_material(self):
+        self.assertEqual(self.run_case(self.opening_entry(currency="EUR"))["triggers"], ["OPENING_CHANGED"])
+
+    def test_a_posting_metadata_only_change_is_material(self):
+        result = self.run_case(self.opening_entry(posting_meta=(("qb-name", "Checking"),)))
+        self.assertEqual(result["triggers"], ["OPENING_CHANGED"])
+
+    def test_an_entry_metadata_or_payee_change_is_material(self):
+        self.assertEqual(self.run_case(self.opening_entry(payee="First Bank"))["triggers"], ["OPENING_CHANGED"])
+        result = self.run_case(self.opening_entry(entry_meta=(("note", "corrected"),)))
+        self.assertEqual(result["triggers"], ["OPENING_CHANGED"])
+
+    def test_a_replacement_with_the_same_source_id_date_and_amount_is_material(self):
+        result = self.run_case(self.opening_entry(narration="Opening balance, corrected"))
+        self.assertEqual(result["triggers"], ["OPENING_CHANGED"])
 
 
 class WorkspaceAndCommandTests(unittest.TestCase):

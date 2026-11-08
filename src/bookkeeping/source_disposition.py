@@ -33,7 +33,7 @@ import argparse
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -47,6 +47,8 @@ from .ledger.books_policy import (
     first_policy_conflict,
     parse_policy,
 )
+from .ledger.books_policy_check import entry_key
+from .ledger.model import Entry, Posting
 from .ledger.open_dates import opened_after
 from .source_ids import source_id_variants
 
@@ -108,24 +110,125 @@ def _amount(value: Any) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+_ENTRY_FIELDS = tuple(item.name for item in fields(Entry))
+_POSTING_FIELDS = tuple(item.name for item in fields(Posting))
+
+
+def _plain(value: Any) -> Any:
+    """A model value as plain JSON, field by field. Nothing is left out."""
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, tuple):
+        return [_plain(item) for item in value]
+    if is_dataclass(value):
+        return {item.name: _plain(getattr(value, item.name)) for item in fields(value)}
+    return value
+
+
+def entry_document(entry: Entry) -> dict[str, Any]:
+    """Every field of ``entry`` and of each posting, as JSON. :func:`entry_from_document` reads it back exactly."""
+    return _plain(entry)
+
+
+def _pairs(value: Any, where: str) -> tuple[tuple[str, str], ...]:
+    _require(isinstance(value, list) and all(isinstance(p, list) and len(p) == 2
+                                             and all(isinstance(x, str) for x in p) for p in value),
+             f"{where} must be a list of [text, text]")
+    return tuple((p[0], p[1]) for p in value)
+
+
+def _texts(value: Any, where: str) -> tuple[str, ...]:
+    _require(isinstance(value, list) and all(isinstance(x, str) for x in value), f"{where} must be a list of text")
+    return tuple(value)
+
+
+def entry_from_document(document: Any) -> Entry:
+    """Read an entry from :func:`entry_document` JSON. Every model field is required, and nothing else is allowed.
+
+    A field added to ``Entry`` or ``Posting`` later makes this refuse every document until it is read here too.
+    """
+    _require(isinstance(document, Mapping) and set(document) == set(_ENTRY_FIELDS),
+             f"an entry must have exactly the fields {sorted(_ENTRY_FIELDS)}")
+    postings = document["postings"]
+    _require(isinstance(postings, list), "entry postings must be a list")
+    built = []
+    for item in postings:
+        _require(isinstance(item, Mapping) and set(item) == set(_POSTING_FIELDS),
+                 f"a posting must have exactly the fields {sorted(_POSTING_FIELDS)}")
+        _require(isinstance(item["account"], str) and isinstance(item["currency"], str)
+                 and isinstance(item["amount"], str), "posting account, amount and currency must be text")
+        try:
+            amount = Decimal(item["amount"])
+        except (InvalidOperation, ValueError):
+            amount = Decimal("NaN")
+        _require(amount.is_finite(), "posting amounts must be finite decimals")
+        built.append((item["account"], amount, item["currency"], _pairs(item["meta"], "posting meta")))
+    _require(all(isinstance(document[k], str) for k in ("narration", "flag"))
+             and (document["payee"] is None or isinstance(document["payee"], str)), "bad entry text fields")
+    try:
+        return Entry(date=_day_field(document["date"], "entry date"), narration=document["narration"],
+                     payee=document["payee"], flag=document["flag"], tags=_texts(document["tags"], "entry tags"),
+                     links=_texts(document["links"], "entry links"), meta=_pairs(document["meta"], "entry meta"),
+                     postings=tuple(Posting(a, amount, c, meta) for a, amount, c, meta in built))
+    except DispositionInputError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise DispositionInputError(f"The disposition input is not valid: bad entry ({exc})") from exc
+
+
+def entry_fingerprint(entry: Entry) -> str:
+    """SHA-256 of the #118 history key (``books_policy_check.entry_key``): every Entry and every Posting field."""
+    return _sha(entry_key(entry))
+
+
 @dataclass(frozen=True)
 class Opening:
+    """One live opening entry, seen from one of its non-equity accounts. The whole entry is kept."""
+
     account: str
-    day: date
-    source_id: str
-    kind: str
-    statement_id: str | None
-    amount: str
-    postings: tuple[tuple[str, str], ...] = ()
+    entry: Entry
+
+    @property
+    def meta(self) -> dict[str, str]:
+        return dict(self.entry.meta)
+
+    @property
+    def day(self) -> date:
+        return self.entry.date
+
+    @property
+    def source_id(self) -> str:
+        return self.meta.get("source-id", "")
+
+    @property
+    def kind(self) -> str:
+        return OPENING_KINDS.get(self.meta.get("import-source", ""), "")
+
+    @property
+    def statement_id(self) -> str | None:
+        return self.meta.get("statement-id")
+
+    @property
+    def amount(self) -> str:
+        return format(sum((p.amount for p in self.entry.postings if p.account == self.account), Decimal("0")), "f")
+
+    @property
+    def fingerprint(self) -> str:
+        return entry_fingerprint(self.entry)
 
     def document(self) -> dict[str, Any]:
         return {"source_id": self.source_id, "date": self.day.isoformat(), "kind": self.kind,
-                "statement_id": self.statement_id, "amount": self.amount,
-                "postings": [list(pair) for pair in self.postings]}
+                "statement_id": self.statement_id, "amount": self.amount, "entry_fingerprint": self.fingerprint}
 
     @property
     def digest(self) -> str:
-        return _sha({"account": self.account, **self.document()})
+        return _opening_digest(self.account, self.fingerprint)
+
+
+def _opening_digest(account: str, fingerprint: str) -> str:
+    return _sha({"account": account, "entry_fingerprint": fingerprint})
 
 
 @dataclass(frozen=True)
@@ -175,20 +278,6 @@ def _day_field(value: Any, where: str) -> date:
     return day
 
 
-def _postings(value: Any) -> tuple[tuple[str, str], ...]:
-    """Every posting of an opening entry, as ``(account, amount)`` in entry order."""
-    if value is None:
-        return ()
-    _require(isinstance(value, list) and all(isinstance(p, (list, tuple)) and len(p) == 2 for p in value),
-             "opening postings must be a list of [account, amount]")
-    found = []
-    for account, amount in value:
-        money = _amount(amount)
-        _require(isinstance(account, str) and money is not None, "bad opening posting")
-        found.append((account, money))
-    return tuple(found)
-
-
 def context_from_document(document: Mapping[str, Any]) -> DispositionContext:
     """Build a context from a plain JSON document. Unknown fields are refused."""
     _require(isinstance(document, Mapping), "the context must be an object")
@@ -203,11 +292,13 @@ def context_from_document(document: Mapping[str, Any]) -> DispositionContext:
     open_dates = {str(k): _day_field(v, f"open_dates[{k}]") for k, v in raw_open.items()}
     openings = []
     for item in document.get("openings") or []:
-        _require(isinstance(item, Mapping) and item.get("kind") in OPENING_KINDS.values(), "bad opening")
-        openings.append(Opening(str(item["account"]), _day_field(item.get("date"), "opening date"),
-                                str(item["source_id"]), str(item["kind"]),
-                                None if item.get("statement_id") is None else str(item["statement_id"]),
-                                _amount(item.get("amount")) or "0.00", _postings(item.get("postings"))))
+        _require(isinstance(item, Mapping) and set(item) == {"account", "entry"} and isinstance(item["account"], str),
+                 "an opening must be {account, entry}")
+        opening = Opening(item["account"], entry_from_document(item["entry"]))
+        _require(bool(opening.source_id) and bool(opening.kind)
+                 and any(p.account == opening.account for p in opening.entry.postings),
+                 "an opening entry needs a source-id, a known import-source and a posting on its account")
+        openings.append(opening)
     statements = []
     for item in document.get("statements") or []:
         _require(isinstance(item, Mapping), "bad statement")
@@ -240,9 +331,10 @@ def load_context(entity_path: Path | str, policy_document: Any = None) -> Dispos
     booked: list[dict[str, Any]] = []
     store_path = default_store_path(root)
     if store_path.is_file():
-        with LedgerStore(store_path).connection() as conn:
+        store = LedgerStore(store_path)
+        with store.connection() as conn:
             open_dates = {str(name): str(day)[:10] for name, day in conn.execute("SELECT name, open_date FROM accounts")}
-            openings, booked = _ledger_facts(conn)
+        openings, booked = _ledger_facts(store.load_entries())
     records, _findings = load_statements(root)
     statements = [{"statement_id": r.statement_id, "account": r.account, "period_start": r.period_start.isoformat(),
                    "period_end": r.period_end.isoformat(), "evidence_sha256": r.evidence_sha256} for r in records
@@ -253,35 +345,26 @@ def load_context(entity_path: Path | str, policy_document: Any = None) -> Dispos
         "openings": openings, "statements": statements, "booked": booked, "policy": policy_document})
 
 
-def _ledger_facts(conn: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Live opening lines and booked source lines, read on ``conn``. A reversed entry and its reversal are left out."""
-    from .statement_opening import _metadata
+def _ledger_facts(entries: Sequence[Entry]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Live openings (complete entries) and booked source lines.
 
-    rows = conn.execute("SELECT e.source_id, e.date, e.metadata_json, p.account, p.amount FROM entries e "
-                        "JOIN postings p ON p.entry_id = e.id ORDER BY e.date, e.id").fetchall()
-    reversed_ids: set[str] = set()
-    parsed = []
-    for source_id, day, raw, account, amount in rows:
-        meta = _metadata(raw)
-        if "reverses" in meta:
-            reversed_ids.add(str(meta["reverses"]))
-            continue
-        parsed.append((str(source_id or ""), str(day)[:10], meta, str(account), amount))
+    Entries come from ``LedgerStore.load_entries``, so every entry and posting field is kept. A reversed entry and
+    its reversal are left out.
+    """
+    reversed_ids = {dict(e.meta)["reverses"] for e in entries if "reverses" in dict(e.meta)}
     openings, booked = [], []
-    postings: dict[str, list[list[str]]] = {}
-    for source_id, _day, _meta, account, amount in parsed:
-        postings.setdefault(source_id, []).append([account, str(amount)])
-    for source_id, day, meta, account, amount in parsed:
-        if not source_id or source_id in reversed_ids:
+    for entry in entries:
+        meta = dict(entry.meta)
+        source_id = meta.get("source-id", "")
+        if "reverses" in meta or not source_id or source_id in reversed_ids:
             continue
-        kind = OPENING_KINDS.get(str(meta.get("import-source") or ""))
-        if kind is not None:
-            if not account.startswith("Equity:"):
-                openings.append({"account": account, "date": day, "source_id": source_id, "kind": kind,
-                                 "statement_id": meta.get("statement-id"), "amount": amount,
-                                 "postings": postings[source_id]})
+        if meta.get("import-source") in OPENING_KINDS:
+            for account in dict.fromkeys(p.account for p in entry.postings if not p.account.startswith("Equity:")):
+                openings.append({"account": account, "entry": entry_document(entry)})
             continue
-        booked.append({"source_id": source_id, "account": account, "date": day, "amount": amount})
+        for posting in entry.postings:
+            booked.append({"source_id": source_id, "account": posting.account, "date": entry.date.isoformat(),
+                           "amount": str(posting.amount)})
     return openings, booked
 
 
@@ -551,11 +634,6 @@ def confirm(context: DispositionContext, claim: Mapping[str, Any]) -> dict[str, 
     return {"status": "ok", "claim": current["claim"]}
 
 
-#: Conflicts that the expected opening transition removes (they described the pending state) and adds.
-_PENDING_ONLY_CONFLICTS = frozenset({"NO_OPENING", "OPENING_NOT_COMMITTED"})
-_EXPECTED_OPENING_CONFLICT = "OPENING_AFTER_ROW"
-
-
 def _expected_completion(context: DispositionContext, claim: Mapping[str, Any]) -> Opening | None:
     """The opening that completes the expected transition now, or ``None``.
 
@@ -591,24 +669,49 @@ def _transition_evidence(claim: Mapping[str, Any], opening: Opening, version: in
             "claim_preview_digest": claim.get("preview_digest"), "account": claim["basis"].get("account"),
             "start_day": (claim["basis"].get("policy") or {}).get("start_day"), "account_version": version,
             "opening": {"source_id": opening.source_id, "date": opening.day.isoformat(),
-                        "postings": [list(pair) for pair in opening.postings], "digest": opening.digest}}
+                        "entry": entry_document(opening.entry), "digest": opening.digest}}
     return {**body, "evidence_digest": _sha(body)}
 
 
+_OPENING_EVIDENCE_FIELDS = {"source_id", "date", "entry", "digest"}
+
+
 def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
-    """The evidence is intact and was made for this exact claim and its expected version."""
+    """The evidence is well formed, intact, and was made for this exact claim and its expected version.
+
+    Every nested field is checked: the opening must have exactly ``source_id``, ``date``, ``entry`` and ``digest``;
+    the entry must read back as a complete ledger entry (finite amounts, every model field, nothing extra); and the
+    digest must be the one that the entry's fingerprint gives.
+    """
     if not isinstance(evidence, Mapping) or set(evidence) != {*_EVIDENCE_FIELDS, "evidence_digest"}:
         return False
-    body = {key: evidence[key] for key in _EVIDENCE_FIELDS}
+    if evidence["schema_version"] != SCHEMA_VERSION or evidence["kind"] != "expected_opening_recorded":
+        return False
+    try:
+        if evidence["evidence_digest"] != _sha({key: evidence[key] for key in _EVIDENCE_FIELDS}):
+            return False
+    except (TypeError, ValueError):
+        return False
+    opening = evidence["opening"]
+    if (not isinstance(opening, Mapping) or set(opening) != _OPENING_EVIDENCE_FIELDS
+            or not all(isinstance(opening[k], str) for k in ("source_id", "date", "digest"))):
+        return False
+    try:
+        entry = entry_from_document(opening["entry"])
+    except DispositionInputError:
+        return False
+    account = evidence["account"]
+    if (not isinstance(account, str) or opening["digest"] != _opening_digest(account, entry_fingerprint(entry))
+            or opening["source_id"] != dict(entry.meta).get("source-id") or opening["date"] != entry.date.isoformat()):
+        return False
     old = claim["basis"].get("policy") or {}
     version = old.get("account_version")
-    return (evidence["evidence_digest"] == _sha(body) and evidence["kind"] == "expected_opening_recorded"
-            and claim.get("state") == "outside_books" and old.get("account_state") == PENDING_OPENING
+    return (claim.get("state") == "outside_books" and old.get("account_state") == PENDING_OPENING
             and evidence["source_id"] == claim["source_id"]
             and evidence["claim_preview_digest"] == claim.get("preview_digest")
-            and evidence["account"] == claim["basis"].get("account") and evidence["start_day"] == old.get("start_day")
-            and isinstance(version, int) and evidence["account_version"] == version + 1
-            and isinstance(evidence["opening"], Mapping) and isinstance(evidence["opening"].get("digest"), str))
+            and account == claim["basis"].get("account") and evidence["start_day"] == old.get("start_day")
+            and isinstance(version, int) and type(evidence["account_version"]) is int
+            and evidence["account_version"] == version + 1)
 
 
 #: Conflicts that the expected opening transition removes (they described the pending state) and adds.
@@ -654,10 +757,11 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
     - No evidence, and the transition shape holds now: ``transition_pending``, with the proposed
       ``transition_evidence`` for the opening in force now. It is not resolved. A host records that evidence one time
       (only when it has none for this claim) and evaluates again with it.
-    - With evidence: later states are compared with the **recorded** completion (its opening digest, which covers the
-      entry source ID, the date and every posting, and the account version). A reversed or replaced opening gives
-      ``OPENING_CHANGED``; another version or start gives ``POLICY_CHANGED``. Evidence that does not fit the claim
-      gives ``TRANSITION_EVIDENCE_INVALID``.
+    - With evidence: later states are compared with the **recorded** completion: the account version, and the opening
+      digest, which is the account plus :func:`entry_fingerprint` of the complete opening entry (every ``Entry`` and
+      every ``Posting`` field, through the #118 history key). A reversed or replaced opening, or a change of any
+      entry or posting field, gives ``OPENING_CHANGED``; another version or start gives ``POLICY_CHANGED``. Evidence
+      that is malformed, edited, or does not fit the claim gives ``TRANSITION_EVIDENCE_INVALID``.
 
     The person's decision never changes. The transition never becomes coverage and never allows a booking.
     """
