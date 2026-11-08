@@ -747,10 +747,12 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
             config_text = json.dumps(entity.entity_config, sort_keys=True)
             wanted = {a.lower() for a in chart}
             removable = [a for a in starter_chart(entity.business_type) if a.lower() not in wanted]
+            from .chart_adoption import protected_accounts
+            adopted = protected_accounts(conn)
             removed: list[str] = []
             for account in removable:
                 row = conn.execute("SELECT name FROM accounts WHERE name=?", (account,)).fetchone()
-                if row is None or json.dumps(account) in config_text:
+                if row is None or account in adopted or json.dumps(account) in config_text:
                     continue
                 if conn.execute("SELECT 1 FROM postings WHERE account=? UNION ALL SELECT 1 FROM balance_assertions "
                                 "WHERE account=? LIMIT 1", (account, account)).fetchone():
@@ -1362,6 +1364,15 @@ def add_parser(subparsers: Any) -> None:
              "Expenses:<Name> or Expenses:Cost-of-Sales:<Line>",
     )
 
+    chart_inspect_parser = entity_sub.add_parser("chart-inspect", help="Show ledger identities and adopted source chart evidence")
+    chart_inspect_parser.add_argument("path", type=Path)
+
+    chart_parser = entity_sub.add_parser("chart-adopt", help="Preview or apply an explicitly mapped source chart without rewriting history")
+    chart_parser.add_argument("path", type=Path)
+    chart_parser.add_argument("--input", type=Path, required=True, help="Reviewed version-1 JSON chart manifest")
+    chart_parser.add_argument("--apply", action="store_true")
+    chart_parser.add_argument("--plan-hash", default=None)
+
     starter_parser = entity_sub.add_parser(
         "starter-accounts",
         help="Set the business type of a company with no entries and add the starter accounts it lacks",
@@ -1567,6 +1578,29 @@ def run(args: Any) -> int:
 
         verb = "Added" if report["status"] == "created" else "Already present"
         print(f"{verb}: {report['account']} (open {report['open_date']})")
+        return 0
+
+    if args.entity_command == "chart-inspect":
+        from .chart_adoption import inspect
+        try:
+            result = inspect(_resolve_target(args.path))
+        except (ValueError, OSError) as exc:
+            print(json.dumps({"status": "blocked", "errors": [{"message": str(exc)}]}))
+            return 1
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0
+
+    if args.entity_command == "chart-adopt":
+        from .chart_adoption import adopt
+        try:
+            if args.input.stat().st_size > 2_000_000:
+                raise ValueError("Chart manifest exceeds 2 MB.")
+            result = adopt(_resolve_target(args.path), json.loads(args.input.read_text(encoding="utf-8")),
+                           apply=args.apply, plan_hash=args.plan_hash)
+        except (ValueError, OSError) as exc:
+            print(json.dumps({"status": "blocked", "errors": [{"code": "chart_adoption_refused", "message": str(exc)}]}))
+            return 1
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
 
     if args.entity_command == "starter-accounts":

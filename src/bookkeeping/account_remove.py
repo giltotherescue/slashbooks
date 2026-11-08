@@ -199,6 +199,9 @@ def references(documents: dict[str, Any], store: Any, account: str, catalog: set
         for record in list_records(store, table):
             found += [f"accrual {table} {record.get('id', '?')}:{where}" for where in _matches(record, account, "")]
     with store.connection() as conn:
+        from .chart_adoption import protected_accounts
+        if account in protected_accounts(conn):
+            found.append("adopted chart source mapping")
         for table, column in (("source_transactions", "payload_json"), ("import_sessions", "metadata_json")):
             for record_id, raw in conn.execute(f"SELECT id, {column} FROM {table} ORDER BY id"):
                 # Parse every row: a raw text search would miss a name written with JSON escapes.
