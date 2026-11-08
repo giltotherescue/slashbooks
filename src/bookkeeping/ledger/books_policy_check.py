@@ -32,8 +32,11 @@ is the request ``scope``, every account that the policy names, and every ledger 
 candidate maps from a bank or CSV source. Many provider accounts can map to one ledger account; the policy is
 for the ledger account.
 
-The ledger is compared as a multiset of entries, so the order of entries does not matter. The order of the
-postings inside an entry is part of the entry, so a change of that order is an edit.
+The ledger is compared as a multiset of entries, so the order of entries does not matter. An entry is compared
+on every ``Entry`` field and every ``Posting`` field, posting metadata included. The order of the postings
+inside an entry is part of the entry, so a change of that order is an edit. Stored data outside the entry model
+(row IDs, the derived ``session`` and ``late_arrival`` columns, the account catalog, the audit log) is not
+compared here; the host checks the store itself.
 
 Only two things let an added line through a refusal:
 
@@ -50,10 +53,12 @@ Only two things let an added line through a refusal:
   source ID alone or ``reverses`` never counts.
 
 ``check_workspaces`` copies both workspaces to a private folder first, and checks and digests the copies. It
-never changes its inputs. Its result has the fields that a host receipt binds: ``engine_version``,
-``request_sha256`` (``request_digest``), ``base_sha256`` and ``candidate_sha256`` (``workspace_digest``). A
-receipt is only as trusted as the process that makes it and the channel that carries it; these digests let the
-host bind the receipt to the exact bytes that it publishes.
+never changes its inputs. Its result has ``request_sha256`` (``request_digest``), ``base_sha256`` and
+``candidate_sha256`` (``workspace_digest``), and ``package_version``. The package version is a label, not a
+build identity. ``build_receipt`` makes a receipt only with ``engine_build``, the pinned engine commit that the
+trusted supervisor takes from its own build data. The check command has no option for it, so neither the
+engine child nor a session can supply it. A receipt is only as trusted as the process that makes it and the
+channel that carries it.
 
 Exit code 0 means ``ok``, 1 means ``refused`` (nothing may be published), 2 means a bad request or workspace.
 """
@@ -63,11 +68,12 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -169,9 +175,26 @@ def parse_request(document: Any) -> CheckRequest:
     return CheckRequest(parse_policy(document["policy"]), frozenset(_text(a, "scope item") for a in scope), openings)
 
 
+def _field_value(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return ("decimal", str(value))  # "100.0" and "100.00" are different stored values
+    if isinstance(value, date):
+        return ("date", value.isoformat())
+    if isinstance(value, tuple):
+        return tuple(_field_value(item) for item in value)
+    if is_dataclass(value):
+        return _record(value)
+    return value
+
+
+def _record(value: Any) -> tuple:
+    """Every dataclass field of ``value``, by name. A field added to ``Entry`` or ``Posting`` later is included."""
+    return tuple((item.name, _field_value(getattr(value, item.name))) for item in fields(value))
+
+
 def _key(entry: Entry) -> tuple:
-    return (entry.date.isoformat(), entry.flag, entry.narration, entry.payee, entry.tags, entry.links, entry.meta,
-            tuple((p.account, str(p.amount), p.currency) for p in entry.postings))
+    """The identity of an entry for the history comparison: every ``Entry`` field and every ``Posting`` field."""
+    return _record(entry)
 
 
 def ledger_delta(base: Sequence[Entry], candidate: Sequence[Entry]) -> tuple[list[Entry], list[Entry]]:
@@ -297,7 +320,7 @@ def check_ledger_delta(request_document: Any, base_entries: Sequence[Entry], can
     from .. import __version__
     return {"status": "refused" if refusals else "ok", "mode": request.policy.mode,
             "policy_epoch": request.policy.epoch, "checked_entries": len(added),
-            "engine_version": __version__, "request_sha256": request_digest(request_document),
+            "package_version": __version__, "request_sha256": request_digest(request_document),
             "openings_matched": [request.openings[index].operation_id for index in sorted(used)],
             "refusals": refusals}
 
@@ -362,6 +385,40 @@ def check_workspaces(request_document: Any, base_dir: Path | str, candidate_dir:
         candidate_entries, candidate_mapped = _workspace(candidate_copy)
         result = check_ledger_delta(request_document, base_entries, candidate_entries, base_mapped | candidate_mapped)
     return {**result, "base_sha256": base_sha, "candidate_sha256": candidate_sha}
+
+
+RECEIPT_VERSION = 1
+_COMMIT = re.compile(r"[0-9a-f]{40}")
+_RESULT_FIELDS = ("status", "mode", "policy_epoch", "checked_entries", "openings_matched", "package_version",
+                  "request_sha256", "base_sha256", "candidate_sha256")
+
+
+def build_receipt(result: Mapping[str, Any], *, engine_build: str, company_id: str, job_id: str, job_nonce: str,
+                  base_revision: int, request_bytes_sha256: str) -> dict[str, Any]:
+    """The receipt that a trusted supervisor makes from a ``check_workspaces`` result.
+
+    ``engine_build`` is the full lowercase commit of the pinned engine, from the supervisor's own build or pin
+    data. It is required, and a package version or a short commit is refused. The other keyword arguments bind
+    the receipt to one job; they come from the job that the host sent, never from the workspace.
+    """
+    if not isinstance(engine_build, str) or not _COMMIT.fullmatch(engine_build):
+        raise ValueError("engine_build must be the full 40-character lowercase commit of the pinned engine")
+    missing = [name for name in _RESULT_FIELDS if name not in result]
+    if missing:
+        raise ValueError(f"the check result has no {missing[0]}")
+    if not all(isinstance(v, str) and v for v in (company_id, job_id, job_nonce, request_bytes_sha256)) \
+            or isinstance(base_revision, bool) or not isinstance(base_revision, int):
+        raise ValueError("the job binding fields must be non-empty text and an integer base_revision")
+    return {"receipt_version": RECEIPT_VERSION, "engine_build": engine_build, "company_id": company_id,
+            "job_id": job_id, "job_nonce": job_nonce, "base_revision": base_revision,
+            "request_bytes_sha256": request_bytes_sha256, **{name: result[name] for name in _RESULT_FIELDS},
+            "refusal_count": len(result.get("refusals", []))}
+
+
+def receipt_bytes(receipt: Mapping[str, Any]) -> bytes:
+    """The canonical bytes of a receipt (sorted keys, no spaces, UTF-8), for a host to hash or sign."""
+    return json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                      allow_nan=False).encode("utf-8")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

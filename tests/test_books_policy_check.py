@@ -339,6 +339,36 @@ class TrustedCheckTests(shared.Company):
                 self.assertEqual(result["status"], "refused")
                 self.assertIn((HISTORY_CHANGED, opening), [(r["code"], r["source_id"]) for r in result["refusals"]])
 
+    def test_history_editing_only_posting_metadata_is_refused(self) -> None:
+        self.open_books()
+        opening = self.opening_id()
+        self.sql(("UPDATE postings SET metadata_json = replace(metadata_json, 'Checking', 'Edited') "
+                  "WHERE entry_id = (SELECT id FROM entries WHERE source_id = ?) AND account = ?", (opening, CHECKING)))
+        edited = next(e for e in self.store.load_entries() if e.source_id == opening)
+        self.assertEqual(dict(edited.postings[0].meta), {"qb-name": "Edited"})
+        result = self.publish(self.host_request())
+        self.assertEqual(result["status"], "refused")
+        self.assertIn((HISTORY_CHANGED, opening), [(r["code"], r["source_id"]) for r in result["refusals"]])
+
+    def test_the_history_key_covers_every_entry_and_posting_field(self) -> None:
+        key = checker()._key
+        posting = Posting(CHECKING, Decimal("100.00"), "USD", (("qb-name", "Checking"),))
+        entry = Entry(date=date(2026, 3, 15), narration="Opening", payee="Payee", flag="*", tags=("t",), links=("l",),
+                      meta=(("source-id", "x"),), postings=(posting, Posting(EQUITY, Decimal("-100.00"))))
+        changed_entry = {"date": date(2026, 3, 16), "narration": "Other", "payee": "Other", "flag": "!",
+                         "tags": ("u",), "links": ("m",), "meta": (("source-id", "y"),),
+                         "postings": (Posting(CHECKING, Decimal("100.00")), Posting(EQUITY, Decimal("-100.00")))}
+        changed_posting = {"account": FEES, "amount": Decimal("100.0"), "currency": "EUR", "meta": (("qb-name", "Other"),)}
+        self.assertEqual(set(changed_entry), {f.name for f in dataclasses.fields(Entry)})
+        self.assertEqual(set(changed_posting), {f.name for f in dataclasses.fields(Posting)})
+        for name, value in changed_entry.items():
+            with self.subTest(entry_field=name):
+                self.assertNotEqual(key(entry), key(dataclasses.replace(entry, **{name: value})))
+        for name, value in changed_posting.items():
+            with self.subTest(posting_field=name):
+                edited = dataclasses.replace(posting, **{name: value})
+                self.assertNotEqual(key(entry), key(dataclasses.replace(entry, postings=(edited, *entry.postings[1:]))))
+
     def test_history_entry_order_is_ignored_and_posting_order_is_part_of_an_entry(self) -> None:
         self.open_books()
         with self.policy(shared.enforced({CHECKING: shared.authorized()})):
@@ -443,15 +473,49 @@ class TrustedCheckTests(shared.Company):
 
     # -- r3: the receipt fields --------------------------------------------------
 
-    def test_the_result_binds_the_engine_version_request_and_workspaces(self) -> None:
+    def test_the_result_binds_the_request_and_workspaces_and_labels_the_package_version(self) -> None:
         import bookkeeping
         self.open_books()
         request = self.host_request()
         result = checker().check_workspaces(request, self.published, self.path)
-        self.assertEqual(result["engine_version"], bookkeeping.__version__)
+        # The package version is a label, not a build identity, so the result does not call it an engine version.
+        self.assertEqual(result["package_version"], bookkeeping.__version__)
+        self.assertNotIn("engine_version", result)
+        self.assertNotIn("engine_build", result)
         self.assertEqual(result["request_sha256"], checker().request_digest(request))
         self.assertEqual(result["base_sha256"], checker().workspace_digest(self.published))
         self.assertEqual(result["candidate_sha256"], checker().workspace_digest(self.path))
+
+    def binding(self) -> dict:
+        return {"company_id": "company-1", "job_id": "job-1", "job_nonce": "n" * 32, "base_revision": 7,
+                "request_bytes_sha256": "a" * 64}
+
+    def test_a_receipt_requires_the_engine_build_from_the_supervisor(self) -> None:
+        self.open_books()
+        result = checker().check_workspaces(self.host_request(), self.published, self.path)
+        build = "4f5b89157ccfc0585967e5a6a514aab971b47b20"
+        for bad in (None, "", "0.9.2", "4f5b891", build.upper(), result["package_version"]):
+            with self.subTest(engine_build=bad), self.assertRaises(ValueError):
+                checker().build_receipt(result, engine_build=bad, **self.binding())
+        for missing in self.binding():
+            with self.subTest(missing=missing), self.assertRaises(TypeError):
+                checker().build_receipt(result, engine_build=build,
+                                        **{k: v for k, v in self.binding().items() if k != missing})
+        receipt = checker().build_receipt(result, engine_build=build, **self.binding())
+        self.assertEqual({k: receipt[k] for k in ("engine_build", "package_version", "status", "candidate_sha256",
+                                                    "request_sha256", "base_revision", "job_nonce")},
+                         {"engine_build": build, "package_version": result["package_version"], "status": "ok",
+                          "candidate_sha256": result["candidate_sha256"], "request_sha256": result["request_sha256"],
+                          "base_revision": 7, "job_nonce": "n" * 32})
+        self.assertEqual(checker().receipt_bytes(receipt), checker().receipt_bytes(dict(reversed(list(receipt.items())))))
+
+    def test_the_check_command_takes_no_engine_build(self) -> None:
+        self.open_books()
+        request = self.root / "request.json"
+        request.write_text(json.dumps(self.host_request()), encoding="utf-8")
+        with self.assertRaises(SystemExit), patch("sys.stderr"):
+            checker().main(["check", "--request", str(request), "--base", str(self.published), "--candidate",
+                            str(self.path), "--engine-build", "4f5b89157ccfc0585967e5a6a514aab971b47b20"])
 
     def test_the_request_digest_is_canonical(self) -> None:
         request = self.host_request()

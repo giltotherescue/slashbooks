@@ -16,7 +16,9 @@
   `python -I -m bookkeeping.ledger.books_policy_check check --request FILE
   --base DIR --candidate DIR`. It checks every entry that the proposed ledger
   adds against the host's own policy, without any environment variable. It also
-  refuses a proposed ledger that drops a published entry. An opening for an
+  refuses a proposed ledger that drops or edits a published entry, compared on
+  every entry and posting field. A host receipt (`build_receipt`) requires the
+  pinned engine commit from the host's own build data. An opening for an
   account that waits for its opening passes only with a host authorization that
   matches the entry exactly. Together, these fix a double count after a
   mid-month QuickBooks cutover: rows dated before the cutover cannot be

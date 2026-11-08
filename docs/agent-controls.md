@@ -316,8 +316,10 @@ python -I -m bookkeeping.ledger.books_policy_check check --request REQUEST.json 
 `REQUEST.json` comes from the host's own copy of the policy for the job:
 `{"schema_version": 1, "policy": {...}, "scope": [ledger accounts],
 "opening_authorizations": [...]}`. The check reads no environment variable. It
-refuses a proposed ledger that drops an entry that is already published
-(`BOOKS_LEDGER_HISTORY_CHANGED`). It checks every entry that the proposed ledger
+refuses a proposed ledger that drops or edits an entry that is already published
+(`BOOKS_LEDGER_HISTORY_CHANGED`). An entry is compared on every entry and
+posting field, posting metadata included. The order of entries does not
+matter. It checks every entry that the proposed ledger
 adds with the rules above. The scope is the request scope, the policy accounts,
 and the mapped accounts of both workspaces. Many provider accounts can map to
 one ledger account. The Python function is
@@ -339,6 +341,13 @@ receipt of a reviewed opening operation and the committed opening entry. Every
 other opening is checked like any entry, so an opening before the start or on an
 `unset` account is refused. The command exits with 0 (`ok`), 1 (`refused`:
 publish nothing) or 2 (a bad request or workspace).
+
+The result has `request_sha256`, `base_sha256`, `candidate_sha256` and
+`package_version`. The package version is a label, not a build identity. A host
+that makes a receipt calls `build_receipt(result, engine_build=..., ...)` in its
+own trusted process. `engine_build` is the full commit of the pinned engine
+from the host's own build data, and the receipt is refused without it. The
+check command has no option for it.
 
 ## Read the amount of an item
 
