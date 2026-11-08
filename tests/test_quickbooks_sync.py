@@ -128,6 +128,33 @@ class QuickBooksSyncTests(unittest.TestCase):
                 chart_decision="rebuild", chart_targets=changed, chart_plan_hash=preview["chart"]["plan_hash"])
         self.assertEqual((store.content_digest(), store.load_audit_events()), before)
 
+    def test_existing_chart_receipt_does_not_bypass_final_catalog_check(self):
+        from unittest.mock import patch
+        from bookkeeping import chart_adoption
+        from bookkeeping.ledger.store import LedgerStore
+        self.snapshot["accounts"].append({"Id": "zero-income", "Name": "Unused income", "AccountType": "Income", "Active": True})
+        source = self.write()
+        preview = sync.sync_opening(self.entity, source, date(2026, 1, 1), chart_decision="preserve")
+        manifest = sync.chart_manifest(self.snapshot, preview["snapshot_id"], "preserve")
+        chart_adoption.adopt(self.entity_path, manifest, apply=True, plan_hash=preview["chart"]["plan_hash"])
+        store = LedgerStore(self.entity_path / "ledger.sqlite")
+        zero_account = next(row["account"] for row in manifest["accounts"] if row["type"] == "Income")
+        original = chart_adoption.adopt
+        def concurrent_catalog_change(*args, **kwargs):
+            receipt = original(*args, **kwargs)
+            self.assertEqual(receipt["status"], "already_applied")
+            # Simulate another audited catalog writer after the first target check.
+            with store.transaction(immediate=True) as conn:
+                conn.execute("UPDATE accounts SET currency='EUR' WHERE name=?", (zero_account,))
+                store.append_audit_event("ledger-store-sealed", {"session_id": "catalog-race-fixture",
+                    "entries": 0, "source_ids": [], "store_sha256": store.content_digest(conn)}, conn)
+            return receipt
+        with patch.object(chart_adoption, "adopt", side_effect=concurrent_catalog_change):
+            with self.assertRaisesRegex(ValueError, "different currency"):
+                sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+                    chart_decision="preserve", chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertEqual(store.load_entries(), [])
+
     def test_composite_refuses_currency_adoption_without_active_chart_change(self):
         from bookkeeping.ledger.store import LedgerStore
         self.snapshot["company_info"]["CurrencyRef"] = {"value": "EUR"}

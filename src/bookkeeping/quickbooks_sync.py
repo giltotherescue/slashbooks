@@ -589,6 +589,13 @@ def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
              "active": row["active"]} for row in accounts]})
 
 
+def _validate_chart_targets(existing: dict, manifest: dict, currency: str, cutover: date) -> None:
+    for row in manifest["accounts"]:
+        old = existing.get(row["account"])
+        if old and (old["currency"] != currency or old["open_date"] > cutover.isoformat()):
+            raise ValueError("A target account has a different currency or later opening date; review that account before applying the QuickBooks chart")
+
+
 def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False,
                  chart_decision: str | None = None, chart_targets: dict[str, str] | None = None,
                  chart_plan_hash: str | None = None) -> dict:
@@ -611,10 +618,7 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         from .ledger.store import LedgerStore
         with LedgerStore(entity.path / "ledger.sqlite").connection() as existing_conn:
             existing = {row["name"]: dict(row) for row in existing_conn.execute("SELECT name,currency,open_date FROM accounts")}
-        for row in manifest["accounts"]:
-            old = existing.get(row["account"])
-            if old and (old["currency"] != entity.currency or old["open_date"] > cutover.isoformat()):
-                raise ValueError("A target account has a different currency or later opening date; review that account before applying the QuickBooks chart")
+        _validate_chart_targets(existing, manifest, entity.currency, cutover)
         chart_review = adopt(entity.path, manifest)
         result["chart"] = chart_review
     elif chart_targets is not None or chart_plan_hash is not None:
@@ -669,6 +673,11 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
                 if check_store_integrity(store).status != "ok":
                     raise ValueError("Chart and opening require valid ledger integrity")
                 with store.transaction(immediate=True) as conn:
+                    # A prior chart receipt intentionally permits exact replay, so its
+                    # preview hash cannot fence later catalog changes on its own.
+                    current = {row["name"]: dict(row) for row in conn.execute(
+                        "SELECT name,currency,open_date FROM accounts")}
+                    _validate_chart_targets(current, manifest, entity.currency, cutover)
                     result["chart"] = apply_reviewed_chart(entity.path, store, conn, manifest,
                                                            apply=True, plan_hash=chart_plan_hash)
                     opening = qb.import_opening(entity, reference, cutover, source=source, currency=target,
