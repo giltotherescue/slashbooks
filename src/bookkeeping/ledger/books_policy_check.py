@@ -55,10 +55,10 @@ Only two things let an added line through a refusal:
 ``check_workspaces`` copies both workspaces to a private folder first, and checks and digests the copies. It
 never changes its inputs. Its result has ``request_sha256`` (``request_digest``), ``base_sha256`` and
 ``candidate_sha256`` (``workspace_digest``), and ``package_version``. The package version is a label, not a
-build identity. ``build_receipt`` makes a receipt only with ``engine_build``, the pinned engine commit that the
-trusted supervisor takes from its own build data. The check command has no option for it, so neither the
-engine child nor a session can supply it. A receipt is only as trusted as the process that makes it and the
-channel that carries it.
+build identity. ``build_receipt`` formats a receipt and refuses one without a full ``engine_build`` commit. It
+is a formatting helper, not attestation: any Python code can call it with any values. That ``engine_build`` and
+every other receipt field come from a trusted origin, and that the receipt reaches the host through a trusted
+channel, are host requirements only. This module does not provide them.
 
 Exit code 0 means ``ok``, 1 means ``refused`` (nothing may be published), 2 means a bad request or workspace.
 """
@@ -395,11 +395,12 @@ _RESULT_FIELDS = ("status", "mode", "policy_epoch", "checked_entries", "openings
 
 def build_receipt(result: Mapping[str, Any], *, engine_build: str, company_id: str, job_id: str, job_nonce: str,
                   base_revision: int, request_bytes_sha256: str) -> dict[str, Any]:
-    """The receipt that a trusted supervisor makes from a ``check_workspaces`` result.
+    """Format a receipt from a ``check_workspaces`` result. This is not attestation.
 
-    ``engine_build`` is the full lowercase commit of the pinned engine, from the supervisor's own build or pin
-    data. It is required, and a package version or a short commit is refused. The other keyword arguments bind
-    the receipt to one job; they come from the job that the host sent, never from the workspace.
+    ``engine_build`` must be a full lowercase 40-character commit; a package version or a short commit is
+    refused. The function only checks the form of its arguments. Any caller can pass any values, so the host
+    must take ``engine_build`` from its own build or pin data, take the job fields from the job that it sent,
+    and make and carry the receipt in a process and a channel that it trusts.
     """
     if not isinstance(engine_build, str) or not _COMMIT.fullmatch(engine_build):
         raise ValueError("engine_build must be the full 40-character lowercase commit of the pinned engine")

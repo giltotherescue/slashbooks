@@ -343,11 +343,12 @@ other opening is checked like any entry, so an opening before the start or on an
 publish nothing) or 2 (a bad request or workspace).
 
 The result has `request_sha256`, `base_sha256`, `candidate_sha256` and
-`package_version`. The package version is a label, not a build identity. A host
-that makes a receipt calls `build_receipt(result, engine_build=..., ...)` in its
-own trusted process. `engine_build` is the full commit of the pinned engine
-from the host's own build data, and the receipt is refused without it. The
-check command has no option for it.
+`package_version`. The package version is a label, not a build identity.
+`build_receipt(result, engine_build=..., ...)` formats a receipt and refuses one
+without a full 40-character engine commit. It is a formatting helper, not
+attestation: any Python code can call it with any values. The trusted origin of
+`engine_build` and of every other receipt field, and a trusted channel for the
+receipt, are host requirements only.
 
 ## Read the amount of an item
 
