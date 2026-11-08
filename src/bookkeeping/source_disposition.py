@@ -7,6 +7,8 @@ date) cannot be booked. A person may close such a row with one of two decisions:
 - ``covered_by_opening``: the opening balance of the same account includes this row. This needs a match against
   a retained, immutable statement line. The engine keeps no such lines today, so this decision is always refused
   (``DISPOSITION_LINE_EVIDENCE_UNAVAILABLE``) and a stored claim of it never resolves. A date is never evidence.
+  Refusing every such claim is deliberate unsupported behavior. It is not proof that any statement line was
+  validated: the module validates no lines.
 
 This module only evaluates. It stores nothing, writes nothing, reads no environment variable and no clock, and
 decides no authority. A host decides who may confirm a decision, stores the confirmed claim, and calls

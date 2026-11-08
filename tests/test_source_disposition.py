@@ -230,8 +230,10 @@ class PendingOpeningTests(unittest.TestCase):
 class CoverageProvenanceTests(unittest.TestCase):
     """Each case must be refused for ``covered_by_opening``.
 
-    The engine keeps no immutable list of statement lines, so a row's ``statementId`` and fields cannot be checked
-    against the line that the statement really had. These cases show why a field match is not line membership.
+    These six tests preserve the fail-before cases: the evaluator at ``da55876`` accepted every one of them. The
+    engine keeps no immutable list of statement lines, so a row's ``statementId`` and fields cannot be checked
+    against the line that the statement really had. The tests pass now only because every ``covered_by_opening``
+    claim is refused on purpose. That refusal is deliberate unsupported behavior, not proof of line validation.
     """
 
     EVIDENCE = {"kind": "statement_line", "statement_id": "s1"}
