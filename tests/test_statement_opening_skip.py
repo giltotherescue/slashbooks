@@ -1,16 +1,10 @@
 """The shared importer skips rows dated before a recorded statement opening.
 
-This file records the exact behavior of that skip (``ledger/importer.py``, the
-``openings`` lookup in ``import_transactions``) and the cases where it is not
-safe. All data is synthetic.
-
-Safe behavior, kept: a posted row on the account of a live statement opening,
-dated before the opening day, is not imported, because the opening balance
-already includes it. The row is listed in ``ImportResult.before_opening``.
-
-Unsafe behavior, recorded with ``expectedFailure``: the skip compares the first
-ten characters of the raw date as text. A row with no date, or with a date that
-is not ``YYYY-MM-DD``, is dropped as "before the opening" even when it is not.
+These tests record the safe behavior of that skip (``ledger/importer.py``, the ``openings`` lookup in
+``import_transactions``): a posted row on the account of a live statement opening, dated before the opening day,
+is not imported, because the opening balance already includes it. The row is listed in
+``ImportResult.before_opening``. Rows with a missing, impossible or non-ISO date are covered by
+``tests/test_statement_opening_date_parse.py``. All data is synthetic.
 """
 
 from __future__ import annotations
@@ -86,8 +80,6 @@ class StatementOpeningSkipTests(unittest.TestCase):
         store = LedgerStore(default_store_path(self.entity))
         return {ref.source_id for ref in store.load_source_refs()}
 
-    # --- Safe behavior that stays -------------------------------------------------
-
     def test_row_before_the_opening_is_listed_and_not_imported(self):
         result = self.run_import([_row("feed-0", "2026-07-20"), _row("feed-1", OPENING_DAY),
                                   _row("feed-2", "2026-08-10")])
@@ -103,11 +95,6 @@ class StatementOpeningSkipTests(unittest.TestCase):
         self.assertEqual(len(first.before_opening), 1)
         self.assertEqual(len(again.before_opening), 1)
         self.assertEqual(_queue_ids(self.entity), [])
-
-    def test_timestamp_dates_use_the_day(self):
-        result = self.run_import([_row("feed-0", "2026-07-31T23:59:59Z"), _row("feed-1", "2026-08-01T00:00:00Z")])
-        self.assertEqual([item["source_id"] for item in result.before_opening], ["feed-0"])
-        self.assertEqual(_queue_ids(self.entity), ["feed-1"])
 
     def test_other_accounts_are_not_affected(self):
         result = self.run_import([_row("sav-0", "2026-07-20", account_id="feed-sav")])
@@ -142,25 +129,6 @@ class StatementOpeningSkipTests(unittest.TestCase):
                                                   Posting("Equity:Opening-Balances", Decimal("-50.00"))))], conn)
         self.assertNotIn(SAVINGS, opening_dates(self.entity))
         result = self.run_import([_row("sav-0", "2026-07-20", account_id="feed-sav")])
-        self.assertEqual(result.before_opening, [])
-
-    # --- Current unsafe behavior (recorded) ----------------------------------------
-
-    def test_current_behavior_drops_rows_whose_date_is_not_iso(self):
-        result = self.run_import([_row("no-date", None), _row("us-date", "08/10/2026")])
-        self.assertEqual(sorted(item["source_id"] for item in result.before_opening), ["no-date", "us-date"])
-        self.assertEqual(result.errors, [])
-        self.assertEqual(_queue_ids(self.entity), [])
-
-    @unittest.expectedFailure
-    def test_a_row_with_no_date_is_an_error_not_a_skip(self):
-        result = self.run_import([_row("no-date", None)])
-        self.assertEqual(result.before_opening, [])
-        self.assertTrue(result.errors)
-
-    @unittest.expectedFailure
-    def test_a_row_after_the_opening_with_a_non_iso_date_is_not_dropped(self):
-        result = self.run_import([_row("us-date", "08/10/2026")])
         self.assertEqual(result.before_opening, [])
 
 

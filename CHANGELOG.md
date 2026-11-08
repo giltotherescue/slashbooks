@@ -18,10 +18,11 @@
   command, `python -I -m bookkeeping.source_disposition check`, reads a company
   directory without writing. Nothing stores a decision yet, no command uses it,
   and it never allows a booking.
-- Record the exact behavior of the importer's skip of rows dated before a
-  recorded statement opening. Tests mark two unsafe cases as expected failures:
-  a row with no date, or with a date that is not `YYYY-MM-DD`, is dropped as
-  "before the opening" even when it is not.
+- Add tests that record the safe behavior of the importer's skip of rows
+  dated before a recorded statement opening: only live statement openings
+  count, only posted rows on that account are skipped, a row on the opening day
+  is imported, a reversed opening stops the skip, and the skip is not
+  remembered, so a re-sync skips the row again.
 - Add a books start policy that a host can pass to every command that writes
   the ledger, in `SLASHBOOKS_BOOKS_POLICY` (the path of a JSON document). It
   gives each bank or card account a state: `unset`, `authorized_pending_opening`
