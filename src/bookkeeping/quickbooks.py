@@ -1754,7 +1754,13 @@ def import_opening(
     """
     book = currency or entity.currency
     from .currency import report_currency
-    with report_currency(book):
+    from contextlib import nullcontext
+    from .ledger.importer import _entity_write_lock
+
+    # A plain apply checks the ledger and writes under one entity write lock, as qb sync-opening does.
+    # A caller with its own store or connection (repair) or a preview takes no lock here.
+    plain_apply = check_ledger and not _preview and _store is None and _conn is None
+    with report_currency(book), (_entity_write_lock(entity.path) if plain_apply else nullcontext()):
         return _import_opening(entity, folder, cutover, source, _store=_store, _conn=_conn, fiscal_start=fiscal_start,
                                supporting=supporting, closed_position=closed_position, _preview=_preview,
                                book=book, adopt_currency=adopt_currency, check_ledger=check_ledger)

@@ -1232,7 +1232,10 @@ class TestImportOpening(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertFalse(preview["success"])
             self.assertIn("expected 2026-03-14", " ".join(preview["errors"]))
-            self.assertEqual(before, self._snapshot(Path(entity.path)))
+            # The apply takes the entity write lock, which leaves an empty lock file.
+            after = self._snapshot(Path(entity.path))
+            after.pop(".books.lock", None)
+            self.assertEqual(before, after)
             store = LedgerStore(default_store_path(entity.path))
             self.assertEqual(store.load_entries() if store.path.exists() else [], [])
 
@@ -1266,6 +1269,49 @@ class TestImportOpening(unittest.TestCase):
             self.assertIn("Existing QuickBooks opening differs", " ".join(json.loads(out.getvalue())["errors"]))
             entries = LedgerStore(default_store_path(entity.path)).load_entries()
             self.assertEqual([e.date for e in entries], [date(2026, 1, 1)])
+
+    def test_concurrent_import_opening_applies_write_one_opening(self):
+        """The overlap check and the write share one entity write lock."""
+        import threading
+        from src.bookkeeping import quickbooks as qb_module
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            first_dir = self._opening_folder(tmpdir, "qb1")
+            second_dir = self._opening_folder(tmpdir, "qb2", "Jan 31, 2026")
+            entity = self._make_entity(tmpdir)
+            # Both applies reach this barrier after their check. Without a shared lock they meet here
+            # and both write. With the lock the second apply cannot start its check until the first
+            # one has written, so the barrier times out (bounded) and the second apply is refused.
+            barrier = threading.Barrier(2)
+            real_check = qb_module.check_opening_overlap
+
+            def checked_then_wait(*args, **kwargs):
+                outcome = real_check(*args, **kwargs)
+                try:
+                    barrier.wait(timeout=1)
+                except threading.BrokenBarrierError:
+                    pass
+                return outcome
+
+            results = {}
+
+            def apply(name, folder, cutover):
+                results[name] = self.import_opening(entity, folder, cutover)
+
+            with patch.object(qb_module, "check_opening_overlap", checked_then_wait):
+                threads = [threading.Thread(target=apply, args=("a", first_dir, date(2026, 1, 1))),
+                           threading.Thread(target=apply, args=("b", second_dir, date(2026, 2, 1)))]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=30)
+
+            self.assertEqual(sorted(r.success for r in results.values()), [False, True])
+            refused = next(r for r in results.values() if not r.success)
+            self.assertIn("Existing QuickBooks opening differs", " ".join(refused.errors))
+            entries = LedgerStore(default_store_path(entity.path)).load_entries()
+            self.assertEqual(len(entries), 1)
 
     def test_import_opening_refuses_to_overlap_existing_entries(self):
         from src.bookkeeping.ledger.model import Entry, Posting
