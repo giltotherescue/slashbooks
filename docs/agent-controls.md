@@ -251,6 +251,61 @@ date of the original entry and the same postings with each amount negated, and
 the original is not reversed yet. Any other entry with `reverses` metadata is
 checked like every other entry.
 
+## Books start policy (set by a host)
+
+The open date of an account and an opening balance do not say from which day
+live sources may add rows. A host that keeps an authorized books start for each
+account can pass it to any command that writes the ledger. Set the environment
+variable `SLASHBOOKS_BOOKS_POLICY` to the path of a JSON document:
+
+```json
+{"schema_version": 1, "mode": "enforced", "epoch": 4,
+ "accounts": {
+   "Assets:Bank:Checking": {"state": "authorized", "start_day": "2026-03-15", "version": 2},
+   "Liabilities:Card-1234": {"state": "authorized_pending_opening", "start_day": "2026-03-15", "version": 1},
+   "Assets:Bank:Savings": {"state": "unset"}}}
+```
+
+Without the variable, nothing changes. If the variable is set, the document must
+load. A missing document refuses every ledger write with
+`BOOKS_POLICY_REQUIRED`, and a bad document with `BOOKS_POLICY_INVALID`. The
+engine never falls back to the earlier behavior. `"mode": "legacy"` turns the
+check off.
+
+In `enforced` mode the ledger write checks each posting line of each new entry
+on an account in scope. The scope is every account that the policy names, every
+ledger account of a bank or CSV mapping, and the account of each source row in
+the write. The engine never uses an account name to decide the scope. A
+transfer between two in-scope accounts is checked on both sides.
+
+| State | Live postings to the account | Code |
+|---|---|---|
+| no entry in the policy | refused | `BOOKS_POLICY_REQUIRED` |
+| `unset` | refused | `BOOKS_START_UNSET` |
+| `authorized_pending_opening` | refused, also on and after `start_day` | `OPENING_REQUIRED` |
+| `authorized` | refused before `start_day`, allowed on and after it | `BOOKS_DATE_BEFORE_AUTHORIZED_START` |
+
+A refusal has the same effect as an open-date refusal: nothing is written, the
+row stays in review, `queue` commands exit with code 1, and standing automation
+gets a review hold with the code. `queue` commands print
+`{"error": {"code", "message", "action", "account", "state", "start_day",
+"entry_date", "source_id", "policy_epoch", "account_version"}}` on standard
+error. A routine plan gives the code as the reason, and import holds a row that
+a learned category would post, with the code as its `review_hold_reason`.
+
+Two writes are not refused:
+
+- The exact reversal of an entry in the books (the same rule as above).
+- The opening operations, `books qb sync-opening --apply` and
+  `books statement record-opening`. They write the opening entry through their
+  own code, not through the checked ledger write, with their existing
+  permission rules. Entry metadata such as `import-source`, a source ID or
+  `reverses` never makes an entry exempt.
+
+The engine does not store the policy and does not compare epochs. The host
+keeps the policy, gives each job one copy that does not change, and checks at
+publication that the epoch is still current.
+
 ## Read the amount of an item
 
 `bookkeeping.queue.amount_for_item(entity, item_id)` returns the absolute

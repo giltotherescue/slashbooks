@@ -351,6 +351,14 @@ def _refuse_item_before_open(entity: Entity, item: dict) -> None:
         sources.add(source)
         planned.append((_txn_date(row), [source, *others], str(row.get("id"))))
     raise_open_conflict(first_posting_conflict(planned, open_dates, sources))
+    # The books start policy (``ledger.books_policy``) makes the same decision as the ledger write.
+    from .ledger.books_policy import BooksPolicyError, active_policy, first_policy_conflict
+    from .ledger.importer import _source_accounts
+    try:
+        policy = active_policy()
+    except BooksPolicyError as exc:
+        raise_open_conflict(exc)
+    raise_open_conflict(first_policy_conflict(policy, planned, sources | _source_accounts(entity, rows)))
 
 
 def _forbid_self_approval(item: dict) -> None:
@@ -3203,9 +3211,12 @@ def add_parser(subparsers: Any) -> None:
 
 def _print_error(exc: Exception) -> None:
     """Print a command error. A caller-control refusal also names its code."""
+    from .ledger.books_policy import BooksPolicyError
     from .ledger.open_dates import AccountNotOpenError, OpenDateChangeError
     if isinstance(exc, QueueControlError):
         print(json.dumps({"error": {"code": exc.code, "message": str(exc)}}), file=sys.stderr)
+    elif isinstance(exc, BooksPolicyError):
+        print(json.dumps({"error": exc.as_dict()}), file=sys.stderr)
     elif isinstance(exc, (AccountNotOpenError, OpenDateChangeError)):
         print(json.dumps({"error": {"code": exc.code, "message": str(exc), "action": exc.action}}), file=sys.stderr)
     else:

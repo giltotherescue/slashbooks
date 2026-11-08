@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Add a books start policy that a host can pass to every command that writes
+  the ledger, in `SLASHBOOKS_BOOKS_POLICY` (the path of a JSON document). It
+  gives each bank or card account a state: `unset`, `authorized_pending_opening`
+  or `authorized` with a `start_day`. In `enforced` mode the ledger write
+  refuses a live posting with `BOOKS_START_UNSET`, `OPENING_REQUIRED` or
+  `BOOKS_DATE_BEFORE_AUTHORIZED_START`, and an in-scope account without a state
+  with `BOOKS_POLICY_REQUIRED`. Both sides of a transfer are checked. The scope
+  comes from the policy and the bank and CSV mappings, never from account names.
+  The exact reversal of an entry in the books and the opening operations are not
+  refused. This fixes a double count after a mid-month QuickBooks cutover: rows
+  dated before the cutover no longer book on top of the opening balance when the
+  host passes the start. Without the variable, nothing changes.
+
 - Make `books qb import-opening` check its input like `qb sync-opening`. The
   trial balance or balance sheet must end the day before the cutover. Before,
   reports that ended on 2025-12-31 were accepted with a cutover of 2026-03-15.

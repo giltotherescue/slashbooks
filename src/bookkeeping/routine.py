@@ -16,6 +16,7 @@ from .entity import flat_bank_account_mappings
 from .ledger.importer import _ledger_account_for_txn, _load_pending_categorization, _validate_normalized_transactions
 from .ledger.store import LedgerStore, default_store_path
 from .queue import _counterparty_key, taught_for, txn_is_above_ask_first
+from .ledger.books_policy import CODES as BOOKS_POLICY_CODES
 
 
 POLICY_SCHEMA_VERSION = 2
@@ -296,6 +297,19 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
     from .accrual.treatment import treatment_checker
     needs_treatment = treatment_checker(entity)
     rules, answers = _authority(policy, [] if decisions is None else decisions, pending, opens, posted)
+    # The books start policy (``ledger.books_policy``) makes the same decision as the ledger write.
+    from .ledger.books_policy import BooksPolicyError, active_policy, first_policy_conflict
+    from .ledger.importer import _source_accounts
+    try:
+        books_policy, books_policy_code = active_policy(), None
+    except BooksPolicyError as exc:
+        books_policy, books_policy_code = None, exc.code
+    books_scope = _source_accounts(entity, list(pending.values())) if books_policy is not None else set()
+
+    def refuse_outside_books(accounts, day, sid):
+        refusal = first_policy_conflict(books_policy, [(date.fromisoformat(day), accounts, sid)], books_scope)
+        if books_policy_code or refusal is not None:
+            raise ValueError(books_policy_code or refusal.code)
     if source_ids is not None and (not isinstance(source_ids, list) or not all(isinstance(sid, str) and sid for sid in source_ids)
                                    or len(set(source_ids)) != len(source_ids)):
         raise ValueError('source_ids must be unique non-empty strings.')
@@ -333,6 +347,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 raise ValueError('suspected_processor_payout')
             if opens[mapped].date > date.fromisoformat(source['date']) or (opens[mapped].currencies and book not in opens[mapped].currencies):
                 raise ValueError('source_catalog_conflict')
+            refuse_outside_books([mapped], source['date'], sid)
             if sid in owned:
                 raise ValueError('existing_review')
             if not policy['enabled']:
@@ -378,6 +393,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 category, authority_id = eligible[0]
                 if opens[category].date > date.fromisoformat(source['date']) or (opens[category].currencies and book not in opens[category].currencies):
                     raise ValueError('category_catalog_conflict')
+                refuse_outside_books([mapped, category], source['date'], sid)
                 result['actions'].append(dict(source_id=sid, category=category, authority_id=authority_id))
                 continue
         except ValueError as exc:
@@ -385,7 +401,8 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 'mapping_required', 'mapping_conflict', 'source_account_type_unknown', 'source_account_role_conflict',
                 'source_catalog_conflict', 'category_catalog_conflict', 'existing_review', 'policy_disabled',
                 'stale_decision', 'mapping_changed', 'ambiguous_authority', 'human_hold', 'suspected_processor_payout',
-                'accrual_treatment_required', 'taught_conflict', 'above_ask_first_amount'} else 'invalid_source'
+                'accrual_treatment_required', 'taught_conflict', 'above_ask_first_amount',
+                *BOOKS_POLICY_CODES} else 'invalid_source'
         detail['reason'] = reason
         result['unresolved'].append(detail)
     return result
