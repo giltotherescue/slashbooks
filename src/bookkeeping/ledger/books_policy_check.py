@@ -197,6 +197,14 @@ def _key(entry: Entry) -> tuple:
     return _record(entry)
 
 
+def entry_key(entry: Entry) -> tuple:
+    """Public form of the history key: every ``Entry`` field and every ``Posting`` field, by name.
+
+    Other modules use this one key, so a field added to the model later is included everywhere.
+    """
+    return _key(entry)
+
+
 def ledger_delta(base: Sequence[Entry], candidate: Sequence[Entry]) -> tuple[list[Entry], list[Entry]]:
     """``(added, removed)``: candidate entries that the base does not have, and base entries the candidate lost."""
     remaining = Counter(_key(entry) for entry in base)

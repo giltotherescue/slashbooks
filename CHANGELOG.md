@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Add `bookkeeping.source_disposition`, a pure evaluation of a person's
+  decision to close a staged bank row that the books cannot record because it
+  is dated before the account's books start (or before its open date when no
+  policy is given). Two decisions are evaluated: `outside_books` (not in these
+  books; no claim about the opening balance) and `covered_by_opening`. The
+  second is refused in every case for now: it needs a match against a
+  retained, fixed statement line, and the engine keeps no such lines yet. A
+  row's `statementId`, a statement period or a date is not proof that one
+  transaction is in the opening balance. `preview` shows the
+  basis and the conflicts a person must see, `confirm` refuses a stale preview,
+  `evaluate` gives `resolved` or `invalidated` with trigger codes after a
+  policy, mapping, open date, opening, evidence or row change, and `reclassify`
+  gives the review hold of a restored row under the current guards. A check
+  command, `python -I -m bookkeeping.source_disposition check`, reads a company
+  directory without writing. Nothing stores a decision yet, no command uses it,
+  and it never allows a booking.
+- Add tests that record the safe behavior of the importer's skip of rows
+  dated before a recorded statement opening: only live statement openings
+  count, only posted rows on that account are skipped, a row on the opening day
+  is imported, a reversed opening stops the skip, and the skip is not
+  remembered, so a re-sync skips the row again.
 - Add a books start policy that a host can pass to every command that writes
   the ledger, in `SLASHBOOKS_BOOKS_POLICY` (the path of a JSON document). It
   gives each bank or card account a state: `unset`, `authorized_pending_opening`
