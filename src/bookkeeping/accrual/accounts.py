@@ -104,7 +104,7 @@ def list_accounts(entity) -> dict[str, Any]:
     accounts = []
     for name, currency, open_date in rows:
         role = _role(name)
-        accounts.append({"name": name, "type": name.split(":")[0], "role": role, "subtype": _subtype(name, usage), "currency": currency,
+        accounts.append({"name": name, "account": name, "display_name": name.replace(":", " › "), "type": name.split(":")[0], "role": role, "subtype": _subtype(name, usage), "currency": currency,
                          "open_date": open_date, "has_postings": name in used,
                          "reconciles_to_support": role == "control" and accrual_active(entity),
                          "support_records": support.get(name, {})})

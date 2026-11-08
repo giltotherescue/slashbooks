@@ -273,7 +273,7 @@ def _anchors(files, inventory=None):
             # an earlier version still validates.
             reports = [statements._compute_pnl(sql, first, last), statements._compute_balance_sheet(sql, last, close_all_views=False),
                        statements._compute_trial_balance(sql, last, close_all_views=False), statements._compute_general_ledger(sql, first, last)]
-            fingerprints = {item.kind: _sha(_json_bytes(capture._json(item.to_json()))) for item in reports}
+            fingerprints = {item.kind: _sha(_json_bytes(capture._json(item.to_json(identity_fields=False)))) for item in reports}
             ledger = {"schema_version": version, "content_sha256": store.content_digest(sql), "tables": tables}
     _references(files, references, inventory)
     return identity, ledger, {"from": start, "to": end, "fingerprints": fingerprints}

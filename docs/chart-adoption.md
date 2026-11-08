@@ -68,3 +68,17 @@ may choose another hierarchy, while retaining the original source parent in
 evidence. Different source charts may map to the same ledger key only when
 their exact source name, number and type agree; conflicting presentations need
 a separate decision, not last-writer wins.
+
+## Report identity compatibility
+
+Statement account rows now include the immutable `account` key and a separate
+`display_name`; existing `label` remains. Computed equity rows carry a semantic
+`key` and `computed: true`, never a ledger account key. General-ledger sections
+carry their account key. Consumers must use these fields rather than reconstruct
+identifiers from punctuation in a human label.
+
+Historical migration/readiness fingerprints explicitly use the prior JSON
+shape, with canonical ledger names, so presentation metadata does not invalidate
+an economic proof. Golden fixtures are updated only for additive identity
+fields and resulting output-file manifest hashes. Existing financial values,
+ledger/audit state, readiness IDs and migration report fingerprints are unchanged.

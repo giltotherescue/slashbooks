@@ -549,8 +549,8 @@ def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
     finally:
         conn.close()
     balances = result["balances"]
-    income = [{"label": _render_account(a), "amount": -b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Income:")]
-    expense = [{"label": _render_account(a), "amount": b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Expenses:")]
+    income = [{"account": a, "display_name": _render_account(a), "label": _render_account(a), "amount": -b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Income:")]
+    expense = [{"account": a, "display_name": _render_account(a), "label": _render_account(a), "amount": b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Expenses:")]
     for key in (_K_UNAPPLIED_IN, _K_OPENING_IN):
         if balances.get(key):
             income.append({"label": _SPECIAL_LABELS[key], "amount": -balances[key], "indent": 1, "special": key[1:]})

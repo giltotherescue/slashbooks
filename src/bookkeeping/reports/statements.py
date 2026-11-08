@@ -107,8 +107,12 @@ class StatementResult:
 
     # ---- Rendering ----------------------------------------------------------
 
-    def to_json(self) -> str:
-        """Serialise to deterministic JSON (Decimal → string)."""
+    def to_json(self, *, identity_fields: bool = True) -> str:
+        """Serialize deterministic JSON. Legacy hash contracts omit additive identity fields.
+
+        Display consumers use the default. Existing migration/readiness hashes use
+        the historical shape so adding identity fields does not invalidate old proof.
+        """
 
         def _default(obj: Any) -> Any:
             if isinstance(obj, Decimal):
@@ -125,6 +129,27 @@ class StatementResult:
             "totals": {k: str(v) for k, v in self.totals.items()},
             "meta": self.meta,
         }
+        if not identity_fields:
+            import copy
+            payload = copy.deepcopy(payload)
+            for section in payload["sections"]:
+                if section.get("account"):
+                    section["label"] = _render_account(section["account"])
+                section.pop("account", None)
+                section.pop("display_name", None)
+                for row in section.get("rows", []):
+                    if row.get("account"):
+                        row["label"] = _render_account(row["account"])
+                    row.pop("account", None)
+                    row.pop("display_name", None)
+                    if self.kind == "balance_sheet":
+                        row.pop("computed", None)
+                        row.pop("key", None)
+            for row in payload["meta"].get("raw_rows", []):
+                if row.get("account"):
+                    row["label"] = _render_account(row["account"])
+                row.pop("account", None)
+                row.pop("display_name", None)
         return json.dumps(payload, indent=2, default=_default, sort_keys=False)
 
     def to_text(self) -> str:
@@ -486,7 +511,7 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] 
         if _is_income(acc):
             # Income accounts: credit-normal, flip sign for human display
             display = -bal
-            income_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
+            income_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
             total_income += display
 
     # Expenses: debit-normal → positive balance = expense
@@ -495,7 +520,7 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] 
     for acc, bal in sorted(balances.items()):
         if _is_expense(acc):
             display = bal  # debit-normal, positive = expense
-            expense_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
+            expense_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
             total_expenses += display
 
     net_income = total_income - total_expenses
@@ -604,7 +629,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
     for acc, bal in sorted(balances.items()):
         if _is_asset(acc):
             display = bal  # debit-normal
-            asset_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
+            asset_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
             total_assets += display
 
     # Liabilities
@@ -613,7 +638,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
     for acc, bal in sorted(balances.items()):
         if _is_liability(acc):
             display = -bal  # credit-normal, flip for display
-            liability_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
+            liability_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
             total_liabilities += display
 
     # Equity
@@ -622,7 +647,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
     for acc, bal in sorted(balances.items()):
         if _is_equity(acc):
             display = -bal  # credit-normal, flip for display
-            equity_rows.append({"label": _render_account(acc), "amount": display, "indent": 1})
+            equity_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
             total_equity_base += display
 
     accrual = metadata["basis"] == "accrual"
@@ -633,7 +658,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
         current_income = _earnings(_account_balances_in_range(conn, fiscal_start, as_of), Decimal(0) if accrual else Decimal("0.00"))
         prior_income = net_income_raw - current_income
         if prior_income:
-            equity_rows.append({"label": RETAINED_LABEL, "amount": prior_income, "indent": 1})
+            equity_rows.append({"label": RETAINED_LABEL, "key": "retained_earnings_prior", "computed": True, "amount": prior_income, "indent": 1})
             total_equity_base += prior_income
         net_income_raw = current_income
         # The cash and recorded views name the split only when it exists, so a single-year report is unchanged.
@@ -644,6 +669,8 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
     # Net income of the current fiscal year as a computed line in equity
     equity_rows.append({
         "label": CURRENT_NET_INCOME_LABEL,
+        "key": "net_income_current_period",
+        "computed": True,
         "amount": net_income_raw,
         "indent": 1,
     })
@@ -747,14 +774,14 @@ def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
         bal = balances[acc]
         if bal == Decimal("0.00"):
             continue  # skip zero-balance accounts
-        add(_render_account(acc), bal)
+        add(_render_account(acc), bal, account=acc, display_name=_render_account(acc))
     if prior != Decimal("0.00"):
         add(RETAINED_LABEL, prior, key="retained_earnings_prior", computed=True)
 
     # Reformat rows to have a single "amount" column for to_text rendering
     display_rows = []
     for r in rows:
-        extra = {"key": r["key"], "computed": True} if r.get("computed") else {}
+        extra = {"key": r["key"], "computed": True} if r.get("computed") else {"account": r["account"], "display_name": r["display_name"]}
         if r["debit"] > 0:
             display_rows.append({"label": r["label"], "amount": r["debit"], "indent": 0, **extra})
         else:
@@ -830,6 +857,8 @@ def _compute_general_ledger(conn: Any, from_date: date, to_date: date, view: Opt
         acct_rows = rows_by_account[account]
         total = sum(r["amount"] for r in acct_rows)
         sections.append({
+            "account": account,
+            "display_name": _render_account(account),
             "label": _render_account(account),
             "rows": acct_rows,
             "total": total,

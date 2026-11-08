@@ -7,6 +7,8 @@
       "label": "Revenue",
       "rows": [
         {
+          "account": "Income:Consulting",
+          "display_name": "Income › Consulting",
           "label": "Income › Consulting",
           "amount": "7000.00",
           "indent": 1
@@ -19,16 +21,22 @@
       "label": "Expenses",
       "rows": [
         {
+          "account": "Expenses:Depreciation",
+          "display_name": "Expenses › Depreciation",
           "label": "Expenses › Depreciation",
           "amount": "100.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Insurance",
+          "display_name": "Expenses › Insurance",
           "label": "Expenses › Insurance",
           "amount": "100.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Utilities",
+          "display_name": "Expenses › Utilities",
           "label": "Expenses › Utilities",
           "amount": "450.00",
           "indent": 1

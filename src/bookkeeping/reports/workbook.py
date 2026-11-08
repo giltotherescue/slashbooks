@@ -985,9 +985,9 @@ def _statement_to_rows(result: StatementResult) -> list[list[str]]:
                     memo = label
                 amt = row.get("amount")
                 rows.append([
-                    _account_type(account_label.replace(" › ", ":")),
+                    _account_type(section["account"]),
                     account_label,
-                    _account_detail(account_label.replace(" › ", ":")),
+                    _account_detail(section["account"]),
                     entry_date,
                     payee,
                     memo,

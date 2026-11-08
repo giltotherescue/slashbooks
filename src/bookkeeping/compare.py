@@ -604,9 +604,9 @@ def _compare_pnl(
     our_totals: dict[str, Decimal] = {}
     for section in our_pnl.sections:
         for row in section.get("rows", []):
-            label = row.get("label", "")
-            # Convert rendered label back to account form (reverse _render_account)
-            account = label.replace(" › ", ":")
+            account = row.get("account") or row.get("special")
+            if account is None:
+                raise ValueError("Report account identity is missing.")
             amount = row.get("amount", Decimal("0"))
             if amount is not None:
                 our_totals[account] = Decimal(str(amount))
@@ -785,8 +785,9 @@ def _compare_bs(
     our_balances: dict[str, Decimal] = {}
     for section in our_bs.sections:
         for row in section.get("rows", []):
-            label = row.get("label", "")
-            account = label.replace(" › ", ":")
+            account = row.get("account") if not row.get("computed") else row["label"]
+            if account is None:
+                raise ValueError("Report account identity is missing.")
             amount = row.get("amount")
             if amount is not None:
                 our_balances[account] = Decimal(str(amount))
@@ -904,7 +905,7 @@ def _compare_tb(
             if row.full_name not in mapping or mapping[row.full_name] in reference:
                 raise ValueError(f"Missing or duplicate trial balance mapping: {row.full_name}")
             reference[mapping[row.full_name]] = row.debit - row.credit
-        ours = {row["label"].replace(" › ", ":"): row["amount"]
+        ours = {(row["label"] if row.get("computed") else row["account"]): row["amount"]
                 for section in our_tb.sections for row in section["rows"]}
         # QuickBooks carries earlier fiscal years in Retained Earnings; so does the engine's computed row.
         from .reports.statements import RETAINED_LABEL

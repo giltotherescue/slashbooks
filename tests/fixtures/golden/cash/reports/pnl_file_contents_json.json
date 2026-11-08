@@ -7,6 +7,8 @@
       "label": "Money In",
       "rows": [
         {
+          "account": "Income:Consulting",
+          "display_name": "Income \u203a Consulting",
           "label": "Income \u203a Consulting",
           "amount": "26350.00",
           "indent": 1
@@ -19,51 +21,71 @@
       "label": "Money Out",
       "rows": [
         {
+          "account": "Expenses:Fees",
+          "display_name": "Expenses \u203a Fees",
           "label": "Expenses \u203a Fees",
           "amount": "45.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Insurance",
+          "display_name": "Expenses \u203a Insurance",
           "label": "Expenses \u203a Insurance",
           "amount": "420.80",
           "indent": 1
         },
         {
+          "account": "Expenses:Marketing",
+          "display_name": "Expenses \u203a Marketing",
           "label": "Expenses \u203a Marketing",
           "amount": "150.57",
           "indent": 1
         },
         {
+          "account": "Expenses:Meals",
+          "display_name": "Expenses \u203a Meals",
           "label": "Expenses \u203a Meals",
           "amount": "300.45",
           "indent": 1
         },
         {
+          "account": "Expenses:Office",
+          "display_name": "Expenses \u203a Office",
           "label": "Expenses \u203a Office",
           "amount": "131.75",
           "indent": 1
         },
         {
+          "account": "Expenses:Rent",
+          "display_name": "Expenses \u203a Rent",
           "label": "Expenses \u203a Rent",
           "amount": "5400.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Software",
+          "display_name": "Expenses \u203a Software",
           "label": "Expenses \u203a Software",
           "amount": "309.09",
           "indent": 1
         },
         {
+          "account": "Expenses:Subcontractors",
+          "display_name": "Expenses \u203a Subcontractors",
           "label": "Expenses \u203a Subcontractors",
           "amount": "4000.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Taxes",
+          "display_name": "Expenses \u203a Taxes",
           "label": "Expenses \u203a Taxes",
           "amount": "480.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Travel",
+          "display_name": "Expenses \u203a Travel",
           "label": "Expenses \u203a Travel",
           "amount": "568.40",
           "indent": 1

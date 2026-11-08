@@ -7,6 +7,8 @@
       "label": "Revenue",
       "rows": [
         {
+          "account": "Income:Services",
+          "display_name": "Income › Services",
           "label": "Income › Services",
           "amount": "100.00",
           "indent": 1
@@ -19,6 +21,8 @@
       "label": "Expenses",
       "rows": [
         {
+          "account": "Expenses:Operating-Costs",
+          "display_name": "Expenses › Operating-Costs",
           "label": "Expenses › Operating-Costs",
           "amount": "740.00",
           "indent": 1

@@ -9,77 +9,107 @@
         {
           "label": "Assets › Bank › Checking",
           "amount": "37300.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Bank:Checking",
+          "display_name": "Assets › Bank › Checking"
         },
         {
           "label": "Assets › Fixed › Accumulated-Depreciation",
           "amount": "-1500.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "display_name": "Assets › Fixed › Accumulated-Depreciation"
         },
         {
           "label": "Assets › Fixed › Equipment",
           "amount": "6000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Fixed:Equipment",
+          "display_name": "Assets › Fixed › Equipment"
         },
         {
           "label": "Assets › Other › Prepaid-Expenses",
           "amount": "1300.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Other:Prepaid-Expenses",
+          "display_name": "Assets › Other › Prepaid-Expenses"
         },
         {
           "label": "Assets › Receivable › Accounts-Receivable",
           "amount": "2100.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Receivable:Accounts-Receivable",
+          "display_name": "Assets › Receivable › Accounts-Receivable"
         },
         {
           "label": "Equity › Opening-Balances",
           "amount": "-33900.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Equity:Opening-Balances",
+          "display_name": "Equity › Opening-Balances"
         },
         {
           "label": "Expenses › Bad-Debt",
           "amount": "300.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Bad-Debt",
+          "display_name": "Expenses › Bad-Debt"
         },
         {
           "label": "Expenses › Bonus",
           "amount": "700.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Bonus",
+          "display_name": "Expenses › Bonus"
         },
         {
           "label": "Expenses › Depreciation",
           "amount": "500.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Depreciation",
+          "display_name": "Expenses › Depreciation"
         },
         {
           "label": "Expenses › Insurance",
           "amount": "300.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Insurance",
+          "display_name": "Expenses › Insurance"
         },
         {
           "label": "Expenses › Software",
           "amount": "1000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Software",
+          "display_name": "Expenses › Software"
         },
         {
           "label": "Expenses › Utilities",
           "amount": "470.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Utilities",
+          "display_name": "Expenses › Utilities"
         },
         {
           "label": "Income › Consulting",
           "amount": "-11400.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Income:Consulting",
+          "display_name": "Income › Consulting"
         },
         {
           "label": "Liabilities › Other › Accrued-Liabilities",
           "amount": "-470.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Liabilities:Other:Accrued-Liabilities",
+          "display_name": "Liabilities › Other › Accrued-Liabilities"
         },
         {
           "label": "Liabilities › Other › Deferred-Revenue",
           "amount": "-2700.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Liabilities:Other:Deferred-Revenue",
+          "display_name": "Liabilities › Other › Deferred-Revenue"
         }
       ],
       "total": null
@@ -188,91 +218,121 @@
         "label": "Assets › Bank › Checking",
         "debit": "37300.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Bank:Checking",
+        "display_name": "Assets › Bank › Checking"
       },
       {
         "label": "Assets › Fixed › Accumulated-Depreciation",
         "debit": "0.00",
         "credit": "1500.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "display_name": "Assets › Fixed › Accumulated-Depreciation"
       },
       {
         "label": "Assets › Fixed › Equipment",
         "debit": "6000.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Fixed:Equipment",
+        "display_name": "Assets › Fixed › Equipment"
       },
       {
         "label": "Assets › Other › Prepaid-Expenses",
         "debit": "1300.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Other:Prepaid-Expenses",
+        "display_name": "Assets › Other › Prepaid-Expenses"
       },
       {
         "label": "Assets › Receivable › Accounts-Receivable",
         "debit": "2100.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "display_name": "Assets › Receivable › Accounts-Receivable"
       },
       {
         "label": "Equity › Opening-Balances",
         "debit": "0.00",
         "credit": "33900.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Equity:Opening-Balances",
+        "display_name": "Equity › Opening-Balances"
       },
       {
         "label": "Expenses › Bad-Debt",
         "debit": "300.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Bad-Debt",
+        "display_name": "Expenses › Bad-Debt"
       },
       {
         "label": "Expenses › Bonus",
         "debit": "700.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Bonus",
+        "display_name": "Expenses › Bonus"
       },
       {
         "label": "Expenses › Depreciation",
         "debit": "500.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Depreciation",
+        "display_name": "Expenses › Depreciation"
       },
       {
         "label": "Expenses › Insurance",
         "debit": "300.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Insurance",
+        "display_name": "Expenses › Insurance"
       },
       {
         "label": "Expenses › Software",
         "debit": "1000.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Software",
+        "display_name": "Expenses › Software"
       },
       {
         "label": "Expenses › Utilities",
         "debit": "470.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Utilities",
+        "display_name": "Expenses › Utilities"
       },
       {
         "label": "Income › Consulting",
         "debit": "0.00",
         "credit": "11400.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Income:Consulting",
+        "display_name": "Income › Consulting"
       },
       {
         "label": "Liabilities › Other › Accrued-Liabilities",
         "debit": "0.00",
         "credit": "470.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Liabilities:Other:Accrued-Liabilities",
+        "display_name": "Liabilities › Other › Accrued-Liabilities"
       },
       {
         "label": "Liabilities › Other › Deferred-Revenue",
         "debit": "0.00",
         "credit": "2700.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "display_name": "Liabilities › Other › Deferred-Revenue"
       }
     ]
   }

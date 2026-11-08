@@ -7,26 +7,36 @@
       "label": "Assets",
       "rows": [
         {
+          "account": "Assets:Bank:Checking",
+          "display_name": "Assets › Bank › Checking",
           "label": "Assets › Bank › Checking",
           "amount": "9600.00",
           "indent": 1
         },
         {
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "display_name": "Assets › Fixed › Accumulated-Depreciation",
           "label": "Assets › Fixed › Accumulated-Depreciation",
           "amount": "-440.00",
           "indent": 1
         },
         {
+          "account": "Assets:Fixed:Equipment",
+          "display_name": "Assets › Fixed › Equipment",
           "label": "Assets › Fixed › Equipment",
           "amount": "2400.00",
           "indent": 1
         },
         {
+          "account": "Assets:Other:Prepaid-Insurance",
+          "display_name": "Assets › Other › Prepaid-Insurance",
           "label": "Assets › Other › Prepaid-Insurance",
           "amount": "500.00",
           "indent": 1
         },
         {
+          "account": "Assets:Receivable:Accounts-Receivable",
+          "display_name": "Assets › Receivable › Accounts-Receivable",
           "label": "Assets › Receivable › Accounts-Receivable",
           "amount": "600.00",
           "indent": 1
@@ -39,16 +49,22 @@
       "label": "Liabilities",
       "rows": [
         {
+          "account": "Liabilities:Other:Deferred-Revenue",
+          "display_name": "Liabilities › Other › Deferred-Revenue",
           "label": "Liabilities › Other › Deferred-Revenue",
           "amount": "500.00",
           "indent": 1
         },
         {
+          "account": "Liabilities:Other:Payroll-Payable",
+          "display_name": "Liabilities › Other › Payroll-Payable",
           "label": "Liabilities › Other › Payroll-Payable",
           "amount": "300.00",
           "indent": 1
         },
         {
+          "account": "Liabilities:Payable:Accounts-Payable",
+          "display_name": "Liabilities › Payable › Accounts-Payable",
           "label": "Liabilities › Payable › Accounts-Payable",
           "amount": "300.00",
           "indent": 1
@@ -61,12 +77,16 @@
       "label": "Equity",
       "rows": [
         {
+          "account": "Equity:Retained-Earnings",
+          "display_name": "Equity › Retained-Earnings",
           "label": "Equity › Retained-Earnings",
           "amount": "9000.00",
           "indent": 1
         },
         {
           "label": "Net Income (current period)",
+          "key": "net_income_current_period",
+          "computed": true,
           "amount": "2560.00",
           "indent": 1
         }

@@ -1,7 +1,9 @@
 {
   "accounts": [
     {
+      "account": "Assets:Bank:Checking",
       "currency": "USD",
+      "display_name": "Assets › Bank › Checking",
       "has_postings": true,
       "name": "Assets:Bank:Checking",
       "open_date": "2026-06-30",
@@ -12,7 +14,9 @@
       "type": "Assets"
     },
     {
+      "account": "Assets:Fixed:Accumulated-Depreciation",
       "currency": "USD",
+      "display_name": "Assets › Fixed › Accumulated-Depreciation",
       "has_postings": true,
       "name": "Assets:Fixed:Accumulated-Depreciation",
       "open_date": "2026-06-30",
@@ -25,7 +29,9 @@
       "type": "Assets"
     },
     {
+      "account": "Assets:Fixed:Equipment",
       "currency": "USD",
+      "display_name": "Assets › Fixed › Equipment",
       "has_postings": true,
       "name": "Assets:Fixed:Equipment",
       "open_date": "2026-06-30",
@@ -38,7 +44,9 @@
       "type": "Assets"
     },
     {
+      "account": "Assets:Other:Prepaid-Expenses",
       "currency": "USD",
+      "display_name": "Assets › Other › Prepaid-Expenses",
       "has_postings": false,
       "name": "Assets:Other:Prepaid-Expenses",
       "open_date": "2026-07-01",
@@ -49,7 +57,9 @@
       "type": "Assets"
     },
     {
+      "account": "Assets:Other:Prepaid-Insurance",
       "currency": "USD",
+      "display_name": "Assets › Other › Prepaid-Insurance",
       "has_postings": true,
       "name": "Assets:Other:Prepaid-Insurance",
       "open_date": "2026-06-30",
@@ -62,7 +72,9 @@
       "type": "Assets"
     },
     {
+      "account": "Assets:Receivable:Accounts-Receivable",
       "currency": "USD",
+      "display_name": "Assets › Receivable › Accounts-Receivable",
       "has_postings": true,
       "name": "Assets:Receivable:Accounts-Receivable",
       "open_date": "2026-06-30",
@@ -75,7 +87,9 @@
       "type": "Assets"
     },
     {
+      "account": "Equity:Opening-Balances",
       "currency": "USD",
+      "display_name": "Equity › Opening-Balances",
       "has_postings": false,
       "name": "Equity:Opening-Balances",
       "open_date": "2026-07-01",
@@ -86,7 +100,9 @@
       "type": "Equity"
     },
     {
+      "account": "Equity:Owner-Contributions",
       "currency": "USD",
+      "display_name": "Equity › Owner-Contributions",
       "has_postings": false,
       "name": "Equity:Owner-Contributions",
       "open_date": "2026-07-01",
@@ -97,7 +113,9 @@
       "type": "Equity"
     },
     {
+      "account": "Equity:Owner-Draws",
       "currency": "USD",
+      "display_name": "Equity › Owner-Draws",
       "has_postings": false,
       "name": "Equity:Owner-Draws",
       "open_date": "2026-07-01",
@@ -108,7 +126,9 @@
       "type": "Equity"
     },
     {
+      "account": "Equity:Retained-Earnings",
       "currency": "USD",
+      "display_name": "Equity › Retained-Earnings",
       "has_postings": true,
       "name": "Equity:Retained-Earnings",
       "open_date": "2026-06-30",
@@ -119,7 +139,9 @@
       "type": "Equity"
     },
     {
+      "account": "Expenses:Bank-Fees",
       "currency": "USD",
+      "display_name": "Expenses › Bank-Fees",
       "has_postings": false,
       "name": "Expenses:Bank-Fees",
       "open_date": "2026-07-01",
@@ -130,7 +152,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Depreciation",
       "currency": "USD",
+      "display_name": "Expenses › Depreciation",
       "has_postings": false,
       "name": "Expenses:Depreciation",
       "open_date": "2026-07-01",
@@ -141,7 +165,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Fees",
       "currency": "USD",
+      "display_name": "Expenses › Fees",
       "has_postings": false,
       "name": "Expenses:Fees",
       "open_date": "2026-07-01",
@@ -152,7 +178,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Insurance",
       "currency": "USD",
+      "display_name": "Expenses › Insurance",
       "has_postings": false,
       "name": "Expenses:Insurance",
       "open_date": "2026-07-01",
@@ -163,7 +191,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Marketing",
       "currency": "USD",
+      "display_name": "Expenses › Marketing",
       "has_postings": false,
       "name": "Expenses:Marketing",
       "open_date": "2026-07-01",
@@ -174,7 +204,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Meals",
       "currency": "USD",
+      "display_name": "Expenses › Meals",
       "has_postings": false,
       "name": "Expenses:Meals",
       "open_date": "2026-07-01",
@@ -185,7 +217,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Office",
       "currency": "USD",
+      "display_name": "Expenses › Office",
       "has_postings": false,
       "name": "Expenses:Office",
       "open_date": "2026-07-01",
@@ -196,7 +230,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Operating-Costs",
       "currency": "USD",
+      "display_name": "Expenses › Operating-Costs",
       "has_postings": true,
       "name": "Expenses:Operating-Costs",
       "open_date": "2026-06-30",
@@ -207,7 +243,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Payroll",
       "currency": "USD",
+      "display_name": "Expenses › Payroll",
       "has_postings": false,
       "name": "Expenses:Payroll",
       "open_date": "2026-07-01",
@@ -218,7 +256,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Payroll-Taxes",
       "currency": "USD",
+      "display_name": "Expenses › Payroll-Taxes",
       "has_postings": false,
       "name": "Expenses:Payroll-Taxes",
       "open_date": "2026-07-01",
@@ -229,7 +269,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Professional-Fees",
       "currency": "USD",
+      "display_name": "Expenses › Professional-Fees",
       "has_postings": false,
       "name": "Expenses:Professional-Fees",
       "open_date": "2026-07-01",
@@ -240,7 +282,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Rent",
       "currency": "USD",
+      "display_name": "Expenses › Rent",
       "has_postings": false,
       "name": "Expenses:Rent",
       "open_date": "2026-07-01",
@@ -251,7 +295,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Software",
       "currency": "USD",
+      "display_name": "Expenses › Software",
       "has_postings": false,
       "name": "Expenses:Software",
       "open_date": "2026-07-01",
@@ -262,7 +308,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Subcontractors",
       "currency": "USD",
+      "display_name": "Expenses › Subcontractors",
       "has_postings": false,
       "name": "Expenses:Subcontractors",
       "open_date": "2026-07-01",
@@ -273,7 +321,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Taxes",
       "currency": "USD",
+      "display_name": "Expenses › Taxes",
       "has_postings": false,
       "name": "Expenses:Taxes",
       "open_date": "2026-07-01",
@@ -284,7 +334,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Travel",
       "currency": "USD",
+      "display_name": "Expenses › Travel",
       "has_postings": false,
       "name": "Expenses:Travel",
       "open_date": "2026-07-01",
@@ -295,7 +347,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Expenses:Utilities",
       "currency": "USD",
+      "display_name": "Expenses › Utilities",
       "has_postings": false,
       "name": "Expenses:Utilities",
       "open_date": "2026-07-01",
@@ -306,7 +360,9 @@
       "type": "Expenses"
     },
     {
+      "account": "Income:Consulting",
       "currency": "USD",
+      "display_name": "Income › Consulting",
       "has_postings": false,
       "name": "Income:Consulting",
       "open_date": "2026-07-01",
@@ -317,7 +373,9 @@
       "type": "Income"
     },
     {
+      "account": "Income:Services",
       "currency": "USD",
+      "display_name": "Income › Services",
       "has_postings": true,
       "name": "Income:Services",
       "open_date": "2026-06-30",
@@ -328,7 +386,9 @@
       "type": "Income"
     },
     {
+      "account": "Liabilities:CreditCard",
       "currency": "USD",
+      "display_name": "Liabilities › CreditCard",
       "has_postings": false,
       "name": "Liabilities:CreditCard",
       "open_date": "2026-07-01",
@@ -339,7 +399,9 @@
       "type": "Liabilities"
     },
     {
+      "account": "Liabilities:Other:Accrued-Liabilities",
       "currency": "USD",
+      "display_name": "Liabilities › Other › Accrued-Liabilities",
       "has_postings": false,
       "name": "Liabilities:Other:Accrued-Liabilities",
       "open_date": "2026-07-01",
@@ -350,7 +412,9 @@
       "type": "Liabilities"
     },
     {
+      "account": "Liabilities:Other:Customer-Deposits",
       "currency": "USD",
+      "display_name": "Liabilities › Other › Customer-Deposits",
       "has_postings": false,
       "name": "Liabilities:Other:Customer-Deposits",
       "open_date": "2026-07-01",
@@ -361,7 +425,9 @@
       "type": "Liabilities"
     },
     {
+      "account": "Liabilities:Other:Deferred-Revenue",
       "currency": "USD",
+      "display_name": "Liabilities › Other › Deferred-Revenue",
       "has_postings": true,
       "name": "Liabilities:Other:Deferred-Revenue",
       "open_date": "2026-06-30",
@@ -374,7 +440,9 @@
       "type": "Liabilities"
     },
     {
+      "account": "Liabilities:Other:Payroll-Payable",
       "currency": "USD",
+      "display_name": "Liabilities › Other › Payroll-Payable",
       "has_postings": true,
       "name": "Liabilities:Other:Payroll-Payable",
       "open_date": "2026-06-30",
@@ -388,7 +456,9 @@
       "type": "Liabilities"
     },
     {
+      "account": "Liabilities:Payable:Accounts-Payable",
       "currency": "USD",
+      "display_name": "Liabilities › Payable › Accounts-Payable",
       "has_postings": true,
       "name": "Liabilities:Payable:Accounts-Payable",
       "open_date": "2026-06-30",

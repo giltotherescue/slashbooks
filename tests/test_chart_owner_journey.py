@@ -43,3 +43,20 @@ class OwnerChartJourneyTests(unittest.TestCase):
             self.assertEqual(store.content_digest(), before)
             self.assertEqual(check_integrity(load_entity(root)).status, "ok")
             self.assertEqual(sum(e.source_id == "synthetic-retainer-1" for e in store.load_entries()), 1)
+            from bookkeeping.reports.statements import profit_and_loss, balance_sheet, trial_balance, general_ledger
+            from bookkeeping.reports.structure import build_structure
+            pnl = profit_and_loss(root, date(2026, 2, 1), date(2026, 2, 28))
+            proof = pnl.to_json(identity_fields=False)
+            income = next(r for section in pnl.sections for r in section["rows"] if r.get("account") == chosen)
+            income["label"] = "Owner's exact display name — not an account key"
+            income["display_name"] = income["label"]
+            self.assertEqual(pnl.to_json(identity_fields=False), proof)
+            structured = build_structure(pnl)
+            self.assertEqual(next(r for r in structured["lines"] if r.get("account") == chosen)["key"], chosen)
+            for report in (balance_sheet(root, date(2026, 2, 28)), trial_balance(root, date(2026, 2, 28))):
+                for section in report.sections:
+                    for row in section["rows"]:
+                        self.assertTrue(row.get("computed") or (row.get("account") and row.get("display_name")), row)
+            ledger = general_ledger(root, date(2026, 2, 1), date(2026, 2, 28))
+            self.assertIn(chosen, {s["account"] for s in ledger.sections})
+            self.assertEqual(store.content_digest(), before)

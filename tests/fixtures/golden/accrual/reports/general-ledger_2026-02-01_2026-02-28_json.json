@@ -4,6 +4,8 @@
   "to_date": "2026-02-28",
   "sections": [
     {
+      "account": "Assets:Bank:Checking",
+      "display_name": "Assets › Bank › Checking",
       "label": "Assets › Bank › Checking",
       "rows": [
         {
@@ -41,6 +43,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Assets:Fixed:Accumulated-Depreciation",
+      "display_name": "Assets › Fixed › Accumulated-Depreciation",
       "label": "Assets › Fixed › Accumulated-Depreciation",
       "rows": [
         {
@@ -60,6 +64,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Assets:Fixed:Equipment",
+      "display_name": "Assets › Fixed › Equipment",
       "label": "Assets › Fixed › Equipment",
       "rows": [
         {
@@ -73,6 +79,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Assets:Other:Prepaid-Expenses",
+      "display_name": "Assets › Other › Prepaid-Expenses",
       "label": "Assets › Other › Prepaid-Expenses",
       "rows": [
         {
@@ -98,6 +106,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "display_name": "Assets › Receivable › Accounts-Receivable",
       "label": "Assets › Receivable › Accounts-Receivable",
       "rows": [
         {
@@ -123,6 +133,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Bonus",
+      "display_name": "Expenses › Bonus",
       "label": "Expenses › Bonus",
       "rows": [
         {
@@ -136,6 +148,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Depreciation",
+      "display_name": "Expenses › Depreciation",
       "label": "Expenses › Depreciation",
       "rows": [
         {
@@ -155,6 +169,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Insurance",
+      "display_name": "Expenses › Insurance",
       "label": "Expenses › Insurance",
       "rows": [
         {
@@ -168,6 +184,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Software",
+      "display_name": "Expenses › Software",
       "label": "Expenses › Software",
       "rows": [
         {
@@ -187,6 +205,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Utilities",
+      "display_name": "Expenses › Utilities",
       "label": "Expenses › Utilities",
       "rows": [
         {
@@ -200,6 +220,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Income:Consulting",
+      "display_name": "Income › Consulting",
       "label": "Income › Consulting",
       "rows": [
         {
@@ -225,6 +247,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Liabilities:Other:Accrued-Liabilities",
+      "display_name": "Liabilities › Other › Accrued-Liabilities",
       "label": "Liabilities › Other › Accrued-Liabilities",
       "rows": [
         {
@@ -238,6 +262,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Liabilities:Other:Deferred-Revenue",
+      "display_name": "Liabilities › Other › Deferred-Revenue",
       "label": "Liabilities › Other › Deferred-Revenue",
       "rows": [
         {
@@ -263,6 +289,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Liabilities:Payable:Accounts-Payable",
+      "display_name": "Liabilities › Payable › Accounts-Payable",
       "label": "Liabilities › Payable › Accounts-Payable",
       "rows": [
         {
