@@ -1271,47 +1271,70 @@ class TestImportOpening(unittest.TestCase):
             self.assertEqual([e.date for e in entries], [date(2026, 1, 1)])
 
     def test_concurrent_import_opening_applies_write_one_opening(self):
-        """The overlap check and the write share one entity write lock."""
+        """The overlap check and the write share one entity write lock.
+
+        Handshakes, no timing: A passes its check while it holds the lock. Only then B starts.
+        B signals just before it asks for the lock. A then writes and releases. B gets the lock,
+        runs its check and is refused. A wait that times out fails the test.
+        """
+        import contextlib
         import threading
         from src.bookkeeping import quickbooks as qb_module
+        from src.bookkeeping.ledger import importer as importer_module
         from src.bookkeeping.ledger.store import LedgerStore, default_store_path
 
+        safety = 20
         with tempfile.TemporaryDirectory() as tmpdir:
             first_dir = self._opening_folder(tmpdir, "qb1")
             second_dir = self._opening_folder(tmpdir, "qb2", "Jan 31, 2026")
             entity = self._make_entity(tmpdir)
-            # Both applies reach this barrier after their check. Without a shared lock they meet here
-            # and both write. With the lock the second apply cannot start its check until the first
-            # one has written, so the barrier times out (bounded) and the second apply is refused.
-            barrier = threading.Barrier(2)
+            a_passed_check = threading.Event()
+            b_attempting_lock = threading.Event()
             real_check = qb_module.check_opening_overlap
+            real_lock = importer_module._entity_write_lock
+            errors, results = [], {}
 
-            def checked_then_wait(*args, **kwargs):
+            def check_hook(*args, **kwargs):
                 outcome = real_check(*args, **kwargs)
-                try:
-                    barrier.wait(timeout=1)
-                except threading.BrokenBarrierError:
-                    pass
+                if threading.current_thread().name == "A":
+                    a_passed_check.set()  # A holds the lock here
+                    if not b_attempting_lock.wait(safety):
+                        raise AssertionError("B never asked for the lock")
                 return outcome
 
-            results = {}
+            @contextlib.contextmanager
+            def lock_hook(*args, **kwargs):
+                if threading.current_thread().name == "B":
+                    b_attempting_lock.set()
+                with real_lock(*args, **kwargs):
+                    yield
 
-            def apply(name, folder, cutover):
-                results[name] = self.import_opening(entity, folder, cutover)
+            def apply(folder, cutover):
+                try:
+                    results[threading.current_thread().name] = self.import_opening(entity, folder, cutover)
+                except BaseException as exc:  # noqa: BLE001 - report every thread failure
+                    errors.append((threading.current_thread().name, exc))
 
-            with patch.object(qb_module, "check_opening_overlap", checked_then_wait):
-                threads = [threading.Thread(target=apply, args=("a", first_dir, date(2026, 1, 1))),
-                           threading.Thread(target=apply, args=("b", second_dir, date(2026, 2, 1)))]
-                for thread in threads:
-                    thread.start()
-                for thread in threads:
-                    thread.join(timeout=30)
+            with patch.object(qb_module, "check_opening_overlap", check_hook), \
+                    patch.object(importer_module, "_entity_write_lock", lock_hook):
+                thread_a = threading.Thread(target=apply, args=(first_dir, date(2026, 1, 1)), name="A")
+                thread_b = threading.Thread(target=apply, args=(second_dir, date(2026, 2, 1)), name="B")
+                thread_a.start()
+                self.assertTrue(a_passed_check.wait(safety), "A never passed its check")
+                thread_b.start()
+                thread_a.join(safety)
+                thread_b.join(safety)
 
-            self.assertEqual(sorted(r.success for r in results.values()), [False, True])
-            refused = next(r for r in results.values() if not r.success)
-            self.assertIn("Existing QuickBooks opening differs", " ".join(refused.errors))
+            self.assertFalse(thread_a.is_alive(), "thread A did not finish")
+            self.assertFalse(thread_b.is_alive(), "thread B did not finish")
+            self.assertEqual(errors, [])
+            self.assertTrue(results["A"].success, results["A"].errors)
+            self.assertEqual(results["A"].entries_written, 1)
+            self.assertFalse(results["B"].success)
+            self.assertEqual(results["B"].entries_written, 0)
+            self.assertIn("Existing QuickBooks opening differs", " ".join(results["B"].errors))
             entries = LedgerStore(default_store_path(entity.path)).load_entries()
-            self.assertEqual(len(entries), 1)
+            self.assertEqual([e.date for e in entries], [date(2026, 1, 1)])
 
     def test_import_opening_refuses_to_overlap_existing_entries(self):
         from src.bookkeeping.ledger.model import Entry, Posting
