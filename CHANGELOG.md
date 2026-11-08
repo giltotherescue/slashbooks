@@ -10,10 +10,17 @@
   `BOOKS_DATE_BEFORE_AUTHORIZED_START`, and an in-scope account without a state
   with `BOOKS_POLICY_REQUIRED`. Both sides of a transfer are checked. The scope
   comes from the policy and the bank and CSV mappings, never from account names.
-  The exact reversal of an entry in the books and the opening operations are not
-  refused. This fixes a double count after a mid-month QuickBooks cutover: rows
-  dated before the cutover no longer book on top of the opening balance when the
-  host passes the start. Without the variable, nothing changes.
+  The exact reversal of an entry in the books is not refused. Without the
+  variable, nothing changes. This check gives early feedback only.
+- Add the trusted check that a host runs before it publishes:
+  `python -I -m bookkeeping.ledger.books_policy_check check --request FILE
+  --base DIR --candidate DIR`. It checks every entry that the proposed ledger
+  adds against the host's own policy, without any environment variable. It also
+  refuses a proposed ledger that drops a published entry. An opening for an
+  account that waits for its opening passes only with a host authorization that
+  matches the entry exactly. Together, these fix a double count after a
+  mid-month QuickBooks cutover: rows dated before the cutover cannot be
+  published on top of the opening balance.
 
 - Make `books qb import-opening` check its input like `qb sync-opening`. The
   trial balance or balance sheet must end the day before the cutover. Before,

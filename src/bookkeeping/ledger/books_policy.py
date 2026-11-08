@@ -34,16 +34,16 @@ are checked. Account states:
 
 An in-scope account that the policy does not name is refused (``BOOKS_POLICY_REQUIRED``).
 
-Two writes are not refused:
+The exact reversal of an entry in the books that is not reversed yet is not refused (the same predicate as
+the open-date rule). It removes activity and adds none. An entry that only has ``reverses`` metadata is
+checked. Entry metadata such as ``import-source`` or a source ID never makes an entry exempt.
 
-* The exact reversal of an entry in the books that is not reversed yet (the same predicate as the open-date
-  rule). It removes activity and adds none. An entry that only has ``reverses`` metadata is checked.
-* The opening operations. They write the opening entry through their own call sites, not through the atomic
-  ledger write, under their existing permission rules. Entry metadata such as ``import-source``, a source ID
-  or ``reverses`` never makes an entry exempt.
-
-The engine does not store the policy and does not compare epochs. The host keeps the policy, gives each job
-one immutable copy, and checks at publication that the policy epoch did not change.
+This check inside a command is early feedback, not the fence. A session that runs the command controls the
+variable and the file. The opening operations (``qb sync-opening --apply``, ``qb import-opening``,
+``statement record-opening`` and ``accrual opening apply``) also write outside this check or under their own
+rules. The fence is ``ledger.books_policy_check``: the host runs it on the proposed ledger change with its own
+immutable policy, outside the session, before it publishes. The engine does not store the policy and does
+not compare epochs.
 """
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ class BooksPolicyError(ValueError):
 
 def _invalid(detail: str) -> BooksPolicyError:
     return BooksPolicyError(POLICY_INVALID, f"The books start policy is not valid: {detail}",
-                            f"Give a valid policy document in {ENV_VAR}, or unset the variable.")
+                            "The host must give a valid books start policy. The row stays in review.")
 
 
 @dataclass(frozen=True)
@@ -228,7 +228,7 @@ def active_policy() -> BooksPolicy | None:
     path = Path(value)
     if not value or not path.is_file():
         raise BooksPolicyError(POLICY_REQUIRED, f"{ENV_VAR} is set, but no policy document is at {value!r}",
-                               "Give the path of the books start policy document, or unset the variable.")
+                               "The host must give the books start policy document. The row stays in review.")
     try:
         raw = path.read_bytes()
         if len(raw) > MAX_BYTES:

@@ -293,18 +293,44 @@ gets a review hold with the code. `queue` commands print
 error. A routine plan gives the code as the reason, and import holds a row that
 a learned category would post, with the code as its `review_hold_reason`.
 
-Two writes are not refused:
+The exact reversal of an entry in the books is not refused (the same rule as
+above). Entry metadata such as `import-source`, a source ID or `reverses` never
+makes an entry exempt.
 
-- The exact reversal of an entry in the books (the same rule as above).
-- The opening operations, `books qb sync-opening --apply` and
-  `books statement record-opening`. They write the opening entry through their
-  own code, not through the checked ledger write, with their existing
-  permission rules. Entry metadata such as `import-source`, a source ID or
-  `reverses` never makes an entry exempt.
+This check inside a command gives early feedback. It is not the fence, because
+the session that runs the command controls the variable and the file. The
+opening operations (`books qb sync-opening --apply`, `books qb import-opening`,
+`books statement record-opening`, `books accrual opening apply`) also write
+outside it or under their own rules.
 
-The engine does not store the policy and does not compare epochs. The host
-keeps the policy, gives each job one copy that does not change, and checks at
-publication that the epoch is still current.
+### The trusted check before publication
+
+The host runs the fence in a process that the session cannot configure, after
+the command and before it publishes the result:
+
+```sh
+python -I -m bookkeeping.ledger.books_policy_check check --request REQUEST.json \
+    --base PUBLISHED_ENTITY_DIR --candidate PROPOSED_ENTITY_DIR
+```
+
+`REQUEST.json` comes from the host's own copy of the policy for the job:
+`{"schema_version": 1, "policy": {...}, "scope": [ledger accounts],
+"opening_authorizations": [...]}`. The check reads no environment variable. It
+refuses a proposed ledger that drops an entry that is already published
+(`BOOKS_LEDGER_HISTORY_CHANGED`). It checks every entry that the proposed ledger
+adds with the rules above. The scope is the request scope, the policy accounts,
+and the mapped accounts of both workspaces. Many provider accounts can map to
+one ledger account. The Python function is
+`check_ledger_delta(request, base_entries, candidate_entries, mapped_accounts)`.
+
+An opening on an account in `authorized_pending_opening` passes only when the
+host gives an opening authorization that matches the entry exactly: the account,
+the `start_day` and `version` of the policy entry, the entry date, the entry
+source ID and every posting. The host makes an authorization only from its own
+receipt of a reviewed opening operation and the committed opening entry. Every
+other opening is checked like any entry, so an opening before the start or on an
+`unset` account is refused. The command exits with 0 (`ok`), 1 (`refused`:
+publish nothing) or 2 (a bad request or workspace).
 
 ## Read the amount of an item
 
