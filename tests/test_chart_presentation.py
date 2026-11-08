@@ -55,6 +55,9 @@ class ChartPresentationTests(unittest.TestCase):
         self.assertEqual(report().to_json(identity_fields=False), proof)
         row = next(r for s in report().sections for r in s['rows'] if r.get('account') == self.account)
         self.assertEqual(row['display_name'], request['display_name'])
+        from bookkeeping.reports.structure import build_structure
+        line = next(r for r in build_structure(report())['lines'] if r.get('account') == self.account)
+        self.assertEqual(line['display_name'], request['display_name'])
         ledger = general_ledger(self.root, date(2026, 1, 1), date(2026, 12, 31))
         self.assertEqual(next(s for s in ledger.sections if s['account'] == self.account)['display_name'], request['display_name'])
         rows = _build_general_ledger_rows(self.root, date(2026, 1, 1), date(2026, 12, 31))

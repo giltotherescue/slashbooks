@@ -65,6 +65,7 @@ def _account(section: str, row: dict) -> dict:
                 "amount": _money(row["amount"]), "indent": row.get("indent", 1), "section": section}
     return {
         "type": "account", "key": row["account"], "label": row["label"],
+        **({"display_name": row["display_name"]} if row.get("preserve_display_name") else {}),
         "account": row["account"], "amount": _money(row["amount"]),
         "indent": row.get("indent", 1), "section": section,
     }
