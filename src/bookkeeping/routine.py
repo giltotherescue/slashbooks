@@ -18,6 +18,12 @@ from .ledger.store import LedgerStore, default_store_path
 from .queue import _counterparty_key, taught_for, txn_is_above_ask_first
 
 
+POLICY_SCHEMA_VERSION = 2
+RULE_FIELDS = frozenset({
+    "id", "source_account_id", "counterparty_key", "category", "approved_ledger_account",
+    "min_abs_amount", "max_abs_amount", "direction", "currency", "description_exact",
+})
+
 def _text(value, field):
     if not isinstance(value, str) or not value.strip() or value != value.strip():
         raise ValueError(f"{field} must be a non-empty string without surrounding whitespace.")
@@ -204,6 +210,8 @@ def _authority(policy, decisions, pending, opens, posted):
     for rule in rules:
         if not isinstance(rule, dict):
             raise ValueError('Rules must be objects.')
+        if set(rule) - RULE_FIELDS:
+            raise ValueError('Unsupported rule conditions.')
         for field in ('id', 'source_account_id', 'counterparty_key', 'category', 'approved_ledger_account'):
             _text(rule.get(field), field)
         if rule['id'] in rule_ids or not _category(rule['category'], opens):
@@ -211,8 +219,21 @@ def _authority(policy, decisions, pending, opens, posted):
         rule_ids.add(rule['id'])
         if rule['counterparty_key'] != _counterparty_key(rule['counterparty_key'], ''):
             raise ValueError('Rule counterparty_key must be normalized.')
-        if 'max_abs_amount' in rule and _money(rule['max_abs_amount']) < 0:
-            raise ValueError('Rule max_abs_amount must be nonnegative.')
+        for field in ('min_abs_amount', 'max_abs_amount'):
+            if field in rule and _money(rule[field]) < 0:
+                raise ValueError(f'Rule {field} must be nonnegative.')
+        if ('min_abs_amount' in rule and 'max_abs_amount' in rule
+                and _money(rule['min_abs_amount']) > _money(rule['max_abs_amount'])):
+            raise ValueError('Rule amount range is reversed.')
+        if 'direction' in rule and rule['direction'] not in ('inflow', 'outflow'):
+            raise ValueError('Rule direction must be inflow or outflow.')
+        if 'currency' in rule and (not isinstance(rule['currency'], str)
+                                   or not re.fullmatch('[A-Z]{3}', rule['currency'])):
+            raise ValueError('Rule currency must be an uppercase currency code.')
+        if 'description_exact' in rule:
+            description = _text(rule['description_exact'], 'description_exact')
+            if len(description) > 1000 or any(ord(c) < 32 for c in description):
+                raise ValueError('Rule description_exact must be bounded plain text.')
     if not isinstance(decisions, list):
         raise ValueError('Decisions must be an array.')
     by_source = {}
@@ -282,6 +303,8 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
     selected = ids[:limit]
     result = dict(actions=[], unresolved=[], skipped=[], next_cursor=selected[-1] if len(ids) > limit else None)
     book = entity.currency
+    if any(rule.get("currency", book) != book for rule in rules):
+        raise ValueError("Rule currency must match the book currency.")
     for sid in selected:
         if sid in reversed_ids or sid in posted or sid not in pending:
             reason = 'reversed' if sid in reversed_ids else 'already_posted' if sid in posted else 'not_staged'
@@ -301,7 +324,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                 raise ValueError('pending')
             if closed_date and date.fromisoformat(source['date']) <= closed_date:
                 raise ValueError('closed_period')
-            if str(txn.get('currency') or book).upper() != book or _money(source['amount']) == 0:
+            if source['currency'].upper() != book or _money(source['amount']) == 0:
                 raise ValueError('unsupported_currency_or_zero_amount')
             mapped = _mapping(entity, txn, opens)
             detail['ledger_account'] = mapped
@@ -334,6 +357,15 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                         continue
                     if rule['approved_ledger_account'] != mapped:
                         raise ValueError('mapping_changed')
+                    if 'currency' in rule and rule['currency'] != source['currency']:
+                        continue
+                    if 'description_exact' in rule and rule['description_exact'] != txn.get('description'):
+                        continue
+                    amount = _money(source['amount'])
+                    if 'direction' in rule and rule['direction'] != ('inflow' if amount > 0 else 'outflow'):
+                        continue
+                    if 'min_abs_amount' in rule and abs(amount) < _money(rule['min_abs_amount']):
+                        continue
                     if 'max_abs_amount' in rule and abs(_money(source['amount'])) > _money(rule['max_abs_amount']):
                         continue
                     eligible.append((rule['category'], rule['id']))
