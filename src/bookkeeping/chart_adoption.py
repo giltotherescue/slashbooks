@@ -37,8 +37,10 @@ def _text(value: Any, field: str, limit: int = 300) -> str:
 
 def validate(manifest: Any) -> dict[str, Any]:
     fields = {"version", "operation_id", "source", "decision", "scope", "open_date", "accounts"}
-    if not isinstance(manifest, dict) or set(manifest) != fields or type(manifest["version"]) is not int or manifest["version"] != 1:
+    if not isinstance(manifest, dict) or set(manifest) - {"presentation"} != fields or type(manifest["version"]) is not int or manifest["version"] != 1:
         raise ValueError("Expected chart manifest version 1 with exactly the documented fields.")
+    if manifest.get("presentation", "evidence_only") not in ("activate", "evidence_only"):
+        raise ValueError("presentation must be activate or evidence_only.")
     _text(manifest["operation_id"], "operation_id", 100)
     _text(manifest["source"], "source", 100)
     if manifest["decision"] not in ("preserve", "rebuild") or manifest["scope"] not in ("complete", "partial"):
@@ -136,7 +138,8 @@ def adopt(root: Path, manifest: dict[str, Any], *, apply: bool = False, plan_has
             preview = {"status": "preview", "plan_hash": fingerprint, "accounts": outcomes,
                        "duplicate_numbers": duplicate_numbers, "scope": manifest["scope"], "decision": manifest["decision"],
                        "existing_accounts_removed": 0, "entries_changed": 0,
-                       "active_display_names_changed": False, "active_tax_numbers_changed": False}
+                       "active_display_names_changed": manifest.get("presentation") == "activate",
+                       "active_tax_numbers_changed": manifest.get("presentation") == "activate" and any(r["number"] is not None for r in manifest["accounts"])}
             if not apply:
                 return preview
             if plan_hash != fingerprint:
@@ -149,6 +152,12 @@ def adopt(root: Path, manifest: dict[str, Any], *, apply: bool = False, plan_has
             source["accounts"].update({r["source_id"]: r for r in manifest["accounts"]})
             source["decisions"].append({"operation_id": manifest["operation_id"], "decision": manifest["decision"], "scope": manifest["scope"]})
             store.set_meta(KEY, _json(previous), conn)
+            if manifest.get("presentation") == "activate":
+                from . import chart_presentation
+                presentation = chart_presentation.read(conn)
+                presentation.update({row["account"]: {"display_name": row["name"], "number": row["number"]}
+                                     for row in manifest["accounts"]})
+                store.set_meta(chart_presentation.KEY, _json(presentation), conn)
             receipt = {"operation_id": manifest["operation_id"], "request_hash": request_hash,
                        "source": manifest["source"], "created": created, "entries_changed": 0}
             store.append_audit_event("chart-adopted", receipt, conn)
@@ -169,5 +178,9 @@ def inspect(root: Path) -> dict[str, Any]:
     if not store.path.is_file() or store.path.is_symlink():
         raise ValueError("Chart inspection requires an initialized ledger.")
     with _entity_write_lock(root.resolve()), store.connection() as conn:
-        return {"accounts": [dict(r) for r in conn.execute("SELECT name AS account,currency,open_date FROM accounts ORDER BY name")],
+        from . import chart_presentation
+        presentation = chart_presentation.read(conn)
+        return {"accounts": [{**dict(r), "display_name": chart_presentation.label(r["account"], presentation),
+                              "account_number": presentation.get(r["account"], {}).get("number")}
+                             for r in conn.execute("SELECT name AS account,currency,open_date FROM accounts ORDER BY name")],
                 "source_evidence": _stored(conn), "ledger_digest": store.content_digest(conn)}

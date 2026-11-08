@@ -1367,6 +1367,12 @@ def add_parser(subparsers: Any) -> None:
     chart_inspect_parser = entity_sub.add_parser("chart-inspect", help="Show ledger identities and adopted source chart evidence")
     chart_inspect_parser.add_argument("path", type=Path)
 
+    presentation_parser = entity_sub.add_parser("chart-present", help="Preview or change exact display labels and numbers, preserving ledger keys")
+    presentation_parser.add_argument("path", type=Path)
+    presentation_parser.add_argument("--input", type=Path, required=True)
+    presentation_parser.add_argument("--apply", action="store_true")
+    presentation_parser.add_argument("--plan-hash", default=None)
+
     chart_parser = entity_sub.add_parser("chart-adopt", help="Preview or apply an explicitly mapped source chart without rewriting history")
     chart_parser.add_argument("path", type=Path)
     chart_parser.add_argument("--input", type=Path, required=True, help="Reviewed version-1 JSON chart manifest")
@@ -1590,12 +1596,14 @@ def run(args: Any) -> int:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
 
-    if args.entity_command == "chart-adopt":
+    if args.entity_command in ("chart-adopt", "chart-present"):
         from .chart_adoption import adopt
+        from .chart_presentation import update
+        operation = update if args.entity_command == "chart-present" else adopt
         try:
             if args.input.stat().st_size > 2_000_000:
                 raise ValueError("Chart manifest exceeds 2 MB.")
-            result = adopt(_resolve_target(args.path), json.loads(args.input.read_text(encoding="utf-8")),
+            result = operation(_resolve_target(args.path), json.loads(args.input.read_text(encoding="utf-8")),
                            apply=args.apply, plan_hash=args.plan_hash)
         except (ValueError, OSError) as exc:
             print(json.dumps({"status": "blocked", "errors": [{"code": "chart_adoption_refused", "message": str(exc)}]}))

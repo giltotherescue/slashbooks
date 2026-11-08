@@ -42,6 +42,8 @@ reopened items, and duplicate candidates cannot disappear from close checks.
 
 from __future__ import annotations
 
+from .. import chart_presentation
+
 import csv
 import importlib.util
 import json
@@ -175,9 +177,9 @@ _SHEET_ALIASES: dict[str, str] = {
 }
 
 
-def _render_account_name(account: str) -> str:
+def _render_account_name(account: str, presentation: dict | None = None) -> str:
     """Render internal account names for accountant-facing workbook output."""
-    return account.replace(":", " › ")
+    return chart_presentation.label(account, presentation or {})
 
 
 def _amount_text(amount: Any) -> str:
@@ -1083,6 +1085,7 @@ def _build_general_ledger_rows(
             "Amount",
         ],
     ]
+    presentation = chart_presentation.for_entity(entity_path)
     rows_by_account: dict[str, list[list[str]]] = {}
 
     try:
@@ -1096,8 +1099,8 @@ def _build_general_ledger_rows(
         payee = entry.payee or ""
         memo = entry.narration or ""
         for posting in entry.postings:
-            rendered_account = _render_account_name(posting.account)
-            rows_by_account.setdefault(rendered_account, []).append([
+            rendered_account = _render_account_name(posting.account, presentation)
+            rows_by_account.setdefault(posting.account, []).append([
                 _account_type(posting.account),
                 rendered_account,
                 _account_detail(posting.account),
@@ -1113,7 +1116,7 @@ def _build_general_ledger_rows(
         acct_rows = rows_by_account[account]
         rows.extend(acct_rows)
         total = sum((Decimal(r[8]) for r in acct_rows if r[8]), Decimal("0.00"))
-        rows.append(["", account, "", "", "", "Account Total", "", "Account Total", str(total)])
+        rows.append(["", _render_account_name(account, presentation), "", "", "", "Account Total", "", "Account Total", str(total)])
         rows.append([])
 
     return rows
@@ -1212,6 +1215,7 @@ def _build_vendor_1099_rows(
             ["(could not compute general ledger)", "", ""],
         ]
 
+    presentation = chart_presentation.for_entity(entity_path)
     vendor_totals: dict[str, dict[str, Any]] = {}
     entries_by_source_id = {
         source_id: entry
@@ -1234,7 +1238,7 @@ def _build_vendor_1099_rows(
         if isinstance(accounts, set):
             for posting in entry.postings:
                 if posting.account.startswith("Expenses"):
-                    accounts.add(_render_account_name(posting.account))
+                    accounts.add(_render_account_name(posting.account, presentation))
 
     for entry in period_entries:
         entry_type = _entry_type(entry)
@@ -1316,10 +1320,10 @@ def _entry_review_amount(entry: Any) -> Decimal:
     return sum((posting.amount for posting in entry.postings), Decimal("0.00"))
 
 
-def _entry_primary_category(entry: Any) -> str:
+def _entry_primary_category(entry: Any, presentation: dict | None = None) -> str:
     for posting in entry.postings:
         if posting.account.startswith(("Expenses", "Income")):
-            return _render_account_name(posting.account)
+            return _render_account_name(posting.account, presentation)
     return ""
 
 
@@ -1329,6 +1333,7 @@ def _build_adjustment_log_rows(entity_path: Path, entries: Optional[list[Any]] =
     Uses reverses:/correction-of: metadata from parse_ledger to find pairs.
     Each pair is emitted exactly once (keyed on original entry source-id).
     """
+    presentation = chart_presentation.for_entity(entity_path)
     rows: list[list[str]] = [
         [
             "Original ID",
@@ -1390,7 +1395,7 @@ def _build_adjustment_log_rows(entity_path: Path, entries: Optional[list[Any]] =
             reversal_date = str(entry.date)
             reversal_id = _entry_source_id(entry)
             corrected_id = _entry_source_id(corrected) if corrected is not None else ""
-            corrected_category = _entry_primary_category(corrected) if corrected is not None else ""
+            corrected_category = _entry_primary_category(corrected, presentation) if corrected is not None else ""
             corrected_amount = _entry_review_amount(corrected) if corrected is not None else Decimal("0.00")
             trace_status = "COMPLETE" if original is not None and corrected is not None else "REVIEW"
 
@@ -1436,7 +1441,7 @@ def _build_adjustment_log_rows(entity_path: Path, entries: Optional[list[Any]] =
                 reversal_id,
                 reversal_date,
                 _entry_source_id(entry),
-                _entry_primary_category(entry),
+                _entry_primary_category(entry, presentation),
                 str(_entry_review_amount(entry)),
                 trace_status,
                 entry.narration,

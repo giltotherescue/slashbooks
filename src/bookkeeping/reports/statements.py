@@ -28,6 +28,8 @@ text.  The ``›`` separator is the canonical readable separator for this module
 
 from __future__ import annotations
 
+from .. import chart_presentation
+
 import json
 import re
 import sys
@@ -501,6 +503,7 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] 
     that crosses it."""
     if from_date > to_date:
         raise ValueError("Report start date must be on or before end date.")
+    presentation = chart_presentation.read(conn)
     metadata = _metadata_for(conn, "pnl", from_date, to_date, view, coverage_view)
     balances = _account_balances_in_range(conn, from_date, to_date)
 
@@ -511,7 +514,7 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] 
         if _is_income(acc):
             # Income accounts: credit-normal, flip sign for human display
             display = -bal
-            income_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
+            income_rows.append({"account": acc, "display_name": chart_presentation.label(acc, presentation), "label": chart_presentation.label(acc, presentation), "amount": display, "indent": 1})
             total_income += display
 
     # Expenses: debit-normal → positive balance = expense
@@ -520,7 +523,7 @@ def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] 
     for acc, bal in sorted(balances.items()):
         if _is_expense(acc):
             display = bal  # debit-normal, positive = expense
-            expense_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
+            expense_rows.append({"account": acc, "display_name": chart_presentation.label(acc, presentation), "label": chart_presentation.label(acc, presentation), "amount": display, "indent": 1})
             total_expenses += display
 
     net_income = total_income - total_expenses
@@ -617,6 +620,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
                            close_all_views: bool = True) -> StatementResult:
     """``close_all_views`` False keeps the layout from before the fiscal-year split applied to every view: only the
     accrual view splits. The migration bundle uses it so that its report fingerprints stay the same."""
+    presentation = chart_presentation.read(conn)
     metadata = _label_recorded_balances(conn, _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view), as_of, view)
     balances = _account_balances_as_of(conn, as_of)
 
@@ -629,7 +633,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
     for acc, bal in sorted(balances.items()):
         if _is_asset(acc):
             display = bal  # debit-normal
-            asset_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
+            asset_rows.append({"account": acc, "display_name": chart_presentation.label(acc, presentation), "label": chart_presentation.label(acc, presentation), "amount": display, "indent": 1})
             total_assets += display
 
     # Liabilities
@@ -638,7 +642,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
     for acc, bal in sorted(balances.items()):
         if _is_liability(acc):
             display = -bal  # credit-normal, flip for display
-            liability_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
+            liability_rows.append({"account": acc, "display_name": chart_presentation.label(acc, presentation), "label": chart_presentation.label(acc, presentation), "amount": display, "indent": 1})
             total_liabilities += display
 
     # Equity
@@ -647,7 +651,7 @@ def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
     for acc, bal in sorted(balances.items()):
         if _is_equity(acc):
             display = -bal  # credit-normal, flip for display
-            equity_rows.append({"account": acc, "display_name": _render_account(acc), "label": _render_account(acc), "amount": display, "indent": 1})
+            equity_rows.append({"account": acc, "display_name": chart_presentation.label(acc, presentation), "label": chart_presentation.label(acc, presentation), "amount": display, "indent": 1})
             total_equity_base += display
 
     accrual = metadata["basis"] == "accrual"
@@ -741,6 +745,7 @@ def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
     """Income and expense accounts show the current fiscal year. Earlier years' income less expenses is one computed
     row, "Retained earnings from prior fiscal activity", so debits still equal credits. ``close_all_views`` False keeps
     the earlier life-to-date layout for the migration bundle's report fingerprints."""
+    presentation = chart_presentation.read(conn)
     metadata = _label_recorded_balances(conn, _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view), as_of, view)
     balances = _account_balances_as_of(conn, as_of)
     prior = Decimal("0.00")
@@ -774,7 +779,7 @@ def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
         bal = balances[acc]
         if bal == Decimal("0.00"):
             continue  # skip zero-balance accounts
-        add(_render_account(acc), bal, account=acc, display_name=_render_account(acc))
+        add(chart_presentation.label(acc, presentation), bal, account=acc, display_name=chart_presentation.label(acc, presentation))
     if prior != Decimal("0.00"):
         add(RETAINED_LABEL, prior, key="retained_earnings_prior", computed=True)
 
@@ -833,6 +838,7 @@ def general_ledger(
 
 def _compute_general_ledger(conn: Any, from_date: date, to_date: date, view: Optional[str] = None,
                             coverage_view: Optional[str] = None) -> StatementResult:
+    presentation = chart_presentation.read(conn)
     metadata = _metadata_for(conn, "general_ledger", from_date, to_date, view, coverage_view)
     rows_by_account: dict[str, list[dict]] = {}
 
@@ -858,8 +864,8 @@ def _compute_general_ledger(conn: Any, from_date: date, to_date: date, view: Opt
         total = sum(r["amount"] for r in acct_rows)
         sections.append({
             "account": account,
-            "display_name": _render_account(account),
-            "label": _render_account(account),
+            "display_name": chart_presentation.label(account, presentation),
+            "label": chart_presentation.label(account, presentation),
             "rows": acct_rows,
             "total": total,
             "total_label": "Account Total",

@@ -82,3 +82,20 @@ shape, with canonical ledger names, so presentation metadata does not invalidate
 an economic proof. Golden fixtures are updated only for additive identity
 fields and resulting output-file manifest hashes. Existing financial values,
 ledger/audit state, readiness IDs and migration report fingerprints are unchanged.
+
+## Activate display names and numbers
+
+Set `presentation` to `activate` in the reviewed manifest to use the exact source
+names and numbers in chart inspection, financial statements and accountant
+exports. Omit it (or use `evidence_only`) to retain only source evidence. The
+preview states which behavior applies. Existing accounts remain; this is not a
+replacement of the entire chart. A null source number means explicitly
+unnumbered, including exports; duplicate source numbers are retained.
+
+`books entity chart-present COMPANY --input presentation.json` previews a later
+display change. The JSON has `operation_id`, the immutable `account` key,
+`display_name` and `number` (string or null). Apply with `--apply --plan-hash HASH`.
+The command records the previous presentation and leaves every entry, receipt and
+account key unchanged. Inspection still exposes the original key. Reuse of an
+operation ID with different content is refused. Changes to another account or
+its metadata make an old preview stale. This is display renaming, not merging.
