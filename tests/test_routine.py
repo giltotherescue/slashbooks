@@ -91,6 +91,56 @@ class RoutineTest(unittest.TestCase):
         result = self.stage(txn())
         self.assertEqual((0, 0, 1), (result.new_entries, result.pending_categorization, result.skipped_duplicate))
 
+    def test_precise_rule_conditions_are_conjunctive_and_read_only(self):
+        rule = self.policy['rules'][0]
+        rule.update(min_abs_amount='12.00', max_abs_amount='12.00', direction='outflow',
+                    currency='USD', description_exact='Service 1234')
+        changes = [{}, {'amount': '-11.99'}, {'amount': '-12.01'}, {'amount': '12.00'},
+                   {'description': 'Service 5678'}, {'currency': 'EUR'},
+                   {'description': 'Service 1234 '}, {'accountId': 'card', 'accountType': 'creditcard'}]
+        self.pending([{**txn(str(i)), **change} for i, change in enumerate(changes)])
+        before = self.files()
+        plan = routine_plan(self.entity, self.policy)
+        self.assertEqual(['0'], [row['source_id'] for row in plan['actions']])
+        held = {row['source_id']: row for row in plan['unresolved']}
+        self.assertEqual(set('1234567'), set(held))
+        for sid in ['1', '2', '3', '4', '6']:
+            self.assertEqual(held[sid]['reason'], 'needs_category')
+            self.assertEqual(held[sid]['counterparty_key'], 'SERVICE')
+        self.assertEqual(held['5']['reason'], 'unsupported_currency_or_zero_amount')
+        self.assertEqual(before, self.files())
+
+    def test_precise_currency_checks_validate_legacy_sources_without_crashing(self):
+        self.policy['rules'][0]['currency'] = 'USD'
+        missing = txn('missing')
+        missing.pop('currency', None)
+        self.pending([missing, {**txn('lower'), 'currency': 'usd'}, {**txn('null'), 'currency': None}])
+        plan = routine_plan(self.entity, self.policy)
+        self.assertEqual({'missing', 'lower'}, {row['source_id'] for row in plan['actions']})
+        self.assertEqual(['null'], [row['source_id'] for row in plan['unresolved']])
+
+    def test_precise_rule_range_boundaries_and_conflicts(self):
+        self.policy['rules'][0].update(min_abs_amount='10.00', max_abs_amount='20.00', direction='outflow')
+        self.stage(*[{**txn(str(i)), 'amount': amount} for i, amount in enumerate(
+            ['-9.99', '-10.00', '-20.00', '-20.01'])])
+        self.assertEqual(['1', '2'], [r['source_id'] for r in routine_plan(self.entity, self.policy)['actions']])
+        self.policy['rules'].append({**self.policy['rules'][0], 'id': 'conflict', 'category': 'Expenses:Fees'})
+        plan = routine_plan(self.entity, self.policy)
+        self.assertEqual([], plan['actions'])
+        self.assertEqual(2, sum(r['reason'] == 'ambiguous_authority' for r in plan['unresolved']))
+
+    def test_invalid_precise_conditions_fail_closed(self):
+        self.stage(txn())
+        original = dict(self.policy['rules'][0])
+        for change in [{'future_condition': 'ignored'}, {'min_abs_amount': '-1'}, {'min_abs_amount': '21'},
+                       {'min_abs_amount': True}, {'min_abs_amount': '0.001'},
+                       {'direction': 'either'}, {'currency': 'usd'}, {'currency': 'EUR'}, {'currency': None},
+                       {'description_exact': ''}, {'description_exact': 'Service\n1234'},
+                       {'description_exact': 'Service\x7f'}, {'description_exact': 'x' * 1001}]:
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.policy['rules'] = [{**original, **change}]
+                routine_plan(self.entity, self.policy)
+
     def test_taught_category_holds_a_conflicting_rule_for_a_person(self):
         self.stage(txn())
         set_taught(self.entity, 'SERVICE', 'Expenses:Fees', by='u1', by_name='Gil', ts='2026-10-16T10:00:00Z')
