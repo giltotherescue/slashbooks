@@ -268,11 +268,11 @@ class TrustedCheckTests(shared.Company):
         applied = qb_sync.sync_opening(self.entity, self.snapshot_path, date.fromisoformat(S), apply=True)
         self.assertTrue(applied["applied"])
         committed = next(e for e in self.store.load_entries() if dict(e.meta).get("import-source") == "quickbooks-opening")
-        # The preview does not yet print posting metadata or the source ID, so these come from the committed entry.
-        meta = {p.account: dict(p.meta) for p in committed.postings}
-        good = self.authorization(committed.source_id, "quickbooks_sync_opening",
-                                  [(p["account"], p["amount"], meta[p["account"]])
-                                   for p in preview["opening"]["proposed_postings"]])
+        # The host builds the authorization from the reviewed preview only: its source ID and every posting field.
+        reviewed = preview["opening"]
+        self.assertEqual(reviewed["proposed_source_id"], committed.source_id)
+        good = self.authorization(reviewed["proposed_source_id"], "quickbooks_sync_opening",
+                                  [(p["account"], p["amount"], p["meta"]) for p in reviewed["proposed_postings"]])
         wrong_meta = dict(good, postings=[[a, v, c] for a, v, c, *_ in good["postings"]])
         refused = checker().check_workspaces(self.host_request(self.pending_policy(), [wrong_meta]), self.published,
                                              self.path)

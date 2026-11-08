@@ -118,9 +118,17 @@ class QuickBooksSyncTests(unittest.TestCase):
         self.assertFalse(preview["applied"])
         self.assertEqual(before, (self.entity_path / "ledger.sqlite").read_bytes())
         self.assertEqual(preview["opening"]["proposed_postings"], [
-            {"account": "Assets:Bank:Checking", "amount": "100.00", "currency": "USD", "date": "2026-01-01", "debit": "100.00", "credit": "0.00"},
-            {"account": "Equity:Opening-Balances", "amount": "-100.00", "currency": "USD", "date": "2026-01-01", "debit": "0.00", "credit": "100.00"}])
+            {"account": "Assets:Bank:Checking", "amount": "100.00", "currency": "USD", "date": "2026-01-01", "debit": "100.00", "credit": "0.00",
+             "meta": {"qb-name": "Checking"}},
+            {"account": "Equity:Opening-Balances", "amount": "-100.00", "currency": "USD", "date": "2026-01-01", "debit": "0.00", "credit": "100.00",
+             "meta": {}}])
+        # The preview names the entry that an apply writes, so an approval can bind to it.
+        self.assertEqual(preview["opening"]["proposed_source_id"], "quickbooks-opening-trial-balance-2026-01-01")
         applied = sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), apply=True)
+        from bookkeeping.ledger.store import LedgerStore
+        self.assertEqual([e.source_id for e in LedgerStore(self.entity_path / "ledger.sqlite").load_entries()
+                          if dict(e.meta).get("import-source") == "quickbooks-opening"],
+                         [preview["opening"]["proposed_source_id"]])
         repeated = sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), apply=True)
         self.assertEqual(applied["opening"]["entries_written"], 1)
         self.assertEqual(repeated["opening"]["entries_written"], 0)

@@ -1559,6 +1559,9 @@ class ImportResult:
     proposed_postings: list[dict] = field(default_factory=list)
     proposed_entries: int = 0
     proposed_accounts: int = 0
+    # A preview names the source ID of the opening entry that an apply writes, so a reviewer can bind an approval
+    # to that exact entry.
+    proposed_source_id: str | None = None
 
 
 @dataclass
@@ -2061,11 +2064,12 @@ def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_st
         return ImportResult(
             entries_written=0, accounts_opened=0, ledger_path=str(store_path),
             coa_path=str(entity.coa_path), errors=warnings, success=True,
-            proposed_entries=1, proposed_accounts=len(opens),
+            proposed_entries=1, proposed_accounts=len(opens), proposed_source_id=opening_source_id,
             proposed_postings=[{"account": p.account, "amount": str(p.amount), "currency": p.currency,
                                 "date": cutover.isoformat(),
                                 "debit": str(max(p.amount, Decimal("0.00"))),
-                                "credit": str(max(-p.amount, Decimal("0.00")))}
+                                "credit": str(max(-p.amount, Decimal("0.00"))),
+                                "meta": dict(p.meta)}
                                for p in opening_entry.postings],
         )
 
@@ -2180,7 +2184,7 @@ def preview_opening(entity, folder: str | Path, cutover: date, source: str = "tr
     return {"status": "preview", "applied": False, "success": result.success, "source": source,
             "as_of": cutover.isoformat(), "errors": [] if result.success else list(result.errors),
             "proposed_postings": postings, "proposed_entries": result.proposed_entries,
-            "proposed_accounts": result.proposed_accounts,
+            "proposed_accounts": result.proposed_accounts, "proposed_source_id": result.proposed_source_id,
             "totals": {"debits": str(debits), "credits": str(credits)},
             "balanced": bool(postings) and debits == credits, "needs_review": needs_review}
 

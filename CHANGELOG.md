@@ -22,6 +22,11 @@
   mid-month QuickBooks cutover: rows dated before the cutover cannot be
   published on top of the opening balance.
 
+- Show the source ID of the opening entry (`proposed_source_id`) and the
+  metadata of each posting (`meta`) in the `qb sync-opening` preview and the
+  `qb import-opening --dry-run` output. A reviewer can then bind an approval to
+  the exact entry that an apply writes.
+
 - Make `books qb import-opening` check its input like `qb sync-opening`. The
   trial balance or balance sheet must end the day before the cutover. Before,
   reports that ended on 2025-12-31 were accepted with a cutover of 2026-03-15.
