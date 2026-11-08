@@ -101,6 +101,33 @@ class QuickBooksSyncTests(unittest.TestCase):
         self.assertTrue(any(p.account == "Assets:Bank:Reviewed" for p in postings))
         self.assertFalse(any(p.account == chosen["account"] for p in postings))
 
+    def test_mapped_overlap_and_replay_use_the_final_crosswalk(self):
+        from unittest.mock import patch
+        from bookkeeping.ledger.store import LedgerStore
+        manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve")
+        targets = {row["source_id"]: row["account"] for row in manifest["accounts"]}
+        bank = next(row for row in manifest["accounts"] if row["type"] == "Assets")
+        targets[bank["source_id"]] = "Assets:Bank:Reviewed"
+        source = self.write()
+        preview = sync.sync_opening(self.entity, source, date(2026, 1, 1), chart_decision="rebuild", chart_targets=targets)
+        with patch.object(qb, "check_opening_overlap", wraps=qb.check_opening_overlap) as checked:
+            applied = sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+                chart_decision="rebuild", chart_targets=targets, chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertTrue(applied["applied"])
+        self.assertGreaterEqual(checked.call_count, 2, "Overlap is checked again under the publication lock")
+        for call in checked.call_args_list:
+            self.assertIn("Assets:Bank:Reviewed", {row["account"] for row in call.args[2]})
+        store = LedgerStore(self.entity_path / "ledger.sqlite")
+        before = store.content_digest(), store.load_audit_events()
+        replay = sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+            chart_decision="rebuild", chart_targets=targets, chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertTrue(replay["already_applied"])
+        changed = dict(targets, **{bank["source_id"]: "Assets:Bank:Other"})
+        with self.assertRaisesRegex(ValueError, "identity reused"):
+            sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+                chart_decision="rebuild", chart_targets=changed, chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertEqual((store.content_digest(), store.load_audit_events()), before)
+
     def test_composite_refuses_currency_adoption_without_active_chart_change(self):
         from bookkeeping.ledger.store import LedgerStore
         self.snapshot["company_info"]["CurrencyRef"] = {"value": "EUR"}
