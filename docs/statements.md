@@ -10,6 +10,7 @@ computes every amount with `Decimal` math. A web page, a skill or a spreadsheet 
 | `books report cashflow --from DATE --to DATE` | Statement of cash flows (indirect method) |
 | `books report trial-balance --as-of DATE` | Trial balance |
 | `books report general-ledger --from DATE --to DATE` | General ledger |
+| `books report register --account ACCOUNT [--from DATE] [--to DATE]` | Account register: each line of one account with its split and a running balance per currency. `--presentation ledger` keeps the ledger sign |
 
 Each command takes `--entity PATH`, `--format text|json` and `--output FILE`. The default output of
 `pnl`, `balance-sheet`, `trial-balance` and `general-ledger` did not change. The flags below are opt-in.

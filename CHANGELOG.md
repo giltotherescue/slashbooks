@@ -23,6 +23,12 @@
   columns by position, and the documented step marks that column "Do Not
   Import".
 
+- Add an account register: `books report register --account <account>` lists
+  every line of one account in ledger order with its other side and a running
+  balance for each currency. Balances show a credit card owed, income and equity
+  as positive numbers by default. A new engine module also gives the running
+  balance of every line of every account in one pass.
+
 - Refuse singular tax-ID fields in captured Stripe invoice evidence, including
   alternate capitalization and punctuation, before invoice accounting effects.
 

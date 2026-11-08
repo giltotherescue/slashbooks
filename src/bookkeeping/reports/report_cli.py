@@ -23,6 +23,14 @@ def extend_parser(report_sub: Any, common_args: Any, pnl_p: Any, bs_p: Any) -> N
     cf_p.add_argument("--from", dest="from_date", required=True, help="Start date (YYYY-MM-DD)")
     cf_p.add_argument("--to", dest="to_date", required=True, help="End date (YYYY-MM-DD)")
     common_args(cf_p)
+    reg_p = report_sub.add_parser("register", help="Account register: every line of one account with a running balance")
+    reg_p.add_argument("--account", required=True, help="Ledger account, for example Assets:Bank:Checking")
+    reg_p.add_argument("--from", dest="from_date", default=None, help="Start date (YYYY-MM-DD)")
+    reg_p.add_argument("--to", dest="to_date", default=None, help="End date (YYYY-MM-DD)")
+    reg_p.add_argument("--presentation", choices=["natural", "ledger"], default="natural",
+                       help="natural: a liability, equity or income balance is positive when it is a credit. "
+                            "ledger: a debit balance is positive")
+    common_args(reg_p)
     for parser in (pnl_p, bs_p, cf_p):
         parser.add_argument(
             "--compare", choices=["previous", "prior_year"], default=None,
@@ -59,6 +67,8 @@ def run_extended(args: Any, entity: Path, output: Optional[Path], fmt: str) -> O
         from .structure import structured_json
         _emit(structured_json(balance_sheet(entity, date.fromisoformat(args.as_of))), output)
         return 0
+    if rc == "register":
+        return _run_register(args, entity, output, fmt)
     if rc == "cashflow":
         return _run_cashflow(args, entity, output, fmt)
     return None
@@ -114,4 +124,22 @@ def _run_cashflow(args: Any, entity: Path, output: Optional[Path], fmt: str) -> 
         print(f"Error: the cash flow statement failed the ledger integrity check. "
               f"Difference: {result.reconciliation['difference']}.", file=sys.stderr)
         return 1
+    return 0
+
+
+def _run_register(args: Any, entity: Path, output: Optional[Path], fmt: str) -> int:
+    import json
+    import sys
+    from . import register
+
+    try:
+        result = register.entity_register(
+            entity, args.account,
+            from_date=date.fromisoformat(args.from_date) if args.from_date else None,
+            to_date=date.fromisoformat(args.to_date) if args.to_date else None,
+            presentation=args.presentation)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    _emit(json.dumps(result.to_dict(), indent=2) if fmt == "json" else register.to_text(result), output)
     return 0
