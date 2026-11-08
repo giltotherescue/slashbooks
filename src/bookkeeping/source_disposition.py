@@ -22,7 +22,7 @@ Functions:
 - :func:`confirm`: accept a claim only when a fresh preview gives the same ``preview_digest``.
 - :func:`evaluate`: ``resolved`` or ``invalidated`` (with trigger codes) for each stored claim.
 - :func:`reclassify`: the two date checks of a restored row (not the other review and booking guards).
-- :func:`captured_epoch`: the full epoch a confirmation captured, for a host's atomic publication fence.
+- :func:`captured_epoch`: the full epoch a confirmation captured. Only a value for a host to assert; no fence here.
 - :func:`load_context`: read a company directory (read-only) into a context.
 - ``python -I -m bookkeeping.source_disposition check --request R.json --entity DIR``: the same, as a command.
 """
@@ -116,10 +116,12 @@ class Opening:
     kind: str
     statement_id: str | None
     amount: str
+    postings: tuple[tuple[str, str], ...] = ()
 
     def document(self) -> dict[str, Any]:
         return {"source_id": self.source_id, "date": self.day.isoformat(), "kind": self.kind,
-                "statement_id": self.statement_id, "amount": self.amount}
+                "statement_id": self.statement_id, "amount": self.amount,
+                "postings": [list(pair) for pair in self.postings]}
 
     @property
     def digest(self) -> str:
@@ -173,6 +175,20 @@ def _day_field(value: Any, where: str) -> date:
     return day
 
 
+def _postings(value: Any) -> tuple[tuple[str, str], ...]:
+    """Every posting of an opening entry, as ``(account, amount)`` in entry order."""
+    if value is None:
+        return ()
+    _require(isinstance(value, list) and all(isinstance(p, (list, tuple)) and len(p) == 2 for p in value),
+             "opening postings must be a list of [account, amount]")
+    found = []
+    for account, amount in value:
+        money = _amount(amount)
+        _require(isinstance(account, str) and money is not None, "bad opening posting")
+        found.append((account, money))
+    return tuple(found)
+
+
 def context_from_document(document: Mapping[str, Any]) -> DispositionContext:
     """Build a context from a plain JSON document. Unknown fields are refused."""
     _require(isinstance(document, Mapping), "the context must be an object")
@@ -191,7 +207,7 @@ def context_from_document(document: Mapping[str, Any]) -> DispositionContext:
         openings.append(Opening(str(item["account"]), _day_field(item.get("date"), "opening date"),
                                 str(item["source_id"]), str(item["kind"]),
                                 None if item.get("statement_id") is None else str(item["statement_id"]),
-                                _amount(item.get("amount")) or "0.00"))
+                                _amount(item.get("amount")) or "0.00", _postings(item.get("postings"))))
     statements = []
     for item in document.get("statements") or []:
         _require(isinstance(item, Mapping), "bad statement")
@@ -252,6 +268,9 @@ def _ledger_facts(conn: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
             continue
         parsed.append((str(source_id or ""), str(day)[:10], meta, str(account), amount))
     openings, booked = [], []
+    postings: dict[str, list[list[str]]] = {}
+    for source_id, _day, _meta, account, amount in parsed:
+        postings.setdefault(source_id, []).append([account, str(amount)])
     for source_id, day, meta, account, amount in parsed:
         if not source_id or source_id in reversed_ids:
             continue
@@ -259,7 +278,8 @@ def _ledger_facts(conn: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
         if kind is not None:
             if not account.startswith("Equity:"):
                 openings.append({"account": account, "date": day, "source_id": source_id, "kind": kind,
-                                 "statement_id": meta.get("statement-id"), "amount": amount})
+                                 "statement_id": meta.get("statement-id"), "amount": amount,
+                                 "postings": postings[source_id]})
             continue
         booked.append({"source_id": source_id, "account": account, "date": day, "amount": amount})
     return openings, booked
@@ -536,29 +556,64 @@ _PENDING_ONLY_CONFLICTS = frozenset({"NO_OPENING", "OPENING_NOT_COMMITTED"})
 _EXPECTED_OPENING_CONFLICT = "OPENING_AFTER_ROW"
 
 
-def _expected_opening_recorded(context: DispositionContext, claim: Mapping[str, Any]) -> bool:
-    """True when the only change is the expected one: the pending opening of the account was recorded.
+def _expected_completion(context: DispositionContext, claim: Mapping[str, Any]) -> Opening | None:
+    """The opening that completes the expected transition now, or ``None``.
 
-    The claim was confirmed while the account was ``authorized_pending_opening`` with no opening. Now the same account
-    is ``authorized`` with the same ``start_day``, its version is exactly one higher, and a live opening of that account
-    is dated on that ``start_day``. Every other part of the basis is checked by its own trigger, so a different start
-    or opening day, another version, a mapping, open-date or row change, or a new conflict still invalidates.
-    This never turns the decision into coverage and never allows a booking.
+    The claim is ``outside_books`` and was confirmed while the account was ``authorized_pending_opening`` with no
+    opening. Now the same account is ``authorized`` with the same ``start_day``, its version is exactly one higher, and
+    a live opening of that account is dated on that ``start_day``.
     """
     if claim.get("state") != "outside_books":
-        return False
+        return None
     basis = claim["basis"]
     old = basis.get("policy") or {}
     account = str(basis.get("account") or "")
     new = _policy_basis(context, account)
     opening = _live_opening(context, account)
     version = old.get("account_version")
-    return (old.get("mode") == "enforced" and new.get("mode") == "enforced"
+    if (old.get("mode") == "enforced" and new.get("mode") == "enforced"
             and old.get("account_state") == PENDING_OPENING and new.get("account_state") == "authorized"
             and isinstance(version, int) and new.get("account_version") == version + 1
             and old.get("start_day") is not None and new.get("start_day") == old.get("start_day")
             and basis.get("opening") is None
-            and opening is not None and opening.day.isoformat() == old.get("start_day"))
+            and opening is not None and opening.day.isoformat() == old.get("start_day")):
+        return opening
+    return None
+
+
+_EVIDENCE_FIELDS = ("schema_version", "kind", "source_id", "claim_preview_digest", "account", "start_day",
+                    "account_version", "opening")
+
+
+def _transition_evidence(claim: Mapping[str, Any], opening: Opening, version: int) -> dict[str, Any]:
+    """The evidence of one opening completion, which a host records one time for this claim."""
+    body = {"schema_version": SCHEMA_VERSION, "kind": "expected_opening_recorded", "source_id": claim["source_id"],
+            "claim_preview_digest": claim.get("preview_digest"), "account": claim["basis"].get("account"),
+            "start_day": (claim["basis"].get("policy") or {}).get("start_day"), "account_version": version,
+            "opening": {"source_id": opening.source_id, "date": opening.day.isoformat(),
+                        "postings": [list(pair) for pair in opening.postings], "digest": opening.digest}}
+    return {**body, "evidence_digest": _sha(body)}
+
+
+def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
+    """The evidence is intact and was made for this exact claim and its expected version."""
+    if not isinstance(evidence, Mapping) or set(evidence) != {*_EVIDENCE_FIELDS, "evidence_digest"}:
+        return False
+    body = {key: evidence[key] for key in _EVIDENCE_FIELDS}
+    old = claim["basis"].get("policy") or {}
+    version = old.get("account_version")
+    return (evidence["evidence_digest"] == _sha(body) and evidence["kind"] == "expected_opening_recorded"
+            and claim.get("state") == "outside_books" and old.get("account_state") == PENDING_OPENING
+            and evidence["source_id"] == claim["source_id"]
+            and evidence["claim_preview_digest"] == claim.get("preview_digest")
+            and evidence["account"] == claim["basis"].get("account") and evidence["start_day"] == old.get("start_day")
+            and isinstance(version, int) and evidence["account_version"] == version + 1
+            and isinstance(evidence["opening"], Mapping) and isinstance(evidence["opening"].get("digest"), str))
+
+
+#: Conflicts that the expected opening transition removes (they described the pending state) and adds.
+_PENDING_ONLY_CONFLICTS = frozenset({"NO_OPENING", "OPENING_NOT_COMMITTED"})
+_EXPECTED_OPENING_CONFLICT = "OPENING_AFTER_ROW"
 
 
 def _expected_conflicts(claim: Mapping[str, Any], transition: bool) -> str:
@@ -574,26 +629,37 @@ def _expected_conflicts(claim: Mapping[str, Any], transition: bool) -> str:
 def captured_epoch(claim: Mapping[str, Any]) -> int | None:
     """The policy epoch that the person's confirmation captured, or ``None`` with no enforced policy.
 
-    Rule 2 (separate from :func:`evaluate`): a host that publishes a confirmed decision asserts this full epoch in the
-    same atomic write. Any policy change after the preview, on any account, refuses the publication.
+    This is only a **value** for a host to assert (rule 2, separate from :func:`evaluate`). This module implements no
+    fence and writes nothing. A host that publishes a confirmed decision must assert this full epoch in the same
+    atomic write, so that a policy change on any account after the preview refuses the publication.
     """
     policy = (claim.get("basis") or {}).get("policy") or {}
     epoch = policy.get("epoch")
     return epoch if policy.get("mode") == "enforced" and isinstance(epoch, int) else None
 
 
-def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """For each stored claim: ``resolved``, or ``invalidated`` with the trigger codes that fired.
+def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
+             transitions: Mapping[str, Mapping[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """For each stored claim: ``resolved``, ``invalidated`` (with trigger codes), or ``transition_pending``.
 
     A claim is resolved only when the row, its account mapping, the books start for that account (or the open
     date), the opening, the evidence and the conflicts are all the same as when the person confirmed it.
 
-    Rule 1 (separate from the confirmation fence, :func:`captured_epoch`): a change of the policy epoch alone (for
-    example, a start change on another account) changes nothing here.
+    Rule 1 (separate from the value :func:`captured_epoch`): a change of the policy epoch alone (for example, a start
+    change on another account) changes nothing here.
 
-    One expected change is not a trigger: the pending opening of the account was recorded under the same start,
-    account and mapping (:func:`_expected_opening_recorded`). The result then has the note
-    ``EXPECTED_OPENING_RECORDED``. The decision stays ``outside_books``.
+    The expected opening transition (a pending opening is recorded under the same start, account and mapping) needs
+    explicit evidence. ``transitions`` maps a claim's ``preview_digest`` to the evidence that the host recorded:
+
+    - No evidence, and the transition shape holds now: ``transition_pending``, with the proposed
+      ``transition_evidence`` for the opening in force now. It is not resolved. A host records that evidence one time
+      (only when it has none for this claim) and evaluates again with it.
+    - With evidence: later states are compared with the **recorded** completion (its opening digest, which covers the
+      entry source ID, the date and every posting, and the account version). A reversed or replaced opening gives
+      ``OPENING_CHANGED``; another version or start gives ``POLICY_CHANGED``. Evidence that does not fit the claim
+      gives ``TRANSITION_EVIDENCE_INVALID``.
+
+    The person's decision never changes. The transition never becomes coverage and never allows a booking.
     """
     results = []
     booked = _booked_ids(context)
@@ -615,20 +681,40 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]]) -
             if ok.mapping_digest != basis.get("mapping_digest") or ok.account != basis.get("account"):
                 triggers.add("MAPPING_CHANGED")
         account = str(basis.get("account") or "")
-        transition = _expected_opening_recorded(context, claim)
-        old_policy, new_policy = dict(basis.get("policy") or {}), _policy_basis(context, account)
-        old_policy.pop("epoch", None)
-        new_policy.pop("epoch", None)
-        if old_policy != new_policy and not transition:
-            triggers.add("POLICY_CHANGED")
         opened = context.open_dates.get(account)
         if (basis.get("catalog") or {}).get("open_date") != (None if opened is None else opened.isoformat()):
             triggers.add("OPEN_DATE_CHANGED")
+        new_policy = _policy_basis(context, account)
+        new_policy.pop("epoch", None)
         opening = _live_opening(context, account)
-        old_opening = basis.get("opening")
-        if ((None if opening is None else opening.digest) != (None if old_opening is None else old_opening.get("digest"))
-                and not transition):
-            triggers.add("OPENING_CHANGED")
+        evidence = None if transitions is None else transitions.get(str(claim.get("preview_digest")))
+        proposed: dict[str, Any] | None = None
+        transition = False
+        if evidence is not None:
+            if not _evidence_fits(claim, evidence):
+                triggers.add("TRANSITION_EVIDENCE_INVALID")
+            else:
+                recorded = {"mode": "enforced", "account_state": "authorized",
+                            "account_version": evidence["account_version"], "start_day": evidence["start_day"]}
+                if new_policy != recorded:
+                    triggers.add("POLICY_CHANGED")
+                if opening is None or opening.digest != evidence["opening"]["digest"]:
+                    triggers.add("OPENING_CHANGED")
+                transition = True
+        else:
+            completion = _expected_completion(context, claim)
+            if completion is not None:
+                proposed = _transition_evidence(claim, completion, int(new_policy["account_version"]))
+                transition = True
+            else:
+                old_policy = dict(basis.get("policy") or {})
+                old_policy.pop("epoch", None)
+                if old_policy != new_policy:
+                    triggers.add("POLICY_CHANGED")
+                old_opening = basis.get("opening")
+                if (None if opening is None else opening.digest) != (None if old_opening is None
+                                                                      else old_opening.get("digest")):
+                    triggers.add("OPENING_CHANGED")
         if claim["state"] == "covered_by_opening":
             # No coverage claim can be checked against a retained line today, so none is ever resolved.
             triggers.add("LINE_EVIDENCE_UNAVAILABLE")
@@ -636,11 +722,16 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]]) -
             ok = _eligibility(context, row)
             if _sha(_conflicts(context, ok)) != _expected_conflicts(claim, transition):
                 triggers.add("CONFLICTS_CHANGED")
-        if transition and not triggers:
-            notes.append("EXPECTED_OPENING_RECORDED")
-        results.append({"source_id": claim["source_id"], "state": claim["state"],
-                        "status": "invalidated" if triggers else "resolved", "triggers": sorted(triggers),
-                        "notes": notes})
+        if triggers:
+            status, shown = "invalidated", None
+        elif proposed is not None:
+            status, shown = "transition_pending", proposed
+        else:
+            status, shown = "resolved", (dict(evidence) if evidence is not None else None)
+            if evidence is not None:
+                notes.append("EXPECTED_OPENING_RECORDED")
+        results.append({"source_id": claim["source_id"], "state": claim["state"], "status": status,
+                        "triggers": sorted(triggers), "notes": notes, "transition_evidence": shown})
     return results
 
 
@@ -689,7 +780,7 @@ def reclassify(context: DispositionContext, source_id: str, expected_row_digest:
 _REQUEST_FIELDS = {
     "preview": {"schema_version", "action", "policy", "source_id", "state", "reason_text", "evidence"},
     "confirm": {"schema_version", "action", "policy", "claim"},
-    "evaluate": {"schema_version", "action", "policy", "claims"},
+    "evaluate": {"schema_version", "action", "policy", "claims", "transitions"},
     "reclassify": {"schema_version", "action", "policy", "source_id", "row_digest"},
 }
 
@@ -705,7 +796,9 @@ def run_request(request: Mapping[str, Any], context: DispositionContext) -> dict
     if action == "evaluate":
         claims = request.get("claims")
         _require(isinstance(claims, list), "claims must be a list")
-        results = evaluate(context, claims)
+        transitions = request.get("transitions")
+        _require(transitions is None or isinstance(transitions, Mapping), "transitions must be an object")
+        results = evaluate(context, claims, transitions)
         status = "ok" if all(item["status"] == "resolved" for item in results) else "invalidated"
         return {"status": status, "results": results, "excluded_source_ids": excluded_source_ids(results)}
     return reclassify(context, str(request.get("source_id") or ""), str(request.get("row_digest") or ""))

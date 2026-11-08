@@ -323,7 +323,8 @@ class EvaluateTests(unittest.TestCase):
 
     def test_an_unchanged_claim_is_resolved(self):
         self.assertEqual(self.status(self.claim()), {"source_id": "banksync:r1", "state": "outside_books",
-                                                     "status": "resolved", "triggers": [], "notes": []})
+                                                     "status": "resolved", "triggers": [], "notes": [],
+                                                     "transition_evidence": None})
 
     def test_a_policy_change_for_the_account_invalidates_and_an_epoch_change_alone_does_not(self):
         claim = self.claim()
@@ -396,37 +397,102 @@ class EpochRuleTests(unittest.TestCase):
 
 
 class ExpectedOpeningTransitionTests(unittest.TestCase):
-    """Pending opening -> the expected opening is recorded under the same start, account and mapping."""
+    """Pending opening -> one trusted opening completion under the same start, account and mapping.
+
+    The person's decision never changes. The first evaluation after the opening is recorded proposes transition
+    evidence (the opening that completed it). The host records that evidence one time and passes it to every later
+    evaluation, so a later reversal or replacement of that opening is a material change.
+    """
 
     PENDING = dict(policy=policy("authorized_pending_opening", version=2), openings=[])
-    OPENING = {"account": CHECKING, "date": "2026-03-01", "source_id": "statement-opening-s2", "kind": "statement",
-               "statement_id": "s2", "amount": "1000.00"}
+    OPENING_A = {"account": CHECKING, "date": "2026-03-01", "source_id": "statement-opening-a", "kind": "statement",
+                 "statement_id": "s2", "amount": "1000.00",
+                 "postings": [[CHECKING, "1000.00"], ["Equity:Opening-Balances", "-1000.00"]]}
+    OPENING_B = dict(OPENING_A, source_id="statement-opening-b", amount="1200.00",
+                     postings=[[CHECKING, "1200.00"], ["Equity:Opening-Balances", "-1200.00"]])
 
     def claim(self):
         result = sd.preview(ctx(**self.PENDING), "r1", "outside_books")
         self.assertEqual(result["status"], "ok", result)
         return result["claim"]
 
-    def after(self, claim, **overrides):
-        doc = dict(policy=policy("authorized", version=3, epoch=5), openings=[self.OPENING])
+    def evaluate(self, claim, transitions=None, **overrides):
+        doc = dict(policy=policy("authorized", version=3, epoch=5), openings=[self.OPENING_A])
         doc.update(overrides)
-        return sd.evaluate(ctx(**doc), [claim])[0]
+        return sd.evaluate(ctx(**doc), [claim], transitions=transitions)[0]
+
+    def completed(self, claim):
+        """The first evaluation after completion, and the evidence that the host records one time."""
+        first = self.evaluate(claim)
+        self.assertEqual((first["status"], first["triggers"]), ("transition_pending", []), first)
+        evidence = first["transition_evidence"]
+        self.assertEqual({k: evidence[k] for k in ("kind", "source_id", "claim_preview_digest", "account",
+                                                   "start_day", "account_version")},
+                         {"kind": "expected_opening_recorded", "source_id": "banksync:r1",
+                          "claim_preview_digest": claim["preview_digest"], "account": CHECKING,
+                          "start_day": "2026-03-01", "account_version": 3})
+        self.assertEqual(evidence["opening"]["source_id"], "statement-opening-a")
+        return {claim["preview_digest"]: evidence}
 
     def test_the_expected_opening_keeps_the_exclusion_without_a_second_prompt(self):
         claim = self.claim()
         self.assertEqual(sd.evaluate(ctx(**self.PENDING), [claim])[0]["status"], "resolved")
-        result = self.after(claim)
-        self.assertEqual((result["status"], result["triggers"], result["state"]), ("resolved", [], "outside_books"))
-        self.assertEqual(result["notes"], ["EXPECTED_OPENING_RECORDED"])
+        transitions = self.completed(claim)
+        for _ in range(3):
+            result = self.evaluate(claim, transitions)
+            self.assertEqual((result["status"], result["triggers"], result["state"]), ("resolved", [], "outside_books"))
+            self.assertEqual(result["notes"], ["EXPECTED_OPENING_RECORDED"])
         # It never becomes coverage, and it never allows a booking.
-        hold = sd.reclassify(ctx(policy=policy("authorized", version=3, epoch=5), openings=[self.OPENING]), "r1",
+        hold = sd.reclassify(ctx(policy=policy("authorized", version=3, epoch=5), openings=[self.OPENING_A]), "r1",
                              claim["row_digest"])
         self.assertEqual((hold["date_checks_pass"], hold["date_hold_reason"]),
                          (False, "BOOKS_DATE_BEFORE_AUTHORIZED_START"))
 
+    def test_a_replacement_opening_on_the_same_day_and_version_is_material(self):
+        claim = self.claim()
+        transitions = self.completed(claim)
+        self.assertEqual(self.evaluate(claim, transitions)["status"], "resolved")
+        result = self.evaluate(claim, transitions, openings=[self.OPENING_B])
+        self.assertEqual((result["status"], result["triggers"]), ("invalidated", ["OPENING_CHANGED"]))
+
+    def test_the_completed_opening_disappearing_invalidates(self):
+        claim = self.claim()
+        result = self.evaluate(claim, self.completed(claim), openings=[])
+        self.assertEqual(result["status"], "invalidated")
+        self.assertIn("OPENING_CHANGED", result["triggers"])
+
+    def test_a_version_change_after_completion_invalidates(self):
+        claim = self.claim()
+        result = self.evaluate(claim, self.completed(claim), policy=policy("authorized", version=4))
+        self.assertEqual((result["status"], result["triggers"]), ("invalidated", ["POLICY_CHANGED"]))
+
+    def test_without_transition_evidence_after_completion_it_is_not_resolved(self):
+        """It returns ``transition_pending`` and proposes evidence for the opening in force now (here B). A host that
+        already recorded A must pass A; it must never record a second completion."""
+        claim = self.claim()
+        self.completed(claim)
+        result = self.evaluate(claim, None, openings=[self.OPENING_B])
+        self.assertEqual(result["status"], "transition_pending")
+        self.assertEqual(result["transition_evidence"]["opening"]["source_id"], "statement-opening-b")
+        self.assertEqual(sd.excluded_source_ids([result]), [])
+
+    def test_evidence_for_another_claim_or_a_changed_record_is_refused(self):
+        claim = self.claim()
+        evidence = self.completed(claim)[claim["preview_digest"]]
+        other = {claim["preview_digest"]: dict(evidence, claim_preview_digest="0" * 64)}
+        self.assertEqual(self.evaluate(claim, other)["triggers"], ["TRANSITION_EVIDENCE_INVALID"])
+        edited = {claim["preview_digest"]: dict(evidence, account_version=4)}
+        self.assertEqual(self.evaluate(claim, edited)["triggers"], ["TRANSITION_EVIDENCE_INVALID"])
+
+    def test_the_opening_digest_covers_every_posting(self):
+        claim = self.claim()
+        transitions = self.completed(claim)
+        changed = dict(self.OPENING_A, postings=[[CHECKING, "1000.00"], ["Equity:Owner", "-1000.00"]])
+        self.assertEqual(self.evaluate(claim, transitions, openings=[changed])["triggers"], ["OPENING_CHANGED"])
+
     def test_material_changes_still_invalidate(self):
         claim = self.claim()
-        moved_opening = dict(self.OPENING, date="2026-03-05")
+        moved_opening = dict(self.OPENING_A, date="2026-03-05")
         savings = {SAVINGS: {"state": "authorized", "start_day": "2026-03-01", "version": 1}}
         cases = {
             "opening on another day": ({"openings": [moved_opening]}, "OPENING_CHANGED"),
@@ -441,7 +507,7 @@ class ExpectedOpeningTransitionTests(unittest.TestCase):
         }
         for name, (overrides, trigger) in cases.items():
             with self.subTest(name):
-                result = self.after(claim, **overrides)
+                result = self.evaluate(claim, None, **overrides)
                 self.assertEqual(result["status"], "invalidated", result)
                 self.assertIn(trigger, result["triggers"])
                 self.assertEqual(result["notes"], [])
