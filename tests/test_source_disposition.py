@@ -227,6 +227,48 @@ class PendingOpeningTests(unittest.TestCase):
         self.assertFalse(hold["may_book"])
 
 
+class CoverageProvenanceTests(unittest.TestCase):
+    """Each case must be refused for ``covered_by_opening``.
+
+    The engine keeps no immutable list of statement lines, so a row's ``statementId`` and fields cannot be checked
+    against the line that the statement really had. These cases show why a field match is not line membership.
+    """
+
+    EVIDENCE = {"kind": "statement_line", "statement_id": "s1"}
+
+    def assert_refused(self, rows, **overrides):
+        doc = context(rows=rows, **overrides)
+        result = sd.preview(sd.context_from_document(doc), str(rows[0]["id"]), "covered_by_opening",
+                            evidence=self.EVIDENCE)
+        self.assertEqual(result["status"], "refused", result)
+        self.assertIn(result["code"], {"DISPOSITION_LINE_EVIDENCE_UNAVAILABLE", "DISPOSITION_EVIDENCE_MISMATCH"})
+
+    def test_row_amount_changed_after_import(self):
+        self.assert_refused([statement_row(amount="-41.00")])
+
+    def test_row_date_changed_after_import(self):
+        self.assert_refused([statement_row(day="2026-02-11")])
+
+    def test_row_source_changed_after_import(self):
+        self.assert_refused([statement_row(source_id="banksync:other-source")])
+
+    def test_fabricated_statement_id_on_a_row_that_is_not_a_line(self):
+        self.assert_refused([feed_row(statementId="s1", csvMappingKey="statement:chk", accountId=CHECKING)])
+
+    def test_statement_file_replaced_or_its_lines_edited(self):
+        statements = copy.deepcopy(context()["statements"])
+        statements[0]["evidence_sha256"] = "d" * 64
+        self.assert_refused([statement_row()], statements=statements)
+
+    def test_a_duplicate_line_claimed_by_two_rows(self):
+        rows = [statement_row(), statement_row(source_id="stmt:s1:dup")]
+        self.assert_refused(rows)
+        doc = context(rows=rows)
+        second = sd.preview(sd.context_from_document(doc), "stmt:s1:dup", "covered_by_opening",
+                            evidence=self.EVIDENCE)
+        self.assertEqual(second["status"], "refused", second)
+
+
 class CoverageTests(unittest.TestCase):
     EVIDENCE = {"kind": "statement_line", "statement_id": "s1"}
 
@@ -236,74 +278,36 @@ class CoverageTests(unittest.TestCase):
         return sd.preview(sd.context_from_document(doc), str((row or statement_row())["id"]),
                           "covered_by_opening", evidence=evidence)
 
-    def assert_refused(self, code: str, reason: str | None = None, **kwargs):
+    def assert_refused(self, code: str, reason: str, **kwargs):
         result = self.run_preview(**kwargs)
-        self.assertEqual((result["status"], result["code"]), ("refused", code), result)
-        if reason is not None:
-            self.assertEqual(result["reason"], reason)
-
-    def test_a_statement_line_with_a_gapless_chain_to_a_live_opening_is_accepted(self):
-        result = self.run_preview()
-        self.assertEqual(result["status"], "ok", result)
-        self.assertEqual(result["basis"]["evidence"], {
-            "kind": "statement_line", "statement_id": "s1", "account": CHECKING, "period_start": "2026-02-01",
-            "period_end": "2026-02-28", "evidence_sha256": SHA_A, "chain": ["s1"]})
-        self.assertEqual(result["basis"]["opening"]["source_id"], "statement-opening-s2")
-
-    def test_a_longer_gapless_chain_is_accepted(self):
-        statements = [
-            {"statement_id": "s0", "account": CHECKING, "period_start": "2026-01-01", "period_end": "2026-01-31",
-             "evidence_sha256": SHA_A},
-            *context()["statements"]]
-        row = statement_row(source_id="stmt:s0:1", day="2026-01-12", statement_id="s0")
-        result = self.run_preview(row=row, evidence={"kind": "statement_line", "statement_id": "s0"},
-                                  statements=statements)
-        self.assertEqual(result["status"], "ok", result)
-        self.assertEqual(result["basis"]["evidence"]["chain"], ["s0", "s1"])
+        self.assertEqual((result["status"], result["code"], result["reason"]), ("refused", code, reason), result)
+        self.assertNotIn("claim", result)
 
     def test_no_evidence_and_a_date_alone_are_refused(self):
-        self.assert_refused("DISPOSITION_EVIDENCE_REQUIRED", evidence=None)
-        self.assert_refused("DISPOSITION_EVIDENCE_REQUIRED", evidence={"kind": "date", "date": "2026-02-10"})
+        self.assert_refused("DISPOSITION_EVIDENCE_REQUIRED", "evidence_required", evidence=None)
+        self.assert_refused("DISPOSITION_EVIDENCE_REQUIRED", "evidence_required",
+                            evidence={"kind": "date", "date": "2026-02-10"})
 
     def test_a_source_history_handoff_is_not_available_yet(self):
-        self.assert_refused("DISPOSITION_HANDOFF_UNAVAILABLE",
+        self.assert_refused("DISPOSITION_HANDOFF_UNAVAILABLE", "handoff_unavailable",
                             evidence={"kind": "source_history_handoff", "source_ids": ["stmt:s1:1"]})
 
-    def test_a_feed_row_has_no_line_identity_with_a_statement(self):
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "no_line_identity", row=feed_row())
-
-    def test_the_line_must_be_from_the_named_statement_on_the_same_account(self):
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "no_line_identity",
-                            row=statement_row(statement_id="s9"))
-        statements = copy.deepcopy(context()["statements"])
-        statements[0]["account"] = SAVINGS
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "evidence_other_account", statements=statements)
-
-    def test_the_statement_period_must_contain_the_row_and_end_before_the_opening(self):
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "row_outside_statement_period",
-                            row=statement_row(day="2026-01-20"), open_dates={CHECKING: "2026-01-01"})
-        statements = copy.deepcopy(context()["statements"])
-        statements[0]["period_end"] = "2026-03-02"
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "statement_not_before_opening", statements=statements)
-
-    def test_a_gap_in_the_statement_chain_is_refused(self):
-        statements = copy.deepcopy(context()["statements"])
-        statements[0]["period_end"] = "2026-02-20"
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "statement_chain_gap", statements=statements)
-
-    def test_a_replaced_or_unknown_statement_is_refused(self):
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "statement_not_found",
-                            statements=context()["statements"][1:])
-
-    def test_the_opening_must_be_live_on_the_account_and_after_the_row(self):
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "no_opening", openings=[])
-        other = [{"account": SAVINGS, "date": "2026-03-01", "source_id": "o", "kind": "statement",
-                  "statement_id": "x", "amount": "1.00"}]
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "no_opening", openings=other)
-        quickbooks = [{"account": CHECKING, "date": "2026-03-01", "source_id": "quickbooks-opening-x",
-                       "kind": "quickbooks", "statement_id": None, "amount": "1.00"}]
-        self.assert_refused("DISPOSITION_EVIDENCE_MISMATCH", "quickbooks_line_evidence_unavailable",
-                            openings=quickbooks)
+    def test_every_statement_line_claim_is_refused_until_retained_lines_exist(self):
+        """The former "accepted" case (statementId equal, period inside, gapless chain) is refused too."""
+        statements = context()["statements"]
+        chained = [{"statement_id": "s0", "account": CHECKING, "period_start": "2026-01-01",
+                    "period_end": "2026-01-31", "evidence_sha256": SHA_A}, *statements]
+        cases = {
+            "statementId, period and chain all match": {},
+            "longer chain": {"row": statement_row(source_id="stmt:s0:1", day="2026-01-12", statement_id="s0"),
+                             "evidence": {"kind": "statement_line", "statement_id": "s0"}, "statements": chained},
+            "feed row": {"row": feed_row()},
+            "unknown statement": {"statements": statements[1:]},
+            "no opening": {"openings": []},
+        }
+        for name, kwargs in cases.items():
+            with self.subTest(name):
+                self.assert_refused("DISPOSITION_LINE_EVIDENCE_UNAVAILABLE", "no_retained_statement_lines", **kwargs)
 
 
 class EvaluateTests(unittest.TestCase):
@@ -336,15 +340,11 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(self.status(claim, open_dates={CHECKING: "2025-12-01"})["triggers"], ["OPEN_DATE_CHANGED"])
         self.assertIn("OPENING_CHANGED", self.status(claim, openings=[])["triggers"])
 
-    def test_evidence_changes_invalidate_a_coverage_claim(self):
-        doc = context(rows=[statement_row()])
-        claim = self.claim(doc, "stmt:s1:1", "covered_by_opening", {"kind": "statement_line", "statement_id": "s1"})
-        statements = copy.deepcopy(doc["statements"])
-        statements[0]["evidence_sha256"] = "c" * 64
-        result = self.status(claim, rows=[statement_row()], statements=statements)
-        self.assertEqual(result["triggers"], ["EVIDENCE_CHANGED"])
-        gone = self.status(claim, rows=[statement_row()], statements=doc["statements"][1:])
-        self.assertIn("EVIDENCE_CHANGED", gone["triggers"])
+    def test_a_stored_coverage_claim_never_resolves_and_is_not_confirmed(self):
+        claim = dict(self.claim(), state="covered_by_opening")
+        result = self.status(claim)
+        self.assertEqual((result["status"], result["triggers"]), ("invalidated", ["LINE_EVIDENCE_UNAVAILABLE"]))
+        self.assertEqual(sd.confirm(ctx(), claim)["status"], "refused")
 
     def test_row_changes_invalidate(self):
         claim = self.claim()
@@ -427,6 +427,20 @@ class WorkspaceAndCommandTests(unittest.TestCase):
         self.assertEqual((result["reason_code"], result["conflicts"]), ("before_open_date", ["NO_OPENING"]))
         self.assertEqual(sd.preview(context_, "r2", "outside_books")["reason"], "on_or_after_open_date")
         self.assertEqual(workspace_digest(self.entity), before)
+
+    def test_intake_keeps_a_statement_id_that_a_connector_supplies(self):
+        """A break point: ``statementId`` on a staged row is a plain field, not proof that a statement had the line."""
+        from bookkeeping.entity import load_entity
+        from bookkeeping.ledger.importer import import_transactions
+
+        forged = feed_row("banksync:r3", "2026-02-12", statementId="st-0123456789abcdef")
+        import_transactions(load_entity(self.entity), [forged], session_id="t2")
+        staged = json.loads((self.entity / "staging" / "pending-categorization.json").read_text(encoding="utf-8"))
+        self.assertEqual([row.get("statementId") for row in staged if row["id"] == "banksync:r3"],
+                         ["st-0123456789abcdef"])
+        result = sd.preview(sd.load_context(self.entity), "r3", "covered_by_opening",
+                            evidence={"kind": "statement_line", "statement_id": "st-0123456789abcdef"})
+        self.assertEqual(result["code"], "DISPOSITION_LINE_EVIDENCE_UNAVAILABLE")
 
     def request(self, document: dict) -> Path:
         path = Path(self._tmp.name) / "request.json"

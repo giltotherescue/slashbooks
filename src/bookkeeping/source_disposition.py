@@ -4,8 +4,9 @@ A bank row dated before an account's books start (or, with no books start policy
 date) cannot be booked. A person may close such a row with one of two decisions:
 
 - ``outside_books``: the row is not recorded in these books. This claims nothing about the opening balance.
-- ``covered_by_opening``: the opening balance of the same account includes this row. This needs line-level
-  evidence (``covered_by_opening`` below). A date alone is never evidence.
+- ``covered_by_opening``: the opening balance of the same account includes this row. This needs a match against
+  a retained, immutable statement line. The engine keeps no such lines today, so this decision is always refused
+  (``DISPOSITION_LINE_EVIDENCE_UNAVAILABLE``) and a stored claim of it never resolves. A date is never evidence.
 
 This module only evaluates. It stores nothing, writes nothing, reads no environment variable and no clock, and
 decides no authority. A host decides who may confirm a decision, stores the confirmed claim, and calls
@@ -29,7 +30,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -408,66 +409,30 @@ def _conflicts(context: DispositionContext, ok: _Eligibility) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Coverage: line-level evidence only
+# Coverage: refused until a retained-line contract exists
 # ---------------------------------------------------------------------------
+
+LINE_EVIDENCE_UNAVAILABLE = "DISPOSITION_LINE_EVIDENCE_UNAVAILABLE"
 
 
 def _coverage(context: DispositionContext, ok: _Eligibility, evidence: Any) -> dict[str, Any]:
-    """The opening and evidence basis of a ``covered_by_opening`` claim, or a refusal.
+    """Always a refusal today. ``covered_by_opening`` needs proof that this exact transaction is in the opening.
 
-    Only a line of a saved statement counts: the row itself must come from that statement (exact source and
-    account identity). The statement period must contain the row and end before the opening, and saved statements
-    must cover every day from its end to the opening with no gap. A period alone, a balance "as of" a day, or a
-    date alone never proves that one transaction is included.
+    The proof must be a match against a retained, immutable statement line (the statement's file hash, the line's
+    index or digest, its amount, date and account). The engine does not keep such lines: a statement import keeps
+    the original file and a mutable record, and a staged row's ``statementId`` is a plain field that a later write
+    can set. A field match, a statement period, a balance "as of" a day, or a date is not line membership. So every
+    claim is refused, and only ``outside_books`` (which claims nothing about the opening) is offered.
     """
-    assert ok.account is not None and ok.day is not None
     if not isinstance(evidence, Mapping) or evidence.get("kind") not in ("statement_line", "source_history_handoff"):
         return _refused("DISPOSITION_EVIDENCE_REQUIRED", "evidence_required",
                         "Name the statement line that shows this row. A date alone is not evidence.")
     if evidence["kind"] == "source_history_handoff":
         return _refused("DISPOSITION_HANDOFF_UNAVAILABLE", "handoff_unavailable",
                         "A validated source-history handoff is not available yet.")
-    statement_id = str(evidence.get("statement_id") or "")
-    if str(ok.row.get("statementId") or "") != statement_id or not statement_id:
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "no_line_identity",
-                        "This row is not a line of the named statement.")
-    statement = next((s for s in context.statements if s.statement_id == statement_id), None)
-    if statement is None:
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "statement_not_found",
-                        "The named statement is not a saved statement in force.")
-    if statement.account != ok.account:
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "evidence_other_account",
-                        "The statement is for another account.")
-    if not statement.period_start <= ok.day <= statement.period_end:
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "row_outside_statement_period",
-                        "The row date is outside the statement period.")
-    opening = _live_opening(context, ok.account)
-    if opening is None or opening.day <= ok.day:
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "no_opening",
-                        "No opening balance of this account is in force after the row.")
-    if opening.kind != "statement":
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "quickbooks_line_evidence_unavailable",
-                        "Line evidence for a QuickBooks opening is not available yet.")
-    if statement.period_end >= opening.day:
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "statement_not_before_opening",
-                        "The statement period must end before the opening balance day.")
-    chain, cursor = [statement.statement_id], statement.period_end + timedelta(days=1)
-    while cursor < opening.day:
-        following = sorted((s for s in context.statements if s.account == ok.account and s.period_start == cursor),
-                           key=lambda s: s.statement_id)
-        if not following:
-            return _refused("DISPOSITION_EVIDENCE_MISMATCH", "statement_chain_gap",
-                            f"No saved statement covers {cursor.isoformat()}, between the evidence and the opening.")
-        chain.append(following[0].statement_id)
-        cursor = following[0].period_end + timedelta(days=1)
-    if cursor != opening.day:
-        return _refused("DISPOSITION_EVIDENCE_MISMATCH", "statement_chain_gap",
-                        "The saved statements do not end on the day before the opening balance.")
-    return {"status": "ok", "opening": {**opening.document(), "digest": opening.digest},
-            "evidence": {"kind": "statement_line", "statement_id": statement.statement_id,
-                         "account": statement.account, "period_start": statement.period_start.isoformat(),
-                         "period_end": statement.period_end.isoformat(),
-                         "evidence_sha256": statement.evidence_sha256, "chain": chain}}
+    return _refused(LINE_EVIDENCE_UNAVAILABLE, "no_retained_statement_lines",
+                    "The books keep no fixed copy of statement lines, so this row cannot be matched to one. "
+                    "Leave it out of the books instead.")
 
 
 # ---------------------------------------------------------------------------
@@ -513,10 +478,8 @@ def preview(context: DispositionContext, source_id: str, state: str, *, reason_t
     if state == "covered_by_opening":
         if policy.get("account_state") == PENDING_OPENING:
             return _refused("DISPOSITION_NOT_ELIGIBLE", "opening_not_committed", _REFUSAL_TEXT["opening_not_committed"])
-        covered = _coverage(context, ok, evidence)
-        if covered["status"] != "ok":
-            return covered
-        basis.update(opening=covered["opening"], evidence=covered["evidence"])
+        # Refused in every case until a retained-line contract exists (see ``_coverage``).
+        return _coverage(context, ok, evidence)
     identity = row_identity(row)
     conflicts = _conflicts(context, ok)
     body = {"schema_version": SCHEMA_VERSION, "source_id": identity["source_id"], "spellings": identity["spellings"],
@@ -603,15 +566,8 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]]) -
         if (None if opening is None else opening.digest) != (None if old_opening is None else old_opening.get("digest")):
             triggers.add("OPENING_CHANGED")
         if claim["state"] == "covered_by_opening":
-            old_evidence = basis.get("evidence") or {}
-            statement = next((s for s in context.statements
-                              if s.statement_id == old_evidence.get("statement_id")), None)
-            if statement is None or statement.evidence_sha256 != old_evidence.get("evidence_sha256"):
-                triggers.add("EVIDENCE_CHANGED")
-            elif row is not None and not triggers:
-                current = _coverage(context, _eligibility(context, row), _claim_evidence(claim))
-                if current["status"] != "ok" or current["evidence"] != old_evidence:
-                    triggers.add("EVIDENCE_CHANGED")
+            # No coverage claim can be checked against a retained line today, so none is ever resolved.
+            triggers.add("LINE_EVIDENCE_UNAVAILABLE")
         if row is not None and not triggers:
             ok = _eligibility(context, row)
             if _sha(_conflicts(context, ok)) != claim.get("conflicts_digest"):

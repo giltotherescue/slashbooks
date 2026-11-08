@@ -7,9 +7,10 @@
   is dated before the account's books start (or before its open date when no
   policy is given). Two decisions are evaluated: `outside_books` (not in these
   books; no claim about the opening balance) and `covered_by_opening`. The
-  second needs line-level evidence: the row must be a line of a saved
-  statement on the same account, and saved statements must reach the opening
-  day with no gap. A date or a period alone is refused. `preview` shows the
+  second is refused in every case for now: it needs a match against a
+  retained, fixed statement line, and the engine keeps no such lines yet. A
+  row's `statementId`, a statement period or a date is not proof that one
+  transaction is in the opening balance. `preview` shows the
   basis and the conflicts a person must see, `confirm` refuses a stale preview,
   `evaluate` gives `resolved` or `invalidated` with trigger codes after a
   policy, mapping, open date, opening, evidence or row change, and `reclassify`
