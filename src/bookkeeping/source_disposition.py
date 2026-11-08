@@ -12,7 +12,8 @@ date) cannot be booked. A person may close such a row with one of two decisions:
 
 This module only evaluates. It stores nothing, writes nothing, reads no environment variable and no clock, and
 decides no authority. A host decides who may confirm a decision, stores the confirmed claim, and calls
-:func:`evaluate` again whenever the books change. The source row itself is never moved or changed.
+:func:`evaluate` again whenever the books change. This module never moves or changes a row. It does not verify a
+row against a provider or an upload; ``row_digest`` only binds the staged bytes that a person confirmed.
 
 Functions:
 
@@ -20,7 +21,8 @@ Functions:
 - :func:`preview`: whether a row may be closed, the basis, the conflicts a person must see, and a claim.
 - :func:`confirm`: accept a claim only when a fresh preview gives the same ``preview_digest``.
 - :func:`evaluate`: ``resolved`` or ``invalidated`` (with trigger codes) for each stored claim.
-- :func:`reclassify`: the review hold of a row under the current guards, for a restore.
+- :func:`reclassify`: the two date checks of a restored row (not the other review and booking guards).
+- :func:`captured_epoch`: the full epoch a confirmation captured, for a host's atomic publication fence.
 - :func:`load_context`: read a company directory (read-only) into a context.
 - ``python -I -m bookkeeping.source_disposition check --request R.json --entity DIR``: the same, as a command.
 """
@@ -529,18 +531,76 @@ def confirm(context: DispositionContext, claim: Mapping[str, Any]) -> dict[str, 
     return {"status": "ok", "claim": current["claim"]}
 
 
+#: Conflicts that the expected opening transition removes (they described the pending state) and adds.
+_PENDING_ONLY_CONFLICTS = frozenset({"NO_OPENING", "OPENING_NOT_COMMITTED"})
+_EXPECTED_OPENING_CONFLICT = "OPENING_AFTER_ROW"
+
+
+def _expected_opening_recorded(context: DispositionContext, claim: Mapping[str, Any]) -> bool:
+    """True when the only change is the expected one: the pending opening of the account was recorded.
+
+    The claim was confirmed while the account was ``authorized_pending_opening`` with no opening. Now the same account
+    is ``authorized`` with the same ``start_day``, its version is exactly one higher, and a live opening of that account
+    is dated on that ``start_day``. Every other part of the basis is checked by its own trigger, so a different start
+    or opening day, another version, a mapping, open-date or row change, or a new conflict still invalidates.
+    This never turns the decision into coverage and never allows a booking.
+    """
+    if claim.get("state") != "outside_books":
+        return False
+    basis = claim["basis"]
+    old = basis.get("policy") or {}
+    account = str(basis.get("account") or "")
+    new = _policy_basis(context, account)
+    opening = _live_opening(context, account)
+    version = old.get("account_version")
+    return (old.get("mode") == "enforced" and new.get("mode") == "enforced"
+            and old.get("account_state") == PENDING_OPENING and new.get("account_state") == "authorized"
+            and isinstance(version, int) and new.get("account_version") == version + 1
+            and old.get("start_day") is not None and new.get("start_day") == old.get("start_day")
+            and basis.get("opening") is None
+            and opening is not None and opening.day.isoformat() == old.get("start_day"))
+
+
+def _expected_conflicts(claim: Mapping[str, Any], transition: bool) -> str:
+    """The conflict digest that the current conflicts must have."""
+    if not transition:
+        return str(claim.get("conflicts_digest"))
+    old = claim.get("conflicts")
+    _require(isinstance(old, list) and _sha(old) == claim.get("conflicts_digest"),
+             "claim conflicts do not match conflicts_digest")
+    return _sha(sorted((set(old) - _PENDING_ONLY_CONFLICTS) | {_EXPECTED_OPENING_CONFLICT}))
+
+
+def captured_epoch(claim: Mapping[str, Any]) -> int | None:
+    """The policy epoch that the person's confirmation captured, or ``None`` with no enforced policy.
+
+    Rule 2 (separate from :func:`evaluate`): a host that publishes a confirmed decision asserts this full epoch in the
+    same atomic write. Any policy change after the preview, on any account, refuses the publication.
+    """
+    policy = (claim.get("basis") or {}).get("policy") or {}
+    epoch = policy.get("epoch")
+    return epoch if policy.get("mode") == "enforced" and isinstance(epoch, int) else None
+
+
 def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """For each stored claim: ``resolved``, or ``invalidated`` with the trigger codes that fired.
 
     A claim is resolved only when the row, its account mapping, the books start for that account (or the open
     date), the opening, the evidence and the conflicts are all the same as when the person confirmed it.
-    A change of the policy epoch alone (for example, a start change on another account) changes nothing.
+
+    Rule 1 (separate from the confirmation fence, :func:`captured_epoch`): a change of the policy epoch alone (for
+    example, a start change on another account) changes nothing here.
+
+    One expected change is not a trigger: the pending opening of the account was recorded under the same start,
+    account and mapping (:func:`_expected_opening_recorded`). The result then has the note
+    ``EXPECTED_OPENING_RECORDED``. The decision stays ``outside_books``.
     """
     results = []
     booked = _booked_ids(context)
     for claim in claims:
         _check_claim(claim)
         triggers: set[str] = set()
+        notes: list[str] = []
         spellings = source_id_variants(claim["source_id"])
         row = _find_row(context, claim["source_id"])
         if spellings & booked:
@@ -555,27 +615,32 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]]) -
             if ok.mapping_digest != basis.get("mapping_digest") or ok.account != basis.get("account"):
                 triggers.add("MAPPING_CHANGED")
         account = str(basis.get("account") or "")
+        transition = _expected_opening_recorded(context, claim)
         old_policy, new_policy = dict(basis.get("policy") or {}), _policy_basis(context, account)
         old_policy.pop("epoch", None)
         new_policy.pop("epoch", None)
-        if old_policy != new_policy:
+        if old_policy != new_policy and not transition:
             triggers.add("POLICY_CHANGED")
         opened = context.open_dates.get(account)
         if (basis.get("catalog") or {}).get("open_date") != (None if opened is None else opened.isoformat()):
             triggers.add("OPEN_DATE_CHANGED")
         opening = _live_opening(context, account)
         old_opening = basis.get("opening")
-        if (None if opening is None else opening.digest) != (None if old_opening is None else old_opening.get("digest")):
+        if ((None if opening is None else opening.digest) != (None if old_opening is None else old_opening.get("digest"))
+                and not transition):
             triggers.add("OPENING_CHANGED")
         if claim["state"] == "covered_by_opening":
             # No coverage claim can be checked against a retained line today, so none is ever resolved.
             triggers.add("LINE_EVIDENCE_UNAVAILABLE")
         if row is not None and not triggers:
             ok = _eligibility(context, row)
-            if _sha(_conflicts(context, ok)) != claim.get("conflicts_digest"):
+            if _sha(_conflicts(context, ok)) != _expected_conflicts(claim, transition):
                 triggers.add("CONFLICTS_CHANGED")
+        if transition and not triggers:
+            notes.append("EXPECTED_OPENING_RECORDED")
         results.append({"source_id": claim["source_id"], "state": claim["state"],
-                        "status": "invalidated" if triggers else "resolved", "triggers": sorted(triggers)})
+                        "status": "invalidated" if triggers else "resolved", "triggers": sorted(triggers),
+                        "notes": notes})
     return results
 
 
@@ -584,26 +649,37 @@ def excluded_source_ids(results: Iterable[Mapping[str, Any]]) -> list[str]:
     return sorted(str(item["source_id"]) for item in results if item.get("status") == "resolved")
 
 
-def reclassify(context: DispositionContext, source_id: str, expected_row_digest: str) -> dict[str, Any]:
-    """The review hold of a restored row under the current guards. The row is read again; no stored copy is used.
+#: Guards that :func:`reclassify` does not run. A host must run the full ordinary review and booking guards.
+NOT_CHECKED_BY_RECLASSIFY = ("accrual_review", "ask_first_amount", "ordinary_review_and_booking")
 
-    It applies the open-date rule and the books start policy to the row's account. ``may_book`` is true only when
-    neither refuses. Other review labels (an ask-first amount, accrual review) stay with the importer.
+
+def reclassify(context: DispositionContext, source_id: str, expected_row_digest: str) -> dict[str, Any]:
+    """The two date checks for a restored row, under the current open dates and books start policy.
+
+    It reads the row that is in the queue now and requires the same ``row_digest`` as the confirmed claim. That
+    only shows that the staged bytes are the confirmed ones; it does not verify them against a provider or an upload.
+
+    ``date_checks_pass`` is true only when neither date check refuses. It does **not** mean that the row may be
+    booked: the ask-first amount, the accrual review and every other review and booking guard are not run here
+    (``not_checked``). The result has no ``review_hold_reason``, so a caller cannot clear the row's other labels
+    with it.
     """
     row = _find_row(context, str(source_id))
     if row is None or row_identity(row)["row_digest"] != expected_row_digest:
         return _refused("SOURCE_ROW_CHANGED", "source_row_changed",
                         "The row changed or is gone since the decision. A person must review it.")
+    result: dict[str, Any] = {"status": "ok", "source_id": str(row.get("id")),
+                              "not_checked": list(NOT_CHECKED_BY_RECLASSIFY)}
     day = _strict_day(row.get("date"))
     account, _digest = _mapping(context, row)
     if day is None or account is None:
-        return {"status": "ok", "source_id": str(row.get("id")), "review_hold_reason": None, "may_book": False,
+        return {**result, "date_hold_reason": None, "date_checks_pass": False,
                 "reason": "invalid_date" if day is None else "account_not_mapped"}
     hold: str | None = "source_catalog_conflict" if opened_after(context.open_dates, account, day) else None
     if hold is None:
         refusal = first_policy_conflict(context.policy, [(day, [account], str(row.get("id")))], [account])
         hold = None if refusal is None else refusal.code
-    return {"status": "ok", "source_id": str(row.get("id")), "review_hold_reason": hold, "may_book": hold is None}
+    return {**result, "date_hold_reason": hold, "date_checks_pass": hold is None}
 
 
 # ---------------------------------------------------------------------------

@@ -223,8 +223,8 @@ class PendingOpeningTests(unittest.TestCase):
         claim = sd.preview(context_, "r1", "outside_books")["claim"]
         self.assertEqual(sd.evaluate(context_, [claim])[0]["status"], "resolved")
         hold = sd.reclassify(context_, "r1", claim["row_digest"])
-        self.assertEqual(hold["review_hold_reason"], "OPENING_REQUIRED")
-        self.assertFalse(hold["may_book"])
+        self.assertEqual(hold["date_hold_reason"], "OPENING_REQUIRED")
+        self.assertFalse(hold["date_checks_pass"])
 
 
 class CoverageProvenanceTests(unittest.TestCase):
@@ -323,7 +323,7 @@ class EvaluateTests(unittest.TestCase):
 
     def test_an_unchanged_claim_is_resolved(self):
         self.assertEqual(self.status(self.claim()), {"source_id": "banksync:r1", "state": "outside_books",
-                                                     "status": "resolved", "triggers": []})
+                                                     "status": "resolved", "triggers": [], "notes": []})
 
     def test_a_policy_change_for_the_account_invalidates_and_an_epoch_change_alone_does_not(self):
         claim = self.claim()
@@ -376,17 +376,103 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(sd.excluded_source_ids(sd.evaluate(ctx(), [claim])), ["banksync:r1"])
 
 
+class EpochRuleTests(unittest.TestCase):
+    """Two separate rules. Rule 1: a stored decision survives an epoch-only change when its basis is unchanged.
+    Rule 2: the confirmation fences the full epoch it captured; a host publication asserts that same epoch."""
+
+    def test_rule_1_a_stored_decision_survives_an_epoch_only_change(self):
+        claim = sd.preview(ctx(), "r1", "outside_books")["claim"]
+        other = policy(epoch=9, extra={SAVINGS: {"state": "authorized", "start_day": "2026-05-01", "version": 1}})
+        self.assertEqual(sd.evaluate(ctx(policy=other), [claim])[0]["status"], "resolved")
+
+    def test_rule_2_confirmation_fences_the_full_captured_epoch(self):
+        claim = sd.preview(ctx(), "r1", "outside_books")["claim"]
+        self.assertEqual(claim["basis"]["policy"]["epoch"], 4)
+        self.assertEqual(sd.captured_epoch(claim), 4)
+        refused = sd.confirm(ctx(policy=policy(epoch=5)), claim)
+        self.assertEqual(refused["code"], "DISPOSITION_PREVIEW_CHANGED")
+        legacy = sd.preview(ctx(policy=None, open_dates={CHECKING: "2026-03-01"}), "r1", "outside_books")["claim"]
+        self.assertIsNone(sd.captured_epoch(legacy))
+
+
+class ExpectedOpeningTransitionTests(unittest.TestCase):
+    """Pending opening -> the expected opening is recorded under the same start, account and mapping."""
+
+    PENDING = dict(policy=policy("authorized_pending_opening", version=2), openings=[])
+    OPENING = {"account": CHECKING, "date": "2026-03-01", "source_id": "statement-opening-s2", "kind": "statement",
+               "statement_id": "s2", "amount": "1000.00"}
+
+    def claim(self):
+        result = sd.preview(ctx(**self.PENDING), "r1", "outside_books")
+        self.assertEqual(result["status"], "ok", result)
+        return result["claim"]
+
+    def after(self, claim, **overrides):
+        doc = dict(policy=policy("authorized", version=3, epoch=5), openings=[self.OPENING])
+        doc.update(overrides)
+        return sd.evaluate(ctx(**doc), [claim])[0]
+
+    def test_the_expected_opening_keeps_the_exclusion_without_a_second_prompt(self):
+        claim = self.claim()
+        self.assertEqual(sd.evaluate(ctx(**self.PENDING), [claim])[0]["status"], "resolved")
+        result = self.after(claim)
+        self.assertEqual((result["status"], result["triggers"], result["state"]), ("resolved", [], "outside_books"))
+        self.assertEqual(result["notes"], ["EXPECTED_OPENING_RECORDED"])
+        # It never becomes coverage, and it never allows a booking.
+        hold = sd.reclassify(ctx(policy=policy("authorized", version=3, epoch=5), openings=[self.OPENING]), "r1",
+                             claim["row_digest"])
+        self.assertEqual((hold["date_checks_pass"], hold["date_hold_reason"]),
+                         (False, "BOOKS_DATE_BEFORE_AUTHORIZED_START"))
+
+    def test_material_changes_still_invalidate(self):
+        claim = self.claim()
+        moved_opening = dict(self.OPENING, date="2026-03-05")
+        savings = {SAVINGS: {"state": "authorized", "start_day": "2026-03-01", "version": 1}}
+        cases = {
+            "opening on another day": ({"openings": [moved_opening]}, "OPENING_CHANGED"),
+            "another start": ({"policy": policy("authorized", start="2026-04-01", version=3)}, "POLICY_CHANGED"),
+            "version skipped": ({"policy": policy("authorized", version=4)}, "POLICY_CHANGED"),
+            "mapping changed": ({"bank_account_mappings": {"feed-chk": SAVINGS},
+                                 "policy": policy("authorized", version=3, extra=savings)}, "MAPPING_CHANGED"),
+            "new conflict": ({"booked": [{"source_id": "b9", "account": CHECKING, "date": "2026-02-10",
+                                          "amount": "-25.00"}]}, "CONFLICTS_CHANGED"),
+            "no opening yet": ({"openings": []}, "POLICY_CHANGED"),
+            "open date changed": ({"open_dates": {CHECKING: "2025-12-01"}}, "OPEN_DATE_CHANGED"),
+        }
+        for name, (overrides, trigger) in cases.items():
+            with self.subTest(name):
+                result = self.after(claim, **overrides)
+                self.assertEqual(result["status"], "invalidated", result)
+                self.assertIn(trigger, result["triggers"])
+                self.assertEqual(result["notes"], [])
+
+    def test_a_claim_from_an_authorized_account_does_not_use_the_transition(self):
+        claim = sd.preview(ctx(), "r1", "outside_books")["claim"]
+        self.assertEqual(sd.evaluate(ctx(policy=policy(version=3)), [claim])[0]["triggers"], ["POLICY_CHANGED"])
+
+
 class ReclassifyTests(unittest.TestCase):
+    def test_date_checks_pass_does_not_mean_bookable(self):
+        """Only two date checks run. An ask-first or accrual-held row stays protected, and its labels are not cleared."""
+        rows = [feed_row(review_hold_reason="above_ask_first_amount", accrual_review_required=True,
+                         accrual_review_action="Link a settlement")]
+        digest = sd.row_identity(rows[0])["row_digest"]
+        result = sd.reclassify(ctx(rows=rows, policy=None, open_dates={CHECKING: "2026-01-01"}), "r1", digest)
+        self.assertEqual((result["status"], result["date_checks_pass"], result["date_hold_reason"]), ("ok", True, None))
+        self.assertNotIn("may_book", result)
+        self.assertNotIn("review_hold_reason", result, "a host must not overwrite the row's other review labels")
+        self.assertEqual(result["not_checked"], ["accrual_review", "ask_first_amount", "ordinary_review_and_booking"])
+
     def test_restore_uses_the_current_guards_not_the_stored_label(self):
         row = feed_row(review_hold_reason="source_catalog_conflict")
         digest = sd.row_identity(row)["row_digest"]
         legacy = ctx(rows=[row], policy=None, open_dates={CHECKING: "2026-03-01"})
-        self.assertEqual(sd.reclassify(legacy, "r1", digest)["review_hold_reason"], "source_catalog_conflict")
+        self.assertEqual(sd.reclassify(legacy, "r1", digest)["date_hold_reason"], "source_catalog_conflict")
         opened_earlier = ctx(rows=[row], policy=None, open_dates={CHECKING: "2026-01-01"})
         result = sd.reclassify(opened_earlier, "r1", digest)
-        self.assertEqual((result["review_hold_reason"], result["may_book"]), (None, True))
+        self.assertEqual((result["date_hold_reason"], result["date_checks_pass"]), (None, True))
         enforced = sd.reclassify(ctx(rows=[row]), "r1", digest)
-        self.assertEqual(enforced["review_hold_reason"], "BOOKS_DATE_BEFORE_AUTHORIZED_START")
+        self.assertEqual(enforced["date_hold_reason"], "BOOKS_DATE_BEFORE_AUTHORIZED_START")
 
     def test_a_changed_row_is_not_restored(self):
         result = sd.reclassify(ctx(), "r1", "0" * 64)
