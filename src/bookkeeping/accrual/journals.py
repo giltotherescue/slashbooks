@@ -293,7 +293,8 @@ def _replay_operation(entity: Entity, plan: Mapping[str, Any]) -> dict[str, Any]
 
 def _apply_operation(entity: Entity, plan: Mapping[str, Any], *, entries: Sequence[Entry],
                      mutations: Sequence[SupportingMutation], opens: Sequence[Open] = (),
-                     replay_receipt: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                     replay_receipt: Mapping[str, Any] | None = None,
+                     allow_earlier_open_dates: bool = False) -> dict[str, Any]:
     """Publish regenerated domain effects and an immutable receipt atomically."""
     entity = load_entity(entity.path)
     store = _store(entity)
@@ -341,7 +342,7 @@ def _apply_operation(entity: Entity, plan: Mapping[str, Any], *, entries: Sequen
         _atomic_ledger_write_unlocked(current, list(opens), list(entries), operation_id, None,
             f"Accrual {plan['kind']}: {operation_id}",
             supporting_mutations=[*mutations, SupportingMutation("intents", intent["id"], intent)],
-            expected_digest=plan["ledger_digest"])
+            expected_digest=plan["ledger_digest"], allow_earlier_open_dates=allow_earlier_open_dates)
         from ..preparation_runtime import advance_accrual_batch
         advance_accrual_batch(current, plan["ledger_digest"])
         return receipt

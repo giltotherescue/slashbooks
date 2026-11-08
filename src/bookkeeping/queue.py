@@ -313,6 +313,46 @@ def _refuse_entries_above_ask_first(entity: Entity, *entries: Entry) -> None:
         _refuse_above_ask_first(entity, amount)
 
 
+def _refuse_item_before_open(entity: Entity, item: dict) -> None:
+    """Refuse a queue item whose entry would post to an account before its open date (``ledger.open_dates``).
+
+    The ledger write checks this too. A group confirmation calls this for every member first, under the same
+    company lock as the writes, so one early member stops the whole group before any write. The writes are
+    separate ledger transactions: a member that the ledger write refuses later stays in review, and the
+    members before it stay recorded. A row that is no longer staged is left to the confirmation's own
+    evidence check.
+    """
+    from .ledger.importer import _ledger_account_for_txn, raise_open_conflict
+    from .ledger.open_dates import first_posting_conflict
+    from .ledger.store import LedgerStore, default_store_path
+
+    path = default_store_path(entity.path)
+    if not path.exists():
+        return
+    open_dates = {opened.account: opened.date for opened in LedgerStore(path).load_opens()}
+    source_ids = [str(sid) for sid in (item.get("source_ids") or [item.get("source_id")]) if sid]
+    rows = [_get_pending_txn(entity, sid) for sid in source_ids]
+    if not rows or any(row is None for row in rows):
+        return
+    mappings = entity.entity_config.get("bank_account_mappings")
+    csv_mappings = entity.entity_config.get("csv_account_mappings")
+    if item.get("proposal_type") == "split":
+        others = [str(posting.get("account") or "") for posting in item.get("split_postings") or []]
+    elif item.get("proposal_type") == "transfer-pair":
+        others = []
+    else:
+        others = [str(item.get("proposed_category") or "")]
+    planned, sources = [], set()
+    for row in rows:
+        try:
+            source = _ledger_account_for_txn(row, mappings, csv_mappings)
+        except ValueError:
+            return
+        sources.add(source)
+        planned.append((_txn_date(row), [source, *others], str(row.get("id"))))
+    raise_open_conflict(first_posting_conflict(planned, open_dates, sources))
+
+
 def _forbid_self_approval(item: dict) -> None:
     """Refuse when the confirming actor created the item (opt-in by environment)."""
     if os.environ.get(FORBID_SELF_APPROVAL_ENV) != "1":
@@ -2644,6 +2684,7 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
         checked = _load_item(entity, item_id)
         _forbid_self_approval(checked)
         _refuse_item_above_ask_first(entity, checked)
+        _refuse_item_before_open(entity, checked)
     return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
 
 
@@ -3162,8 +3203,11 @@ def add_parser(subparsers: Any) -> None:
 
 def _print_error(exc: Exception) -> None:
     """Print a command error. A caller-control refusal also names its code."""
+    from .ledger.open_dates import AccountNotOpenError, OpenDateChangeError
     if isinstance(exc, QueueControlError):
         print(json.dumps({"error": {"code": exc.code, "message": str(exc)}}), file=sys.stderr)
+    elif isinstance(exc, (AccountNotOpenError, OpenDateChangeError)):
+        print(json.dumps({"error": {"code": exc.code, "message": str(exc), "action": exc.action}}), file=sys.stderr)
     else:
         print(f"Error: {exc}", file=sys.stderr)
 

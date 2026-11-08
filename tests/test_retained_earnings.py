@@ -77,7 +77,9 @@ def _company(root: Path, entries, fiscal_year_start: str | None = None) -> Path:
     rows = [Entry(date.fromisoformat(day), text, meta=(("source-id", source[0] if source else f"synthetic-{index}"),),
                   postings=tuple(Posting(account, Decimal(amount)) for account, amount in postings))
             for index, (day, text, postings, *source) in enumerate(entries)]
-    _atomic_ledger_write(entity, opens, rows, "synthetic", None, "Synthetic retained earnings fixture")
+    # The fixture sets the open dates of the starter accounts on purpose: an explicit open-date write.
+    _atomic_ledger_write(entity, opens, rows, "synthetic", None, "Synthetic retained earnings fixture",
+                         allow_earlier_open_dates=True)
     return root
 
 

@@ -611,6 +611,8 @@ def apply(entity, plan):
             raise ValueError("Stale opening preview: accounting state or authority changed.")
         from .journals import _apply_operation
         entries, opens, mutations = _effects(fresh)
-        receipt = _apply_operation(current_entity, fresh["accounting_plan"], entries=entries, opens=opens, mutations=mutations)
+        # The opening sets the chart's open dates from its previewed plan, so it may move an open date earlier.
+        receipt = _apply_operation(current_entity, fresh["accounting_plan"], entries=entries, opens=opens,
+                                   mutations=mutations, allow_earlier_open_dates=True)
         return {"status": "applied", "replayed": False, "source_id": coverage["opening_source_id"],
                 "coverage": coverage, "entries_written": 1, "receipt": receipt}
