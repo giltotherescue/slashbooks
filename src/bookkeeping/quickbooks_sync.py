@@ -340,8 +340,8 @@ def _opening_consistency(entity, reference: Path, cutover: date) -> str | None:
     if not all(slots.get(key) and slots[key].status == "present"
                for key in ("trial_balance", "balance_sheet")):
         return None
-    trial = qb.import_opening(entity, reference, cutover, source="trial-balance", _preview=True)
-    balance = qb.import_opening(entity, reference, cutover, source="balance-sheet", _preview=True)
+    trial = qb.import_opening(entity, reference, cutover, source="trial-balance", _preview=True, check_ledger=False)
+    balance = qb.import_opening(entity, reference, cutover, source="balance-sheet", _preview=True, check_ledger=False)
     if not trial.success or not balance.success:
         return "Opening reports cannot produce independently validated opening lines"
     def canonical(result):
@@ -586,36 +586,17 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         raise ValueError("Opening requires cash-basis accounts and a valid prior-day Trial Balance or Balance Sheet")
     # Reuse the exact existing opening constructor and validator in preview mode.
     target = result.get("adopts_currency")
-    opening = qb.import_opening(entity, reference, cutover, source=source, _preview=True, currency=target)
+    opening = qb.import_opening(entity, reference, cutover, source=source, _preview=True, currency=target,
+                                check_ledger=False)
     if not opening.success:
         return dict(result, applied=False, opening=asdict(opening))
-    from .ledger.store import LedgerStore, default_store_path
-    store = LedgerStore(default_store_path(entity.path))
-    entries = store.load_entries() if store.path.exists() else []
-    originals = {entry.source_id: entry for entry in entries if entry.source_id}
-    reversed_ids = set()
-    for entry in entries:
-        original_id = dict(entry.meta).get("reverses")
-        original = originals.get(original_id)
-        if original is not None and original.date == entry.date and sorted(
-                (p.account, -p.amount, p.currency) for p in original.postings) == sorted(
-                (p.account, p.amount, p.currency) for p in entry.postings):
-            reversed_ids.add(original_id)
-    active = [entry for entry in entries if dict(entry.meta).get("import-source") == "quickbooks-opening"
-              and entry.source_id not in reversed_ids]
-    if active:
-        expected = sorted((p["account"], Decimal(p["amount"]), p["currency"])
-                          for p in opening.proposed_postings)
-        actual = sorted((p.account, p.amount, p.currency) for entry in active for p in entry.postings)
-        if actual != expected or any(entry.date != cutover for entry in active):
-            opening.success = False
-            opening.errors.append("Existing QuickBooks opening differs from this snapshot; use the explicit correction workflow before applying new opening balances")
-            return dict(result, applied=False, opening=asdict(opening))
-        return dict(result, applied=apply, already_applied=True, opening=asdict(opening))
-    if any(entry.date <= cutover and entry.source_id not in reversed_ids for entry in entries):
+    state, error = qb.check_opening_overlap(entity, cutover, opening.proposed_postings)
+    if error:
         opening.success = False
-        opening.errors.append("Existing accounting entries on or before cutover would overlap opening balances; use the explicit correction/adoption workflow")
+        opening.errors.append(error)
         return dict(result, applied=False, opening=asdict(opening))
+    if state == "same":
+        return dict(result, applied=apply, already_applied=True, opening=asdict(opening))
     if apply:
         from .ledger.importer import _entity_write_lock
         with _entity_write_lock(entity.path):

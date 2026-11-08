@@ -1199,6 +1199,93 @@ class TestImportOpening(unittest.TestCase):
             self.assertTrue(json.loads(out.getvalue())["balanced"])
             self.assertEqual(before, self._snapshot(Path(entity.path)))
 
+    def _opening_folder(self, tmpdir: str, name: str, as_of_text: str = "Dec 31, 2025") -> Path:
+        import shutil
+        folder = Path(tmpdir) / name
+        folder.mkdir()
+        shutil.copy(_FIXTURES / "chart_of_accounts.csv", folder / "chart_of_accounts.csv")
+        text = (_FIXTURES / "trial_balance_cash_basis.csv").read_text().replace("Dec 31, 2025", as_of_text)
+        (folder / "trial_balance_cash_basis.csv").write_text(text)
+        return folder
+
+    def test_import_opening_refuses_reports_that_do_not_end_the_day_before_cutover(self):
+        import contextlib, io, json
+        from src.bookkeeping.cli import main
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = self._opening_folder(tmpdir, "qb")  # reports end 2025-12-31
+            entity = self._make_entity(tmpdir)
+            before = self._snapshot(Path(entity.path))
+            cutover = date(2026, 3, 15)
+
+            result = self.import_opening(entity, qb_dir, cutover)
+            self.assertFalse(result.success)
+            self.assertEqual(result.entries_written, 0)
+            self.assertIn("expected 2026-03-14", " ".join(result.errors))
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["qb", "import-opening", str(qb_dir), "--entity", str(entity.path),
+                             "--cutover", "2026-03-15", "--dry-run"])
+            preview = json.loads(out.getvalue())
+            self.assertEqual(code, 1)
+            self.assertFalse(preview["success"])
+            self.assertIn("expected 2026-03-14", " ".join(preview["errors"]))
+            self.assertEqual(before, self._snapshot(Path(entity.path)))
+            store = LedgerStore(default_store_path(entity.path))
+            self.assertEqual(store.load_entries() if store.path.exists() else [], [])
+
+    def test_import_opening_refuses_a_second_opening_with_a_different_cutover(self):
+        import contextlib, io, json
+        from src.bookkeeping.cli import main
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            first_dir = self._opening_folder(tmpdir, "qb1")
+            second_dir = self._opening_folder(tmpdir, "qb2", "Jan 31, 2026")
+            entity = self._make_entity(tmpdir)
+            first = self.import_opening(entity, first_dir, date(2026, 1, 1))
+            self.assertTrue(first.success, first.errors)
+
+            # An identical repeat stays a no-op success.
+            repeat = self.import_opening(entity, first_dir, date(2026, 1, 1))
+            self.assertTrue(repeat.success, repeat.errors)
+            self.assertEqual(repeat.entries_written, 0)
+
+            second = self.import_opening(entity, second_dir, date(2026, 2, 1))
+            self.assertFalse(second.success)
+            self.assertEqual(second.entries_written, 0)
+            self.assertIn("Existing QuickBooks opening differs", " ".join(second.errors))
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["qb", "import-opening", str(second_dir), "--entity", str(entity.path),
+                             "--cutover", "2026-02-01", "--dry-run"])
+            self.assertEqual(code, 1)
+            self.assertIn("Existing QuickBooks opening differs", " ".join(json.loads(out.getvalue())["errors"]))
+            entries = LedgerStore(default_store_path(entity.path)).load_entries()
+            self.assertEqual([e.date for e in entries], [date(2026, 1, 1)])
+
+    def test_import_opening_refuses_to_overlap_existing_entries(self):
+        from src.bookkeeping.ledger.model import Entry, Posting
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = self._opening_folder(tmpdir, "qb")
+            entity = self._make_entity(tmpdir)
+            store = LedgerStore(default_store_path(entity.path))
+            store.initialize()
+            with store.transaction() as conn:
+                store.insert_entries([Entry(
+                    date=date(2025, 12, 1), narration="Synthetic earlier entry", flag="*", meta=(("source-id", "synthetic-1"),),
+                    postings=(Posting("Assets:Bank:Checking", Decimal("5.00"), "USD"),
+                              Posting("Income:Sales", Decimal("-5.00"), "USD")))], conn)
+            result = self.import_opening(entity, qb_dir, date(2026, 1, 1))
+            self.assertFalse(result.success)
+            self.assertIn("would overlap opening balances", " ".join(result.errors))
+            self.assertEqual(len(store.load_entries()), 1)
+
     def test_happy_path_cash_basis(self):
         """AE1: cash-basis folder -> import succeeds, entries dated cutover."""
         with tempfile.TemporaryDirectory() as tmpdir:
