@@ -1199,6 +1199,162 @@ class TestImportOpening(unittest.TestCase):
             self.assertTrue(json.loads(out.getvalue())["balanced"])
             self.assertEqual(before, self._snapshot(Path(entity.path)))
 
+    def _opening_folder(self, tmpdir: str, name: str, as_of_text: str = "Dec 31, 2025") -> Path:
+        import shutil
+        folder = Path(tmpdir) / name
+        folder.mkdir()
+        shutil.copy(_FIXTURES / "chart_of_accounts.csv", folder / "chart_of_accounts.csv")
+        text = (_FIXTURES / "trial_balance_cash_basis.csv").read_text().replace("Dec 31, 2025", as_of_text)
+        (folder / "trial_balance_cash_basis.csv").write_text(text)
+        return folder
+
+    def test_import_opening_refuses_reports_that_do_not_end_the_day_before_cutover(self):
+        import contextlib, io, json
+        from src.bookkeeping.cli import main
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = self._opening_folder(tmpdir, "qb")  # reports end 2025-12-31
+            entity = self._make_entity(tmpdir)
+            before = self._snapshot(Path(entity.path))
+            cutover = date(2026, 3, 15)
+
+            result = self.import_opening(entity, qb_dir, cutover)
+            self.assertFalse(result.success)
+            self.assertEqual(result.entries_written, 0)
+            self.assertIn("expected 2026-03-14", " ".join(result.errors))
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["qb", "import-opening", str(qb_dir), "--entity", str(entity.path),
+                             "--cutover", "2026-03-15", "--dry-run"])
+            preview = json.loads(out.getvalue())
+            self.assertEqual(code, 1)
+            self.assertFalse(preview["success"])
+            self.assertIn("expected 2026-03-14", " ".join(preview["errors"]))
+            # The apply takes the entity write lock, which leaves an empty lock file.
+            after = self._snapshot(Path(entity.path))
+            after.pop(".books.lock", None)
+            self.assertEqual(before, after)
+            store = LedgerStore(default_store_path(entity.path))
+            self.assertEqual(store.load_entries() if store.path.exists() else [], [])
+
+    def test_import_opening_refuses_a_second_opening_with_a_different_cutover(self):
+        import contextlib, io, json
+        from src.bookkeeping.cli import main
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            first_dir = self._opening_folder(tmpdir, "qb1")
+            second_dir = self._opening_folder(tmpdir, "qb2", "Jan 31, 2026")
+            entity = self._make_entity(tmpdir)
+            first = self.import_opening(entity, first_dir, date(2026, 1, 1))
+            self.assertTrue(first.success, first.errors)
+
+            # An identical repeat stays a no-op success.
+            repeat = self.import_opening(entity, first_dir, date(2026, 1, 1))
+            self.assertTrue(repeat.success, repeat.errors)
+            self.assertEqual(repeat.entries_written, 0)
+
+            second = self.import_opening(entity, second_dir, date(2026, 2, 1))
+            self.assertFalse(second.success)
+            self.assertEqual(second.entries_written, 0)
+            self.assertIn("Existing QuickBooks opening differs", " ".join(second.errors))
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["qb", "import-opening", str(second_dir), "--entity", str(entity.path),
+                             "--cutover", "2026-02-01", "--dry-run"])
+            self.assertEqual(code, 1)
+            self.assertIn("Existing QuickBooks opening differs", " ".join(json.loads(out.getvalue())["errors"]))
+            entries = LedgerStore(default_store_path(entity.path)).load_entries()
+            self.assertEqual([e.date for e in entries], [date(2026, 1, 1)])
+
+    def test_concurrent_import_opening_applies_write_one_opening(self):
+        """The overlap check and the write share one entity write lock.
+
+        Handshakes, no timing: A passes its check while it holds the lock. Only then B starts.
+        B signals just before it asks for the lock. A then writes and releases. B gets the lock,
+        runs its check and is refused. A wait that times out fails the test.
+        """
+        import contextlib
+        import threading
+        from src.bookkeeping import quickbooks as qb_module
+        from src.bookkeeping.ledger import importer as importer_module
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        safety = 20
+        with tempfile.TemporaryDirectory() as tmpdir:
+            first_dir = self._opening_folder(tmpdir, "qb1")
+            second_dir = self._opening_folder(tmpdir, "qb2", "Jan 31, 2026")
+            entity = self._make_entity(tmpdir)
+            a_passed_check = threading.Event()
+            b_attempting_lock = threading.Event()
+            real_check = qb_module.check_opening_overlap
+            real_lock = importer_module._entity_write_lock
+            errors, results = [], {}
+
+            def check_hook(*args, **kwargs):
+                outcome = real_check(*args, **kwargs)
+                if threading.current_thread().name == "A":
+                    a_passed_check.set()  # A holds the lock here
+                    if not b_attempting_lock.wait(safety):
+                        raise AssertionError("B never asked for the lock")
+                return outcome
+
+            @contextlib.contextmanager
+            def lock_hook(*args, **kwargs):
+                if threading.current_thread().name == "B":
+                    b_attempting_lock.set()
+                with real_lock(*args, **kwargs):
+                    yield
+
+            def apply(folder, cutover):
+                try:
+                    results[threading.current_thread().name] = self.import_opening(entity, folder, cutover)
+                except BaseException as exc:  # noqa: BLE001 - report every thread failure
+                    errors.append((threading.current_thread().name, exc))
+
+            with patch.object(qb_module, "check_opening_overlap", check_hook), \
+                    patch.object(importer_module, "_entity_write_lock", lock_hook):
+                thread_a = threading.Thread(target=apply, args=(first_dir, date(2026, 1, 1)), name="A")
+                thread_b = threading.Thread(target=apply, args=(second_dir, date(2026, 2, 1)), name="B")
+                thread_a.start()
+                self.assertTrue(a_passed_check.wait(safety), "A never passed its check")
+                thread_b.start()
+                thread_a.join(safety)
+                thread_b.join(safety)
+
+            self.assertFalse(thread_a.is_alive(), "thread A did not finish")
+            self.assertFalse(thread_b.is_alive(), "thread B did not finish")
+            self.assertEqual(errors, [])
+            self.assertTrue(results["A"].success, results["A"].errors)
+            self.assertEqual(results["A"].entries_written, 1)
+            self.assertFalse(results["B"].success)
+            self.assertEqual(results["B"].entries_written, 0)
+            self.assertIn("Existing QuickBooks opening differs", " ".join(results["B"].errors))
+            entries = LedgerStore(default_store_path(entity.path)).load_entries()
+            self.assertEqual([e.date for e in entries], [date(2026, 1, 1)])
+
+    def test_import_opening_refuses_to_overlap_existing_entries(self):
+        from src.bookkeeping.ledger.model import Entry, Posting
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            qb_dir = self._opening_folder(tmpdir, "qb")
+            entity = self._make_entity(tmpdir)
+            store = LedgerStore(default_store_path(entity.path))
+            store.initialize()
+            with store.transaction() as conn:
+                store.insert_entries([Entry(
+                    date=date(2025, 12, 1), narration="Synthetic earlier entry", flag="*", meta=(("source-id", "synthetic-1"),),
+                    postings=(Posting("Assets:Bank:Checking", Decimal("5.00"), "USD"),
+                              Posting("Income:Sales", Decimal("-5.00"), "USD")))], conn)
+            result = self.import_opening(entity, qb_dir, date(2026, 1, 1))
+            self.assertFalse(result.success)
+            self.assertIn("would overlap opening balances", " ".join(result.errors))
+            self.assertEqual(len(store.load_entries()), 1)
+
     def test_happy_path_cash_basis(self):
         """AE1: cash-basis folder -> import succeeds, entries dated cutover."""
         with tempfile.TemporaryDirectory() as tmpdir:

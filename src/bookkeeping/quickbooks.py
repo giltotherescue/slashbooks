@@ -1667,6 +1667,51 @@ def _balance_sheet_opening_rows(bs: BalanceSheet) -> list[TBEntry]:
     return rows
 
 
+OPENING_DIFFERS_ERROR = (
+    "Existing QuickBooks opening differs from this snapshot; use the explicit correction "
+    "workflow before applying new opening balances"
+)
+OPENING_OVERLAP_ERROR = (
+    "Existing accounting entries on or before cutover would overlap opening balances; "
+    "use the explicit correction/adoption workflow"
+)
+
+
+def check_opening_overlap(entity, cutover: date, proposed_postings) -> tuple[str, str | None]:
+    """Compare the ledger with a proposed QuickBooks opening.
+
+    Shared by ``import_opening`` and ``qb sync-opening``. Returns ``(state, error)``.
+    ``state`` is ``"same"`` when an active opening already has the proposed postings
+    (``error`` is None), ``"conflict"`` when an active opening differs or entries on or
+    before the cutover would overlap (``error`` has the message), or ``"clear"``.
+    ``proposed_postings`` is a list of dicts with ``account``, ``amount`` and ``currency``.
+    """
+    from .ledger.store import LedgerStore, default_store_path
+
+    store = LedgerStore(default_store_path(entity.path))
+    entries = store.load_entries() if store.path.exists() else []
+    originals = {entry.source_id: entry for entry in entries if entry.source_id}
+    reversed_ids = set()
+    for entry in entries:
+        original_id = dict(entry.meta).get("reverses")
+        original = originals.get(original_id)
+        if original is not None and original.date == entry.date and sorted(
+                (p.account, -p.amount, p.currency) for p in original.postings) == sorted(
+                (p.account, p.amount, p.currency) for p in entry.postings):
+            reversed_ids.add(original_id)
+    active = [entry for entry in entries if dict(entry.meta).get("import-source") == "quickbooks-opening"
+              and entry.source_id not in reversed_ids]
+    if active:
+        expected = sorted((p["account"], Decimal(p["amount"]), p["currency"]) for p in proposed_postings)
+        actual = sorted((p.account, p.amount, p.currency) for entry in active for p in entry.postings)
+        if actual != expected or any(entry.date != cutover for entry in active):
+            return "conflict", OPENING_DIFFERS_ERROR
+        return "same", None
+    if any(entry.date <= cutover and entry.source_id not in reversed_ids for entry in entries):
+        return "conflict", OPENING_OVERLAP_ERROR
+    return "clear", None
+
+
 def import_opening(
     entity,   # Entity from entity.py
     folder: str | Path,
@@ -1681,12 +1726,15 @@ def import_opening(
     _preview: bool = False,
     currency=None,
     adopt_currency: bool = False,
+    check_ledger: bool = True,
 ) -> ImportResult:
     """Post opening balances from a cash-basis trial balance.
 
     ``currency`` is the currency of the postings (default the company currency).
     With ``adopt_currency`` a company with no entries takes ``currency`` in the same
     ledger transaction as the opening entry (QuickBooks home currency).
+    With ``check_ledger`` (the default) a plain call refuses an opening that would double count
+    an existing opening or overlap earlier entries; ``qb sync-opening`` runs that check itself.
 
     Requires the TB in *folder* to be cash-basis; refuses otherwise.
     For each non-zero balance-sheet account in the TB:
@@ -1706,14 +1754,20 @@ def import_opening(
     """
     book = currency or entity.currency
     from .currency import report_currency
-    with report_currency(book):
+    from contextlib import nullcontext
+    from .ledger.importer import _entity_write_lock
+
+    # A plain apply checks the ledger and writes under one entity write lock, as qb sync-opening does.
+    # A caller with its own store or connection (repair) or a preview takes no lock here.
+    plain_apply = check_ledger and not _preview and _store is None and _conn is None
+    with report_currency(book), (_entity_write_lock(entity.path) if plain_apply else nullcontext()):
         return _import_opening(entity, folder, cutover, source, _store=_store, _conn=_conn, fiscal_start=fiscal_start,
                                supporting=supporting, closed_position=closed_position, _preview=_preview,
-                               book=book, adopt_currency=adopt_currency)
+                               book=book, adopt_currency=adopt_currency, check_ledger=check_ledger)
 
 
 def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_start, supporting, closed_position,
-                    _preview, book, adopt_currency) -> ImportResult:
+                    _preview, book, adopt_currency, check_ledger) -> ImportResult:
     from .ledger.model import Entry, Open, Posting
     from .ledger.store import LedgerStore, default_store_path
     from .ledger.writer import render_ledger
@@ -1734,7 +1788,8 @@ def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_st
             return ImportResult(0, 0, str(default_store_path(entity.path)), str(entity.coa_path), [str(exc)], False)
 
     folder = Path(folder)
-    report = inventory(folder)
+    # The reports must end the day before the cutover (same rule as sync-opening).
+    report = inventory(folder, cutover=cutover)
     store_path = default_store_path(entity.path)
     opening_source_id = f"quickbooks-opening-{source}-{cutover.isoformat()}"
 
@@ -1989,6 +2044,19 @@ def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_st
             success=False,
         )
 
+    opening_state = "clear"
+    if check_ledger and _store is None and _conn is None:
+        # A repair passes its own store and reverses old openings, so it skips this check.
+        opening_state, overlap_error = check_opening_overlap(
+            entity, cutover,
+            [{"account": p.account, "amount": str(p.amount), "currency": p.currency}
+             for p in opening_entry.postings])
+        if overlap_error:
+            return ImportResult(
+                entries_written=0, accounts_opened=0, ledger_path=str(store_path),
+                coa_path=str(entity.coa_path), errors=[overlap_error], success=False,
+            )
+
     if _preview:
         return ImportResult(
             entries_written=0, accounts_opened=0, ledger_path=str(store_path),
@@ -2010,7 +2078,7 @@ def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_st
             "SELECT 1 FROM entries WHERE source_id = ? LIMIT 1",
             (opening_source_id,),
         ).fetchone() is not None
-    if source_exists:
+    if source_exists or opening_state == "same":
         return ImportResult(
             entries_written=0,
             accounts_opened=0,

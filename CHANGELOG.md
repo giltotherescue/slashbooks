@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Make `books qb import-opening` check its input like `qb sync-opening`. The
+  trial balance or balance sheet must end the day before the cutover. Before,
+  reports that ended on 2025-12-31 were accepted with a cutover of 2026-03-15.
+  The command also stops when an opening with other balances is in the books,
+  or when earlier entries exist. Before, two applies with different cutovers
+  left two opening entries. Both commands now use one shared check. The
+  `--dry-run` JSON shows the same refusal in `errors`.
+
 - Refuse every ledger write that posts to an account before its open date,
   with the same rule and codes as saved rules. Before, a person's or standing
   automation's queue confirmation could record a bank row dated before the
