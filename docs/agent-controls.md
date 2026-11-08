@@ -323,10 +323,18 @@ and the mapped accounts of both workspaces. Many provider accounts can map to
 one ledger account. The Python function is
 `check_ledger_delta(request, base_entries, candidate_entries, mapped_accounts)`.
 
+An added entry that reverses a published entry is not refused when it is the
+exact reversal of the only published entry with that source ID, no published
+entry reverses that entry already, and no other added entry claims it. A
+reversal of an entry that is not published yet is checked like any entry.
+
 An opening on an account in `authorized_pending_opening` passes only when the
 host gives an opening authorization that matches the entry exactly: the account,
 the `start_day` and `version` of the policy entry, the entry date, the entry
-source ID and every posting. The host makes an authorization only from its own
+source ID and every posting (`[account, "amount", currency]`, with the posting
+metadata as a fourth item when the posting has any). Amounts must be finite.
+Two authorizations for one account, start day and version make the request
+invalid, and an authorization that matches two entries matches none. The host makes an authorization only from its own
 receipt of a reviewed opening operation and the committed opening entry. Every
 other opening is checked like any entry, so an opening before the start or on an
 `unset` account is refused. The command exits with 0 (`ok`), 1 (`refused`:

@@ -10,6 +10,7 @@ Synthetic company: a QuickBooks cutover on S = 2026-03-15 through the real ``qb 
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
@@ -236,9 +237,10 @@ class TrustedCheckTests(shared.Company):
         return recorded
 
     def authorization(self, source_id: str, operation: str, postings, **change) -> dict:
+        """``postings``: (account, amount) or (account, amount, posting metadata) items, in USD."""
         return {"account": CHECKING, "start_day": S, "version": 1, "operation": operation,
                 "operation_id": "host-receipt-1", "entry_source_id": source_id,
-                "postings": [[a, str(v)] for a, v in postings], **change}
+                "postings": [[item[0], str(item[1]), "USD", *item[2:]] for item in postings], **change}
 
     def test_a_typed_starting_balance_needs_a_matching_host_authorization(self) -> None:
         recorded = self.statement_opening()
@@ -248,7 +250,8 @@ class TrustedCheckTests(shared.Company):
             "no authorization": [],
             "older policy version": [dict(good, version=2)],
             "another start day": [dict(good, start_day="2026-03-01")],
-            "another amount": [dict(good, postings=[[CHECKING, "90.00"], [EQUITY, "-90.00"]])],
+            "another amount": [dict(good, postings=[[CHECKING, "90.00", "USD"], [EQUITY, "-90.00", "USD"]])],
+            "another currency": [dict(good, postings=[[CHECKING, "100.00", "EUR"], [EQUITY, "-100.00", "EUR"]])],
             "another entry": [dict(good, entry_source_id="statement-opening-other")],
         }
         for label, openings in cases.items():
@@ -265,8 +268,15 @@ class TrustedCheckTests(shared.Company):
         applied = qb_sync.sync_opening(self.entity, self.snapshot_path, date.fromisoformat(S), apply=True)
         self.assertTrue(applied["applied"])
         committed = next(e for e in self.store.load_entries() if dict(e.meta).get("import-source") == "quickbooks-opening")
+        # The preview does not yet print posting metadata or the source ID, so these come from the committed entry.
+        meta = {p.account: dict(p.meta) for p in committed.postings}
         good = self.authorization(committed.source_id, "quickbooks_sync_opening",
-                                  [(p["account"], p["amount"]) for p in preview["opening"]["proposed_postings"]])
+                                  [(p["account"], p["amount"], meta[p["account"]])
+                                   for p in preview["opening"]["proposed_postings"]])
+        wrong_meta = dict(good, postings=[[a, v, c] for a, v, c, *_ in good["postings"]])
+        refused = checker().check_workspaces(self.host_request(self.pending_policy(), [wrong_meta]), self.published,
+                                             self.path)
+        self.assertEqual([r["code"] for r in refused["refusals"]], [OPENING_REQUIRED])
         refused = checker().check_workspaces(self.host_request(self.pending_policy()), self.published, self.path)
         self.assertEqual([r["code"] for r in refused["refusals"]], [OPENING_REQUIRED])
         self.assertEqual(self.publish(self.host_request(self.pending_policy(), [good]))["status"], "ok")
@@ -281,6 +291,192 @@ class TrustedCheckTests(shared.Company):
         self.statement_opening()
         result = self.publish(self.host_request({CHECKING: {"state": "unset"}}))
         self.assertEqual([r["code"] for r in result["refusals"]], [shared.UNSET])
+
+    # -- r3: history ----------------------------------------------------------------
+
+    def restore_candidate(self) -> None:
+        shutil.rmtree(self.path)
+        shutil.copytree(self.published, self.path)
+        self.entity = load_entity(self.path)
+
+    def sql(self, *statements: tuple[str, tuple]) -> None:
+        conn = sqlite3.connect(self.path / "ledger.sqlite")
+        try:
+            with conn:
+                for statement, values in statements:
+                    conn.execute(statement, values)
+        finally:
+            conn.close()
+
+    def opening_id(self) -> str:
+        return next(e.source_id for e in self.store.load_entries() if dict(e.meta).get("import-source") == "quickbooks-opening")
+
+    def test_history_deleting_the_committed_opening_is_refused(self) -> None:
+        self.open_books()
+        opening = self.opening_id()
+        self.sql(("DELETE FROM postings WHERE entry_id = (SELECT id FROM entries WHERE source_id = ?)", (opening,)),
+                 ("DELETE FROM entries WHERE source_id = ?", (opening,)))
+        result = self.publish(self.host_request())
+        self.assertEqual([(r["code"], r["source_id"]) for r in result["refusals"]], [(HISTORY_CHANGED, opening)])
+
+    def test_history_editing_a_base_entry_is_refused(self) -> None:
+        self.open_books()
+        opening = self.opening_id()
+        entry = "(SELECT id FROM entries WHERE source_id = ?)"
+        edits = {
+            "postings": [(f"UPDATE postings SET amount = '90.00' WHERE entry_id = {entry} AND account = ?", (opening, CHECKING)),
+                         (f"UPDATE postings SET amount = '-90.00' WHERE entry_id = {entry} AND account = ?", (opening, EQUITY))],
+            "date": [("UPDATE entries SET date = '2026-03-16' WHERE source_id = ?", (opening,))],
+            "meta": [("UPDATE entries SET metadata_json = replace(metadata_json, 'quickbooks-opening\"', "
+                      "'quickbooks-opening-edited\"') WHERE source_id = ?", (opening,))],
+        }
+        for label, statements in edits.items():
+            with self.subTest(label):
+                self.restore_candidate()
+                self.sql(*statements)
+                self.assertNotEqual(LedgerStore(self.path / "ledger.sqlite").content_digest(), self.published_digest())
+                result = self.publish(self.host_request())
+                self.assertEqual(result["status"], "refused")
+                self.assertIn((HISTORY_CHANGED, opening), [(r["code"], r["source_id"]) for r in result["refusals"]])
+
+    def test_history_entry_order_is_ignored_and_posting_order_is_part_of_an_entry(self) -> None:
+        self.open_books()
+        with self.policy(shared.enforced({CHECKING: shared.authorized()})):
+            self.person_confirm("apr02")
+        entries = self.store.load_entries()
+        request = self.host_request()
+        same = checker().check_ledger_delta(request, entries, list(reversed(entries)))
+        self.assertEqual((same["status"], same["checked_entries"]), ("ok", 0))
+        swapped = [dataclasses.replace(entries[0], postings=tuple(reversed(entries[0].postings))), *entries[1:]]
+        result = checker().check_ledger_delta(request, entries, swapped)
+        self.assertIn(HISTORY_CHANGED, [r["code"] for r in result["refusals"]])
+
+    # -- r3: reversals resolve only against unique, unreversed base entries --------------
+
+    def reversal(self, sid: str, target: str, day: str, amount: str) -> Entry:
+        meta = ((("source-id", sid),) if sid else ()) + (("reverses", target),)
+        return Entry(date=date.fromisoformat(day), narration="Synthetic reversal", meta=meta,
+                     postings=(Posting(CHECKING, Decimal(amount)), Posting(FEES, -Decimal(amount))))
+
+    def test_two_new_entries_that_name_each_other_as_reversals_are_both_refused(self) -> None:
+        self.open_books()
+        pair = [self.reversal("agent-a", "agent-b", "2026-03-01", "-40.00"),
+                self.reversal("agent-b", "agent-a", "2026-03-01", "40.00")]
+        _atomic_ledger_write(self.entity, [], pair, "agent", None, "two entries that reverse each other")
+        result = self.publish(self.host_request())
+        self.assertEqual(sorted((r["source_id"], r["code"]) for r in result["refusals"]),
+                         [("agent-a", BEFORE_START), ("agent-b", BEFORE_START)])
+
+    def test_a_reversal_of_a_new_entry_is_not_exempt(self) -> None:
+        self.open_books()
+        self.direct_write("agent-row", "2026-03-01", "-40.00")
+        _atomic_ledger_write(self.entity, [], [self.reversal("", "agent-row", "2026-03-01", "40.00")], "agent", None,
+                             "the reversal of a row that is not published")
+        result = self.publish(self.host_request())
+        self.assertEqual([r["code"] for r in result["refusals"]], [BEFORE_START, BEFORE_START])
+
+    def book_apr02_and_move_the_start(self) -> dict:
+        self.open_books()
+        with self.policy(shared.enforced({CHECKING: shared.authorized()})):
+            self.person_confirm("apr02")
+        return {CHECKING: shared.authorized("2026-04-10", version=2)}
+
+    def test_two_claims_on_one_base_original_are_both_refused(self) -> None:
+        later = self.book_apr02_and_move_the_start()
+        self.freeze_published()
+        for target in ("apr02", "banksync:apr02"):  # two spellings of one feed row
+            _atomic_ledger_write(self.entity, [], [self.reversal("", target, "2026-04-02", "19.00")], "agent", None,
+                                 f"a reversal of {target}")
+        result = self.publish(self.host_request(later, epoch=2))
+        self.assertEqual([r["code"] for r in result["refusals"]], [BEFORE_START, BEFORE_START])
+
+    def test_a_second_reversal_of_a_reversed_base_original_is_refused(self) -> None:
+        later = self.book_apr02_and_move_the_start()
+        reverse_entry(self.entity, "apr02", "correction")
+        self.freeze_published()
+        _atomic_ledger_write(self.entity, [], [self.reversal("", "apr02", "2026-04-02", "19.00")], "agent", None,
+                             "a second reversal")
+        result = self.publish(self.host_request(later, epoch=2))
+        self.assertEqual([r["code"] for r in result["refusals"]], [BEFORE_START])
+
+    # -- r3: opening authorizations bind every posting field ------------------------------
+
+    def test_authorization_amounts_must_be_finite(self) -> None:
+        from bookkeeping.ledger.books_policy import BooksPolicyError
+        self.open_books()
+        for amount in ("NaN", "sNaN", "Infinity", "-Infinity"):
+            with self.subTest(amount):
+                bad = self.authorization("x", "starting_balance", [(CHECKING, amount), (EQUITY, "0")])
+                with self.assertRaises(BooksPolicyError) as caught:
+                    checker().check_workspaces(self.host_request(self.pending_policy(), [bad]), self.published, self.path)
+                self.assertEqual(caught.exception.code, "BOOKS_POLICY_INVALID")
+                self.assertIn("finite", str(caught.exception))
+
+    def test_two_authorizations_for_one_account_start_and_version_are_refused(self) -> None:
+        from bookkeeping.ledger.books_policy import BooksPolicyError
+        recorded = self.statement_opening()
+        postings = [(p["account"], p["amount"]) for p in recorded["postings"]]
+        good = self.authorization(recorded["source_id"], "starting_balance", postings)
+        with self.assertRaises(BooksPolicyError) as caught:
+            checker().check_workspaces(self.host_request(self.pending_policy(), [good, dict(good, operation_id="r2")]),
+                                       self.published, self.path)
+        self.assertEqual(caught.exception.code, "BOOKS_POLICY_INVALID")
+        self.assertIn("more than one authorization", str(caught.exception))
+
+    def test_an_authorization_that_matches_two_entries_matches_none(self) -> None:
+        opening = Entry(date=date.fromisoformat(S), narration="Opening", meta=(("source-id", "opening-1"),),
+                        postings=(Posting(CHECKING, Decimal("100.00")), Posting(EQUITY, Decimal("-100.00"))))
+        auth = self.authorization("opening-1", "starting_balance", [(CHECKING, "100.00"), (EQUITY, "-100.00")])
+        result = checker().check_ledger_delta(self.host_request(self.pending_policy(), [auth]), [], [opening, opening])
+        self.assertEqual([r["code"] for r in result["refusals"]], [OPENING_REQUIRED, OPENING_REQUIRED])
+        self.assertEqual(result["openings_matched"], [])
+        alone = checker().check_ledger_delta(self.host_request(self.pending_policy(), [auth]), [], [opening])
+        self.assertEqual(alone["status"], "ok")
+        with_meta = dataclasses.replace(opening, postings=(Posting(CHECKING, Decimal("100.00"), meta=(("note", "x"),)),
+                                                           Posting(EQUITY, Decimal("-100.00"))))
+        result = checker().check_ledger_delta(self.host_request(self.pending_policy(), [auth]), [], [with_meta])
+        self.assertEqual([r["code"] for r in result["refusals"]], [OPENING_REQUIRED])
+        bound = self.authorization("opening-1", "starting_balance", [(CHECKING, "100.00", {"note": "x"}),
+                                                                     (EQUITY, "-100.00")])
+        result = checker().check_ledger_delta(self.host_request(self.pending_policy(), [bound]), [], [with_meta])
+        self.assertEqual(result["status"], "ok")
+
+    # -- r3: the receipt fields --------------------------------------------------
+
+    def test_the_result_binds_the_engine_version_request_and_workspaces(self) -> None:
+        import bookkeeping
+        self.open_books()
+        request = self.host_request()
+        result = checker().check_workspaces(request, self.published, self.path)
+        self.assertEqual(result["engine_version"], bookkeeping.__version__)
+        self.assertEqual(result["request_sha256"], checker().request_digest(request))
+        self.assertEqual(result["base_sha256"], checker().workspace_digest(self.published))
+        self.assertEqual(result["candidate_sha256"], checker().workspace_digest(self.path))
+
+    def test_the_request_digest_is_canonical(self) -> None:
+        request = self.host_request()
+        reordered = json.loads(json.dumps(request, sort_keys=True, indent=3))
+        self.assertEqual(checker().request_digest(request), checker().request_digest(dict(reversed(list(reordered.items())))))
+        changed = json.loads(json.dumps(request))
+        changed["policy"]["epoch"] = 2
+        self.assertNotEqual(checker().request_digest(request), checker().request_digest(changed))
+
+    def test_a_candidate_changed_after_the_check_no_longer_matches_and_the_inputs_are_not_touched(self) -> None:
+        self.open_books()
+        with self.policy(shared.enforced({CHECKING: shared.authorized()})):
+            self.person_confirm("mar15")
+        before = (checker().workspace_digest(self.published), checker().workspace_digest(self.path))
+        result = checker().check_workspaces(self.host_request(), self.published, self.path)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual((checker().workspace_digest(self.published), checker().workspace_digest(self.path)), before)
+        self.person_confirm("mar01")  # the session changes the candidate after the check
+        self.assertNotEqual(checker().workspace_digest(self.path), result["candidate_sha256"])
+
+    def test_a_symlink_in_a_workspace_is_refused(self) -> None:
+        self.open_books()
+        (self.path / "linked.json").symlink_to(self.root / "quickbooks.json")
+        with self.assertRaises(ValueError):
+            checker().check_workspaces(self.host_request(), self.published, self.path)
 
     # -- the request ---------------------------------------------------------------
 
