@@ -99,3 +99,24 @@ The command records the previous presentation and leaves every entry, receipt an
 account key unchanged. Inspection still exposes the original key. Reuse of an
 operation ID with different content is refused. Changes to another account or
 its metadata make an old preview stale. This is display renaming, not merging.
+
+## QuickBooks opening choice
+
+`books qb sync-opening snapshot.json --entity COMPANY --cutover YYYY-MM-DD
+--chart-choice choice.json` previews chart activation with opening balances. The
+choice is `{ "decision": "preserve" }`, or `rebuild` with a `targets` object
+mapping every source account ID to a reviewed ledger key. Rebuild retains the
+target presentation; it does not overwrite target names with source names.
+Add the returned chart `plan_hash` to the same choice and pass `--apply` only
+after review. The snapshot start and cutover must still match.
+
+Chart adoption and opening entries share one ledger transaction. Failed opening
+validation or writing rolls the active chart back. Source reference files may
+remain as evidence; their presence does not mean that the chart or opening was
+applied. A simultaneous company-currency adoption is refused: resolve the
+company currency first. This operation makes no multi-file atomicity claim.
+
+Source account numbers retain leading zeros, duplicates and blanks. An optional
+boolean `active` on a chart row preserves the source state: inactive rows remain
+reference-only if the ledger account does not already exist, and do not change
+an existing display label. Existing ledger accounts are never silently retired.

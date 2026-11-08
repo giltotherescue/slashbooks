@@ -88,7 +88,10 @@ def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
         qb._reset_collision_registry()
         if any(a["mapped_account"] == base for a in accounts):
             raise ValueError("QuickBooks account names collide after normalization; explicit mapping required")
-        record = {"id": account_id, "name": name, "account_type": account_type,
+        number = item.get("AcctNum")
+        if number is not None and not isinstance(number, str):
+            raise ValueError("QuickBooks account number must be text; numeric coercion could lose leading zeros")
+        record = {"id": account_id, "name": name, **({"account_number": number} if "AcctNum" in item else {}), "account_type": account_type,
                   "detail_type": str(item.get("AccountSubType", "")),
                   "mapped_account": mapped, "active": item.get("Active", True),
                   "parent_id": str(item.get("ParentRef", {}).get("value", ""))}
@@ -564,7 +567,31 @@ def _inventory_in(code, reference, **kwargs):
         return qb.inventory(reference, **kwargs)
 
 
-def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False) -> dict:
+def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
+                   targets: dict[str, str] | None = None) -> dict:
+    """Create an exact source manifest; rebuild needs an explicit complete crosswalk."""
+    from .chart_adoption import validate
+    if decision not in {"preserve", "rebuild"}:
+        raise ValueError("Choose preserve or rebuild for the QuickBooks chart")
+    accounts, _ = _accounts(snapshot["accounts"])
+    identities = {row["id"] for row in accounts}
+    if decision == "rebuild" and (not isinstance(targets, dict) or set(targets) != identities):
+        raise ValueError("Rebuild requires a reviewed target for every source account, including inactive and zero-balance accounts")
+    if decision == "preserve" and targets is not None:
+        raise ValueError("Preserve uses source identities; use rebuild for an explicit different crosswalk")
+    return validate({"version": 1, "operation_id": f"qbo-chart-{snapshot_id}",
+        "source": f"quickbooks:{snapshot['realm_id']}:{snapshot_id[:16]}", "decision": decision,
+        "scope": "complete", "presentation": "activate" if decision == "preserve" else "evidence_only",
+        "open_date": snapshot["from"], "accounts": [
+            {"source_id": row["id"], "name": row["name"], "number": row.get("account_number"),
+             "parent_id": row["parent_id"] or None, "type": row["mapped_account"].split(":")[0],
+             "account": targets[row["id"]] if targets is not None else row["mapped_account"],
+             "active": row["active"]} for row in accounts]})
+
+
+def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False,
+                 chart_decision: str | None = None, chart_targets: dict[str, str] | None = None,
+                 chart_plan_hash: str | None = None) -> dict:
     result = sync_import(entity, input_path)
     if not result["opening_supported"]:
         from .currency import company_currency
@@ -574,6 +601,24 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
     snapshot = _load(input_path)
     if date.fromisoformat(snapshot["from"]) != cutover:
         raise ValueError("Opening cutover must match snapshot start date")
+    manifest = chart_review = None
+    if chart_decision is not None:
+        from .chart_adoption import adopt
+        target_currency = result.get("adopts_currency")
+        if target_currency and target_currency != entity.currency:
+            raise ValueError("Set and review the company currency before adopting its QuickBooks chart and opening balances together")
+        manifest = chart_manifest(snapshot, result["snapshot_id"], chart_decision, chart_targets)
+        from .ledger.store import LedgerStore
+        with LedgerStore(entity.path / "ledger.sqlite").connection() as existing_conn:
+            existing = {row["name"]: dict(row) for row in existing_conn.execute("SELECT name,currency,open_date FROM accounts")}
+        for row in manifest["accounts"]:
+            old = existing.get(row["account"])
+            if old and (old["currency"] != entity.currency or old["open_date"] > cutover.isoformat()):
+                raise ValueError("A target account has a different currency or later opening date; review that account before applying the QuickBooks chart")
+        chart_review = adopt(entity.path, manifest)
+        result["chart"] = chart_review
+    elif chart_targets is not None or chart_plan_hash is not None:
+        raise ValueError("A chart decision is required with chart targets or a preview hash")
     reference = entity.path / result["reference_path"]
     readiness = _inventory_in(result.get("adopts_currency") or entity.currency, reference, cutover=cutover)
     selected = {s.report_key: s for s in readiness.slots}
@@ -586,16 +631,23 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         raise ValueError("Opening requires cash-basis accounts and a valid prior-day Trial Balance or Balance Sheet")
     # Reuse the exact existing opening constructor and validator in preview mode.
     target = result.get("adopts_currency")
+    opening_mapping = {row["name"]: row["account"] for row in manifest["accounts"]} if manifest else None
     opening = qb.import_opening(entity, reference, cutover, source=source, _preview=True, currency=target,
-                                check_ledger=False)
+                                check_ledger=False, account_mapping=opening_mapping)
     if not opening.success:
         return dict(result, applied=False, opening=asdict(opening))
+    if manifest:
+        inactive = {row["account"] for row in manifest["accounts"] if not row.get("active", True) and row["account"] not in existing}
+        if any(row["account"] in inactive for row in opening.proposed_postings):
+            raise ValueError("An inactive source account has an opening balance; review its active state before recording the chart and balances")
     state, error = qb.check_opening_overlap(entity, cutover, opening.proposed_postings)
     if error:
         opening.success = False
         opening.errors.append(error)
         return dict(result, applied=False, opening=asdict(opening))
     if state == "same":
+        if manifest is not None and chart_review["status"] != "already_applied":
+            raise ValueError("Opening balances already exist. Use the separate reviewed chart-adoption command; no active chart was changed")
         return dict(result, applied=apply, already_applied=True, opening=asdict(opening))
     if apply:
         from .ledger.importer import _entity_write_lock
@@ -605,8 +657,27 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
                 # Check again under the lock; the opening transaction then adopts the currency.
                 currency_mod.resolve_import_currency(entity, {target}, "QuickBooks company (home currency)", adopt=False,
                                                      exclude=(result["reference_path"].rsplit("/", 1)[0],))
-            opening = qb.import_opening(entity, reference, cutover, source=source, currency=target,
-                                        adopt_currency=bool(target))
+            if manifest is not None:
+                # Recheck the final mapped postings under the same lock as both writes.
+                state, error = qb.check_opening_overlap(entity, cutover, opening.proposed_postings)
+                if error or state == "same":
+                    raise ValueError(error or "Opening changed after preview; retry the reviewed operation")
+                from .ledger.store import LedgerStore, default_store_path
+                store = LedgerStore(default_store_path(entity.path))
+                from .chart_adoption import apply_reviewed_chart
+                from .ledger.importer import check_store_integrity
+                if check_store_integrity(store).status != "ok":
+                    raise ValueError("Chart and opening require valid ledger integrity")
+                with store.transaction(immediate=True) as conn:
+                    result["chart"] = apply_reviewed_chart(entity.path, store, conn, manifest,
+                                                           apply=True, plan_hash=chart_plan_hash)
+                    opening = qb.import_opening(entity, reference, cutover, source=source, currency=target,
+                                                _store=store, _conn=conn, account_mapping=opening_mapping)
+                    if not opening.success:
+                        raise ValueError("Chart and opening were not applied: " + "; ".join(opening.errors))
+            else:
+                opening = qb.import_opening(entity, reference, cutover, source=source, currency=target,
+                                            adopt_currency=bool(target))
     return dict(result, applied=apply and opening.success, opening=asdict(opening))
 
 
@@ -720,6 +791,7 @@ def add_parser(subparsers) -> None:
             parser.add_argument("--apply", action="store_true", help="Save supported proposals for review; never enables automatic posting")
         if command == "sync-opening":
             parser.add_argument("--cutover", type=date.fromisoformat, required=True)
+            parser.add_argument("--chart-choice", type=Path, help="Reviewed preserve/rebuild choice and optional complete target crosswalk")
             parser.add_argument("--apply", action="store_true", help="Explicitly post verified opening balances")
 
 
@@ -728,7 +800,14 @@ def run(args) -> int:
     try:
         entity = load_entity(args.entity_path)
         if args.qb_command == "sync-opening":
-            result = sync_opening(entity, args.input, args.cutover, apply=args.apply)
+            choice = {}
+            if args.chart_choice:
+                choice = json.loads(args.chart_choice.read_text())
+                if not isinstance(choice, dict) or set(choice) - {"decision", "targets", "plan_hash"} or "decision" not in choice:
+                    raise ValueError("Chart choice requires decision and only optional targets/plan_hash")
+            result = sync_opening(entity, args.input, args.cutover, apply=args.apply,
+                                  chart_decision=choice.get("decision"), chart_targets=choice.get("targets"),
+                                  chart_plan_hash=choice.get("plan_hash"))
         elif args.qb_command == "sync-rules":
             result = sync_rules(entity, args.input, apply=args.apply)
         else:

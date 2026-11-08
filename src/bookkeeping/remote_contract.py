@@ -65,7 +65,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     if path[0] in {"entity", "demo"} and hasattr(args, "path"):
         entity.append("path")
     inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json",
-                          "evidence", "supporting", "cross_check", "truth")
+                          "evidence", "supporting", "cross_check", "truth", "chart_choice")
               if hasattr(args, name)]
     outputs = [name for name in ("output", "output_dir", "report_dir") if hasattr(args, name)]
     if args.work_out is not None:

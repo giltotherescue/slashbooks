@@ -1730,6 +1730,7 @@ def import_opening(
     currency=None,
     adopt_currency: bool = False,
     check_ledger: bool = True,
+    account_mapping: dict[str, str] | None = None,
 ) -> ImportResult:
     """Post opening balances from a cash-basis trial balance.
 
@@ -1766,11 +1767,12 @@ def import_opening(
     with report_currency(book), (_entity_write_lock(entity.path) if plain_apply else nullcontext()):
         return _import_opening(entity, folder, cutover, source, _store=_store, _conn=_conn, fiscal_start=fiscal_start,
                                supporting=supporting, closed_position=closed_position, _preview=_preview,
-                               book=book, adopt_currency=adopt_currency, check_ledger=check_ledger)
+                               book=book, adopt_currency=adopt_currency, check_ledger=check_ledger,
+                               account_mapping=account_mapping)
 
 
 def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_start, supporting, closed_position,
-                    _preview, book, adopt_currency, check_ledger) -> ImportResult:
+                    _preview, book, adopt_currency, check_ledger, account_mapping) -> ImportResult:
     from .ledger.model import Entry, Open, Posting
     from .ledger.store import LedgerStore, default_store_path
     from .ledger.writer import render_ledger
@@ -1928,7 +1930,15 @@ def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_st
             )
             continue
         try:
-            bc_account = map_qb_account(entry.full_name, qb_type)
+            canonical = map_qb_account(entry.full_name, qb_type)
+            if account_mapping is not None:
+                if entry.full_name not in account_mapping:
+                    raise ValueError("Reviewed chart crosswalk is missing this source account")
+                bc_account = account_mapping[entry.full_name]
+                if not isinstance(bc_account, str) or bc_account.split(":")[0] != canonical.split(":")[0]:
+                    raise ValueError("Reviewed chart crosswalk changes the source account type")
+            else:
+                bc_account = canonical
         except Exception as exc:
             fatal_errors.append(f"Cannot map account '{entry.full_name}': {exc}")
             continue

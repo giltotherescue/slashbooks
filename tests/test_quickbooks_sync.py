@@ -25,6 +25,120 @@ class QuickBooksSyncTests(unittest.TestCase):
         self.entity = load_entity(self.entity_path)
         self.snapshot = json.loads(FIXTURE.read_text())
 
+    def test_source_chart_retains_duplicate_and_blank_exact_numbers(self):
+        rows, _ = sync._accounts([
+            {"Id": "a", "Name": "Design", "AccountType": "Income", "AcctNum": "0010"},
+            {"Id": "b", "Name": "Retainers", "AccountType": "Income", "AcctNum": "0010"},
+            {"Id": "c", "Name": "Other", "AccountType": "Income", "AcctNum": ""},
+        ])
+        self.assertEqual([r["account_number"] for r in rows], ["0010", "0010", ""])
+        with self.assertRaisesRegex(ValueError, "leading zeros"):
+            sync._accounts([{"Id": "a", "Name": "Design", "AccountType": "Income", "AcctNum": 10}])
+
+    def test_chart_manifest_requires_explicit_rebuild_and_retains_source_scope(self):
+        self.snapshot["accounts"][0]["AcctNum"] = "001"
+        manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve")
+        self.assertEqual(manifest["open_date"], self.snapshot["from"])
+        self.assertEqual(manifest["scope"], "complete")
+        self.assertEqual(len(manifest["accounts"]), len(self.snapshot["accounts"]))
+        self.assertEqual(manifest["accounts"][0]["number"], "001")
+        with self.assertRaisesRegex(ValueError, "reviewed target"):
+            sync.chart_manifest(self.snapshot, "a" * 64, "rebuild")
+        targets = {r["source_id"]: r["account"] for r in manifest["accounts"]}
+        rebuilt = sync.chart_manifest(self.snapshot, "a" * 64, "rebuild", targets)
+        self.assertEqual(rebuilt["presentation"], "evidence_only", "Rebuild preserves the chosen target display instead of relabelling it to source names")
+
+    def test_chart_and_opening_commit_once_with_inactive_reference_only(self):
+        from bookkeeping.ledger.store import LedgerStore
+        from bookkeeping.chart_adoption import inspect
+        self.snapshot["accounts"].append({"Id": "unused", "Name": "Unused design", "AccountType": "Income", "AcctNum": "001", "Active": False})
+        source = self.write()
+        preview = sync.sync_opening(self.entity, source, date(2026, 1, 1), chart_decision="preserve")
+        self.assertEqual(next(r for r in preview["chart"]["accounts"] if r["source_id"] == "unused")["action"], "reference_only")
+        result = sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+                                   chart_decision="preserve", chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertTrue(result["applied"])
+        store = LedgerStore(self.entity_path / "ledger.sqlite")
+        before = store.content_digest()
+        self.assertNotIn("Income:Unused-design", store.load_account_names())
+        self.assertTrue(inspect(self.entity_path)["source_evidence"]["sources"])
+        again = sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+                                  chart_decision="preserve", chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertTrue(again["already_applied"])
+        self.assertEqual(store.content_digest(), before)
+
+    def test_failed_opening_rolls_back_prepared_chart(self):
+        from unittest.mock import patch
+        from bookkeeping.ledger.store import LedgerStore
+        source = self.write()
+        preview = sync.sync_opening(self.entity, source, date(2026, 1, 1), chart_decision="preserve")
+        store = LedgerStore(self.entity_path / "ledger.sqlite")
+        before = store.content_digest(), store.load_account_names(), store.load_audit_events()
+        original = qb.import_opening
+        def fail_after_chart(*args, **kwargs):
+            if kwargs.get("_conn") is not None:
+                raise RuntimeError("injected opening failure after chart write")
+            return original(*args, **kwargs)
+        with patch.object(qb, "import_opening", side_effect=fail_after_chart):
+            with self.assertRaisesRegex(RuntimeError, "after chart"):
+                sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+                                  chart_decision="preserve", chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertEqual((store.content_digest(), store.load_account_names(), store.load_audit_events()), before)
+
+    def test_rebuild_opening_uses_reviewed_target_not_source_name(self):
+        from bookkeeping.ledger.store import LedgerStore
+        source = self.write()
+        manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve")
+        targets = {row["source_id"]: row["account"] for row in manifest["accounts"]}
+        chosen = next(row for row in manifest["accounts"] if row["type"] == "Assets")
+        targets[chosen["source_id"]] = "Assets:Bank:Reviewed"
+        preview = sync.sync_opening(self.entity, source, date(2026, 1, 1), chart_decision="rebuild", chart_targets=targets)
+        self.assertTrue(any(p["account"] == "Assets:Bank:Reviewed" for p in preview["opening"]["proposed_postings"]))
+        result = sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
+                                  chart_decision="rebuild", chart_targets=targets, chart_plan_hash=preview["chart"]["plan_hash"])
+        self.assertTrue(result["applied"])
+        postings = [p for e in LedgerStore(self.entity_path / "ledger.sqlite").load_entries() for p in e.postings]
+        self.assertTrue(any(p.account == "Assets:Bank:Reviewed" for p in postings))
+        self.assertFalse(any(p.account == chosen["account"] for p in postings))
+
+    def test_composite_refuses_currency_adoption_without_active_chart_change(self):
+        from bookkeeping.ledger.store import LedgerStore
+        self.snapshot["company_info"]["CurrencyRef"] = {"value": "EUR"}
+        self.snapshot["preferences"]["CurrencyPrefs"]["HomeCurrency"] = {"value": "EUR"}
+        for report in self.snapshot["reports"].values():
+            if "Header" in report:
+                report["Header"]["Currency"] = "EUR"
+        store = LedgerStore(self.entity_path / "ledger.sqlite")
+        before = store.content_digest(), store.load_account_names()
+        with self.assertRaisesRegex(ValueError, "company currency"):
+            sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), chart_decision="preserve", apply=True)
+        self.assertEqual((store.content_digest(), store.load_account_names()), before)
+
+    def test_rebuild_refuses_reopening_a_later_target_account(self):
+        from bookkeeping.entity import add_account
+        from bookkeeping.ledger.store import LedgerStore
+        add_account(self.entity_path, "Assets:Bank:Later", open_date="2027-01-01")
+        manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve")
+        targets = {row["source_id"]: row["account"] for row in manifest["accounts"]}
+        chosen = next(row for row in manifest["accounts"] if row["type"] == "Assets")
+        targets[chosen["source_id"]] = "Assets:Bank:Later"
+        store = LedgerStore(self.entity_path / "ledger.sqlite")
+        before = store.content_digest()
+        with self.assertRaisesRegex(ValueError, "later opening date"):
+            sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), chart_decision="rebuild", chart_targets=targets)
+        self.assertEqual(store.content_digest(), before)
+
+    def test_inactive_source_with_balance_is_not_silently_activated(self):
+        manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve")
+        chosen = next(row for row in manifest["accounts"] if row["type"] == "Assets")
+        for row in self.snapshot["accounts"]:
+            if row["Id"] == chosen["source_id"]:
+                row["Active"] = False
+        targets = {row["source_id"]: row["account"] for row in manifest["accounts"]}
+        targets[chosen["source_id"]] = "Assets:Bank:Inactive-source"
+        with self.assertRaisesRegex(ValueError, "inactive source account"):
+            sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), chart_decision="rebuild", chart_targets=targets)
+
     def write(self):
         source = self.root / "snapshot.json"
         source.write_text(json.dumps(self.snapshot))
