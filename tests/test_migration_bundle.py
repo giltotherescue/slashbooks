@@ -121,7 +121,7 @@ class MigrationBundleTests(unittest.TestCase):
                        statements._compute_balance_sheet(sql, date(2026, 1, 2)),
                        statements._compute_trial_balance(sql, date(2026, 1, 2)),
                        statements._compute_general_ledger(sql, date(2026, 1, 1), date(2026, 1, 2))]
-            expected = {report.kind: hashlib.sha256(bundle._json_bytes(json.loads(report.to_json()))).hexdigest() for report in reports}
+            expected = {report.kind: hashlib.sha256(bundle._json_bytes(json.loads(report.to_json(identity_fields=False)))).hexdigest() for report in reports}
         self.assertEqual(manifest["reports"], {"from": "2026-01-01", "to": "2026-01-02", "fingerprints": expected})
         self.assertEqual(bundle.validate_files(manifest, files)["status"], "validated")
         validated = bundle.validate_bundle(self.destination)

@@ -298,7 +298,7 @@ class MigrationBundleTests(Fixture):
         self.assertNotIn(RETAINED_LABEL, equity(legacy))
         self.assertEqual(equity(legacy)[CURRENT_NET_INCOME_LABEL], Decimal("12300.00"))
         self.assertNotIn(RETAINED_LABEL, tb_rows(legacy_tb))
-        fingerprint = lambda report: migration_bundle._sha(migration_bundle._json_bytes(json.loads(report.to_json())))
+        fingerprint = lambda report: migration_bundle._sha(migration_bundle._json_bytes(json.loads(report.to_json(identity_fields=False))))
         self.assertEqual(manifest["reports"]["fingerprints"]["balance_sheet"], fingerprint(legacy))
         self.assertEqual(manifest["reports"]["fingerprints"]["trial_balance"], fingerprint(legacy_tb))
         self.assertNotEqual(fingerprint(legacy), fingerprint(closed))
