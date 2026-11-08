@@ -232,7 +232,7 @@ def _authority(policy, decisions, pending, opens, posted):
             raise ValueError('Rule currency must be an uppercase currency code.')
         if 'description_exact' in rule:
             description = _text(rule['description_exact'], 'description_exact')
-            if len(description) > 1000 or any(ord(c) < 32 for c in description):
+            if len(description) > 1000 or not description.isprintable():
                 raise ValueError('Rule description_exact must be bounded plain text.')
     if not isinstance(decisions, list):
         raise ValueError('Decisions must be an array.')
@@ -357,7 +357,7 @@ def routine_plan(entity, policy, source_ids=None, decisions=None, *, closed_thro
                         continue
                     if rule['approved_ledger_account'] != mapped:
                         raise ValueError('mapping_changed')
-                    if 'currency' in rule and rule['currency'] != source['currency']:
+                    if 'currency' in rule and rule['currency'] != source['currency'].upper():
                         continue
                     if 'description_exact' in rule and rule['description_exact'] != txn.get('description'):
                         continue

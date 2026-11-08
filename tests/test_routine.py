@@ -110,6 +110,15 @@ class RoutineTest(unittest.TestCase):
         self.assertEqual(held['5']['reason'], 'unsupported_currency_or_zero_amount')
         self.assertEqual(before, self.files())
 
+    def test_precise_currency_checks_validate_legacy_sources_without_crashing(self):
+        self.policy['rules'][0]['currency'] = 'USD'
+        missing = txn('missing')
+        missing.pop('currency', None)
+        self.pending([missing, {**txn('lower'), 'currency': 'usd'}, {**txn('null'), 'currency': None}])
+        plan = routine_plan(self.entity, self.policy)
+        self.assertEqual({'missing', 'lower'}, {row['source_id'] for row in plan['actions']})
+        self.assertEqual(['null'], [row['source_id'] for row in plan['unresolved']])
+
     def test_precise_rule_range_boundaries_and_conflicts(self):
         self.policy['rules'][0].update(min_abs_amount='10.00', max_abs_amount='20.00', direction='outflow')
         self.stage(*[{**txn(str(i)), 'amount': amount} for i, amount in enumerate(
@@ -127,7 +136,7 @@ class RoutineTest(unittest.TestCase):
                        {'min_abs_amount': True}, {'min_abs_amount': '0.001'},
                        {'direction': 'either'}, {'currency': 'usd'}, {'currency': 'EUR'}, {'currency': None},
                        {'description_exact': ''}, {'description_exact': 'Service\n1234'},
-                       {'description_exact': 'x' * 1001}]:
+                       {'description_exact': 'Service\x7f'}, {'description_exact': 'x' * 1001}]:
             with self.subTest(change=change), self.assertRaises(ValueError):
                 self.policy['rules'] = [{**original, **change}]
                 routine_plan(self.entity, self.policy)
