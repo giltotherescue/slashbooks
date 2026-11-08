@@ -279,9 +279,13 @@ def _refuse_postings_before_open(entity: Entity, conn: Any, new_opens: Sequence[
       entry in the books that is not reversed yet: the same date, and the same postings with each amount
       negated. It removes activity and adds none.
 
+    A books start policy (``ledger.books_policy``, given by the host in ``SLASHBOOKS_BOOKS_POLICY``) is then
+    checked on the same entries, with the same reversal exception. Without the variable it does nothing.
+
     Under standing automation a refusal is a ``PreparationDenied`` with the same code, so the row is held.
     """
     from collections import Counter
+    from .books_policy import BooksPolicyError, active_policy, first_policy_conflict
     from .open_dates import OpenDateChangeError, catalog_open_dates, first_conflict, merged_open_dates
 
     catalog = catalog_open_dates(conn)
@@ -291,6 +295,11 @@ def _refuse_postings_before_open(entity: Entity, conn: Any, new_opens: Sequence[
                 raise_open_conflict(OpenDateChangeError(item.account, catalog[item.account], item.date))
     if not new_entries:
         return
+    # Load the policy before any decision, so a missing or bad policy refuses every write.
+    try:
+        policy = active_policy()
+    except BooksPolicyError as exc:
+        raise_open_conflict(exc)
     open_dates = merged_open_dates(catalog, new_opens)
     reversed_ids: set[str] | None = None
     claimed: set[str] = set()
@@ -325,11 +334,18 @@ def _refuse_postings_before_open(entity: Entity, conn: Any, new_opens: Sequence[
         claimed.update(spellings)
         return True
 
-    raise_open_conflict(first_conflict(new_entries, open_dates, _source_accounts(entity, source_transactions), is_reversal))
+    # One decision for each entry: the predicate claims an original, so it must not run twice for one entry.
+    reversals = {id(entry) for entry in new_entries if is_reversal(entry)}
+    sources = _source_accounts(entity, source_transactions)
+    raise_open_conflict(first_conflict(new_entries, open_dates, sources, lambda entry: id(entry) in reversals))
+    raise_open_conflict(first_policy_conflict(
+        policy, ((entry.date, [posting.account for posting in entry.postings], entry.source_id or "")
+                 for entry in new_entries if id(entry) not in reversals), sources))
 
 
 def raise_open_conflict(conflict: Exception | None) -> None:
-    """Raise ``conflict`` (an ``AccountNotOpenError``); under standing automation, as ``PreparationDenied`` with its code."""
+    """Raise ``conflict`` (an ``AccountNotOpenError`` or a ``BooksPolicyError``); under standing automation, as
+    ``PreparationDenied`` with its code."""
     if conflict is None:
         return
     from ..preparation_runtime import active_preparation_identity
@@ -716,6 +732,15 @@ def _import_transactions_unlocked(
     # A row dated before its account's open date waits in review instead of posting (``ledger.open_dates``).
     from .open_dates import opened_after
     catalog = {item.account: item.date for item in store.load_opens()}
+    # A row that the books start policy refuses waits in review too (``ledger.books_policy``). A missing or bad
+    # policy holds every row that would post, with its code; the ledger write refuses it again.
+    from .books_policy import BooksPolicyError, active_policy, first_policy_conflict
+    try:
+        intake_policy, intake_policy_code = active_policy(), None
+    except BooksPolicyError as exc:
+        intake_policy, intake_policy_code = None, exc.code
+    policy_scope = (_source_accounts(entity, normalized_txns)
+                    if intake_policy is not None and intake_policy.enforced else set())
 
     # Accumulate entries to write in this session.
     entries_to_write: list[Entry] = []
@@ -834,6 +859,10 @@ def _import_transactions_unlocked(
 
         early = ("source_catalog_conflict" if opened_after(catalog, bank_account, txn_date)
                  else "category_catalog_conflict" if opened_after(catalog, account, txn_date) else None)
+        if not early:
+            refusal = first_policy_conflict(intake_policy, [(txn_date, [bank_account, account], source_id)],
+                                            policy_scope)
+            early = intake_policy_code or (refusal.code if refusal is not None else None)
         if early:
             held = dict(txn)
             held["review_hold_reason"] = early

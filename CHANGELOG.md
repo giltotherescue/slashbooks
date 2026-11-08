@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- Add a books start policy that a host can pass to every command that writes
+  the ledger, in `SLASHBOOKS_BOOKS_POLICY` (the path of a JSON document). It
+  gives each bank or card account a state: `unset`, `authorized_pending_opening`
+  or `authorized` with a `start_day`. In `enforced` mode the ledger write
+  refuses a live posting with `BOOKS_START_UNSET`, `OPENING_REQUIRED` or
+  `BOOKS_DATE_BEFORE_AUTHORIZED_START`, and an in-scope account without a state
+  with `BOOKS_POLICY_REQUIRED`. Both sides of a transfer are checked. The scope
+  comes from the policy and the bank and CSV mappings, never from account names.
+  The exact reversal of an entry in the books is not refused. Without the
+  variable, nothing changes. This check gives early feedback only.
+- Add the trusted check that a host runs before it publishes:
+  `python -I -m bookkeeping.ledger.books_policy_check check --request FILE
+  --base DIR --candidate DIR`. It checks every entry that the proposed ledger
+  adds against the host's own policy, without any environment variable. It also
+  refuses a proposed ledger that drops or edits a published entry, compared on
+  every entry and posting field. `build_receipt` formats a host receipt and
+  needs a full engine commit; it is not attestation, and the trusted origin of
+  the receipt is a host requirement. An opening for an
+  account that waits for its opening passes only with a host authorization that
+  matches the entry exactly. Together, these fix a double count after a
+  mid-month QuickBooks cutover: rows dated before the cutover cannot be
+  published on top of the opening balance.
+
+- Show the source ID of the opening entry (`proposed_source_id`) and the
+  metadata of each posting (`meta`) in the `qb sync-opening` preview and the
+  `qb import-opening --dry-run` output. A reviewer can then bind an approval to
+  the exact entry that an apply writes.
+
 - Make `books qb import-opening` check its input like `qb sync-opening`. The
   trial balance or balance sheet must end the day before the cutover. Before,
   reports that ended on 2025-12-31 were accepted with a cutover of 2026-03-15.

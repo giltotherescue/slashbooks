@@ -251,6 +251,105 @@ date of the original entry and the same postings with each amount negated, and
 the original is not reversed yet. Any other entry with `reverses` metadata is
 checked like every other entry.
 
+## Books start policy (set by a host)
+
+The open date of an account and an opening balance do not say from which day
+live sources may add rows. A host that keeps an authorized books start for each
+account can pass it to any command that writes the ledger. Set the environment
+variable `SLASHBOOKS_BOOKS_POLICY` to the path of a JSON document:
+
+```json
+{"schema_version": 1, "mode": "enforced", "epoch": 4,
+ "accounts": {
+   "Assets:Bank:Checking": {"state": "authorized", "start_day": "2026-03-15", "version": 2},
+   "Liabilities:Card-1234": {"state": "authorized_pending_opening", "start_day": "2026-03-15", "version": 1},
+   "Assets:Bank:Savings": {"state": "unset"}}}
+```
+
+Without the variable, nothing changes. If the variable is set, the document must
+load. A missing document refuses every ledger write with
+`BOOKS_POLICY_REQUIRED`, and a bad document with `BOOKS_POLICY_INVALID`. The
+engine never falls back to the earlier behavior. `"mode": "legacy"` turns the
+check off.
+
+In `enforced` mode the ledger write checks each posting line of each new entry
+on an account in scope. The scope is every account that the policy names, every
+ledger account of a bank or CSV mapping, and the account of each source row in
+the write. The engine never uses an account name to decide the scope. A
+transfer between two in-scope accounts is checked on both sides.
+
+| State | Live postings to the account | Code |
+|---|---|---|
+| no entry in the policy | refused | `BOOKS_POLICY_REQUIRED` |
+| `unset` | refused | `BOOKS_START_UNSET` |
+| `authorized_pending_opening` | refused, also on and after `start_day` | `OPENING_REQUIRED` |
+| `authorized` | refused before `start_day`, allowed on and after it | `BOOKS_DATE_BEFORE_AUTHORIZED_START` |
+
+A refusal has the same effect as an open-date refusal: nothing is written, the
+row stays in review, `queue` commands exit with code 1, and standing automation
+gets a review hold with the code. `queue` commands print
+`{"error": {"code", "message", "action", "account", "state", "start_day",
+"entry_date", "source_id", "policy_epoch", "account_version"}}` on standard
+error. A routine plan gives the code as the reason, and import holds a row that
+a learned category would post, with the code as its `review_hold_reason`.
+
+The exact reversal of an entry in the books is not refused (the same rule as
+above). Entry metadata such as `import-source`, a source ID or `reverses` never
+makes an entry exempt.
+
+This check inside a command gives early feedback. It is not the fence, because
+the session that runs the command controls the variable and the file. The
+opening operations (`books qb sync-opening --apply`, `books qb import-opening`,
+`books statement record-opening`, `books accrual opening apply`) also write
+outside it or under their own rules.
+
+### The trusted check before publication
+
+The host runs the fence in a process that the session cannot configure, after
+the command and before it publishes the result:
+
+```sh
+python -I -m bookkeeping.ledger.books_policy_check check --request REQUEST.json \
+    --base PUBLISHED_ENTITY_DIR --candidate PROPOSED_ENTITY_DIR
+```
+
+`REQUEST.json` comes from the host's own copy of the policy for the job:
+`{"schema_version": 1, "policy": {...}, "scope": [ledger accounts],
+"opening_authorizations": [...]}`. The check reads no environment variable. It
+refuses a proposed ledger that drops or edits an entry that is already published
+(`BOOKS_LEDGER_HISTORY_CHANGED`). An entry is compared on every entry and
+posting field, posting metadata included. The order of entries does not
+matter. It checks every entry that the proposed ledger
+adds with the rules above. The scope is the request scope, the policy accounts,
+and the mapped accounts of both workspaces. Many provider accounts can map to
+one ledger account. The Python function is
+`check_ledger_delta(request, base_entries, candidate_entries, mapped_accounts)`.
+
+An added entry that reverses a published entry is not refused when it is the
+exact reversal of the only published entry with that source ID, no published
+entry reverses that entry already, and no other added entry claims it. A
+reversal of an entry that is not published yet is checked like any entry.
+
+An opening on an account in `authorized_pending_opening` passes only when the
+host gives an opening authorization that matches the entry exactly: the account,
+the `start_day` and `version` of the policy entry, the entry date, the entry
+source ID and every posting (`[account, "amount", currency]`, with the posting
+metadata as a fourth item when the posting has any). Amounts must be finite.
+Two authorizations for one account, start day and version make the request
+invalid, and an authorization that matches two entries matches none. The host makes an authorization only from its own
+receipt of a reviewed opening operation and the committed opening entry. Every
+other opening is checked like any entry, so an opening before the start or on an
+`unset` account is refused. The command exits with 0 (`ok`), 1 (`refused`:
+publish nothing) or 2 (a bad request or workspace).
+
+The result has `request_sha256`, `base_sha256`, `candidate_sha256` and
+`package_version`. The package version is a label, not a build identity.
+`build_receipt(result, engine_build=..., ...)` formats a receipt and refuses one
+without a full 40-character engine commit. It is a formatting helper, not
+attestation: any Python code can call it with any values. The trusted origin of
+`engine_build` and of every other receipt field, and a trusted channel for the
+receipt, are host requirements only.
+
 ## Read the amount of an item
 
 `bookkeeping.queue.amount_for_item(entity, item_id)` returns the absolute
