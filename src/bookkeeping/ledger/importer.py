@@ -786,10 +786,19 @@ def _import_transactions_unlocked(
             entity.entity_config.get("csv_account_mappings"),
         )
         opening_day = openings.get(bank_account)
-        if opening_day is not None and str(txn.get("date") or "")[:10] < opening_day.isoformat():
-            result.before_opening.append({"source_id": source_id, "date": str(txn.get("date") or "")[:10],
-                                          "account": bank_account, "opening_date": opening_day.isoformat()})
-            continue
+        if opening_day is not None:
+            # Read the date as a date. A row with no date, or a date that is not valid, is an error:
+            # it is neither skipped as "before the opening" nor posted.
+            raw_day = str(txn.get("date") or "")
+            try:
+                row_day = _parse_date(raw_day)
+            except (ValueError, TypeError):
+                result.errors.append(f"Cannot parse date for source_id={source_id!r}: {raw_day!r}")
+                continue
+            if row_day < opening_day:
+                result.before_opening.append({"source_id": source_id, "date": row_day.isoformat(),
+                                              "account": bank_account, "opening_date": opening_day.isoformat()})
+                continue
         if legacy_duplicate_guard or source_id in cutover_hold_ids:
             if spellings & open_hold_ids:
                 result.skipped_duplicate += 1
