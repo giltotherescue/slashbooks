@@ -315,6 +315,38 @@ class OpenDateInvariantTests(unittest.TestCase):
             _atomic_ledger_write(self.entity, [], [exact], "reversal-again", None, "synthetic second reversal")
         self.assertEqual(self.balance(), Decimal("100.00"))
 
+    def reversals(self) -> int:
+        return sum(1 for e in self.store.load_entries() if dict(e.meta).get("reverses"))
+
+    def test_a_replayed_reversal_or_correction_does_not_reverse_twice(self) -> None:
+        from bookkeeping.ledger import reclassify
+        from bookkeeping.ledger.corrections import _correct
+        # `ledger reverse` has no idempotency key: a replay is refused before any write.
+        self.record_early_posting()
+        reverse_entry(self.entity, "pre-dec15", "correction")
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "already been reversed"):
+            reverse_entry(self.entity, "pre-dec15", "correction")
+        self.assertEqual((self.snapshot(), self.reversals(), self.balance()), (before, 1, Decimal("100.00")))
+        # `ledger correct` is keyed by its new source ID: a replay is refused before any write.
+        self.person_confirm("post-jan10")
+        fixed = Entry(date=date(2026, 1, 10), narration=PAYEE, meta=(("source-id", "post-jan10-fix"),),
+                      postings=(Posting(BANK, Decimal("-19.00")), Posting(SUPPLIES, Decimal("19.00"))))
+        _correct(self.entity, "post-jan10", "post-jan10-fix", fixed, "correction")
+        before = self.snapshot()
+        with self.assertRaisesRegex(ValueError, "already uses source ID"):
+            _correct(self.entity, "post-jan10", "post-jan10-fix", fixed, "correction")
+        self.assertEqual((self.snapshot(), self.reversals()), (before, 2))
+        # `ledger reclassify --apply` returns its earlier result and writes nothing.
+        self.person_confirm("on-s")
+        first = reclassify.apply(self.entity, FEES, SUPPLIES, ["on-s"])
+        self.assertEqual(first["status"], "applied")
+        before = self.snapshot()
+        again = reclassify.apply(self.entity, FEES, SUPPLIES, ["on-s"])
+        self.assertEqual(again["status"], "already_applied")
+        self.assertEqual((self.snapshot(), self.reversals()), (before, 3))
+        self.assertEqual(self.balance(), Decimal("56.00"))
+
     def test_a_write_cannot_move_an_open_date_earlier(self) -> None:
         early = Entry(date=date(2025, 12, 15), narration=PAYEE, meta=(("source-id", "backdated-1"),),
                       postings=(Posting(BANK, Decimal("-40.00")), Posting(FEES, Decimal("40.00"))))

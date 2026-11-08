@@ -269,10 +269,12 @@ def _refuse_postings_before_open(entity: Entity, conn: Any, new_opens: Sequence[
 
     Two rules, checked on the catalog this transaction sees:
 
-    * A write does not move the open date of an account in the catalog to an earlier day. Only the explicit
-      commands that set an open date may do that (``books entity account-add --open-date``, and an accrual
-      opening apply that a person previewed, which passes ``allow_earlier_open_dates``). New accounts take the
-      open date of their ``Open``.
+    * A write does not move the open date of an account in the catalog to an earlier day. The commands that
+      set open dates do that: ``books entity account-add --open-date`` writes the catalog directly, and
+      ``books accrual opening apply`` applies the open dates of its previewed plan through this function with
+      ``allow_earlier_open_dates``. These commands keep their existing permission rules; the standing
+      preparation boundary does not support ``entity account-add``. New accounts take the open date of
+      their ``Open``.
     * No new entry posts to an account before its open date. The one exception is the exact reversal of an
       entry in the books that is not reversed yet: the same date, and the same postings with each amount
       negated. It removes activity and adds none.

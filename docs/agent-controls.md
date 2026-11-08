@@ -232,12 +232,18 @@ items before it stay recorded.
 At import, a row that a learned category would post goes to Review instead,
 with `review_hold_reason` set to the code.
 
-A write cannot move the open date of an account in the catalog to an earlier
-day (`open_date_change_not_authorized`). Only a person changes an open date,
-with `books entity account-add --entity PATH --account ACCOUNT --open-date YYYY-MM-DD`.
-An accrual opening apply that a person previewed also sets the open dates of
-its chart. Before a person moves an open date, check whether an opening balance
-already includes the earlier activity.
+A ledger write cannot move the open date of an account in the catalog to an
+earlier day (`open_date_change_not_authorized`). Two commands set open dates,
+with their existing permission rules:
+
+- `books entity account-add --entity PATH --account ACCOUNT --open-date YYYY-MM-DD`
+  moves an open date earlier. The trusted preparation boundary does not support
+  this command, so standing automation cannot run it.
+- `books accrual opening apply` sets the open dates of its chart from its
+  preview.
+
+Before you move an open date, check whether an opening balance already includes
+the earlier activity.
 
 The exact reversal of an entry in the books is allowed, so a person can remove
 an early posting that an older version recorded. An exact reversal has the

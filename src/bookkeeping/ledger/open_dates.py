@@ -14,9 +14,10 @@ transfer pairs, and corrections that post a replacement entry.
 
 The exact reversal of an entry in the books is not refused: it removes activity on the
 day of the original, which is how a person takes out a posting that came in before this
-rule. A write cannot move an open date earlier (``OpenDateChangeError``). That is a
-different, explicit command (``books entity account-add --open-date``); a confirmation
-never moves it.
+rule. A ledger write cannot move an open date earlier (``OpenDateChangeError``). The
+commands that set open dates do that: ``books entity account-add --open-date`` (it writes
+the catalog directly, and it can only move a date earlier) and ``books accrual opening
+apply`` (the open dates of its previewed plan). A confirmation never moves an open date.
 """
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ class AccountNotOpenError(ValueError):
         self.entry_date = entry_date
         self.source_id = source_id
         row = f"Row {source_id}" if source_id else "The entry"
-        move = (f"a person moves the open date first: books entity account-add --entity PATH --account {account} "
+        move = (f"move the open date earlier first with books entity account-add --entity PATH --account {account} "
                 "--open-date YYYY-MM-DD")
         if code == SOURCE_CODE:
             self.action = (f"Check whether the books already include this activity, for example in an opening "
@@ -66,8 +67,9 @@ class OpenDateChangeError(ValueError):
 
     def __init__(self, account: str, open_date: date, requested: date) -> None:
         self.account, self.open_date, self.requested = account, open_date, requested
-        self.action = (f"Only a person changes an open date: books entity account-add --entity PATH --account "
-                       f"{account} --open-date {requested.isoformat()}.")
+        self.action = (f"A ledger write does not change an open date. To move it earlier, run books entity "
+                       f"account-add --entity PATH --account {account} --open-date {requested.isoformat()}. Check "
+                       f"first whether an opening balance already includes the earlier activity.")
         super().__init__(f"{account} opens on {open_date.isoformat()}. This write tried to open it on "
                          f"{requested.isoformat()} ({self.code}). Nothing was recorded. {self.action}")
 

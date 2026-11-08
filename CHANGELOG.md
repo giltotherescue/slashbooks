@@ -14,8 +14,8 @@
   with the same code. Intake with a learned category keeps such a row in
   review with that code as its `review_hold_reason`. Only the exact reversal of
   an entry in the books is exempt. A ledger write cannot move an open date
-  earlier (`open_date_change_not_authorized`); a person does that with
-  `books entity account-add --open-date`.
+  earlier (`open_date_change_not_authorized`). Use
+  `books entity account-add --open-date` for that.
 
 - Remove the hosted connector plugin (`plugins/slashbooks-cloud/`), its
   packaging script and tests, and the directory plugin page. Remove the default
