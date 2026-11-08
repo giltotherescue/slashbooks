@@ -243,6 +243,58 @@ def _atomic_ledger_write(
         )
 
 
+def _source_accounts(entity: Entity, source_transactions: Sequence[dict[str, Any]] = ()) -> set[str]:
+    """The bank and card accounts that rows post to: every mapped account and the account of each given row."""
+    from ..entity import flat_bank_account_mappings
+    config = entity.entity_config
+    accounts = set(flat_bank_account_mappings(config).values())
+    csv_mappings = config.get("csv_account_mappings")
+    if isinstance(csv_mappings, dict):
+        accounts.update(str(value["ledger_account"]) for value in csv_mappings.values()
+                        if isinstance(value, dict) and value.get("ledger_account"))
+    for txn in source_transactions:
+        try:
+            accounts.add(_ledger_account_for_txn(txn, config.get("bank_account_mappings"), csv_mappings))
+        except ValueError:
+            continue
+    return accounts
+
+
+def _refuse_postings_before_open(entity: Entity, conn: Any, new_opens: Sequence[Open], new_entries: Sequence[Entry],
+                                 source_transactions: Sequence[dict[str, Any]] = ()) -> None:
+    """Raise when a new entry posts to an account before its open date (``ledger.open_dates``).
+
+    A reversal of an entry that is in the books is allowed. Under standing automation the refusal is a
+    ``PreparationDenied`` with the same code, so the row is held for a person.
+    """
+    from .open_dates import catalog_open_dates, first_conflict, merged_open_dates
+
+    if not new_entries:
+        return
+    open_dates = merged_open_dates(catalog_open_dates(conn), new_opens)
+
+    def is_reversal(entry: Entry) -> bool:
+        target = dict(entry.meta).get("reverses")
+        if not target:
+            return False
+        spellings = sorted(source_id_variants(str(target)))
+        marks = ",".join("?" for _ in spellings)
+        return conn.execute(f"SELECT 1 FROM entries WHERE source_id IN ({marks}) LIMIT 1", spellings).fetchone() is not None
+
+    raise_open_conflict(first_conflict(new_entries, open_dates, _source_accounts(entity, source_transactions), is_reversal))
+
+
+def raise_open_conflict(conflict: Exception | None) -> None:
+    """Raise ``conflict`` (an ``AccountNotOpenError``); under standing automation, as ``PreparationDenied`` with its code."""
+    if conflict is None:
+        return
+    from ..preparation_runtime import active_preparation_identity
+    if active_preparation_identity():
+        from ..automation_policy import PreparationDenied
+        raise PreparationDenied(0, getattr(conflict, "code", "source_catalog_conflict")) from conflict
+    raise conflict
+
+
 def _atomic_ledger_write_unlocked(
     entity: Entity,
     new_opens: list[Open],
@@ -306,6 +358,9 @@ def _atomic_ledger_write_unlocked(
         if foreign:
             raise ValueError(f"The entries are in {', '.join(foreign)}, but the company keeps its books in {book}. "
                              f"{product_name()} does not convert currencies. Nothing was written.")
+        # No posting before its account's open date (the saved-rule rule), checked for every writer on the
+        # catalog this transaction sees. A refusal rolls back the whole write.
+        _refuse_postings_before_open(entity, conn, new_opens, new_entries, source_transactions)
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
         if finalization_receipt is not None:
@@ -612,6 +667,9 @@ def _import_transactions_unlocked(
     # An account whose opening balance is recorded already includes every earlier row.
     from ..statement_opening import opening_dates
     openings = opening_dates(entity.path)
+    # A row dated before its account's open date waits in review instead of posting (``ledger.open_dates``).
+    from .open_dates import opened_after
+    catalog = {item.account: item.date for item in store.load_opens()}
 
     # Accumulate entries to write in this session.
     entries_to_write: list[Entry] = []
@@ -726,6 +784,18 @@ def _import_transactions_unlocked(
             txn_date = _parse_date(raw_date)
         except (ValueError, TypeError):
             result.errors.append(f"Cannot parse date for source_id={source_id!r}: {raw_date!r}")
+            continue
+
+        early = ("source_catalog_conflict" if opened_after(catalog, bank_account, txn_date)
+                 else "category_catalog_conflict" if opened_after(catalog, account, txn_date) else None)
+        if early:
+            held = dict(txn)
+            held["review_hold_reason"] = early
+            before_staged_write()
+            if _add_pending_categorization(entity, held):
+                result.pending_categorization += 1
+            else:
+                result.skipped_duplicate += 1
             continue
 
         meta: list[tuple[str, str]] = [

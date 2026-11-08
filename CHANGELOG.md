@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Refuse every ledger write that posts to an account before its open date,
+  with the same rule and codes as saved rules. Before, a person's or standing
+  automation's queue confirmation could record a bank row dated before the
+  account's opening balance, so the row counted twice. Now queue confirmation,
+  group confirmation, splits, transfer pairs and `books ledger correct`,
+  `reclassify-bank` and `split-equity` stop with `source_catalog_conflict` (the
+  row's bank or card account) or `category_catalog_conflict` (another account).
+  Nothing is recorded and the row stays in review. Standing automation gets a
+  review hold with the same code. Intake with a learned category keeps such a
+  row in review with that code as its `review_hold_reason`. A reversal of an
+  entry that is already in the books is still allowed. To include earlier
+  activity, a person moves the open date first with `books entity account-add
+  --open-date`.
+
 - Remove the hosted connector plugin (`plugins/slashbooks-cloud/`), its
   packaging script and tests, and the directory plugin page. Remove the default
   server address from `books cloud` (alias `books hosted`). `books cloud login`

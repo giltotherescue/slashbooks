@@ -197,6 +197,40 @@ decided), `backtest` category rules, corrections of posted entries
 (`ledger correct`, `reclassify-bank`, `reclassify`, `split-equity`) and the `accrual` commands
 do not apply the limit. A payout bank deposit matched by `stripe_plan` is also not checked.
 
+## No posting before an account's open date
+
+Each account in the catalog has an open date: the first day the books cover
+for it. An opening balance on that day already includes the earlier activity.
+A posting dated before the open date would count that activity twice.
+
+Every ledger write refuses such a posting, with the codes that a routine plan
+uses:
+
+- `source_catalog_conflict`: the row's own bank or card account opens after
+  the row date.
+- `category_catalog_conflict`: another account of the entry opens after the
+  entry date.
+
+This applies to `queue confirm`, `confirm-group`, `confirm-split`,
+`confirm-transfer` and `correct`, and to `ledger correct`, `reclassify-bank`
+and `split-equity`. A refused command writes nothing. The whole entry is
+refused, also when only one posting is early. `confirm-group` checks every
+item before the first write. The row stays in review and its suggestion stays
+open. `queue` commands exit with code 1 and print
+`{"error": {"code": "source_catalog_conflict", "message": "...", "action": "..."}}`
+on standard error. Inside the trusted preparation boundary the refusal is a
+review hold (`PreparationDenied`) with the same code.
+
+At import, a row that a learned category would post goes to Review instead,
+with `review_hold_reason` set to the code.
+
+A reversal of an entry that is already in the books is allowed, so a person can
+remove an early posting that an older version recorded. A confirmation never
+moves an open date. If the books must include the earlier activity, a person
+moves the open date first with
+`books entity account-add --entity PATH --account ACCOUNT --open-date YYYY-MM-DD`
+and checks the opening balance.
+
 ## Read the amount of an item
 
 `bookkeeping.queue.amount_for_item(entity, item_id)` returns the absolute
