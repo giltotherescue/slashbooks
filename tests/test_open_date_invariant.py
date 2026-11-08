@@ -284,6 +284,95 @@ class OpenDateInvariantTests(unittest.TestCase):
         reverse_entry(self.entity, "pre-dec15", "correction")
         self.assertEqual(self.balance(), Decimal("100.00"))
 
+    def record_early_posting(self) -> None:
+        queue.propose(self.entity, "pre-dec15", FEES, "Synthetic person choice")
+        with patch.object(importer, "_refuse_postings_before_open"):  # the books as an older version wrote them
+            queue.confirm(self.entity, "pre-dec15", "person-review")
+
+    def test_an_entry_that_only_claims_to_be_a_reversal_is_refused(self) -> None:
+        self.record_early_posting()
+        day = date(2025, 12, 15)
+        forged = {
+            "wrong accounts": (day, ((BANK, "40.00"), (SUPPLIES, "-40.00"))),
+            "partial amount": (day, ((BANK, "20.00"), (FEES, "-20.00"))),
+            "wrong date": (date(2025, 12, 20), ((BANK, "40.00"), (FEES, "-40.00"))),
+            "same direction": (day, ((BANK, "-40.00"), (FEES, "40.00"))),
+        }
+        for label, (when, postings) in forged.items():
+            with self.subTest(label):
+                before = self.snapshot()
+                entry = Entry(date=when, narration="Reversal of: synthetic", meta=(("reverses", "pre-dec15"),),
+                              postings=tuple(Posting(account, Decimal(amount)) for account, amount in postings))
+                with self.assertRaises(AccountNotOpenError):
+                    _atomic_ledger_write(self.entity, [], [entry], "forged", None, "synthetic forged reversal")
+                self.assertEqual(self.snapshot(), before)
+        # A second reversal of the same entry does not remove anything, so it is not a reversal either.
+        exact = Entry(date=day, narration="Reversal of: synthetic", meta=(("reverses", "pre-dec15"),),
+                      postings=(Posting(BANK, Decimal("40.00")), Posting(FEES, Decimal("-40.00"))))
+        _atomic_ledger_write(self.entity, [], [exact], "reversal", None, "synthetic exact reversal")
+        self.assertEqual(self.balance(), Decimal("100.00"))
+        with self.assertRaises(AccountNotOpenError):
+            _atomic_ledger_write(self.entity, [], [exact], "reversal-again", None, "synthetic second reversal")
+        self.assertEqual(self.balance(), Decimal("100.00"))
+
+    def test_a_write_cannot_move_an_open_date_earlier(self) -> None:
+        early = Entry(date=date(2025, 12, 15), narration=PAYEE, meta=(("source-id", "backdated-1"),),
+                      postings=(Posting(BANK, Decimal("-40.00")), Posting(FEES, Decimal("40.00"))))
+        on_s = Entry(date=S, narration=PAYEE, meta=(("source-id", "backdated-2"),),
+                     postings=(Posting(BANK, Decimal("-5.00")), Posting(FEES, Decimal("5.00"))))
+        for entries in ([early], [on_s]):
+            with self.subTest(day=entries[0].date.isoformat()):
+                before = self.snapshot()
+                with self.assertRaises(ValueError) as caught:
+                    _atomic_ledger_write(self.entity, [Open(date(2025, 1, 1), BANK, currencies=("USD",))], entries,
+                                         "backdated", None, "synthetic backdated open")
+                self.assertEqual(getattr(caught.exception, "code", None), "open_date_change_not_authorized")
+                self.assertEqual(self.snapshot(), before)
+        self.assertEqual({o.account: o.date for o in self.store.load_opens()}[BANK], S)
+        # Ordinary confirmations and corrections still work, and the explicit command still moves the date.
+        self.person_confirm("on-s")
+        add_account(self.path, BANK, open_date="2025-12-01")
+        self.assertEqual({o.account: o.date for o in self.store.load_opens()}[BANK], date(2025, 12, 1))
+
+    def test_the_reason_states_the_date_rule_without_claiming_a_duplicate(self) -> None:
+        with self.assertRaises(AccountNotOpenError) as caught:
+            self.person_confirm("pre-dec15")
+        message = str(caught.exception)
+        self.assertIn("opens on 2026-01-01", message)
+        self.assertIn("may already include", message)
+        for claim in ("count twice", "already includes"):
+            self.assertNotIn(claim, message)
+
+    def test_group_confirmation_refuses_a_member_that_changes_after_the_check(self) -> None:
+        # The check and the writes run under one company lock. The writes are separate ledger transactions:
+        # a member that is refused at its write stays in review, and the members before it stay recorded.
+        savings = "Assets:Bank:Savings"
+        add_account(self.path, savings, open_date="2026-01-01")
+        config = json.loads((self.path / "entity.json").read_text(encoding="utf-8"))
+        config["bank_account_mappings"]["feed-2"] = savings
+        (self.path / "entity.json").write_text(json.dumps(config), encoding="utf-8")
+        self.entity = load_entity(self.path)
+        import_transactions(self.entity, [dict(row("savings-jan10", "2026-01-10", "-3.00"), accountId="feed-2")],
+                            "intake", intake_only=True)
+        queue.propose_group(self.entity, ["on-s", "savings-jan10"], FEES, "Synthetic group")
+        real_check = queue._refuse_item_before_open
+        checked = []
+
+        def check_then_change(entity, item):
+            real_check(entity, item)
+            checked.append(item["source_id"])
+            if len(checked) == 2:  # a change that does not go through the company lock
+                with self.store.transaction() as conn:
+                    conn.execute("UPDATE accounts SET open_date='2026-02-01' WHERE name=?", (savings,))
+
+        with patch.object(queue, "_refuse_item_before_open", check_then_change), \
+                self.assertRaises(AccountNotOpenError) as caught:
+            queue.confirm_group(self.entity, FEES, "person-review")
+        self.assertEqual((caught.exception.code, caught.exception.account), ("source_catalog_conflict", savings))
+        self.assertEqual(sorted(checked), ["on-s", "savings-jan10"])
+        self.assertEqual(self.posted(), {"on-s"})
+        self.assert_held("savings-jan10")
+
     # -- intake and saved-rule parity ---------------------------------------------
 
     def test_learned_categories_do_not_post_rows_before_the_open_date_at_intake(self) -> None:

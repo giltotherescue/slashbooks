@@ -226,6 +226,7 @@ def _atomic_ledger_write(
     supporting_mutations: Sequence[SupportingMutation] = (),
     expected_digest: str | None = None,
     adopt_currency: str | None = None,
+    allow_earlier_open_dates: bool = False,
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -240,6 +241,7 @@ def _atomic_ledger_write(
             supporting_mutations=supporting_mutations,
             expected_digest=expected_digest,
             adopt_currency=adopt_currency,
+            allow_earlier_open_dates=allow_earlier_open_dates,
         )
 
 
@@ -261,25 +263,65 @@ def _source_accounts(entity: Entity, source_transactions: Sequence[dict[str, Any
 
 
 def _refuse_postings_before_open(entity: Entity, conn: Any, new_opens: Sequence[Open], new_entries: Sequence[Entry],
-                                 source_transactions: Sequence[dict[str, Any]] = ()) -> None:
-    """Raise when a new entry posts to an account before its open date (``ledger.open_dates``).
+                                 source_transactions: Sequence[dict[str, Any]] = (), *,
+                                 allow_earlier_open_dates: bool = False) -> None:
+    """Raise when a write would post to an account before its open date (``ledger.open_dates``).
 
-    A reversal of an entry that is in the books is allowed. Under standing automation the refusal is a
-    ``PreparationDenied`` with the same code, so the row is held for a person.
+    Two rules, checked on the catalog this transaction sees:
+
+    * A write does not move the open date of an account in the catalog to an earlier day. Only the explicit
+      commands that set an open date may do that (``books entity account-add --open-date``, and an accrual
+      opening apply that a person previewed, which passes ``allow_earlier_open_dates``). New accounts take the
+      open date of their ``Open``.
+    * No new entry posts to an account before its open date. The one exception is the exact reversal of an
+      entry in the books that is not reversed yet: the same date, and the same postings with each amount
+      negated. It removes activity and adds none.
+
+    Under standing automation a refusal is a ``PreparationDenied`` with the same code, so the row is held.
     """
-    from .open_dates import catalog_open_dates, first_conflict, merged_open_dates
+    from collections import Counter
+    from .open_dates import OpenDateChangeError, catalog_open_dates, first_conflict, merged_open_dates
 
+    catalog = catalog_open_dates(conn)
+    if not allow_earlier_open_dates:
+        for item in new_opens:
+            if item.account in catalog and item.date < catalog[item.account]:
+                raise_open_conflict(OpenDateChangeError(item.account, catalog[item.account], item.date))
     if not new_entries:
         return
-    open_dates = merged_open_dates(catalog_open_dates(conn), new_opens)
+    open_dates = merged_open_dates(catalog, new_opens)
+    reversed_ids: set[str] | None = None
+    claimed: set[str] = set()
 
     def is_reversal(entry: Entry) -> bool:
+        nonlocal reversed_ids
         target = dict(entry.meta).get("reverses")
         if not target:
             return False
-        spellings = sorted(source_id_variants(str(target)))
+        spellings = source_id_variants(str(target))
         marks = ",".join("?" for _ in spellings)
-        return conn.execute(f"SELECT 1 FROM entries WHERE source_id IN ({marks}) LIMIT 1", spellings).fetchone() is not None
+        original = conn.execute(f"SELECT id, date FROM entries WHERE source_id IN ({marks}) ORDER BY id LIMIT 1",
+                                sorted(spellings)).fetchone()
+        if original is None or str(original[1])[:10] != entry.date.isoformat():
+            return False
+        posted = Counter((str(account), Decimal(str(amount)), str(currency)) for account, amount, currency in conn.execute(
+            "SELECT account, amount, currency FROM postings WHERE entry_id = ?", (original[0],)))
+        if posted != Counter((p.account, -p.amount, p.currency) for p in entry.postings):
+            return False
+        if reversed_ids is None:
+            reversed_ids = set()
+            for (raw,) in conn.execute("SELECT metadata_json FROM entries WHERE metadata_json LIKE '%reverses%'"):
+                try:
+                    pairs = json.loads(raw or "[]")
+                except ValueError:
+                    continue
+                for pair in pairs.items() if isinstance(pairs, dict) else pairs:
+                    if isinstance(pair, (list, tuple)) and len(pair) == 2 and pair[0] == "reverses":
+                        reversed_ids |= source_id_variants(str(pair[1]))
+        if spellings & (reversed_ids | claimed):
+            return False
+        claimed.update(spellings)
+        return True
 
     raise_open_conflict(first_conflict(new_entries, open_dates, _source_accounts(entity, source_transactions), is_reversal))
 
@@ -308,6 +350,7 @@ def _atomic_ledger_write_unlocked(
     expected_digest: str | None = None,
     adopt_currency: str | None = None,
     source_status: str = "posted",
+    allow_earlier_open_dates: bool = False,
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
 
@@ -360,7 +403,8 @@ def _atomic_ledger_write_unlocked(
                              f"{product_name()} does not convert currencies. Nothing was written.")
         # No posting before its account's open date (the saved-rule rule), checked for every writer on the
         # catalog this transaction sees. A refusal rolls back the whole write.
-        _refuse_postings_before_open(entity, conn, new_opens, new_entries, source_transactions)
+        _refuse_postings_before_open(entity, conn, new_opens, new_entries, source_transactions,
+                                     allow_earlier_open_dates=allow_earlier_open_dates)
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
         if finalization_receipt is not None:

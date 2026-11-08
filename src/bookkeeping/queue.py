@@ -316,9 +316,11 @@ def _refuse_entries_above_ask_first(entity: Entity, *entries: Entry) -> None:
 def _refuse_item_before_open(entity: Entity, item: dict) -> None:
     """Refuse a queue item whose entry would post to an account before its open date (``ledger.open_dates``).
 
-    The ledger write checks this too. A group confirmation calls this for every member first, so one early
-    member stops the whole group before any write. A row that is no longer staged is left to the
-    confirmation's own evidence check.
+    The ledger write checks this too. A group confirmation calls this for every member first, under the same
+    company lock as the writes, so one early member stops the whole group before any write. The writes are
+    separate ledger transactions: a member that the ledger write refuses later stays in review, and the
+    members before it stay recorded. A row that is no longer staged is left to the confirmation's own
+    evidence check.
     """
     from .ledger.importer import _ledger_account_for_txn, raise_open_conflict
     from .ledger.open_dates import first_posting_conflict
@@ -3201,10 +3203,10 @@ def add_parser(subparsers: Any) -> None:
 
 def _print_error(exc: Exception) -> None:
     """Print a command error. A caller-control refusal also names its code."""
-    from .ledger.open_dates import AccountNotOpenError
+    from .ledger.open_dates import AccountNotOpenError, OpenDateChangeError
     if isinstance(exc, QueueControlError):
         print(json.dumps({"error": {"code": exc.code, "message": str(exc)}}), file=sys.stderr)
-    elif isinstance(exc, AccountNotOpenError):
+    elif isinstance(exc, (AccountNotOpenError, OpenDateChangeError)):
         print(json.dumps({"error": {"code": exc.code, "message": str(exc), "action": exc.action}}), file=sys.stderr)
     else:
         print(f"Error: {exc}", file=sys.stderr)

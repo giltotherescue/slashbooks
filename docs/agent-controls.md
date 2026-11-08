@@ -199,9 +199,11 @@ do not apply the limit. A payout bank deposit matched by `stripe_plan` is also n
 
 ## No posting before an account's open date
 
-Each account in the catalog has an open date: the first day the books cover
-for it. An opening balance on that day already includes the earlier activity.
-A posting dated before the open date would count that activity twice.
+Each account in the catalog has an open date: the first day the books record
+activity for it. The books often start an account with an opening balance on
+that day, and that balance may already include earlier activity. So the books
+do not record a posting before the open date. The open date alone does not
+show that a given row is already in an opening balance.
 
 Every ledger write refuses such a posting, with the codes that a routine plan
 uses:
@@ -212,24 +214,36 @@ uses:
   entry date.
 
 This applies to `queue confirm`, `confirm-group`, `confirm-split`,
-`confirm-transfer` and `correct`, and to `ledger correct`, `reclassify-bank`
-and `split-equity`. A refused command writes nothing. The whole entry is
-refused, also when only one posting is early. `confirm-group` checks every
-item before the first write. The row stays in review and its suggestion stays
-open. `queue` commands exit with code 1 and print
+`confirm-transfer` and `correct`, and to `ledger correct`, `reclassify-bank`,
+`reclassify` and `split-equity`. A refused command writes nothing. The whole
+entry is refused, also when only one posting is early. The row stays in review
+and its suggestion stays open. `queue` commands exit with code 1 and print
 `{"error": {"code": "source_catalog_conflict", "message": "...", "action": "..."}}`
 on standard error. Inside the trusted preparation boundary the refusal is a
 review hold (`PreparationDenied`) with the same code.
 
+`confirm-group` checks every item before the first write, and it holds the
+company write lock from that check to the last write. If an item is early, the
+command writes nothing. The writes are separate ledger transactions. If the
+ledger write refuses an item after the check (for example because a change
+outside the company lock moved an open date), that item stays in review and the
+items before it stay recorded.
+
 At import, a row that a learned category would post goes to Review instead,
 with `review_hold_reason` set to the code.
 
-A reversal of an entry that is already in the books is allowed, so a person can
-remove an early posting that an older version recorded. A confirmation never
-moves an open date. If the books must include the earlier activity, a person
-moves the open date first with
-`books entity account-add --entity PATH --account ACCOUNT --open-date YYYY-MM-DD`
-and checks the opening balance.
+A write cannot move the open date of an account in the catalog to an earlier
+day (`open_date_change_not_authorized`). Only a person changes an open date,
+with `books entity account-add --entity PATH --account ACCOUNT --open-date YYYY-MM-DD`.
+An accrual opening apply that a person previewed also sets the open dates of
+its chart. Before a person moves an open date, check whether an opening balance
+already includes the earlier activity.
+
+The exact reversal of an entry in the books is allowed, so a person can remove
+an early posting that an older version recorded. An exact reversal has the
+date of the original entry and the same postings with each amount negated, and
+the original is not reversed yet. Any other entry with `reverses` metadata is
+checked like every other entry.
 
 ## Read the amount of an item
 

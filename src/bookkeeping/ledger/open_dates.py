@@ -1,10 +1,10 @@
 """No posting is dated before its account's open date.
 
 The account catalog (the ``accounts`` table, written by ``open`` directives) gives each
-account an open date: the first day the books cover for it. An opening balance on that
-day (for example a QuickBooks opening or a statement opening) already contains the
-activity before it. A posting dated before the open date would count that activity
-twice, and the ledger validator reports it as "used ... before open date".
+account an open date: the first day the books record activity for it. The books often
+start an account with an opening balance on that day, and that balance may already
+include the earlier activity. So a posting dated before the open date is refused; the
+ledger validator also reports it as "used ... before open date".
 
 The saved-rule path (``routine``) refuses such a row with ``source_catalog_conflict``
 (the row's own bank or card account) or ``category_catalog_conflict`` (the category).
@@ -12,11 +12,11 @@ Every ledger write uses the same rule and the same codes through ``first_conflic
 queue confirmation by a person or by standing automation, group confirmation, splits,
 transfer pairs, and corrections that post a replacement entry.
 
-A reversal of an entry already in the books is not refused: it removes activity on
-the day of the original, which is how a person takes out a posting that came in
-before this rule. A legitimate change of an account's open date is a different,
-explicit command (``books entity account-add --open-date``, or ``books statement
-record-opening --replace`` for a statement opening); a confirmation never moves it.
+The exact reversal of an entry in the books is not refused: it removes activity on the
+day of the original, which is how a person takes out a posting that came in before this
+rule. A write cannot move an open date earlier (``OpenDateChangeError``). That is a
+different, explicit command (``books entity account-add --open-date``); a confirmation
+never moves it.
 """
 from __future__ import annotations
 
@@ -42,15 +42,16 @@ class AccountNotOpenError(ValueError):
         move = (f"a person moves the open date first: books entity account-add --entity PATH --account {account} "
                 "--open-date YYYY-MM-DD")
         if code == SOURCE_CODE:
-            why = "The opening balance on that day already includes earlier activity, so the row would count twice."
-            self.action = (f"If the opening balance of {account} already includes this activity, do not record it. "
-                           f"If the books must start earlier, {move} (check the opening balance before you do).")
+            self.action = (f"Check whether the books already include this activity, for example in an opening "
+                           f"balance of {account}. If they do, do not record this row. If the books must record "
+                           f"{account} before {open_date.isoformat()}, {move}.")
         else:
-            why = "The books do not use the account before that day."
             self.action = f"Choose an account that is open on {entry_date.isoformat()}, or {move}."
         super().__init__(
-            f"{row} is dated {entry_date.isoformat()}, before {account} opens on {open_date.isoformat()} "
-            f"({code}). {why} Nothing was recorded. The row stays in review. {self.action}")
+            f"{row} is dated {entry_date.isoformat()}. {account} opens on {open_date.isoformat()} ({code}). "
+            f"The books do not record activity for an account before its open date, because an opening balance "
+            f"on that date may already include earlier activity. Nothing was recorded. The row stays in review. "
+            f"{self.action}")
 
     def as_dict(self) -> dict[str, Any]:
         return {"code": self.code, "message": str(self), "action": self.action, "account": self.account,
@@ -58,8 +59,29 @@ class AccountNotOpenError(ValueError):
                 "source_id": self.source_id}
 
 
+class OpenDateChangeError(ValueError):
+    """A write tried to move an account's open date earlier. Nothing was written."""
+
+    code = "open_date_change_not_authorized"
+
+    def __init__(self, account: str, open_date: date, requested: date) -> None:
+        self.account, self.open_date, self.requested = account, open_date, requested
+        self.action = (f"Only a person changes an open date: books entity account-add --entity PATH --account "
+                       f"{account} --open-date {requested.isoformat()}.")
+        super().__init__(f"{account} opens on {open_date.isoformat()}. This write tried to open it on "
+                         f"{requested.isoformat()} ({self.code}). Nothing was recorded. {self.action}")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"code": self.code, "message": str(self), "action": self.action, "account": self.account,
+                "open_date": self.open_date.isoformat(), "requested_open_date": self.requested.isoformat()}
+
+
 def merged_open_dates(existing: Mapping[str, date], new_opens: Sequence[Open] = ()) -> dict[str, date]:
-    """Open dates after ``new_opens`` are inserted. The catalog keeps the earliest date of an account."""
+    """Open dates after ``new_opens`` are inserted. The catalog keeps the earliest date of an account.
+
+    The atomic ledger write refuses an earlier date for an account in the catalog before it uses this,
+    unless the caller is an explicit open-date command.
+    """
     merged = dict(existing)
     for item in new_opens:
         if item.account not in merged or item.date < merged[item.account]:
