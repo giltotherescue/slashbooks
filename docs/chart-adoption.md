@@ -6,7 +6,7 @@ apply it. This command adds missing accounts and preserves source evidence. It
 never deletes accounts, rewrites posted entries, renames a ledger key or imports
 balances. It is not yet a display-label rename or a full QuickBooks migration.
 
-The JSON manifest has exactly these fields:
+A version 1 JSON manifest uses these fields:
 
 ```json
 {
@@ -45,8 +45,16 @@ one key in a manifest; that would imply a merge, which this command does not do.
 All parent rows must be included and cycles are refused. At most 1,000 accounts
 and 2 MB are accepted per manifest.
 
+A version 2 manifest also requires `financial_kind` on each active asset or
+liability row. Choose `bank`, `credit_card`, `cash` or `other` after reviewing
+the source. Use the same ledger key regardless of its name. Inactive references
+and non-balance accounts omit this field. An existing conflicting kind requires
+resolution before adoption. A mapped financial source cannot be classified as
+`other` through chart adoption. The preview binds the kind to the decision.
+Assigning a kind does not authorize a books start.
+
 Zero-balance accounts and income/expense accounts are created as catalog entries
-without postings. Existing accounts are kept unchanged. An existing source ID
+without postings. A reviewed version 2 manifest may classify an existing account. An existing source ID
 cannot be reassigned or relabeled through adoption. Reusing an operation ID with
 a changed manifest fails. Replaying an applied identical operation returns its
 receipt. A changed ledger requires a fresh preview.

@@ -319,11 +319,29 @@ python -I -m bookkeeping.ledger.books_policy_check check --request REQUEST.json 
 refuses a proposed ledger that drops or edits an entry that is already published
 (`BOOKS_LEDGER_HISTORY_CHANGED`). An entry is compared on every entry and
 posting field, posting metadata included. The order of entries does not
-matter. It checks every entry that the proposed ledger
-adds with the rules above. The scope is the request scope, the policy accounts,
-and the mapped accounts of both workspaces. Many provider accounts can map to
-one ledger account. The Python function is
-`check_ledger_delta(request, base_entries, candidate_entries, mapped_accounts)`.
+matter. It checks every entry that the proposed ledger adds with the rules
+above. Scope includes the request scope and the accounts named by the policy.
+The CLI and `check_workspaces` also read both workspaces. They add two sets of
+exact ledger keys from each workspace:
+
+- Accounts explicitly classified as bank, credit card or cash in the catalog.
+  An unmapped account can be in scope. The checker uses the stored kind and
+  does not infer it from the account name.
+- Ledger targets from the bank and CSV mappings. Many provider accounts can map
+  to one ledger account.
+
+Taking the union of the published and proposed sets keeps a published account
+in scope for the check even if the proposal changes its kind or mapping.
+The entry-only Python function
+`check_ledger_delta(request, base_entries, candidate_entries, mapped_accounts)`
+cannot discover these sets. Direct callers must read both catalogs and both
+workspaces’ mappings and supply that union in `mapped_accounts` or in the
+host-controlled request scope.
+
+Scope determines which posting accounts the checker examines. The host still
+decides who can change a classification, how to handle postings to unclassified
+accounts, and whether to authorize a start. It also binds the checked
+workspaces to publication.
 
 An added entry that reverses a published entry is not refused when it is the
 exact reversal of the only published entry with that source ID, no published

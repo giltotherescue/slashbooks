@@ -40,9 +40,9 @@ command and before publication:
 The check never reads ``SLASHBOOKS_BOOKS_POLICY`` or any other environment variable. It compares the two
 ledgers. Every base entry must still be in the candidate (``BOOKS_LEDGER_HISTORY_CHANGED``). Every entry that
 the candidate adds is then checked line by line with the policy rules of ``ledger.books_policy``. The scope
-is the request ``scope``, every account that the policy names, and every ledger account that the base or the
-candidate maps from a bank or CSV source. Many provider accounts can map to one ledger account; the policy is
-for the ledger account.
+includes the request ``scope``, every account that the policy names, and two kinds of evidence from either
+workspace: bank or CSV mapping targets, and catalog accounts explicitly classified as bank, credit card or cash.
+The catalog can put an unmapped account in scope. Only the host's policy can authorize its start.
 
 The ledger is compared as a multiset of entries, so the order of entries does not matter. An entry is compared
 on every ``Entry`` field and every ``Posting`` field, posting metadata included. The order of the postings
@@ -361,7 +361,8 @@ def check_ledger_delta(request_document: Any, base_entries: Sequence[Entry], can
                        mapped_accounts: Iterable[str] = ()) -> dict[str, Any]:
     """Check the entries that ``candidate_entries`` adds to ``base_entries``. A pure function: no environment.
 
-    ``mapped_accounts`` are the ledger accounts that the base and the candidate map from bank or CSV sources.
+    ``mapped_accounts`` carries scope evidence from the base and candidate workspaces. It includes bank and CSV
+    mapping targets and accounts with an explicit bank, credit card or cash kind.
     Returns ``{"status": "ok" | "refused", "refusals": [...], ...}``; each refusal has the ``ledger.books_policy``
     refusal fields.
     """
@@ -407,13 +408,18 @@ def _workspace(entity_dir: Path) -> tuple[list[Entry], set[str]]:
 
     config_path = entity_dir / "entity.json"
     config = json.loads(config_path.read_text(encoding="utf-8")) if config_path.is_file() else {}
-    mapped = set(flat_bank_account_mappings(config).values())
+    scope = set(flat_bank_account_mappings(config).values())
     csv_mappings = config.get("csv_account_mappings") if isinstance(config, dict) else None
     if isinstance(csv_mappings, dict):
-        mapped.update(str(v["ledger_account"]) for v in csv_mappings.values()
+        scope.update(str(v["ledger_account"]) for v in csv_mappings.values()
                       if isinstance(v, dict) and v.get("ledger_account"))
     ledger = entity_dir / "ledger.sqlite"
-    return (LedgerStore(ledger).load_entries() if ledger.is_file() else []), mapped
+    if not ledger.is_file():
+        return [], scope
+    store = LedgerStore(ledger)
+    scope.update(account for account, kind in store.load_financial_kinds().items()
+                  if kind in {"bank", "credit_card", "cash"})
+    return store.load_entries(), scope
 
 
 def request_digest(request_document: Any) -> str:
@@ -457,9 +463,9 @@ def check_workspaces(request_document: Any, base_dir: Path | str, candidate_dir:
             shutil.copytree(source, copy, symlinks=True)
             copies.append((copy, workspace_digest(copy)))
         (base_copy, base_sha), (candidate_copy, candidate_sha) = copies
-        base_entries, base_mapped = _workspace(base_copy)
-        candidate_entries, candidate_mapped = _workspace(candidate_copy)
-        result = check_ledger_delta(request_document, base_entries, candidate_entries, base_mapped | candidate_mapped)
+        base_entries, base_scope = _workspace(base_copy)
+        candidate_entries, candidate_scope = _workspace(candidate_copy)
+        result = check_ledger_delta(request_document, base_entries, candidate_entries, base_scope | candidate_scope)
     return {**result, "base_sha256": base_sha, "candidate_sha256": candidate_sha}
 
 

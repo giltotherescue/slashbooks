@@ -48,6 +48,19 @@ class QuickBooksSyncTests(unittest.TestCase):
         rebuilt = sync.chart_manifest(self.snapshot, "a" * 64, "rebuild", targets)
         self.assertEqual(rebuilt["presentation"], "evidence_only", "Rebuild preserves the chosen target display instead of relabelling it to source names")
 
+    def test_typed_chart_uses_provider_kind_and_requires_review_for_ambiguous_assets(self):
+        self.snapshot["accounts"][0]["AccountSubType"] = "CashOnHand"
+        self.snapshot["accounts"].append({"Id": "4", "Name": "Settlement balance", "AccountType": "Other Current Asset"})
+        with self.assertRaisesRegex(ValueError, "review.*financial kind"):
+            sync.chart_manifest(self.snapshot, "a" * 64, "preserve", version=2)
+        typed = sync.chart_manifest(self.snapshot, "a" * 64, "preserve", version=2,
+                                    financial_kinds={"4": "cash"})
+        rows = {row["source_id"]: row for row in typed["accounts"]}
+        self.assertEqual(rows["1"]["financial_kind"], "cash")
+        self.assertEqual(rows["4"]["financial_kind"], "cash")
+        self.assertNotIn("financial_kind", rows["2"])
+        self.assertEqual(typed["operation_id"], "qbo-chart-v2-" + "a" * 64)
+
     def test_chart_and_opening_commit_once_with_inactive_reference_only(self):
         from bookkeeping.ledger.store import LedgerStore
         from bookkeeping.chart_adoption import inspect
@@ -81,10 +94,15 @@ class QuickBooksSyncTests(unittest.TestCase):
         manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve")
         targets = {row["source_id"]: row["account"] for row in manifest["accounts"]}
         bank = next(row for row in manifest["accounts"] if row["type"] == "Assets")
-        targets[bank["source_id"]] = "Assets:Bank:Reviewed"
-        for decision, choice in (("preserve", {}), ("rebuild", {"chart_targets": targets})):
-            with self.subTest(decision):
-                path = self.root / f"books-{decision}"
+        targets[bank["source_id"]] = "Assets:Operating:Reviewed"
+        cases = [(version, decision, choice)
+                 for version in (1, 2)
+                 for decision, choice in (("preserve", {}), ("rebuild", {"chart_targets": targets}))]
+        for version, decision, choice in cases:
+            with self.subTest(version=version, decision=decision):
+                if version == 2:
+                    choice = {**choice, "chart_manifest_version": version}
+                path = self.root / f"books-{version}-{decision}"
                 init_entity(path, name="Synthetic Example Books")
                 entity = load_entity(path)
                 source = self.write()
@@ -104,19 +122,26 @@ class QuickBooksSyncTests(unittest.TestCase):
                 reviewed = entry_from_document(preview["opening"]["proposed_entry"])
                 self.assertEqual(entry_fingerprint(reviewed), preview["opening"]["proposed_entry_fingerprint"])
                 accounts = {p.account for p in reviewed.postings}
-                self.assertEqual("Assets:Bank:Reviewed" in accounts, decision == "rebuild")
+                self.assertEqual("Assets:Operating:Reviewed" in accounts, decision == "rebuild")
                 applied = sync.sync_opening(entity, source, date(2026, 1, 1), apply=True, chart_decision=decision,
                                             chart_plan_hash=preview["chart"]["plan_hash"], **choice)
                 self.assertTrue(applied["applied"])
                 written = [e for e in store.load_entries() if e.source_id == reviewed.source_id]
                 self.assertEqual(written, [reviewed])
                 self.assertEqual(entry_fingerprint(written[0]), preview["opening"]["proposed_entry_fingerprint"])
+                if version == 2:
+                    target = targets[bank["source_id"]] if decision == "rebuild" else bank["account"]
+                    self.assertEqual(store.load_financial_kinds(), {target: "bank"})
+                    again = sync.sync_opening(entity, source, date(2026, 1, 1), apply=True,
+                                               chart_decision=decision, chart_plan_hash=preview["chart"]["plan_hash"], **choice)
+                    self.assertTrue(again["already_applied"])
+                    self.assertEqual(store.load_entries(), [reviewed])
 
     def test_failed_opening_rolls_back_prepared_chart(self):
         from unittest.mock import patch
         from bookkeeping.ledger.store import LedgerStore
         source = self.write()
-        preview = sync.sync_opening(self.entity, source, date(2026, 1, 1), chart_decision="preserve")
+        preview = sync.sync_opening(self.entity, source, date(2026, 1, 1), chart_decision="preserve", chart_manifest_version=2)
         store = LedgerStore(self.entity_path / "ledger.sqlite")
         before = store.content_digest(), store.load_account_names(), store.load_audit_events()
         original = qb.import_opening
@@ -127,8 +152,10 @@ class QuickBooksSyncTests(unittest.TestCase):
         with patch.object(qb, "import_opening", side_effect=fail_after_chart):
             with self.assertRaisesRegex(RuntimeError, "after chart"):
                 sync.sync_opening(self.entity, source, date(2026, 1, 1), apply=True,
-                                  chart_decision="preserve", chart_plan_hash=preview["chart"]["plan_hash"])
+                                  chart_decision="preserve", chart_manifest_version=2, chart_plan_hash=preview["chart"]["plan_hash"])
         self.assertEqual((store.content_digest(), store.load_account_names(), store.load_audit_events()), before)
+        self.assertEqual(store.load_financial_kinds(), {})
+        self.assertEqual(store.get_meta("schema_version"), "1")
 
     def test_rebuild_opening_uses_reviewed_target_not_source_name(self):
         from bookkeeping.ledger.store import LedgerStore

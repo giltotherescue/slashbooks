@@ -567,10 +567,29 @@ def _inventory_in(code, reference, **kwargs):
         return qb.inventory(reference, **kwargs)
 
 
+def _chart_financial_kind(row: dict) -> str | None:
+    """Return only kinds supported by explicit source types."""
+    account_type = row["account_type"].lower()
+    if account_type == "bank":
+        return "cash" if row["detail_type"] == "CashOnHand" else "bank"
+    if account_type == "credit card":
+        return "credit_card"
+    if account_type in {"accounts receivable (a/r)", "accounts payable (a/p)", "fixed assets",
+                        "long-term liabilities"}:
+        return "other"
+    return None
+
+
 def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
-                   targets: dict[str, str] | None = None) -> dict:
+                   targets: dict[str, str] | None = None, *, version: int = 1,
+                   financial_kinds: dict[str, str] | None = None) -> dict:
     """Create an exact source manifest; rebuild needs an explicit complete crosswalk."""
     from .chart_adoption import validate
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError("Expected QuickBooks chart choice version 1 or 2.")
+    if financial_kinds is not None and (version != 2 or not isinstance(financial_kinds, dict)):
+        raise ValueError("Reviewed financial kinds require a version 2 chart choice.")
+    reviewed = dict(financial_kinds or {})
     if decision not in {"preserve", "rebuild"}:
         raise ValueError("Choose preserve or rebuild for the QuickBooks chart")
     accounts, _ = _accounts(snapshot["accounts"])
@@ -579,14 +598,28 @@ def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
         raise ValueError("Rebuild requires a reviewed target for every source account, including inactive and zero-balance accounts")
     if decision == "preserve" and targets is not None:
         raise ValueError("Preserve uses source identities; use rebuild for an explicit different crosswalk")
-    return validate({"version": 1, "operation_id": f"qbo-chart-{snapshot_id}",
+    rows = []
+    for row in accounts:
+        identity = row["id"]
+        chart_row = {"source_id": identity, "name": row["name"], "number": row.get("account_number"),
+                     "parent_id": row["parent_id"] or None, "type": row["mapped_account"].split(":")[0],
+                     "account": targets[identity] if targets is not None else row["mapped_account"],
+                     "active": row["active"]}
+        if version == 2 and chart_row["active"] is True and chart_row["type"] in ("Assets", "Liabilities"):
+            kind = _chart_financial_kind(row)
+            if kind is None:
+                if identity not in reviewed:
+                    raise ValueError(f"QuickBooks account {identity} needs review of its financial kind.")
+                kind = reviewed.pop(identity)
+            chart_row["financial_kind"] = kind
+        rows.append(chart_row)
+    if reviewed:
+        raise ValueError("Reviewed financial kinds must name only active balance sheet accounts with an ambiguous source type.")
+    operation_prefix = "qbo-chart" if version == 1 else "qbo-chart-v2"
+    return validate({"version": version, "operation_id": f"{operation_prefix}-{snapshot_id}",
         "source": f"quickbooks:{snapshot['realm_id']}:{snapshot_id[:16]}", "decision": decision,
         "scope": "complete", "presentation": "activate" if decision == "preserve" else "evidence_only",
-        "open_date": snapshot["from"], "accounts": [
-            {"source_id": row["id"], "name": row["name"], "number": row.get("account_number"),
-             "parent_id": row["parent_id"] or None, "type": row["mapped_account"].split(":")[0],
-             "account": targets[row["id"]] if targets is not None else row["mapped_account"],
-             "active": row["active"]} for row in accounts]})
+        "open_date": snapshot["from"], "accounts": rows})
 
 
 def _validate_chart_targets(existing: dict, manifest: dict, currency: str, cutover: date) -> None:
@@ -598,7 +631,8 @@ def _validate_chart_targets(existing: dict, manifest: dict, currency: str, cutov
 
 def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False,
                  chart_decision: str | None = None, chart_targets: dict[str, str] | None = None,
-                 chart_plan_hash: str | None = None) -> dict:
+                 chart_plan_hash: str | None = None, chart_manifest_version: int = 1,
+                 chart_financial_kinds: dict[str, str] | None = None) -> dict:
     result = sync_import(entity, input_path)
     if not result["opening_supported"]:
         from .currency import company_currency
@@ -614,15 +648,17 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         target_currency = result.get("adopts_currency")
         if target_currency and target_currency != entity.currency:
             raise ValueError("Set and review the company currency before adopting its QuickBooks chart and opening balances together")
-        manifest = chart_manifest(snapshot, result["snapshot_id"], chart_decision, chart_targets)
+        manifest = chart_manifest(snapshot, result["snapshot_id"], chart_decision, chart_targets,
+                                  version=chart_manifest_version, financial_kinds=chart_financial_kinds)
         from .ledger.store import LedgerStore
         with LedgerStore(entity.path / "ledger.sqlite").connection() as existing_conn:
             existing = {row["name"]: dict(row) for row in existing_conn.execute("SELECT name,currency,open_date FROM accounts")}
         _validate_chart_targets(existing, manifest, entity.currency, cutover)
         chart_review = adopt(entity.path, manifest)
         result["chart"] = chart_review
-    elif chart_targets is not None or chart_plan_hash is not None:
-        raise ValueError("A chart decision is required with chart targets or a preview hash")
+    elif (chart_targets is not None or chart_plan_hash is not None
+          or chart_manifest_version != 1 or chart_financial_kinds is not None):
+        raise ValueError("A chart decision is required with chart targets, financial kinds or a preview hash")
     reference = entity.path / result["reference_path"]
     readiness = _inventory_in(result.get("adopts_currency") or entity.currency, reference, cutover=cutover)
     selected = {s.report_key: s for s in readiness.slots}
@@ -812,11 +848,14 @@ def run(args) -> int:
             choice = {}
             if args.chart_choice:
                 choice = json.loads(args.chart_choice.read_text())
-                if not isinstance(choice, dict) or set(choice) - {"decision", "targets", "plan_hash"} or "decision" not in choice:
-                    raise ValueError("Chart choice requires decision and only optional targets/plan_hash")
+                if (not isinstance(choice, dict) or "decision" not in choice
+                        or set(choice) - {"decision", "targets", "plan_hash", "version", "financial_kinds"}):
+                    raise ValueError("Chart choice requires a decision. Optional fields are targets, plan_hash, version and financial_kinds.")
             result = sync_opening(entity, args.input, args.cutover, apply=args.apply,
                                   chart_decision=choice.get("decision"), chart_targets=choice.get("targets"),
-                                  chart_plan_hash=choice.get("plan_hash"))
+                                  chart_plan_hash=choice.get("plan_hash"),
+                                  chart_manifest_version=choice.get("version", 1),
+                                  chart_financial_kinds=choice.get("financial_kinds"))
         elif args.qb_command == "sync-rules":
             result = sync_rules(entity, args.input, apply=args.apply)
         else:

@@ -77,6 +77,47 @@ class ChartAdoptionTests(unittest.TestCase):
                 adopt(self.root, changed)
             self.assertEqual(self.store.content_digest(), before)
 
+    def test_typed_manifest_binds_kind_without_rewriting_prior_source_identity(self):
+        bank = {"source_id": "bank", "name": "Reserve", "number": None, "parent_id": None,
+                "type": "Assets", "account": "Assets:Operating:Reserve"}
+        self.manifest["accounts"] = [bank]
+        first = adopt(self.root, self.manifest)
+        adopt(self.root, self.manifest, apply=True, plan_hash=first["plan_hash"])
+        typed = {**self.manifest, "version": 2, "operation_id": "adopt-typed",
+                 "accounts": [{**bank, "financial_kind": "bank"}]}
+        plan = adopt(self.root, typed)
+        self.assertEqual(plan["accounts"][0]["financial_kind"], "bank")
+        self.assertEqual(self.store.load_financial_kinds(), {})
+        altered = deepcopy(typed)
+        altered["accounts"][0]["financial_kind"] = "cash"
+        with self.assertRaisesRegex(ValueError, "Stale"):
+            adopt(self.root, altered, apply=True, plan_hash=plan["plan_hash"])
+        adopt(self.root, typed, apply=True, plan_hash=plan["plan_hash"])
+        self.assertEqual(self.store.load_financial_kinds(), {bank["account"]: "bank"})
+        stored = json.loads(self.store.get_meta(KEY))["sources"][self.manifest["source"]]["accounts"]
+        self.assertEqual(stored["bank"], bank)
+        self.assertEqual(adopt(self.root, self.manifest)["status"], "already_applied")
+        self.assertEqual(adopt(self.root, typed)["status"], "already_applied")
+        self.assertEqual(check_store_integrity(self.store).status, "ok")
+
+    def test_typed_manifest_rejects_mapped_other_and_skips_inactive_rows(self):
+        from bookkeeping.entity import map_bank_account
+        active = {"source_id": "1", "name": "Reserve", "number": None, "parent_id": None, "type": "Assets",
+                  "account": "Assets:Bank:Checking", "financial_kind": "other"}
+        inactive = {"source_id": "2", "name": "Former account", "number": None, "parent_id": None,
+                    "type": "Assets", "account": "Assets:Operating:Former", "active": False}
+        typed = {**self.manifest, "version": 2, "accounts": [active, inactive]}
+        map_bank_account(self.root, "example-feed", active["account"])
+        before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "mapped financial source"):
+            adopt(self.root, typed)
+        self.assertEqual(self.store.content_digest(), before)
+        active["financial_kind"] = "bank"
+        plan = adopt(self.root, typed)
+        adopt(self.root, typed, apply=True, plan_hash=plan["plan_hash"])
+        self.assertEqual(self.store.load_financial_kinds(), {active["account"]: "bank"})
+        self.assertNotIn(inactive["account"], self.store.load_account_names())
+
     def test_transport_preview_is_read_apply_is_write(self):
         argv = ["entity", "chart-adopt", str(self.root), "--input", "manifest.json"]
         self.assertFalse(command_spec(argv)["mutates"])

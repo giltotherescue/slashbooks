@@ -15,7 +15,7 @@ from typing import Any
 
 from .ledger.importer import _entity_write_lock, check_store_integrity
 from .ledger.model import Open
-from .ledger.store import LedgerStore, SUPPORTED_SCHEMA_VERSIONS
+from .ledger.store import LedgerStore, SUPPORTED_SCHEMA_VERSIONS, validate_financial_kind
 
 KEY = "chart_adoption_v1"
 ROOTS = {"Assets", "Liabilities", "Equity", "Income", "Expenses"}
@@ -37,8 +37,11 @@ def _text(value: Any, field: str, limit: int = 300) -> str:
 
 def validate(manifest: Any) -> dict[str, Any]:
     fields = {"version", "operation_id", "source", "decision", "scope", "open_date", "accounts"}
-    if not isinstance(manifest, dict) or set(manifest) - {"presentation"} != fields or type(manifest["version"]) is not int or manifest["version"] != 1:
-        raise ValueError("Expected chart manifest version 1 with exactly the documented fields.")
+    if (not isinstance(manifest, dict) or set(manifest) - {"presentation"} != fields
+            or type(manifest["version"]) is not int or manifest["version"] not in (1, 2)):
+        raise ValueError("Expected chart manifest version 1 or 2 with exactly the documented fields.")
+    typed = manifest["version"] == 2
+    optional = {"active", "financial_kind"} if typed else {"active"}
     if manifest.get("presentation", "evidence_only") not in ("activate", "evidence_only"):
         raise ValueError("presentation must be activate or evidence_only.")
     _text(manifest["operation_id"], "operation_id", 100)
@@ -52,7 +55,7 @@ def validate(manifest: Any) -> dict[str, Any]:
         raise ValueError("A chart manifest needs 1-1000 accounts and at most 2 MB.")
     ids, targets = set(), set()
     for row in rows:
-        if not isinstance(row, dict) or set(row) - {"active"} != {"source_id", "name", "number", "parent_id", "type", "account"}:
+        if not isinstance(row, dict) or set(row) - optional != {"source_id", "name", "number", "parent_id", "type", "account"}:
             raise ValueError("Each account needs source_id, name, number, parent_id, type and explicit account mapping.")
         if "active" in row and type(row["active"]) is not bool:
             raise ValueError("Source active state must be boolean.")
@@ -65,6 +68,13 @@ def validate(manifest: Any) -> dict[str, Any]:
         target = _text(row["account"], "account")
         if not isinstance(row["type"], str) or row["type"] not in ROOTS or target.split(":")[0] != row["type"] or ":" not in target:
             raise ValueError("The mapped ledger root must match the explicit account type.")
+        needs_kind = typed and row.get("active", True) and row["type"] in ("Assets", "Liabilities")
+        if needs_kind:
+            if "financial_kind" not in row:
+                raise ValueError("Every active asset or liability needs a reviewed financial kind in version 2.")
+            validate_financial_kind(target, row["financial_kind"])
+        elif "financial_kind" in row:
+            raise ValueError("Only an active asset or liability can carry a financial kind.")
         Open(date=date.fromisoformat(manifest["open_date"]), account=target)
         if identity in ids or target.casefold() in targets:
             raise ValueError("Duplicate source identity or multiple source accounts mapped to one ledger key; resolve explicitly.")
@@ -133,11 +143,29 @@ def apply_reviewed_chart(root: Path, store: LedgerStore, conn: Any, manifest: di
     existing = {r["name"]: dict(r) for r in conn.execute("SELECT name,currency,open_date FROM accounts")}
     sources = previous["sources"]
     prior = sources.get(manifest["source"], {}).get("accounts", {})
+    from .entity import flat_bank_account_mappings, load_entity
+    config = load_entity(root).entity_config
+    kinds = {row["account"]: row["financial_kind"] for row in manifest["accounts"] if "financial_kind" in row}
+    current_kinds = store.load_financial_kinds(conn) if kinds else {}
+    mapped = set(flat_bank_account_mappings(config).values()) if kinds else set()
+    csv_mappings = config.get("csv_account_mappings")
+    if kinds and isinstance(csv_mappings, dict):
+        mapped.update(row["ledger_account"] for row in csv_mappings.values()
+                      if isinstance(row, dict) and row.get("confirmed") is True and not row.get("proposed")
+                      and isinstance(row.get("ledger_account"), str))
+    for account, kind in kinds.items():
+        if account in current_kinds and current_kinds[account] != kind:
+            raise ValueError(f"Account '{account}' already has a different financial kind.")
+        if kind == "other" and account in mapped:
+            raise ValueError(f"Account '{account}' has a mapped financial source. Review its financial kind.")
     outcomes = []
     source_rows = [r for source in sources.values() for r in source["accounts"].values()]
+    # Source evidence retains its original shape across manifest versions.
+    identities = {row["source_id"]: {key: value for key, value in row.items() if key != "financial_kind"}
+                  for row in manifest["accounts"]}
     for row in manifest["accounts"]:
         old = prior.get(row["source_id"])
-        if old is not None and old != row:
+        if old is not None and old != identities[row["source_id"]]:
             raise ValueError("Source account identity changed; adoption cannot rename, remap or overwrite previous source evidence.")
         for prior_row in source_rows:
             if prior_row["account"] == row["account"] and (prior_row["name"], prior_row["number"], prior_row["type"]) != (row["name"], row["number"], row["type"]):
@@ -147,8 +175,7 @@ def apply_reviewed_chart(root: Path, store: LedgerStore, conn: Any, manifest: di
             raise ValueError("Mapped account differs only by case from an existing account.")
         outcomes.append({**row, "action": "map" if row["account"] in existing else "create" if row.get("active", True) else "reference_only"})
     duplicate_numbers = sorted(k for k, count in Counter(r["number"] for r in manifest["accounts"] if r["number"] is not None).items() if count > 1)
-    from .entity import load_entity
-    fingerprint = _hash({"ledger": store.content_digest(conn), "entity_config": load_entity(root).entity_config, "request": request_hash})
+    fingerprint = _hash({"ledger": store.content_digest(conn), "entity_config": config, "request": request_hash})
     preview = {"status": "preview", "plan_hash": fingerprint, "accounts": outcomes,
                "duplicate_numbers": duplicate_numbers, "scope": manifest["scope"], "decision": manifest["decision"],
                "existing_accounts_removed": 0, "entries_changed": 0,
@@ -162,8 +189,9 @@ def apply_reviewed_chart(root: Path, store: LedgerStore, conn: Any, manifest: di
     currency = currency[0] if currency else "USD"
     created = [r["account"] for r in outcomes if r["action"] == "create"]
     store.insert_opens([Open(date=date.fromisoformat(manifest["open_date"]), account=a, currencies=(currency,)) for a in created], conn)
+    store.assign_financial_kinds(kinds, conn)
     source = sources.setdefault(manifest["source"], {"accounts": {}, "decisions": []})
-    source["accounts"].update({r["source_id"]: r for r in manifest["accounts"]})
+    source["accounts"].update(identities)
     source["decisions"].append({"operation_id": manifest["operation_id"], "decision": manifest["decision"], "scope": manifest["scope"]})
     store.set_meta(KEY, _json(previous), conn)
     if manifest.get("presentation") == "activate":
@@ -174,6 +202,8 @@ def apply_reviewed_chart(root: Path, store: LedgerStore, conn: Any, manifest: di
         store.set_meta(chart_presentation.KEY, _json(presentation), conn)
     receipt = {"operation_id": manifest["operation_id"], "request_hash": request_hash,
                "source": manifest["source"], "created": created, "entries_changed": 0}
+    if manifest["version"] == 2:
+        receipt["financial_kinds"] = kinds
     store.append_audit_event("chart-adopted", receipt, conn)
     store.append_audit_event("ledger-store-sealed", {"session_id": "chart-adoption", "entries": 0,
                              "source_ids": [], "store_sha256": store.content_digest(conn)}, conn)

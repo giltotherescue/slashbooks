@@ -52,6 +52,17 @@ directory so it survives backups and restore. Repeating the same snapshot is
 idempotent; changing source data produces new evidence. Corrupted existing
 reference files prevent reuse and opening application.
 
+## Review financial kinds with an opening chart
+
+To include reviewed financial kinds, set `"version": 2` in the
+`qb sync-opening --chart-choice` JSON file. The preview uses QuickBooks account
+types for bank and credit card accounts and the Cash on Hand detail type for
+cash. When a source type is ambiguous, add a `financial_kinds` object keyed by
+QuickBooks source account ID, with one reviewed kind for each reported account.
+Review each kind and ledger target before applying the same choice with its
+preview hash. The chart, kinds and opening entry commit together. The default
+version 1 chart choice keeps its original behavior.
+
 ## Compare and backtest
 
 The `.qbo.json` reference files are read directly into the existing canonical
