@@ -336,6 +336,21 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _DEFAULT_ACCOUNT_OPEN_DATE = date(2026, 1, 1)
 
 
+# Exact starter definitions. The account names of imported or custom accounts
+# never enter this classifier.
+_STARTER_FINANCIAL_KINDS = {
+    "Assets:Bank:Checking": "bank",
+    "Liabilities:CreditCard": "credit_card",
+}
+
+
+def _starter_financial_kinds(opens: list[Any]) -> dict[str, str]:
+    return {
+        item.account: _STARTER_FINANCIAL_KINDS.get(item.account, "other")
+        for item in opens if item.account.partition(":")[0] in ("Assets", "Liabilities")
+    }
+
+
 def _starter_account_opens(business_type: str, open_date: date = _DEFAULT_ACCOUNT_OPEN_DATE,
                            basis: str = "cash") -> list[Any]:
     """Return starter SQLite account definitions for a business type and basis."""
@@ -414,6 +429,7 @@ def init_entity(
     cutover_date: str = "",
     website_url: str = "",
     basis: str | None = None,
+    classify_starter_accounts: bool = False,
 ) -> dict[str, list[str]]:
     """Initialise (or safely re-init) an entity directory at *target*.
 
@@ -468,7 +484,14 @@ def init_entity(
                 store.set_meta("basis", selected_basis, conn)
                 if name:
                     store.set_meta("title", name, conn)
-                store.insert_opens(_starter_account_opens(business_type, starter_open_date, selected_basis), conn)
+                opens = _starter_account_opens(business_type, starter_open_date, selected_basis)
+                store.insert_opens(opens, conn)
+                if classify_starter_accounts:
+                    store.assign_financial_kinds(_starter_financial_kinds(opens), conn)
+                    store.append_audit_event("ledger-store-sealed", {
+                        "session_id": "entity-init", "entries": 0, "source_ids": [],
+                        "store_sha256": store.content_digest(conn),
+                    }, conn)
             created.append("ledger.sqlite")
             if selected_basis == "accrual":
                 store.upgrade()
@@ -578,7 +601,12 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
             store.set_meta("basis", basis, conn)
             if basis == "accrual":
                 open_day = date.fromisoformat(_normalize_optional_date(str(config.get("cutover_date") or "")) or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat())
-                store.insert_opens(_starter_account_opens(entity.business_type, open_day, "accrual")[-len(_ACCRUAL_STARTER_ACCOUNTS):], conn)
+                opens = _starter_account_opens(entity.business_type, open_day, "accrual")[-len(_ACCRUAL_STARTER_ACCOUNTS):]
+                existing = store.load_account_names(conn) if store.has_financial_kinds(conn) else None
+                store.insert_opens(opens, conn)
+                if existing is not None:
+                    store.assign_financial_kinds(_starter_financial_kinds(
+                        [item for item in opens if item.account not in existing]), conn)
             store.append_audit_event("basis-configured", {"basis": basis}, conn)
             store.append_audit_event("ledger-store-sealed", {
                 "session_id": "entity-basis", "entries": 0, "store_sha256": store.content_digest(conn),
@@ -620,6 +648,7 @@ def add_account(
     open_date: str = "",
     currency: str | None = None,
     category: bool = False,
+    financial_kind: str | None = None,
 ) -> dict[str, str]:
     """Add an account to the SQLite account catalog for an existing entity.
 
@@ -630,6 +659,7 @@ def add_account(
     if category:
         check_category_account(account)
     entity = load_entity(entity_path)
+    requested_currency = currency
     if currency is None:
         from .currency import company_currency
         currency = company_currency(entity.entity_config)
@@ -637,14 +667,12 @@ def add_account(
 
     from .ledger.model import Open
     import sqlite3
-    from .ledger.store import LedgerStore, SUPPORTED_SCHEMA_VERSIONS, default_store_path
+    from .ledger.store import LedgerStore, SUPPORTED_SCHEMA_VERSIONS, default_store_path, validate_financial_kind
     from .ledger.importer import _entity_write_lock, check_integrity
 
-    opened = Open(
-        date=date.fromisoformat(normalized_open_date),
-        account=account,
-        currencies=(currency,) if currency else (),
-    )
+    if financial_kind is not None:
+        validate_financial_kind(account, financial_kind)
+
     store = LedgerStore(default_store_path(entity.path))
     with _entity_write_lock(entity.path):
         if not store.path.exists():
@@ -654,10 +682,12 @@ def add_account(
         effective_currency = currency or "USD"
         with store.transaction(immediate=True) as conn:
             try:
-                schema = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+                schema = store.schema_version(conn)
             except sqlite3.DatabaseError:
                 raise ValueError("Account catalog requires an initialized supported-schema SQLite ledger.") from None
-            if schema is None or schema[0] not in {str(v) for v in SUPPORTED_SCHEMA_VERSIONS}:
+            if schema is None:
+                raise ValueError("Account catalog requires an initialized supported-schema SQLite ledger.")
+            if schema not in SUPPORTED_SCHEMA_VERSIONS:
                 raise ValueError("Unsupported ledger schema; upgrade or migrate explicitly before changing the account catalog.")
             integrity = check_integrity(entity)
             if integrity.status != "ok":
@@ -667,6 +697,12 @@ def add_account(
             ).fetchone():
                 raise ValueError("Account catalog cannot change on a populated ledger without audit history.")
             existing = conn.execute("SELECT currency,open_date FROM accounts WHERE name=?", (account,)).fetchone()
+            if existing and financial_kind is not None:
+                if requested_currency is None:
+                    currency = effective_currency = existing["currency"]
+                if not open_date:
+                    normalized_open_date = existing["open_date"]
+            opened = Open(date.fromisoformat(normalized_open_date), account, (effective_currency,))
             if existing and existing["currency"] != effective_currency:
                 conflict = conn.execute(
                     "SELECT 1 FROM postings WHERE account=? AND currency<>? "
@@ -677,15 +713,22 @@ def add_account(
                     raise ValueError("Account currency conflicts with existing postings or balance assertions.")
             existed_before = existing is not None
             effective_date = min(normalized_open_date, existing["open_date"]) if existing else normalized_open_date
-            if not existing or (existing["currency"], existing["open_date"]) != (effective_currency, effective_date):
+            current_kind = store.load_financial_kinds(conn).get(account) if financial_kind is not None else None
+            if current_kind is not None and current_kind != financial_kind:
+                raise ValueError(f"Account '{account}' already has a different financial kind.")
+            assign_kind = financial_kind is not None and current_kind is None
+            if assign_kind or not existing or (existing["currency"], existing["open_date"]) != (effective_currency, effective_date):
                 # Catalog, intent and seal share one transaction without
                 # initializing the store or rewriting its metadata.
                 store.append_audit_event("intent", {
                     "session_id": "entity-account-add", "entries": 0,
                     "description": (f"{'Update' if existing else 'Add'} account {account}: "
                                     f"open {effective_date}, currency {effective_currency}"),
+                    **({"financial_kind": financial_kind} if assign_kind else {}),
                 }, conn)
                 store.insert_opens([opened], conn)
+                if assign_kind:
+                    store.assign_financial_kinds({account: financial_kind}, conn)
                 store.append_audit_event("ledger-store-sealed", {
                     "session_id": "entity-account-add", "entries": 0, "source_ids": [],
                     "store_sha256": store.content_digest(conn),
@@ -730,8 +773,8 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
         if check_integrity(entity).status != "ok":
             raise ValueError("Starter accounts cannot be added while ledger integrity is invalid.")
         with store.transaction(immediate=True) as conn:
-            schema = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-            if schema is None or schema[0] not in {str(v) for v in SUPPORTED_SCHEMA_VERSIONS}:
+            schema = store.schema_version(conn)
+            if schema not in SUPPORTED_SCHEMA_VERSIONS:
                 raise ValueError("Unsupported ledger schema; upgrade or migrate explicitly before changing the account catalog.")
             if any(conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()
                    for table in ("entries", "postings", "balance_assertions", "source_transactions")):
@@ -770,6 +813,8 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
                     "description": f"Add {len(opens)} and remove {len(removed)} starter accounts for business type {business_type}",
                 }, conn)
                 store.insert_opens(opens, conn)
+                if store.has_financial_kinds(conn):
+                    store.assign_financial_kinds(_starter_financial_kinds(opens), conn)
                 for account in removed:
                     conn.execute("DELETE FROM accounts WHERE name=?", (account,))
             if type_changed:
@@ -1326,6 +1371,8 @@ def add_parser(subparsers: Any) -> None:
     )
     init_parser.add_argument("path", type=Path, help="Path to the entity directory")
     init_parser.add_argument("--website-url", default="", help="Optional public business website")
+    init_parser.add_argument("--classify-starter-accounts", action="store_true",
+                             help="Record financial kinds for the starter accounts of a new ledger")
     init_parser.add_argument("--name", default="", help="Business name (stored in entity.json)")
     init_parser.add_argument("--basis", choices=("cash", "accrual"), default=None,
                              help="Accounting basis for a new company; defaults to cash")
@@ -1357,6 +1404,9 @@ def add_parser(subparsers: Any) -> None:
         default="",
         help="Account open date in YYYY-MM-DD format; defaults to the starter catalog date",
     )
+    from .ledger.store import FINANCIAL_KINDS
+    add_account_parser.add_argument("--financial-kind", choices=FINANCIAL_KINDS,
+                                    help="Explicit financial kind for a balance sheet account")
     add_account_parser.add_argument("--currency", default=None, help="Currency, default the company currency (USD unless set)")
     add_account_parser.add_argument(
         "--category", action="store_true",
@@ -1548,6 +1598,7 @@ def run(args: Any) -> int:
                 cutover_date=args.cutover_date,
                 website_url=getattr(args, "website_url", ""),
                 basis=getattr(args, "basis", None),
+                classify_starter_accounts=getattr(args, "classify_starter_accounts", False),
             )
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -1577,6 +1628,7 @@ def run(args: Any) -> int:
                 open_date=args.open_date,
                 currency=args.currency,
                 category=args.category,
+                financial_kind=getattr(args, "financial_kind", None),
             )
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)

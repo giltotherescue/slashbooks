@@ -403,6 +403,26 @@ one account at a time with `books entity account-add`.
 One thing does change: the ledger fingerprint. A readiness package made before this step
 carries the old fingerprint, so run `books readiness` again before closing a month.
 
+### Explicit financial account kinds
+
+Use `books entity account-add PATH --account ACCOUNT --financial-kind KIND` to
+classify an asset or liability account. The kinds are `bank`, `credit_card`,
+`cash` and `other`. The kind is independent of the account name. An absent
+kind means unclassified. Omitting the flag keeps an existing kind. A different
+kind for an already classified account is refused.
+
+For a new company, `books entity init PATH --classify-starter-accounts` records
+the kinds of the starter balance sheet accounts. Existing books are not
+classified during re-init. The JSON from `books accrual accounts` includes
+`financial_kind` for classified accounts.
+
+The SQLite catalog adds a nullable `accounts.financial_kind` column with the
+first classification. Typed ledgers use `1+financial-kind`,
+`2+financial-kind` or `3+financial-kind` in `meta.schema_version`. The number
+identifies the ledger capability version. The tag identifies the catalog
+layout and is retained during capability upgrades. Use a compatible engine
+to open or restore a typed ledger.
+
 ### Opening items on the tracking start
 
 If invoices or bills are still open on the tracking start, list them once. One `opening`
