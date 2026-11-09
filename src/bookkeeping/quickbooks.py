@@ -1681,7 +1681,7 @@ OPENING_OVERLAP_ERROR = (
 
 
 def _exact_reversal_targets(entries) -> set[int]:
-    """``id()`` of each entry that one later entry reverses exactly.
+    """``id()`` of each entry that one other entry reverses exactly.
 
     An entry counts as reversed only when all of these hold (it fails closed otherwise, so the entry stays
     active): the ``reverses`` ID names exactly one other entry, under either spelling of a feed ID (see
@@ -1702,8 +1702,8 @@ def _exact_reversal_targets(entries) -> set[int]:
         if not target:
             continue
         found = set().union(*(by_spelling.get(spelling, set()) for spelling in source_id_variants(str(target))))
-        found.discard(index)  # an entry never reverses itself
-        if len(found) == 1:
+        # Unique across every entry with that ID, the claimant included; then the target must not be the claimant.
+        if len(found) == 1 and index not in found:
             claims.setdefault(next(iter(found)), []).append(index)
     reversed_originals: set[int] = set()
     for original_index, claimers in claims.items():

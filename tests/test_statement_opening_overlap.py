@@ -311,6 +311,14 @@ class ReversalIdentityTests(unittest.TestCase):
         self.assertIsNotNone(self.found([zero]))
         self.assertIsNotNone(self.found([zero, self.entry("z2", self.D, "0.00", meta=[("reverses", "z2")])]))
 
+    def test_a_reversal_that_shares_the_id_or_alias_of_the_original_is_not_exempt(self):
+        for original_id, reversal_id in (("o1", "o1"), ("banksync:abc", "abc"), ("abc", "banksync:abc")):
+            original = self.entry(original_id, self.D, "5.00")
+            reversal = self.entry(reversal_id, self.D, "-5.00", meta=[("reverses", original_id)])
+            self.assertIsNotNone(self.found([original, reversal]), (original_id, reversal_id))
+        control = self.entry("r9", self.D, "-5.00", meta=[("reverses", "o1")])
+        self.assertIsNone(self.found([self.entry("o1", self.D, "5.00"), control]))
+
     def test_the_feed_id_alias_is_one_identity_and_a_reversal_of_a_reversal_does_not_count(self):
         original = self.entry("banksync:abc", self.D, "5.00")
         self.assertIsNone(self.found([original, self.entry(None, self.D, "-5.00", meta=[("reverses", "abc")])]))
