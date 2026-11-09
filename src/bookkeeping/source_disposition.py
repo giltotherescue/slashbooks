@@ -443,7 +443,8 @@ class _Eligibility:
     refusal: str | None
 
 
-def _eligibility(context: DispositionContext, row: Mapping[str, Any]) -> _Eligibility:
+def _eligibility(context: DispositionContext, row: Mapping[str, Any], *,
+                 booked_ids: set[str] | None = None) -> _Eligibility:
     day = _strict_day(row.get("date"))
     account, mapping_digest = _mapping(context, row)
 
@@ -452,7 +453,7 @@ def _eligibility(context: DispositionContext, row: Mapping[str, Any]) -> _Eligib
 
     if row.get("pending"):
         return refused("pending_row")
-    if source_id_variants(row.get("id")) & _booked_ids(context):
+    if source_id_variants(row.get("id")) & (booked_ids if booked_ids is not None else _booked_ids(context)):
         return refused("already_booked")
     if day is None:
         return refused("invalid_date")
@@ -778,8 +779,8 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
         if row is None or row_identity(row)["row_digest"] != claim["row_digest"]:
             triggers.add("SOURCE_ROW_CHANGED")
         basis = claim["basis"]
-        if row is not None:
-            ok = _eligibility(context, row)
+        ok = _eligibility(context, row, booked_ids=booked) if row is not None else None
+        if ok is not None:
             if ok.refusal is not None:
                 triggers.add("NOT_ELIGIBLE_NOW")
             if ok.mapping_digest != basis.get("mapping_digest") or ok.account != basis.get("account"):
@@ -822,8 +823,7 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
         if claim["state"] == "covered_by_opening":
             # No coverage claim can be checked against a retained line today, so none is ever resolved.
             triggers.add("LINE_EVIDENCE_UNAVAILABLE")
-        if row is not None and not triggers:
-            ok = _eligibility(context, row)
+        if ok is not None and not triggers:
             if _sha(_conflicts(context, ok)) != _expected_conflicts(claim, transition):
                 triggers.add("CONFLICTS_CHANGED")
         if triggers:

@@ -387,6 +387,24 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(sd.excluded_source_ids(sd.evaluate(ctx(), [claim])), ["banksync:r1"])
 
 
+class EvaluationBatchTests(unittest.TestCase):
+    def test_batch_matches_single_results_and_uses_each_contexts_booked_aliases(self):
+        original = ctx(rows=[feed_row(), feed_row("banksync:r2", amount="-19.00")])
+        claims = [sd.preview(original, source_id, "outside_books")["claim"] for source_id in ("r1", "r2")]
+        resolved = sd.evaluate(original, claims)
+        self.assertEqual([row["status"] for row in resolved], ["resolved", "resolved"])
+
+        booked = [{"source_id": "r1", "account": CHECKING, "date": "2026-02-10", "amount": "-25.00"},
+                  {"source_id": "similar-r2", "account": CHECKING, "date": "2026-02-10", "amount": "-19.00"}]
+        changed = ctx(rows=[feed_row(), feed_row("banksync:r2", amount="-19.00")], booked=booked)
+        invalidated = sd.evaluate(changed, claims)
+        self.assertEqual(invalidated, [sd.evaluate(changed, [claim])[0] for claim in claims])
+        self.assertEqual([row["status"] for row in invalidated], ["invalidated", "invalidated"])
+        self.assertEqual([row["triggers"] for row in invalidated],
+                         [["DISPOSED_ROW_BOOKED", "NOT_ELIGIBLE_NOW"], ["CONFLICTS_CHANGED"]])
+        self.assertEqual(sd.evaluate(original, claims), resolved)
+
+
 class ResolvedIdentityTests(unittest.TestCase):
     """The one rule for leaving a staged row out: a resolved claim, one exact row, not booked or recorded."""
 
