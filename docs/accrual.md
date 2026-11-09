@@ -164,6 +164,10 @@ difference and an exact next step: register the amount as an item or schedule, o
 explain it with a support snapshot in `residual` mode. See
 [recipe 0](accrual-recipes.md#recipe-0-plain-journal-no-supporting-detail-needed).
 
+The ordinary review queue refuses a `new_cash_event` when its category or split
+would post to a control account with registered support on the transaction date.
+Use the accrual item, schedule, or supporting-detail workflow for that account.
+
 ## Saved accrual rules
 
 Some bills repeat. A person decides once how to treat Northwind Hosting's annual

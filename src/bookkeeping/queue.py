@@ -1952,7 +1952,7 @@ def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[st
     item = _load_item(entity, item_id)
     _forbid_self_approval(item)
     _refuse_item_above_ask_first(entity, item)
-    _require_accrual_cash_treatment(entity, item, accrual_treatment)
+    accrual_cash = _require_accrual_cash_treatment(entity, item, accrual_treatment)
     if item.get("proposal_type") != "split":
         raise ValueError(f"Queue item '{item_id}' is not a split proposal.")
     if item.get("status") not in {"open", "reopened"}:
@@ -1974,7 +1974,10 @@ def confirm_split(entity: Entity, item_id: str, session_id: str, ts: Optional[st
     # Re-run the full validation at the approval boundary, including any chart changes.
     expected = -_txn_amount(txn)
     allocations = item.get("split_postings") or []
-    _validate_known_accounts(entity, [str(posting.get("account") or "") for posting in allocations])
+    offsets = [str(posting.get("account") or "") for posting in allocations]
+    _validate_known_accounts(entity, offsets)
+    if accrual_cash:
+        _refuse_registered_cash_offsets(entity, offsets, _txn_date(txn))
     total = sum((Decimal(str(posting.get("amount") or "0")) for posting in allocations), Decimal("0.00"))
     if total != expected:
         raise ValueError("The saved split no longer balances to the staged source amount.")
@@ -2344,6 +2347,23 @@ def _require_accrual_cash_treatment(entity: Entity, item: dict, treatment: str |
     return True
 
 
+def _refuse_registered_cash_offsets(entity: Entity, offsets: list[str], day: date) -> None:
+    """An ordinary cash event cannot change a control balance without its supporting record."""
+    balance_accounts = {name for name in offsets if name.startswith(("Assets:", "Liabilities:"))}
+    if not balance_accounts:
+        return
+    from .accrual.reports import support_snapshot
+    from .ledger.store import LedgerStore, default_store_path
+
+    with LedgerStore(default_store_path(entity.path)).connection() as conn:
+        support = support_snapshot(conn, day)
+    registered = {row["account"] for rows in support.values() for row in rows}
+    conflicts = sorted(balance_accounts & registered)
+    if conflicts:
+        raise ValueError("A new cash event cannot post to the registered control account " +
+                         ", ".join(conflicts) + ". Use the accrual item, schedule, or supporting-detail workflow.")
+
+
 def _write_confirmed_entry(
     entity: Entity,
     txn: dict,
@@ -2369,11 +2389,9 @@ def _write_confirmed_entry(
     source_id = str(txn.get("id") or "")
     if not _require_accrual_cash_treatment(entity, {"source_id": source_id}, accrual_treatment, txn):
         accrual_treatment = None
-    raw_date = str(txn.get("date") or "")[:10]
-    try:
-        txn_date = _date.fromisoformat(raw_date)
-    except (ValueError, TypeError):
-        txn_date = datetime.now(tz=timezone.utc).date()
+    txn_date = _txn_date(txn)
+    if accrual_treatment:
+        _refuse_registered_cash_offsets(entity, [category], txn_date)
 
     narration = str(txn.get("description") or "")
 
@@ -2693,6 +2711,16 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
         _forbid_self_approval(checked)
         _refuse_item_above_ask_first(entity, checked)
         _refuse_item_before_open(entity, checked)
+        if accrual_treatment == "new_cash_event":
+            from .accrual.treatment import needs_treatment
+
+            split = checked.get("proposal_type") == "split"
+            offsets = [str(row["account"]) for row in checked["split_postings"]] if split else [category]
+            if any(name.startswith(("Assets:", "Liabilities:")) for name in offsets):
+                txn = _get_pending_txn(entity, item_id)
+                if (txn is not None and needs_treatment(entity, checked if split else txn) and
+                        not _recover_finalization(entity, checked, [item_id], session_id, "confirmed", category)):
+                    _refuse_registered_cash_offsets(entity, offsets, _txn_date(txn))
     return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
 
 
