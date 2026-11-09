@@ -427,11 +427,22 @@ All of these must be true:
 - Each of those accounts is `authorized` in the current policy with the same
   `start_day` and the next version. Put every opening balance account in the
   books start policy, so that the version 3 check also needs its authorization.
+- The `epoch` of the policy in the request is at or after the epoch that the
+  decision captured, and before the current epoch.
+
+The engine does not authenticate the `operation_id` values. It checks only that
+each one is non-empty text and unique, and it records them. A trusted host must
+supply the immutable origin of the reviewed preview and its evidence, and bind
+the request to it.
 
 The first evaluation gives `transition_pending` with
 `expected_accrual_opening_recorded` evidence. The evidence records the binding of
-the request and the new open date of the account (the native opening opens the
-account on the entry date). The host records it one time. When a rule is false,
+the request (with its policy epoch) and the new open date of the account (the
+native opening opens the account on the entry date). The host records it one
+time. Each later evaluation checks the evidence again: an integer
+`schema_version`, a positive safe integer version (at most 2^53 - 1) on every
+account, and every recorded account still `authorized` at the same start with
+the next version. Otherwise the decision is invalidated. When a rule is false,
 the decision is `invalidated` with one or more of these triggers
 (`ACCRUAL_COMPLETION_REASONS`):
 
@@ -440,7 +451,8 @@ the decision is `invalidated` with one or more of these triggers
 | `ACCRUAL_AUTHORIZATION_REQUIRED` | No request was given. |
 | `ACCRUAL_AUTHORIZATION_INVALID` | The request is not a valid books start check request. |
 | `ACCRUAL_AUTHORIZATION_NOT_PRIOR_DAY` | The request is version 1 or 2. A same-day authorization never completes a prior-day opening. |
-| `ACCRUAL_AUTHORIZATION_STALE` | The authorized start or version is not the start or the pending version. |
+| `ACCRUAL_AUTHORIZATION_STALE` | The authorized start or version is not the start or the pending version, or a version is not a safe integer. |
+| `ACCRUAL_AUTHORIZATION_EPOCH` | The policy epoch of the request is before the captured epoch, or not before the current epoch. |
 | `ACCRUAL_OPENING_NOT_FRESH` | The entry metadata is not exactly that of a fresh accrual opening for this start, or it posts outside Assets, Liabilities and Equity. |
 | `ACCRUAL_OPENING_NOT_PRIOR_DAY` | The entry is not dated the day before `start_day`. |
 | `ACCRUAL_ENTRY_MISMATCH` | The source ID or the fingerprint is not that of the entry. |
@@ -452,6 +464,13 @@ accrual balances to books that already started, and it is dated on the tracking
 start, so it stays ordinary booked activity. A context document that names it as
 an opening is refused. The completion changes no balance, never relabels an
 accrual opening as a statement opening, and never allows a booking.
+
+The source ID of a fresh accrual opening is the `operation_id` of its request,
+and the ledger records it. If that ID or one of its aliases (`banksync:abc` and
+`abc`) names a staged row, the row counts as booked: a preview refuses it
+(`already_booked`), and a stored decision is invalidated
+(`DISPOSED_ROW_BOOKED`). A decision previewed when the accrual opening is
+already live keeps that opening in its basis and resolves unchanged.
 
 The host makes an authorization only from its own receipt of a reviewed opening
 operation and the preview that the person reviewed. Each supported opening

@@ -412,9 +412,19 @@ def _find_row(context: DispositionContext, source_id: str) -> Mapping[str, Any] 
 
 
 def _booked_ids(context: DispositionContext) -> set[str]:
+    """Every spelling of every source ID that the books record.
+
+    This is the one collision guard of :func:`preview`, :func:`evaluate` and :class:`ResolvedIdentityIndex`. A fresh
+    accrual opening is read as an opening, not as booked lines, and its ``source-id`` is the operation ID that the
+    person chose. The ledger records that ID (it has no ``source_transactions`` row), so it and its aliases count
+    as booked too. A statement or QuickBooks opening does not change.
+    """
     ids: set[str] = set()
     for item in context.booked:
         ids |= source_id_variants(item.source_id)
+    for opening in context.openings:
+        if opening.kind == "accrual":
+            ids |= source_id_variants(opening.source_id)
     return ids
 
 
@@ -666,7 +676,10 @@ ACCRUAL_COMPLETION_REASONS = {
                                            "or 2 authorization is for an opening on the books start, never for an "
                                            "opening on the day before it.",
     "ACCRUAL_AUTHORIZATION_STALE": "The authorized start or version is not the start and pending version of the "
-                                   "confirmed decision and of the policy in the request.",
+                                   "confirmed decision and of the policy in the request, or a version is not a "
+                                   "safe integer.",
+    "ACCRUAL_AUTHORIZATION_EPOCH": "The policy epoch of the request is not at or after the epoch that the decision "
+                                   "captured and before the current epoch.",
     "ACCRUAL_OPENING_NOT_FRESH": "The entry is not a fresh accrual opening for this cutover (exact metadata, and "
                                  "postings on Assets, Liabilities and Equity accounts only).",
     "ACCRUAL_OPENING_NOT_PRIOR_DAY": "The entry is not dated the day before the authorized start (the cutover).",
@@ -678,8 +691,14 @@ ACCRUAL_COMPLETION_REASONS = {
 }
 _BALANCE_ROOTS = ("Assets:", "Liabilities:")
 _ACCRUAL_EVIDENCE_KIND = "expected_accrual_opening_recorded"
-_AUTHORIZATION_FIELDS = {"schema_version", "operation", "start_day", "entry_date", "entry_source_id",
-                         "entry_fingerprint", "accounts"}
+_AUTHORIZATION_FIELDS = {"schema_version", "operation", "policy_epoch", "start_day", "entry_date",
+                         "entry_source_id", "entry_fingerprint", "accounts"}
+#: The largest version or epoch that a JSON host reads exactly (2**53 - 1).
+_SAFE_INTEGER = 2 ** 53 - 1
+
+
+def _safe_version(value: Any) -> bool:
+    return type(value) is int and 1 <= value <= _SAFE_INTEGER
 _AUTHORIZED_ACCOUNT_FIELDS = {"account", "operation_id", "version"}
 
 
@@ -727,6 +746,13 @@ def _accrual_completion(context: DispositionContext, claim: Mapping[str, Any], o
       and payables included). Equity is left out.
     - Each of those accounts is ``authorized`` in the current policy with the cutover as its start and the next
       version. An account outside the policy is refused, never left out.
+    - The policy epoch of the request is at or after the epoch that the claim captured, and before the current
+      epoch: the request was made after the decision, and the publication that it authorized came after it.
+
+    The engine does not authenticate the ``operation_id`` values. It checks only that each one is non-empty text
+    and unique in the request, and it records them. It cannot prove from the policy which reviewed operation or
+    receipt each ID names. A trusted host must supply the immutable origin of the reviewed preview and its
+    evidence, and bind the request to it.
     """
     basis = claim["basis"]
     old = basis.get("policy") or {}
@@ -760,8 +786,14 @@ def _accrual_completion(context: DispositionContext, claim: Mapping[str, Any], o
         if first.entry_source_id != entry.source_id or first.entry_fingerprint != entry_fingerprint(entry):
             reasons.add("ACCRUAL_ENTRY_MISMATCH")
         mine = authorized.get(account)
-        if first.start_day.isoformat() != start or (mine is not None and mine.version != old.get("account_version")):
+        if (first.start_day.isoformat() != start or (mine is not None and mine.version != old.get("account_version"))
+                or not all(_safe_version(auth.version) for auth in request.openings)):
             reasons.add("ACCRUAL_AUTHORIZATION_STALE")
+        captured = captured_epoch(claim)
+        current = context.policy.epoch if context.policy is not None else None
+        if (captured is None or current is None or not captured <= request.policy.epoch < current
+                or request.policy.epoch > _SAFE_INTEGER):
+            reasons.add("ACCRUAL_AUTHORIZATION_EPOCH")
         for auth in request.openings:
             row = request.policy.accounts.get(auth.account)
             if (row is None or row.state != PENDING_OPENING or row.version != auth.version
@@ -778,7 +810,8 @@ def _accrual_completion(context: DispositionContext, claim: Mapping[str, Any], o
             reasons.add("ACCRUAL_ACCOUNT_NOT_GOVERNED")
     if reasons or request is None:
         return None, sorted(reasons)
-    return {"schema_version": PRIOR_DAY_REQUEST_SCHEMA_VERSION, "operation": PRIOR_DAY_OPERATION, "start_day": start,
+    return {"schema_version": PRIOR_DAY_REQUEST_SCHEMA_VERSION, "operation": PRIOR_DAY_OPERATION,
+            "policy_epoch": request.policy.epoch, "start_day": start,
             "entry_date": entry.date.isoformat(), "entry_source_id": entry.source_id,
             "entry_fingerprint": entry_fingerprint(entry),
             "accounts": [{"account": auth.account, "operation_id": auth.operation_id, "version": auth.version}
@@ -841,7 +874,7 @@ def _transition_evidence(claim: Mapping[str, Any], opening: Opening, version: in
 _OPENING_EVIDENCE_FIELDS = {"source_id", "date", "entry", "digest"}
 
 
-def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
+def _evidence_fits(claim: Mapping[str, Any], evidence: Any, context: DispositionContext | None = None) -> bool:
     """The evidence is well formed, intact, and was made for this exact claim and its expected version.
 
     Every nested field is checked: the opening must have exactly ``source_id``, ``date``, ``entry`` and ``digest``;
@@ -859,6 +892,8 @@ def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
     if evidence["schema_version"] != SCHEMA_VERSION or evidence["kind"] not in ("expected_opening_recorded",
                                                                                 _ACCRUAL_EVIDENCE_KIND):
         return False
+    if accrual and type(evidence["schema_version"]) is not int:
+        return False  # a bool or a float is not the integer schema version
     try:
         if evidence["evidence_digest"] != _sha({key: evidence[key] for key in names}):
             return False
@@ -878,7 +913,7 @@ def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
         return False
     kind = OPENING_KINDS.get(dict(entry.meta).get("import-source", ""))
     if accrual:
-        if kind != "accrual" or not _accrual_evidence_fits(claim, evidence, entry):
+        if kind != "accrual" or not _accrual_evidence_fits(claim, evidence, entry, context):
             return False
     elif kind not in ("statement", "quickbooks"):
         return False  # an accrual opening is never relabeled as a same-day completion
@@ -892,13 +927,17 @@ def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
             and evidence["account_version"] == version + 1)
 
 
-def _accrual_evidence_fits(claim: Mapping[str, Any], evidence: Mapping[str, Any], entry: Entry) -> bool:
+def _accrual_evidence_fits(claim: Mapping[str, Any], evidence: Mapping[str, Any], entry: Entry,
+                           context: DispositionContext | None = None) -> bool:
     """The authorization record and open date of accrual evidence fit the recorded entry and the claim.
 
     The record is version 3 ``accrual_opening_prior_day``. Its start is the evidence start, the entry is a fresh
     accrual opening dated the day before it, the source ID and fingerprint are the entry's, and the accounts are
-    exactly the Assets and Liabilities accounts of the entry, each one time with its own ``operation_id``. The
-    claim's account has the version that the claim captured. The open date is the one that the opening gives.
+    exactly the Assets and Liabilities accounts of the entry, each one time with its own ``operation_id`` and a
+    positive safe pending version. The claim's account has the version that the claim captured. The policy epoch is
+    at or after the captured epoch and before the current epoch. The open date is the one that the opening gives.
+    The current policy of every account is checked in :func:`evaluate` (:func:`_accrual_policy_holds`). The
+    ``operation_id`` values are not authenticated (see :func:`_accrual_completion`).
     """
     auth = evidence["authorization"]
     start = evidence["start_day"]
@@ -907,8 +946,13 @@ def _accrual_evidence_fits(claim: Mapping[str, Any], evidence: Mapping[str, Any]
     accounts = auth["accounts"]
     if not isinstance(accounts, list) or not all(
             isinstance(item, Mapping) and set(item) == _AUTHORIZED_ACCOUNT_FIELDS and isinstance(item["account"], str)
-            and isinstance(item["operation_id"], str) and bool(item["operation_id"]) and type(item["version"]) is int
+            and isinstance(item["operation_id"], str) and bool(item["operation_id"]) and _safe_version(item["version"])
             for item in accounts):
+        return False
+    epoch, captured = auth["policy_epoch"], captured_epoch(claim)
+    current = context.policy.epoch if context is not None and context.policy is not None else None
+    if (type(epoch) is not int or captured is None or epoch < captured or epoch > _SAFE_INTEGER
+            or (current is not None and epoch >= current)):
         return False
     cutover = _strict_day(start) if len(start) == 10 else None
     cutover = None if cutover == date.min else cutover
@@ -923,6 +967,19 @@ def _accrual_evidence_fits(claim: Mapping[str, Any], evidence: Mapping[str, Any]
             and len({item["operation_id"] for item in accounts}) == len(accounts)
             and len(mine) == 1 and mine[0]["version"] == version
             and evidence["open_date"] == _accrual_open_date(claim, entry))
+
+
+def _accrual_policy_holds(context: DispositionContext, evidence: Mapping[str, Any]) -> bool:
+    """Every account of recorded accrual evidence is still ``authorized`` at its start with the next version."""
+    policy = context.policy
+    if policy is None or not policy.enforced:
+        return False
+    for item in evidence["authorization"]["accounts"]:
+        row = policy.accounts.get(item["account"])
+        if (row is None or row.state != AUTHORIZED or row.start_day is None
+                or row.start_day.isoformat() != evidence["start_day"] or row.version != item["version"] + 1):
+            return False
+    return True
 
 
 #: Conflicts that the expected opening transition removes (they described the pending state) and adds.
@@ -1013,7 +1070,7 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
         proposed: dict[str, Any] | None = None
         transition = False
         if evidence is not None:
-            if not _evidence_fits(claim, evidence):
+            if not _evidence_fits(claim, evidence, context):
                 triggers.add("TRANSITION_EVIDENCE_INVALID")
             else:
                 recorded = {"mode": "enforced", "account_state": "authorized",
@@ -1024,6 +1081,8 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
                     triggers.add("OPENING_CHANGED")
                 if evidence["kind"] == _ACCRUAL_EVIDENCE_KIND:
                     expected_open = evidence["open_date"]
+                    if not _accrual_policy_holds(context, evidence):
+                        triggers.add("POLICY_CHANGED")
                 transition = True
         else:
             completion, record, reasons = _expected_completion(context, claim, opening_authorization)

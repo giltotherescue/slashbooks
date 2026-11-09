@@ -144,7 +144,7 @@ class AccrualOpeningCompletionTests(unittest.TestCase):
         self.assertEqual(evidence["opening"]["date"], "2026-06-30")
         self.assertEqual(evidence["open_date"], "2026-06-30")
         self.assertEqual(evidence["authorization"], {
-            "schema_version": 3, "operation": "accrual_opening_prior_day", "start_day": C,
+            "schema_version": 3, "operation": "accrual_opening_prior_day", "policy_epoch": 4, "start_day": C,
             "entry_date": "2026-06-30", "entry_source_id": self.entry.source_id,
             "entry_fingerprint": entry_fingerprint(self.entry),
             "accounts": [{"account": CHECKING, "operation_id": f"review-{CHECKING}", "version": 1},
@@ -198,6 +198,143 @@ class AccrualOpeningCompletionTests(unittest.TestCase):
                 result = self.evaluate(transitions={self.claim["preview_digest"]: bad})
                 # Evidence that does not fit is not used, so the open date is compared with the confirmed one too.
                 self.assertEqual(result["triggers"], ["OPEN_DATE_CHANGED", "TRANSITION_EVIDENCE_INVALID"], result)
+
+    # -- review blockers on 02a58b79 ----------------------------------------------------------------------------
+
+    def stored(self) -> dict:
+        return self.evaluate(authorization=self.v3())["transition_evidence"]
+
+    @staticmethod
+    def rehash(document: dict) -> dict:
+        body = {k: v for k, v in document.items() if k != "evidence_digest"}
+        return {**body, "evidence_digest": sd._sha(body)}
+
+    def replay(self, evidence: dict, context=None) -> dict:
+        return self.evaluate(context, transitions={self.claim["preview_digest"]: evidence})
+
+    def with_policy(self, document: dict) -> sd.DispositionContext:
+        return dataclasses.replace(self.after, policy=sd.parse_policy(document))
+
+    def test_blocker_1_stored_evidence_needs_positive_safe_pending_versions_on_every_row(self) -> None:
+        evidence = self.stored()
+        for version in (-1, 0, 7, 2 ** 53, True, "1"):
+            with self.subTest(version=version):
+                changed = json.loads(json.dumps(evidence))
+                changed["authorization"]["accounts"][1]["version"] = version
+                result = self.replay(self.rehash(changed))
+                self.assertEqual(result["status"], "invalidated", result)
+                # Version 7 is a safe version, so the current policy (receivable version 2, not 8) refuses it.
+                self.assertIn("POLICY_CHANGED" if version == 7 else "TRANSITION_EVIDENCE_INVALID", result["triggers"])
+                self.assertEqual(sd.excluded_source_ids([result]), [])
+
+    def test_blocker_1_stored_evidence_needs_every_governed_account_in_the_current_policy(self) -> None:
+        evidence = self.stored()
+        self.assertEqual(self.replay(evidence)["status"], "resolved")
+        removed = self.with_policy(policy("authorized", 2, 6, [CHECKING]))
+        drift = self.with_policy({**policy("authorized", 2, 6), "accounts": {
+            **account_rows("authorized", 2, [CHECKING]), **account_rows("authorized", 3, [RECEIVABLE])}})
+        moved = self.with_policy({**policy("authorized", 2, 6), "accounts": {
+            **account_rows("authorized", 2, [CHECKING]),
+            RECEIVABLE: {"state": "authorized", "start_day": "2026-08-01", "version": 2}}})
+        for name, context in (("receivable removed", removed), ("receivable version advanced", drift),
+                              ("receivable start moved", moved)):
+            with self.subTest(name):
+                result = self.replay(evidence, context)
+                self.assertEqual(result["status"], "invalidated", result)
+                self.assertIn("POLICY_CHANGED", result["triggers"])
+                self.assertEqual(sd.excluded_source_ids([result]), [])
+
+    def test_blocker_2_the_accrual_envelope_needs_an_integer_schema_version(self) -> None:
+        evidence = self.stored()
+        for value in (True, 1.0, "1"):
+            with self.subTest(value=value):
+                result = self.replay(self.rehash({**evidence, "schema_version": value}))
+                self.assertIn("TRANSITION_EVIDENCE_INVALID", result["triggers"])
+                self.assertEqual(sd.excluded_source_ids([result]), [])
+
+    def test_blocker_3_the_request_epoch_is_between_the_captured_and_the_current_epoch(self) -> None:
+        self.assertEqual(self.evaluate(authorization=self.v3())["transition_evidence"]["authorization"]
+                         ["policy_epoch"], 4)
+        for name, epoch in (("stale", 3), ("current", 5), ("future", 999)):
+            with self.subTest(name):
+                request = self.v3()
+                request["policy"]["epoch"] = epoch
+                self.assert_refused(self.evaluate(authorization=request), "ACCRUAL_AUTHORIZATION_EPOCH")
+        evidence = self.stored()
+        for epoch in (3, 5):
+            with self.subTest(recorded=epoch):
+                changed = json.loads(json.dumps(evidence))
+                changed["authorization"]["policy_epoch"] = epoch
+                self.assertIn("TRANSITION_EVIDENCE_INVALID", self.replay(self.rehash(changed))["triggers"])
+
+    def test_blocker_4_operation_ids_are_recorded_and_not_authenticated(self) -> None:
+        """The engine only checks that each operation ID is non-empty text and unique in the record.
+
+        It cannot authenticate the IDs against the policy. A trusted host must supply the immutable origin.
+        """
+        evidence = json.loads(json.dumps(self.stored()))
+        evidence["authorization"]["accounts"][1]["operation_id"] = "another-receipt"
+        self.assertEqual(self.replay(self.rehash(evidence))["status"], "resolved")
+        evidence["authorization"]["accounts"][1]["operation_id"] = f"review-{CHECKING}"
+        self.assertIn("TRANSITION_EVIDENCE_INVALID", self.replay(self.rehash(evidence))["triggers"])
+        self.assertIn("does not authenticate", sd._accrual_completion.__doc__)
+
+    def test_item_d_a_decision_previewed_with_the_opening_live_resolves_unchanged(self) -> None:
+        live = sd.confirm(self.after, sd.preview(self.after, ROW, "outside_books")["claim"])["claim"]
+        self.assertEqual(live["basis"]["opening"]["kind"], "accrual")
+        self.assertEqual(live["conflicts"], ["OPENING_AFTER_ROW"])
+        result = sd.evaluate(self.after, [live])[0]
+        self.assertEqual((result["status"], result["triggers"], result["transition_evidence"]),
+                         ("resolved", [], None))
+        # A decision stored by an earlier engine read the accrual opening as booked lines (no opening). It is
+        # invalidated, and a person reviews it again.
+        facts = [{"source_id": self.entry.source_id, "account": p.account, "date": "2026-06-30",
+                  "amount": str(p.amount)} for p in self.entry.postings]
+        earlier = dataclasses.replace(self.after, openings=(), booked=tuple(
+            sd.Booked(f["source_id"], f["account"], date(2026, 6, 30), f["amount"]) for f in facts))
+        old = sd.confirm(earlier, sd.preview(earlier, ROW, "outside_books")["claim"])["claim"]
+        self.assertIsNone(old["basis"]["opening"])
+        result = sd.evaluate(self.after, [old])[0]
+        self.assertEqual((result["status"], result["triggers"]), ("invalidated", ["OPENING_CHANGED"]))
+
+    def opened_with(self, operation_id: str) -> tuple[Path, Entry]:
+        """A copy of the base books with the same native opening, applied with another ``operation_id``."""
+        folder = Path(self.tmp.name) / f"collision-{len(list(Path(self.tmp.name).iterdir()))}"
+        shutil.copytree(self.base, folder)
+        plan = opening.preview_opening(load_entity(folder), {**self.plan["request"], "operation_id": operation_id})
+        opening.apply_opening(load_entity(folder), plan)
+        (entry,) = LedgerStore(folder / "ledger.sqlite").load_entries()
+        return folder, entry
+
+    def test_blocker_6_an_opening_source_id_that_names_the_row_is_booked(self) -> None:
+        """The accrual opening's source ID records the row, so the row is never left out as outside_books."""
+        for operation_id in (ROW, ROW.removeprefix("banksync:")):
+            with self.subTest(operation_id=operation_id):
+                folder, entry = self.opened_with(operation_id)
+                self.assertEqual(entry.source_id, operation_id)
+                context = sd.load_context(folder, AUTHORIZED)
+                first = self.evaluate(context, authorization=self.v3(entry=entry))
+                self.assertEqual(first["status"], "invalidated", first)
+                self.assertIn("DISPOSED_ROW_BOOKED", first["triggers"])
+                self.assertIsNone(first["transition_evidence"])
+                self.assertEqual(sd.excluded_source_ids([first]), [])
+                index = sd.ResolvedIdentityIndex(context, sd.recorded_source_ids(folder))
+                self.assertIsNone(index.unique_unrecorded_row(sd.source_id_variants(ROW)))
+                self.assertIsNone(sd.resolved_identity(index, self.claim, {**first, "status": "resolved"}))
+                fresh = sd.preview(context, ROW, "outside_books")
+                self.assertEqual((fresh["status"], fresh["reason"]), ("refused", "already_booked"))
+                # The opening is still read as the accrual opening of both accounts.
+                self.assertEqual({o.account for o in context.openings}, {CHECKING, RECEIVABLE})
+
+    def test_blocker_6_an_unrelated_opening_source_id_still_resolves(self) -> None:
+        folder, entry = self.opened_with("unrelated-accrual-opening")
+        context = sd.load_context(folder, AUTHORIZED)
+        first = self.evaluate(context, authorization=self.v3(entry=entry))
+        self.assertEqual((first["status"], first["triggers"]), ("transition_pending", []), first)
+        done = self.evaluate(context, {self.claim["preview_digest"]: first["transition_evidence"]})
+        self.assertEqual(done["status"], "resolved")
+        index = sd.ResolvedIdentityIndex(context, sd.recorded_source_ids(folder))
+        self.assertEqual(sd.resolved_identity(index, self.claim, done)["source_id"], ROW)
 
     # -- refusals -----------------------------------------------------------------------------------------------
 
@@ -283,19 +420,22 @@ class AccrualOpeningCompletionTests(unittest.TestCase):
         self.assertEqual(result["status"], "invalidated")
         self.assertIn("POLICY_CHANGED", result["triggers"])
 
-    def test_the_authorization_does_not_change_a_statement_completion(self) -> None:
-        statement = Entry(date=date(2026, 7, 1), narration="Opening balance",
-                          meta=(("source-id", "statement-opening-s1"), ("import-source", "statement-opening"),
-                                ("statement-id", "s1")),
-                          postings=(Posting(CHECKING, self.entry.postings[0].amount, "USD"),
-                                    Posting(EQUITY, -self.entry.postings[0].amount, "USD")))
-        context = dataclasses.replace(self.with_entry(statement),
-                                      open_dates={**self.after.open_dates, CHECKING: date(2026, 7, 1)})
-        plain = self.evaluate(context)
-        self.assertEqual((plain["status"], plain["transition_evidence"]["kind"]),
-                         ("transition_pending", "expected_opening_recorded"))
-        self.assertEqual(self.evaluate(context, authorization=self.v3()), plain)
-
+    def test_the_authorization_does_not_change_a_statement_or_quickbooks_completion(self) -> None:
+        amount = self.entry.postings[0].amount
+        for kind, extra in (("statement-opening", (("statement-id", "s1"),)), ("quickbooks-opening", ())):
+            with self.subTest(kind):
+                same_day = Entry(date=date(2026, 7, 1), narration="Opening balance",
+                                 meta=(("source-id", ROW if kind == "statement-opening" else f"{kind}-one"),
+                                       ("import-source", kind), *extra),
+                                 postings=(Posting(CHECKING, amount, "USD"), Posting(EQUITY, -amount, "USD")))
+                context = dataclasses.replace(self.with_entry(same_day),
+                                              open_dates={**self.after.open_dates, CHECKING: date(2026, 7, 1)})
+                plain = self.evaluate(context)
+                self.assertEqual((plain["status"], plain["transition_evidence"]["kind"]),
+                                 ("transition_pending", "expected_opening_recorded"))
+                self.assertEqual(self.evaluate(context, authorization=self.v3()), plain)
+                done = self.evaluate(context, {self.claim["preview_digest"]: plain["transition_evidence"]})
+                self.assertEqual(done["status"], "resolved")
 
 if __name__ == "__main__":
     unittest.main()
