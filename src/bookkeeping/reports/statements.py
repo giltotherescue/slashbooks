@@ -340,6 +340,8 @@ def profit_and_loss(
     from_date: date,
     to_date: date,
     basis: Optional[str] = None,
+    *,
+    action_entity: Optional[str] = None,
 ) -> StatementResult:
     """Compute profit and loss for the period [from_date, to_date] inclusive.
 
@@ -362,11 +364,12 @@ def profit_and_loss(
         # default view explicitly, so a person still gets the derived cash view by default.
         derive = basis == "cash" and (default == "accrual" or (capable and has_accrual_records(conn)))
         if not derive:
-            return _compute_pnl(conn, from_date, to_date, view=basis if basis and basis != default else None)
+            return _compute_pnl(conn, from_date, to_date, view=basis if basis and basis != default else None,
+                                action_entity=action_entity)
     finally:
         conn.close()
     from .cashview import profit_and_loss as cash_view
-    return cash_view(entity_path, from_date, to_date)
+    return cash_view(entity_path, from_date, to_date, action_entity=action_entity)
 
 
 def journal_coverage_view() -> str:
@@ -381,11 +384,11 @@ def journal_coverage_view() -> str:
 
 
 def _metadata_for(conn: Any, kind: str, start: Optional[date], end: date, view: Optional[str],
-                  coverage_view: Optional[str]) -> dict[str, Any]:
+                  coverage_view: Optional[str], *, action_entity: Optional[str] = None) -> dict[str, Any]:
     """Coverage metadata of a statement. A journal output of a period that ends before the tracking start says it is cash basis."""
     from ..accrual.reports import financial_metadata
     from ..accrual.scope import tracking_start
-    metadata = _stamp_view(financial_metadata(conn, kind, start, end, coverage_view or view), view)
+    metadata = _stamp_view(financial_metadata(conn, kind, start, end, coverage_view or view, action_entity=action_entity), view)
     first = tracking_start(conn)
     if coverage_view == "cash" and not view and first and end.isoformat() < first:
         metadata["basis"] = "cash"
@@ -499,14 +502,14 @@ def _kept_basis(entity_path: Path) -> Optional[str]:
 
 
 def _compute_pnl(conn: Any, from_date: date, to_date: date, view: Optional[str] = None,
-                 coverage_view: Optional[str] = None) -> StatementResult:
+                 coverage_view: Optional[str] = None, *, action_entity: Optional[str] = None) -> StatementResult:
     """``coverage_view`` is the view whose coverage rule applies. Readers of the journal (the cash flow statement,
     the package) pass "cash": before the tracking start the journal is the cash books, so they never refuse a range
     that crosses it."""
     if from_date > to_date:
         raise ValueError("Report start date must be on or before end date.")
     presentation = chart_presentation.read(conn)
-    metadata = _metadata_for(conn, "pnl", from_date, to_date, view, coverage_view)
+    metadata = _metadata_for(conn, "pnl", from_date, to_date, view, coverage_view, action_entity=action_entity)
     balances = _account_balances_in_range(conn, from_date, to_date)
 
     # Income: credit-normal → positive balance means credit → income positive
@@ -565,6 +568,8 @@ def balance_sheet(
     as_of: date,
     view: Optional[str] = None,
     journal: bool = False,
+    *,
+    action_entity: Optional[str] = None,
 ) -> StatementResult:
     """Compute balance sheet as of *as_of* (end-of-day). ``view`` is None (the default view) or a view to show.
 
@@ -575,7 +580,8 @@ def balance_sheet(
         from ..entity import load_entity
         return _compute_balance_sheet(conn, as_of, _statement_view(conn, "balance sheet", view),
                                       fiscal_year_start=load_entity(entity_path).entity_config.get("fiscal_year_start"),
-                                      coverage_view=journal_coverage_view() if journal and view != "accrual" else None)
+                                      coverage_view=journal_coverage_view() if journal and view != "accrual" else None,
+                                      action_entity=action_entity)
     finally:
         conn.close()
 
@@ -619,11 +625,12 @@ def _earnings(balances: dict[str, Decimal], start: Decimal = Decimal("0.00")) ->
 
 def _compute_balance_sheet(conn: Any, as_of: date, view: Optional[str] = None,
                            coverage_view: Optional[str] = None, fiscal_year_start: Optional[str] = None,
-                           close_all_views: bool = True) -> StatementResult:
+                           close_all_views: bool = True, *, action_entity: Optional[str] = None) -> StatementResult:
     """``close_all_views`` False keeps the layout from before the fiscal-year split applied to every view: only the
     accrual view splits. The migration bundle uses it so that its report fingerprints stay the same."""
     presentation = chart_presentation.read(conn)
-    metadata = _label_recorded_balances(conn, _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view), as_of, view)
+    metadata = _metadata_for(conn, "balance_sheet", None, as_of, view, coverage_view, action_entity=action_entity)
+    metadata = _label_recorded_balances(conn, metadata, as_of, view)
     balances = _account_balances_as_of(conn, as_of)
 
     # Net income from inception through as_of. The fiscal-year split below divides it in two.
@@ -726,6 +733,8 @@ def trial_balance(
     as_of: date,
     view: Optional[str] = None,
     journal: bool = False,
+    *,
+    action_entity: Optional[str] = None,
 ) -> StatementResult:
     """Compute trial balance as of *as_of*. ``view`` is None (the default view) or a view to show.
 
@@ -736,19 +745,21 @@ def trial_balance(
         from ..entity import load_entity
         return _compute_trial_balance(conn, as_of, _statement_view(conn, "trial balance", view),
                                       coverage_view=journal_coverage_view() if journal and view != "accrual" else None,
-                                      fiscal_year_start=load_entity(entity_path).entity_config.get("fiscal_year_start"))
+                                      fiscal_year_start=load_entity(entity_path).entity_config.get("fiscal_year_start"),
+                                      action_entity=action_entity)
     finally:
         conn.close()
 
 
 def _compute_trial_balance(conn: Any, as_of: date, view: Optional[str] = None,
                            coverage_view: Optional[str] = None, fiscal_year_start: Optional[str] = None,
-                           close_all_views: bool = True) -> StatementResult:
+                           close_all_views: bool = True, *, action_entity: Optional[str] = None) -> StatementResult:
     """Income and expense accounts show the current fiscal year. Earlier years' income less expenses is one computed
     row, "Retained earnings from prior fiscal activity", so debits still equal credits. ``close_all_views`` False keeps
     the earlier life-to-date layout for the migration bundle's report fingerprints."""
     presentation = chart_presentation.read(conn)
-    metadata = _label_recorded_balances(conn, _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view), as_of, view)
+    metadata = _metadata_for(conn, "trial_balance", None, as_of, view, coverage_view, action_entity=action_entity)
+    metadata = _label_recorded_balances(conn, metadata, as_of, view)
     balances = _account_balances_as_of(conn, as_of)
     prior = Decimal("0.00")
     moved = False

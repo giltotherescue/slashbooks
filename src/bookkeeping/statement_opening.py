@@ -294,8 +294,9 @@ def _opening_exclusions(
     entity_path: Path, basis: OpeningDispositionBasis, account: str, start: date,
 ) -> dict[tuple[str, str], JsonObject]:
     from .ledger.books_policy import PENDING_OPENING
-    from .source_disposition import _mapping, confirm, evaluate, load_context, row_identity
-    from .source_ids import source_id_variants
+    from .source_disposition import (
+        ResolvedIdentityIndex, _find_row, _mapping, confirm, evaluate, load_context, recorded_source_ids, resolved_identity,
+    )
 
     context = load_context(entity_path, basis.policy)
     policy = context.policy
@@ -306,20 +307,18 @@ def _opening_exclusions(
     if opened is None or opened > start:
         raise ValueError("The reviewed opening would change the account's catalog open date.")
 
-    # A confirmed claim must name exactly one native staged row, including all
-    # its supported aliases. Never choose one of two competing spellings.
-    rows: dict[str, list[Mapping[str, Any]]] = {}
     for row in context.rows:
         source = row.get("id")
         if not isinstance(source, str) or not source or _mapping(context, row)[0] is None:
             raise ValueError("The staged source row cannot be identified and mapped.")
-        for spelling in source_id_variants(source):
-            rows.setdefault(spelling, []).append(row)
+    # A confirmed claim must name exactly one native staged row, including all
+    # its supported aliases, that the books have not booked or recorded. The
+    # shared rule (``resolved_identity``) never chooses one of two spellings.
+    index = ResolvedIdentityIndex(context, recorded_source_ids(entity_path))
     excluded: dict[tuple[str, str], JsonObject] = {}
     for claim, result in zip(basis.claims, evaluate(context, basis.claims), strict=True):
-        matches = rows.get(claim["source_id"], [])
-        if (result["status"] != "resolved" or claim["state"] != "outside_books"
-                or claim["basis"].get("account") != account or len(matches) != 1):
+        row = resolved_identity(index, claim, result)
+        if row is None or claim["basis"].get("account") != account:
             raise ValueError("The outside-books decision does not resolve for this opening.")
         # A different account may have advanced the company epoch since this
         # decision. Check the exact original preview using its captured epoch.
@@ -329,14 +328,15 @@ def _opening_exclusions(
         captured = dataclass_replace(context, policy=dataclass_replace(policy, epoch=captured_epoch))
         if confirm(captured, claim).get("claim") != claim:
             raise ValueError("The outside-books decision does not match its preview.")
-        row = row_identity(matches[0])
         key = (row["source_id"], row["row_digest"])
-        if key in excluded or row["row_digest"] != claim["row_digest"]:
+        if key in excluded:
             raise ValueError("The outside-books source does not match the retained row.")
-        statement_id = matches[0].get("statementId")
+        staged = _find_row(context, row["source_id"])
+        assert staged is not None
+        statement_id = staged.get("statementId")
         excluded[key] = {"source_id": key[0], "row_digest": key[1], "preview_digest": claim["preview_digest"],
                          "statement_id": statement_id if isinstance(statement_id, str) else None,
-                         "date": matches[0]["date"][:10]}
+                         "date": staged["date"][:10]}
     return excluded
 
 

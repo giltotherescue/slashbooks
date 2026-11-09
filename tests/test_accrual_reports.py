@@ -6,6 +6,7 @@ import json
 import csv
 import io
 from pathlib import Path
+import shutil
 import unittest
 
 from bookkeeping.accrual import journals, items, migration, reports, schedules
@@ -315,3 +316,26 @@ class AccrualReportsTests(unittest.TestCase):
         assessment = assess_review_readiness(self.root, "2026-07", local_dependency_versions(self.root), as_of=date(2026, 8, 2)).to_document()
         self.assertTrue(any(i["code"] == "control_balance_unreconciled" for i in assessment["blockers"]))
         self.assertTrue(any(i["code"] == "recognition_due" for i in assessment["blockers"]))
+
+    def test_portable_readiness_keeps_native_accrual_actions_across_roots(self):
+        self.opening()
+        self.journal("unsupported-accrual", "2026-07-15", [("Expenses:Operating-Costs", "25.00"),
+                                                           ("Liabilities:Other:Payroll-Payable", "-25.00")])
+        copied = self.root.parent / "same-accrual-books"
+        shutil.copytree(self.root, copied)
+        versions = local_dependency_versions(self.root)
+        as_of = date(2026, 8, 2)
+        original = assess_review_readiness(self.root, "2026-07", versions, as_of=as_of, portable_actions=True).to_document()
+        relocated = assess_review_readiness(copied, "2026-07", versions, as_of=as_of, portable_actions=True).to_document()
+        self.assertEqual(original, relocated)
+        actions = {item["code"]: item["action"] for item in original["blockers"] if "action" in item}
+        self.assertIn("books accrual support preview --entity @entity", actions["control_balance_unreconciled"])
+        self.assertIn("books accrual schedule due-preview --entity @entity", actions["recognition_due"])
+        self.assertNotIn(str(self.root.resolve()), json.dumps(original))
+        with self.store.connection() as conn:
+            evidence = next(iter(reports.opening_coverage(conn)["source_paths"].values()))
+        (copied / evidence).unlink()
+        changed = assess_review_readiness(copied, "2026-07", versions, as_of=as_of, portable_actions=True).to_document()
+        blocker = next(b for b in changed["blockers"] if b["code"] == "supporting_evidence_changed" and evidence in b["refs"])
+        self.assertIn("inside @entity", blocker["action"])
+        self.assertNotEqual(changed["package_id"], original["package_id"])
