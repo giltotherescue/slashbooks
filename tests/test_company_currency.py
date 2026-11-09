@@ -906,9 +906,16 @@ class SecondReviewTests(CompanyTestCase):
         from bookkeeping import compare
         self.set_currency("EUR")
         seen = []
-        with patch.object(compare, "_compare_period", side_effect=lambda *a, **k: seen.append(currency._REPORT_CURRENCY.get())):
-            compare.compare_period(self.entity(), self.root, date(2026, 1, 1), date(2026, 1, 31))
+
+        def fake_compare(entity, qb_folder, from_date, to_date, *args, **kwargs):
+            # Record the report currency, and keep the real contract: _compare_period returns a ComparisonReport.
+            seen.append(currency._REPORT_CURRENCY.get())
+            return compare.ComparisonReport(from_date=from_date, to_date=to_date)
+
+        with patch.object(compare, "_compare_period", side_effect=fake_compare):
+            report = compare.compare_period(self.entity(), self.root, date(2026, 1, 1), date(2026, 1, 31))
         self.assertEqual(seen, ["EUR"])
+        self.assertIsInstance(report, compare.ComparisonReport)
 
 
 class MigrationBundleTests(unittest.TestCase):
