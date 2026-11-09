@@ -1483,24 +1483,68 @@ def compare_period(
     """Read the QuickBooks reports in the company currency; see ``_compare_period``.
 
     With ``persist_differences=False`` the saved dispositions are still read and merged, so the report is the same,
-    but differences.json is not written. ``reference_digest`` (see :func:`reference_digest`) is set when the
-    reference files were the same before and after the compare. A typed review sends it back.
+    but differences.json is not written.
+
+    The compare reads each reference file one time into a private snapshot and compares only the snapshot, so
+    ``reference_digest`` (see :func:`reference_digest`) describes exactly the compared bytes. A typed review sends
+    it back. Paths in the report name the original folder. The snapshot is removed in every path, and the original
+    files are never changed. When a file cannot be read, the folder itself is compared and there is no digest.
     """
     from .currency import report_currency
-    before = _folder_digest_or_none(qb_folder)
-    with report_currency(entity.currency):
-        report = _compare_period(entity, qb_folder, from_date, to_date, view, persist_differences)
-    # The digest describes the compared bytes only when the files were the same before and after the compare.
-    if before is not None and before == _folder_digest_or_none(qb_folder):
-        report.reference_digest = before
-    return report
-
-
-def _folder_digest_or_none(qb_folder: Path) -> Optional[str]:
+    folder = Path(qb_folder)
+    snapshot = Path(tempfile.mkdtemp(prefix="books-reference-")) if folder.is_dir() else None
     try:
-        return reference_digest(qb_folder)
-    except OSError:
-        return None
+        digest = None
+        if snapshot is not None:
+            try:
+                digest = _snapshot_reference(folder, snapshot)
+            except OSError:
+                digest = None  # A file that cannot be read: compare the folder itself, with no digest.
+        with report_currency(entity.currency):
+            report = _compare_period(entity, snapshot if digest else qb_folder, from_date, to_date, view,
+                                     persist_differences)
+        if digest:
+            # Every path in the report names the original folder, never the private snapshot.
+            _unsnapshot(report, snapshot, qb_folder)
+            report.reference_digest = digest
+        return report
+    finally:
+        if snapshot is not None:
+            shutil.rmtree(snapshot, ignore_errors=True)
+
+
+def _snapshot_prefixes(snapshot: Path) -> list[str]:
+    """The spellings of a snapshot path (for example /var and /private/var on macOS), longest first."""
+    return sorted({str(snapshot), str(snapshot.resolve())}, key=len, reverse=True)
+
+
+def _unsnapshot(value: Any, snapshot: Path, original: Path) -> Any:
+    """Replace the snapshot folder with the original folder in every string and path of ``value``, in place."""
+    prefixes, target = _snapshot_prefixes(snapshot), str(original)
+
+    def walk(item: Any) -> Any:
+        if isinstance(item, str):
+            for prefix in prefixes:
+                item = item.replace(prefix, target)
+            return item
+        if isinstance(item, Path):
+            return Path(walk(str(item)))
+        if isinstance(item, list):
+            return [walk(x) for x in item]
+        if isinstance(item, tuple):
+            return tuple(walk(x) for x in item)
+        if isinstance(item, dict):
+            return {walk(k): walk(v) for k, v in item.items()}
+        if dataclasses.is_dataclass(item) and not isinstance(item, type):
+            changes = {f.name: walk(getattr(item, f.name)) for f in dataclasses.fields(item)}
+            if item.__dataclass_params__.frozen:
+                return dataclasses.replace(item, **changes)
+            for name, new in changes.items():
+                setattr(item, name, new)
+            return item
+        return item
+
+    return walk(value)
 
 
 def _compare_period(
@@ -2928,7 +2972,7 @@ def _review_locked(entity_path: Path, folder: Path, parsed: dict, key: str) -> d
     if current is None:
         if report.errors:
             raise _ReviewRefusal("COMPARE_INCOMPLETE", "The compare reported errors, so the difference was not found.",
-                                 errors=[error.replace(str(snapshot), str(folder)) for error in report.errors])
+                                 errors=_unsnapshot(list(report.errors), snapshot, folder))
         raise _ReviewRefusal("DIFFERENCE_NOT_FOUND", "The compare of this period has no such difference.")
     changed = [name for name in ("ours", "reference", "delta") if parsed[name] != getattr(current, name)]
     if parsed["category"] != current.category:

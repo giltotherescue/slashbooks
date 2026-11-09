@@ -35,7 +35,10 @@
   creates the file when necessary), and every other row keeps its bytes. A
   saved file that is not in the exact form that the engine writes is refused,
   so no field is lost. The request also binds `reference_digest`, a digest of
-  the reference files that `books compare period` now returns. The review
+  the reference files that `books compare period` now returns. The compare
+  reads each reference file one time into a private snapshot and compares only
+  that snapshot, so its digest describes exactly the compared bytes; paths in
+  its output still name the original folder. The review
   copies each reference file one time into a private snapshot, refuses with
   `REFERENCE_CHANGED` when the digest of the copy is different, and compares
   only the copy, so the record never mixes amounts and a digest of different

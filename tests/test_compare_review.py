@@ -663,14 +663,104 @@ class TestReferenceSnapshot(_Companies):
                             self.review(request, qb_folder=folder)
                     else:
                         self.review(request, qb_folder=folder)
-                self.assertEqual(len(made), 1)
-                self.assertFalse(made[0].exists())
+                # The review makes its snapshot, and its compare a private copy of that snapshot.
+                self.assertGreaterEqual(len(made), 1)
+                self.assertTrue(all(not path.exists() for path in made))
                 self.assertEqual(_tree_state(folder), originals)
         # An invalid request makes no snapshot.
         made.clear()
         with factory:
             self.review(_request(schema_version=999), qb_folder=folder)
         self.assertEqual(made, [])
+
+
+class TestCompareSnapshot(_Companies):
+    """``compare period`` compares the same private snapshot that its reference_digest describes."""
+
+    def compare(self, folder: Path, persist: bool = False):
+        from bookkeeping.compare import compare_period
+        from bookkeeping.entity import load_entity
+        return compare_period(load_entity(self.path), folder, _FROM, _TO, persist_differences=persist)
+
+    def test_a_change_and_restore_during_the_compare_cannot_give_a_false_digest(self):
+        from bookkeeping import compare
+        folder = self.qb_copy()
+        path = folder / "profit_and_loss.csv"
+        original = path.read_bytes()
+        expected = _digest(folder)
+        native = compare._compare_period
+
+        def race(*args, **kwargs):
+            path.write_bytes(original.replace(b'Consulting Revenue,"10000.00"', b'Consulting Revenue,"10010.00"'))
+            try:
+                return native(*args, **kwargs)
+            finally:
+                path.write_bytes(original)
+
+        with patch.object(compare, "_compare_period", side_effect=race):
+            report = self.compare(folder)
+        row = next(d for d in report.material_diffs if d.key == _KEY)
+        self.assertEqual((str(row.reference), report.reference_digest), ("10000.00", expected))
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_no_snapshot_path_appears_in_output_errors_or_records(self):
+        import dataclasses
+        from bookkeeping import compare
+        folder = self.qb_copy()
+
+        def unreadable(entity, qb_folder, *args, **kwargs):
+            raise ValueError(f"Could not read {Path(qb_folder) / 'general_ledger.csv'}")
+
+        with patch.object(compare, "_compare_gl_counts", side_effect=unreadable):
+            report = self.compare(folder, persist=True)
+            code, out, err = run_cli(["compare", "period", "--entity", str(self.path), "--qb-folder", str(folder),
+                                      "--from", str(_FROM), "--to", str(_TO), "--json", "--no-save-differences"])
+            text_code, text_out, _ = run_cli(["compare", "period", "--entity", str(self.path), "--qb-folder",
+                                              str(folder), "--from", str(_FROM), "--to", str(_TO),
+                                              "--no-save-differences"])
+            review = self.review(_request(grain="gl-count", account="Assets:Bank:Checking", ours="0", reference="6",
+                                          delta="-6", category="judgment-mapping",
+                                          reference_digest=_digest(folder)), qb_folder=folder)
+        self.assertEqual((code, text_code), (0, 0), err)
+        self.assertIn(f"GL count comparison error: Could not read {folder / 'general_ledger.csv'}", report.errors)
+        self.assertEqual(self.assert_refused(review, "COMPARE_INCOMPLETE")["errors"], report.errors)
+        self.assertTrue(all(slot.file is None or slot.file.startswith(str(folder)) for slot in report.readiness.slots))
+        outputs = {
+            "report": json.dumps(report.to_dict()),
+            "readiness": json.dumps(dataclasses.asdict(report.readiness), default=str),
+            "json output": out, "text output": text_out, "review": json.dumps(review),
+            "saved differences": self.differences.read_text(encoding="utf-8"),
+        }
+        for name, text in outputs.items():
+            with self.subTest(output=name):
+                self.assertNotIn("books-reference-", text)
+        self.assertIn(str(folder), outputs["json output"])
+
+    def test_the_compare_snapshot_is_removed_in_every_path(self):
+        from bookkeeping import compare
+        folder = self.qb_copy()
+        originals = _tree_state(folder)
+        made = []
+        real = compare.tempfile.mkdtemp
+
+        def mkdtemp(*args, **kwargs):
+            made.append(Path(real(*args, **kwargs)))
+            return str(made[-1])
+
+        for name, error in (("read-only", None), ("saving", None), ("error", RuntimeError("compare failed"))):
+            with self.subTest(case=name):
+                made.clear()
+                with patch("bookkeeping.compare.tempfile.mkdtemp", side_effect=mkdtemp), contextlib.ExitStack() as stack:
+                    if error is not None:
+                        stack.enter_context(patch.object(compare, "_compare_period", side_effect=error))
+                        with self.assertRaises(RuntimeError):
+                            self.compare(folder)
+                    else:
+                        report = self.compare(folder, persist=name == "saving")
+                        self.assertEqual(report.reference_digest, _digest(folder))
+                self.assertEqual(len(made), 1)
+                self.assertFalse(made[0].exists())
+                self.assertEqual(_tree_state(folder), originals)
 
 
 class TestRepairControls(_Companies):

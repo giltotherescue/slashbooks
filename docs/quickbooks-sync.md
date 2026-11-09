@@ -117,10 +117,14 @@ or every possible transaction-detail layout.
 compare without a write. The command still reads the saved decisions, and its
 output is the same.
 
-`books compare period` also returns `reference_digest` when the reference files
-were the same before and after the compare. It is the SHA-256 of the name and
-the SHA-256 of each QuickBooks export file in the reference folder. The folder
-path is not part of it.
+`books compare period` reads each QuickBooks export file of the reference
+folder one time into a private snapshot, and compares only that snapshot. It
+returns `reference_digest`, the SHA-256 of the name and the SHA-256 of each
+snapshot file, so the digest describes exactly the bytes that were compared.
+The folder path is not part of the digest. Paths in the output and the errors
+name the original folder. The command removes the snapshot in every path, and
+it never changes the original files. If a reference file cannot be read, the
+command compares the folder itself and returns no `reference_digest`.
 
 `books compare period` also returns `summary` (`accounts_compared`, `matched`, `differs`, and the same three counts per grain `pnl`, `bs` and `tb`) and a `matched` list of rows with no difference. The cash-basis `tb` grain compares two totals, so it is counted only under `grains.tb`, which adds the reference `total_debits`, `total_credits` and `balanced`.
 
