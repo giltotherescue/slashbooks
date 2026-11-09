@@ -21,6 +21,21 @@
   change. `python -I -m bookkeeping.opening_presentation show --request R.json
   --entity DIR` does the same check and reads the financial kinds read-only.
 
+- Add `books compare review-diff` and `review_difference()`, a typed review of
+  one QuickBooks comparison difference (request version 1). The request binds
+  the period and the exact difference (grain, account, ours, reference, delta
+  and category), the reviewer, the explanation and an optional `reviewed_at`.
+  Under the company lock, the engine compares the period again, read-only, and
+  accepts only when the difference is the same. Otherwise it refuses with a
+  typed `code`, for example `DIFFERENCE_CHANGED`, `DIFFERENCE_NOT_FOUND`,
+  `DIFFERENCES_FILE_MISSING`, `DIFFERENCES_FILE_CORRUPT` or
+  `ALREADY_ACCEPTED`. The engine reads no clock and sets no reviewer, so the
+  same inputs write the same bytes. An exact retry returns the same result and
+  writes nothing. A successful review clears `re_opened`. A later compare keeps
+  the review and lists the reviewed fields that changed in `review_drift`, also
+  when the change is not material. `books compare accept-diff` does not change,
+  and records without a typed review keep their released shape. See
+  [docs/quickbooks-sync.md](docs/quickbooks-sync.md).
 - `books qb sync-import` now shows which QuickBooks accounts need a reviewed
   financial kind. Each active Assets or Liabilities account in the result's
   `accounts` has `financial_kind`: `{required, kind, allowed}`. `required` is
