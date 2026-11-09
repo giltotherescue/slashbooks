@@ -314,7 +314,7 @@ python -I -m bookkeeping.ledger.books_policy_check check --request REQUEST.json 
 ```
 
 `REQUEST.json` comes from the host's own copy of the policy for the job:
-`{"schema_version": 1, "policy": {...}, "scope": [ledger accounts],
+`{"schema_version": 2, "policy": {...}, "scope": [ledger accounts],
 "opening_authorizations": [...]}`. The check reads no environment variable. It
 refuses a proposed ledger that drops or edits an entry that is already published
 (`BOOKS_LEDGER_HISTORY_CHANGED`). An entry is compared on every entry and
@@ -331,15 +331,52 @@ entry reverses that entry already, and no other added entry claims it. A
 reversal of an entry that is not published yet is checked like any entry.
 
 An opening on an account in `authorized_pending_opening` passes only when the
-host gives an opening authorization that matches the entry exactly: the account,
-the `start_day` and `version` of the policy entry, the entry date, the entry
-source ID and every posting (`[account, "amount", currency]`, with the posting
-metadata as a fourth item when the posting has any). Amounts must be finite.
-Two authorizations for one account, start day and version make the request
-invalid, and an authorization that matches two entries matches none. The host makes an authorization only from its own
-receipt of a reviewed opening operation and the committed opening entry. Every
-other opening is checked like any entry, so an opening before the start or on an
-`unset` account is refused. The command exits with 0 (`ok`), 1 (`refused`:
+host gives an opening authorization that matches the entry. In request version
+2 an authorization has exactly `account`, `start_day`, `version`, `operation`,
+`operation_id`, `entry_source_id` and `entry_fingerprint`. It matches an added
+entry with the `start_day` and `version` of the policy entry, the entry date,
+the entry source ID and the entry fingerprint. The fingerprint
+(`books_policy_check.entry_fingerprint`) is the SHA-256 of every entry field and
+every posting field: date, narration, payee, flag, tags, links, entry metadata,
+and each posting's account, amount, currency and metadata. A version 2 request
+without a fingerprint, with a fingerprint that is not 64 lowercase hexadecimal
+characters, or with the version 1 `postings` field is invalid. Version 2 does
+not fall back to version 1. A version 2 request that contains a non-finite
+number is invalid. Two authorizations for one account, start day and version
+make the request invalid, and an authorization that matches two entries matches
+none. Every other opening is checked like any entry, so an opening before the
+start or on an `unset` account is refused.
+
+Request version 1 is the released version, and the check still reads it with
+its released meaning. It is weaker. Its authorization has `postings`
+(`[account, "amount", currency]`, with the posting metadata as a fourth item
+when the posting has any) in place of `entry_fingerprint`. It binds the entry
+date, the source ID and the postings only, so an entry with another narration,
+payee, flag, tags, links or entry metadata still matches. Use version 2.
+
+The host makes an authorization only from its own receipt of a reviewed opening
+operation and the preview that the person reviewed. Each supported opening
+preview prints `proposed_entry`, the complete entry that the apply records (every
+model field, with its source ID and metadata), and `proposed_entry_fingerprint`.
+Read `proposed_entry` with the strict reader
+`source_disposition.entry_from_document`: it refuses a missing or an unknown
+field, so a later change to the entry model stops the host until it reads the new
+field. Make sure that `entry_fingerprint` of the entry it reads is
+`proposed_entry_fingerprint`. A preview adds no ledger entry.
+
+| Opening operation | Preview with `proposed_entry` | Other state that the preview changes |
+| --- | --- | --- |
+| `quickbooks_sync_opening` | `books qb sync-opening` without `--apply` (`opening`) | It saves the snapshot reference data (`sync-import`), as before. No ledger change. |
+| `quickbooks_import_opening` | `books qb import-opening --dry-run` | None |
+| `statement_opening` | `books statement record-opening --statement-id ID --dry-run` | The empty entity lock file `.books.lock` |
+| `starting_balance` | `books statement record-opening --account A --on DAY --amount N --dry-run` | The empty entity lock file `.books.lock` |
+| `accrual_opening` | `books accrual opening preview` and `books accrual migration preview` (a plan that is `ready` and not a replay) | None |
+
+These paths have no supported preview of the complete entry, so they are
+BLOCKED for a version 2 authorization: `books qb import-opening` on an accrual
+company (its dry run refuses; use `books accrual migration preview`), and
+`books qb repair-opening --apply` (its inspection names the invalid entries,
+not the replacement entry). The command exits with 0 (`ok`), 1 (`refused`:
 publish nothing) or 2 (a bad request or workspace).
 
 The result has `request_sha256`, `base_sha256`, `candidate_sha256` and

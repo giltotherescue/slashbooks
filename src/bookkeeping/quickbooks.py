@@ -1562,6 +1562,10 @@ class ImportResult:
     # A preview names the source ID of the opening entry that an apply writes, so a reviewer can bind an approval
     # to that exact entry.
     proposed_source_id: str | None = None
+    # A preview also prints the complete entry that an apply writes (every model field) and its
+    # ``books_policy_check.entry_fingerprint``, for a host request of version 2.
+    proposed_entry: dict | None = None
+    proposed_entry_fingerprint: str | None = None
 
 
 @dataclass
@@ -2152,10 +2156,12 @@ def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_st
             )
 
     if _preview:
+        from .ledger.books_policy_check import reviewed_entry
         return ImportResult(
             entries_written=0, accounts_opened=0, ledger_path=str(store_path),
             coa_path=str(entity.coa_path), errors=warnings, success=True,
             proposed_entries=1, proposed_accounts=len(opens), proposed_source_id=opening_source_id,
+            **reviewed_entry(opening_entry),
             proposed_postings=[{"account": p.account, "amount": str(p.amount), "currency": p.currency,
                                 "date": cutover.isoformat(),
                                 "debit": str(max(p.amount, Decimal("0.00"))),
@@ -2258,7 +2264,9 @@ def preview_opening(entity, folder: str | Path, cutover: date, source: str = "tr
 
     Uses the same builder as ``import_opening`` and the QuickBooks sync opening
     preview (``_preview=True``), so the proposed postings are the postings that
-    ``import_opening`` would write.
+    ``import_opening`` would write. ``proposed_entry`` is the complete entry that
+    it would write and ``proposed_entry_fingerprint`` is its
+    ``books_policy_check.entry_fingerprint``.
     """
     from .entity import resolve_basis
 
@@ -2276,6 +2284,7 @@ def preview_opening(entity, folder: str | Path, cutover: date, source: str = "tr
             "as_of": cutover.isoformat(), "errors": [] if result.success else list(result.errors),
             "proposed_postings": postings, "proposed_entries": result.proposed_entries,
             "proposed_accounts": result.proposed_accounts, "proposed_source_id": result.proposed_source_id,
+            "proposed_entry": result.proposed_entry, "proposed_entry_fingerprint": result.proposed_entry_fingerprint,
             "totals": {"debits": str(debits), "credits": str(credits)},
             "balanced": bool(postings) and debits == credits, "needs_review": needs_review}
 

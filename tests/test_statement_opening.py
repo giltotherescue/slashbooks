@@ -210,6 +210,52 @@ class RecordOpeningTests(unittest.TestCase):
             with self.assertRaises(StatementOpeningError):
                 record_opening(self.entity, **kwargs)
 
+    def ledger_state(self) -> tuple:
+        import hashlib
+        path = default_store_path(self.entity)
+        store = LedgerStore(path)
+        return hashlib.sha256(path.read_bytes()).hexdigest(), store.content_digest(), store.load_entries()
+
+    def applied_entry(self, source_id: str) -> Entry:
+        found = [e for e in LedgerStore(default_store_path(self.entity)).load_entries() if e.source_id == source_id]
+        self.assertEqual(len(found), 1)
+        return found[0]
+
+    def test_a_preview_shows_the_complete_entry_that_apply_records(self):
+        from bookkeeping.ledger.books_policy_check import entry_fingerprint
+        from bookkeeping.source_disposition import entry_from_document
+        record = self.imp("chase_like_checking.csv", "checking", period_start="2026-01-01", period_end="2026-01-31")
+        before = self.ledger_state()
+        preview = record_opening(self.entity, record["statement_id"], dry_run=True)
+        self.assertEqual(self.ledger_state(), before, "a preview adds no ledger entry and changes no ledger byte")
+        reviewed = entry_from_document(preview["proposed_entry"])
+        self.assertEqual(entry_fingerprint(reviewed), preview["proposed_entry_fingerprint"])
+        self.assertEqual((reviewed.source_id, dict(reviewed.meta)["statement-id"]),
+                         (preview["source_id"], record["statement_id"]))
+        done = record_opening(self.entity, record["statement_id"])
+        self.assertEqual(done["status"], "recorded")
+        applied = self.applied_entry(done["source_id"])
+        self.assertEqual(applied, reviewed)
+        self.assertEqual(entry_fingerprint(applied), preview["proposed_entry_fingerprint"])
+
+    def test_a_replace_preview_names_the_source_id_and_entry_that_apply_records(self):
+        from bookkeeping.ledger.books_policy_check import entry_fingerprint
+        store = LedgerStore(default_store_path(self.entity))
+        store.initialize()
+        with store.transaction() as conn:
+            store.insert_opens([Open(date=date(2026, 1, 1), account=CHECKING)], conn)
+        first = record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="100.00")
+        self.assertEqual(first["status"], "recorded")
+        before = self.ledger_state()
+        preview = record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="250.00", replace=True,
+                                 dry_run=True)
+        self.assertEqual(self.ledger_state(), before)
+        self.assertEqual(preview["source_id"], first["source_id"] + "-2")
+        moved = record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="250.00", replace=True)
+        self.assertEqual((moved["status"], moved["source_id"]), ("replaced", preview["source_id"]))
+        self.assertEqual(entry_fingerprint(self.applied_entry(moved["source_id"])),
+                         preview["proposed_entry_fingerprint"])
+
     def write_csv(self, name: str, rows: list[tuple[str, str, str, str]]) -> Path:
         """Synthetic Chase-like checking export: (MM/DD/YYYY, description, amount, running balance), newest first."""
         lines = ["Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #"]

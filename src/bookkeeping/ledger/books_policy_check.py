@@ -11,16 +11,28 @@ command and before publication:
     python -I -m bookkeeping.ledger.books_policy_check check --request REQUEST.json \\
         --base BASE_ENTITY_DIR --candidate CANDIDATE_ENTITY_DIR
 
-* ``REQUEST.json`` comes from the host's immutable job snapshot, never from the workspace::
+* ``REQUEST.json`` comes from the host's immutable job snapshot, never from the workspace. Use request version
+  2 (``FULL_ENTRY_REQUEST_SCHEMA_VERSION``)::
 
-      {"schema_version": 1,
+      {"schema_version": 2,
        "policy": {<the books start policy document, ledger.books_policy>},
        "scope": ["Assets:Bank:Checking", "Liabilities:Card-1234"],
        "opening_authorizations": [
          {"account": "Assets:Bank:Checking", "start_day": "2026-03-15", "version": 1,
           "operation": "quickbooks_sync_opening", "operation_id": "<host receipt ID>",
-          "entry_source_id": "<source ID of the committed opening entry>",
-          "postings": [["Assets:Bank:Checking", "100.00", "USD"], ["Equity:Opening-Balances", "-100.00", "USD"]]}]}
+          "entry_source_id": "<source ID of the reviewed opening entry>",
+          "entry_fingerprint": "<proposed_entry_fingerprint of the reviewed preview>"}]}
+
+  ``entry_fingerprint`` is :func:`entry_fingerprint` of the complete opening entry: 64 lowercase hexadecimal
+  characters. A version 2 request without it, with another form of it, or with the version 1 ``postings`` field
+  is invalid. Version 2 has no fallback to version 1. A version 2 request that contains a non-finite number
+  anywhere is invalid.
+
+  Request version 1 (``REQUEST_SCHEMA_VERSION``) is the released version. It is still read with its released
+  meaning, but it is WEAKER: its authorization has ``postings`` (``[["Assets:Bank:Checking", "100.00", "USD"],
+  ...]``, with the posting metadata as an optional fourth item) in place of ``entry_fingerprint``, so it binds
+  the entry date, the source ID and the postings only. It does not bind the narration, the payee, the flag, the
+  tags, the links or the entry metadata. Do not use version 1 for a new host.
 
 * ``BASE_ENTITY_DIR`` is the workspace that the host published before the job. ``CANDIDATE_ENTITY_DIR`` is
   the workspace that the job wants to publish.
@@ -44,13 +56,15 @@ Only two things let an added line through a refusal:
   negated. The original must be the only base entry with that source ID (in any spelling), no base entry may
   reverse it already, and no other added entry may claim it. If two added entries claim one original, neither
   is exempt. A reversal of an added entry is never exempt, so two new entries cannot exempt each other.
-* The account is ``authorized_pending_opening`` and an opening authorization from the host matches the entry
-  exactly: the account, ``start_day`` and ``version`` of the policy entry, the entry date, the entry source ID
-  and every posting of the entry (account, amount, currency and posting metadata, exactly). Two
-  authorizations for one account, start day and version make the request invalid. An authorization that
-  matches more than one added entry matches none. The host derives an authorization only from committed
-  evidence of a reviewed opening operation (its own receipt). Entry metadata such as ``import-source``, a
-  source ID alone or ``reverses`` never counts.
+* The account is ``authorized_pending_opening`` and an opening authorization from the host matches the entry:
+  the account, ``start_day`` and ``version`` of the policy entry, the entry date and the entry source ID. In
+  request version 2 the entry must also have the authorized ``entry_fingerprint``, so every ``Entry`` field and
+  every ``Posting`` field is bound. In request version 1 (weaker) only every posting of the entry is bound
+  (account, amount, currency and posting metadata). Two authorizations for one account, start day and version
+  make the request invalid. An authorization that matches more than one added entry matches none. The host
+  derives an authorization only from committed evidence of a reviewed opening operation (its own receipt) and
+  the preview that a person reviewed (``proposed_entry`` and ``proposed_entry_fingerprint``). Entry metadata such
+  as ``import-source``, a source ID alone or ``reverses`` never counts.
 
 ``check_workspaces`` copies both workspaces to a private folder first, and checks and digests the copies. It
 never changes its inputs. Its result has ``request_sha256`` (``request_digest``), ``base_sha256`` and
@@ -82,7 +96,12 @@ from typing import Any, Iterable, Mapping, Sequence
 from .books_policy import OPENING_REQUIRED, PENDING_OPENING, BooksPolicy, BooksPolicyError, _invalid, parse_policy
 from .model import Entry
 
+#: The released request version. WEAKER: an opening authorization binds the date, the source ID and the postings.
 REQUEST_SCHEMA_VERSION = 1
+#: The request version that binds an opening authorization to ``entry_fingerprint`` of the complete entry.
+FULL_ENTRY_REQUEST_SCHEMA_VERSION = 2
+REQUEST_SCHEMA_VERSIONS = (REQUEST_SCHEMA_VERSION, FULL_ENTRY_REQUEST_SCHEMA_VERSION)
+_FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 HISTORY_CHANGED = "BOOKS_LEDGER_HISTORY_CHANGED"
 OPENING_OPERATIONS = ("quickbooks_sync_opening", "quickbooks_import_opening", "statement_opening",
                       "starting_balance", "accrual_opening")
@@ -96,7 +115,8 @@ class OpeningAuthorization:
     operation: str
     operation_id: str
     entry_source_id: str
-    postings: tuple[tuple[str, Decimal, str, tuple[tuple[str, str], ...]], ...]
+    postings: tuple[tuple[str, Decimal, str, tuple[tuple[str, str], ...]], ...]  # version 1 only
+    entry_fingerprint: str | None = None  # version 2 only
 
 
 @dataclass(frozen=True)
@@ -104,6 +124,7 @@ class CheckRequest:
     policy: BooksPolicy
     scope: frozenset[str]
     openings: tuple[OpeningAuthorization, ...]
+    schema_version: int = REQUEST_SCHEMA_VERSION
 
 
 def _text(value: Any, where: str) -> str:
@@ -112,9 +133,10 @@ def _text(value: Any, where: str) -> str:
     return value
 
 
-def _authorization(raw: Any, index: int) -> OpeningAuthorization:
+def _authorization(raw: Any, index: int, schema_version: int = REQUEST_SCHEMA_VERSION) -> OpeningAuthorization:
     where = f"opening_authorizations[{index}]"
-    fields = {"account", "start_day", "version", "operation", "operation_id", "entry_source_id", "postings"}
+    fields = {"account", "start_day", "version", "operation", "operation_id", "entry_source_id",
+              "entry_fingerprint" if schema_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION else "postings"}
     if not isinstance(raw, dict) or set(raw) != fields:
         raise _invalid(f"{where} must have exactly the fields {', '.join(sorted(fields))}")
     try:
@@ -126,6 +148,14 @@ def _authorization(raw: Any, index: int) -> OpeningAuthorization:
         raise _invalid(f"{where}.version must be an integer of 1 or more")
     if raw["operation"] not in OPENING_OPERATIONS:
         raise _invalid(f"{where}.operation must be one of {', '.join(OPENING_OPERATIONS)}")
+    if schema_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION:
+        fingerprint = raw["entry_fingerprint"]
+        if not isinstance(fingerprint, str) or not _FINGERPRINT.fullmatch(fingerprint):
+            raise _invalid(f"{where}.entry_fingerprint must be the 64 lowercase hexadecimal characters of "
+                           "the entry_fingerprint of the reviewed entry")
+        return OpeningAuthorization(_text(raw["account"], f"{where}.account"), start, version, raw["operation"],
+                                    _text(raw["operation_id"], f"{where}.operation_id"),
+                                    _text(raw["entry_source_id"], f"{where}.entry_source_id"), (), fingerprint)
     postings = raw["postings"]
     if not isinstance(postings, list) or len(postings) < 2:
         raise _invalid(f"{where}.postings must list every posting of the opening entry")
@@ -156,8 +186,19 @@ def parse_request(document: Any) -> CheckRequest:
                                                           "opening_authorizations"}:
         raise _invalid("the check request must be an object with schema_version, policy, scope and "
                        "opening_authorizations")
-    if document.get("schema_version") != REQUEST_SCHEMA_VERSION or isinstance(document.get("schema_version"), bool):
-        raise _invalid(f"the check request schema_version must be {REQUEST_SCHEMA_VERSION}")
+    raw_version = document.get("schema_version")
+    if type(raw_version) is int and raw_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION:
+        schema_version = FULL_ENTRY_REQUEST_SCHEMA_VERSION
+    elif raw_version == REQUEST_SCHEMA_VERSION and not isinstance(raw_version, bool):
+        schema_version = REQUEST_SCHEMA_VERSION  # the released test, unchanged
+    else:
+        raise _invalid(f"the check request schema_version must be {FULL_ENTRY_REQUEST_SCHEMA_VERSION} "
+                       f"(or {REQUEST_SCHEMA_VERSION}, the weaker released version)")
+    if schema_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION:
+        try:
+            json.dumps(document, allow_nan=False)
+        except (TypeError, ValueError):
+            raise _invalid("a version 2 check request must be JSON data with no non-finite number") from None
     if "policy" not in document or "scope" not in document:
         raise _invalid("the check request needs policy and scope")
     scope = document["scope"]
@@ -166,13 +207,14 @@ def parse_request(document: Any) -> CheckRequest:
     raw_openings = document.get("opening_authorizations", [])
     if not isinstance(raw_openings, list):
         raise _invalid("opening_authorizations must be a list")
-    openings = tuple(_authorization(item, index) for index, item in enumerate(raw_openings))
+    openings = tuple(_authorization(item, index, schema_version) for index, item in enumerate(raw_openings))
     keys = Counter((auth.account, auth.start_day, auth.version) for auth in openings)
     twice = sorted(key for key, count in keys.items() if count > 1)
     if twice:
         raise _invalid(f"more than one authorization names {twice[0][0]} on {twice[0][1].isoformat()} "
                        f"version {twice[0][2]}")
-    return CheckRequest(parse_policy(document["policy"]), frozenset(_text(a, "scope item") for a in scope), openings)
+    return CheckRequest(parse_policy(document["policy"]), frozenset(_text(a, "scope item") for a in scope), openings,
+                        schema_version)
 
 
 def _field_value(value: Any) -> Any:
@@ -203,6 +245,28 @@ def entry_key(entry: Entry) -> tuple:
     Other modules use this one key, so a field added to the model later is included everywhere.
     """
     return _key(entry)
+
+
+def entry_fingerprint(entry: Entry) -> str:
+    """SHA-256 of the canonical JSON of :func:`entry_key`: every ``Entry`` field and every ``Posting`` field.
+
+    The canonical JSON has sorted keys, no spaces and UTF-8 text. This is the one entry fingerprint: the opening
+    previews print it (``proposed_entry_fingerprint``), a version 2 check request binds an opening to it, and
+    ``source_disposition`` uses it.
+    """
+    text = json.dumps(_key(entry), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def reviewed_entry(entry: Entry) -> dict[str, Any]:
+    """What an opening preview prints, so that a host can bind a person's review to the complete entry.
+
+    ``proposed_entry`` is ``source_disposition.entry_document`` (every model field; read it back with the strict
+    ``source_disposition.entry_from_document``). ``proposed_entry_fingerprint`` is :func:`entry_fingerprint`.
+    """
+    from ..source_disposition import entry_document
+
+    return {"proposed_entry": entry_document(entry), "proposed_entry_fingerprint": entry_fingerprint(entry)}
 
 
 def ledger_delta(base: Sequence[Entry], candidate: Sequence[Entry]) -> tuple[list[Entry], list[Entry]]:
@@ -265,14 +329,18 @@ def _exact_reversals(added: Sequence[Entry], base: Sequence[Entry]) -> set[int]:
 
 def _opening_matches(request: CheckRequest, added: Sequence[Entry]) -> dict[int, int]:
     """``{authorization index: id of the one added entry it matches}``. An authorization that matches two or
-    more entries, or none, is left out. Every posting field is bound: account, amount, currency and metadata."""
+    more entries, or none, is left out. Version 2 binds every ``Entry`` and ``Posting`` field (the entry
+    fingerprint). Version 1 (weaker) binds every posting field only: account, amount, currency and metadata."""
+    full = request.schema_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION
+    fingerprints = {id(entry): entry_fingerprint(entry) for entry in added} if full else {}
     matches: dict[int, int] = {}
     for index, auth in enumerate(request.openings):
         wanted = Counter(auth.postings)
         found = [entry for entry in added
                  if entry.date == auth.start_day and (entry.source_id or "") == auth.entry_source_id
-                 and Counter((p.account, p.amount, p.currency, tuple(sorted(p.meta)))
-                             for p in entry.postings) == wanted]
+                 and (fingerprints[id(entry)] == auth.entry_fingerprint if full else
+                      Counter((p.account, p.amount, p.currency, tuple(sorted(p.meta)))
+                              for p in entry.postings) == wanted)]
         if len(found) == 1:
             matches[index] = id(found[0])
     return matches
