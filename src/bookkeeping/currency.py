@@ -491,9 +491,11 @@ def preview_set_currency(entity: Any, currency: Any) -> dict[str, Any]:
             "effects": {"from": {"currency": current, "currency_source": current_source},
                         "to": {"currency": code, "currency_source": "set"},
                         "minor_units": CURRENCIES[code].minor_units, "entries_changed": 0,
-                        "published_statements_changed": False, "note": set_currency_note()}}
+                        "published_statements_changed": False}}
     body["request_hash"] = canonical_hash({"kind": SET_CURRENCY_KIND, "request": body["request"]})
+    # Presentation can use a different brand during review and independent apply.
     body["plan_hash"] = canonical_hash(body)
+    body["effects"]["note"] = set_currency_note()
     return body
 
 
