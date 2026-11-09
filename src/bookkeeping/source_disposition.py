@@ -20,7 +20,8 @@ Functions:
 - :func:`row_identity`: the source ID, its spellings, and a digest of the source fields of a staged row.
 - :func:`preview`: whether a row may be closed, the basis, the conflicts a person must see, and a claim.
 - :func:`confirm`: accept a claim only when a fresh preview gives the same ``preview_digest``.
-- :func:`evaluate`: ``resolved`` or ``invalidated`` (with trigger codes) for each stored claim.
+- :func:`evaluate`: ``resolved`` or ``invalidated`` (with trigger codes) for each stored claim. A fresh accrual
+  opening completes a claim only with its version 3 books start check request (``opening_authorization``).
 - :func:`reclassify`: the two date checks of a restored row (not the other review and booking guards).
 - :func:`captured_epoch`: the full epoch a confirmation captured. Only a value for a host to assert; no fence here.
 - :func:`resolved_identity`: the exact, unique, unbooked staged row that a resolved claim may leave out.
@@ -35,12 +36,13 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, fields, is_dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .ledger.books_policy import (
+    AUTHORIZED,
     PENDING_OPENING,
     UNSET,
     BooksPolicy,
@@ -48,7 +50,13 @@ from .ledger.books_policy import (
     first_policy_conflict,
     parse_policy,
 )
-from .ledger.books_policy_check import entry_fingerprint
+from .ledger.books_policy_check import (
+    _PRIOR_DAY_META_KEYS,
+    PRIOR_DAY_OPERATION,
+    PRIOR_DAY_REQUEST_SCHEMA_VERSION,
+    entry_fingerprint,
+    parse_request,
+)
 from .ledger.model import Entry, Posting
 from .ledger.open_dates import opened_after
 from .source_ids import source_id_variants
@@ -62,7 +70,15 @@ REASON_TEXT_LIMIT = 280
 DERIVED_FIELDS = frozenset({"review_hold_reason", "accrual_review_required", "accrual_review_action"})
 
 UNMAPPED_ACCOUNT = "Assets:Uncategorized"
-OPENING_KINDS = {"statement-opening": "statement", "quickbooks-opening": "quickbooks"}
+#: The ``import-source`` of each opening entry that this module reads as an opening, and its kind. A statement or
+#: QuickBooks opening is dated on the books start. A fresh accrual opening (``books accrual opening preview`` on a
+#: company with no accrual tracking start) is dated on the day before the cutover; see :func:`_accrual_completion`.
+OPENING_KINDS = {"statement-opening": "statement", "quickbooks-opening": "quickbooks", "accrual-opening": "accrual"}
+#: Opening sources that are never an opening here. A tracking opening adds accrual balances to books that already
+#: started (it is dated on the tracking start, not before a books start), so it stays ordinary booked activity.
+UNSUPPORTED_OPENING_SOURCES = {
+    "accrual-tracking-opening": "a tracking accrual opening adds balances to books that already started; it is not "
+                                "the opening of a books start"}
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -207,6 +223,11 @@ class Opening:
         return OPENING_KINDS.get(self.meta.get("import-source", ""), "")
 
     @property
+    def effective_day(self) -> date:
+        """The first day that the opening balance is in force. An accrual opening is in force on the next day."""
+        return self.day + timedelta(days=1) if self.kind == "accrual" and self.day < date.max else self.day
+
+    @property
     def statement_id(self) -> str | None:
         return self.meta.get("statement-id")
 
@@ -295,6 +316,8 @@ def context_from_document(document: Mapping[str, Any]) -> DispositionContext:
         _require(isinstance(item, Mapping) and set(item) == {"account", "entry"} and isinstance(item["account"], str),
                  "an opening must be {account, entry}")
         opening = Opening(item["account"], entry_from_document(item["entry"]))
+        unsupported = UNSUPPORTED_OPENING_SOURCES.get(opening.meta.get("import-source", ""))
+        _require(unsupported is None, f"an opening cannot be read from this entry: {unsupported}")
         _require(bool(opening.source_id) and bool(opening.kind)
                  and any(p.account == opening.account for p in opening.entry.postings),
                  "an opening entry needs a source-id, a known import-source and a posting on its account")
@@ -500,9 +523,9 @@ def _conflicts(context: DispositionContext, ok: _Eligibility) -> list[str]:
     if opening is None:
         found.add("NO_OPENING")
     else:
-        if opening.day > ok.day:
+        if opening.effective_day > ok.day:
             found.add("OPENING_AFTER_ROW")
-        if start is not None and opening.day.isoformat() != start:
+        if start is not None and opening.effective_day.isoformat() != start:
             found.add("OPENING_DATE_NOT_START")
     opened = context.open_dates.get(ok.account)
     if start is not None and opened is not None and opened.isoformat() > start:
@@ -635,42 +658,183 @@ def confirm(context: DispositionContext, claim: Mapping[str, Any]) -> dict[str, 
     return {"status": "ok", "claim": current["claim"]}
 
 
-def _expected_completion(context: DispositionContext, claim: Mapping[str, Any]) -> Opening | None:
-    """The opening that completes the expected transition now, or ``None``.
+#: Why a fresh accrual opening does not complete the expected transition. Each code is an :func:`evaluate` trigger.
+ACCRUAL_COMPLETION_REASONS = {
+    "ACCRUAL_AUTHORIZATION_REQUIRED": "No books start check request was given for the accrual opening.",
+    "ACCRUAL_AUTHORIZATION_INVALID": "The given books start check request is not valid.",
+    "ACCRUAL_AUTHORIZATION_NOT_PRIOR_DAY": "The request is not version 3 (accrual_opening_prior_day). A version 1 "
+                                           "or 2 authorization is for an opening on the books start, never for an "
+                                           "opening on the day before it.",
+    "ACCRUAL_AUTHORIZATION_STALE": "The authorized start or version is not the start and pending version of the "
+                                   "confirmed decision and of the policy in the request.",
+    "ACCRUAL_OPENING_NOT_FRESH": "The entry is not a fresh accrual opening for this cutover (exact metadata, and "
+                                 "postings on Assets, Liabilities and Equity accounts only).",
+    "ACCRUAL_OPENING_NOT_PRIOR_DAY": "The entry is not dated the day before the authorized start (the cutover).",
+    "ACCRUAL_ENTRY_MISMATCH": "The entry's source ID or fingerprint is not the authorized one.",
+    "ACCRUAL_ACCOUNTS_MISMATCH": "The authorized accounts are not exactly the Assets and Liabilities accounts that "
+                                 "the entry posts to.",
+    "ACCRUAL_ACCOUNT_NOT_GOVERNED": "An Assets or Liabilities account that the entry posts to is not authorized in "
+                                    "the books start policy at the cutover with the next version.",
+}
+_BALANCE_ROOTS = ("Assets:", "Liabilities:")
+_ACCRUAL_EVIDENCE_KIND = "expected_accrual_opening_recorded"
+_AUTHORIZATION_FIELDS = {"schema_version", "operation", "start_day", "entry_date", "entry_source_id",
+                         "entry_fingerprint", "accounts"}
+_AUTHORIZED_ACCOUNT_FIELDS = {"account", "operation_id", "version"}
+
+
+def _balance_accounts(entry: Entry) -> list[str]:
+    """Every Assets and Liabilities account that the entry posts to, a zero posting included. Equity is left out."""
+    return sorted({p.account for p in entry.postings if p.account.startswith(_BALANCE_ROOTS)})
+
+
+def _fresh_accrual(entry: Entry, start: str) -> bool:
+    """The entry has exactly the metadata of a fresh accrual opening for the cutover ``start``.
+
+    The keys are the ones that the version 3 books start check reads (``books_policy_check``). A tracking opening
+    or a summary opening has other keys. Postings are on Assets, Liabilities and Equity accounts only.
+    """
+    meta = dict(entry.meta)
+    return (len(meta) == len(entry.meta) and set(meta) == _PRIOR_DAY_META_KEYS and bool(meta["source-id"])
+            and meta["import-source"] == "accrual-opening" and meta["accrual-opening"] == "true"
+            and meta["coverage-id"] == "opening" and meta["cutover-date"] == start
+            and all(p.account.startswith((*_BALANCE_ROOTS, "Equity:")) for p in entry.postings))
+
+
+def _accrual_open_date(claim: Mapping[str, Any], entry: Entry) -> str:
+    """The open date of the claim's account after the native accrual opening.
+
+    The native apply opens each account no later than the entry date, so an account that opened on the cutover
+    now opens on the day before it. An earlier open date does not change.
+    """
+    old = (claim["basis"].get("catalog") or {}).get("open_date")
+    day = entry.date.isoformat()
+    return old if isinstance(old, str) and old <= day else day
+
+
+def _accrual_completion(context: DispositionContext, claim: Mapping[str, Any], opening: Opening,
+                        authorization: Any) -> tuple[dict[str, Any] | None, list[str]]:
+    """The authorization record of an accrual opening completion, or the reasons (``ACCRUAL_*``) that refuse it.
+
+    ``authorization`` is the exact books start check request (version 3, ``accrual_opening_prior_day``) that the
+    host used to publish the opening. All of these must be true:
+
+    - The entry is a fresh accrual opening for the claim's start (the cutover), dated the day before it.
+    - The request is a valid version 3 request. Its source ID and fingerprint are those of the entry, its start is
+      the claim's start, and each authorized version is the pending version in the request's policy. The claim's
+      account is authorized with the version that the claim captured.
+    - The authorized accounts are exactly the Assets and Liabilities accounts that the entry posts to (receivables
+      and payables included). Equity is left out.
+    - Each of those accounts is ``authorized`` in the current policy with the cutover as its start and the next
+      version. An account outside the policy is refused, never left out.
+    """
+    basis = claim["basis"]
+    old = basis.get("policy") or {}
+    start = str(old.get("start_day"))
+    account = str(basis.get("account") or "")
+    entry = opening.entry
+    cutover = _strict_day(start) if len(start) == 10 else None
+    cutover = None if cutover == date.min else cutover  # it has no day before it
+    reasons: set[str] = set()
+    if cutover is None or not _fresh_accrual(entry, start):
+        reasons.add("ACCRUAL_OPENING_NOT_FRESH")
+    if cutover is None or entry.date != cutover - timedelta(days=1):
+        reasons.add("ACCRUAL_OPENING_NOT_PRIOR_DAY")
+    balance = _balance_accounts(entry)
+    if account not in balance:
+        reasons.add("ACCRUAL_ACCOUNTS_MISMATCH")
+    request = None
+    if authorization is None:
+        reasons.add("ACCRUAL_AUTHORIZATION_REQUIRED")
+    else:
+        try:
+            request = parse_request(authorization)
+        except (BooksPolicyError, TypeError, ValueError, KeyError, AttributeError):
+            reasons.add("ACCRUAL_AUTHORIZATION_INVALID")
+    authorized: dict[str, Any] = {}
+    if request is not None and request.schema_version != PRIOR_DAY_REQUEST_SCHEMA_VERSION:
+        reasons.add("ACCRUAL_AUTHORIZATION_NOT_PRIOR_DAY")
+    elif request is not None:
+        authorized = {auth.account: auth for auth in request.openings}
+        first = request.openings[0]  # version 3: every row has the same start, source ID and fingerprint
+        if first.entry_source_id != entry.source_id or first.entry_fingerprint != entry_fingerprint(entry):
+            reasons.add("ACCRUAL_ENTRY_MISMATCH")
+        mine = authorized.get(account)
+        if first.start_day.isoformat() != start or (mine is not None and mine.version != old.get("account_version")):
+            reasons.add("ACCRUAL_AUTHORIZATION_STALE")
+        for auth in request.openings:
+            row = request.policy.accounts.get(auth.account)
+            if (row is None or row.state != PENDING_OPENING or row.version != auth.version
+                    or row.start_day != auth.start_day):
+                reasons.add("ACCRUAL_AUTHORIZATION_STALE")
+        if set(authorized) != set(balance):
+            reasons.add("ACCRUAL_ACCOUNTS_MISMATCH")
+    policy = context.policy
+    for name in balance:
+        row = policy.accounts.get(name) if policy is not None and policy.enforced else None
+        auth = authorized.get(name)
+        if (row is None or row.state != AUTHORIZED or row.start_day is None or row.start_day.isoformat() != start
+                or (auth is not None and row.version != auth.version + 1)):
+            reasons.add("ACCRUAL_ACCOUNT_NOT_GOVERNED")
+    if reasons or request is None:
+        return None, sorted(reasons)
+    return {"schema_version": PRIOR_DAY_REQUEST_SCHEMA_VERSION, "operation": PRIOR_DAY_OPERATION, "start_day": start,
+            "entry_date": entry.date.isoformat(), "entry_source_id": entry.source_id,
+            "entry_fingerprint": entry_fingerprint(entry),
+            "accounts": [{"account": auth.account, "operation_id": auth.operation_id, "version": auth.version}
+                         for auth in sorted(request.openings, key=lambda item: item.account)]}, []
+
+
+def _expected_completion(context: DispositionContext, claim: Mapping[str, Any], authorization: Any = None
+                         ) -> tuple[Opening | None, dict[str, Any] | None, list[str]]:
+    """The opening that completes the expected transition now, its accrual authorization record, and the reasons.
 
     The claim is ``outside_books`` and was confirmed while the account was ``authorized_pending_opening`` with no
     opening. Now the same account is ``authorized`` with the same ``start_day``, its version is exactly one higher, and
-    a live opening of that account is dated on that ``start_day``.
+    a live opening of that account exists. Then:
+
+    - A statement or QuickBooks opening completes it when it is dated on that ``start_day``. Otherwise nothing
+      completes it, and there is no reason code.
+    - A fresh accrual opening completes it only under :func:`_accrual_completion`, which gives the authorization
+      record. When it does not, the result has its ``ACCRUAL_*`` reasons.
     """
     if claim.get("state") != "outside_books":
-        return None
+        return None, None, []
     basis = claim["basis"]
     old = basis.get("policy") or {}
     account = str(basis.get("account") or "")
     new = _policy_basis(context, account)
     opening = _live_opening(context, account)
     version = old.get("account_version")
-    if (old.get("mode") == "enforced" and new.get("mode") == "enforced"
-            and old.get("account_state") == PENDING_OPENING and new.get("account_state") == "authorized"
+    if not (old.get("mode") == "enforced" and new.get("mode") == "enforced"
+            and old.get("account_state") == PENDING_OPENING and new.get("account_state") == AUTHORIZED
             and isinstance(version, int) and new.get("account_version") == version + 1
             and old.get("start_day") is not None and new.get("start_day") == old.get("start_day")
-            and basis.get("opening") is None
-            and opening is not None and opening.day.isoformat() == old.get("start_day")):
-        return opening
-    return None
+            and basis.get("opening") is None and opening is not None):
+        return None, None, []
+    if opening.kind != "accrual":
+        return (opening, None, []) if opening.day.isoformat() == old.get("start_day") else (None, None, [])
+    record, reasons = _accrual_completion(context, claim, opening, authorization)
+    return (opening, record, []) if record is not None else (None, None, reasons)
 
 
 _EVIDENCE_FIELDS = ("schema_version", "kind", "source_id", "claim_preview_digest", "account", "start_day",
                     "account_version", "opening")
+#: An accrual completion also records the account's expected open date and the authorization record.
+_ACCRUAL_EVIDENCE_FIELDS = (*_EVIDENCE_FIELDS, "open_date", "authorization")
 
 
-def _transition_evidence(claim: Mapping[str, Any], opening: Opening, version: int) -> dict[str, Any]:
+def _transition_evidence(claim: Mapping[str, Any], opening: Opening, version: int,
+                         authorization: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """The evidence of one opening completion, which a host records one time for this claim."""
     body = {"schema_version": SCHEMA_VERSION, "kind": "expected_opening_recorded", "source_id": claim["source_id"],
             "claim_preview_digest": claim.get("preview_digest"), "account": claim["basis"].get("account"),
             "start_day": (claim["basis"].get("policy") or {}).get("start_day"), "account_version": version,
             "opening": {"source_id": opening.source_id, "date": opening.day.isoformat(),
                         "entry": entry_document(opening.entry), "digest": opening.digest}}
+    if authorization is not None:
+        body.update(kind=_ACCRUAL_EVIDENCE_KIND, open_date=_accrual_open_date(claim, opening.entry),
+                    authorization=dict(authorization))
     return {**body, "evidence_digest": _sha(body)}
 
 
@@ -682,14 +846,21 @@ def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
 
     Every nested field is checked: the opening must have exactly ``source_id``, ``date``, ``entry`` and ``digest``;
     the entry must read back as a complete ledger entry (finite amounts, every model field, nothing extra); and the
-    digest must be the one that the entry's fingerprint gives.
+    digest must be the one that the entry's fingerprint gives. ``expected_opening_recorded`` evidence is only for a
+    statement or QuickBooks opening. An accrual opening needs ``expected_accrual_opening_recorded`` evidence, which
+    :func:`_accrual_evidence_fits` also checks.
     """
-    if not isinstance(evidence, Mapping) or set(evidence) != {*_EVIDENCE_FIELDS, "evidence_digest"}:
+    if not isinstance(evidence, Mapping):
         return False
-    if evidence["schema_version"] != SCHEMA_VERSION or evidence["kind"] != "expected_opening_recorded":
+    accrual = evidence.get("kind") == _ACCRUAL_EVIDENCE_KIND
+    names = _ACCRUAL_EVIDENCE_FIELDS if accrual else _EVIDENCE_FIELDS
+    if set(evidence) != {*names, "evidence_digest"}:
+        return False
+    if evidence["schema_version"] != SCHEMA_VERSION or evidence["kind"] not in ("expected_opening_recorded",
+                                                                                _ACCRUAL_EVIDENCE_KIND):
         return False
     try:
-        if evidence["evidence_digest"] != _sha({key: evidence[key] for key in _EVIDENCE_FIELDS}):
+        if evidence["evidence_digest"] != _sha({key: evidence[key] for key in names}):
             return False
     except (TypeError, ValueError):
         return False
@@ -705,6 +876,12 @@ def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
     if (not isinstance(account, str) or opening["digest"] != _opening_digest(account, entry_fingerprint(entry))
             or opening["source_id"] != dict(entry.meta).get("source-id") or opening["date"] != entry.date.isoformat()):
         return False
+    kind = OPENING_KINDS.get(dict(entry.meta).get("import-source", ""))
+    if accrual:
+        if kind != "accrual" or not _accrual_evidence_fits(claim, evidence, entry):
+            return False
+    elif kind not in ("statement", "quickbooks"):
+        return False  # an accrual opening is never relabeled as a same-day completion
     old = claim["basis"].get("policy") or {}
     version = old.get("account_version")
     return (claim.get("state") == "outside_books" and old.get("account_state") == PENDING_OPENING
@@ -713,6 +890,39 @@ def _evidence_fits(claim: Mapping[str, Any], evidence: Any) -> bool:
             and account == claim["basis"].get("account") and evidence["start_day"] == old.get("start_day")
             and isinstance(version, int) and type(evidence["account_version"]) is int
             and evidence["account_version"] == version + 1)
+
+
+def _accrual_evidence_fits(claim: Mapping[str, Any], evidence: Mapping[str, Any], entry: Entry) -> bool:
+    """The authorization record and open date of accrual evidence fit the recorded entry and the claim.
+
+    The record is version 3 ``accrual_opening_prior_day``. Its start is the evidence start, the entry is a fresh
+    accrual opening dated the day before it, the source ID and fingerprint are the entry's, and the accounts are
+    exactly the Assets and Liabilities accounts of the entry, each one time with its own ``operation_id``. The
+    claim's account has the version that the claim captured. The open date is the one that the opening gives.
+    """
+    auth = evidence["authorization"]
+    start = evidence["start_day"]
+    if not isinstance(auth, Mapping) or set(auth) != _AUTHORIZATION_FIELDS or not isinstance(start, str):
+        return False
+    accounts = auth["accounts"]
+    if not isinstance(accounts, list) or not all(
+            isinstance(item, Mapping) and set(item) == _AUTHORIZED_ACCOUNT_FIELDS and isinstance(item["account"], str)
+            and isinstance(item["operation_id"], str) and bool(item["operation_id"]) and type(item["version"]) is int
+            for item in accounts):
+        return False
+    cutover = _strict_day(start) if len(start) == 10 else None
+    cutover = None if cutover == date.min else cutover
+    mine = [item for item in accounts if item["account"] == evidence["account"]]
+    version = (claim["basis"].get("policy") or {}).get("account_version")
+    return (cutover is not None and type(auth["schema_version"]) is int
+            and auth["schema_version"] == PRIOR_DAY_REQUEST_SCHEMA_VERSION and auth["operation"] == PRIOR_DAY_OPERATION
+            and auth["start_day"] == start and _fresh_accrual(entry, start)
+            and entry.date == cutover - timedelta(days=1) and auth["entry_date"] == entry.date.isoformat()
+            and auth["entry_source_id"] == entry.source_id and auth["entry_fingerprint"] == entry_fingerprint(entry)
+            and [item["account"] for item in accounts] == _balance_accounts(entry)
+            and len({item["operation_id"] for item in accounts}) == len(accounts)
+            and len(mine) == 1 and mine[0]["version"] == version
+            and evidence["open_date"] == _accrual_open_date(claim, entry))
 
 
 #: Conflicts that the expected opening transition removes (they described the pending state) and adds.
@@ -743,7 +953,8 @@ def captured_epoch(claim: Mapping[str, Any]) -> int | None:
 
 
 def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
-             transitions: Mapping[str, Mapping[str, Any]] | None = None) -> list[dict[str, Any]]:
+             transitions: Mapping[str, Mapping[str, Any]] | None = None, *,
+             opening_authorization: Any = None) -> list[dict[str, Any]]:
     """For each stored claim: ``resolved``, ``invalidated`` (with trigger codes), or ``transition_pending``.
 
     A claim is resolved only when the row, its account mapping, the books start for that account (or the open
@@ -763,6 +974,13 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
       every ``Posting`` field, through the #118 history key). A reversed or replaced opening, or a change of any
       entry or posting field, gives ``OPENING_CHANGED``; another version or start gives ``POLICY_CHANGED``. Evidence
       that is malformed, edited, or does not fit the claim gives ``TRANSITION_EVIDENCE_INVALID``.
+
+    A fresh accrual opening is dated on the day before the start (the cutover), so it never completes under the
+    same-day rule of a statement or QuickBooks opening. It completes only with ``opening_authorization``, the exact
+    version 3 books start check request (``accrual_opening_prior_day``) that published it; see
+    :func:`_accrual_completion`. Its evidence (``expected_accrual_opening_recorded``) also records that request's
+    binding and the account's new open date (the native opening moves it to the entry date). Without a valid
+    request, the claim is ``invalidated`` with the ``ACCRUAL_*`` reasons (:data:`ACCRUAL_COMPLETION_REASONS`).
 
     The person's decision never changes. The transition never becomes coverage and never allows a booking.
     """
@@ -787,8 +1005,7 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
                 triggers.add("MAPPING_CHANGED")
         account = str(basis.get("account") or "")
         opened = context.open_dates.get(account)
-        if (basis.get("catalog") or {}).get("open_date") != (None if opened is None else opened.isoformat()):
-            triggers.add("OPEN_DATE_CHANGED")
+        expected_open = (basis.get("catalog") or {}).get("open_date")
         new_policy = _policy_basis(context, account)
         new_policy.pop("epoch", None)
         opening = _live_opening(context, account)
@@ -805,13 +1022,18 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
                     triggers.add("POLICY_CHANGED")
                 if opening is None or opening.digest != evidence["opening"]["digest"]:
                     triggers.add("OPENING_CHANGED")
+                if evidence["kind"] == _ACCRUAL_EVIDENCE_KIND:
+                    expected_open = evidence["open_date"]
                 transition = True
         else:
-            completion = _expected_completion(context, claim)
+            completion, record, reasons = _expected_completion(context, claim, opening_authorization)
             if completion is not None:
-                proposed = _transition_evidence(claim, completion, int(new_policy["account_version"]))
+                proposed = _transition_evidence(claim, completion, int(new_policy["account_version"]), record)
+                if record is not None:
+                    expected_open = proposed["open_date"]
                 transition = True
             else:
+                triggers.update(reasons)
                 old_policy = dict(basis.get("policy") or {})
                 old_policy.pop("epoch", None)
                 if old_policy != new_policy:
@@ -820,6 +1042,8 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
                 if (None if opening is None else opening.digest) != (None if old_opening is None
                                                                       else old_opening.get("digest")):
                     triggers.add("OPENING_CHANGED")
+        if expected_open != (None if opened is None else opened.isoformat()):
+            triggers.add("OPEN_DATE_CHANGED")
         if claim["state"] == "covered_by_opening":
             # No coverage claim can be checked against a retained line today, so none is ever resolved.
             triggers.add("LINE_EVIDENCE_UNAVAILABLE")
@@ -969,7 +1193,7 @@ def reclassify(context: DispositionContext, source_id: str, expected_row_digest:
 _REQUEST_FIELDS = {
     "preview": {"schema_version", "action", "policy", "source_id", "state", "reason_text", "evidence"},
     "confirm": {"schema_version", "action", "policy", "claim"},
-    "evaluate": {"schema_version", "action", "policy", "claims", "transitions"},
+    "evaluate": {"schema_version", "action", "policy", "claims", "transitions", "opening_authorization"},
     "reclassify": {"schema_version", "action", "policy", "source_id", "row_digest"},
 }
 
@@ -987,7 +1211,8 @@ def run_request(request: Mapping[str, Any], context: DispositionContext) -> dict
         _require(isinstance(claims, list), "claims must be a list")
         transitions = request.get("transitions")
         _require(transitions is None or isinstance(transitions, Mapping), "transitions must be an object")
-        results = evaluate(context, claims, transitions)
+        results = evaluate(context, claims, transitions,
+                           opening_authorization=request.get("opening_authorization"))
         status = "ok" if all(item["status"] == "resolved" for item in results) else "invalidated"
         return {"status": status, "results": results, "excluded_source_ids": excluded_source_ids(results)}
     return reclassify(context, str(request.get("source_id") or ""), str(request.get("row_digest") or ""))

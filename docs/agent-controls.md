@@ -409,6 +409,50 @@ When one of these is false, the check refuses with
 check does not prove the support records, the account open dates or the replay of
 the native plan. The host applies the reviewed native plan and compares it.
 
+A row that a person left out of the books (`outside_books`, in
+`source_disposition`) while its account was `authorized_pending_opening` keeps
+that decision when the opening is recorded. A statement or QuickBooks opening
+completes the decision when it is dated on `start_day`, as before. A fresh
+accrual opening (`import-source` = `accrual-opening`) is the `accrual` opening
+kind. It completes the decision only when `evaluate` gets
+`opening_authorization`: the exact version 3 request above that published it.
+All of these must be true:
+
+- The entry is a fresh accrual opening for `start_day`, dated the day before it.
+- The request is a valid version 3 request. Its `entry_source_id` and
+  `entry_fingerprint` are those of the entry, its `start_day` is the start of the
+  decision, and each `version` is the pending version in its policy.
+- The authorized accounts are exactly the Assets and Liabilities accounts that
+  the entry posts to, receivables and payables included. Equity is left out.
+- Each of those accounts is `authorized` in the current policy with the same
+  `start_day` and the next version. Put every opening balance account in the
+  books start policy, so that the version 3 check also needs its authorization.
+
+The first evaluation gives `transition_pending` with
+`expected_accrual_opening_recorded` evidence. The evidence records the binding of
+the request and the new open date of the account (the native opening opens the
+account on the entry date). The host records it one time. When a rule is false,
+the decision is `invalidated` with one or more of these triggers
+(`ACCRUAL_COMPLETION_REASONS`):
+
+| Trigger | Meaning |
+| --- | --- |
+| `ACCRUAL_AUTHORIZATION_REQUIRED` | No request was given. |
+| `ACCRUAL_AUTHORIZATION_INVALID` | The request is not a valid books start check request. |
+| `ACCRUAL_AUTHORIZATION_NOT_PRIOR_DAY` | The request is version 1 or 2. A same-day authorization never completes a prior-day opening. |
+| `ACCRUAL_AUTHORIZATION_STALE` | The authorized start or version is not the start or the pending version. |
+| `ACCRUAL_OPENING_NOT_FRESH` | The entry metadata is not exactly that of a fresh accrual opening for this start, or it posts outside Assets, Liabilities and Equity. |
+| `ACCRUAL_OPENING_NOT_PRIOR_DAY` | The entry is not dated the day before `start_day`. |
+| `ACCRUAL_ENTRY_MISMATCH` | The source ID or the fingerprint is not that of the entry. |
+| `ACCRUAL_ACCOUNTS_MISMATCH` | An Assets or Liabilities account of the entry is not authorized, or an authorized account is not in the entry. |
+| `ACCRUAL_ACCOUNT_NOT_GOVERNED` | An Assets or Liabilities account of the entry is not `authorized` in the current policy with the start and the next version. |
+
+A tracking opening (`accrual-tracking-opening`) is never an opening here. It adds
+accrual balances to books that already started, and it is dated on the tracking
+start, so it stays ordinary booked activity. A context document that names it as
+an opening is refused. The completion changes no balance, never relabels an
+accrual opening as a statement opening, and never allows a booking.
+
 The host makes an authorization only from its own receipt of a reviewed opening
 operation and the preview that the person reviewed. Each supported opening
 preview prints `proposed_entry`, the complete entry that the apply records (every

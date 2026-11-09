@@ -31,6 +31,22 @@
   now stops with `FinancialKindReviewRequired` (a `ValueError`). Its
   `account_ids` lists every account that needs a review, not only the first
   one. Read `account_ids`, not the message text.
+- A fresh accrual opening now completes a confirmed `outside_books` decision
+  (`source_disposition`) on its own rules. Before, the module did not read an
+  accrual opening as an opening, and it expected an entry on the books start, so
+  a pre-start row confirmed while the opening was pending was only invalidated.
+  The new `accrual` opening kind completes the decision only when `evaluate`
+  gets the exact version 3 request (`accrual_opening_prior_day`) that published
+  the entry dated the day before the start. Its source ID and fingerprint must
+  match, and every Assets and Liabilities account that the entry posts to
+  (receivables and payables included) must be authorized and in the books start
+  policy. The evidence kind is `expected_accrual_opening_recorded`. Otherwise
+  the decision is invalidated with an `ACCRUAL_*` trigger. A version 1 or 2
+  same-day authorization never completes it. The `check` command reads the
+  request from `opening_authorization`. A tracking opening is never an opening
+  here. Statement and QuickBooks openings do not change. A decision confirmed
+  after an accrual opening was recorded now shows that opening, so an older one
+  is invalidated with `OPENING_CHANGED`.
 - Add request version 3 to the trusted books start check
   (`books_policy_check`) for one operation only, `accrual_opening_prior_day`.
   A fresh accrual opening posts on the day before the cutover, so a version 1

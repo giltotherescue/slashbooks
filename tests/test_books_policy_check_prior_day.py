@@ -156,8 +156,12 @@ class PriorDayOpeningTests(unittest.TestCase):
         self.assertEqual((replay["entries_written"], replay["replayed"]), (0, True))
         self.assertEqual(self.store.load_entries(), [self.entry])
 
-    def test_outside_books_decisions_keep_their_released_outcome(self) -> None:
-        """No change to disposition semantics: the opening moves open dates and policy, so decisions invalidate."""
+    def test_outside_books_decisions_without_the_version_3_request_invalidate(self) -> None:
+        """The prior-day opening completes a decision only with its version 3 request (``source_disposition``).
+
+        Here no request is given and the receivable is outside the policy, so each decision is invalidated with the
+        explicit reasons. ``tests/test_source_disposition_accrual.py`` has the completion itself.
+        """
         from bookkeeping.source_disposition import confirm, evaluate, load_context, preview
         before = load_context(self.base, policy())
         claims = [confirm(before, preview(before, row["id"], "outside_books")["claim"])["claim"]
@@ -166,7 +170,8 @@ class PriorDayOpeningTests(unittest.TestCase):
         after["epoch"] = 5
         results = evaluate(load_context(self.candidate, after), claims)
         self.assertEqual([(r["status"], r["triggers"]) for r in results],
-                         [("invalidated", ["OPEN_DATE_CHANGED", "POLICY_CHANGED"])] * 2)
+                         [("invalidated", ["ACCRUAL_ACCOUNT_NOT_GOVERNED", "ACCRUAL_AUTHORIZATION_REQUIRED",
+                                           "OPENING_CHANGED", "OPEN_DATE_CHANGED", "POLICY_CHANGED"])] * 2)
 
     # -- operation IDs and the account set ----------------------------------------------------------------------
 
