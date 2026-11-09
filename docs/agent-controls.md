@@ -366,7 +366,7 @@ field. Make sure that `entry_fingerprint` of the entry it reads is
 
 | Opening operation | Preview with `proposed_entry` | Other state that the preview changes |
 | --- | --- | --- |
-| `quickbooks_sync_opening` | `books qb sync-opening` without `--apply` (`opening`) | It saves the snapshot reference data (`sync-import`), as before. No ledger change. |
+| `quickbooks_sync_opening` | `books qb sync-opening` without `--apply` (`opening`), also with a chart choice (`preserve` or `rebuild`) | It saves the snapshot reference data (`sync-import`, in `sources/quickbooks/<snapshot ID>/`), as before, and the empty `.books.lock`. No ledger change. |
 | `quickbooks_import_opening` | `books qb import-opening --dry-run` | None |
 | `statement_opening` | `books statement record-opening --statement-id ID --dry-run` | The empty entity lock file `.books.lock` |
 | `starting_balance` | `books statement record-opening --account A --on DAY --amount N --dry-run` | The empty entity lock file `.books.lock` |
