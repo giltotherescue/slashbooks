@@ -87,7 +87,10 @@ from collections import Counter
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .statement_opening import OpeningDispositionBasis
 
 from .connectors import bankcsv, ofx
 from .connectors.bankcsv import StatementFileError
@@ -1397,7 +1400,7 @@ def add_parser(subparsers: Any) -> None:
     list_p.add_argument("--account", default=None, help="Only this ledger account")
 
 
-def run(args: argparse.Namespace) -> int:
+def run(args: argparse.Namespace, *, opening_disposition_basis: OpeningDispositionBasis | None = None) -> int:
     from .entity import load_entity
 
     command = args.statement_command
@@ -1439,7 +1442,8 @@ def run(args: argparse.Namespace) -> int:
             from .statement_opening import StatementOpeningError, record_opening
             try:
                 result = record_opening(args.entity, args.statement_id, account=args.account, on=args.on,
-                                        amount=args.amount, replace=args.replace, dry_run=args.dry_run)
+                                        amount=args.amount, replace=args.replace, dry_run=args.dry_run,
+                                        disposition_basis=opening_disposition_basis)
             except StatementOpeningError as exc:
                 raise StatementImportError(exc.code, str(exc)) from exc
         elif command == "list":

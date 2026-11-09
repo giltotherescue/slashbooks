@@ -5,6 +5,7 @@ All fixtures under tests/fixtures/statements/ are synthetic.
 
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import sys
@@ -23,7 +24,7 @@ if str(SRC) not in sys.path:
 from bookkeeping import statement_import as si  # noqa: E402
 from bookkeeping import tieout  # noqa: E402
 from bookkeeping.cli import main  # noqa: E402
-from bookkeeping.entity import load_entity  # noqa: E402
+from bookkeeping.entity import init_entity, load_entity  # noqa: E402
 from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore, default_store_path  # noqa: E402
 from bookkeeping.remote_contract import command_spec  # noqa: E402
@@ -71,6 +72,151 @@ class RecordOpeningTests(unittest.TestCase):
             return _account_balances_as_of(conn, date.fromisoformat(day))
         finally:
             conn.close()
+
+    def test_authorized_opening_keeps_earlier_statement_and_outside_rows(self):
+        from bookkeeping.ledger.books_policy_check import entry_fingerprint, workspace_digest
+        from bookkeeping.source_disposition import confirm, evaluate, load_context, preview
+        from bookkeeping.statement_opening import OpeningDispositionBasis
+
+        self.entity = Path(self._tmp.name) / "typed"
+        init_entity(self.entity, name="Synthetic", classify_starter_accounts=True)
+        self.assertEqual(LedgerStore(default_store_path(self.entity)).load_financial_kinds()[CHECKING], "bank")
+        self.imp("chase_like_checking.csv", "earlier", period_start="2026-01-01",
+                 period_end="2026-01-31", intake_only=True)
+        staged = self.entity / "staging" / "pending-categorization.json"
+        before = staged.read_bytes()
+        rows = json.loads(before)
+        self.assertTrue(rows)
+        policy = {"schema_version": 1, "mode": "enforced", "epoch": 2, "accounts": {
+            CHECKING: {"state": "authorized_pending_opening", "start_day": "2026-02-01", "version": 1}}}
+
+        later = Path(self._tmp.name) / "later.csv"
+        later.write_text((FIXTURES / "chase_like_checking.csv").read_text().replace("01/", "02/"))
+        si.save_profile(self.entity, later, name="later", ledger_account=CHECKING, overrides={})
+        latest = si.import_file(self.entity, later, profile="later", period_start="2026-02-01",
+                                period_end="2026-02-28", intake_only=True)["statements"][0]["statement"]
+        context = load_context(self.entity, policy)
+        claims = tuple(confirm(context, preview(context, row["id"], "outside_books")["claim"])["claim"]
+                       for row in rows)
+        baseline = workspace_digest(self.entity, ignore_empty_lock=True)
+        basis = OpeningDispositionBasis(baseline, policy, claims)
+        staged_before = staged.read_bytes()
+        statements = {p: p.read_bytes() for p in (self.entity / "ingestion" / "statements").glob("*.json")}
+        self.assertEqual(len(statements), 2)
+
+        parser = argparse.ArgumentParser()
+        si.add_parser(parser.add_subparsers())
+        def invoke(*options, trusted_basis=None):
+            args = parser.parse_args(["statement", "record-opening", "--entity", str(self.entity),
+                                      "--statement-id", latest["statement_id"], *options])
+            output = io.StringIO()
+            with redirect_stdout(output):
+                si.run(args, opening_disposition_basis=trusted_basis)
+            return json.loads(output.getvalue())
+
+        self.assertEqual(invoke()["reason"], "not_first_statement")
+        wrong_base = OpeningDispositionBasis("0" * 64, policy, claims)
+        wrong_account = OpeningDispositionBasis(baseline, {**policy, "accounts": {}}, claims)
+        wrong_start = OpeningDispositionBasis(baseline, {**policy, "accounts": {
+            CHECKING: {**policy["accounts"][CHECKING], "start_day": "2026-02-02"}}}, claims)
+        wrong_claim = OpeningDispositionBasis(baseline, policy, ({**claims[0], "source_id": "other-row"}, *claims[1:]))
+        wrong_digest = OpeningDispositionBasis(baseline, policy, ({**claims[0], "preview_digest": "0" * 64}, *claims[1:]))
+        legacy = OpeningDispositionBasis(baseline, {"schema_version": 1, "mode": "legacy", "epoch": 0, "accounts": {}}, claims)
+        for candidate in (wrong_base, wrong_account, wrong_start, wrong_claim, wrong_digest, legacy):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(invoke(trusted_basis=candidate)["reason"], "opening_disposition_basis_changed")
+                self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), baseline)
+        historical = next(path for path, content in statements.items() if b"2026-01-31" in content)
+        old_statement = json.loads(statements[historical])
+        for overlap in ("2026-02-01", "not-a-date"):
+            historical.write_text(json.dumps({**old_statement, "period_end": overlap}))
+            modified = workspace_digest(self.entity, ignore_empty_lock=True)
+            self.assertEqual(invoke(trusted_basis=basis)["reason"], "opening_disposition_basis_changed")
+            rebound = OpeningDispositionBasis(modified, policy, claims)
+            expected = "not_first_statement" if overlap == "2026-02-01" else "opening_disposition_basis_changed"
+            self.assertEqual(invoke(trusted_basis=rebound)["reason"], expected)
+            self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), modified)
+        historical.write_bytes(statements[historical])
+        self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), baseline)
+        partial = OpeningDispositionBasis(baseline, policy, claims[:-1])
+        self.assertEqual(invoke(trusted_basis=partial)["reason"], "rows_waiting_before")
+        self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), baseline)
+        later_epoch = OpeningDispositionBasis(baseline, {**policy, "epoch": 3}, claims)
+        shown = invoke("--dry-run", trusted_basis=later_epoch)
+        self.assertEqual(shown["status"], "dry_run")
+        self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), baseline)
+        self.assertEqual(invoke(trusted_basis=basis)["status"], "recorded")
+        entries = LedgerStore(default_store_path(self.entity)).load_entries()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entry_fingerprint(entries[0]), shown["proposed_entry_fingerprint"])
+        self.assertEqual(staged.read_bytes(), staged_before)
+        self.assertEqual({p: p.read_bytes() for p in statements}, statements)
+        authorized = {**policy, "epoch": 3, "accounts": {
+            CHECKING: {**policy["accounts"][CHECKING], "state": "authorized", "version": 2}}}
+        after = load_context(self.entity, authorized)
+        pending = evaluate(after, claims)
+        self.assertTrue(all(item["status"] == "transition_pending" for item in pending), pending)
+        evidence = {claim["preview_digest"]: item["transition_evidence"] for claim, item in zip(claims, pending)}
+        self.assertTrue(all(item["status"] == "resolved" for item in evaluate(after, claims, evidence)))
+
+    def test_authorized_typed_opening_uses_exact_base_and_preserves_staged_sources(self):
+        from bookkeeping.ledger.books_policy_check import workspace_digest
+        from bookkeeping.source_disposition import load_context, preview
+        from bookkeeping.statement_opening import OpeningDispositionBasis
+
+        self.entity = Path(self._tmp.name) / "typed"
+        init_entity(self.entity, name="Synthetic", classify_starter_accounts=True)
+        card = "Liabilities:CreditCard"
+        self.assertEqual(LedgerStore(default_store_path(self.entity)).load_financial_kinds()[card], "credit_card")
+        self.imp("card_debit_credit.csv", "earlier", account=card, period_start="2026-01-01",
+                 period_end="2026-01-31", intake_only=True)
+        stage = self.entity / "staging" / "pending-categorization.json"
+        staged = stage.read_bytes()
+        lock = self.entity / ".books.lock"
+        lock.unlink()
+        policy = {"schema_version": 1, "mode": "enforced", "epoch": 2, "accounts": {
+            card: {"state": "authorized_pending_opening", "start_day": "2026-02-01", "version": 1}}}
+        context = load_context(self.entity, policy)
+        claims = tuple(preview(context, row["id"], "outside_books")["claim"] for row in json.loads(staged))
+        digest = workspace_digest(self.entity)
+        basis = OpeningDispositionBasis(digest, policy, claims)
+        options = {"account": card, "on": "2026-02-01", "amount": "7907.82", "disposition_basis": basis}
+        shown = record_opening(self.entity, dry_run=True, **options)
+        self.assertEqual(shown["status"], "dry_run")
+        self.assertEqual(shown["postings"][0], {"account": card, "amount": "-7907.82"})
+        self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), digest)
+        self.assertTrue(lock.is_file())
+        lock.write_text("unexpected data")
+        self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_disposition_basis_changed")
+        lock.write_bytes(b"")
+        stage.write_text(json.dumps([*json.loads(staged), {"id": "unmapped"}]))
+        malformed_digest = workspace_digest(self.entity, ignore_empty_lock=True)
+        malformed_options = {**options, "disposition_basis": OpeningDispositionBasis(malformed_digest, policy, claims)}
+        self.assertEqual(record_opening(self.entity, **malformed_options)["reason"], "opening_disposition_basis_changed")
+        self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), malformed_digest)
+        stage.write_bytes(staged)
+        self.assertEqual(record_opening(self.entity, **options)["status"], "recorded")
+        self.assertEqual(stage.read_bytes(), staged)
+
+    def test_authorized_opening_cannot_add_or_move_the_catalog_open_date(self):
+        from bookkeeping.ledger.books_policy_check import workspace_digest
+        from bookkeeping.statement_opening import OpeningDispositionBasis
+
+        original = self.entity
+        for with_catalog in (False, True):
+            with self.subTest(with_catalog=with_catalog):
+                self.entity = Path(self._tmp.name) / "typed" if with_catalog else original
+                if with_catalog:
+                    init_entity(self.entity, name="Synthetic", cutover_date="2026-02-02", classify_starter_accounts=True)
+                self.imp("chase_like_checking.csv", "earlier", period_start="2026-01-01",
+                         period_end="2026-01-31", intake_only=True)
+                policy = {"schema_version": 1, "mode": "enforced", "epoch": 2, "accounts": {
+                    CHECKING: {"state": "authorized_pending_opening", "start_day": "2026-02-01", "version": 1}}}
+                digest = workspace_digest(self.entity, ignore_empty_lock=True)
+                result = record_opening(self.entity, account=CHECKING, on="2026-02-01", amount="1000.00",
+                                        disposition_basis=OpeningDispositionBasis(digest, policy, ()))
+                self.assertEqual(result["reason"], "opening_disposition_basis_changed")
+                self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), digest)
 
     def test_first_statement_opening_is_recorded_once_against_opening_equity(self):
         record = self.imp("chase_like_checking.csv", "checking", period_start="2026-01-01", period_end="2026-01-31")

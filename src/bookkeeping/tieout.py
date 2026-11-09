@@ -33,7 +33,7 @@ from decimal import Decimal, InvalidOperation
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .entity import _locked_entity_operation
 from .ledger.store import LedgerStore, default_store_path
@@ -231,14 +231,17 @@ def load_waiting(entity: Any, accounts: Sequence[str]) -> dict[str, Series]:
     return load_waiting_checked(entity, accounts)[0]
 
 
-def load_waiting_checked(entity: Any, accounts: Sequence[str]) -> tuple[dict[str, Series], dict[str, int]]:
+def load_waiting_checked(
+    entity: Any, accounts: Sequence[str], *, exclude: Callable[[Mapping[str, Any]], bool] | None = None,
+) -> tuple[dict[str, Series], dict[str, int]]:
     """Staged rows per ledger account, and how many rows could not be read for each account.
 
     ``load_waiting`` leaves out a row it cannot read. A check that must know that
     nothing waits uses this form. A file that exists but does not parse, a row
     that is not an object, and a row whose account cannot be decided count
     against every account. A row of one account with a date or an amount that
-    cannot be read counts against that account.
+    cannot be read counts against that account. An exact exclusion may omit a
+    readable row from the series without changing staging or unreadable counts.
     """
     from .ledger.importer import _ledger_account_for_txn
 
@@ -283,7 +286,7 @@ def load_waiting_checked(entity: Any, accounts: Sequence[str]) -> tuple[dict[str
             readable = amount is not None
         if day is None or not readable:
             unreadable[account] += 1
-        if day is not None and amount is not None:
+        if day is not None and amount is not None and (not readable or exclude is None or not exclude(txn)):
             items[account].append((day, amount))
     return {account: Series(values) for account, values in items.items()}, unreadable
 
