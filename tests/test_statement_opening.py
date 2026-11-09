@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -198,7 +199,14 @@ class RecordOpeningTests(unittest.TestCase):
         lock.symlink_to(outside)
         self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_disposition_basis_changed")
         self.assertFalse(outside.exists(), "a dangling lock link must not create an external file")
+        outside.write_bytes(b"external content")
+        self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_disposition_basis_changed")
+        self.assertEqual(outside.read_bytes(), b"external content")
         lock.unlink()
+        if hasattr(os, "mkfifo"):
+            os.mkfifo(lock)
+            self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_disposition_basis_changed")
+            lock.unlink()
         lock.touch()
         self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), digest)
         stage.write_text(json.dumps([*json.loads(staged), {"id": "unmapped"}]))
