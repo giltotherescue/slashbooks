@@ -552,20 +552,25 @@ class StripeTests(unittest.TestCase):
         from bookkeeping.entity import add_account, init_entity, load_entity
         from bookkeeping.ledger.importer import check_integrity
 
-        root = Path(self.tmp.name) / "typed"
-        init_entity(root, name="Typed processor books", classify_starter_accounts=True)
-        add_account(root, CLEARING, open_date="2026-01-01")
-        store = LedgerStore(root / "ledger.sqlite")
-        prior = store.load_financial_kinds()
+        for existing_clearing in (False, True):
+            with self.subTest(existing_clearing=existing_clearing):
+                root = Path(self.tmp.name) / f"typed-{existing_clearing}"
+                init_entity(root, name="Typed processor books", classify_starter_accounts=True)
+                if existing_clearing:
+                    add_account(root, CLEARING, open_date="2026-01-01")
+                store = LedgerStore(root / "ledger.sqlite")
+                prior = store.load_financial_kinds()
 
-        result = stripe_prepare(load_entity(root), opening_date="2026-01-01")
+                result = stripe_prepare(load_entity(root), opening_date="2026-01-01")
 
-        self.assertIn(CLEARING, result["existing"])
-        self.assertNotIn(CLEARING, store.load_financial_kinds())
-        expected = {result["accounts"][role]: "cash" for role in ("payout_transit_account", "reserve_account")}
-        self.assertEqual(store.load_financial_kinds(), {**prior, **expected})
-        self.assertEqual(store.load_entries(), [])
-        self.assertEqual(check_integrity(load_entity(root)).status, "ok")
+                self.assertEqual(CLEARING in result["existing"], existing_clearing)
+                roles = ["payout_transit_account", "reserve_account"]
+                if not existing_clearing:
+                    roles.append("clearing_account")
+                expected = {result["accounts"][role]: "cash" for role in roles}
+                self.assertEqual(store.load_financial_kinds(), {**prior, **expected})
+                self.assertEqual(store.load_entries(), [])
+                self.assertEqual(check_integrity(load_entity(root)).status, "ok")
 
     def test_preview_merge_counts_disjoint_roots_and_rejects_overlap_or_invalid_totals(self):
         first = stripe_preview(self.raw)
