@@ -541,10 +541,36 @@ class StripeTests(unittest.TestCase):
         first = stripe_prepare(self.entity, opening_date='2026-01-01')
         self.assertEqual(4, len(first['created']))  # clearing already exists
         self.assertEqual([], self.store.load_entries())
+        with self.store.connection() as conn:
+            self.assertFalse(self.store.has_financial_kinds(conn))
         self.assertFalse(first['opening_balance_supplied']); self.assertFalse(first['policy_approved'])
         before = self.files()
         self.assertEqual([], stripe_prepare(self.entity, opening_date='2026-01-01')['created'])
         self.assertEqual(before, self.files())
+
+    def test_prepare_classifies_only_new_processor_balances_in_a_typed_catalog(self):
+        from bookkeeping.entity import add_account, init_entity, load_entity
+        from bookkeeping.ledger.importer import check_integrity
+
+        for existing_clearing in (False, True):
+            with self.subTest(existing_clearing=existing_clearing):
+                root = Path(self.tmp.name) / f"typed-{existing_clearing}"
+                init_entity(root, name="Typed processor books", classify_starter_accounts=True)
+                if existing_clearing:
+                    add_account(root, CLEARING, open_date="2026-01-01")
+                store = LedgerStore(root / "ledger.sqlite")
+                prior = store.load_financial_kinds()
+
+                result = stripe_prepare(load_entity(root), opening_date="2026-01-01")
+
+                self.assertEqual(CLEARING in result["existing"], existing_clearing)
+                roles = ["payout_transit_account", "reserve_account"]
+                if not existing_clearing:
+                    roles.append("clearing_account")
+                expected = {result["accounts"][role]: "cash" for role in roles}
+                self.assertEqual(store.load_financial_kinds(), {**prior, **expected})
+                self.assertEqual(store.load_entries(), [])
+                self.assertEqual(check_integrity(load_entity(root)).status, "ok")
 
     def test_preview_merge_counts_disjoint_roots_and_rejects_overlap_or_invalid_totals(self):
         first = stripe_preview(self.raw)

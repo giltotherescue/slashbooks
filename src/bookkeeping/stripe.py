@@ -417,12 +417,17 @@ def stripe_prepare(entity, *, opening_date):
     for name in accounts.values():
         if name in opened and ((opened[name].currencies and book not in opened[name].currencies) or opened[name].date > when):
             raise ValueError('Existing Stripe account currency/opening date conflicts; review the catalog explicitly.')
+    with store.connection() as conn:
+        typed_catalog = store.has_financial_kinds(conn)
     created, existing = [], []
-    for name in accounts.values():
+    for role, name in accounts.items():
         if name in opened:
             existing.append(name)
         else:
-            add_account(entity.path, name, open_date=opening_date, currency=book); created.append(name)
+            cash = role in {"clearing_account", "payout_transit_account", "reserve_account"}
+            add_account(entity.path, name, open_date=opening_date, currency=book,
+                        financial_kind="cash" if typed_catalog and cash else None)
+            created.append(name)
     return dict(accounts=accounts, created=created, existing=existing, opening_date=opening_date,
                 opening_balance_supplied=False, policy_approved=False)
 
