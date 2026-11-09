@@ -4,7 +4,9 @@ Public API
 ----------
 compare_period(entity, qb_folder, from_date, to_date) -> ComparisonReport
     Multi-grain diff: P&L categories, BS accounts, TB totals, GL transaction
-    counts, and unmatched transactions both directions.
+    counts, and unmatched transactions both directions. With
+    ``persist_differences=False`` it returns the same report but does not save
+    differences.json.
 
 confidence_package(entity, qb_folder, from_date, to_date) -> dict
     Full migration-confidence artefact including the readiness recap, source
@@ -33,6 +35,7 @@ Subcommands:
                 [--skip-fetch] [--banksync-json FILE ...]  [--partial]
                 [--truth CSV [--report DIR] [--seed N] [--json]]
   compare period --entity PATH --qb-folder PATH --from DATE --to DATE
+                 [--no-save-differences]
   compare categorize-diff --key K --category C --note N --entity PATH
   compare accept-diff --key K --note N --entity PATH
 
@@ -344,8 +347,8 @@ def _confidence_dir(entity: Entity) -> Path:
 
 
 def load_differences(entity: Entity) -> list[DiffRecord]:
-    """Load persisted differences (returns [] when file is absent)."""
-    path = _confidence_dir(entity) / _DIFFERENCES_FILE
+    """Load persisted differences (returns [] when file is absent). Creates no directory."""
+    path = entity.reports_dir / _CONFIDENCE_DIR / _DIFFERENCES_FILE
     if not path.exists():
         return []
     try:
@@ -1417,11 +1420,16 @@ def compare_period(
     from_date: date,
     to_date: date,
     view: Optional[str] = None,
+    persist_differences: bool = True,
 ) -> ComparisonReport:
-    """Read the QuickBooks reports in the company currency; see ``_compare_period``."""
+    """Read the QuickBooks reports in the company currency; see ``_compare_period``.
+
+    With ``persist_differences=False`` the saved dispositions are still read and merged, so the report is the same,
+    but differences.json is not written.
+    """
     from .currency import report_currency
     with report_currency(entity.currency):
-        return _compare_period(entity, qb_folder, from_date, to_date, view)
+        return _compare_period(entity, qb_folder, from_date, to_date, view, persist_differences)
 
 
 def _compare_period(
@@ -1430,6 +1438,7 @@ def _compare_period(
     from_date: date,
     to_date: date,
     view: Optional[str] = None,
+    persist_differences: bool = True,
 ) -> ComparisonReport:
     """Multi-grain generated-vs-reference comparison.
 
@@ -1586,7 +1595,8 @@ def _compare_period(
         existing = load_differences(entity)
         all_fresh = report.material_diffs + report.immaterial_diffs
         merged = _merge_differences(existing, all_fresh, abs_t, pct_t)
-        save_differences(entity, merged)
+        if persist_differences:
+            save_differences(entity, merged)
         # Update report's diffs to reflect merged dispositions
         merged_by_key = {d.key: d for d in merged}
         report.material_diffs = [merged_by_key[d.key] for d in report.material_diffs if d.key in merged_by_key]
@@ -2611,6 +2621,8 @@ def add_parser(subparsers: Any) -> None:
     period_p.add_argument("--to", required=True, dest="to_date")
     period_p.add_argument("--json", action="store_true", dest="as_json",
                           help="Output as JSON")
+    period_p.add_argument("--no-save-differences", action="store_false", dest="save_differences",
+                          help="Read the saved dispositions but do not write differences.json. The output is the same.")
     period_p.add_argument("--basis", choices=["cash", "accrual"], default=None, dest="view",
                           help="View to compare. Default: the company's default view. The QuickBooks reports must be on the same basis. "
                                "The cash view compares the profit and loss only.")
@@ -2725,7 +2737,8 @@ def run(args: Any) -> int:
                 return 1
 
             try:
-                report = compare_period(entity, qb_folder, from_date, to_date, view=getattr(args, "view", None))
+                report = compare_period(entity, qb_folder, from_date, to_date, view=getattr(args, "view", None),
+                                        persist_differences=getattr(args, "save_differences", True))
             except ValueError as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1

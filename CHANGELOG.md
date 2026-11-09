@@ -23,6 +23,12 @@
   with the exact fresh accrual opening metadata, and only when every account is
   pending with the authorized start and version. Otherwise the check refuses
   with `BOOKS_OPENING_AUTHORIZATION_MISMATCH`. Versions 1 and 2 do not change.
+- Add `books compare period --no-save-differences` and
+  `compare_period(..., persist_differences=False)` for a caller that needs a
+  read-only compare. The compare still reads the saved decisions, and the
+  result is the same, but it does not write `differences.json`. Reading the
+  saved differences no longer creates the `reports/migration-confidence`
+  folder.
 - Add request version 2 to the trusted books start check
   (`books_policy_check`). A version 2 opening authorization binds the complete
   opening entry with `entry_fingerprint`: every entry field (narration, payee,

@@ -2279,5 +2279,132 @@ class TestConfidenceMarkdownBlockingIssues(unittest.TestCase):
         self.assertNotIn("## Blocking Issues", md)
 
 
+def _tree_state(root: Path) -> dict:
+    """Every file and directory under root, with its mtime; files also with size and content hash."""
+    import hashlib
+    state = {".": ("dir", root.stat().st_mtime_ns)}
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            path = Path(dirpath) / name
+            st = path.lstat()
+            if path.is_file():
+                state[str(path.relative_to(root))] = ("file", st.st_mtime_ns, st.st_size,
+                                                      hashlib.sha256(path.read_bytes()).hexdigest())
+            else:
+                state[str(path.relative_to(root))] = ("dir", st.st_mtime_ns)
+    return state
+
+
+class TestReadOnlyCompare(unittest.TestCase):
+    """compare_period(persist_differences=False) and --no-save-differences: the same result, no write."""
+
+    _FROM = date(2026, 1, 1)
+    _TO = date(2026, 3, 31)
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self._tmp = Path(self._tmpdir)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _company(self, name: str) -> Path:
+        """A SQLite-backed company whose books differ from the reference, so every grain has a difference."""
+        from src.bookkeeping.ledger.migrate import migrate_beancount_to_store
+        path = self._tmp / name
+        _make_entity(path, FIXTURE_LEDGER_WITH_DELTA)
+        self.assertTrue(migrate_beancount_to_store(path).success)
+        return path
+
+    def _company_with_decisions(self) -> Path:
+        """A company with saved dispositions: one accepted difference and one categorized difference."""
+        from src.bookkeeping.compare import accept_diff, categorize_diff, compare_period
+        from src.bookkeeping.entity import load_entity
+        path = self._company("seed")
+        compare_period(load_entity(path), _QB_MATCH, self._FROM, self._TO)
+        self.assertTrue(accept_diff(load_entity(path), "bs:Assets:Mercury-Checking", "Owner confirmed"))
+        self.assertTrue(categorize_diff(load_entity(path), "pnl:Income:Consulting-Revenue", "our-bug", "Extra payment"))
+        return path
+
+    def _copy(self, source: Path, name: str) -> Path:
+        import shutil
+        return Path(shutil.copytree(source, self._tmp / name))
+
+    def _compare(self, path: Path, persist: bool):
+        from src.bookkeeping.compare import compare_period
+        from src.bookkeeping.entity import load_entity
+        return compare_period(load_entity(path), _QB_MATCH, self._FROM, self._TO, persist_differences=persist)
+
+    def _cli(self, path: Path, *extra: str) -> tuple[int, str]:
+        import io
+        import sys
+        from contextlib import redirect_stdout
+        src = str(Path(__file__).resolve().parents[1] / "src")
+        if src not in sys.path:
+            sys.path.insert(0, src)
+        from bookkeeping.cli import main
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main(["compare", "period", "--entity", str(path), "--qb-folder", str(_QB_MATCH),
+                         "--from", str(self._FROM), "--to", str(self._TO), *extra])
+        return code, out.getvalue()
+
+    def test_result_equals_the_saving_compare_with_saved_decisions(self):
+        seed = self._company_with_decisions()
+        read_only = self._compare(self._copy(seed, "a"), persist=False).to_dict()
+        saving = self._compare(self._copy(seed, "b"), persist=True).to_dict()
+        self.assertEqual(read_only, saving)
+        # The saved decisions are in the result, and the default compare covers the balance sheet and trial balance.
+        statuses = {d["key"]: (d["status"], d["category"]) for d in read_only["material_diffs"]}
+        self.assertEqual(statuses["bs:Assets:Mercury-Checking"][0], "accepted")
+        self.assertEqual(statuses["pnl:Income:Consulting-Revenue"], ("open", "our-bug"))
+        self.assertTrue(any(key.startswith("tb:") for key in statuses))
+        self.assertIn("total_debits", read_only["summary"]["grains"]["tb"])
+        self.assertGreater(read_only["summary"]["grains"]["bs"]["differs"], 0)
+        self.assertEqual(read_only["errors"], [])
+
+    def test_cli_output_is_byte_identical(self):
+        seed = self._company_with_decisions()
+        for extra in (("--json",), ()):
+            with self.subTest(extra=extra):
+                code_a, read_only = self._cli(self._copy(seed, f"a{len(extra)}"), *extra, "--no-save-differences")
+                code_b, saving = self._cli(self._copy(seed, f"b{len(extra)}"), *extra)
+                self.assertEqual((code_a, code_b), (0, 0))
+                self.assertEqual(read_only.encode("utf-8"), saving.encode("utf-8"))
+                self.assertIn("Assets:Mercury-Checking", read_only)
+
+    def test_no_write_with_saved_decisions(self):
+        path = self._company_with_decisions()
+        before = _tree_state(path)
+        self._compare(path, persist=False)
+        self.assertEqual(_tree_state(path), before)
+        self._cli(path, "--json", "--no-save-differences")
+        self.assertEqual(_tree_state(path), before)
+
+    def test_no_write_when_no_differences_were_saved_yet(self):
+        import shutil
+        path = self._company("fresh")
+        # No reports folder at all, so there is no migration-confidence folder either.
+        shutil.rmtree(path / "reports")
+        before = _tree_state(path)
+        report = self._compare(path, persist=False)
+        self.assertGreater(len(report.material_diffs), 0)
+        self.assertEqual(_tree_state(path), before)
+        self._cli(path, "--json", "--no-save-differences")
+        self.assertEqual(_tree_state(path), before)
+        self.assertFalse((path / "reports").exists())
+        # Control: the default compare still saves the differences.
+        self._compare(path, persist=True)
+        self.assertTrue((path / "reports" / "migration-confidence" / "differences.json").is_file())
+
+    def test_load_differences_creates_no_directory(self):
+        from src.bookkeeping.compare import load_differences
+        from src.bookkeeping.entity import Entity
+        entity = Entity(path=self._tmp, entity_config={"name": "Test"}, trust_policy={})
+        self.assertEqual(load_differences(entity), [])
+        self.assertFalse((self._tmp / "reports").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
