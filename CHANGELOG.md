@@ -45,9 +45,10 @@
   `outside_period`: it needs no coverage or reconciliation in that period, but a
   supplied reconciliation is still checked. When every source account is outside
   the period, the new `no_applicable_period` blocker says so. Any canonical
-  posting before an authorized start (a prior balance or a pair that nets to
-  zero counts) gives the new `books_start_contradicted` blocker, and that start
-  does not bound the account. An authorized cash opening is dated on its start
+  posting, at any date, strictly before an authorized start (a prior balance or
+  a pair that nets to zero counts) gives the new `books_start_contradicted`
+  blocker, also when the start is on or before the first day of the period, and
+  that start does not bound the account. An authorized cash opening is dated on its start
   day, so it is not before the start. An `unset` or
   `authorized_pending_opening` source account keeps the whole month and gets a
   new `books_start_unset` or `books_start_opening_required` blocker. An accrual

@@ -380,10 +380,10 @@ class AccountStartFixture(unittest.TestCase):
             {"base_sha256": "b" * 64, "policy_epoch": document["epoch"], "generation": 1,
              "captured_disposition_sha256": "c" * 64})
 
-    def assess(self, disposition_context=None):
+    def assess(self, disposition_context=None, period="2027-01"):
         kwargs = {} if disposition_context is None else {"disposition_context": disposition_context}
-        return assess_review_readiness(self.entity, "2027-01", DependencyVersions(1, 1, 1, 1),
-                                       as_of=date(2027, 2, 10), **kwargs).to_document()
+        return assess_review_readiness(self.entity, period, DependencyVersions(1, 1, 1, 1),
+                                       as_of=date(2027, 4, 10), **kwargs).to_document()
 
     @staticmethod
     def month(document, account):
@@ -651,6 +651,56 @@ class ReadinessNoApplicablePeriodTests(AccountStartFixture):
         self.assertIn("no_applicable_period", self.codes(document))
         self.assertEqual({row["status"] for row in document["coverage"]}, {"outside_period"})
         self.assertEqual(self.codes(document, CHECKING) | self.codes(document, CARD), set())
+
+
+class ReadinessEarlierStartTests(AccountStartFixture):
+    """The contradiction check uses every authorized start, also one on or before the period's first day."""
+
+    def card_start(self, start_day):
+        return self.context(start_policy({"state": "authorized", "start_day": start_day, "version": 1}))
+
+    def test_a_start_on_the_first_day_with_an_earlier_month_posting_is_a_contradiction(self):
+        self.post(CARD, date(2026, 12, 20), "synthetic-december", "-25.00")
+        document = self.assess(self.card_start("2027-01-01"))
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+        self.assertEqual(self.month(document, CARD)["from"], "2027-01-01")
+
+    def test_a_start_before_the_period_with_an_earlier_posting_is_a_contradiction(self):
+        self.post(CARD, date(2027, 1, 5), "synthetic-early", "-25.00")
+        document = self.assess(self.card_start("2027-01-10"), period="2027-02")
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+        self.assertEqual(self.month(document, CARD)["from"], "2027-02-01")
+
+    def test_a_posting_before_a_start_on_the_first_day_of_a_later_review_is_a_contradiction(self):
+        self.post(CARD, date(2027, 1, 15), "synthetic-card", "-25.00")
+        february = self.assess(self.card_start("2027-02-01"), period="2027-02")
+        self.assertIn("books_start_contradicted", self.codes(february, CARD))
+        self.assertIn("books_start_contradicted", self.codes(self.assess(self.card_start("2027-02-01"),
+                                                                         period="2027-03"), CARD))
+
+    def test_a_posting_after_the_period_but_before_a_later_start_is_a_contradiction(self):
+        self.post(CARD, date(2027, 2, 10), "synthetic-february", "-25.00")
+        document = self.assess(self.card_start("2027-03-01"))
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+
+    def test_postings_on_or_after_the_start_are_not_a_contradiction(self):
+        self.post(CARD, date(2027, 2, 1), "synthetic-start-day", "-25.00")
+        self.post(CARD, date(2027, 2, 3), "synthetic-february", "-10.00")
+        for start_day, period in (("2027-02-01", "2027-02"), ("2027-02-01", "2027-03"), ("2027-01-01", "2027-02")):
+            with self.subTest(start_day=start_day, period=period):
+                document = self.assess(self.card_start(start_day), period=period)
+                self.assertNotIn("books_start_contradicted", self.codes(document))
+        # Checking starts on January 15 with postings from that day: never a contradiction.
+        self.assertNotIn("books_start_contradicted", self.codes(self.assess(self.card_start("2027-02-01"),
+                                                                           period="2027-02"), CHECKING))
+
+    def test_reports_and_legacy_output_do_not_change(self):
+        self.post(CARD, date(2027, 1, 15), "synthetic-card", "-25.00")
+        legacy = self.assess(period="2027-02")
+        document = self.assess(self.card_start("2027-02-01"), period="2027-02")
+        self.assertEqual(document["reports"], legacy["reports"])
+        self.assertEqual(self.month(document, CARD), self.month(legacy, CARD))
+        self.assertNotIn("books_start_contradicted", self.codes(legacy))
 
 
 if __name__ == "__main__":

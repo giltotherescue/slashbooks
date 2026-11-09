@@ -385,9 +385,9 @@ def _open_work(entity_path: Path, start: date, end: date, *,
             sorted(suppressed, key=lambda item: (item["source_id"], item["row_digest"])), exclude)
 
 
-def _policy_bounds(context: ReadinessDispositionContext | None, start: date,
+def _policy_bounds(context: ReadinessDispositionContext | None,
                    ) -> tuple[dict[str, date], dict[str, str]]:
-    """Authorized starts after ``start``, and accounts with no usable start, from the trusted native policy.
+    """Every authorized start (any date), and accounts with no usable start, from the trusted native policy.
 
     Only an ``enforced`` policy in a :class:`ReadinessDispositionContext` counts. The caller compares each
     start with the canonical postings before it uses it (``_start_scope``). ``unset`` and
@@ -406,20 +406,23 @@ def _policy_bounds(context: ReadinessDispositionContext | None, start: date,
     for account, found in policy.accounts.items():
         if found.state != AUTHORIZED:
             unstarted[account] = found.state
-        elif found.start_day is not None and start < found.start_day:
+        elif found.start_day is not None:
             starts[account] = found.start_day
     return starts, unstarted
 
 
-def _start_scope(starts: Mapping[str, date], first_posting: Mapping[str, date], end: date,
+def _start_scope(starts: Mapping[str, date], first_posting: Mapping[str, date], start: date, end: date,
                  ) -> tuple[dict[str, date], dict[str, date], dict[str, tuple[date, date]]]:
-    """Split authorized starts after the period start by the canonical postings through ``end``.
+    """Split every authorized start by the first canonical posting of its account (any date).
 
-    - contradicted: the account has a posting dated before its start (a prior balance or a net-zero pair
-      counts; the check is that a posting exists, not its balance). The start does not bound that account.
-    - account_from: a start on or before ``end`` with no earlier posting. Evidence is needed from that day
-      (inclusive), the same as the verified accrual cutover.
-    - outside: a start after ``end`` with no posting. The account is ``outside_period``.
+    - contradicted: the account has a posting dated strictly before its start, at any date (a prior balance
+      or a net-zero pair counts; the check is that a posting exists, not its balance). This applies to every
+      start, also one on or before ``start``. The start does not bound that account.
+    - account_from: a start after ``start`` and on or before ``end``, with no earlier posting. Evidence is
+      needed from that day (inclusive), the same as the verified accrual cutover.
+    - outside: a start after ``end`` with no earlier posting. The account is ``outside_period``.
+
+    A start on or before ``start`` with no earlier posting does not change the period.
 
     An authorized cash opening is dated on its start day (``ledger.books_policy_check._opening_matches``), so
     it is never before the start. No entry metadata makes a posting exempt.
@@ -431,9 +434,9 @@ def _start_scope(starts: Mapping[str, date], first_posting: Mapping[str, date], 
         first = first_posting.get(account)
         if first is not None and first < start_day:
             contradicted[account] = (first, start_day)
-        elif start_day <= end:
+        elif start < start_day <= end:
             account_from[account] = start_day
-        else:
+        elif start_day > end:
             outside[account] = start_day
     return account_from, outside, contradicted
 
@@ -548,11 +551,12 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     such a row out of the staged-row count of a statement tie-out; the tie-out difference does not change.
 
     For a cash company, the context's ``enforced`` policy also bounds source coverage (``_policy_bounds`` and
-    ``_start_scope``). Each ``authorized`` start after the period's first day is first compared with the
-    canonical postings through the period end:
+    ``_start_scope``). Every ``authorized`` start, at any date, is first compared with the first canonical
+    posting of its account, at any date:
 
-    - A posting before the start gives ``books_start_contradicted``, whatever the coverage or reconciliation,
-      and the start does not bound that account.
+    - A posting strictly before the start gives ``books_start_contradicted``, whatever the coverage or
+      reconciliation, and the start does not bound that account. This applies also when the start is on or
+      before the period's first day.
     - A start inside the period: the account needs source evidence from its start day, and only its
       statements from that day are checked.
     - A start after the period: the account is ``outside_period``. It needs no coverage and no reconciliation,
@@ -616,8 +620,6 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         for entry in store.load_entries(to_date=end):
             for posting in entry.postings:
                 ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
-                if entry.date < first_posting.get(posting.account, date.max):
-                    first_posting[posting.account] = entry.date
                 if accrual_in_use and entry.date >= start:
                     if is_credit_card_account(posting.account):
                         card_activity.add(posting.account)
@@ -629,8 +631,14 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     # A cash company with a trusted enforced policy needs each authorized account's evidence from its books
     # start. An accrual company keeps the verified cutover above.
     # Accrual stays outside this cash check: a prior-day accrual opening has its own native rules.
-    later_starts, unstarted = ({}, {}) if accrual_in_use else _policy_bounds(disposition_context, start)
-    account_from, outside, contradicted = _start_scope(later_starts, first_posting, end)
+    policy_starts, unstarted = ({}, {}) if accrual_in_use else _policy_bounds(disposition_context)
+    if policy_starts and store_path.is_file():
+        # The first canonical posting of each account at any date, also after the period.
+        for entry in LedgerStore(store_path).load_entries():
+            for posting in entry.postings:
+                if entry.date < first_posting.get(posting.account, date.max):
+                    first_posting[posting.account] = entry.date
+    account_from, outside, contradicted = _start_scope(policy_starts, first_posting, start, end)
     sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)), account_from, outside)
 
     # Source coverage per account and day of the month (statements, feed
