@@ -9,6 +9,7 @@ import unittest
 
 from bookkeeping.account_remove import preview
 from bookkeeping.accrual.accounts import list_accounts
+from bookkeeping.business import upgrade_business
 from bookkeeping.entity import add_account, configure_basis, init_entity, load_entity
 from bookkeeping.hosted_migration import build_bundle
 from bookkeeping.migration_bundle import load_bundle
@@ -88,6 +89,45 @@ class AccountFinancialKindTests(unittest.TestCase):
         self.assertEqual(store.load_financial_kinds()["Assets:Bank:Checking"], "bank")
         self.assertEqual(store.load_financial_kinds()["Assets:Fixed:Equipment"], "other")
         self.assertEqual(check_integrity(load_entity(fresh)).status, "ok")
+
+    def test_direct_accrual_init_and_business_upgrade_preserve_kinds_and_seals(self) -> None:
+        fresh = self.root.parent / "accrual"
+        init_entity(fresh, name="Example", basis="accrual", classify_starter_accounts=True)
+        store = LedgerStore(fresh / "ledger.sqlite")
+        self.assertEqual(store.schema_version(), 2)
+        self.assertEqual(store.get_meta("schema_version"), "2+financial-kind")
+        kinds = store.load_financial_kinds()
+        self.assertEqual(kinds["Assets:Bank:Checking"], "bank")
+        self.assertEqual(kinds["Liabilities:CreditCard"], "credit_card")
+        self.assertEqual(kinds["Assets:Fixed:Equipment"], "other")
+        initial_seals = store.load_audit_events()
+        self.assertEqual(initial_seals[0]["payload"]["session_id"], "entity-init")
+        self.assertEqual(check_integrity(load_entity(fresh)).status, "ok")
+
+        backup = upgrade_business(store)
+        reopened = LedgerStore(fresh / "ledger.sqlite")
+        self.assertEqual(reopened.schema_version(), 3)
+        self.assertEqual(reopened.get_meta("schema_version"), "3+financial-kind")
+        self.assertEqual(reopened.load_financial_kinds(), kinds)
+        self.assertEqual(reopened.load_audit_events()[:len(initial_seals)], initial_seals)
+        self.assertEqual(check_integrity(load_entity(fresh)).status, "ok")
+        self.assertIsNotNone(backup)
+        self.assertEqual(LedgerStore(backup).load_financial_kinds(), kinds)
+
+    def test_catalog_tag_and_column_mismatch_refuse_read_and_write(self) -> None:
+        typed = self.root.parent / "typed"
+        init_entity(typed, name="Example", classify_starter_accounts=True)
+        for root, replacement in ((self.root, "1+financial-kind"), (typed, "1")):
+            with self.subTest(replacement=replacement):
+                store = LedgerStore(root / "ledger.sqlite")
+                with closing(sqlite3.connect(store.path)) as conn, conn:
+                    conn.execute("UPDATE meta SET value=? WHERE key='schema_version'", (replacement,))
+                before = store.path.read_bytes()
+                with self.assertRaisesRegex(ValueError, "layout does not match"):
+                    store.load_financial_kinds()
+                with self.assertRaisesRegex(ValueError, "layout does not match"):
+                    add_account(root, "Assets:Operating:Unexpected")
+                self.assertEqual(store.path.read_bytes(), before)
 
     def test_bundle_retains_catalog_and_seal(self) -> None:
         account = "Assets:Operating:Reserve"
