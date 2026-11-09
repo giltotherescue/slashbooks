@@ -2666,6 +2666,7 @@ REVIEW_REFUSAL_CODES = (
     "ALREADY_ACCEPTED",           # a different review of the same difference and source is already accepted
     "DIFFERENCES_FILE_CHANGED",   # differences.json changed while the review compared; nothing was written
     "REFERENCE_CHANGED",          # the reference files are not the files of the request's reference_digest
+    "REFERENCE_UNAVAILABLE",      # a reference file could not be read (for example it disappeared)
 )
 _REVIEW_FIELDS = frozenset({"schema_version", "period", "reference_digest", "difference", "reviewer", "explanation",
                             "reviewed_at"})
@@ -2710,16 +2711,25 @@ def _snapshot_reference(qb_folder: Path, snapshot: Path) -> str:
 
     Each file is read one time, as a stream: the same bytes are hashed and written to a private copy (mode 0600).
     The original files are not changed. The compare then reads only the copy.
+
+    The source is opened before the copy, and every descriptor closes on every path. An ``OSError`` (for example a
+    listed file that disappeared before it was opened) is raised to the caller, which removes the snapshot.
     """
     import hashlib
     hashes: dict[str, str] = {}
     for path in iter_export_files(Path(qb_folder)):
         digest = hashlib.sha256()
-        fd = os.open(snapshot / path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with open(path, "rb") as source, os.fdopen(fd, "wb") as copy:
-            for chunk in iter(lambda: source.read(1 << 20), b""):
-                digest.update(chunk)
-                copy.write(chunk)
+        with open(path, "rb") as source:
+            fd = os.open(snapshot / path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                copy = os.fdopen(fd, "wb")
+            except BaseException:
+                os.close(fd)
+                raise
+            with copy:
+                for chunk in iter(lambda: source.read(1 << 20), b""):
+                    digest.update(chunk)
+                    copy.write(chunk)
         hashes[path.name] = digest.hexdigest()
     return _digest_of(hashes)
 
@@ -2961,7 +2971,11 @@ def _review_locked(entity_path: Path, folder: Path, parsed: dict, key: str) -> d
     # The compare reads only a private snapshot of the reference files, so the digest describes the compared bytes.
     snapshot = Path(tempfile.mkdtemp(prefix="books-reference-"))
     try:
-        digest = _snapshot_reference(folder, snapshot)
+        try:
+            digest = _snapshot_reference(folder, snapshot)
+        except OSError as exc:
+            raise _ReviewRefusal("REFERENCE_UNAVAILABLE", "A reference file could not be read, so nothing was "
+                                 f"compared or written ({type(exc).__name__}). Compare again.") from None
         if digest != parsed["reference_digest"]:
             raise _ReviewRefusal("REFERENCE_CHANGED", "The reference files are not the files that were reviewed. "
                                  "Compare again and review the new result.", reference_digest=digest)

@@ -258,6 +258,7 @@ Read `code`, not the message text.
 | `ALREADY_ACCEPTED` | A different review of the same difference is accepted and current. `accepted_review` shows it. |
 | `DIFFERENCES_FILE_CHANGED` | Another write changed `differences.json` during the review. Try again. |
 | `REFERENCE_CHANGED` | The reference files are not the files of the request's `reference_digest`. `reference_digest` shows the current digest. Compare again and review the new result. |
+| `REFERENCE_UNAVAILABLE` | A reference file could not be read, for example because it disappeared during the snapshot. Compare again. |
 
 An exact retry with the same request returns the same result and writes
 nothing. A different reviewer, explanation or time for a review that is still

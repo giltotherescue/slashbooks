@@ -40,7 +40,8 @@
   that snapshot, so its digest describes exactly the compared bytes; paths in
   its output still name the original folder. The review
   copies each reference file one time into a private snapshot, refuses with
-  `REFERENCE_CHANGED` when the digest of the copy is different, and compares
+  `REFERENCE_CHANGED` when the digest of the copy is different (or
+  `REFERENCE_UNAVAILABLE` when a reference file cannot be read), and compares
   only the copy, so the record never mixes amounts and a digest of different
   files. The engine reads no clock and sets no reviewer, so the
   same inputs write the same bytes. An exact retry returns the same result and

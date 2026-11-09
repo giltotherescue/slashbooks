@@ -763,6 +763,74 @@ class TestCompareSnapshot(_Companies):
                 self.assertEqual(_tree_state(folder), originals)
 
 
+class TestVanishingReferenceFile(_Companies):
+    """A reference file is listed, then removed before the snapshot opens it."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder = self.qb_copy()
+
+    def vanish_after_listing(self):
+        """The first listing still names profit_and_loss.csv, which is removed before it can be opened."""
+        from bookkeeping import compare
+        real = compare.iter_export_files
+        calls = []
+
+        def listing(folder):
+            files = real(folder)
+            if not calls:
+                calls.append(True)
+                (Path(folder) / "profit_and_loss.csv").unlink()
+            return files
+
+        return patch.object(compare, "iter_export_files", side_effect=listing)
+
+    def track_snapshots(self):
+        from bookkeeping import compare
+        made = []
+        real = compare.tempfile.mkdtemp
+
+        def mkdtemp(*args, **kwargs):
+            made.append(Path(real(*args, **kwargs)))
+            return str(made[-1])
+
+        return made, patch("bookkeeping.compare.tempfile.mkdtemp", side_effect=mkdtemp)
+
+    @staticmethod
+    def open_descriptors() -> int:
+        import os
+        return len(os.listdir("/dev/fd"))
+
+    def test_the_typed_review_refuses_and_leaks_nothing(self):
+        made, factory = self.track_snapshots()
+        request = _request(reference_digest=_digest(self.folder))
+        before_tree = _tree_state(self.path)
+        before_fds = self.open_descriptors()
+        with factory, self.vanish_after_listing():
+            result = self.review(request, qb_folder=self.folder)
+        self.assertEqual(self.open_descriptors(), before_fds)
+        self.assert_refused(result, "REFERENCE_UNAVAILABLE")
+        self.assertEqual(_tree_state(self.path), before_tree)
+        self.assertEqual(len(made), 1)
+        self.assertFalse(made[0].exists())
+
+    def test_the_preview_gives_no_digest_and_leaks_nothing(self):
+        from bookkeeping.compare import compare_period
+        from bookkeeping.entity import load_entity
+        made, factory = self.track_snapshots()
+        entity = load_entity(self.path)
+        before_tree = _tree_state(self.path)
+        before_fds = self.open_descriptors()
+        with factory, self.vanish_after_listing():
+            report = compare_period(entity, self.folder, _FROM, _TO, persist_differences=False)
+        self.assertEqual(self.open_descriptors(), before_fds)
+        self.assertIsNone(report.reference_digest)
+        self.assertNotIn("reference_digest", report.to_dict())
+        self.assertEqual(_tree_state(self.path), before_tree)
+        self.assertEqual(len(made), 1)
+        self.assertFalse(made[0].exists())
+
+
 class TestRepairControls(_Companies):
     """The legacy writers keep the repair behavior of the released engine; the typed review does not repair."""
 
