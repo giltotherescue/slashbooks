@@ -546,11 +546,13 @@ def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
                                 cutover, "from")
         metadata = financial_metadata(conn, "pnl", from_date, to_date, view="cash")
         result = compute(conn, from_date, to_date)
+        from .. import chart_presentation
+        presentation = chart_presentation.read(conn)
     finally:
         conn.close()
     balances = result["balances"]
-    income = [{"label": _render_account(a), "amount": -b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Income:")]
-    expense = [{"label": _render_account(a), "amount": b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Expenses:")]
+    income = [{"account": a, **({"preserve_display_name": True} if a in presentation else {}), "display_name": chart_presentation.label(a, presentation), "label": chart_presentation.label(a, presentation), "amount": -b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Income:")]
+    expense = [{"account": a, **({"preserve_display_name": True} if a in presentation else {}), "display_name": chart_presentation.label(a, presentation), "label": chart_presentation.label(a, presentation), "amount": b, "indent": 1} for a, b in sorted(balances.items()) if a.startswith("Expenses:")]
     for key in (_K_UNAPPLIED_IN, _K_OPENING_IN):
         if balances.get(key):
             income.append({"label": _SPECIAL_LABELS[key], "amount": -balances[key], "indent": 1, "special": key[1:]})

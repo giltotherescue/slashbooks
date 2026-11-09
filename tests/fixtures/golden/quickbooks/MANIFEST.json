@@ -9,7 +9,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "24ef30d8db1922bb96051dc829ce2589948014e406030f96ed9a8146203dc886"
+    "stdout_sha256": "006103b61765591f01be5ddc63bfdd91d81d39a98f74f19af0a69553972f70cf"
   },
   "accrual/accounts_text.txt": {
     "argv": [
@@ -1037,7 +1037,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "0bfe9efc96413d755df465a646cc144f3c8ab846c61f9cd5e934dbec776969b5"
+    "stdout_sha256": "c121770516fa01b19dc30d9e27d933733276e36663d763abc1f430dfb7089619"
   },
   "reports/balance-sheet_2026-06-30_text.txt": {
     "argv": [
@@ -1065,7 +1065,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "0146279d3f3da3abd5d3f6012931a309d40593b63c43519191e7934e0967fc87"
+    "stdout_sha256": "a0699e372f416830737a4cd7172f311bfbbd21d7bca6b757c368ae237b381a74"
   },
   "reports/balance-sheet_2026-07-31_text.txt": {
     "argv": [
@@ -1095,7 +1095,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "304da7da4c5d9f00826c67b77bc5fe9e9c34e74428123f8d03bef5bef050b141"
+    "stdout_sha256": "69f37936946eb6e296c5f66ca0771e3dcea8b6fb09dad7b562a0f17f71d7f4cc"
   },
   "reports/general-ledger_2026-01-01_2026-07-31_text.txt": {
     "argv": [
@@ -1161,7 +1161,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "a6697ea849d895f793d8278f547942eabeace7e203f91b2aebcaa9efb2cbdc6d"
+    "stdout_sha256": "e01f84beed3ef739ba5e5a71eac69a705617f150106e2a20dd79a7b7ba5f0304"
   },
   "reports/general-ledger_2026-07-01_2026-07-31_text.txt": {
     "argv": [
@@ -1193,7 +1193,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "449c9a5aed768e8d9cd510279ff93c13c4d255044a3084374f33551e9eef7323"
+    "stdout_sha256": "ba808168f40227a686ca09953bc0726854c2333039eb9e50e1dd25b70d37785c"
   },
   "reports/pnl_2026-01-01_2026-07-31_text.txt": {
     "argv": [
@@ -1259,7 +1259,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "7e3c24febb56ffe344ce4cd21958dd6d496bf0a3ae8d216eea4bc7816eff85a5"
+    "stdout_sha256": "29dfe48ac4a8ab333e3b36ee03979ec9b7d5b3753ee590311c1fb5fea09d0363"
   },
   "reports/pnl_2026-07-01_2026-07-31_text.txt": {
     "argv": [
@@ -1340,7 +1340,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "b1cac315eb56ef9c8654c2c00bea6668504b56653cf4eea9909e8dc10a5a5f0f"
+    "stdout_sha256": "546202f4b2f35ef61addcfe67483fd180faa461866b268dfc5a5e75c1f512097"
   },
   "reports/trial-balance_2026-06-30_text.txt": {
     "argv": [
@@ -1368,7 +1368,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "0f5059ee906046428895893333a1e34b8890bb33bb347300cf28a73325d86f30"
+    "stdout_sha256": "1c8c170dee22913896ec0bcfbe88316815e9f2c4550178b2eeb50e415cee108c"
   },
   "reports/trial-balance_2026-07-31_text.txt": {
     "argv": [

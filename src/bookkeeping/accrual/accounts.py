@@ -87,7 +87,9 @@ def _role(name: str) -> str:
 
 def list_accounts(entity) -> dict[str, Any]:
     store = LedgerStore(default_store_path(entity.path))
+    from .. import chart_presentation
     with store.connection() as conn:
+        presentation = chart_presentation.read(conn)
         rows = conn.execute("SELECT name, currency, open_date FROM accounts ORDER BY name").fetchall()
         used = {r[0] for r in conn.execute("SELECT DISTINCT account FROM postings")}
         support: dict[str, dict[str, int]] = {}
@@ -104,7 +106,7 @@ def list_accounts(entity) -> dict[str, Any]:
     accounts = []
     for name, currency, open_date in rows:
         role = _role(name)
-        accounts.append({"name": name, "type": name.split(":")[0], "role": role, "subtype": _subtype(name, usage), "currency": currency,
+        accounts.append({"name": name, "account": name, "display_name": chart_presentation.label(name, presentation), **({"account_number": presentation[name]["number"]} if name in presentation else {}), "type": name.split(":")[0], "role": role, "subtype": _subtype(name, usage), "currency": currency,
                          "open_date": open_date, "has_postings": name in used,
                          "reconciles_to_support": role == "control" and accrual_active(entity),
                          "support_records": support.get(name, {})})

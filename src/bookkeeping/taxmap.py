@@ -506,6 +506,11 @@ def update_settings(
         changes["form"] = target_form
     if account_number is not None:
         value = account_number.strip()
+        from . import chart_presentation
+        presentations = chart_presentation.for_entity(entity.path)
+        presented = presentations.get(account, {})
+        if account in presentations and presented.get("number") != (value or None):
+            raise ValueError("This account has an adopted presentation number. Use entity chart-present to preview and update it.")
         if value and not re.fullmatch(r"[A-Za-z0-9.\-]{1,20}", value):
             raise ValueError("Account numbers must be 1-20 letters, digits, dots or hyphens.")
         numbers = dict(settings.get("account_numbers") or {})
@@ -805,7 +810,9 @@ def mapping_report(entity_path: Path | str, *, form: str | None = None,
     ]
     mapping = {m.account: m for m in build_mapping(entity.entity_config, (r["account"] for r in rows), resolved)}
     settings = _settings(entity.entity_config)
-    numbers = settings.get("account_numbers") or {}
+    from . import chart_presentation
+    presentation = chart_presentation.for_entity(entity.path)
+    numbers = chart_presentation.numbers(presentation, settings.get("account_numbers") or {})
     ultratax = settings.get("ultratax_codes") or {}
     accounts = []
     for row in rows:
@@ -894,7 +901,9 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
     rows = [r for r in period_balances(entity.path, from_date, to_date, tax_view=tax_view)
             if r["balance"] != _ZERO or (r["beginning"] not in (None, _ZERO))]
     mapping = {m.account: m for m in build_mapping(entity.entity_config, (r["account"] for r in rows), resolved)}
-    numbers = _account_numbers(rows, settings.get("account_numbers") or {})
+    from . import chart_presentation
+    presentation = chart_presentation.for_entity(entity.path)
+    numbers = _account_numbers(rows, chart_presentation.numbers(presentation, settings.get("account_numbers") or {}))
     ultratax = settings.get("ultratax_codes") or {}
 
     tb_rows = []
@@ -909,7 +918,7 @@ def build_handoff(entity_path: Path | str, from_date: date, to_date: date, *, fo
         tb_rows.append({
             "account_number": numbers[row["account"]],
             "account": row["account"],
-            "account_name": row["account"].replace(":", " › "),
+            "account_name": chart_presentation.label(row["account"], presentation),
             "account_type": row["type"],
             "computed": bool(row.get("computed")),
             "beginning_balance": row["beginning"],

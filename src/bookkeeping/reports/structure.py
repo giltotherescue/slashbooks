@@ -32,15 +32,11 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from .statements import StatementResult, _SEP
+from .statements import StatementResult
 
 SCHEMA_VERSION = 2
 
 _COST_OF_SALES_NAMES = {"costofsales", "costofgoodssold", "cogs", "costofrevenue", "costofgoods"}
-
-
-def _account_from_label(label: str) -> str:
-    return label.replace(_SEP, ":")
 
 
 def is_cost_of_sales(account: str) -> bool:
@@ -64,9 +60,13 @@ def _section(key: str, label: str) -> dict:
 
 
 def _account(section: str, row: dict) -> dict:
+    if row.get("special"):
+        return {"type": "computed", "key": row["special"], "label": row["label"],
+                "amount": _money(row["amount"]), "indent": row.get("indent", 1), "section": section}
     return {
-        "type": "account", "key": _account_from_label(row["label"]), "label": row["label"],
-        "account": _account_from_label(row["label"]), "amount": _money(row["amount"]),
+        "type": "account", "key": row["account"], "label": row["label"],
+        **({"display_name": row["display_name"]} if row.get("preserve_display_name") else {}),
+        "account": row["account"], "amount": _money(row["amount"]),
         "indent": row.get("indent", 1), "section": section,
     }
 
@@ -84,7 +84,7 @@ def pnl_structure(result: StatementResult, force_cost_of_sales: bool = False) ->
     lines += [_account("revenue", r) for r in revenue["rows"]]
     lines.append(_total("subtotal", "total_revenue", revenue["total_label"], revenue["total"], "revenue"))
 
-    cost_rows = [r for r in expenses["rows"] if is_cost_of_sales(_account_from_label(r["label"]))]
+    cost_rows = [r for r in expenses["rows"] if is_cost_of_sales(r.get("account", ""))]
     other_rows = [r for r in expenses["rows"] if r not in cost_rows]
     gross_profit = None
     if cost_rows or force_cost_of_sales:
@@ -114,8 +114,8 @@ def balance_sheet_structure(result: StatementResult) -> dict:
     for key, section in zip(keys, result.sections):
         lines.append(_section(key, section["label"]))
         for row in section["rows"]:
-            if row["label"] in _COMPUTED_EQUITY:
-                lines.append({"type": "computed", "key": _COMPUTED_EQUITY[row["label"]], "label": row["label"],
+            if row.get("computed"):
+                lines.append({"type": "computed", "key": row["key"], "label": row["label"],
                               "amount": _money(row["amount"]), "indent": row.get("indent", 1), "section": key})
             else:
                 lines.append(_account(key, row))

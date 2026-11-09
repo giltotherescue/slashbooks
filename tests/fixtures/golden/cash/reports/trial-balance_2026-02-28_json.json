@@ -9,77 +9,107 @@
         {
           "label": "Assets › Bank › Checking",
           "amount": "27468.87",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Bank:Checking",
+          "display_name": "Assets › Bank › Checking"
         },
         {
           "label": "Equity › Owner-Contributions",
           "amount": "-20000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Equity:Owner-Contributions",
+          "display_name": "Equity › Owner-Contributions"
         },
         {
           "label": "Equity › Owner-Draws",
           "amount": "2000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Equity:Owner-Draws",
+          "display_name": "Equity › Owner-Draws"
         },
         {
           "label": "Expenses › Fees",
           "amount": "30.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Fees",
+          "display_name": "Expenses › Fees"
         },
         {
           "label": "Expenses › Insurance",
           "amount": "210.40",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Insurance",
+          "display_name": "Expenses › Insurance"
         },
         {
           "label": "Expenses › Marketing",
           "amount": "150.57",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Marketing",
+          "display_name": "Expenses › Marketing"
         },
         {
           "label": "Expenses › Meals",
           "amount": "253.35",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Meals",
+          "display_name": "Expenses › Meals"
         },
         {
           "label": "Expenses › Office",
           "amount": "131.75",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Office",
+          "display_name": "Expenses › Office"
         },
         {
           "label": "Expenses › Rent",
           "amount": "3600.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Rent",
+          "display_name": "Expenses › Rent"
         },
         {
           "label": "Expenses › Software",
           "amount": "206.06",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Software",
+          "display_name": "Expenses › Software"
         },
         {
           "label": "Expenses › Subcontractors",
           "amount": "2500.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Subcontractors",
+          "display_name": "Expenses › Subcontractors"
         },
         {
           "label": "Expenses › Taxes",
           "amount": "480.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Taxes",
+          "display_name": "Expenses › Taxes"
         },
         {
           "label": "Expenses › Travel",
           "amount": "300.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Travel",
+          "display_name": "Expenses › Travel"
         },
         {
           "label": "Income › Consulting",
           "amount": "-17250.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Income:Consulting",
+          "display_name": "Income › Consulting"
         },
         {
           "label": "Liabilities › CreditCard › Company",
           "amount": "-81.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Liabilities:CreditCard:Company",
+          "display_name": "Liabilities › CreditCard › Company"
         }
       ],
       "total": null
@@ -102,91 +132,121 @@
         "label": "Assets › Bank › Checking",
         "debit": "27468.87",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Bank:Checking",
+        "display_name": "Assets › Bank › Checking"
       },
       {
         "label": "Equity › Owner-Contributions",
         "debit": "0.00",
         "credit": "20000.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Equity:Owner-Contributions",
+        "display_name": "Equity › Owner-Contributions"
       },
       {
         "label": "Equity › Owner-Draws",
         "debit": "2000.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Equity:Owner-Draws",
+        "display_name": "Equity › Owner-Draws"
       },
       {
         "label": "Expenses › Fees",
         "debit": "30.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Fees",
+        "display_name": "Expenses › Fees"
       },
       {
         "label": "Expenses › Insurance",
         "debit": "210.40",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Insurance",
+        "display_name": "Expenses › Insurance"
       },
       {
         "label": "Expenses › Marketing",
         "debit": "150.57",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Marketing",
+        "display_name": "Expenses › Marketing"
       },
       {
         "label": "Expenses › Meals",
         "debit": "253.35",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Meals",
+        "display_name": "Expenses › Meals"
       },
       {
         "label": "Expenses › Office",
         "debit": "131.75",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Office",
+        "display_name": "Expenses › Office"
       },
       {
         "label": "Expenses › Rent",
         "debit": "3600.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Rent",
+        "display_name": "Expenses › Rent"
       },
       {
         "label": "Expenses › Software",
         "debit": "206.06",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Software",
+        "display_name": "Expenses › Software"
       },
       {
         "label": "Expenses › Subcontractors",
         "debit": "2500.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Subcontractors",
+        "display_name": "Expenses › Subcontractors"
       },
       {
         "label": "Expenses › Taxes",
         "debit": "480.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Taxes",
+        "display_name": "Expenses › Taxes"
       },
       {
         "label": "Expenses › Travel",
         "debit": "300.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Travel",
+        "display_name": "Expenses › Travel"
       },
       {
         "label": "Income › Consulting",
         "debit": "0.00",
         "credit": "17250.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Income:Consulting",
+        "display_name": "Income › Consulting"
       },
       {
         "label": "Liabilities › CreditCard › Company",
         "debit": "0.00",
         "credit": "81.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Liabilities:CreditCard:Company",
+        "display_name": "Liabilities › CreditCard › Company"
       }
     ]
   }

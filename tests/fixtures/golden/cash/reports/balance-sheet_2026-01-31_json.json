@@ -7,6 +7,8 @@
       "label": "Assets",
       "rows": [
         {
+          "account": "Assets:Bank:Checking",
+          "display_name": "Assets › Bank › Checking",
           "label": "Assets › Bank › Checking",
           "amount": "25782.42",
           "indent": 1
@@ -19,6 +21,8 @@
       "label": "Liabilities",
       "rows": [
         {
+          "account": "Liabilities:CreditCard:Company",
+          "display_name": "Liabilities › CreditCard › Company",
           "label": "Liabilities › CreditCard › Company",
           "amount": "80.00",
           "indent": 1
@@ -31,12 +35,16 @@
       "label": "Equity",
       "rows": [
         {
+          "account": "Equity:Owner-Contributions",
+          "display_name": "Equity › Owner-Contributions",
           "label": "Equity › Owner-Contributions",
           "amount": "20000.00",
           "indent": 1
         },
         {
           "label": "Net Income (current period)",
+          "key": "net_income_current_period",
+          "computed": true,
           "amount": "5702.42",
           "indent": 1
         }

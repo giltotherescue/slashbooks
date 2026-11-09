@@ -4,6 +4,8 @@
   "to_date": "2026-03-31",
   "sections": [
     {
+      "account": "Assets:Bank:Checking",
+      "display_name": "Assets › Bank › Checking",
       "label": "Assets › Bank › Checking",
       "rows": [
         {
@@ -47,6 +49,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Fees",
+      "display_name": "Expenses › Fees",
       "label": "Expenses › Fees",
       "rows": [
         {
@@ -60,6 +64,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Insurance",
+      "display_name": "Expenses › Insurance",
       "label": "Expenses › Insurance",
       "rows": [
         {
@@ -73,6 +79,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Meals",
+      "display_name": "Expenses › Meals",
       "label": "Expenses › Meals",
       "rows": [
         {
@@ -86,6 +94,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Rent",
+      "display_name": "Expenses › Rent",
       "label": "Expenses › Rent",
       "rows": [
         {
@@ -99,6 +109,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Software",
+      "display_name": "Expenses › Software",
       "label": "Expenses › Software",
       "rows": [
         {
@@ -118,6 +130,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Subcontractors",
+      "display_name": "Expenses › Subcontractors",
       "label": "Expenses › Subcontractors",
       "rows": [
         {
@@ -131,6 +145,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Travel",
+      "display_name": "Expenses › Travel",
       "label": "Expenses › Travel",
       "rows": [
         {
@@ -144,6 +160,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Income:Consulting",
+      "display_name": "Income › Consulting",
       "label": "Income › Consulting",
       "rows": [
         {
@@ -163,6 +181,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Liabilities:CreditCard:Company",
+      "display_name": "Liabilities › CreditCard › Company",
       "label": "Liabilities › CreditCard › Company",
       "rows": [
         {

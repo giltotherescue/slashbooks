@@ -9,57 +9,79 @@
         {
           "label": "Assets › Bank › Checking",
           "amount": "10000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Bank:Checking",
+          "display_name": "Assets › Bank › Checking"
         },
         {
           "label": "Assets › Fixed › Accumulated-Depreciation",
           "amount": "-400.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Fixed:Accumulated-Depreciation",
+          "display_name": "Assets › Fixed › Accumulated-Depreciation"
         },
         {
           "label": "Assets › Fixed › Equipment",
           "amount": "2400.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Fixed:Equipment",
+          "display_name": "Assets › Fixed › Equipment"
         },
         {
           "label": "Assets › Other › Prepaid-Insurance",
           "amount": "600.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Other:Prepaid-Insurance",
+          "display_name": "Assets › Other › Prepaid-Insurance"
         },
         {
           "label": "Assets › Receivable › Accounts-Receivable",
           "amount": "1000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Assets:Receivable:Accounts-Receivable",
+          "display_name": "Assets › Receivable › Accounts-Receivable"
         },
         {
           "label": "Equity › Retained-Earnings",
           "amount": "-9000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Equity:Retained-Earnings",
+          "display_name": "Equity › Retained-Earnings"
         },
         {
           "label": "Expenses › Operating-Costs",
           "amount": "8800.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Expenses:Operating-Costs",
+          "display_name": "Expenses › Operating-Costs"
         },
         {
           "label": "Income › Services",
           "amount": "-12000.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Income:Services",
+          "display_name": "Income › Services"
         },
         {
           "label": "Liabilities › Other › Deferred-Revenue",
           "amount": "-600.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Liabilities:Other:Deferred-Revenue",
+          "display_name": "Liabilities › Other › Deferred-Revenue"
         },
         {
           "label": "Liabilities › Other › Payroll-Payable",
           "amount": "-300.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Liabilities:Other:Payroll-Payable",
+          "display_name": "Liabilities › Other › Payroll-Payable"
         },
         {
           "label": "Liabilities › Payable › Accounts-Payable",
           "amount": "-500.00",
-          "indent": 0
+          "indent": 0,
+          "account": "Liabilities:Payable:Accounts-Payable",
+          "display_name": "Liabilities › Payable › Accounts-Payable"
         }
       ],
       "total": null
@@ -203,67 +225,89 @@
         "label": "Assets › Bank › Checking",
         "debit": "10000.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Bank:Checking",
+        "display_name": "Assets › Bank › Checking"
       },
       {
         "label": "Assets › Fixed › Accumulated-Depreciation",
         "debit": "0.00",
         "credit": "400.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Fixed:Accumulated-Depreciation",
+        "display_name": "Assets › Fixed › Accumulated-Depreciation"
       },
       {
         "label": "Assets › Fixed › Equipment",
         "debit": "2400.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Fixed:Equipment",
+        "display_name": "Assets › Fixed › Equipment"
       },
       {
         "label": "Assets › Other › Prepaid-Insurance",
         "debit": "600.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Other:Prepaid-Insurance",
+        "display_name": "Assets › Other › Prepaid-Insurance"
       },
       {
         "label": "Assets › Receivable › Accounts-Receivable",
         "debit": "1000.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Assets:Receivable:Accounts-Receivable",
+        "display_name": "Assets › Receivable › Accounts-Receivable"
       },
       {
         "label": "Equity › Retained-Earnings",
         "debit": "0.00",
         "credit": "9000.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Equity:Retained-Earnings",
+        "display_name": "Equity › Retained-Earnings"
       },
       {
         "label": "Expenses › Operating-Costs",
         "debit": "8800.00",
         "credit": "0.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Expenses:Operating-Costs",
+        "display_name": "Expenses › Operating-Costs"
       },
       {
         "label": "Income › Services",
         "debit": "0.00",
         "credit": "12000.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Income:Services",
+        "display_name": "Income › Services"
       },
       {
         "label": "Liabilities › Other › Deferred-Revenue",
         "debit": "0.00",
         "credit": "600.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Liabilities:Other:Deferred-Revenue",
+        "display_name": "Liabilities › Other › Deferred-Revenue"
       },
       {
         "label": "Liabilities › Other › Payroll-Payable",
         "debit": "0.00",
         "credit": "300.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Liabilities:Other:Payroll-Payable",
+        "display_name": "Liabilities › Other › Payroll-Payable"
       },
       {
         "label": "Liabilities › Payable › Accounts-Payable",
         "debit": "0.00",
         "credit": "500.00",
-        "indent": 0
+        "indent": 0,
+        "account": "Liabilities:Payable:Accounts-Payable",
+        "display_name": "Liabilities › Payable › Accounts-Payable"
       }
     ]
   }

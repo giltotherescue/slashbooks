@@ -281,7 +281,7 @@ def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool
     ]
     result = []
     for report in reports:
-        payload = json.loads(report.to_json())
+        payload = json.loads(report.to_json(identity_fields=False))
         result.append({
             "kind": report.kind,
             "period_from": start.isoformat(),

@@ -4,6 +4,8 @@
   "to_date": "2026-07-31",
   "sections": [
     {
+      "account": "Assets:Bank:Checking",
+      "display_name": "Assets › Bank › Checking",
       "label": "Assets › Bank › Checking",
       "rows": [
         {
@@ -29,6 +31,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Assets:Fixed:Accumulated-Depreciation",
+      "display_name": "Assets › Fixed › Accumulated-Depreciation",
       "label": "Assets › Fixed › Accumulated-Depreciation",
       "rows": [
         {
@@ -42,6 +46,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Assets:Other:Prepaid-Insurance",
+      "display_name": "Assets › Other › Prepaid-Insurance",
       "label": "Assets › Other › Prepaid-Insurance",
       "rows": [
         {
@@ -55,6 +61,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Assets:Receivable:Accounts-Receivable",
+      "display_name": "Assets › Receivable › Accounts-Receivable",
       "label": "Assets › Receivable › Accounts-Receivable",
       "rows": [
         {
@@ -68,6 +76,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Expenses:Operating-Costs",
+      "display_name": "Expenses › Operating-Costs",
       "label": "Expenses › Operating-Costs",
       "rows": [
         {
@@ -93,6 +103,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Income:Services",
+      "display_name": "Income › Services",
       "label": "Income › Services",
       "rows": [
         {
@@ -106,6 +118,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Liabilities:Other:Deferred-Revenue",
+      "display_name": "Liabilities › Other › Deferred-Revenue",
       "label": "Liabilities › Other › Deferred-Revenue",
       "rows": [
         {
@@ -119,6 +133,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Liabilities:Other:Payroll-Payable",
+      "display_name": "Liabilities › Other › Payroll-Payable",
       "label": "Liabilities › Other › Payroll-Payable",
       "rows": [
         {
@@ -138,6 +154,8 @@
       "total_label": "Account Total"
     },
     {
+      "account": "Liabilities:Payable:Accounts-Payable",
+      "display_name": "Liabilities › Payable › Accounts-Payable",
       "label": "Liabilities › Payable › Accounts-Payable",
       "rows": [
         {

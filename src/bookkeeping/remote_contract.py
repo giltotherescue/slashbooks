@@ -65,7 +65,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     if path[0] in {"entity", "demo"} and hasattr(args, "path"):
         entity.append("path")
     inputs = [name for name in ("input", "file", "folder", "qb_folder", "banksync_json", "balances_json",
-                          "evidence", "supporting", "cross_check", "truth")
+                          "evidence", "supporting", "cross_check", "truth", "chart_choice")
               if hasattr(args, name)]
     outputs = [name for name in ("output", "output_dir", "report_dir") if hasattr(args, name)]
     if args.work_out is not None:
@@ -87,7 +87,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     read = statement_read or (path[0] in {"report", "ask", "sanity-check", "quarterly-review", "export", "readiness", "forecast",
                            "work"}
             or path in {("qb", "inventory"), ("qb", "agreement", "run"), ("entity", "related-entity", "list"),
-                        ("entity", "infer-currency"),  # Reads files and proposes; writes nothing.
+                        ("entity", "infer-currency"), ("entity", "chart-inspect"),  # Reads files and proposes; writes nothing.
                         ("migration", "export"),
                         ("connector", "csv", "inspect"), ("connector", "csv", "propose-mapping"),
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),
@@ -116,7 +116,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             mutates = args.apply
     if path in {("entity", "set-view"), ("entity", "set-tax-method"), ("entity", "set-fiscal-year"),
                 ("entity", "set-tax-profile"), ("entity", "set-currency"), ("entity", "set-reporting-goals"),
-                ("ledger", "reclassify"), ("entity", "account-remove")} and not args.apply:
+                ("ledger", "reclassify"), ("entity", "account-remove"), ("entity", "chart-adopt"), ("entity", "chart-present")} and not args.apply:
         mutates = False  # The default is a preview; --apply changes the company.
     if path in {("accrual", "schedule", "tax-treatment"), ("accrual", "schedule", "deposit-kind"), ("accrual", "item", "deposit-kind")}:
         mutates = args.apply  # The default is a preview; --apply records the tax treatment or the deposit kind.

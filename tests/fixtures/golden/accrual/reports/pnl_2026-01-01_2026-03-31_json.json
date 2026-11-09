@@ -7,6 +7,8 @@
       "label": "Revenue",
       "rows": [
         {
+          "account": "Income:Consulting",
+          "display_name": "Income › Consulting",
           "label": "Income › Consulting",
           "amount": "11400.00",
           "indent": 1
@@ -19,31 +21,43 @@
       "label": "Expenses",
       "rows": [
         {
+          "account": "Expenses:Bad-Debt",
+          "display_name": "Expenses › Bad-Debt",
           "label": "Expenses › Bad-Debt",
           "amount": "300.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Bonus",
+          "display_name": "Expenses › Bonus",
           "label": "Expenses › Bonus",
           "amount": "700.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Depreciation",
+          "display_name": "Expenses › Depreciation",
           "label": "Expenses › Depreciation",
           "amount": "500.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Insurance",
+          "display_name": "Expenses › Insurance",
           "label": "Expenses › Insurance",
           "amount": "300.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Software",
+          "display_name": "Expenses › Software",
           "label": "Expenses › Software",
           "amount": "1000.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Utilities",
+          "display_name": "Expenses › Utilities",
           "label": "Expenses › Utilities",
           "amount": "470.00",
           "indent": 1

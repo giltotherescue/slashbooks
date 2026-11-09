@@ -7,6 +7,8 @@
       "label": "Money In",
       "rows": [
         {
+          "account": "Income:Consulting",
+          "display_name": "Income › Consulting",
           "label": "Income › Consulting",
           "amount": "7550.00",
           "indent": 1
@@ -19,41 +21,57 @@
       "label": "Money Out",
       "rows": [
         {
+          "account": "Expenses:Fees",
+          "display_name": "Expenses › Fees",
           "label": "Expenses › Fees",
           "amount": "15.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Marketing",
+          "display_name": "Expenses › Marketing",
           "label": "Expenses › Marketing",
           "amount": "30.57",
           "indent": 1
         },
         {
+          "account": "Expenses:Meals",
+          "display_name": "Expenses › Meals",
           "label": "Expenses › Meals",
           "amount": "54.20",
           "indent": 1
         },
         {
+          "account": "Expenses:Office",
+          "display_name": "Expenses › Office",
           "label": "Expenses › Office",
           "amount": "131.75",
           "indent": 1
         },
         {
+          "account": "Expenses:Rent",
+          "display_name": "Expenses › Rent",
           "label": "Expenses › Rent",
           "amount": "1800.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Software",
+          "display_name": "Expenses › Software",
           "label": "Expenses › Software",
           "amount": "103.03",
           "indent": 1
         },
         {
+          "account": "Expenses:Subcontractors",
+          "display_name": "Expenses › Subcontractors",
           "label": "Expenses › Subcontractors",
           "amount": "1250.00",
           "indent": 1
         },
         {
+          "account": "Expenses:Taxes",
+          "display_name": "Expenses › Taxes",
           "label": "Expenses › Taxes",
           "amount": "480.00",
           "indent": 1

@@ -9,7 +9,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "5ef51832a6815bc3eda44859d55629d51a464df86f0c59fe9484d8ff261eb701"
+    "stdout_sha256": "8833c1a06a87946224e770be86048b168e5c3d28e7e6ac44606b93ddbdd470d7"
   },
   "accrual/accounts_text.txt": {
     "argv": [
@@ -1092,7 +1092,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "dca4ff86915f982554a48095f8750f86b7eee8092cae63156736b013be411017"
+    "stdout_sha256": "eb6edb9495155fd27a6fcb8355d7e713d260690499eb28b245203ac867b57ec1"
   },
   "reports/balance-sheet_2025-12-31_text.txt": {
     "argv": [
@@ -1120,7 +1120,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "b32187a1e37290b8fdb9680944f58e054b83960e9ea66cce9f2749c7bb4fd785"
+    "stdout_sha256": "e5943d7b18da7d3d37d4ae8f8bb325bb844ef3080c005bfb79455c0aefb7f674"
   },
   "reports/balance-sheet_2026-01-31_text.txt": {
     "argv": [
@@ -1148,7 +1148,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "cc13dc849d5230a0637bf439a93aeeb99d606e491e1072af1acd092b62c68ad0"
+    "stdout_sha256": "b73701c6f4b4c5afab6ec55fc2249e54d537e6c5745ad606ee3ea5b9ce3075f3"
   },
   "reports/balance-sheet_2026-02-28_text.txt": {
     "argv": [
@@ -1176,7 +1176,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "7a69ca8aa83a80f8c561aa832af0bd5bfcb87f07260ce36150a55e12293d42d8"
+    "stdout_sha256": "87a48c3ea88a14eafc3634975e2f4e60bca6adb3397a2504ab784b5662e27780"
   },
   "reports/balance-sheet_2026-03-31_text.txt": {
     "argv": [
@@ -1206,7 +1206,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "1df146534a13572b48ed4e6c7f5913dfc9258bfa5d00b71d0869b614553cdbd5"
+    "stdout_sha256": "696e0b9bf3f48b49648c1ce5ff454139c34f916e3d8747534c83d825b550a99a"
   },
   "reports/general-ledger_2026-01-01_2026-01-31_text.txt": {
     "argv": [
@@ -1238,7 +1238,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "8d20213b03e66ec2c39c04a40a9689208a90810d1fcaee1410d3551c841e1a6d"
+    "stdout_sha256": "cdf0b81734675471c54cb62f3a5fb9b1a17424e1be0288c9310afb63277533f0"
   },
   "reports/general-ledger_2026-01-01_2026-03-31_text.txt": {
     "argv": [
@@ -1270,7 +1270,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "127af1a809ecc4109addef9a8d67451385b00b711deee1dc8e090848d6645f35"
+    "stdout_sha256": "c86c6ee475a75bcf560ee0c327974efc26108f00829041f22c859300ba44fa8a"
   },
   "reports/general-ledger_2026-02-01_2026-02-28_text.txt": {
     "argv": [
@@ -1302,7 +1302,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "3f951795a23733cb4d8bb7c8ff6108bf074695f0c5a5daee0c144986efa85d1e"
+    "stdout_sha256": "53f0db5bd463bbcc2074dfb1ce675553a93f6dd4b73d73896fcf5c249876628e"
   },
   "reports/general-ledger_2026-03-01_2026-03-31_text.txt": {
     "argv": [
@@ -1334,7 +1334,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "5b5913b5bef84c4ce35aa19b13051c224ac5907076bf845808ca2e125865d1a8"
+    "stdout_sha256": "4650c90b1aac22d04d6c37d53ea984a3c2140a500c928eef5c4d14d76911fd77"
   },
   "reports/pnl_2026-01-01_2026-01-31_text.txt": {
     "argv": [
@@ -1366,7 +1366,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "7ff9ed5f0aed041a79e8dea50bed4b8677c51c0ee8b55838b09cd5335e220d27"
+    "stdout_sha256": "eea3fd191bfa816b3408d271c8a6363d94375ec6b48d7392cf3ff444462237ba"
   },
   "reports/pnl_2026-01-01_2026-03-31_text.txt": {
     "argv": [
@@ -1398,7 +1398,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "5eb7457c58cd6096bf61faa1e5f4f91f4a70dbe98a5f71ac10b1fd86dd4f5304"
+    "stdout_sha256": "bf34db96f94cd6fa1698d120cd6311dba25a51f033e4c0a524a8d30983052a5c"
   },
   "reports/pnl_2026-02-01_2026-02-28_text.txt": {
     "argv": [
@@ -1430,7 +1430,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "fb783c05abfda13a16543cd9bbf6ca1be9f5cac4da7c7294c9943f0fdb68f170"
+    "stdout_sha256": "a9709b56d41e501a96ef4ec66f3e31fe4c267bbc53ce17bb3f434e577efd5464"
   },
   "reports/pnl_2026-03-01_2026-03-31_text.txt": {
     "argv": [
@@ -1509,7 +1509,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "80679be845a1a0722c9b387aa615cdeebd5e37d62dfd51c4a2cc6a33ecf892c4"
+    "stdout_sha256": "27eb594f7b7ddddeda02d9054a1fb4a8195bb16b71c0c169d0ea912d18362dd7"
   },
   "reports/trial-balance_2025-12-31_text.txt": {
     "argv": [
@@ -1537,7 +1537,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "7a8b9a4d8e7ff9ea4788ef80a9fb760b07ba3e16c7e25af5a7f4e95b616eb6d7"
+    "stdout_sha256": "7027ebc67b22f34257789b3e0c8645e77c5620d6595cfc3bda40be7772db9b63"
   },
   "reports/trial-balance_2026-01-31_text.txt": {
     "argv": [
@@ -1565,7 +1565,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "073a9dcfc423f99d14980a310c7825c8ff27dd68fb50de78f414c6a6f37987e1"
+    "stdout_sha256": "d3cd559972ab8cdcb6f79fb96a8dd4c1854ec966fb49014a91d210ecd58b4a6c"
   },
   "reports/trial-balance_2026-02-28_text.txt": {
     "argv": [
@@ -1593,7 +1593,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "7936849c01dd424454672be3c68045d4b763581ba4121bfaf705f81e4476c3da"
+    "stdout_sha256": "9488b08366cfdd69a5c7be12d0862c9c591f327f597c5cb22440e6d64aba92b2"
   },
   "reports/trial-balance_2026-03-31_text.txt": {
     "argv": [
