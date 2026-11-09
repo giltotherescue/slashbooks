@@ -159,6 +159,38 @@ class AccrualImportTests(AccrualFixture):
         self.assertEqual((self.store.content_digest(), self.store.load_audit_events()), before)
         self.assertEqual({row["id"] for row in _load_pending_categorization(self.entity)}, {row["id"] for row in rows})
 
+    def test_cash_event_split_group_does_not_finish_recovery_before_later_refusal(self):
+        from unittest.mock import patch
+        from bookkeeping.accrual.schedules import apply_schedule, preview_schedule
+        from bookkeeping.queue import confirm_group, confirm_split, propose_split
+        from tests.test_accrual_schedules import PREPAID
+
+        schedule = self.schedule(service_start="2026-01-10", method="actual_day")
+        apply_schedule(self.entity, preview_schedule(self.entity, schedule))
+        recovered = bank_row("a-recovered", date="2026-01-05")
+        denied = bank_row("z-denied", date="2026-01-15")
+        import_transactions(self.entity, [recovered, denied], "intake")
+        for row in (recovered, denied):
+            propose_split(self.entity, row["id"], "Synthetic split", [f"{PREPAID}=50.00", f"{EXPENSE}=50.00"])
+
+        # Simulate interruption after the ledger commits but before the queue is finalized.
+        with patch("bookkeeping.ledger.staging.StagingStore.mark_seen", side_effect=OSError("interrupted")):
+            with self.assertRaisesRegex(OSError, "interrupted"):
+                confirm_split(self.entity, recovered["id"], "reviewed", accrual_treatment="new_cash_event")
+        self.assertTrue(self.store.source_exists(recovered["id"]))
+
+        def snapshot():
+            return {file.relative_to(self.root): file.read_bytes() for file in self.root.rglob("*")
+                    if file.is_file() and file.name != ".books.lock"}
+
+        before = snapshot()
+        with self.assertRaisesRegex(ValueError, "registered control account"):
+            confirm_group(self.entity, "Split transaction", "reviewed", accrual_treatment="new_cash_event")
+        self.assertEqual(snapshot(), before)
+        self.assertFalse(self.store.source_exists(denied["id"]))
+        result = confirm_split(self.entity, recovered["id"], "reviewed", accrual_treatment="new_cash_event")
+        self.assertEqual(result["status"], "confirmed")
+
     def test_new_cash_event_can_post_to_an_unregistered_balance_account(self):
         from bookkeeping.cli import main
 

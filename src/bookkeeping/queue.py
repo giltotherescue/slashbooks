@@ -2389,7 +2389,11 @@ def _write_confirmed_entry(
     source_id = str(txn.get("id") or "")
     if not _require_accrual_cash_treatment(entity, {"source_id": source_id}, accrual_treatment, txn):
         accrual_treatment = None
-    txn_date = _txn_date(txn)
+    raw_date = str(txn.get("date") or "")[:10]
+    try:
+        txn_date = _date.fromisoformat(raw_date)
+    except (ValueError, TypeError):
+        txn_date = datetime.now(tz=timezone.utc).date()
     if accrual_treatment:
         _refuse_registered_cash_offsets(entity, [category], txn_date)
 
@@ -2717,10 +2721,14 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
             split = checked.get("proposal_type") == "split"
             offsets = [str(row["account"]) for row in checked["split_postings"]] if split else [category]
             if any(name.startswith(("Assets:", "Liabilities:")) for name in offsets):
-                txn = _get_pending_txn(entity, item_id)
-                if (txn is not None and needs_treatment(entity, checked if split else txn) and
-                        not _recover_finalization(entity, checked, [item_id], session_id, "confirmed", category)):
-                    _refuse_registered_cash_offsets(entity, offsets, _txn_date(txn))
+                source_id = str(checked["source_id"])
+                txn = _get_pending_txn(entity, source_id)
+                if txn is not None and needs_treatment(entity, checked if split else txn):
+                    if split:
+                        _require_accrual_cash_treatment(entity, checked, accrual_treatment)
+                    recovery_category = "Split transaction" if split else category
+                    if not _recover_finalization(entity, checked, [source_id], session_id, "confirmed", recovery_category):
+                        _refuse_registered_cash_offsets(entity, offsets, _txn_date(txn))
     return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
 
 
