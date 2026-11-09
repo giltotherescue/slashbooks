@@ -538,7 +538,10 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
             "import_source": import_source, "narration": narration, **({"tracking": True} if tracking else {}), **plan_extra}
     if not differences and not existing:
         from .journals import _preview_operation
+        from ..ledger.books_policy_check import reviewed_entry
         entries, opens, changes = _effects(plan)
+        # The complete opening entry that apply records, and its fingerprint, for a host to bind a review to it.
+        plan.update(reviewed_entry(entries[0]))
         plan["accounting_plan"] = _preview_operation(entity, operation_id=source_id, kind="migration",
             request={"cutover": plan["cutover"], "fiscal_start": plan["fiscal_start"],
                      "chart_hash": _hash(chart), **request_extra,

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Add request version 2 to the trusted books start check
+  (`books_policy_check`). A version 2 opening authorization binds the complete
+  opening entry with `entry_fingerprint`: every entry field (narration, payee,
+  flag, tags, links, metadata) and every posting field. A version 2 request
+  without a valid fingerprint, or with the version 1 `postings` field, is
+  invalid; it does not fall back to version 1. A version 2 request that contains
+  a non-finite number is invalid. Version 1 keeps its released meaning, but it
+  is weaker: it binds the date, the source ID and the postings only. Hosts
+  should send version 2. `entry_fingerprint` now lives in `books_policy_check`;
+  `source_disposition.entry_fingerprint` is the same function.
+- The opening previews now print `proposed_entry` (the complete entry that the
+  apply records, every model field) and `proposed_entry_fingerprint`:
+  `qb sync-opening` without `--apply`, `qb import-opening --dry-run`,
+  `statement record-opening --dry-run` and the accrual opening and migration
+  previews. A preview adds no ledger entry. The `statement record-opening
+  --replace --dry-run` preview now shows the source ID that the apply records
+  (for example `...-2` when the old opening has the first one); before, it
+  showed the first one. The dry run also validates the entry, as the apply does.
+  `qb import-opening` on an accrual company and `qb repair-opening --apply` have
+  no preview of the complete entry, so a host cannot authorize them with version 2.
+
 - Add `bookkeeping.source_disposition`, a pure evaluation of a person's
   decision to close a staged bank row that the books cannot record because it
   is dated before the account's books start (or before its open date when no

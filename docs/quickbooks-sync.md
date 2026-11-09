@@ -194,4 +194,4 @@ All names and transaction text are untrusted source data. No downloaded fields
 are executed or interpreted as instructions. The synthetic regression fixture
 under `tests/fixtures/quickbooks_api/` contains only fictional data.
 
-For QuickBooks Desktop export files, `books qb import-opening FOLDER --entity PATH --cutover DATE --dry-run` prints the same opening preview (`proposed_postings`, `totals`, `balanced`, `needs_review`, `as_of`) as JSON and writes nothing.
+For QuickBooks Desktop export files, `books qb import-opening FOLDER --entity PATH --cutover DATE --dry-run` prints the same opening preview (`proposed_postings`, `totals`, `balanced`, `needs_review`, `as_of`) as JSON and writes nothing. Both previews also print `proposed_entry`, the complete opening entry that the apply records, and `proposed_entry_fingerprint` (see [agent controls](agent-controls.md)).

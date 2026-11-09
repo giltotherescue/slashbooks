@@ -67,6 +67,51 @@ class QuickBooksSyncTests(unittest.TestCase):
         self.assertTrue(again["already_applied"])
         self.assertEqual(store.content_digest(), before)
 
+    def test_chart_choice_preview_shows_the_complete_opening_entry_that_apply_records(self):
+        """Both chart choices: the reviewed preview entry is the applied entry (same entry fingerprint)."""
+        import hashlib
+        from bookkeeping.ledger.books_policy_check import entry_fingerprint
+        from bookkeeping.ledger.store import LedgerStore
+        from bookkeeping.source_disposition import entry_from_document
+
+        def files(root):
+            return {f.relative_to(root).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest()
+                    for f in sorted(root.rglob("*")) if f.is_file()}
+
+        manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve")
+        targets = {row["source_id"]: row["account"] for row in manifest["accounts"]}
+        bank = next(row for row in manifest["accounts"] if row["type"] == "Assets")
+        targets[bank["source_id"]] = "Assets:Bank:Reviewed"
+        for decision, choice in (("preserve", {}), ("rebuild", {"chart_targets": targets})):
+            with self.subTest(decision):
+                path = self.root / f"books-{decision}"
+                init_entity(path, name="Synthetic Example Books")
+                entity = load_entity(path)
+                source = self.write()
+                store = LedgerStore(path / "ledger.sqlite")
+                before_files, before_entries = files(path), store.load_entries()
+                preview = sync.sync_opening(entity, source, date(2026, 1, 1), chart_decision=decision, **choice)
+                self.assertFalse(preview["applied"])
+                # No ledger change. The preview saves the snapshot reference data (sync import) and takes the
+                # entity write lock; these are the only other changes.
+                changed = {name for name, digest in files(path).items() if before_files.get(name) != digest}
+                self.assertEqual(store.load_entries(), before_entries)
+                self.assertNotIn("ledger.sqlite", changed)
+                snapshot_folder = f"sources/quickbooks/{preview['snapshot_id']}/"
+                self.assertTrue(preview["reference_path"].startswith(snapshot_folder), preview["reference_path"])
+                self.assertEqual({n for n in changed if n != ".books.lock" and not n.startswith(snapshot_folder)},
+                                 set())
+                reviewed = entry_from_document(preview["opening"]["proposed_entry"])
+                self.assertEqual(entry_fingerprint(reviewed), preview["opening"]["proposed_entry_fingerprint"])
+                accounts = {p.account for p in reviewed.postings}
+                self.assertEqual("Assets:Bank:Reviewed" in accounts, decision == "rebuild")
+                applied = sync.sync_opening(entity, source, date(2026, 1, 1), apply=True, chart_decision=decision,
+                                            chart_plan_hash=preview["chart"]["plan_hash"], **choice)
+                self.assertTrue(applied["applied"])
+                written = [e for e in store.load_entries() if e.source_id == reviewed.source_id]
+                self.assertEqual(written, [reviewed])
+                self.assertEqual(entry_fingerprint(written[0]), preview["opening"]["proposed_entry_fingerprint"])
+
     def test_failed_opening_rolls_back_prepared_chart(self):
         from unittest.mock import patch
         from bookkeeping.ledger.store import LedgerStore

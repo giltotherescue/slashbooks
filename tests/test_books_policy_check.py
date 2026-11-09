@@ -17,6 +17,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -280,6 +281,93 @@ class TrustedCheckTests(shared.Company):
         refused = checker().check_workspaces(self.host_request(self.pending_policy()), self.published, self.path)
         self.assertEqual([r["code"] for r in refused["refusals"]], [OPENING_REQUIRED])
         self.assertEqual(self.publish(self.host_request(self.pending_policy(), [good]))["status"], "ok")
+
+    def files(self) -> dict[str, str]:
+        import hashlib
+        return {f.relative_to(self.path).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest()
+                for f in sorted(self.path.rglob("*")) if f.is_file()}
+
+    def full_entry_authorization(self, preview_entry: dict, fingerprint: str, operation: str) -> dict:
+        """The host builds a version 2 authorization from the reviewed preview only."""
+        from bookkeeping.source_disposition import entry_from_document
+        reviewed = entry_from_document(preview_entry)  # the strict reader: every model field, nothing else
+        self.assertEqual(checker().entry_fingerprint(reviewed), fingerprint)
+        return {"account": CHECKING, "start_day": S, "version": 1, "operation": operation,
+                "operation_id": "host-receipt-2", "entry_source_id": reviewed.source_id,
+                "entry_fingerprint": fingerprint}
+
+    def assert_full_entry_binding(self, auth: dict) -> None:
+        request = dict(self.host_request(self.pending_policy(), [auth]), schema_version=2)
+        committed = [e for e in self.store.load_entries() if e.source_id == auth["entry_source_id"]]
+        self.assertEqual(len(committed), 1)
+        self.assertEqual(checker().entry_fingerprint(committed[0]), auth["entry_fingerprint"])
+        refused = checker().check_workspaces(dict(request, opening_authorizations=[
+            dict(auth, entry_fingerprint="0" * 64)]), self.published, self.path)
+        self.assertEqual([r["code"] for r in refused["refusals"]], [OPENING_REQUIRED])
+        self.sql(("UPDATE entries SET narration = narration || ' (edited)' WHERE source_id = ?",
+                  (auth["entry_source_id"],)))
+        edited = checker().check_workspaces(request, self.published, self.path)
+        self.assertEqual([r["code"] for r in edited["refusals"]], [OPENING_REQUIRED])
+        self.sql(("UPDATE entries SET narration = substr(narration, 1, length(narration) - 9) WHERE source_id = ?",
+                  (auth["entry_source_id"],)))
+        result = self.publish(request)
+        self.assertEqual((result["status"], result["openings_matched"]), ("ok", ["host-receipt-2"]))
+
+    def test_a_quickbooks_sync_opening_preview_binds_the_complete_applied_entry(self) -> None:
+        self.map_feed("feed-1", CHECKING)
+        self.freeze_published()
+        before_files, before_digest = self.files(), self.published_digest()
+        before_entries = self.store.load_entries() if self.store.path.exists() else []
+        preview = qb_sync.sync_opening(self.entity, self.snapshot_path, date.fromisoformat(S))
+        self.assertFalse(preview["applied"])
+        # The preview publishes no ledger change. It saves the snapshot reference data (sync import) only.
+        self.assertEqual(self.store.load_entries(), before_entries)
+        self.assertEqual(self.store.content_digest(), before_digest)
+        changed = {name for name, digest in self.files().items() if before_files.get(name) != digest}
+        self.assertNotIn("ledger.sqlite", changed)
+        self.assertTrue(changed and all(name.startswith(preview["reference_path"].split("/")[0] + "/")
+                                        for name in changed), changed)
+        reviewed = preview["opening"]
+        auth = self.full_entry_authorization(reviewed["proposed_entry"], reviewed["proposed_entry_fingerprint"],
+                                             "quickbooks_sync_opening")
+        applied = qb_sync.sync_opening(self.entity, self.snapshot_path, date.fromisoformat(S), apply=True)
+        self.assertTrue(applied["applied"])
+        self.assert_full_entry_binding(auth)
+
+    def test_a_typed_starting_balance_preview_binds_the_complete_applied_entry(self) -> None:
+        from bookkeeping.statement_opening import record_opening
+        self.map_feed("feed-1", CHECKING)
+        self.store.initialize()
+        self.freeze_published()
+        before_files = self.files()
+        preview = record_opening(self.path, account=CHECKING, on=S, amount="100.00", dry_run=True)
+        self.assertEqual(preview["status"], "dry_run")
+        # The preview adds no ledger entry and changes no ledger byte. It takes the entity write lock, so the
+        # empty lock file ``.books.lock`` can appear; that is the only other change.
+        after_files = self.files()
+        self.assertEqual(after_files["ledger.sqlite"], before_files["ledger.sqlite"])
+        self.assertEqual({name for name, digest in after_files.items() if before_files.get(name) != digest} - {".books.lock"},
+                         set())
+        auth = self.full_entry_authorization(preview["proposed_entry"], preview["proposed_entry_fingerprint"],
+                                             "starting_balance")
+        recorded = record_opening(self.path, account=CHECKING, on=S, amount="100.00")
+        self.assertEqual((recorded["status"], recorded["source_id"]), ("recorded", auth["entry_source_id"]))
+        self.assert_full_entry_binding(auth)
+
+    def test_opening_paths_without_a_supported_preview_are_blocked(self) -> None:
+        """BLOCKED: these paths print no complete entry, so a host cannot build a version 2 authorization."""
+        from bookkeeping import quickbooks
+        from bookkeeping.entity import init_entity
+        # ``qb import-opening`` on an accrual company: its dry run refuses, and an apply goes through the accrual
+        # migration. The supported preview is ``books accrual migration preview`` (proposed_entry).
+        accrual = self.root / "accrual-books"
+        init_entity(accrual, name="Synthetic Accrual Books", basis="accrual", cutover_date=S)
+        refused = quickbooks.preview_opening(load_entity(accrual), self.root, date.fromisoformat(S))
+        self.assertEqual((refused["success"], refused["proposed_entry"], refused["proposed_entry_fingerprint"]),
+                         (False, None, None))
+        # ``qb repair-opening``: its inspection names the invalid entries only, not the replacement entry.
+        self.assertNotIn("proposed_entry", {f.name for f in dataclasses.fields(quickbooks.OpeningRepairResult)})
+        self.assertNotIn("repair", " ".join(checker().OPENING_OPERATIONS))
 
     def test_an_opening_before_an_authorized_start_is_refused(self) -> None:
         recorded = self.statement_opening(on="2026-03-01")
@@ -554,6 +642,193 @@ class TrustedCheckTests(shared.Company):
             with self.subTest(label), self.assertRaises(BooksPolicyError) as caught:
                 checker().check_workspaces(request, self.published, self.path)
             self.assertEqual(caught.exception.code, "BOOKS_POLICY_INVALID")
+
+
+
+# -- request version 2: an opening authorization binds the complete entry -------------------------------------
+
+FULL = 2
+OPENING = Entry(date=date.fromisoformat(S), narration="Opening balance", payee="Synthetic Bank", flag="*",
+                tags=("opening",), links=("receipt-1",),
+                meta=(("source-id", "opening-1"), ("import-source", "statement-opening")),
+                postings=(Posting(CHECKING, Decimal("100.00"), "USD", (("qb-name", "Checking"),)),
+                          Posting(EQUITY, Decimal("-100.00"))))
+
+
+def pending(version: int = 1) -> dict:
+    return {CHECKING: {"state": "authorized_pending_opening", "start_day": S, "version": version}}
+
+
+def full_request(openings, accounts: dict | None = None, version: int = FULL) -> dict:
+    return {"schema_version": version, "policy": shared.enforced(accounts or pending()), "scope": [CHECKING],
+            "opening_authorizations": list(openings)}
+
+
+def full_authorization(entry: Entry = OPENING, **change) -> dict:
+    """A version 2 authorization: the reviewed preview gives ``entry_fingerprint`` of the complete entry."""
+    return {"account": CHECKING, "start_day": S, "version": 1, "operation": "statement_opening",
+            "operation_id": "host-receipt-2", "entry_source_id": entry.source_id,
+            "entry_fingerprint": checker().entry_fingerprint(entry), **change}
+
+
+def posting_authorization(entry: Entry = OPENING) -> dict:
+    """A version 1 (released, weaker) authorization: the date, the source ID and the postings only."""
+    return {"account": CHECKING, "start_day": S, "version": 1, "operation": "statement_opening",
+            "operation_id": "host-receipt-1", "entry_source_id": entry.source_id,
+            "postings": [[p.account, str(p.amount), p.currency, *([dict(p.meta)] if p.meta else [])]
+                         for p in entry.postings]}
+
+
+def mutations() -> dict[str, Entry]:
+    """The authorized entry with one field changed. The postings stay the same unless the name says otherwise."""
+    first, second = OPENING.postings
+    return {
+        "narration": dataclasses.replace(OPENING, narration="Opening balance (edited)"),
+        "payee": dataclasses.replace(OPENING, payee="Other Payee"),
+        "payee removed": dataclasses.replace(OPENING, payee=None),
+        "flag": dataclasses.replace(OPENING, flag="!"),
+        "tags": dataclasses.replace(OPENING, tags=("opening", "extra")),
+        "links": dataclasses.replace(OPENING, links=()),
+        "entry meta": dataclasses.replace(OPENING, meta=OPENING.meta + (("note", "added"),)),
+        "posting meta": dataclasses.replace(OPENING, postings=(dataclasses.replace(first, meta=()), second)),
+        "currency": dataclasses.replace(OPENING, postings=(dataclasses.replace(first, currency="EUR"),
+                                                           dataclasses.replace(second, currency="EUR"))),
+    }
+
+
+class FullEntryAuthorizationTests(unittest.TestCase):
+    """Request version 2 binds an opening to ``entry_fingerprint``: every ``Entry`` and ``Posting`` field."""
+
+    def check(self, request: dict, added) -> dict:
+        return checker().check_ledger_delta(request, [], list(added))
+
+    def assert_invalid(self, request: dict, words: str) -> None:
+        from bookkeeping.ledger.books_policy import BooksPolicyError
+        with self.assertRaises(BooksPolicyError) as caught:
+            checker().check_ledger_delta(request, [], [OPENING])
+        self.assertEqual(caught.exception.code, "BOOKS_POLICY_INVALID")
+        self.assertIn(words, str(caught.exception))
+
+    def test_the_matching_complete_entry_passes(self) -> None:
+        result = self.check(full_request([full_authorization()]), [OPENING])
+        self.assertEqual((result["status"], result["openings_matched"]), ("ok", ["host-receipt-2"]))
+
+    def test_an_entry_that_differs_in_any_one_field_is_refused(self) -> None:
+        for label, changed in mutations().items():
+            with self.subTest(label):
+                self.assertNotEqual(checker().entry_fingerprint(changed), checker().entry_fingerprint(OPENING))
+                result = self.check(full_request([full_authorization()]), [changed])
+                self.assertEqual(result["status"], "refused", result)
+                self.assertEqual([(r["code"], r["account"]) for r in result["refusals"]],
+                                 [(OPENING_REQUIRED, CHECKING)])
+                self.assertEqual(result["openings_matched"], [])
+
+    def test_another_date_or_source_id_with_the_same_fingerprint_text_is_refused(self) -> None:
+        for label, change in {"start day": {"start_day": "2026-03-16"},
+                              "source ID": {"entry_source_id": "opening-2"}}.items():
+            with self.subTest(label):
+                result = self.check(full_request([full_authorization(**change)]), [OPENING])
+                self.assertEqual(result["status"], "refused")
+
+    def test_two_identical_added_entries_match_none(self) -> None:
+        result = self.check(full_request([full_authorization()]), [OPENING, OPENING])
+        self.assertEqual([r["code"] for r in result["refusals"]], [OPENING_REQUIRED, OPENING_REQUIRED])
+        self.assertEqual(result["openings_matched"], [])
+
+    def test_version_2_without_a_valid_fingerprint_is_refused_with_no_fallback(self) -> None:
+        good = full_authorization()
+        missing = {k: v for k, v in good.items() if k != "entry_fingerprint"}
+        self.assert_invalid(full_request([missing]), "exactly the fields")
+        # The version 1 shape (postings, no fingerprint) under version 2 is refused, not read as version 1.
+        self.assert_invalid(full_request([posting_authorization()]), "exactly the fields")
+        self.assert_invalid(full_request([dict(good, postings=posting_authorization()["postings"])]),
+                            "exactly the fields")
+        fingerprint = good["entry_fingerprint"]
+        for bad in (None, "", fingerprint.upper(), fingerprint[:63], fingerprint + "0", "g" * 64, 7,
+                    ["a" * 64], {"sha256": fingerprint}):
+            with self.subTest(fingerprint=bad):
+                self.assert_invalid(full_request([dict(good, entry_fingerprint=bad)]), "entry_fingerprint")
+
+    def test_non_finite_numbers_in_a_version_2_request_are_refused(self) -> None:
+        good = full_authorization()
+        nan, inf = float("nan"), float("inf")
+        cases = {
+            "fingerprint": full_request([dict(good, entry_fingerprint=nan)]),
+            "authorization version": full_request([dict(good, version=inf)]),
+            "scope item": dict(full_request([good]), scope=[CHECKING, nan]),
+            "policy epoch": dict(full_request([good]), policy=dict(shared.enforced(pending()), epoch=nan)),
+            "account version": full_request([good], accounts={CHECKING: dict(pending()[CHECKING], version=-inf)}),
+        }
+        for label, request in cases.items():
+            with self.subTest(label):
+                self.assert_invalid(request, "")
+
+    def test_a_non_finite_literal_in_the_request_file_is_a_bad_request(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ("base", "candidate"):
+                (root / name).mkdir()
+            text = json.dumps(full_request([full_authorization()])).replace('"version": 1', '"version": NaN', 1)
+            self.assertIn("NaN", text)
+            (root / "request.json").write_text(text, encoding="utf-8")
+            with patch("sys.stdout"):
+                code = checker().main(["check", "--request", str(root / "request.json"), "--base",
+                                       str(root / "base"), "--candidate", str(root / "candidate")])
+            self.assertEqual(code, 2)
+
+    def test_only_the_released_and_the_full_entry_versions_are_read(self) -> None:
+        for version in (0, 3, "2", True, 2.0, None):
+            with self.subTest(version=version):
+                self.assert_invalid(full_request([full_authorization()], version=version), "schema_version")
+
+    def test_version_1_keeps_its_released_weaker_meaning(self) -> None:
+        """Control: a version 1 request matches as released. It binds the postings, not the other entry fields."""
+        request = full_request([posting_authorization()], version=1)
+        self.assertEqual(self.check(request, [OPENING])["status"], "ok")
+        weak = {"narration", "payee", "payee removed", "flag", "tags", "links", "entry meta"}
+        for label, changed in mutations().items():
+            with self.subTest(label):
+                expected = "ok" if label in weak else "refused"
+                self.assertEqual(self.check(request, [changed])["status"], expected)
+        self.assertEqual(self.check(request, [OPENING, OPENING])["status"], "refused")
+        self.assertEqual(self.check(dict(request, schema_version=1.0), [OPENING])["status"], "ok")  # as released
+        self.assertEqual(checker().REQUEST_SCHEMA_VERSION, 1)
+        self.assertEqual(checker().FULL_ENTRY_REQUEST_SCHEMA_VERSION, 2)
+        # A version 1 authorization that also names a fingerprint is not a version 1 authorization.
+        with self.assertRaises(Exception):
+            self.check(full_request([dict(posting_authorization(), entry_fingerprint="a" * 64)], version=1), [OPENING])
+
+    def test_the_fingerprint_is_the_one_canonical_every_field_digest(self) -> None:
+        import hashlib
+        from bookkeeping import source_disposition
+        self.assertIs(source_disposition.entry_fingerprint, checker().entry_fingerprint)
+        canonical = json.dumps(checker().entry_key(OPENING), sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False)
+        self.assertEqual(checker().entry_fingerprint(OPENING), hashlib.sha256(canonical.encode("utf-8")).hexdigest())
+        document = source_disposition.entry_document(OPENING)
+        self.assertEqual(checker().entry_fingerprint(source_disposition.entry_from_document(document)),
+                         checker().entry_fingerprint(OPENING))
+
+    def test_a_new_model_field_changes_the_fingerprint_and_the_strict_reader_refuses_it(self) -> None:
+        from bookkeeping import source_disposition
+
+        @dataclasses.dataclass(frozen=True)
+        class FutureEntry(Entry):
+            memo: str = ""
+
+        later = FutureEntry(**{f.name: getattr(OPENING, f.name) for f in dataclasses.fields(Entry)}, memo="x")
+        self.assertNotEqual(checker().entry_fingerprint(later),
+                            checker().entry_fingerprint(dataclasses.replace(later, memo="y")))
+        document = source_disposition.entry_document(later)
+        self.assertEqual(document["memo"], "x")
+        with self.assertRaises(source_disposition.DispositionInputError):
+            source_disposition.entry_from_document(document)  # a field the reader does not know
+        current = source_disposition.entry_document(OPENING)
+        with patch.object(source_disposition, "_ENTRY_FIELDS", (*source_disposition._ENTRY_FIELDS, "memo")), \
+                self.assertRaises(source_disposition.DispositionInputError):
+            source_disposition.entry_from_document(current)  # a document without the new field
+        with self.assertRaises(source_disposition.DispositionInputError):
+            source_disposition.entry_from_document({k: v for k, v in current.items() if k != "payee"})
 
 
 if __name__ == "__main__":

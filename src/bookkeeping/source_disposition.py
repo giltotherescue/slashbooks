@@ -47,7 +47,7 @@ from .ledger.books_policy import (
     first_policy_conflict,
     parse_policy,
 )
-from .ledger.books_policy_check import entry_key
+from .ledger.books_policy_check import entry_fingerprint
 from .ledger.model import Entry, Posting
 from .ledger.open_dates import opened_after
 from .source_ids import source_id_variants
@@ -178,9 +178,8 @@ def entry_from_document(document: Any) -> Entry:
         raise DispositionInputError(f"The disposition input is not valid: bad entry ({exc})") from exc
 
 
-def entry_fingerprint(entry: Entry) -> str:
-    """SHA-256 of the #118 history key (``books_policy_check.entry_key``): every Entry and every Posting field."""
-    return _sha(entry_key(entry))
+# ``entry_fingerprint`` (imported above) is the SHA-256 of the #118 history key (``books_policy_check.entry_key``):
+# every Entry and every Posting field. It is defined once, in ``books_policy_check``, with the same canonical JSON.
 
 
 @dataclass(frozen=True)

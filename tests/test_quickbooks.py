@@ -1180,6 +1180,39 @@ class TestImportOpening(unittest.TestCase):
             proposed = sorted((p["account"], p["amount"]) for p in preview["proposed_postings"])
             self.assertEqual(written, proposed)
 
+    def test_preview_opening_shows_the_complete_entry_that_apply_records(self):
+        import hashlib, shutil
+        from src.bookkeeping.quickbooks import preview_opening
+        from src.bookkeeping.ledger.books_policy_check import entry_fingerprint
+        from src.bookkeeping.ledger.store import LedgerStore, default_store_path
+        from src.bookkeeping.source_disposition import entry_from_document
+
+        for source, files in (("trial-balance", ("chart_of_accounts.csv", "trial_balance_cash_basis.csv")),
+                              ("balance-sheet", ("chart_of_accounts.csv", "balance_sheet_2025_12_31.csv"))):
+            with self.subTest(source), tempfile.TemporaryDirectory() as tmpdir:
+                qb_dir = Path(tmpdir) / "qb"
+                qb_dir.mkdir()
+                for name in files:
+                    shutil.copy(_FIXTURES / name, qb_dir / name)
+                entity = self._make_entity(tmpdir)
+                cutover = date(2026, 1, 1)
+                store = LedgerStore(default_store_path(entity.path))
+                store.initialize()
+                ledger_bytes = hashlib.sha256(store.path.read_bytes()).hexdigest()
+                before = (store.content_digest(), store.load_entries())
+                preview = preview_opening(entity, qb_dir, cutover, source=source)
+                self.assertTrue(preview["success"], preview["errors"])
+                self.assertEqual((store.content_digest(), store.load_entries()), before)
+                self.assertEqual(hashlib.sha256(store.path.read_bytes()).hexdigest(), ledger_bytes)
+                reviewed = entry_from_document(preview["proposed_entry"])
+                self.assertEqual(entry_fingerprint(reviewed), preview["proposed_entry_fingerprint"])
+                self.assertEqual(reviewed.source_id, preview["proposed_source_id"])
+                result = self.import_opening(entity, qb_dir, cutover, source=source)
+                self.assertTrue(result.success, result.errors)
+                applied = [e for e in store.load_entries() if e.source_id == reviewed.source_id]
+                self.assertEqual(applied, [reviewed])
+                self.assertEqual(entry_fingerprint(applied[0]), preview["proposed_entry_fingerprint"])
+
     def test_import_opening_dry_run_flag_prints_preview_and_writes_nothing(self):
         import contextlib, io, json, shutil
         from src.bookkeeping.cli import main

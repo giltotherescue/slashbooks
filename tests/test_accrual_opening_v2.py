@@ -66,6 +66,27 @@ class OpeningV2Tests(unittest.TestCase):
         self.assertIn("Synthetic Customer", aging)
         self.assertIn("Synthetic Supplier", aging)
 
+    def test_preview_shows_the_complete_entry_that_apply_records(self):
+        import hashlib
+        from bookkeeping.ledger.books_policy_check import entry_fingerprint
+        from bookkeeping.source_disposition import entry_from_document
+        store = LedgerStore(self.root / "ledger.sqlite")
+        before = (hashlib.sha256(store.path.read_bytes()).hexdigest(), store.content_digest(), store.load_entries())
+        plan = opening.preview_opening(self.entity, self.request)
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual((hashlib.sha256(store.path.read_bytes()).hexdigest(), store.content_digest(),
+                          store.load_entries()), before, "a preview adds no ledger entry")
+        reviewed = entry_from_document(plan["proposed_entry"])
+        self.assertEqual(entry_fingerprint(reviewed), plan["proposed_entry_fingerprint"])
+        self.assertEqual(reviewed.source_id, "synthetic-opening")
+        self.assertEqual(opening.apply_opening(self.entity, plan)["entries_written"], 1)
+        self.assertEqual(store.load_entries(), [reviewed])
+        self.assertEqual(entry_fingerprint(store.load_entries()[0]), plan["proposed_entry_fingerprint"])
+        # A replay writes nothing, so its preview names no entry to authorize.
+        replay = opening.preview_opening(self.entity, self.request)
+        self.assertTrue(replay["replayed"])
+        self.assertNotIn("proposed_entry", replay)
+
     def test_remaining_prepaid_uses_inclusive_service_dates(self):
         request = json.loads(json.dumps(self.request))
         request["lines"][3]["amount"] = "-30800.00"

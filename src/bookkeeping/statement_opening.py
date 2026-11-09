@@ -183,6 +183,16 @@ def _known_account(store: Any, entity_path: Path, account: str) -> bool:
     return any(r.get("account") == account for r in load_statement_records(entity_path, include_all=True))
 
 
+def _free_source_id(conn: Any, base_id: str) -> str:
+    """``base_id``, or ``base_id-2``, ``base_id-3`` ... when the books already have that source ID."""
+    taken = {row[0] for row in conn.execute("SELECT source_id FROM entries WHERE source_id LIKE ?", (f"{base_id}%",))}
+    source_id, number = base_id, 1
+    while source_id in taken:
+        number += 1
+        source_id = f"{base_id}-{number}"
+    return source_id
+
+
 def record_opening(entity_path: Path | str, statement_id: str | None = None, *, account: str | None = None,
                    on: str | None = None, amount: str | None = None, replace: bool = False,
                    dry_run: bool = False) -> JsonObject:
@@ -202,6 +212,10 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
     With ``replace`` the account's opening entry in force is reversed and the new one is recorded on the same
     or an earlier day, in one write. The usual rules apply to the new day, so nothing else for the account
     may be dated before it.
+
+    A ``dry_run`` result has ``proposed_entry``, the complete opening entry that the write records (every model
+    field, with its source ID), and ``proposed_entry_fingerprint`` (``books_policy_check.entry_fingerprint``).
+    The reversal of a replaced opening is not in it; the trusted check exempts an exact reversal.
     """
     from . import coverage
     from .entity import load_entity
@@ -356,8 +370,6 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                 f"statement that starts before {start.isoformat()} cannot use this opening balance."]
         if amount_ledger == 0:
             return {**result, "status": "nothing_to_record", "postings": []}
-        if dry_run:
-            return {**result, "status": "dry_run"}
 
         name = label or account.split(":")[-1].replace("-", " ")
         narration = (f"Opening balance from the {name} statement" if source == "printed"
@@ -368,6 +380,12 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
             meta.append(("statement-id", statement_id))
         if from_rows:
             meta.append(("period-source", "transactions"))
+        # The write takes the first free source ID from base_id. The entity write lock is held, so the write
+        # below finds the same ID, and a preview shows the entry that the write records.
+        with store.connection() as conn:
+            source_id = _free_source_id(conn, base_id)
+        meta[0] = ("source-id", source_id)
+        result.update(source_id=source_id)
         opens = [Open(date=start, account=account), Open(date=start, account=OPENING_EQUITY)]
         entry = Entry(
             date=start, narration=narration, meta=tuple(meta),
@@ -378,17 +396,14 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                         currency=currency))
         if errors:
             raise StatementOpeningError("invalid_entry", "; ".join(str(e) for e in errors))
+        if dry_run:
+            # The complete entry that the write records, for a host to bind a person's review to it.
+            from .ledger.books_policy_check import reviewed_entry
+            return {**result, "status": "dry_run", **reviewed_entry(entry)}
         with store.transaction(immediate=True) as conn:
-            taken = {row[0] for row in conn.execute("SELECT source_id FROM entries WHERE source_id LIKE ?",
-                                                     (f"{base_id}%",))}
-            number = 1
-            while source_id in taken:
-                number += 1
-                source_id = f"{base_id}-{number}"
-            if source_id != base_id:
-                meta[0] = ("source-id", source_id)
-                entry = Entry(date=entry.date, narration=entry.narration, meta=tuple(meta), postings=entry.postings)
-                result.update(source_id=source_id)
+            if _free_source_id(conn, base_id) != source_id:
+                raise StatementOpeningError("source_id_changed", "The books changed while the opening was prepared. "
+                                            "Run the command again.")
             written = [entry]
             if replaced:
                 old_meta = [(k, v) for k, v in json.loads(conn.execute(

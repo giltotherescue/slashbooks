@@ -38,6 +38,22 @@ class AccrualMigrationTests(unittest.TestCase):
         return migration.preview(self.entity, self.exports, "2026-07-01",
                                  fiscal_start="2026-01-01", supporting=kwargs.get("supporting", self.support))
 
+    def test_preview_shows_the_complete_entry_that_apply_records(self):
+        import hashlib
+        from bookkeeping.ledger.books_policy_check import entry_fingerprint
+        from bookkeeping.source_disposition import entry_from_document
+        before = (hashlib.sha256(self.store.path.read_bytes()).hexdigest(), self.store.content_digest(),
+                  self.store.load_entries())
+        plan = self.preview()
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual((hashlib.sha256(self.store.path.read_bytes()).hexdigest(), self.store.content_digest(),
+                          self.store.load_entries()), before, "a preview adds no ledger entry")
+        reviewed = entry_from_document(plan["proposed_entry"])
+        self.assertEqual(entry_fingerprint(reviewed), plan["proposed_entry_fingerprint"])
+        migration.apply(self.entity, plan)
+        self.assertEqual(self.store.load_entries(), [reviewed])
+        self.assertEqual(entry_fingerprint(self.store.load_entries()[0]), plan["proposed_entry_fingerprint"])
+
     def change(self, name, old, new):
         path = self.exports / name
         path.write_text(path.read_text().replace(old, new))
