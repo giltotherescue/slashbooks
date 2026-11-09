@@ -292,7 +292,7 @@ class OpeningDispositionBasis:
 
 def _opening_exclusions(
     entity_path: Path, basis: OpeningDispositionBasis, account: str, start: date,
-) -> set[tuple[str, str]]:
+) -> dict[tuple[str, str], JsonObject]:
     from .ledger.books_policy import PENDING_OPENING
     from .source_disposition import _mapping, confirm, evaluate, load_context, row_identity
     from .source_ids import source_id_variants
@@ -315,7 +315,7 @@ def _opening_exclusions(
             raise ValueError("The staged source row cannot be identified and mapped.")
         for spelling in source_id_variants(source):
             rows.setdefault(spelling, []).append(row)
-    excluded: set[tuple[str, str]] = set()
+    excluded: dict[tuple[str, str], JsonObject] = {}
     for claim, result in zip(basis.claims, evaluate(context, basis.claims), strict=True):
         matches = rows.get(claim["source_id"], [])
         if (result["status"] != "resolved" or claim["state"] != "outside_books"
@@ -333,13 +333,17 @@ def _opening_exclusions(
         key = (row["source_id"], row["row_digest"])
         if key in excluded or row["row_digest"] != claim["row_digest"]:
             raise ValueError("The outside-books source does not match the retained row.")
-        excluded.add(key)
+        statement_id = matches[0].get("statementId")
+        excluded[key] = {"source_id": key[0], "row_digest": key[1], "preview_digest": claim["preview_digest"],
+                         "statement_id": statement_id if isinstance(statement_id, str) else None,
+                         "date": matches[0]["date"][:10]}
     return excluded
 
 
 def record_opening(entity_path: Path | str, statement_id: str | None = None, *, account: str | None = None,
                    on: str | None = None, amount: str | None = None, replace: bool = False,
-                   dry_run: bool = False, disposition_basis: OpeningDispositionBasis | None = None) -> JsonObject:
+                   dry_run: bool = False, disposition_basis: OpeningDispositionBasis | None = None,
+                   expected_entry_fingerprint: str | None = None) -> JsonObject:
     """Record (or, with ``dry_run``, show) an account's opening entry.
 
     Three forms:
@@ -366,6 +370,7 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
     ``workspace_digest(..., ignore_empty_lock=True)``. Confirmed outside-books rows
     and wholly earlier statements stay in the workspace. The opening check
     omits only those resolved rows and uses the first in-scope statement.
+    A write requires ``expected_entry_fingerprint`` from the reviewed preview.
     """
     from . import coverage
     from .entity import load_entity
@@ -384,13 +389,16 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
     typed = None if amount is None else _amount(amount)
     entity_path = Path(entity_path)
     if disposition_basis is not None:
+        if entity_path.is_symlink() or not entity_path.is_dir():
+            return _not_eligible(statement_id, account, "opening_disposition_basis_changed",
+                                 "The workspace changed. Review the opening against the current books.")
         try:
             safe_lock = stat.S_ISREG((entity_path / _LOCK_FILE).lstat().st_mode)
         except FileNotFoundError:
             safe_lock = True
         except OSError:
             safe_lock = False
-        if not safe_lock or entity_path.is_symlink():
+        if not safe_lock:
             return _not_eligible(statement_id, account, "opening_disposition_basis_changed",
                                  "The workspace changed. Review the opening against the current books.")
     with _entity_write_lock(entity_path, repair=False):
@@ -468,7 +476,7 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                      f"is used; run the command with --statement-id {starting[0].statement_id}.",
                                      printed_opening=str(starting[0].opening_balance))
         statement_records, statement_findings = coverage.load_statements(entity_path)
-        excluded: set[tuple[str, str]] = set()
+        excluded: dict[tuple[str, str], JsonObject] = {}
         if disposition_basis is not None:
             from .source_disposition import row_identity
             try:
@@ -518,14 +526,16 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
             return _not_eligible(ref, account, "no_opening_to_replace",
                                  f"{account} has no opening balance entry to replace. Run the command without --replace.")
         earlier_statements = sorted(
-            r.period_start.isoformat() for r in statement_records
-            if r.kind == "statement" and r.account == account and r.statement_id != statement_id
-            and r.period_start < start and (disposition_basis is None or r.period_end >= start))
-        if earlier_statements:
+            (r for r in statement_records if r.kind == "statement" and r.account == account
+             and r.statement_id != statement_id and r.period_start < start),
+            key=lambda r: (r.period_start, r.statement_id))
+        blocking = next((r for r in earlier_statements if disposition_basis is None or r.period_end >= start), None)
+        if blocking:
+            first_day = blocking.period_start.isoformat()
             return _not_eligible(ref, account, "not_first_statement",
-                                 f"A statement for {account} starts earlier, on {earlier_statements[0]}. "
+                                 f"A statement for {account} starts earlier, on {first_day}. "
                                  "The opening balance belongs to the first day the books cover for the account.",
-                                 first_statement_start=earlier_statements[0])
+                                 first_statement_start=first_day)
 
         if facts["earlier_posting"]:
             return _not_eligible(ref, account, "books_before_statement",
@@ -542,10 +552,41 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
 
             series, unreadable_rows = load_waiting_checked(entity, [account], exclude=excludes)
             waiting, unreadable = series[account], unreadable_rows[account]
-        if unreadable or waiting.count_between(None, start - timedelta(days=1)):
+        if unreadable or (start > date.min and waiting.count_between(None, start - timedelta(days=1))):
             return _not_eligible(ref, account, "rows_waiting_before",
                                  f"Rows for {account} dated before {start.isoformat()} wait in review. The balance on "
                                  "that day comes from those rows, not from an opening balance.")
+        disposition_intent = None
+        if disposition_basis is not None:
+            from .ledger.books_policy_check import request_digest
+
+            # A retained association shows which statement supplied a resolved
+            # row. It is not proof of every original line of that statement.
+            linked_days: dict[str, list[str]] = {}
+            for decision in excluded.values():
+                if decision["statement_id"] is not None:
+                    linked_days.setdefault(decision["statement_id"], []).append(decision["date"])
+            for earlier in earlier_statements:
+                if not any(earlier.period_start.isoformat() <= day <= earlier.period_end.isoformat()
+                           for day in linked_days.get(earlier.statement_id, ())):
+                    return _not_eligible(ref, account, "earlier_statement_sources_unresolved",
+                                         "Review retained source rows from the earlier statement before recording the opening.",
+                                         earlier_statement_id=earlier.statement_id)
+                if ((start - earlier.period_end).days == 1 and earlier.closing_balance is not None
+                        and earlier.closing_balance != presented):
+                    return _not_eligible(ref, account, "earlier_statement_closing_mismatch",
+                                         "The opening does not match the prior day's statement closing balance.",
+                                         earlier_statement_id=earlier.statement_id,
+                                         earlier_closing_balance=format(earlier.closing_balance, "f"))
+            disposition_intent = {
+                "base_workspace_sha256": disposition_basis.base_workspace_sha256,
+                "policy_epoch": disposition_basis.policy["epoch"], "account": account, "start_day": start.isoformat(),
+                "account_version": disposition_basis.policy["accounts"][account]["version"],
+                "decisions": [excluded[key] for key in sorted(excluded)],
+                "retained_statements": [{"statement_id": r.statement_id, "evidence_sha256": r.evidence_sha256,
+                                         "period_start": r.period_start.isoformat(), "period_end": r.period_end.isoformat()}
+                                        for r in earlier_statements],
+            }
         source_id = base_id
 
         result: JsonObject = {
@@ -577,6 +618,8 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
             meta.append(("statement-id", statement_id))
         if from_rows:
             meta.append(("period-source", "transactions"))
+        if disposition_intent is not None:
+            meta.append(("opening-disposition-basis", request_digest(disposition_intent)))
         # The write takes the first free source ID from base_id. The entity write lock is held, so the write
         # below finds the same ID, and a preview shows the entry that the write records.
         with store.connection() as conn:
@@ -597,6 +640,12 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
             # The complete entry that the write records, for a host to bind a person's review to it.
             from .ledger.books_policy_check import reviewed_entry
             return {**result, "status": "dry_run", **reviewed_entry(entry)}
+        if disposition_intent is not None:
+            from .ledger.books_policy_check import entry_fingerprint
+
+            if expected_entry_fingerprint != entry_fingerprint(entry):
+                return _not_eligible(ref, account, "opening_preview_changed",
+                                     "Confirm the current opening preview before recording it.")
         with store.transaction(immediate=True) as conn:
             if _free_source_id(conn, base_id) != source_id:
                 raise StatementOpeningError("source_id_changed", "The books changed while the opening was prepared. "
@@ -617,7 +666,10 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                                 "opening_source": source,
                                                 "replaces": replaced["source_id"] if replaced else None,
                                                 "description": f"record opening balance for {account}",
-                                                "entries": len(written)}, conn)
+                                                "entries": len(written),
+                                                **({"opening_disposition": disposition_intent,
+                                                    "opening_entry_fingerprint": expected_entry_fingerprint}
+                                                   if disposition_intent is not None else {})}, conn)
             store.insert_opens(opens, conn)
             store.insert_entries(written, conn)
             store.set_meta("canonical", "true", conn)

@@ -6,6 +6,7 @@ All fixtures under tests/fixtures/statements/ are synthetic.
 from __future__ import annotations
 
 import argparse
+import csv
 import io
 import json
 import os
@@ -92,7 +93,14 @@ class RecordOpeningTests(unittest.TestCase):
             CHECKING: {"state": "authorized_pending_opening", "start_day": "2026-02-01", "version": 1}}}
 
         later = Path(self._tmp.name) / "later.csv"
-        later.write_text((FIXTURES / "chase_like_checking.csv").read_text().replace("01/", "02/"))
+        with (FIXTURES / "chase_like_checking.csv").open() as original, later.open("w", newline="") as target:
+            rows_csv = csv.DictReader(original)
+            writer = csv.DictWriter(target, rows_csv.fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows_csv:
+                row["Posting Date"] = row["Posting Date"].replace("01/", "02/").replace("02/02/", "02/01/")
+                row["Balance"] = str(Decimal(row["Balance"]) + Decimal("2142.26"))
+                writer.writerow(row)
         si.save_profile(self.entity, later, name="later", ledger_account=CHECKING, overrides={})
         latest = si.import_file(self.entity, later, profile="later", period_start="2026-02-01",
                                 period_end="2026-02-28", intake_only=True)["statements"][0]["statement"]
@@ -107,12 +115,12 @@ class RecordOpeningTests(unittest.TestCase):
 
         parser = argparse.ArgumentParser()
         si.add_parser(parser.add_subparsers())
-        def invoke(*options, trusted_basis=None):
+        def invoke(*options, trusted_basis=None, fingerprint=None):
             args = parser.parse_args(["statement", "record-opening", "--entity", str(self.entity),
                                       "--statement-id", latest["statement_id"], *options])
             output = io.StringIO()
             with redirect_stdout(output):
-                si.run(args, opening_disposition_basis=trusted_basis)
+                si.run(args, opening_disposition_basis=trusted_basis, expected_opening_entry_fingerprint=fingerprint)
             return json.loads(output.getvalue())
 
         self.assertEqual(invoke()["reason"], "not_first_statement")
@@ -143,13 +151,31 @@ class RecordOpeningTests(unittest.TestCase):
         self.assertEqual(invoke(trusted_basis=partial)["reason"], "rows_waiting_before")
         self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), baseline)
         later_epoch = OpeningDispositionBasis(baseline, {**policy, "epoch": 3}, claims)
-        shown = invoke("--dry-run", trusted_basis=later_epoch)
-        self.assertEqual(shown["status"], "dry_run")
+        epoch_preview = invoke("--dry-run", trusted_basis=later_epoch)
+        self.assertEqual(epoch_preview["status"], "dry_run")
+        shown = invoke("--dry-run", trusted_basis=basis)
+        self.assertEqual(shown["opening_balance"], "3142.26")
+        self.assertTrue(any(row["date"] == "2026-02-01" for row in json.loads(staged_before)))
+        fingerprint = shown["proposed_entry_fingerprint"]
+        self.assertNotEqual(epoch_preview["proposed_entry_fingerprint"], fingerprint)
+        self.assertEqual(invoke(trusted_basis=basis)["reason"], "opening_preview_changed")
+        self.assertEqual(invoke(trusted_basis=basis, fingerprint="0" * 64)["reason"], "opening_preview_changed")
         self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), baseline)
-        self.assertEqual(invoke(trusted_basis=basis)["status"], "recorded")
+        self.assertEqual(invoke(trusted_basis=basis, fingerprint=fingerprint)["status"], "recorded")
         entries = LedgerStore(default_store_path(self.entity)).load_entries()
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entry_fingerprint(entries[0]), shown["proposed_entry_fingerprint"])
+        self.assertEqual(entry_fingerprint(entries[0]), fingerprint)
+        self.assertEqual(entries[0].postings[0].amount, Decimal("3142.26"))
+        with LedgerStore(default_store_path(self.entity)).connection() as conn:
+            audit = [json.loads(row[0]) for row in conn.execute("SELECT payload_json FROM audit_events")
+                     if "opening_disposition" in row[0]]
+        intent = audit[-1]["opening_disposition"]
+        from bookkeeping.ledger.books_policy_check import request_digest
+        self.assertEqual(request_digest(intent), dict(entries[0].meta)["opening-disposition-basis"])
+        self.assertEqual(audit[-1]["opening_entry_fingerprint"], fingerprint)
+        self.assertEqual(intent["base_workspace_sha256"], baseline)
+        self.assertEqual([item["statement_id"] for item in intent["retained_statements"]], [old_statement["statement_id"]])
+        self.assertEqual({item["preview_digest"] for item in intent["decisions"]}, {claim["preview_digest"] for claim in claims})
         self.assertEqual(staged.read_bytes(), staged_before)
         self.assertEqual({p: p.read_bytes() for p in statements}, statements)
         authorized = {**policy, "epoch": 3, "accounts": {
@@ -215,8 +241,53 @@ class RecordOpeningTests(unittest.TestCase):
         self.assertEqual(record_opening(self.entity, **malformed_options)["reason"], "opening_disposition_basis_changed")
         self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), malformed_digest)
         stage.write_bytes(staged)
-        self.assertEqual(record_opening(self.entity, **options)["status"], "recorded")
+        self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_preview_changed")
+        fingerprint = shown["proposed_entry_fingerprint"]
+        self.assertEqual(record_opening(self.entity, **{**options, "amount": "99999.00"},
+                                        expected_entry_fingerprint=fingerprint)["reason"], "opening_preview_changed")
+        self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), digest)
+        self.assertEqual(record_opening(self.entity, **options, expected_entry_fingerprint=fingerprint)["status"], "recorded")
         self.assertEqual(stage.read_bytes(), staged)
+
+    def test_reviewed_opening_requires_adjacent_balance_and_retained_statement_sources(self):
+        from bookkeeping.ledger.books_policy_check import workspace_digest
+        from bookkeeping.source_disposition import load_context, preview
+        from bookkeeping.statement_opening import OpeningDispositionBasis
+
+        self.entity = Path(self._tmp.name) / "typed"
+        init_entity(self.entity, name="Synthetic", classify_starter_accounts=True)
+        self.imp("chase_like_checking.csv", "earlier", period_start="2026-01-01",
+                 period_end="2026-01-31", intake_only=True)
+        stage = self.entity / "staging" / "pending-categorization.json"
+        staged = stage.read_bytes()
+
+        def show(day, amount, *, claims=True):
+            policy = {"schema_version": 1, "mode": "enforced", "epoch": 2, "accounts": {
+                CHECKING: {"state": "authorized_pending_opening", "start_day": day, "version": 1}}}
+            context = load_context(self.entity, policy)
+            resolved = tuple(preview(context, row["id"], "outside_books")["claim"]
+                             for row in json.loads(stage.read_bytes())) if claims else ()
+            base = workspace_digest(self.entity, ignore_empty_lock=True)
+            result = record_opening(self.entity, account=CHECKING, on=day, amount=amount, dry_run=True,
+                                    disposition_basis=OpeningDispositionBasis(base, policy, resolved))
+            self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), base)
+            return result
+
+        self.assertEqual(show("2026-02-01", "1.00")["reason"], "earlier_statement_closing_mismatch")
+        self.assertEqual(show("2026-02-01", "3142.26")["opening_balance"], "3142.26")
+        self.assertEqual(show("2026-02-02", "3150.00")["opening_balance"], "3150.00")
+        self.assertEqual(show("2026-02-02", "0.00")["status"], "nothing_to_record")
+        rows = json.loads(staged)
+        rows[0]["amount"] = "unreadable"
+        stage.write_text(json.dumps(rows))
+        self.assertEqual(show("2026-02-01", "3142.26")["reason"], "rows_waiting_before")
+        stage.write_text("[]")
+        self.assertEqual(show("2026-02-01", "3142.26", claims=False)["reason"], "earlier_statement_sources_unresolved")
+        missing = Path(self._tmp.name) / "missing"
+        result = record_opening(missing, account=CHECKING, on="2026-02-01", amount="3142.26",
+                                disposition_basis=OpeningDispositionBasis("0" * 64, {}, ()))
+        self.assertEqual(result["reason"], "opening_disposition_basis_changed")
+        self.assertFalse(missing.exists())
 
     def test_authorized_opening_cannot_add_or_move_the_catalog_open_date(self):
         from bookkeeping.ledger.books_policy_check import workspace_digest

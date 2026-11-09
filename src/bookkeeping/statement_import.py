@@ -1400,7 +1400,8 @@ def add_parser(subparsers: Any) -> None:
     list_p.add_argument("--account", default=None, help="Only this ledger account")
 
 
-def run(args: argparse.Namespace, *, opening_disposition_basis: OpeningDispositionBasis | None = None) -> int:
+def run(args: argparse.Namespace, *, opening_disposition_basis: OpeningDispositionBasis | None = None,
+        expected_opening_entry_fingerprint: str | None = None) -> int:
     from .entity import load_entity
 
     command = args.statement_command
@@ -1443,7 +1444,8 @@ def run(args: argparse.Namespace, *, opening_disposition_basis: OpeningDispositi
             try:
                 result = record_opening(args.entity, args.statement_id, account=args.account, on=args.on,
                                         amount=args.amount, replace=args.replace, dry_run=args.dry_run,
-                                        disposition_basis=opening_disposition_basis)
+                                        disposition_basis=opening_disposition_basis,
+                                        expected_entry_fingerprint=expected_opening_entry_fingerprint)
             except StatementOpeningError as exc:
                 raise StatementImportError(exc.code, str(exc)) from exc
         elif command == "list":
