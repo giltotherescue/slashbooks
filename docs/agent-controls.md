@@ -428,7 +428,8 @@ All of these must be true:
   `start_day` and the next version. Put every opening balance account in the
   books start policy, so that the version 3 check also needs its authorization.
 - The `epoch` of the policy in the request is at or after the epoch that the
-  decision captured, and before the current epoch.
+  decision captured, and the current epoch is exactly that epoch plus one (the
+  policy that the publication made). An older request is refused.
 
 The engine does not authenticate the `operation_id` values. It checks only that
 each one is non-empty text and unique, and it records them. A trusted host must
@@ -439,7 +440,8 @@ The first evaluation gives `transition_pending` with
 `expected_accrual_opening_recorded` evidence. The evidence records the binding of
 the request (with its policy epoch) and the new open date of the account (the
 native opening opens the account on the entry date). The host records it one
-time. Each later evaluation checks the evidence again: an integer
+time. Recorded evidence is not issued again, so it stays valid at any later
+epoch. Each later evaluation checks the evidence again: an integer
 `schema_version`, a positive safe integer version (at most 2^53 - 1) on every
 account, and every recorded account still `authorized` at the same start with
 the next version. Otherwise the decision is invalidated. When a rule is false,
@@ -452,7 +454,7 @@ the decision is `invalidated` with one or more of these triggers
 | `ACCRUAL_AUTHORIZATION_INVALID` | The request is not a valid books start check request. |
 | `ACCRUAL_AUTHORIZATION_NOT_PRIOR_DAY` | The request is version 1 or 2. A same-day authorization never completes a prior-day opening. |
 | `ACCRUAL_AUTHORIZATION_STALE` | The authorized start or version is not the start or the pending version, or a version is not a safe integer. |
-| `ACCRUAL_AUTHORIZATION_EPOCH` | The policy epoch of the request is before the captured epoch, or not before the current epoch. |
+| `ACCRUAL_AUTHORIZATION_EPOCH` | The policy epoch of the request is before the captured epoch, or the current epoch is not that epoch plus one. |
 | `ACCRUAL_OPENING_NOT_FRESH` | The entry metadata is not exactly that of a fresh accrual opening for this start, or it posts outside Assets, Liabilities and Equity. |
 | `ACCRUAL_OPENING_NOT_PRIOR_DAY` | The entry is not dated the day before `start_day`. |
 | `ACCRUAL_ENTRY_MISMATCH` | The source ID or the fingerprint is not that of the entry. |

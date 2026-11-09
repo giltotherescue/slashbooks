@@ -678,8 +678,8 @@ ACCRUAL_COMPLETION_REASONS = {
     "ACCRUAL_AUTHORIZATION_STALE": "The authorized start or version is not the start and pending version of the "
                                    "confirmed decision and of the policy in the request, or a version is not a "
                                    "safe integer.",
-    "ACCRUAL_AUTHORIZATION_EPOCH": "The policy epoch of the request is not at or after the epoch that the decision "
-                                   "captured and before the current epoch.",
+    "ACCRUAL_AUTHORIZATION_EPOCH": "The policy epoch of the request is before the epoch that the decision "
+                                   "captured, or the current epoch is not the request epoch plus one.",
     "ACCRUAL_OPENING_NOT_FRESH": "The entry is not a fresh accrual opening for this cutover (exact metadata, and "
                                  "postings on Assets, Liabilities and Equity accounts only).",
     "ACCRUAL_OPENING_NOT_PRIOR_DAY": "The entry is not dated the day before the authorized start (the cutover).",
@@ -746,8 +746,10 @@ def _accrual_completion(context: DispositionContext, claim: Mapping[str, Any], o
       and payables included). Equity is left out.
     - Each of those accounts is ``authorized`` in the current policy with the cutover as its start and the next
       version. An account outside the policy is refused, never left out.
-    - The policy epoch of the request is at or after the epoch that the claim captured, and before the current
-      epoch: the request was made after the decision, and the publication that it authorized came after it.
+    - The policy epoch of the request is at or after the epoch that the claim captured, and the current epoch is
+      exactly the request epoch plus one: the request was made after the decision, and the current policy is the
+      one that its publication made. An older request is refused, even when the policy still matches. Recorded
+      evidence is not issued again, so it replays at any later epoch (:func:`_accrual_evidence_fits`).
 
     The engine does not authenticate the ``operation_id`` values. It checks only that each one is non-empty text
     and unique in the request, and it records them. It cannot prove from the policy which reviewed operation or
@@ -791,8 +793,8 @@ def _accrual_completion(context: DispositionContext, claim: Mapping[str, Any], o
             reasons.add("ACCRUAL_AUTHORIZATION_STALE")
         captured = captured_epoch(claim)
         current = context.policy.epoch if context.policy is not None else None
-        if (captured is None or current is None or not captured <= request.policy.epoch < current
-                or request.policy.epoch > _SAFE_INTEGER):
+        if (captured is None or current is None or not captured <= request.policy.epoch
+                or current != request.policy.epoch + 1 or request.policy.epoch > _SAFE_INTEGER):
             reasons.add("ACCRUAL_AUTHORIZATION_EPOCH")
         for auth in request.openings:
             row = request.policy.accounts.get(auth.account)
@@ -935,7 +937,8 @@ def _accrual_evidence_fits(claim: Mapping[str, Any], evidence: Mapping[str, Any]
     accrual opening dated the day before it, the source ID and fingerprint are the entry's, and the accounts are
     exactly the Assets and Liabilities accounts of the entry, each one time with its own ``operation_id`` and a
     positive safe pending version. The claim's account has the version that the claim captured. The policy epoch is
-    at or after the captured epoch and before the current epoch. The open date is the one that the opening gives.
+    at or after the captured epoch and before the current epoch: the evidence was issued when the current epoch was
+    the request epoch plus one, and later policy changes keep it. The open date is the one that the opening gives.
     The current policy of every account is checked in :func:`evaluate` (:func:`_accrual_policy_holds`). The
     ``operation_id`` values are not authenticated (see :func:`_accrual_completion`).
     """

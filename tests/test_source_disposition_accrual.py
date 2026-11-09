@@ -267,6 +267,30 @@ class AccrualOpeningCompletionTests(unittest.TestCase):
                 changed["authorization"]["policy_epoch"] = epoch
                 self.assertIn("TRANSITION_EVIDENCE_INVALID", self.replay(self.rehash(changed))["triggers"])
 
+    def at_epoch(self, epoch: int) -> sd.DispositionContext:
+        """The same authorized books after later, unrelated policy changes (the current epoch is ``epoch``)."""
+        later = policy("authorized", 2, epoch)
+        later["accounts"]["Assets:Bank:Later"] = {"state": "authorized", "version": 1, "start_day": "2026-08-01"}
+        return self.with_policy(later)
+
+    def test_epoch_a_new_issuance_needs_the_request_epoch_just_before_the_current_epoch(self) -> None:
+        old = self.evaluate(self.at_epoch(9), authorization=self.v3())  # the E4 request at E9
+        self.assert_refused(old, "ACCRUAL_AUTHORIZATION_EPOCH")
+        fresh = self.v3()
+        fresh["policy"]["epoch"] = 8
+        result = self.evaluate(self.at_epoch(9), authorization=fresh)
+        self.assertEqual((result["status"], result["triggers"]), ("transition_pending", []), result)
+        self.assertEqual(result["transition_evidence"]["authorization"]["policy_epoch"], 8)
+
+    def test_epoch_stored_e4_to_e5_evidence_replays_at_a_later_epoch_unchanged(self) -> None:
+        evidence = self.stored()
+        self.assertEqual(evidence["authorization"]["policy_epoch"], 4)
+        for epoch in (5, 9):
+            with self.subTest(epoch=epoch):
+                result = self.replay(evidence, self.at_epoch(epoch))
+                self.assertEqual((result["status"], result["triggers"]), ("resolved", []), result)
+                self.assertEqual(sd.excluded_source_ids([result]), [ROW])
+
     def test_blocker_4_operation_ids_are_recorded_and_not_authenticated(self) -> None:
         """The engine only checks that each operation ID is non-empty text and unique in the record.
 

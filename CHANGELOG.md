@@ -38,7 +38,8 @@
   The new `accrual` opening kind completes the decision only when `evaluate`
   gets the exact version 3 request (`accrual_opening_prior_day`) that published
   the entry dated the day before the start. Its source ID and fingerprint must
-  match, its policy epoch must be between the captured and the current epoch,
+  match, its policy epoch must be at or after the captured epoch and exactly
+  one before the current epoch (recorded evidence replays at later epochs),
   and every Assets and Liabilities account that the entry posts to (receivables
   and payables included) must be authorized and in the books start policy. The
   evidence kind is `expected_accrual_opening_recorded`. Each later evaluation
