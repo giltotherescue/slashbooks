@@ -8,6 +8,8 @@ authority to publish, close, reopen, or change policy.
 from __future__ import annotations
 
 import calendar
+from collections import Counter
+import copy
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -65,6 +67,70 @@ class DependencyVersions:
             "reply_revision": self.reply_revision,
             "policy_version": self.policy_version,
         }
+
+
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_BINDING_FIELDS = ("base_sha256", "policy_epoch", "generation", "captured_disposition_sha256")
+
+
+@dataclass(frozen=True)
+class ReadinessDispositionContext:
+    """Confirmed outside-books decisions that readiness may use, and the host capture they came from.
+
+    - ``policy``: the exact native books start policy document (``ledger.books_policy``).
+    - ``claims``: the active confirmed claims (``source_disposition.preview`` claims).
+    - ``transitions``: recorded expected-opening evidence by claim ``preview_digest``
+      (``source_disposition.evaluate``).
+    - ``binding``: ``{base_sha256, policy_epoch, generation, captured_disposition_sha256}``. ``policy_epoch`` must be
+      the policy's epoch. The engine does not verify the other values; it copies them into the readiness document.
+
+    The engine loads and evaluates the claims again on the company directory. This context alone is **not** host
+    trust: the host must capture its authority, its stored decision state and their currentness atomically, and
+    compare them again before it uses the package.
+    """
+
+    policy: Mapping[str, Any]
+    claims: tuple[Mapping[str, Any], ...]
+    transitions: Mapping[str, Mapping[str, Any]]
+    binding: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        from .ledger.books_policy import parse_policy
+        from .source_disposition import _check_claim
+
+        if not isinstance(self.policy, Mapping):
+            raise TypeError("The disposition policy must be an object.")
+        parsed = parse_policy(self.policy)
+        if not isinstance(self.claims, (tuple, list)):
+            raise TypeError("The disposition claims must be a list.")
+        for claim in self.claims:
+            _check_claim(claim)
+        if not isinstance(self.transitions, Mapping) or not all(
+                isinstance(key, str) and isinstance(value, Mapping) for key, value in self.transitions.items()):
+            raise TypeError("The disposition transitions must map a preview digest to an object.")
+        binding = self.binding
+        if not isinstance(binding, Mapping) or set(binding) != set(_BINDING_FIELDS):
+            raise ValueError(f"The disposition binding must have exactly {list(_BINDING_FIELDS)}.")
+        for name in ("base_sha256", "captured_disposition_sha256"):
+            if not isinstance(binding[name], str) or not _SHA256.match(binding[name]):
+                raise ValueError(f"The disposition binding {name} must be a SHA-256.")
+        for name in ("policy_epoch", "generation"):
+            if type(binding[name]) is not int or not 0 <= binding[name] <= 2**53 - 1:
+                raise ValueError(f"The disposition binding {name} must be a nonnegative integer.")
+        if binding["policy_epoch"] != parsed.epoch:
+            raise ValueError("The disposition binding policy_epoch is not the policy's epoch.")
+        # A private copy, so later changes to the caller's objects do not change this capture.
+        object.__setattr__(self, "policy", copy.deepcopy(dict(self.policy)))
+        object.__setattr__(self, "claims", tuple(copy.deepcopy(dict(claim)) for claim in self.claims))
+        object.__setattr__(self, "transitions", copy.deepcopy(dict(self.transitions)))
+        object.__setattr__(self, "binding", {name: binding[name] for name in _BINDING_FIELDS})
+
+    @classmethod
+    def from_document(cls, document: Any) -> "ReadinessDispositionContext":
+        """Read ``{policy, claims, transitions, binding}`` JSON. Unknown or missing fields are refused."""
+        if not isinstance(document, Mapping) or set(document) != {"policy", "claims", "transitions", "binding"}:
+            raise ValueError("The disposition context must have exactly policy, claims, transitions and binding.")
+        return cls(document["policy"], document["claims"], document["transitions"], document["binding"])
 
 
 @dataclass(frozen=True)
@@ -199,17 +265,71 @@ def _period_item(item: Mapping[str, Any], start: date, end: date) -> bool | None
         return None
 
 
-def _open_work(entity_path: Path, start: date, end: date) -> tuple[list[dict[str, str]], list[dict[str, Any]]]:
+def _resolved_dispositions(entity_path: Path, context: ReadinessDispositionContext) -> dict[tuple[str, str], dict[str, Any]]:
+    """Exact row identities that confirmed outside-books decisions resolve now, keyed by (source ID, row digest).
+
+    The native functions load and evaluate the decisions again. A failure leaves nothing out (fail closed). Two
+    decisions that resolve to the same row are ambiguous, so neither leaves it out.
+    """
+    from .source_disposition import evaluate, load_context, recorded_source_ids, resolved_identity
+
+    try:
+        native = load_context(entity_path, context.policy)
+        results = evaluate(native, context.claims, context.transitions)
+        recorded = recorded_source_ids(entity_path)
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+    found: dict[tuple[str, str], dict[str, Any]] = {}
+    counts: Counter[tuple[str, str]] = Counter()
+    for claim, result in zip(context.claims, results, strict=True):
+        identity = resolved_identity(native, claim, result, recorded_source_ids=recorded)
+        if identity is not None:
+            key = (identity["source_id"], identity["row_digest"])
+            counts[key] += 1
+            found[key] = identity
+    return {key: identity for key, identity in found.items() if counts[key] == 1}
+
+
+def _resolved_row(item: Mapping[str, Any], resolved: Mapping[tuple[str, str], Mapping[str, Any]],
+                  aliases: Counter[str]) -> Mapping[str, Any] | None:
+    """The resolved identity of this staged row, checked again on the bytes read here, or ``None``."""
+    from .source_disposition import row_identity
+
+    try:
+        identity = row_identity(item)
+    except (TypeError, ValueError):
+        return None
+    found = resolved.get((identity["source_id"], identity["row_digest"]))
+    if (found is None or not identity["source_id"] or found["spellings"] != identity["spellings"]
+            or any(aliases[spelling] != 1 for spelling in identity["spellings"])):
+        return None
+    return found
+
+
+def _open_work(entity_path: Path, start: date, end: date, *,
+               resolved: Mapping[tuple[str, str], Mapping[str, Any]] | None = None,
+               ) -> tuple[list[dict[str, str]], list[dict[str, Any]], list[dict[str, Any]]]:
     blockers: list[dict[str, str]] = []
     snapshot: list[dict[str, Any]] = []
+    suppressed: list[dict[str, Any]] = []
     pending, error = _read_json(entity_path / "staging" / "pending-categorization.json")
     if error or (pending is not None and not isinstance(pending, list)):
         blockers.append({"code": "staged_transactions_unreadable", "message": "Staged transactions could not be verified.", "refs": []})
     elif isinstance(pending, list):
+        aliases: Counter[str] = Counter()
+        if resolved:
+            from .source_ids import source_id_variants
+            for item in pending:
+                if isinstance(item, Mapping):
+                    aliases.update(source_id_variants(item.get("id")))
         for item in pending:
             if not isinstance(item, Mapping) or _period_item(item, start, end) is None:
                 blockers.append({"code": "staged_transaction_invalid", "message": "A staged transaction has no valid period.", "refs": []})
             elif _period_item(item, start, end):
+                found = _resolved_row(item, resolved, aliases) if resolved else None
+                if found is not None:
+                    suppressed.append({key: found[key] for key in ("source_id", "row_digest", "preview_digest")})
+                    continue
                 ref = str(item.get("id") or "unknown")
                 snapshot.append({"kind": "staged", "ref": ref, "date": str(item.get("date"))[:10]})
     for path in sorted((entity_path / "review-queue").glob("*.json")):
@@ -240,7 +360,8 @@ def _open_work(entity_path: Path, start: date, end: date) -> tuple[list[dict[str
     if snapshot:
         refs = sorted(item["ref"] for item in snapshot)
         blockers.append({"code": "unresolved_period_work", "message": "The period still has staged transactions, proposals, or duplicate decisions.", "refs": refs})
-    return blockers, sorted(snapshot, key=lambda item: (item["kind"], item["date"], item["ref"]))
+    return (blockers, sorted(snapshot, key=lambda item: (item["kind"], item["date"], item["ref"])),
+            sorted(suppressed, key=lambda item: (item["source_id"], item["row_digest"])))
 
 
 def _question_blockers(entity_path: Path, start: date, end: date) -> tuple[list[dict[str, Any]], list[Any]]:
@@ -335,12 +456,28 @@ def _annotate_blockers(blockers: list[dict[str, Any]], path: Path, period: str, 
 
 @_locked_entity_operation(shared=True)
 def assess_review_readiness(entity_path: Path | str, period: str,
-                            dependencies: DependencyVersions, *, as_of: date) -> ReadinessAssessment:
-    """Assess one immutable period snapshot without writing company state."""
+                            dependencies: DependencyVersions, *, as_of: date,
+                            disposition_context: ReadinessDispositionContext | None = None) -> ReadinessAssessment:
+    """Assess one immutable period snapshot without writing company state.
+
+    With ``disposition_context=None`` the document is the same as without the argument.
+
+    With a :class:`ReadinessDispositionContext`, a staged row in the period is left out of open work only when a
+    confirmed ``outside_books`` decision resolves now to that exact row (source ID, every spelling, row digest),
+    the row is the only staged row with those spellings, and the books have not booked or recorded it
+    (``source_disposition.resolved_identity``). Each row is checked again where it is read. Nothing else changes:
+    proposals, duplicates, questions, coverage and ledger checks block as before, and no file is changed. The
+    document gets ``disposition_basis`` (the binding and the rows left out) before its ``package_id`` is computed.
+
+    The native context alone is not host trust. The host captures its authority, its stored decision state and
+    their currentness atomically, and checks them again before it uses the package.
+    """
     if not isinstance(dependencies, DependencyVersions):
         raise TypeError("Trusted DependencyVersions are required.")
     if not isinstance(as_of, date):
         raise TypeError("A deterministic as_of date is required.")
+    if disposition_context is not None and not isinstance(disposition_context, ReadinessDispositionContext):
+        raise TypeError("A ReadinessDispositionContext is required.")
     start, end = _period_dates(period)
     entity = load_entity(entity_path)
     accrual_in_use = _accrual_in_use(entity)
@@ -363,7 +500,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     if period_status != "completed":
         blockers.append({"code": f"period_{period_status}", "message": "Final review readiness requires a completed calendar period.", "refs": [period]})
 
-    work_blockers, open_work = _open_work(entity.path, start, end)
+    resolved = None if disposition_context is None else _resolved_dispositions(entity.path, disposition_context)
+    work_blockers, open_work, suppressed = _open_work(entity.path, start, end, resolved=resolved)
     blockers.extend(work_blockers)
     question_blockers, open_questions = _question_blockers(entity.path, start, end)
     blockers.extend(question_blockers)
@@ -569,6 +707,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         document.update(activity_from=start.isoformat(), activity_to=end.isoformat(),
                         partial_post_cutover=partial_opening is not None,
                         imported_summary_through=partial_opening["source_as_of"] if partial_opening else None)
+    if disposition_context is not None:
+        document["disposition_basis"] = {**disposition_context.binding, "excluded": suppressed}
     document["package_id"] = _hash(document)
     return ReadinessAssessment(document)
 

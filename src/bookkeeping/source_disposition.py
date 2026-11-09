@@ -23,6 +23,7 @@ Functions:
 - :func:`evaluate`: ``resolved`` or ``invalidated`` (with trigger codes) for each stored claim.
 - :func:`reclassify`: the two date checks of a restored row (not the other review and booking guards).
 - :func:`captured_epoch`: the full epoch a confirmation captured. Only a value for a host to assert; no fence here.
+- :func:`resolved_identity`: the exact, unique, unbooked staged row that a resolved claim may leave out.
 - :func:`load_context`: read a company directory (read-only) into a context.
 - ``python -I -m bookkeeping.source_disposition check --request R.json --entity DIR``: the same, as a command.
 """
@@ -841,6 +842,69 @@ def evaluate(context: DispositionContext, claims: Iterable[Mapping[str, Any]],
 def excluded_source_ids(results: Iterable[Mapping[str, Any]]) -> list[str]:
     """The rows that review and readiness may leave out: only ``resolved`` ones. Never counted as reconciled."""
     return sorted(str(item["source_id"]) for item in results if item.get("status") == "resolved")
+
+
+def recorded_source_ids(entity_path: Path | str) -> frozenset[str]:
+    """Every spelling of every source ID in the ledger's ``source_transactions`` table, of any status.
+
+    A row is recorded there when it is posted and also when it is sealed with no financial effect
+    (``no_financial_effect``). Either way the books already account for it, so it is never left out as
+    ``outside_books``. Read-only. A company with no ledger store records nothing.
+    """
+    from .ledger.store import LedgerStore, default_store_path
+
+    store_path = default_store_path(Path(entity_path))
+    if not store_path.is_file():
+        return frozenset()
+    found: set[str] = set()
+    with LedgerStore(store_path).connection() as conn:
+        for (source_id,) in conn.execute("SELECT id FROM source_transactions"):
+            found |= source_id_variants(source_id)
+    return frozenset(found)
+
+
+def resolved_identity(context: DispositionContext, claim: Mapping[str, Any], result: Mapping[str, Any], *,
+                      recorded_source_ids: Iterable[str]) -> dict[str, Any] | None:
+    """The exact staged row that a resolved ``outside_books`` claim may leave out, or ``None``.
+
+    Every caller that leaves a row out (readiness, a reviewed opening) uses this one rule:
+
+    - ``claim`` is confirmed (it has its ``preview_digest``), and ``result`` is its :func:`evaluate` result:
+      ``resolved``, the same source ID, ``outside_books``.
+    - Exactly one staged row has any spelling of the claim's source ID. Its ID is the claim's source ID and its
+      ``row_digest`` (the source fields) is the claim's. Two rows that share a spelling are ambiguous: neither is
+      chosen.
+    - No spelling is booked in a live ledger entry, and no spelling is in ``recorded_source_ids`` (the ledger's
+      ``source_transactions``, which includes rows sealed with no financial effect; see :func:`recorded_source_ids`).
+
+    The result is ``{source_id, spellings, row_digest, preview_digest}``. It never names a row that the claim does
+    not name, and it changes nothing.
+    """
+    if not isinstance(claim, Mapping) or not isinstance(result, Mapping):
+        return None
+    source_id = claim.get("source_id")
+    digest = claim.get("preview_digest")
+    if (not isinstance(source_id, str) or not source_id or not isinstance(digest, str) or not _SHA.match(digest)
+            or result.get("status") != "resolved"
+            or result.get("source_id") != source_id or claim.get("state") != "outside_books"
+            or result.get("state") != "outside_books"):
+        return None
+    spellings = source_id_variants(source_id)
+    matches = [row for row in context.rows if source_id_variants(row.get("id")) & spellings]
+    if len(matches) != 1:
+        return None
+    try:
+        identity = row_identity(matches[0])
+    except (TypeError, ValueError):
+        return None
+    if identity["source_id"] != source_id or identity["row_digest"] != claim.get("row_digest"):
+        return None
+    recorded: set[str] = set()
+    for item in recorded_source_ids:
+        recorded |= source_id_variants(item)
+    if spellings & (_booked_ids(context) | recorded):
+        return None
+    return {**identity, "preview_digest": digest}
 
 
 #: Guards that :func:`reclassify` does not run. A host must run the full ordinary review and booking guards.

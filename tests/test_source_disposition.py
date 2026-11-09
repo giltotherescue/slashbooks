@@ -387,6 +387,67 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(sd.excluded_source_ids(sd.evaluate(ctx(), [claim])), ["banksync:r1"])
 
 
+class ResolvedIdentityTests(unittest.TestCase):
+    """The one rule for leaving a staged row out: a resolved claim, one exact row, not booked or recorded."""
+
+    def setUp(self):
+        self.claim = sd.preview(ctx(), "r1", "outside_books")["claim"]
+
+    def identity(self, context_=None, claim=None, result=None, recorded=()):
+        context_ = context_ or ctx()
+        claim = claim or self.claim
+        result = result or sd.evaluate(context_, [claim])[0]
+        return sd.resolved_identity(context_, claim, result, recorded_source_ids=recorded)
+
+    def test_a_resolved_claim_names_its_exact_row(self):
+        identity = sd.row_identity(feed_row())
+        self.assertEqual(self.identity(), {**identity, "preview_digest": self.claim["preview_digest"]})
+
+    def test_an_unresolved_claim_names_nothing(self):
+        self.assertIsNone(self.identity(ctx(policy=policy(version=3))))
+        self.assertIsNone(self.identity(ctx(rows=[feed_row(amount="-26.00")])))
+
+    def test_a_result_for_another_claim_or_a_made_up_result_names_nothing(self):
+        resolved = {"source_id": "banksync:r1", "state": "outside_books", "status": "resolved"}
+        unknown = {**self.claim, "source_id": "banksync:nope"}
+        self.assertIsNone(self.identity(claim=unknown, result={**resolved, "source_id": "banksync:nope"}))
+        other = {**self.claim, "source_id": "banksync:r2"}
+        rows = [feed_row(), feed_row("banksync:r2", "2026-02-11")]
+        self.assertIsNone(self.identity(ctx(rows=rows), claim=other, result={**resolved, "source_id": "banksync:r2"}))
+        self.assertIsNone(self.identity(result={**resolved, "source_id": "banksync:r2"}))
+        self.assertIsNone(self.identity(claim={**self.claim, "state": "covered_by_opening"}, result=resolved))
+        unconfirmed = {k: v for k, v in self.claim.items() if k != "preview_digest"}
+        self.assertEqual(sd.evaluate(ctx(), [unconfirmed])[0]["status"], "resolved")
+        self.assertIsNone(self.identity(claim=unconfirmed))
+
+    def test_two_rows_with_one_spelling_are_ambiguous(self):
+        both = ctx(rows=[feed_row(), feed_row("r1")])
+        self.assertEqual(sd.evaluate(both, [self.claim])[0]["status"], "resolved")
+        self.assertIsNone(self.identity(both))
+
+    def test_a_booked_or_recorded_spelling_names_nothing(self):
+        booked = [{"source_id": "r1", "account": SAVINGS, "date": "2026-02-10", "amount": "-25.00"}]
+        self.assertIsNone(self.identity(ctx(booked=booked),
+                                        result=sd.evaluate(ctx(), [self.claim])[0]))
+        # A sealed ``source_transactions`` row (posted, or no financial effect) under the legacy spelling.
+        self.assertIsNone(self.identity(recorded=["r1"]))
+        self.assertIsNone(self.identity(recorded=["banksync:r1"]))
+        self.assertIsNotNone(self.identity(recorded=["plaid:r1"]))
+
+    def test_recorded_source_ids_reads_every_status_and_spelling(self):
+        from bookkeeping.ledger.store import LedgerStore, default_store_path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(sd.recorded_source_ids(root), frozenset())
+            store = LedgerStore(default_store_path(root))
+            store.initialize()
+            with store.transaction() as conn:
+                store.insert_source_transactions([{"id": "r1"}], conn, status="no_financial_effect")
+                store.insert_source_transactions([{"id": "plaid:p2"}], conn)
+            self.assertEqual(sd.recorded_source_ids(root), {"r1", "banksync:r1", "plaid:p2"})
+
+
 class EpochRuleTests(unittest.TestCase):
     """Two separate rules. Rule 1: a stored decision survives an epoch-only change when its basis is unchanged.
     Rule 2: the confirmation fences the full epoch it captured; a host publication asserts that same epoch."""
