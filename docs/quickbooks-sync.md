@@ -112,6 +112,11 @@ columns or missing account detail block that comparison grain. The initial
 snapshot importer does not promise complete inventory, payroll, multicurrency,
 or every possible transaction-detail layout.
 
+`books compare period` saves its differences, with any decisions on them, in
+`reports/migration-confidence/differences.json`. Add `--no-save-differences` to
+compare without a write. The command still reads the saved decisions, and its
+output is the same.
+
 `books compare period` also returns `summary` (`accounts_compared`, `matched`, `differs`, and the same three counts per grain `pnl`, `bs` and `tb`) and a `matched` list of rows with no difference. The cash-basis `tb` grain compares two totals, so it is counted only under `grains.tb`, which adds the reference `total_debits`, `total_credits` and `balanced`.
 
 Importing QuickBooks classifications and reproducing its totals tests reference
