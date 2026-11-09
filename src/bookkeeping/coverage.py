@@ -67,7 +67,7 @@ from pathlib import Path
 import re
 import sqlite3
 import sys
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .entity import _locked_entity_operation, load_entity
 from .ledger.store import LedgerStore, default_store_path
@@ -584,12 +584,24 @@ def check_coverage(
     *,
     accounts: Sequence[str] | None = None,
     max_quiet_days: int = DEFAULT_MAX_QUIET_DAYS,
+    account_from: Mapping[str, date] | None = None,
+    exclude_waiting: Callable[[Mapping[str, Any]], bool] | None = None,
 ) -> dict[str, Any]:
-    """Return the coverage document for each expected account and month."""
+    """Return the coverage document for each expected account and month.
+
+    ``account_from`` gives a later first day for an account (for example its authorized books start). That
+    account needs evidence from that day, and its statements and continuity are checked from that day, the
+    same as a later ``from_date``. Each day must be from ``from_date`` through ``to_date``. Other accounts use
+    ``from_date``. ``exclude_waiting`` is an exact predicate for a readable staged row that the statement
+    tie-out must not count as waiting (``tieout.load_waiting_checked``). It never changes a balance.
+    """
     if from_date > to_date:
         raise ValueError("The period start must not be after its end.")
     if type(max_quiet_days) is not int or not 1 <= max_quiet_days <= 366:
         raise ValueError("max_quiet_days must be a whole number from 1 to 366.")
+    account_from = dict(account_from or {})
+    if any(not isinstance(day, date) or not from_date <= day <= to_date for day in account_from.values()):
+        raise ValueError("An account start must be a date from the period start through its end.")
     entity = load_entity(entity_path)
     declared = _declared(entity.entity_config)
     records, findings = load_statements(entity.path)
@@ -612,13 +624,14 @@ def check_coverage(
             "message": "No expected source accounts are declared, mapped or covered by a statement record.",
         })
     tx_dates = _transaction_dates(entity.path, expected)
-    months = _months(from_date, to_date)
     books_postings = tieout_module.load_postings(entity.path, expected)
-    books_waiting = tieout_module.load_waiting(entity, expected)
+    books_waiting = tieout_module.load_waiting_checked(entity, expected, exclude=exclude_waiting)[0]
 
     account_rows = []
     totals = {"complete": 0, "partial": 0, "missing": 0}
     for account in expected:
+        first_day = account_from.get(account, from_date)
+        months = _months(first_day, to_date)
         sources = sorted({str(row["source"]) for row in declared if row.get("account") == account and row.get("source")})
         account_records = [record for record in records if record.account == account]
         label = _label(entity.entity_config, account, account_records)
@@ -680,7 +693,7 @@ def check_coverage(
                 "notes": notes,
                 "tieout": _month_tieout(account_records, statement_ties, first, last),
             })
-        continuity = _continuity(account, label, account_records, from_date, to_date)
+        continuity = _continuity(account, label, account_records, first_day, to_date)
         findings.extend(continuity)
         statuses = {row["status"] for row in month_rows}
         account_status = "complete" if statuses == {"complete"} else ("missing" if statuses == {"missing"} else "partial")
@@ -696,7 +709,7 @@ def check_coverage(
                   "opening_balance": None if r.opening_balance is None else str(r.opening_balance),
                   "closing_balance": None if r.closing_balance is None else str(r.closing_balance),
                   "tieout": statement_ties.get(r.statement_id)}
-                 for r in account_records if r.period_end >= from_date and r.period_start <= to_date),
+                 for r in account_records if r.period_end >= first_day and r.period_start <= to_date),
                 key=lambda item: (item["from"], item["to"], item["statement_id"]),
             ),
             "months": month_rows,

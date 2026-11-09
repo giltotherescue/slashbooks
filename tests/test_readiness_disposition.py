@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 import sys
@@ -14,14 +15,16 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from bookkeeping import source_disposition as sd
+from bookkeeping.coverage import record_feed_window, record_statement
 from bookkeeping.ledger.books_policy_check import workspace_digest
-from bookkeeping.ledger.model import Entry, Posting
+from bookkeeping.ledger.model import Entry, Open, Posting
 from bookkeeping.ledger.store import LedgerStore
 from bookkeeping.readiness import DependencyVersions, ReadinessDispositionContext, assess_review_readiness
 from bookkeeping.reconcile import reconcile
 from test_queue import _make_entity
 
 CHECKING = "Assets:Bank:Checking"
+CARD = "Liabilities:CreditCard"
 LEGACY_KEYS = {"schema_version", "basis", "state", "period", "period_status", "books_revision", "source_revision",
                "reply_revision", "policy_version", "evidence_fingerprint", "blockers", "warnings", "sources",
                "coverage", "reconciliations", "reports", "package_id"}
@@ -32,12 +35,13 @@ def feed_row(source_id: str = "banksync:r1", day: str = "2026-09-10", amount: st
             "accountId": "feed-chk", "pending": False}
 
 
-def policy(state: str = "authorized", version: int = 2, epoch: int = 4) -> dict:
+def policy(state: str = "authorized", version: int = 2, epoch: int = 4, start_day: str = "2026-09-12") -> dict:
+    # The receipt on September 15 is after the start; the staged rows on September 10 and 11 are before it.
     return {"schema_version": 1, "mode": "enforced", "epoch": epoch,
-            "accounts": {CHECKING: {"state": state, "start_day": "2026-10-01", "version": version}}}
+            "accounts": {CHECKING: {"state": state, "start_day": start_day, "version": version}}}
 
 
-class ReadinessDispositionTests(unittest.TestCase):
+class DispositionFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -100,6 +104,8 @@ class ReadinessDispositionTests(unittest.TestCase):
                           Posting("Expenses:Meals" if import_source is None else "Equity:Opening-Balances",
                                   Decimal("25.00"), "USD")))], conn)
 
+
+class ReadinessDispositionTests(DispositionFixture):
     # -- legacy parity ----------------------------------------------------------------------------------------
 
     def test_no_context_keeps_the_legacy_document(self):
@@ -138,7 +144,8 @@ class ReadinessDispositionTests(unittest.TestCase):
                          blocker["action"].replace("@entity", str(self.entity.resolve())))
 
     def test_a_context_that_resolves_nothing_still_binds_the_package(self):
-        stale = self.context(policy_document=policy(version=3))
+        # A start on the first day of the period does not bound it, so only the decisions could change it.
+        stale = self.context(policy_document=policy(version=3, start_day="2026-09-01"))
         document = self.assess(stale)
         legacy = self.assess()
         self.assertEqual(self.staged_refs(document), ["banksync:r1"])
@@ -183,7 +190,7 @@ class ReadinessDispositionTests(unittest.TestCase):
     def test_a_pending_transition_stays_visible_until_its_evidence_is_recorded(self):
         pending = policy("authorized_pending_opening", version=2)
         claim = self.preview("banksync:r1", pending)
-        self.book_entry("statement-opening-s2", day=date(2026, 10, 1), import_source="statement-opening")
+        self.book_entry("statement-opening-s2", day=date(2026, 9, 12), import_source="statement-opening")
         authorized = policy("authorized", version=3, epoch=5)
         result = sd.evaluate(sd.load_context(self.entity, authorized), [claim])[0]
         self.assertEqual(result["status"], "transition_pending")
@@ -267,6 +274,433 @@ class ReadinessDispositionTests(unittest.TestCase):
         context = self.context([claim])
         claim["row_digest"] = hashlib.sha256(b"other").hexdigest()
         self.assertEqual(self.staged_refs(self.assess(context)), [])
+
+
+def waiting_rows(document):
+    """The staged-row count in the one statement tie-out warning (0 when the warning names no staged rows)."""
+    [warning] = tieout_warnings(document)
+    found = re.search(r" ([0-9]+) row\(s\) are staged for review", warning["message"])
+    return int(found.group(1)) if found else 0
+
+
+def tieout_warnings(document):
+    return [w for w in document["warnings"] if w["code"] == "statement_tieout_differs"]
+
+
+class ReadinessWaitingCountTests(DispositionFixture):
+    """The statement tie-out count of staged rows uses the same resolved-row check as the open work."""
+
+    def setUp(self):
+        super().setUp()
+        # One statement for exactly the period. The books imply 100.00, so the tie-out differs.
+        record_statement(self.entity, {"statement_id": "chk-2026-09", "account": CHECKING, "kind": "statement",
+                                       "period_start": "2026-09-01", "period_end": "2026-09-30",
+                                       "opening_balance": "0.00", "closing_balance": "25.00"})
+
+    def test_resolved_rows_are_not_staged_and_a_true_staged_row_still_is(self):
+        self.stage([feed_row(), feed_row("banksync:r2", "2026-09-11"), feed_row("banksync:r3", "2026-09-12")])
+        claims = [self.claim, self.preview("banksync:r2")]
+        legacy = self.assess()
+        document = self.assess(self.context(claims))
+        self.assertEqual(waiting_rows(legacy), 3)
+        self.assertEqual(waiting_rows(document), 1)
+        self.assertEqual(self.staged_refs(document), ["banksync:r3"])
+        [warning] = tieout_warnings(document)
+        self.assertIn(" 1 row(s) are staged for review in this period.", warning["message"])
+        # The discrepancy comes from the postings only. It does not change.
+        [legacy_warning] = tieout_warnings(legacy)
+        self.assertEqual(warning["message"].split(").")[0], legacy_warning["message"].split(").")[0])
+        self.assertEqual(document["reports"], legacy["reports"])
+
+    def test_all_staged_rows_resolved_gives_no_staged_count(self):
+        self.stage([feed_row(), feed_row("banksync:r2", "2026-09-11")])
+        document = self.assess(self.context([self.claim, self.preview("banksync:r2")]))
+        self.assertEqual(waiting_rows(self.assess()), 2)
+        self.assertEqual(waiting_rows(document), 0)
+        [warning] = tieout_warnings(document)
+        self.assertNotIn("staged", warning["message"])
+
+    def test_an_altered_row_or_a_repeated_alias_is_still_counted(self):
+        cases = {
+            "altered amount": ([feed_row(amount="-26.00")], 1),
+            "repeated alias": ([feed_row(), feed_row("r1")], 2),
+        }
+        for name, (rows, count) in cases.items():
+            with self.subTest(name):
+                self.stage(rows)
+                self.assertEqual(waiting_rows(self.assess(self.context())), count)
+
+    def test_without_a_context_the_count_is_unchanged(self):
+        self.assertEqual(waiting_rows(self.assess()), 1)
+        self.assertEqual(waiting_rows(self.assess(self.context(policy_document=policy(version=3)))), 1)
+
+
+def start_policy(card: dict | None = None, *, mode: str = "enforced") -> dict:
+    return {"schema_version": 1, "mode": mode, "epoch": 7,
+            "accounts": {CHECKING: {"state": "authorized", "start_day": "2027-01-15", "version": 2},
+                         CARD: card or {"state": "unset"}}}
+
+
+class AccountStartFixture(unittest.TestCase):
+    """Checking starts on January 15 (cash). Two earlier rows have confirmed outside-books decisions."""
+
+    checking_entries = ((date(2027, 1, 15), "synthetic-a", Decimal("50.00")),
+                        (date(2027, 1, 16), "synthetic-b", Decimal("30.00")))
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.entity = _make_entity(Path(self.temp.name)).path
+        config_path = self.entity / "entity.json"
+        config = json.loads(config_path.read_text())
+        config["declared_sources"] = [{"name": "Synthetic checking", "account": CHECKING},
+                                      {"name": "Synthetic card", "account": CARD}]
+        config["bank_account_mappings"] = {"feed-chk": CHECKING}
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n")
+        self.store = LedgerStore(self.entity / "ledger.sqlite")
+        for day, source_id, amount in self.checking_entries:
+            self.post(CHECKING, day, source_id, amount, other="Income:Consulting")
+        # The earlier statement is history before the books start. Its two rows are outside the books.
+        record_statement(self.entity, {"statement_id": "chk-early", "account": CHECKING, "kind": "statement",
+                                       "period_start": "2027-01-10", "period_end": "2027-01-14",
+                                       "opening_balance": "500.00", "closing_balance": "425.00"})
+        record_feed_window(self.entity, account=CHECKING, start=date(2027, 1, 17), end=date(2027, 1, 17))
+        self.rows = [feed_row("banksync:e1", "2027-01-11", "-25.00"), feed_row("banksync:e2", "2027-01-12", "-50.00")]
+        (self.entity / "staging" / "pending-categorization.json").write_text(json.dumps(self.rows) + "\n")
+
+    def context(self, policy_document=None, *, claims_policy=None):
+        document = policy_document or start_policy()
+        claims = []
+        for row in self.rows:
+            result = sd.preview(sd.load_context(self.entity, claims_policy or document), row["id"], "outside_books")
+            self.assertEqual(result["status"], "ok", result)
+            claims.append(result["claim"])
+        return ReadinessDispositionContext(
+            document, tuple(claims), {},
+            {"base_sha256": "b" * 64, "policy_epoch": document["epoch"], "generation": 1,
+             "captured_disposition_sha256": "c" * 64})
+
+    def assess(self, disposition_context=None, period="2027-01"):
+        kwargs = {} if disposition_context is None else {"disposition_context": disposition_context}
+        return assess_review_readiness(self.entity, period, DependencyVersions(1, 1, 1, 1),
+                                       as_of=date(2027, 4, 10), **kwargs).to_document()
+
+    @staticmethod
+    def month(document, account):
+        [row] = next(item for item in document["coverage"] if item["account"] == account)["months"]
+        return row
+
+    def post(self, account, day, source_id, amount, *, other="Expenses:Office"):
+        with self.store.transaction() as conn:
+            self.store.insert_entries([Entry(
+                date=day, narration="Synthetic", flag="*", meta=(("source-id", source_id),),
+                postings=(Posting(account, Decimal(amount), "USD"),
+                          Posting(other, -Decimal(amount), "USD")))], conn)
+
+    def declare(self, *sources):
+        """Replace the declared sources with ``(name, account, coverage_from, coverage_to)`` tuples."""
+        config_path = self.entity / "entity.json"
+        config = json.loads(config_path.read_text())
+        config["declared_sources"] = [{"name": name, "account": account,
+                                       **({"coverage_from": first, "coverage_to": last} if first else {})}
+                                      for name, account, first, last in sources]
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n")
+
+    def reconcile_account(self, account, opening, activity):
+        balance = Decimal(opening) + Decimal(activity)
+        ref = f"synthetic:statement-{account}"
+        reconcile(self.entity, account, balance, date(2027, 1, 31),
+                  source_opening_balance=Decimal(opening), source_transaction_total=Decimal(activity),
+                  source_snapshot_at="2027-02-01T12:00:00Z", source_through="2027-01-31",
+                  source_evidence_refs=[ref], source_evidence_hashes={ref: "a" * 64})
+
+    def make_checking_ready(self):
+        """Checking has declared coverage from its start and a clean month-end reconciliation."""
+        self.reconcile_account(CHECKING, "0.00", "80.00")
+
+    @staticmethod
+    def codes(document, account=None):
+        return {b["code"] for b in document["blockers"] if account is None or account in b["refs"]}
+
+
+
+class ReadinessAccountStartTests(AccountStartFixture):
+    """A cash account whose authorized books start is inside the period needs source evidence from that day."""
+
+    def test_checking_needs_evidence_only_from_its_authorized_start(self):
+        document = self.assess(self.context())
+        month = self.month(document, CHECKING)
+        self.assertEqual((month["month"], month["from"], month["to"], month["days"]),
+                         ("2027-01", "2027-01-15", "2027-01-31", 17))
+        self.assertEqual(month["gaps"], [{"from": "2027-01-18", "to": "2027-01-31", "days": 14}])
+        self.assertEqual((month["status"], month["verified"]), ("partial", False))
+        self.assertEqual(month["reasons"], ["Synthetic checking has no statement, feed window, declared coverage or "
+                                            "transactions for Jan 18–31."])
+        # The weak source on January 15-16 stays visible.
+        self.assertEqual(month["notes"], ["Synthetic checking coverage for Jan 15–16 is inferred from transaction dates only; "
+                                          "add a statement or feed window to confirm it."])
+        source = next(row for row in document["sources"] if row["account"] == CHECKING)
+        self.assertEqual((source["requested_from"], source["requested_to"]), ("2027-01-15", "2027-01-31"))
+        incomplete = next(b for b in document["blockers"]
+                          if b["code"] == "source_coverage_incomplete" and b["refs"] == ["Synthetic checking"])
+        self.assertIn("needs 2027-01-15 through 2027-01-31", incomplete["message"])
+        self.assertIn("--from 2027-01-15", incomplete["action"])
+        checking = [b["message"] for b in document["blockers"] if {CHECKING, "Synthetic checking"} & set(b["refs"])]
+        self.assertNotIn("Jan 1–", " ".join(checking))
+        self.assertNotIn("2027-01-01", " ".join(checking))
+
+    def test_the_earlier_statement_is_outside_the_in_scope_statements(self):
+        document = self.assess(self.context())
+        self.assertEqual(tieout_warnings(document), [])
+        self.assertNotIn("chk-early", json.dumps(document["warnings"]) + json.dumps(document["blockers"]))
+        self.assertIsNone(self.month(document, CHECKING)["tieout"])
+
+    def test_true_findings_remain(self):
+        document = self.assess(self.context())
+        self.assertIn("source_month_partial", self.codes(document, CHECKING))
+        self.assertIn("source_coverage_incomplete", self.codes(document, "Synthetic checking"))
+        self.assertIn("reconciliation_missing", self.codes(document, CHECKING))
+        self.assertIn("reconciliation_evidence_missing", self.codes(document))
+        self.assertEqual(document["state"], "blocked")
+
+    def test_the_card_has_its_own_start(self):
+        document = self.assess(self.context(start_policy({"state": "authorized", "start_day": "2027-01-22",
+                                                          "version": 1})))
+        card = self.month(document, CARD)
+        self.assertEqual((card["from"], card["to"], card["days"], card["covered_days"], card["status"]),
+                         ("2027-01-22", "2027-01-31", 10, 0, "missing"))
+        self.assertEqual(card["gaps"], [{"from": "2027-01-22", "to": "2027-01-31", "days": 10}])
+        self.assertEqual(self.month(document, CHECKING)["from"], "2027-01-15")
+        self.assertNotIn("books_start_unset", self.codes(document))
+
+    def test_an_unset_or_pending_account_needs_the_whole_month_and_an_explicit_outcome(self):
+        cases = {"unset": ({"state": "unset"}, "books_start_unset"),
+                 "pending": ({"state": "authorized_pending_opening", "start_day": "2027-01-22", "version": 1},
+                             "books_start_opening_required")}
+        for name, (card, code) in cases.items():
+            with self.subTest(name):
+                document = self.assess(self.context(start_policy(card)))
+                month = self.month(document, CARD)
+                self.assertEqual((month["from"], month["days"], month["status"]), ("2027-01-01", 31, "missing"))
+                self.assertIn(code, self.codes(document, CARD))
+
+    def test_a_regular_posting_before_a_mid_month_start_is_a_contradiction(self):
+        self.post(CHECKING, date(2027, 1, 10), "synthetic-early", "-20.00")
+        self.declare(("Synthetic checking", CHECKING, "2027-01-15", "2027-01-31"))
+        self.reconcile_account(CHECKING, "0.00", "60.00")
+        document = self.assess(self.context(start_policy({"state": "authorized", "start_day": "2027-01-01",
+                                                          "version": 1})))
+        self.assertIn("books_start_contradicted", self.codes(document, CHECKING))
+        self.assertEqual(document["state"], "blocked")
+        # The policy does not bound a contradicted account: it needs the whole month again.
+        self.assertEqual(self.month(document, CHECKING)["from"], "2027-01-01")
+
+    def test_no_context_or_a_legacy_policy_keeps_the_whole_month(self):
+        legacy = self.assess()
+        self.assertEqual(self.month(legacy, CHECKING)["from"], "2027-01-01")
+        self.assertEqual(self.month(legacy, CHECKING)["gaps"][0], {"from": "2027-01-01", "to": "2027-01-09", "days": 9})
+        [warning] = tieout_warnings(legacy)
+        self.assertIn(" 2 row(s) are staged", warning["message"])
+        unenforced = self.assess(self.context(start_policy(mode="legacy"), claims_policy=start_policy()))
+        self.assertEqual(self.month(unenforced, CHECKING)["from"], "2027-01-01")
+        self.assertNotIn("books_start_unset", self.codes(unenforced))
+
+    def test_an_accrual_company_keeps_its_cutover_behavior(self):
+        config_path = self.entity / "entity.json"
+        config = json.loads(config_path.read_text())
+        config["basis"] = "accrual"
+        config_path.write_text(json.dumps(config, sort_keys=True) + "\n")
+        with self.store.transaction() as conn:
+            self.store.set_meta("basis", "accrual", conn)
+        without = self.assess()
+        document = self.assess(self.context())
+        self.assertEqual((document["activity_from"], document["partial_post_cutover"]), ("2027-01-01", False))
+        self.assertEqual(self.month(document, CHECKING)["from"], "2027-01-01")
+        self.assertEqual(document["coverage"], without["coverage"])
+        self.assertEqual(document["sources"], without["sources"])
+        self.assertNotIn("books_start_unset", self.codes(document))
+        # Accrual stays outside the cash check: a prior-day accrual opening has its own native rules.
+        self.post(CARD, date(2027, 1, 10), "synthetic-card", "-25.00")
+        future = self.assess(self.context(start_policy({"state": "authorized", "start_day": "2027-02-01",
+                                                        "version": 1})))
+        self.assertNotIn("books_start_contradicted", self.codes(future))
+        self.assertNotIn("no_applicable_period", self.codes(future))
+
+    def test_balances_and_report_totals_do_not_change(self):
+        before = workspace_digest(self.entity)
+        legacy = self.assess()
+        document = self.assess(self.context())
+        self.assertEqual(document["reports"], legacy["reports"])
+        self.assertEqual(document["reconciliations"], legacy["reconciliations"])
+        totals = {report["kind"]: report["totals"] for report in document["reports"]}
+        self.assertTrue(totals)
+        self.assertEqual(workspace_digest(self.entity), before)
+        balance = sum((p.amount for e in self.store.load_entries() for p in e.postings if p.account == CHECKING),
+                      Decimal("0"))
+        self.assertEqual(balance, Decimal("80.00"))
+
+
+FUTURE_CARD = {"state": "authorized", "start_day": "2027-02-01", "version": 1}
+CARD_2 = "Liabilities:CreditCard:Second"
+
+
+class ReadinessFutureStartTests(AccountStartFixture):
+    """A source account whose authorized start is after the period is outside it only with no earlier posting."""
+
+    def assess_future(self, **cards):
+        return self.assess(self.context(start_policy(FUTURE_CARD), **cards))
+
+    def ready_checking_and_card(self):
+        self.declare(("Synthetic checking", CHECKING, "2027-01-15", "2027-01-31"),
+                     ("Synthetic card", CARD, "2027-01-01", "2027-01-31"))
+        self.make_checking_ready()
+
+    def test_a_quiet_future_account_is_outside_the_period(self):
+        self.ready_checking_and_card()
+        document = self.assess_future()
+        card = next(row for row in document["coverage"] if row["account"] == CARD)
+        self.assertEqual((card["status"], card["verified"], card["months"], card["books_start"]),
+                         ("outside_period", False, [], "2027-02-01"))
+        source = next(row for row in document["sources"] if row["account"] == CARD)
+        self.assertEqual(source["coverage_status"], "outside_period")
+        self.assertEqual(self.codes(document, CARD) | self.codes(document, "Synthetic card"), set())
+        self.assertEqual((document["state"], document["blockers"]), ("ready_for_review", []))
+
+    def test_a_quiet_future_account_still_needs_a_supplied_reconciliation_to_be_clean(self):
+        self.ready_checking_and_card()
+        self.post(CHECKING, date(2027, 1, 20), "synthetic-c", "5.00", other="Income:Consulting")
+        document = self.assess_future()
+        self.assertEqual(self.codes(document, CARD), set())
+        self.assertIn("reconciliation_not_clean", self.codes(document, CHECKING))
+
+    def test_a_staged_row_stays_visible_for_a_quiet_future_account(self):
+        self.ready_checking_and_card()
+        rows = [*self.rows, feed_row("banksync:open", "2027-01-20", "-5.00")]
+        (self.entity / "staging" / "pending-categorization.json").write_text(json.dumps(rows) + "\n")
+        document = self.assess_future()
+        work = next(b for b in document["blockers"] if b["code"] == "unresolved_period_work")
+        self.assertEqual(work["refs"], ["banksync:open"])
+
+    def test_a_posting_before_a_future_start_is_a_contradiction(self):
+        self.ready_checking_and_card()
+        self.post(CARD, date(2027, 1, 15), "synthetic-card", "-25.00")
+        self.reconcile_account(CARD, "0.00", "-25.00")
+        document = self.assess_future()
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+        self.assertEqual(document["state"], "blocked")
+        self.assertNotEqual(next(row for row in document["coverage"] if row["account"] == CARD)["status"],
+                            "outside_period")
+
+    def test_a_net_zero_posting_is_a_contradiction(self):
+        self.ready_checking_and_card()
+        self.post(CARD, date(2027, 1, 10), "synthetic-charge", "-25.00")
+        self.post(CARD, date(2027, 1, 12), "synthetic-refund", "25.00")
+        self.reconcile_account(CARD, "0.00", "0.00")
+        document = self.assess_future()
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+        self.assertEqual(document["state"], "blocked")
+
+    def test_a_prior_balance_is_a_contradiction(self):
+        self.ready_checking_and_card()
+        self.post(CARD, date(2026, 12, 20), "synthetic-december", "-25.00")
+        self.reconcile_account(CARD, "-25.00", "0.00")
+        document = self.assess_future()
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+        self.assertEqual(document["state"], "blocked")
+
+    def test_several_accounts_each_keep_their_own_result(self):
+        with self.store.transaction() as conn:
+            self.store.insert_opens([Open(date=date(2026, 1, 1), account=CARD_2, currencies=("USD",))], conn)
+        self.declare(("Synthetic checking", CHECKING, "2027-01-15", "2027-01-31"),
+                     ("Synthetic card", CARD, None, None), ("Second card", CARD_2, "2027-01-01", "2027-01-31"))
+        self.make_checking_ready()
+        self.post(CARD_2, date(2027, 1, 5), "synthetic-second", "-10.00")
+        self.reconcile_account(CARD_2, "0.00", "-10.00")
+        policy_document = start_policy(FUTURE_CARD)
+        policy_document["accounts"][CARD_2] = {"state": "authorized", "start_day": "2027-03-01", "version": 1}
+        document = self.assess(self.context(policy_document))
+        statuses = {row["account"]: row["status"] for row in document["coverage"]}
+        self.assertEqual(statuses[CARD], "outside_period")
+        self.assertNotEqual(statuses[CARD_2], "outside_period")
+        self.assertEqual(self.codes(document, CARD), set())
+        self.assertIn("books_start_contradicted", self.codes(document, CARD_2))
+        self.assertNotIn("books_start_contradicted", self.codes(document, CHECKING))
+        self.assertEqual(self.month(document, CHECKING)["from"], "2027-01-15")
+        self.assertNotIn("no_applicable_period", self.codes(document))
+
+    def test_no_context_or_a_legacy_policy_is_unchanged(self):
+        self.post(CARD, date(2027, 1, 15), "synthetic-card", "-25.00")
+        for document in (self.assess(), self.assess(self.context(start_policy(FUTURE_CARD, mode="legacy"),
+                                                                 claims_policy=start_policy()))):
+            self.assertEqual(self.month(document, CARD)["from"], "2027-01-01")
+            self.assertIn("source_month_partial", self.codes(document, CARD))
+            self.assertTrue({"books_start_contradicted", "no_applicable_period"}.isdisjoint(self.codes(document)))
+            self.assertNotIn("outside_period", json.dumps(document))
+
+
+class ReadinessNoApplicablePeriodTests(AccountStartFixture):
+    """Every source account starts after the period and has no posting: nothing in the period applies."""
+
+    checking_entries = ()
+
+    def test_all_accounts_in_the_future_give_an_explicit_result(self):
+        policy_document = start_policy(FUTURE_CARD)
+        policy_document["accounts"][CHECKING]["start_day"] = "2027-02-01"
+        document = self.assess(self.context(policy_document))
+        self.assertEqual(document["state"], "blocked")
+        self.assertIn("no_applicable_period", self.codes(document))
+        self.assertEqual({row["status"] for row in document["coverage"]}, {"outside_period"})
+        self.assertEqual(self.codes(document, CHECKING) | self.codes(document, CARD), set())
+
+
+class ReadinessEarlierStartTests(AccountStartFixture):
+    """The contradiction check uses every authorized start, also one on or before the period's first day."""
+
+    def card_start(self, start_day):
+        return self.context(start_policy({"state": "authorized", "start_day": start_day, "version": 1}))
+
+    def test_a_start_on_the_first_day_with_an_earlier_month_posting_is_a_contradiction(self):
+        self.post(CARD, date(2026, 12, 20), "synthetic-december", "-25.00")
+        document = self.assess(self.card_start("2027-01-01"))
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+        self.assertEqual(self.month(document, CARD)["from"], "2027-01-01")
+
+    def test_a_start_before_the_period_with_an_earlier_posting_is_a_contradiction(self):
+        self.post(CARD, date(2027, 1, 5), "synthetic-early", "-25.00")
+        document = self.assess(self.card_start("2027-01-10"), period="2027-02")
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+        self.assertEqual(self.month(document, CARD)["from"], "2027-02-01")
+
+    def test_a_posting_before_a_start_on_the_first_day_of_a_later_review_is_a_contradiction(self):
+        self.post(CARD, date(2027, 1, 15), "synthetic-card", "-25.00")
+        february = self.assess(self.card_start("2027-02-01"), period="2027-02")
+        self.assertIn("books_start_contradicted", self.codes(february, CARD))
+        self.assertIn("books_start_contradicted", self.codes(self.assess(self.card_start("2027-02-01"),
+                                                                         period="2027-03"), CARD))
+
+    def test_a_posting_after_the_period_but_before_a_later_start_is_a_contradiction(self):
+        self.post(CARD, date(2027, 2, 10), "synthetic-february", "-25.00")
+        document = self.assess(self.card_start("2027-03-01"))
+        self.assertIn("books_start_contradicted", self.codes(document, CARD))
+
+    def test_postings_on_or_after_the_start_are_not_a_contradiction(self):
+        self.post(CARD, date(2027, 2, 1), "synthetic-start-day", "-25.00")
+        self.post(CARD, date(2027, 2, 3), "synthetic-february", "-10.00")
+        for start_day, period in (("2027-02-01", "2027-02"), ("2027-02-01", "2027-03"), ("2027-01-01", "2027-02")):
+            with self.subTest(start_day=start_day, period=period):
+                document = self.assess(self.card_start(start_day), period=period)
+                self.assertNotIn("books_start_contradicted", self.codes(document))
+        # Checking starts on January 15 with postings from that day: never a contradiction.
+        self.assertNotIn("books_start_contradicted", self.codes(self.assess(self.card_start("2027-02-01"),
+                                                                           period="2027-02"), CHECKING))
+
+    def test_reports_and_legacy_output_do_not_change(self):
+        self.post(CARD, date(2027, 1, 15), "synthetic-card", "-25.00")
+        legacy = self.assess(period="2027-02")
+        document = self.assess(self.card_start("2027-02-01"), period="2027-02")
+        self.assertEqual(document["reports"], legacy["reports"])
+        self.assertEqual(self.month(document, CARD), self.month(legacy, CARD))
+        self.assertNotIn("books_start_contradicted", self.codes(legacy))
 
 
 if __name__ == "__main__":
