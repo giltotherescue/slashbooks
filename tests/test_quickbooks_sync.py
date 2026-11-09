@@ -61,6 +61,45 @@ class QuickBooksSyncTests(unittest.TestCase):
         self.assertNotIn("financial_kind", rows["2"])
         self.assertEqual(typed["operation_id"], "qbo-chart-v2-" + "a" * 64)
 
+    def test_import_marks_only_an_ambiguous_active_balance_sheet_account(self):
+        self.snapshot["accounts"].append({"Id": "4", "Name": "Settlement balance", "AccountType": "Other Current Asset"})
+        self.snapshot["accounts"].append({"Id": "5", "Name": "Old deposit", "AccountType": "Other Current Asset",
+                                          "Active": False})
+        result = sync.sync_import(self.entity, self.write())
+        kinds = {row["id"]: row.get("financial_kind") for row in result["accounts"]}
+        self.assertEqual(kinds, {
+            "1": {"required": False, "kind": "bank", "allowed": ["bank"]}, "2": None, "3": None,
+            "4": {"required": True, "kind": None, "allowed": ["bank", "credit_card", "cash", "other"]}, "5": None})
+        self.assertEqual([i for i, kind in kinds.items() if kind and kind["required"]], ["4"])
+        # The stored evidence keeps its earlier bytes: the decision is in the result only.
+        stored = json.loads((self.entity_path / result["reference_path"]).parent.joinpath("manifest.json").read_text())
+        self.assertTrue(all("financial_kind" not in row for row in stored["accounts"]))
+
+    def test_import_of_an_unambiguous_chart_requires_no_kind_review(self):
+        result = sync.sync_import(self.entity, self.write())
+        self.assertFalse(any(row.get("financial_kind", {}).get("required") for row in result["accounts"]))
+        sync.chart_manifest(self.snapshot, "a" * 64, "preserve", version=2)
+
+    def test_kind_review_error_names_every_ambiguous_account_in_a_stable_order(self):
+        extra = [{"Id": "9", "Name": "Settlement balance", "AccountType": "Other Current Asset"},
+                 {"Id": "10", "Name": "Payroll clearing", "AccountType": "Other Current Liability"},
+                 {"Id": "4", "Name": "Undeposited funds", "AccountType": "Other Current Asset"}]
+        messages = set()
+        for order in (extra, extra[::-1]):
+            snapshot = copy.deepcopy(self.snapshot)
+            snapshot["accounts"].extend(order)
+            with self.assertRaises(sync.FinancialKindReviewRequired) as caught:
+                sync.chart_manifest(snapshot, "a" * 64, "preserve", version=2, financial_kinds={})
+            self.assertEqual(caught.exception.account_ids, ("10", "4", "9"))
+            self.assertIsInstance(caught.exception, ValueError)
+            messages.add(str(caught.exception))
+        self.assertEqual(messages, {"QuickBooks accounts 10, 4, 9 need review of their financial kind."})
+        self.snapshot["accounts"].extend(extra)
+        with self.assertRaises(sync.FinancialKindReviewRequired) as caught:
+            sync.chart_manifest(self.snapshot, "a" * 64, "preserve", version=2, financial_kinds={"10": "other",
+                                                                                                "9": "cash"})
+        self.assertEqual(str(caught.exception), "QuickBooks account 4 needs review of its financial kind.")
+
     def test_chart_and_opening_commit_once_with_inactive_reference_only(self):
         from bookkeeping.ledger.store import LedgerStore
         from bookkeeping.chart_adoption import inspect

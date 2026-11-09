@@ -558,6 +558,10 @@ def sync_import(entity, input_path: Path) -> dict:
             except FileExistsError:
                 if (root / "snapshot.json").read_bytes() != source_bytes:
                     raise ValueError("Concurrent snapshot evidence mismatch")
+    # The financial kind decision is added to the result only, after the evidence files are written, so the
+    # stored evidence of an existing snapshot stays byte for byte the same.
+    result["accounts"] = [{**row, "financial_kind": decision} if (decision := _financial_kind_decision(row)) else row
+                          for row in accounts]
     return result
 
 
@@ -565,6 +569,18 @@ def _inventory_in(code, reference, **kwargs):
     from .currency import report_currency
     with report_currency(code):
         return qb.inventory(reference, **kwargs)
+
+
+class FinancialKindReviewRequired(ValueError):
+    """Active balance sheet accounts whose source type does not decide a financial kind, and have no review."""
+
+    def __init__(self, account_ids: list[str]) -> None:
+        self.account_ids = tuple(account_ids)
+        if len(self.account_ids) == 1:
+            message = f"QuickBooks account {self.account_ids[0]} needs review of its financial kind."
+        else:
+            message = f"QuickBooks accounts {', '.join(self.account_ids)} need review of their financial kind."
+        super().__init__(message)
 
 
 def _chart_financial_kind(row: dict) -> str | None:
@@ -578,6 +594,22 @@ def _chart_financial_kind(row: dict) -> str | None:
                         "long-term liabilities"}:
         return "other"
     return None
+
+
+def _financial_kind_decision(row: dict) -> dict | None:
+    """The financial kind decision for one source account, or ``None`` when no decision applies.
+
+    A decision applies to an active Assets or Liabilities account. ``required`` is true when the source type does
+    not decide the kind (:func:`_chart_financial_kind` gives none): a person chooses one of ``allowed``. Otherwise
+    ``kind`` is the kind that the source type gives, and it is the only allowed kind.
+    """
+    from .ledger.store import FINANCIAL_KINDS
+    if row["active"] is not True or row["mapped_account"].split(":")[0] not in ("Assets", "Liabilities"):
+        return None
+    kind = _chart_financial_kind(row)
+    if kind is None:
+        return {"required": True, "kind": None, "allowed": list(FINANCIAL_KINDS)}
+    return {"required": False, "kind": kind, "allowed": [kind]}
 
 
 def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
@@ -599,20 +631,26 @@ def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
     if decision == "preserve" and targets is not None:
         raise ValueError("Preserve uses source identities; use rebuild for an explicit different crosswalk")
     rows = []
+    unreviewed = []
     for row in accounts:
         identity = row["id"]
         chart_row = {"source_id": identity, "name": row["name"], "number": row.get("account_number"),
                      "parent_id": row["parent_id"] or None, "type": row["mapped_account"].split(":")[0],
                      "account": targets[identity] if targets is not None else row["mapped_account"],
                      "active": row["active"]}
-        if version == 2 and chart_row["active"] is True and chart_row["type"] in ("Assets", "Liabilities"):
-            kind = _chart_financial_kind(row)
-            if kind is None:
+        kind_decision = _financial_kind_decision(row) if version == 2 else None
+        if kind_decision is not None:
+            kind = kind_decision["kind"]
+            if kind_decision["required"]:
                 if identity not in reviewed:
-                    raise ValueError(f"QuickBooks account {identity} needs review of its financial kind.")
+                    unreviewed.append(identity)
+                    continue
                 kind = reviewed.pop(identity)
             chart_row["financial_kind"] = kind
         rows.append(chart_row)
+    if unreviewed:
+        # Every account that needs a review, in source account order, not only the first one.
+        raise FinancialKindReviewRequired(unreviewed)
     if reviewed:
         raise ValueError("Reviewed financial kinds must name only active balance sheet accounts with an ambiguous source type.")
     operation_prefix = "qbo-chart" if version == 1 else "qbo-chart-v2"
