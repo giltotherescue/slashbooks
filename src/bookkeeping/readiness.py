@@ -194,10 +194,13 @@ def _account_from_mapping(value: Any) -> str:
 
 def _source_rows(config: Mapping[str, Any], start: date, end: date,
                  required_accounts: tuple[str, ...] = (),
-                 account_from: Mapping[str, date] | None = None) -> list[dict[str, Any]]:
+                 account_from: Mapping[str, date] | None = None,
+                 outside: Mapping[str, date] | None = None) -> list[dict[str, Any]]:
     """Normalize affirmative expected-source coverage without inferring activity.
 
-    ``account_from`` gives a later first required day for an account (see ``_policy_bounds``).
+    ``account_from`` gives a later first required day for an account, and ``outside`` names an account whose
+    books start after the period (see ``_policy_bounds``). Such a source gets ``outside_period``, never
+    ``complete``.
     """
     coverage = config.get("source_coverage")
     coverage = coverage if isinstance(coverage, Mapping) else {}
@@ -250,6 +253,8 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date,
                 status = "partial"
         except ValueError:
             status = "missing" if not raw_from and not raw_to else "invalid"
+        if account in (outside or {}):
+            status = "outside_period"
         rows.append({
             "source": source,
             "account": account or None,
@@ -380,15 +385,14 @@ def _open_work(entity_path: Path, start: date, end: date, *,
             sorted(suppressed, key=lambda item: (item["source_id"], item["row_digest"])), exclude)
 
 
-def _policy_bounds(context: ReadinessDispositionContext | None, start: date, end: date,
+def _policy_bounds(context: ReadinessDispositionContext | None, start: date,
                    ) -> tuple[dict[str, date], dict[str, str]]:
-    """Per-account first required day, and accounts with no usable start, from the trusted native policy.
+    """Authorized starts after ``start``, and accounts with no usable start, from the trusted native policy.
 
-    Only an ``enforced`` policy in a :class:`ReadinessDispositionContext` counts. An ``authorized`` account
-    whose ``start_day`` is after ``start`` and on or before ``end`` needs source evidence from that day
-    (inclusive), the same as the verified accrual cutover. A start after ``end`` changes nothing: it cannot
-    supply coverage or a reconciliation. ``unset`` and ``authorized_pending_opening`` accounts keep the whole
-    period and are returned with their state, so readiness reports them.
+    Only an ``enforced`` policy in a :class:`ReadinessDispositionContext` counts. The caller compares each
+    start with the canonical postings before it uses it (``_start_scope``). ``unset`` and
+    ``authorized_pending_opening`` accounts keep the whole period and are returned with their state, so
+    readiness reports them.
     """
     if context is None:
         return {}, {}
@@ -402,9 +406,36 @@ def _policy_bounds(context: ReadinessDispositionContext | None, start: date, end
     for account, found in policy.accounts.items():
         if found.state != AUTHORIZED:
             unstarted[account] = found.state
-        elif found.start_day is not None and start < found.start_day <= end:
+        elif found.start_day is not None and start < found.start_day:
             starts[account] = found.start_day
     return starts, unstarted
+
+
+def _start_scope(starts: Mapping[str, date], first_posting: Mapping[str, date], end: date,
+                 ) -> tuple[dict[str, date], dict[str, date], dict[str, tuple[date, date]]]:
+    """Split authorized starts after the period start by the canonical postings through ``end``.
+
+    - contradicted: the account has a posting dated before its start (a prior balance or a net-zero pair
+      counts; the check is that a posting exists, not its balance). The start does not bound that account.
+    - account_from: a start on or before ``end`` with no earlier posting. Evidence is needed from that day
+      (inclusive), the same as the verified accrual cutover.
+    - outside: a start after ``end`` with no posting. The account is ``outside_period``.
+
+    An authorized cash opening is dated on its start day (``ledger.books_policy_check._opening_matches``), so
+    it is never before the start. No entry metadata makes a posting exempt.
+    """
+    account_from: dict[str, date] = {}
+    outside: dict[str, date] = {}
+    contradicted: dict[str, tuple[date, date]] = {}
+    for account, start_day in starts.items():
+        first = first_posting.get(account)
+        if first is not None and first < start_day:
+            contradicted[account] = (first, start_day)
+        elif start_day <= end:
+            account_from[account] = start_day
+        else:
+            outside[account] = start_day
+    return account_from, outside, contradicted
 
 
 def _question_blockers(entity_path: Path, start: date, end: date) -> tuple[list[dict[str, Any]], list[Any]]:
@@ -516,10 +547,21 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     (``source_disposition.resolved_identity``). Each row is checked again where it is read. The same check leaves
     such a row out of the staged-row count of a statement tie-out; the tie-out difference does not change.
 
-    For a cash company, the context's ``enforced`` policy also bounds source coverage (``_policy_bounds``). An
-    ``authorized`` account whose start is inside the period needs source evidence from its start day, and only
-    its statements from that day are checked. An ``unset`` or ``authorized_pending_opening`` source account
-    keeps the whole period and gets a ``books_start_unset`` or ``books_start_opening_required`` blocker.
+    For a cash company, the context's ``enforced`` policy also bounds source coverage (``_policy_bounds`` and
+    ``_start_scope``). Each ``authorized`` start after the period's first day is first compared with the
+    canonical postings through the period end:
+
+    - A posting before the start gives ``books_start_contradicted``, whatever the coverage or reconciliation,
+      and the start does not bound that account.
+    - A start inside the period: the account needs source evidence from its start day, and only its
+      statements from that day are checked.
+    - A start after the period: the account is ``outside_period``. It needs no coverage and no reconciliation,
+      but a supplied reconciliation is still checked. When every source account is outside the period, the
+      ``no_applicable_period`` blocker says so; an empty ready package is never the result.
+
+    An ``unset`` or ``authorized_pending_opening`` source account keeps the whole period and gets a
+    ``books_start_unset`` or ``books_start_opening_required`` blocker. An accrual company does not use the policy
+    here: its prior-day accrual opening has its own native rules.
 
     Nothing else changes: proposals, duplicates, questions, reconciliations and ledger checks block as before,
     balances and reports are the same, and no file is changed. The document gets ``disposition_basis`` (the
@@ -566,6 +608,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     ledger_balances: dict[str, Decimal] = {}
     opening_balances: dict[str, Decimal] = {}
     card_activity: set[str] = set()
+    first_posting: dict[str, date] = {}
     account_catalog: set[str] = set()
     if store_path.is_file():
         store = LedgerStore(store_path)
@@ -573,6 +616,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         for entry in store.load_entries(to_date=end):
             for posting in entry.postings:
                 ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
+                if entry.date < first_posting.get(posting.account, date.max):
+                    first_posting[posting.account] = entry.date
                 if accrual_in_use and entry.date >= start:
                     if is_credit_card_account(posting.account):
                         card_activity.add(posting.account)
@@ -583,13 +628,16 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         card_activity.update(account for account, balance in ledger_balances.items() if balance and is_credit_card_account(account))
     # A cash company with a trusted enforced policy needs each authorized account's evidence from its books
     # start. An accrual company keeps the verified cutover above.
-    account_from, unstarted = ({}, {}) if accrual_in_use else _policy_bounds(disposition_context, start, end)
-    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)), account_from)
+    # Accrual stays outside this cash check: a prior-day accrual opening has its own native rules.
+    later_starts, unstarted = ({}, {}) if accrual_in_use else _policy_bounds(disposition_context, start)
+    account_from, outside, contradicted = _start_scope(later_starts, first_posting, end)
+    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)), account_from, outside)
 
     # Source coverage per account and day of the month (statements, feed
     # windows, declared coverage, then transaction dates).
     coverage_accounts = sorted({str(source["account"]) for source in sources
-                                if str(source["account"] or "").startswith(("Assets:", "Liabilities:"))})
+                                if str(source["account"] or "").startswith(("Assets:", "Liabilities:"))
+                                and str(source["account"]) not in outside})
     coverage: list[dict[str, Any]] = []
     coverage_items: tuple[list[dict[str, Any]], list[dict[str, Any]]] = ([], [])
     verified_accounts: set[str] = set()
@@ -611,6 +659,13 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             # are affirmative coverage, the same as declared coverage dates.
             verified_accounts = {row["account"] for row in coverage_document["accounts"]
                                  if row["status"] == "complete" and row["verified"]}
+    if outside:
+        from .coverage import _label
+        coverage = sorted([*coverage, *({
+            "account": account, "label": _label(entity.entity_config, account, []), "status": "outside_period",
+            "verified": False, "months": [], "books_start": day.isoformat(),
+        } for account, day in outside.items() if account in {source["account"] for source in sources})],
+            key=lambda row: row["account"])
 
     if not sources:
         blockers.append({"code": "source_scope_missing", "message": "No expected source accounts are declared for this period.", "refs": []})
@@ -618,12 +673,20 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         ref = str(source["source"] or "unknown")
         if not source["account"]:
             blockers.append({"code": "source_account_missing", "message": "An expected source is not bound to a ledger account.", "refs": [ref]})
-        if source["coverage_status"] != "complete" and source["account"] not in verified_accounts:
+        if source["coverage_status"] not in {"complete", "outside_period"} and source["account"] not in verified_accounts:
             blockers.append({"code": "source_coverage_incomplete", "message": "Affirmative source coverage does not span the full period.", "refs": [ref]})
     blockers.extend(coverage_items[0])
     warnings.extend(coverage_items[1])
 
     source_accounts = sorted({str(source["account"]) for source in sources if source["account"]})
+    if sources and all(source["account"] in outside for source in sources):
+        blockers.append({"code": "no_applicable_period",
+                         "message": "Every source account's authorized books start is after this period, so no "
+                                    "books activity in it can be reviewed.", "refs": [period]})
+    for account, (first, start_day) in sorted(contradicted.items()):
+        blockers.append({"code": "books_start_contradicted",
+                         "message": (f"The books have a posting on {first.isoformat()}, before the authorized books "
+                                     f"start of {start_day.isoformat()}."), "refs": [account]})
     for account in source_accounts:
         if unstarted.get(account) == "unset":
             blockers.append({"code": "books_start_unset", "message": "The books start for this source account is not set.",
@@ -652,6 +715,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     for account in source_accounts:
         record = rec_by_account.get(account)
         if record is None:
+            if account in outside:
+                continue  # no books in the period; a supplied record is checked as usual
             blockers.append({"code": "reconciliation_missing", "message": "An expected source account lacks period-end reconciliation.", "refs": [account]})
             continue
         ledger_balance = _finite_decimal(record.get("ledger_balance"))
