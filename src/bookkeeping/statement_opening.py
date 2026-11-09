@@ -28,6 +28,12 @@ The entry is recorded only when it is the account's opening:
   opening); the check is per account, so another account's opening is not a conflict.
 
 Anything else returns ``not_eligible`` with the reason, and writes nothing.
+
+An ``already_recorded`` answer, and a ``not_eligible`` answer with the reason ``opening_exists``,
+``replace_not_earlier`` or ``opening_exists_other_source``, carry ``recorded_opening``: the facts of the
+committed opening entry (see :func:`recorded_opening`). The fields of the candidate statement or typed
+amount are kept apart in ``candidate_date``, ``candidate_amount``, ``candidate_source`` and (for a printed
+opening) ``printed_amount``. A host shows ``recorded_opening`` directly and never mixes in the candidate.
 """
 from __future__ import annotations
 
@@ -91,12 +97,12 @@ def live_openings(conn: Any, account: str | None = None) -> list[JsonObject]:
     not an opening. ``account`` limits the list to one account.
     """
     rows = conn.execute(
-        "SELECT e.source_id, e.date, e.narration, e.metadata_json, p.account, p.amount FROM entries e "
+        "SELECT e.id, e.source_id, e.date, e.narration, e.metadata_json, p.account, p.amount FROM entries e "
         "JOIN postings p ON p.entry_id = e.id WHERE e.metadata_json LIKE ? OR e.metadata_json LIKE ? "
         "ORDER BY e.date, e.id", (f"%{IMPORT_SOURCE}%", "%reverses%")).fetchall()
     reversed_ids = set()
     found = []
-    for source_id, day, narration, raw, posted_account, posted in rows:
+    for entry_id, source_id, day, narration, raw, posted_account, posted in rows:
         meta = _metadata(raw)
         if "reverses" in meta:
             reversed_ids.add(meta["reverses"])
@@ -105,7 +111,7 @@ def live_openings(conn: Any, account: str | None = None) -> list[JsonObject]:
             continue
         if account is not None and posted_account != account:
             continue
-        found.append({"source_id": source_id, "date": day, "account": posted_account, "narration": narration,
+        found.append({"entry_id": entry_id, "source_id": source_id, "date": day, "account": posted_account, "narration": narration,
                       "statement_id": meta.get("statement-id"),
                       "opening_source": meta.get("opening-source", "printed"),
                       "amount": format(Decimal(str(posted)).quantize(Decimal("0.01")), "f")})
@@ -143,6 +149,81 @@ def before_opening_refusal(entity_path: Path | str, account: str, days: list[str
         "account": account, "opening_date": opening.isoformat(), "first_row_date": early[0],
         "rows_before_opening": len(early), **detail,
     }
+
+
+def recorded_opening(entity_path: Path | str, found: JsonObject, account: str) -> tuple[JsonObject | None, str | None]:
+    """The committed opening entry that ``found`` selected, as facts a host shows directly, with no financial math.
+
+    ``found`` is the live opening that the caller selected (``source_id``, ``date`` and ``amount`` in the ledger
+    sign). It keeps the identity of the selected entry: ``entry_id`` (the ledger row ID, from
+    :func:`live_openings`) or ``entry_fingerprint`` (from the per-account helper for another source). Without
+    either, the entry is re-matched by ID, day and ``import_source``. The entry must be exactly one committed
+    entry, not a reversal, with postings to ``account`` in one currency, and it must hold the selected amount. The answer fails closed with ``(None, reason)`` and
+    never takes a first match. The reasons are ``entry_not_found``, ``ambiguous_entry`` (two entries match),
+    ``amount_differs`` (the entry does not hold the selected amount) and ``mixed_currency`` (the account
+    lines are in more than one currency, so no single amount exists).
+
+    ``amount`` is the presentation amount of ``account`` (money held for a bank account, money owed for a card
+    or loan), in ``currency``. ``entry`` and ``entry_fingerprint`` are the serialized entry of
+    ``books_policy_check.reviewed_entry`` (the same document an opening preview prints as ``proposed_entry``).
+    ``opening_source`` is ``printed`` or ``person`` for a statement opening, and ``None`` for another source.
+    """
+    from .ledger.books_policy_check import entry_fingerprint, reviewed_entry
+    from .ledger.store import LedgerStore, default_store_path
+    from .tieout import presentation_sign
+
+    store = LedgerStore(default_store_path(Path(entity_path)))
+    entries = store.load_entries() if store.path.exists() else []
+    wanted_source = found.get("import_source", IMPORT_SOURCE)
+    if found.get("entry_fingerprint"):
+        # The selection kept the identity of the exact entry (its fingerprint covers every field).
+        matches = [e for e in entries if entry_fingerprint(e) == found["entry_fingerprint"]]
+    elif found.get("entry_id") is not None and store.path.exists():
+        # The selection kept the ledger row ID; ``load_entries`` returns the rows ordered by day and ID.
+        with store.connection() as conn:
+            row_ids = [r[0] for r in conn.execute("SELECT id FROM entries ORDER BY date, id").fetchall()]
+        matches = [entries[row_ids.index(found["entry_id"])]] if found["entry_id"] in row_ids \
+            and len(row_ids) == len(entries) else []
+    else:
+        # Fallback: no identity was kept, so re-match, and fail closed unless exactly one entry matches.
+        matches = [e for e in entries
+                   if e.source_id == found["source_id"] and e.date.isoformat() == found["date"]
+                   and "reverses" not in dict(e.meta) and dict(e.meta).get("import-source") == wanted_source]
+    matches = [e for e in matches if e.date.isoformat() == found["date"] and "reverses" not in dict(e.meta)
+               and any(p.account == account for p in e.postings)]
+    if not matches:
+        return None, "entry_not_found"
+    if len(matches) > 1:
+        return None, "ambiguous_entry"
+    entry = matches[0]
+    lines = [p for p in entry.postings if p.account == account]
+    currencies = {p.currency for p in lines}
+    if len(currencies) != 1:
+        return None, "mixed_currency"
+    ledger_total = sum((p.amount for p in lines), Decimal("0")).quantize(Decimal("0.01"))
+    if format(ledger_total, "f") != found["amount"]:
+        return None, "amount_differs"
+    meta = dict(entry.meta)
+    reviewed = reviewed_entry(entry)
+    return {"date": entry.date.isoformat(), "account": account,
+            "amount": format((ledger_total * presentation_sign(account)).quantize(Decimal("0.01")), "f"),
+            "currency": next(iter(currencies)),
+            "import_source": meta.get("import-source"), "opening_source": meta.get("opening-source"),
+            "source_id": entry.source_id, "statement_id": meta.get("statement-id"),
+            "entry_fingerprint": reviewed["proposed_entry_fingerprint"], "entry": reviewed["proposed_entry"]}, None
+
+
+def _recorded_facts(entity_path: Path, account: str, found: JsonObject, start: date, presented: Decimal,
+                    source: str) -> JsonObject:
+    """``recorded_opening`` (the committed entry) and the candidate fields, kept apart, for an answer.
+
+    When the entry cannot be bound exactly, ``recorded_opening`` is left out and ``recorded_opening_unavailable``
+    holds the reason (see :func:`recorded_opening`).
+    """
+    facts, reason = recorded_opening(entity_path, found, account)
+    return {**({"recorded_opening": facts} if facts is not None else {"recorded_opening_unavailable": reason}),
+            "candidate_date": start.isoformat(), "candidate_amount": format(presented, "f"),
+            "candidate_source": source, **({"printed_amount": format(presented, "f")} if source == "printed" else {})}
 
 
 def _books_facts(store: Any, account: str, start: date) -> JsonObject:
@@ -308,23 +389,27 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                  f"{account} already has an opening balance of {other['amount']} dated {other['date']} "
                                  f"from {other['import_source']}. A statement opening on top of it would count the "
                                  "balance twice, so none was recorded. To change the opening balance, review and "
-                                 "correct that opening through its supported workflow.", opening_entry=other)
+                                 "correct that opening through its supported workflow.", opening_entry=other,
+                                 **_recorded_facts(entity_path, account, other, start, presented, source))
         if facts["openings"]:
             found = facts["openings"][0]
             if found["date"] == start.isoformat() and found["amount"] == format(amount_ledger, "f") \
                     and found["opening_source"] == source:
                 return {"status": "already_recorded", "statement_id": statement_id, "account": account,
-                        "date": found["date"], "source_id": found["source_id"], "opening_source": found["opening_source"]}
+                        "date": found["date"], "source_id": found["source_id"], "opening_source": found["opening_source"],
+                        **_recorded_facts(entity_path, account, found, start, presented, source)}
             if not replace:
                 return _not_eligible(ref, account, "opening_exists",
                                      f"{account} already has an opening balance entry dated {found['date']}. "
                                      "To move it to an earlier day or change it, run the command again with --replace.",
-                                     opening_entry=found)
+                                     opening_entry=found,
+                                     **_recorded_facts(entity_path, account, found, start, presented, source))
             if start.isoformat() > found["date"]:
                 return _not_eligible(ref, account, "replace_not_earlier",
                                      f"The opening balance can move only to {found['date']} or earlier. Entries "
                                      f"from {found['date']} already count from the current opening balance.",
-                                     opening_entry=found)
+                                     opening_entry=found,
+                                     **_recorded_facts(entity_path, account, found, start, presented, source))
             replaced = found
         elif replace:
             return _not_eligible(ref, account, "no_opening_to_replace",
