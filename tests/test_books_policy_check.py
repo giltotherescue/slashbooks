@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_books_start_policy as shared  # noqa: E402
 from bookkeeping import quickbooks_sync as qb_sync  # noqa: E402
-from bookkeeping.entity import load_entity  # noqa: E402
+from bookkeeping.entity import add_account, load_entity  # noqa: E402
 from bookkeeping.ledger.importer import _atomic_ledger_write, reverse_entry  # noqa: E402
 from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
@@ -104,6 +104,50 @@ class TrustedCheckTests(shared.Company):
 
     def pre_s_booked(self) -> list[str]:
         return sorted(set(BEFORE_S) & set(self.booked()))
+
+    def test_unmapped_classified_transfer_checks_both_exact_keys_without_scope_list(self) -> None:
+        reserve = "Assets:Operating:Reserve"
+        card = "Liabilities:Purchasing:Card"
+        other = "Assets:Bank:Receivable"
+        add_account(self.path, reserve, financial_kind="bank")
+        add_account(self.path, card, financial_kind="credit_card")
+        add_account(self.path, other, financial_kind="other")
+        self.freeze_published()
+        for identity, target in (("transfer", card), ("receivable", other)):
+            entry = Entry(date=date.fromisoformat(S), narration="Synthetic transfer", meta=(("source-id", identity),),
+                          postings=(Posting(reserve, Decimal("-20")), Posting(target, Decimal("20"))))
+            _atomic_ledger_write(load_entity(self.path), [], [entry], "test", None, "synthetic transfer")
+        request = {**self.host_request(), "scope": [], "policy": shared.enforced({})}
+        result = checker().check_workspaces(request, self.published, self.path)
+        self.assertEqual({(r["source_id"], r["account"], r["code"]) for r in result["refusals"]},
+                         {("transfer", reserve, POLICY_REQUIRED), ("transfer", card, POLICY_REQUIRED),
+                          ("receivable", reserve, POLICY_REQUIRED)})
+        request["policy"] = shared.enforced({reserve: shared.authorized(), card: shared.authorized()})
+        self.assertEqual(checker().check_workspaces(request, self.published, self.path)["status"], "ok")
+
+    def test_base_or_candidate_classification_protects_the_same_unmapped_key(self) -> None:
+        from contextlib import closing
+
+        reserve = "Assets:Operating:Reserve"
+        self.freeze_published()
+        add_account(self.path, reserve, financial_kind="cash")
+        entry = Entry(date=date.fromisoformat(S), narration="Synthetic cash movement",
+                      meta=(("source-id", "cash-movement"),),
+                      postings=(Posting(reserve, Decimal("10")), Posting(FEES, Decimal("-10"))))
+        _atomic_ledger_write(load_entity(self.path), [], [entry], "test", None, "synthetic cash movement")
+        request = {**self.host_request(), "scope": [], "policy": shared.enforced({})}
+
+        def assert_protected():
+            result = checker().check_workspaces(request, self.published, self.path)
+            self.assertEqual([(r["account"], r["code"]) for r in result["refusals"]], [(reserve, POLICY_REQUIRED)])
+
+        assert_protected()  # Only the candidate has this classified account.
+        add_account(self.published, reserve, financial_kind="cash")
+        for candidate_kind in ("other", None):
+            with self.subTest(candidate_kind=candidate_kind):
+                with closing(sqlite3.connect(self.path / "ledger.sqlite")) as conn, conn:
+                    conn.execute("UPDATE accounts SET financial_kind=? WHERE name=?", (candidate_kind, reserve))
+                assert_protected()
 
     # -- a valid change publishes ----------------------------------------------
 
