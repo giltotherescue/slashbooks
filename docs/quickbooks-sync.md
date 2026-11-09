@@ -63,6 +63,30 @@ Review each kind and ledger target before applying the same choice with its
 preview hash. The chart, kinds and opening entry commit together. The default
 version 1 chart choice keeps its original behavior.
 
+The `sync-import` result tells you which accounts need a review before you
+build the chart choice. Each active Assets or Liabilities account in `accounts`
+has a `financial_kind` object. Other accounts do not have it.
+
+- `{"required": true, "kind": null, "allowed": ["bank", "cash", "other"]}`: the
+  source type does not decide the kind. Add one of the `allowed` kinds for this
+  account ID to `financial_kinds`. `allowed` lists only the kinds that the chart
+  accepts for the account type: `bank`, `cash` or `other` for an asset, and
+  `credit_card` or `other` for a liability.
+- `{"required": false, "kind": "bank", "allowed": ["bank"]}`: the source type
+  decides the kind (here `bank`). Do not add this account to `financial_kinds`.
+
+The preview uses the same rule. The `financial_kind` object is in the command
+result only. The saved evidence (`manifest.json` and
+`reference/accounts.qbo.json` under `sources/quickbooks/<sha256>/`) does not
+have it, so the evidence of a snapshot that you imported before stays the same.
+
+When a version 2 chart choice has no reviewed kind for one or more of these
+accounts, the preview stops. In Python, `quickbooks_sync.chart_manifest` (and so
+`sync_opening`) raises `FinancialKindReviewRequired`, a `ValueError`.
+Its `account_ids` attribute lists every such account ID in source account order,
+not only the first one. Read `account_ids`. Do not parse the message text, which
+is for people and can change.
+
 ## Compare and backtest
 
 The `.qbo.json` reference files are read directly into the existing canonical
