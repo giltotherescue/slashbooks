@@ -295,7 +295,7 @@ def _opening_exclusions(
 ) -> dict[tuple[str, str], JsonObject]:
     from .ledger.books_policy import PENDING_OPENING
     from .source_disposition import (
-        _find_row, _mapping, confirm, evaluate, load_context, recorded_source_ids, resolved_identity,
+        ResolvedIdentityIndex, _find_row, _mapping, confirm, evaluate, load_context, recorded_source_ids, resolved_identity,
     )
 
     context = load_context(entity_path, basis.policy)
@@ -314,10 +314,10 @@ def _opening_exclusions(
     # A confirmed claim must name exactly one native staged row, including all
     # its supported aliases, that the books have not booked or recorded. The
     # shared rule (``resolved_identity``) never chooses one of two spellings.
-    recorded = recorded_source_ids(entity_path)
+    index = ResolvedIdentityIndex(context, recorded_source_ids(entity_path))
     excluded: dict[tuple[str, str], JsonObject] = {}
     for claim, result in zip(basis.claims, evaluate(context, basis.claims), strict=True):
-        row = resolved_identity(context, claim, result, recorded_source_ids=recorded)
+        row = resolved_identity(index, claim, result)
         if row is None or claim["basis"].get("account") != account:
             raise ValueError("The outside-books decision does not resolve for this opening.")
         # A different account may have advanced the company epoch since this

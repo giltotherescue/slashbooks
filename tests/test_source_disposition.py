@@ -397,7 +397,7 @@ class ResolvedIdentityTests(unittest.TestCase):
         context_ = context_ or ctx()
         claim = claim or self.claim
         result = result or sd.evaluate(context_, [claim])[0]
-        return sd.resolved_identity(context_, claim, result, recorded_source_ids=recorded)
+        return sd.resolved_identity(sd.ResolvedIdentityIndex(context_, recorded), claim, result)
 
     def test_a_resolved_claim_names_its_exact_row(self):
         identity = sd.row_identity(feed_row())
@@ -424,6 +424,26 @@ class ResolvedIdentityTests(unittest.TestCase):
         both = ctx(rows=[feed_row(), feed_row("r1")])
         self.assertEqual(sd.evaluate(both, [self.claim])[0]["status"], "resolved")
         self.assertIsNone(self.identity(both))
+
+    def test_repeated_row_position_is_ambiguous_even_for_the_same_object(self):
+        row = feed_row()
+        self.assertIsNone(self.identity(ctx(rows=[row, row])))
+
+    def test_alias_positions_are_unioned_without_transitive_expansion(self):
+        rows = [feed_row(), feed_row("banksync:banksync:r1")]
+        self.assertIsNone(self.identity(ctx(rows=rows)))
+        self.assertIsNotNone(self.identity(ctx(rows=[feed_row(), feed_row("plaid:r1")])))
+
+    def test_new_context_rebuilds_the_index_and_never_reuses_prior_ledger_membership(self):
+        native = ctx()
+        result = sd.evaluate(native, [self.claim])[0]
+        index = sd.ResolvedIdentityIndex(native, [])
+        before = sd.resolved_identity(index, self.claim, result)
+        self.assertIsNotNone(before)
+        changed = ctx(rows=[feed_row(amount="-26.00")])
+        self.assertIsNone(sd.resolved_identity(sd.ResolvedIdentityIndex(changed, []), self.claim, result))
+        self.assertIsNone(sd.resolved_identity(sd.ResolvedIdentityIndex(native, ["r1"]), self.claim, result))
+        self.assertEqual(sd.resolved_identity(index, self.claim, result), before)
 
     def test_a_booked_or_recorded_spelling_names_nothing(self):
         booked = [{"source_id": "r1", "account": SAVINGS, "date": "2026-02-10", "amount": "-25.00"}]

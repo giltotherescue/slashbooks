@@ -863,8 +863,36 @@ def recorded_source_ids(entity_path: Path | str) -> frozenset[str]:
     return frozenset(found)
 
 
-def resolved_identity(context: DispositionContext, claim: Mapping[str, Any], result: Mapping[str, Any], *,
-                      recorded_source_ids: Iterable[str]) -> dict[str, Any] | None:
+class ResolvedIdentityIndex:
+    """One assessment's source lookups. Build a new index whenever the context or ledger receipts change."""
+
+    def __init__(self, context: DispositionContext, recorded_ids: Iterable[str]):
+        self._rows = context.rows
+        self._positions: dict[str, list[int]] = {}
+        for position, row in enumerate(self._rows):
+            for alias in source_id_variants(row.get("id")):
+                self._positions.setdefault(alias, []).append(position)
+        self._accounted = _booked_ids(context)
+        for source_id in recorded_ids:
+            self._accounted.update(source_id_variants(source_id))
+
+    def unique_unrecorded_row(self, aliases: frozenset[str]) -> Mapping[str, Any] | None:
+        if not self._accounted.isdisjoint(aliases):
+            return None
+        position = None
+        for alias in aliases:
+            matches = self._positions.get(alias, ())
+            if len(matches) > 1:
+                return None
+            if matches:
+                if position is not None and position != matches[0]:
+                    return None
+                position = matches[0]
+        return None if position is None else self._rows[position]
+
+
+def resolved_identity(index: ResolvedIdentityIndex, claim: Mapping[str, Any],
+                      result: Mapping[str, Any]) -> dict[str, Any] | None:
     """The exact staged row that a resolved ``outside_books`` claim may leave out, or ``None``.
 
     Every caller that leaves a row out (readiness, a reviewed opening) uses this one rule:
@@ -874,7 +902,7 @@ def resolved_identity(context: DispositionContext, claim: Mapping[str, Any], res
     - Exactly one staged row has any spelling of the claim's source ID. Its ID is the claim's source ID and its
       ``row_digest`` (the source fields) is the claim's. Two rows that share a spelling are ambiguous: neither is
       chosen.
-    - No spelling is booked in a live ledger entry, and no spelling is in ``recorded_source_ids`` (the ledger's
+    - No spelling is booked in a live ledger entry, and no spelling is in the index's recorded IDs (the ledger's
       ``source_transactions``, which includes rows sealed with no financial effect; see :func:`recorded_source_ids`).
 
     The result is ``{source_id, spellings, row_digest, preview_digest}``. It never names a row that the claim does
@@ -889,20 +917,14 @@ def resolved_identity(context: DispositionContext, claim: Mapping[str, Any], res
             or result.get("source_id") != source_id or claim.get("state") != "outside_books"
             or result.get("state") != "outside_books"):
         return None
-    spellings = source_id_variants(source_id)
-    matches = [row for row in context.rows if source_id_variants(row.get("id")) & spellings]
-    if len(matches) != 1:
+    row = index.unique_unrecorded_row(source_id_variants(source_id))
+    if row is None:
         return None
     try:
-        identity = row_identity(matches[0])
+        identity = row_identity(row)
     except (TypeError, ValueError):
         return None
     if identity["source_id"] != source_id or identity["row_digest"] != claim.get("row_digest"):
-        return None
-    recorded: set[str] = set()
-    for item in recorded_source_ids:
-        recorded |= source_id_variants(item)
-    if spellings & (_booked_ids(context) | recorded):
         return None
     return {**identity, "preview_digest": digest}
 

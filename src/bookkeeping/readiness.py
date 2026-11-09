@@ -271,18 +271,18 @@ def _resolved_dispositions(entity_path: Path, context: ReadinessDispositionConte
     The native functions load and evaluate the decisions again. A failure leaves nothing out (fail closed). Two
     decisions that resolve to the same row are ambiguous, so neither leaves it out.
     """
-    from .source_disposition import evaluate, load_context, recorded_source_ids, resolved_identity
+    from .source_disposition import ResolvedIdentityIndex, evaluate, load_context, recorded_source_ids, resolved_identity
 
     try:
         native = load_context(entity_path, context.policy)
         results = evaluate(native, context.claims, context.transitions)
-        recorded = recorded_source_ids(entity_path)
+        index = ResolvedIdentityIndex(native, recorded_source_ids(entity_path))
     except (OSError, ValueError, KeyError, TypeError):
         return {}
     found: dict[tuple[str, str], dict[str, Any]] = {}
     counts: Counter[tuple[str, str]] = Counter()
     for claim, result in zip(context.claims, results, strict=True):
-        identity = resolved_identity(native, claim, result, recorded_source_ids=recorded)
+        identity = resolved_identity(index, claim, result)
         if identity is not None:
             key = (identity["source_id"], identity["row_digest"])
             counts[key] += 1
