@@ -1755,8 +1755,16 @@ def active_opening_for_account(entity_path, account: str, currency: str, sources
             amount = sum((p.amount for p in lines), Decimal("0"))
             return {"source_id": entry.source_id, "date": entry.date.isoformat(),
                     "import_source": dict(entry.meta)["import-source"],
-                    "amount": format(amount.quantize(Decimal("0.01")), "f")}
+                    "amount": format(amount.quantize(Decimal("0.01")), "f"),
+                    # The identity of the exact entry that was selected (``books_policy_check.entry_fingerprint``).
+                    "entry_fingerprint": _entry_fingerprint(entry)}
     return None
+
+
+def _entry_fingerprint(entry) -> str:
+    from .ledger.books_policy_check import entry_fingerprint
+
+    return entry_fingerprint(entry)
 
 
 def account_opening_from_other_source(entity_path, account: str, currency: str) -> dict | None:

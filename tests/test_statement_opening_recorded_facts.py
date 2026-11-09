@@ -187,6 +187,39 @@ class RecordedOpeningFactsTests(unittest.TestCase):
         self.assertNotIn("recorded_opening", answer)
         self.assertEqual(answer["recorded_opening_unavailable"], "mixed_currency")
 
+    def test_the_selected_entry_identity_wins_over_a_look_alike(self):
+        from bookkeeping import statement_opening as so
+        from bookkeeping.ledger.books_policy_check import entry_fingerprint
+        real = self.qb_style("banksync:x", date(2026, 1, 1), "50.00")
+        twin = Entry(date=real.date, narration="Look-alike", meta=real.meta, postings=real.postings)
+        found = {"source_id": "banksync:x", "date": "2026-01-01", "amount": "50.00",
+                 "import_source": "quickbooks-opening", "entry_fingerprint": entry_fingerprint(real)}
+        with unittest.mock.patch.object(LedgerStore, "load_entries", lambda self_, *a, **k: [twin, real]):
+            facts, reason = so.recorded_opening(self.entity, found, CHECKING)
+            self.assertIsNone(reason)
+            self.assertEqual(facts["entry_fingerprint"], entry_fingerprint(real))
+            self.assertEqual(facts["entry"]["narration"], "Synthetic opening")
+            # With no identity kept, the look-alike makes the re-match ambiguous, and it fails closed.
+            fallback = {k: v for k, v in found.items() if k != "entry_fingerprint"}
+            self.assertEqual(so.recorded_opening(self.entity, fallback, CHECKING), (None, "ambiguous_entry"))
+
+    def test_a_statement_opening_selection_keeps_the_ledger_row(self):
+        record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="100.00")
+        answer = record_opening(self.entity, self.later_statement())
+        self.assertIsInstance(answer["opening_entry"]["entry_id"], int)
+        self.assert_facts(answer, amount="100.00", day="2026-01-01", import_source="statement-opening",
+                          opening_source="person")
+
+    def test_a_statement_opening_and_another_source_on_one_day_report_exactly_the_selected_one(self):
+        record_opening(self.entity, account=CHECKING, on="2026-01-01", amount="100.00")
+        other = self.qb_style("banksync:qb1", date(2026, 1, 1), "70.00")
+        self.write_entries([other], opens=[])
+        answer = record_opening(self.entity, account=CHECKING, on="2026-01-15", amount="140.00")
+        self.assertEqual(answer["reason"], "opening_exists_other_source")
+        self.assert_facts(answer, amount="70.00", day="2026-01-01", import_source="quickbooks-opening")
+        self.assertEqual(answer["recorded_opening"]["entry_fingerprint"], answer["opening_entry"]["entry_fingerprint"])
+        self.assertEqual(self.checking_total(), Decimal("170.00"))
+
     def test_a_quickbooks_opening_is_the_recorded_source(self):
         self.assertTrue(self.qb_opening()["applied"])
         sid = self.later_statement()

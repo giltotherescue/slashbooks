@@ -97,12 +97,12 @@ def live_openings(conn: Any, account: str | None = None) -> list[JsonObject]:
     not an opening. ``account`` limits the list to one account.
     """
     rows = conn.execute(
-        "SELECT e.source_id, e.date, e.narration, e.metadata_json, p.account, p.amount FROM entries e "
+        "SELECT e.id, e.source_id, e.date, e.narration, e.metadata_json, p.account, p.amount FROM entries e "
         "JOIN postings p ON p.entry_id = e.id WHERE e.metadata_json LIKE ? OR e.metadata_json LIKE ? "
         "ORDER BY e.date, e.id", (f"%{IMPORT_SOURCE}%", "%reverses%")).fetchall()
     reversed_ids = set()
     found = []
-    for source_id, day, narration, raw, posted_account, posted in rows:
+    for entry_id, source_id, day, narration, raw, posted_account, posted in rows:
         meta = _metadata(raw)
         if "reverses" in meta:
             reversed_ids.add(meta["reverses"])
@@ -111,7 +111,7 @@ def live_openings(conn: Any, account: str | None = None) -> list[JsonObject]:
             continue
         if account is not None and posted_account != account:
             continue
-        found.append({"source_id": source_id, "date": day, "account": posted_account, "narration": narration,
+        found.append({"entry_id": entry_id, "source_id": source_id, "date": day, "account": posted_account, "narration": narration,
                       "statement_id": meta.get("statement-id"),
                       "opening_source": meta.get("opening-source", "printed"),
                       "amount": format(Decimal(str(posted)).quantize(Decimal("0.01")), "f")})
@@ -155,9 +155,10 @@ def recorded_opening(entity_path: Path | str, found: JsonObject, account: str) -
     """The committed opening entry that ``found`` selected, as facts a host shows directly, with no financial math.
 
     ``found`` is the live opening that the caller selected (``source_id``, ``date`` and ``amount`` in the ledger
-    sign, and ``import_source`` for another source). The entry is bound to those facts: it must be the one
-    committed opening entry that matches the ID, the day and the ledger amount, that is not a reversal and
-    that has postings to ``account`` in one currency. The answer fails closed with ``(None, reason)`` and
+    sign). It keeps the identity of the selected entry: ``entry_id`` (the ledger row ID, from
+    :func:`live_openings`) or ``entry_fingerprint`` (from the per-account helper for another source). Without
+    either, the entry is re-matched by ID, day and ``import_source``. The entry must be exactly one committed
+    entry, not a reversal, with postings to ``account`` in one currency, and it must hold the selected amount. The answer fails closed with ``(None, reason)`` and
     never takes a first match. The reasons are ``entry_not_found``, ``ambiguous_entry`` (two entries match),
     ``amount_differs`` (the entry does not hold the selected amount) and ``mixed_currency`` (the account
     lines are in more than one currency, so no single amount exists).
@@ -167,16 +168,28 @@ def recorded_opening(entity_path: Path | str, found: JsonObject, account: str) -
     ``books_policy_check.reviewed_entry`` (the same document an opening preview prints as ``proposed_entry``).
     ``opening_source`` is ``printed`` or ``person`` for a statement opening, and ``None`` for another source.
     """
-    from .ledger.books_policy_check import reviewed_entry
+    from .ledger.books_policy_check import entry_fingerprint, reviewed_entry
     from .ledger.store import LedgerStore, default_store_path
     from .tieout import presentation_sign
 
     store = LedgerStore(default_store_path(Path(entity_path)))
     entries = store.load_entries() if store.path.exists() else []
     wanted_source = found.get("import_source", IMPORT_SOURCE)
-    matches = [e for e in entries
-               if e.source_id == found["source_id"] and e.date.isoformat() == found["date"]
-               and "reverses" not in dict(e.meta) and dict(e.meta).get("import-source") == wanted_source
+    if found.get("entry_fingerprint"):
+        # The selection kept the identity of the exact entry (its fingerprint covers every field).
+        matches = [e for e in entries if entry_fingerprint(e) == found["entry_fingerprint"]]
+    elif found.get("entry_id") is not None and store.path.exists():
+        # The selection kept the ledger row ID; ``load_entries`` returns the rows ordered by day and ID.
+        with store.connection() as conn:
+            row_ids = [r[0] for r in conn.execute("SELECT id FROM entries ORDER BY date, id").fetchall()]
+        matches = [entries[row_ids.index(found["entry_id"])]] if found["entry_id"] in row_ids \
+            and len(row_ids) == len(entries) else []
+    else:
+        # Fallback: no identity was kept, so re-match, and fail closed unless exactly one entry matches.
+        matches = [e for e in entries
+                   if e.source_id == found["source_id"] and e.date.isoformat() == found["date"]
+                   and "reverses" not in dict(e.meta) and dict(e.meta).get("import-source") == wanted_source]
+    matches = [e for e in matches if e.date.isoformat() == found["date"] and "reverses" not in dict(e.meta)
                and any(p.account == account for p in e.postings)]
     if not matches:
         return None, "entry_not_found"
