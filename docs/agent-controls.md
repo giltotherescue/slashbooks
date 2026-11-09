@@ -443,6 +443,60 @@ attestation: any Python code can call it with any values. The trusted origin of
 `engine_build` and of every other receipt field, and a trusted channel for the
 receipt, are host requirements only.
 
+## The opening balance of each account
+
+After a person records an opening, a host can show the opening balance of each
+account. The host does no accounting math. It calls
+`bookkeeping.opening_presentation.opening_presentation(entry, accounts,
+financial_kinds)`. The function reads no file and writes nothing.
+
+- `entry` is the opening entry: an `Entry`, or the entry document that a
+  preview prints as `proposed_entry` (or the `entry` of a recorded opening).
+  The entry must come from a statement, QuickBooks or accrual opening, and it
+  must not be a reversal.
+- `accounts` is the list of the Assets and Liabilities accounts that the entry
+  posts to. The names are unique and sorted by their UTF-8 bytes. Equity
+  accounts are not in the list.
+- `financial_kinds` maps an account to its explicit financial kind, as
+  `LedgerStore.load_financial_kinds` returns it. An account without a key is
+  unclassified.
+
+The result has one row for each name in `accounts`, in the same order:
+
+```json
+{"account": "Liabilities:CreditCard:Visa", "status": "presented",
+ "financial_kind": "credit_card", "amount": "2000.25", "currency": "USD"}
+{"account": "Liabilities:Other:Loan", "status": "refused",
+ "reason": "financial_kind_missing", "financial_kind": null, "message": "..."}
+```
+
+`amount` is in the presentation sign: money held for an asset account, money
+owed for a liability account. It has exactly two decimals, no thousands
+separator, and a leading `-` when it is negative. `currency` is the currency of
+the account's lines in the entry. For a statement opening, `amount` is the
+`opening-balance` metadata of the entry.
+
+The supported financial kinds are `bank` and `cash` on Assets, `credit_card` on
+Liabilities, and `other` on Assets or Liabilities (for example a receivable, a
+payable or a loan). A row is `refused` with one of these reasons:
+`financial_kind_missing`, `financial_kind_unsupported`,
+`financial_kind_mismatch`, `mixed_currency` or `opening_balance_differs`. Show
+a refused row as an account that needs a review. Do not compute an amount for
+it.
+
+If the list is not exactly the Assets and Liabilities accounts of the entry,
+the function raises `OpeningPresentationError` with the code
+`accounts_mismatch`, and `detail` names the accounts in `not_posted` and
+`not_listed`. The other codes are `invalid_entry`, `not_an_opening`,
+`invalid_accounts` and `invalid_financial_kinds`.
+
+The same check is available as a command:
+`python -I -m bookkeeping.opening_presentation show --request R.json --entity DIR`.
+`R.json` is `{"schema_version": 1, "entry": {...}, "accounts": [...]}`. The
+command reads the financial kinds from the ledger of `DIR` read-only. It exits
+with 0 when every row is presented, 1 when a row is refused, and 2 for a bad
+request.
+
 ## Read the amount of an item
 
 `bookkeeping.queue.amount_for_item(entity, item_id)` returns the absolute

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Add `opening_presentation.opening_presentation(entry, accounts,
+  financial_kinds)`, a pure, read-only function that gives the opening balance
+  of each account of an opening entry in the presentation sign: money held for
+  an asset account, money owed for a liability account. It takes the opening
+  entry (an `Entry` or the `proposed_entry` document of a statement,
+  QuickBooks or accrual opening preview), the exact Assets and Liabilities
+  accounts that the entry posts to (unique, sorted by UTF-8 bytes) and the
+  explicit financial kinds of the catalog. It returns one row for each account,
+  in the same order: `presented` with `financial_kind`, `amount` (exactly two
+  decimals) and `currency`, or `refused` with a `reason`. An account with no
+  financial kind, an unsupported kind, a kind that its root does not allow, or
+  lines in more than one currency is refused; it is never left out. A list that
+  is not exactly the posted Assets and Liabilities accounts raises
+  `OpeningPresentationError` (`accounts_mismatch`). For a statement opening the
+  amount equals the `opening-balance` metadata. The function uses the existing
+  `tieout.presentation_sign`. The opening entries and their fingerprints do not
+  change. `python -I -m bookkeeping.opening_presentation show --request R.json
+  --entity DIR` does the same check and reads the financial kinds read-only.
+
 - `books qb sync-import` now shows which QuickBooks accounts need a reviewed
   financial kind. Each active Assets or Liabilities account in the result's
   `accounts` has `financial_kind`: `{required, kind, allowed}`. `required` is
