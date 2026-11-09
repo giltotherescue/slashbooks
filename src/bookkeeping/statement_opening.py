@@ -28,6 +28,12 @@ The entry is recorded only when it is the account's opening:
   opening); the check is per account, so another account's opening is not a conflict.
 
 Anything else returns ``not_eligible`` with the reason, and writes nothing.
+
+An ``already_recorded`` answer, and a ``not_eligible`` answer with the reason ``opening_exists``,
+``replace_not_earlier`` or ``opening_exists_other_source``, carry ``recorded_opening``: the facts of the
+committed opening entry (see :func:`recorded_opening`). The fields of the candidate statement or typed
+amount are kept apart in ``candidate_date``, ``candidate_amount``, ``candidate_source`` and (for a printed
+opening) ``printed_amount``. A host shows ``recorded_opening`` directly and never mixes in the candidate.
 """
 from __future__ import annotations
 
@@ -143,6 +149,43 @@ def before_opening_refusal(entity_path: Path | str, account: str, days: list[str
         "account": account, "opening_date": opening.isoformat(), "first_row_date": early[0],
         "rows_before_opening": len(early), **detail,
     }
+
+
+def recorded_opening(entity_path: Path | str, source_id: str, account: str) -> JsonObject | None:
+    """The committed opening entry ``source_id`` as facts a host shows directly, with no financial math.
+
+    ``amount`` is the presentation amount of ``account`` (money held for a bank account, money owed for a card
+    or loan), in ``currency``. ``entry`` and ``entry_fingerprint`` are the serialized entry of
+    ``books_policy_check.reviewed_entry`` (the same document an opening preview prints as ``proposed_entry``).
+    ``opening_source`` is ``printed`` or ``person`` for a statement opening, and ``None`` for another source.
+    """
+    from .ledger.books_policy_check import reviewed_entry
+    from .ledger.store import LedgerStore, default_store_path
+    from .tieout import presentation_sign
+
+    store = LedgerStore(default_store_path(Path(entity_path)))
+    found = next((e for e in store.load_entries() if e.source_id == source_id), None) if store.path.exists() else None
+    if found is None:
+        return None
+    lines = [p for p in found.postings if p.account == account]
+    if not lines:
+        return None
+    meta = dict(found.meta)
+    total = sum((p.amount for p in lines), Decimal("0")) * presentation_sign(account)
+    reviewed = reviewed_entry(found)
+    return {"date": found.date.isoformat(), "account": account,
+            "amount": format(total.quantize(Decimal("0.01")), "f"), "currency": lines[0].currency,
+            "import_source": meta.get("import-source"), "opening_source": meta.get("opening-source"),
+            "source_id": found.source_id, "statement_id": meta.get("statement-id"),
+            "entry_fingerprint": reviewed["proposed_entry_fingerprint"], "entry": reviewed["proposed_entry"]}
+
+
+def _recorded_facts(entity_path: Path, account: str, found: JsonObject, start: date, presented: Decimal,
+                    source: str) -> JsonObject:
+    """``recorded_opening`` (the committed entry) and the candidate fields, kept apart, for an answer."""
+    return {"recorded_opening": recorded_opening(entity_path, found["source_id"], account),
+            "candidate_date": start.isoformat(), "candidate_amount": format(presented, "f"),
+            "candidate_source": source, **({"printed_amount": format(presented, "f")} if source == "printed" else {})}
 
 
 def _books_facts(store: Any, account: str, start: date) -> JsonObject:
@@ -308,23 +351,27 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                  f"{account} already has an opening balance of {other['amount']} dated {other['date']} "
                                  f"from {other['import_source']}. A statement opening on top of it would count the "
                                  "balance twice, so none was recorded. To change the opening balance, review and "
-                                 "correct that opening through its supported workflow.", opening_entry=other)
+                                 "correct that opening through its supported workflow.", opening_entry=other,
+                                 **_recorded_facts(entity_path, account, other, start, presented, source))
         if facts["openings"]:
             found = facts["openings"][0]
             if found["date"] == start.isoformat() and found["amount"] == format(amount_ledger, "f") \
                     and found["opening_source"] == source:
                 return {"status": "already_recorded", "statement_id": statement_id, "account": account,
-                        "date": found["date"], "source_id": found["source_id"], "opening_source": found["opening_source"]}
+                        "date": found["date"], "source_id": found["source_id"], "opening_source": found["opening_source"],
+                        **_recorded_facts(entity_path, account, found, start, presented, source)}
             if not replace:
                 return _not_eligible(ref, account, "opening_exists",
                                      f"{account} already has an opening balance entry dated {found['date']}. "
                                      "To move it to an earlier day or change it, run the command again with --replace.",
-                                     opening_entry=found)
+                                     opening_entry=found,
+                                     **_recorded_facts(entity_path, account, found, start, presented, source))
             if start.isoformat() > found["date"]:
                 return _not_eligible(ref, account, "replace_not_earlier",
                                      f"The opening balance can move only to {found['date']} or earlier. Entries "
                                      f"from {found['date']} already count from the current opening balance.",
-                                     opening_entry=found)
+                                     opening_entry=found,
+                                     **_recorded_facts(entity_path, account, found, start, presented, source))
             replaced = found
         elif replace:
             return _not_eligible(ref, account, "no_opening_to_replace",
