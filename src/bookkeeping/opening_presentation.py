@@ -226,7 +226,12 @@ def _read_kinds(entity: Path) -> dict[str, str]:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -I -m bookkeeping.opening_presentation")
     sub = parser.add_subparsers(dest="command", required=True)
-    show = sub.add_parser("show", help="Show the opening balance of each account of an opening entry (read-only).")
+    show = sub.add_parser(
+        "show", help="Show the opening balance of each account of an opening entry (read-only).",
+        description="Show the opening balance of each account of an opening entry (read-only). The entry document "
+                    "is presentation input only. It is not proof that the entry is committed or current in the "
+                    "ledger. A caller that needs that proof must check it separately, for example with a trusted "
+                    "verification of the live ledger entry.")
     show.add_argument("--request", type=Path, required=True)
     show.add_argument("--entity", type=Path, required=True)
     args = parser.parse_args(argv)

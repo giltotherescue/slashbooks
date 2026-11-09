@@ -450,6 +450,11 @@ account. The host does no accounting math. It calls
 `bookkeeping.opening_presentation.opening_presentation(entry, accounts,
 financial_kinds)`. The function reads no file and writes nothing.
 
+The entry document is presentation input only. It is not proof that the entry
+is committed or current in the ledger. A caller that needs that proof must check
+it separately, for example with a trusted verification of the live ledger
+entry.
+
 - `entry` is the opening entry: an `Entry`, or the entry document that a
   preview prints as `proposed_entry` (or the `entry` of a recorded opening).
   The entry must come from a statement, QuickBooks or accrual opening, and it
