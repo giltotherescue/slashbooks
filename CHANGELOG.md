@@ -34,14 +34,19 @@
   one row of `differences.json` (it replaces the row, or it appends the row and
   creates the file when necessary), and every other row keeps its bytes. A
   saved file that is not in the exact form that the engine writes is refused,
-  so no field is lost. The review also binds `reference_digest`, a digest of
-  the reference files. The engine reads no clock and sets no reviewer, so the
+  so no field is lost. The request also binds `reference_digest`, a digest of
+  the reference files that `books compare period` now returns. The review
+  copies each reference file one time into a private snapshot, refuses with
+  `REFERENCE_CHANGED` when the digest of the copy is different, and compares
+  only the copy, so the record never mixes amounts and a digest of different
+  files. The engine reads no clock and sets no reviewer, so the
   same inputs write the same bytes. An exact retry returns the same result and
   writes nothing. A successful review clears `re_opened`. A later compare keeps
   the review and lists in `review_drift` the reviewed fields that changed,
   including other reference files and changes that are not material.
   `books compare period` (when it saves), `categorize-diff` and `accept-diff`
-  now also take the company write lock. Their output does not change, and rows
+  now also take the company write lock, without the currency repair, as
+  before. Their output does not change, and rows
   without a typed review keep their released shape. See
   [docs/quickbooks-sync.md](docs/quickbooks-sync.md).
 - `books qb sync-import` now shows which QuickBooks accounts need a reviewed

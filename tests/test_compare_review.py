@@ -40,6 +40,7 @@ def _request(**changes) -> dict:
     request = {
         "schema_version": 1,
         "period": {"from": "2026-01-01", "to": "2026-03-31"},
+        "reference_digest": _digest(),
         "difference": {"grain": "pnl", "account": "Income:Consulting-Revenue", "ours": "10500.00",
                        "reference": "10000.00", "delta": "500.00", "category": "uncategorized"},
         "reviewer": "person-17",
@@ -297,7 +298,11 @@ class TestReviewRefusals(_Companies):
         self.assertEqual(result["current"]["ours"], "8000.00")
 
     def test_changed_reference_reports_refuse(self):
-        result = self.refused_without_write(_request(), "DIFFERENCE_CHANGED", qb_folder=self.qb_copy("10010.00"))
+        folder = self.qb_copy("10010.00")
+        result = self.refused_without_write(_request(), "REFERENCE_CHANGED", qb_folder=folder)
+        self.assertEqual(result["reference_digest"], _digest(folder))
+        result = self.refused_without_write(_request(reference_digest=_digest(folder)), "DIFFERENCE_CHANGED",
+                                            qb_folder=folder)
         self.assertEqual(result["changed_fields"], ["reference", "delta"])
 
     def test_changed_category_on_the_saved_record_refuses(self):
@@ -380,6 +385,9 @@ class TestReviewRefusals(_Companies):
             "a time without a zone": _request(reviewed_at="2026-11-09T15:04:05"),
             "a time that is a day": _request(reviewed_at="2026-11-09"),
             "a number time": _request(reviewed_at=1.5),
+            "no reference digest": _request(reference_digest=_DROP),
+            "a reference digest in upper case": _request(reference_digest=_digest().upper()),
+            "a short reference digest": _request(reference_digest="sha256:abc"),
         }
         for name, request in cases.items():
             with self.subTest(case=name):
@@ -514,7 +522,8 @@ class TestLaterChange(_Companies):
         self.assertEqual(code, 0, err)
         self.assertIn("changed since review: reference_digest, reference, delta", out)
         # A new review of the current amounts replaces the old one and clears the signal.
-        result = self.review(_request(reference="10010.00", delta="490.00"), qb_folder=folder)
+        result = self.review(_request(reference="10010.00", delta="490.00", reference_digest=_digest(folder)),
+                             qb_folder=folder)
         self.assertEqual(result["status"], "accepted")
         self.assertEqual(self.compare(folder)["review_drift"], [])
 
@@ -525,7 +534,7 @@ class TestLaterChange(_Companies):
         self.assertEqual((row["status"], row["reference"], row["delta"]), ("accepted", "10000.00", "500.00"))
         self.assertEqual(row["review_drift"], ["reference_digest"])
         # The out-of-date review may be replaced by a review of the new reference files.
-        second = self.review(_request(), qb_folder=folder)
+        second = self.review(_request(reference_digest=_digest(folder)), qb_folder=folder)
         self.assertEqual(second["status"], "accepted")
         self.assertNotEqual(second["reference_digest"], first["reference_digest"])
         self.assertEqual(self.compare(folder)["review_drift"], [])
@@ -564,6 +573,145 @@ class TestLaterChange(_Companies):
         legacy = _diff_record("tb", "total_debits", Decimal("10080"), Decimal("10000"), status="accepted")
         merged = _merge_differences([legacy], [fresh], _DEFAULT_MATERIAL_ABS, _DEFAULT_MATERIAL_PCT)
         self.assertEqual((merged[0].status, merged[0].re_opened), ("accepted", False))
+
+
+class TestReferenceSnapshot(_Companies):
+    """The review compares a private snapshot of the reference files, bound to the request's reference_digest."""
+
+    def track_snapshots(self):
+        """Patch the snapshot directory factory and record each directory that it makes."""
+        import tempfile as tempfile_module
+        made = []
+        real = tempfile_module.mkdtemp
+
+        def mkdtemp(*args, **kwargs):
+            made.append(Path(real(*args, **kwargs)))
+            return str(made[-1])
+
+        return made, patch("bookkeeping.compare.tempfile.mkdtemp", side_effect=mkdtemp)
+
+    def test_the_digest_comes_from_the_read_only_compare_result(self):
+        from bookkeeping.compare import compare_period
+        from bookkeeping.entity import load_entity
+        before = _tree_state(self.path)
+        report = compare_period(load_entity(self.path), _QB_MATCH, _FROM, _TO, persist_differences=False).to_dict()
+        self.assertEqual(_tree_state(self.path), before)
+        self.assertEqual(report["reference_digest"], _digest())
+        result = self.review(_request(reference_digest=report["reference_digest"]))
+        self.assertEqual(result["status"], "accepted")
+
+    def test_an_old_request_is_refused_after_the_reference_files_change(self):
+        folder = self.qb_copy()
+        first = self.review(_request(), qb_folder=folder)
+        self.assertEqual(first["status"], "accepted")
+        pnl = folder / "profit_and_loss.csv"
+        pnl.write_text(pnl.read_text(encoding="utf-8").replace('Software,"350.00"', 'Software,"351.00"'),
+                       encoding="utf-8")
+        result = self.refused_without_write(_request(), "REFERENCE_CHANGED", qb_folder=folder)
+        self.assertEqual(result["reference_digest"], _digest(folder))
+        self.assertEqual(self.stored()[_KEY]["review"]["reference_digest"], first["reference_digest"])
+
+    def test_a_reference_change_during_the_compare_cannot_mix_digest_and_amounts(self):
+        """The reference file changes after the snapshot. The compare reads only the snapshot."""
+        from bookkeeping import compare
+        folder = self.qb_copy()
+        old_digest = _digest(folder)
+        target = folder / "profit_and_loss.csv"
+        actual = compare.compare_period
+        compared = []
+
+        def change_the_file(entity, qb_folder, *args, **kwargs):
+            compared.append(Path(qb_folder))
+            text = target.read_text(encoding="utf-8")
+            target.write_text(text.replace('Consulting Revenue,"10000.00"', 'Consulting Revenue,"10010.00"'),
+                              encoding="utf-8")
+            return actual(entity, qb_folder, *args, **kwargs)
+
+        with patch.object(compare, "compare_period", side_effect=change_the_file):
+            mixed = self.review(_request(reference="10010.00", delta="490.00", reference_digest=old_digest),
+                                qb_folder=folder)
+        self.assert_refused(mixed, "DIFFERENCE_CHANGED")
+        self.assertNotIn("review", self.stored()[_KEY])
+        self.assertNotEqual(compared[0].resolve(), folder.resolve())
+        # The same race with the reviewed amounts: the record holds the snapshot amounts and their digest.
+        target.write_text(target.read_text(encoding="utf-8").replace("10010.00", "10000.00"), encoding="utf-8")
+        with patch.object(compare, "compare_period", side_effect=change_the_file):
+            result = self.review(_request(reference_digest=old_digest), qb_folder=folder)
+        self.assertEqual(result["status"], "accepted", result)
+        self.assertEqual((result["record"]["reference"], result["reference_digest"]), ("10000.00", old_digest))
+        self.assertNotEqual(_digest(folder), old_digest)  # The folder changed, and the record does not claim it.
+
+    def test_the_snapshot_is_removed_in_every_path_and_the_originals_do_not_change(self):
+        from bookkeeping import compare
+        folder = self.qb_copy()
+        originals = _tree_state(folder)
+        made, factory = self.track_snapshots()
+        cases = {
+            "accepted": (_request(), None),
+            "retry": (_request(), None),
+            "difference changed": (_request(delta="1.00"), None),
+            "reference changed": (_request(reference_digest="sha256:" + "0" * 64), None),
+            "error in the compare": (_request(), RuntimeError("compare failed")),
+        }
+        for name, (request, error) in cases.items():
+            with self.subTest(case=name):
+                made.clear()
+                with factory, contextlib.ExitStack() as stack:
+                    if error is not None:
+                        stack.enter_context(patch.object(compare, "compare_period", side_effect=error))
+                        with self.assertRaises(RuntimeError):
+                            self.review(request, qb_folder=folder)
+                    else:
+                        self.review(request, qb_folder=folder)
+                self.assertEqual(len(made), 1)
+                self.assertFalse(made[0].exists())
+                self.assertEqual(_tree_state(folder), originals)
+        # An invalid request makes no snapshot.
+        made.clear()
+        with factory:
+            self.review(_request(schema_version=999), qb_folder=folder)
+        self.assertEqual(made, [])
+
+
+class TestRepairControls(_Companies):
+    """The legacy writers keep the repair behavior of the released engine; the typed review does not repair."""
+
+    def stale(self) -> bytes:
+        """entity.json is behind the ledger meta: a write path with the currency repair would rewrite it."""
+        with contextlib.closing(sqlite3.connect(self.path / "ledger.sqlite")) as conn, conn:
+            conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('currency', 'USD'), "
+                         "('currency_source', 'inferred')")
+        return (self.path / "entity.json").read_bytes()
+
+    def test_the_repair_on_disk_would_change_this_company(self):
+        from bookkeeping.currency import repair_on_disk
+        before = self.stale()
+        repair_on_disk(self.path)
+        self.assertNotEqual((self.path / "entity.json").read_bytes(), before)
+
+    def test_legacy_writers_and_the_typed_review_leave_a_stale_entity_json_as_before(self):
+        from bookkeeping.compare import accept_diff, categorize_diff, compare_period
+        from bookkeeping.entity import load_entity
+        writers = {
+            # The released categorize-diff, accept-diff and saving compare take no lock and do not repair.
+            "categorize-diff": lambda: categorize_diff(load_entity(self.path), _OTHER, "our-bug"),
+            "accept-diff": lambda: accept_diff(load_entity(self.path), _OTHER),
+            "compare period": lambda: compare_period(load_entity(self.path), _QB_MATCH, _FROM, _TO),
+            "review-diff": lambda: self.assertEqual(self.review(_request())["status"], "accepted"),
+        }
+        before = self.stale()
+        for name, write in writers.items():
+            with self.subTest(writer=name):
+                write()
+                self.assertEqual((self.path / "entity.json").read_bytes(), before)
+
+    def test_the_read_only_compare_writes_nothing(self):
+        from bookkeeping.compare import compare_period
+        from bookkeeping.entity import load_entity
+        self.stale()
+        before = _tree_state(self.path)
+        compare_period(load_entity(self.path), _QB_MATCH, _FROM, _TO, persist_differences=False)
+        self.assertEqual(_tree_state(self.path), before)
 
 
 class TestCommand(_Companies):

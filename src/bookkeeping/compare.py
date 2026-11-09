@@ -88,7 +88,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import dataclasses
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -280,6 +282,7 @@ class ComparisonReport:
     matched_rows: list[dict] = field(default_factory=list)  # rows compared with no difference
     tb_totals: Optional[dict] = None  # parsed reference trial-balance totals
     view: Optional[str] = None  # the view compared, set only when it is not the company's default view
+    reference_digest: Optional[str] = None  # digest of the reference files, when they did not change during the compare
 
     def total_material(self) -> int:
         return len(self.material_diffs)
@@ -309,6 +312,7 @@ class ComparisonReport:
             "summary": _comparison_summary(self),
             "matched": list(self.matched_rows),
             **({"view": self.view} if self.view else {}),
+            **({"reference_digest": self.reference_digest} if self.reference_digest else {}),
         }
 
 
@@ -1479,11 +1483,24 @@ def compare_period(
     """Read the QuickBooks reports in the company currency; see ``_compare_period``.
 
     With ``persist_differences=False`` the saved dispositions are still read and merged, so the report is the same,
-    but differences.json is not written.
+    but differences.json is not written. ``reference_digest`` (see :func:`reference_digest`) is set when the
+    reference files were the same before and after the compare. A typed review sends it back.
     """
     from .currency import report_currency
+    before = _folder_digest_or_none(qb_folder)
     with report_currency(entity.currency):
-        return _compare_period(entity, qb_folder, from_date, to_date, view, persist_differences)
+        report = _compare_period(entity, qb_folder, from_date, to_date, view, persist_differences)
+    # The digest describes the compared bytes only when the files were the same before and after the compare.
+    if before is not None and before == _folder_digest_or_none(qb_folder):
+        report.reference_digest = before
+    return report
+
+
+def _folder_digest_or_none(qb_folder: Path) -> Optional[str]:
+    try:
+        return reference_digest(qb_folder)
+    except OSError:
+        return None
 
 
 def _compare_period(
@@ -2604,8 +2621,10 @@ REVIEW_REFUSAL_CODES = (
     "DIFFERENCE_CHANGED",         # an amount or the category differs from the current difference
     "ALREADY_ACCEPTED",           # a different review of the same difference and source is already accepted
     "DIFFERENCES_FILE_CHANGED",   # differences.json changed while the review compared; nothing was written
+    "REFERENCE_CHANGED",          # the reference files are not the files of the request's reference_digest
 )
-_REVIEW_FIELDS = frozenset({"schema_version", "period", "difference", "reviewer", "explanation", "reviewed_at"})
+_REVIEW_FIELDS = frozenset({"schema_version", "period", "reference_digest", "difference", "reviewer", "explanation",
+                            "reviewed_at"})
 _REVIEW_DIFFERENCE_FIELDS = ("grain", "account", "ours", "reference", "delta", "category")
 _REVIEW_KEYS = frozenset({"schema_version", "period", "reference_digest", "ours", "reference", "delta", "category",
                           "reviewer", "explanation", "reviewed_at"})
@@ -2633,10 +2652,32 @@ def reference_digest(qb_folder: Path) -> str:
     The folder path is not part of the digest, so a copy of the same files in another place has the same digest.
     """
     import hashlib
-    lines = []
-    for path in iter_export_files(Path(qb_folder)):
-        lines.append(json.dumps([path.name, hashlib.sha256(path.read_bytes()).hexdigest()]))
+    return _digest_of({path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in iter_export_files(Path(qb_folder))})
+
+
+def _digest_of(file_hashes: dict[str, str]) -> str:
+    import hashlib
+    lines = [json.dumps([name, file_hashes[name]]) for name in sorted(file_hashes)]
     return "sha256:" + hashlib.sha256(("\n".join(lines) + "\n").encode("utf-8")).hexdigest()
+
+
+def _snapshot_reference(qb_folder: Path, snapshot: Path) -> str:
+    """Copy each supported reference file into ``snapshot`` and return the digest of exactly the copied bytes.
+
+    Each file is read one time, as a stream: the same bytes are hashed and written to a private copy (mode 0600).
+    The original files are not changed. The compare then reads only the copy.
+    """
+    import hashlib
+    hashes: dict[str, str] = {}
+    for path in iter_export_files(Path(qb_folder)):
+        digest = hashlib.sha256()
+        fd = os.open(snapshot / path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with open(path, "rb") as source, os.fdopen(fd, "wb") as copy:
+            for chunk in iter(lambda: source.read(1 << 20), b""):
+                digest.update(chunk)
+                copy.write(chunk)
+        hashes[path.name] = digest.hexdigest()
+    return _digest_of(hashes)
 
 
 def _is_day(value: Any) -> bool:
@@ -2704,6 +2745,9 @@ def _parse_review_request(request: Any) -> dict:
     period = request.get("period")
     if not _is_period(period):
         raise invalid("period must be an object with exactly from and to, two YYYY-MM-DD days, from not after to.")
+    digest = request.get("reference_digest")
+    if not isinstance(digest, str) or not _DIGEST.match(digest):
+        raise invalid("reference_digest must be the sha256:<64 hex> value of the compare result that was reviewed.")
     difference = request.get("difference")
     if not isinstance(difference, dict) or set(difference) != set(_REVIEW_DIFFERENCE_FIELDS):
         raise invalid(f"difference must be an object with exactly {', '.join(_REVIEW_DIFFERENCE_FIELDS)}.")
@@ -2729,6 +2773,7 @@ def _parse_review_request(request: Any) -> dict:
         "grain": difference["grain"], "account": difference["account"], "category": difference["category"],
         **{name: Decimal(difference[name]) for name in ("ours", "reference", "delta")},
         "reviewer": request["reviewer"], "explanation": request["explanation"], "reviewed_at": reviewed_at,
+        "reference_digest": digest,
     }
 
 
@@ -2822,7 +2867,10 @@ def review_difference(entity_path: Path, qb_folder: Path, request: Any) -> dict:
     The engine compares ``request.period`` again, read-only, and finds the difference by grain and account. If
     ``ours``, ``reference``, ``delta`` or ``category`` differ from the request, it refuses (``DIFFERENCE_CHANGED``).
     It reads no clock and sets no reviewer: ``reviewer``, ``explanation`` and the optional ``reviewed_at`` come from
-    the caller. The review also binds ``reference_digest`` (see :func:`reference_digest`) of the reference files.
+    the caller. The request also binds ``reference_digest``: the caller takes it from the read-only compare result
+    that the person reviewed. The engine copies each reference file one time into a private snapshot, refuses
+    (``REFERENCE_CHANGED``) when the digest of the copied bytes is not the request's digest, and compares only the
+    snapshot. It removes the snapshot in every path and never changes the original files.
     The written record is the same for the same inputs: the record that a compare saves for that difference, with
     ``status`` ``accepted``, ``re_opened`` false, ``note`` the explanation, ``review`` and ``review_drift`` ``[]``.
 
@@ -2866,13 +2914,21 @@ def _review_locked(entity_path: Path, folder: Path, parsed: dict, key: str) -> d
     before = _read_differences_bytes(path)
     stored, rows = _load_differences_strict(path, before)
 
-    digest = reference_digest(folder)
-    report = compare_period(entity, folder.resolve(), parsed["from"], parsed["to"], persist_differences=False)
+    # The compare reads only a private snapshot of the reference files, so the digest describes the compared bytes.
+    snapshot = Path(tempfile.mkdtemp(prefix="books-reference-"))
+    try:
+        digest = _snapshot_reference(folder, snapshot)
+        if digest != parsed["reference_digest"]:
+            raise _ReviewRefusal("REFERENCE_CHANGED", "The reference files are not the files that were reviewed. "
+                                 "Compare again and review the new result.", reference_digest=digest)
+        report = compare_period(entity, snapshot, parsed["from"], parsed["to"], persist_differences=False)
+    finally:
+        shutil.rmtree(snapshot, ignore_errors=True)
     current = next((d for d in report.material_diffs + report.immaterial_diffs if d.key == key), None)
     if current is None:
         if report.errors:
             raise _ReviewRefusal("COMPARE_INCOMPLETE", "The compare reported errors, so the difference was not found.",
-                                 errors=list(report.errors))
+                                 errors=[error.replace(str(snapshot), str(folder)) for error in report.errors])
         raise _ReviewRefusal("DIFFERENCE_NOT_FOUND", "The compare of this period has no such difference.")
     changed = [name for name in ("ours", "reference", "delta") if parsed[name] != getattr(current, name)]
     if parsed["category"] != current.category:
