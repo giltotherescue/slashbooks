@@ -189,6 +189,18 @@ class RecordOpeningTests(unittest.TestCase):
         lock.write_text("unexpected data")
         self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_disposition_basis_changed")
         lock.write_bytes(b"")
+        another_file = self.entity / "staging" / ".books.lock"
+        another_file.touch()
+        self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_disposition_basis_changed")
+        another_file.unlink()
+        outside = Path(self._tmp.name) / "outside-lock"
+        lock.unlink()
+        lock.symlink_to(outside)
+        self.assertEqual(record_opening(self.entity, **options)["reason"], "opening_disposition_basis_changed")
+        self.assertFalse(outside.exists(), "a dangling lock link must not create an external file")
+        lock.unlink()
+        lock.touch()
+        self.assertEqual(workspace_digest(self.entity, ignore_empty_lock=True), digest)
         stage.write_text(json.dumps([*json.loads(staged), {"id": "unmapped"}]))
         malformed_digest = workspace_digest(self.entity, ignore_empty_lock=True)
         malformed_options = {**options, "disposition_basis": OpeningDispositionBasis(malformed_digest, policy, claims)}

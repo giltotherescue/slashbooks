@@ -382,6 +382,9 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                     "Pass --statement-id, or --account, --on and --amount for an amount a person enters.")
     typed = None if amount is None else _amount(amount)
     entity_path = Path(entity_path)
+    if disposition_basis is not None and (entity_path.is_symlink() or (entity_path / ".books.lock").is_symlink()):
+        return _not_eligible(statement_id, account, "opening_disposition_basis_changed",
+                             "The workspace changed. Review the opening against the current books.")
     with _entity_write_lock(entity_path, repair=False):
         if disposition_basis is not None:
             from .ledger.books_policy_check import workspace_digest
