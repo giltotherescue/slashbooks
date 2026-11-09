@@ -314,6 +314,13 @@ class RecordOpeningTests(unittest.TestCase):
         self.assertEqual(record["opening_balance"], "1000.00")
         sid = record["statement_id"]
 
+        from bookkeeping.ledger.books_policy_check import workspace_digest
+
+        before = workspace_digest(self.entity)
+        refused = record_opening(self.entity, sid, expected_entry_fingerprint="0" * 64)
+        self.assertEqual(refused["reason"], "opening_disposition_basis_required")
+        self.assertEqual(workspace_digest(self.entity), before)
+
         preview = record_opening(self.entity, sid, dry_run=True)
         self.assertEqual(preview["status"], "dry_run")
         self.assertEqual(preview["date"], "2026-01-01")

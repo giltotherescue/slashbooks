@@ -381,6 +381,9 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
     from .ledger.writer import render_ledger
     from .tieout import load_waiting, load_waiting_checked, presentation_sign
 
+    if expected_entry_fingerprint is not None and disposition_basis is None:
+        return _not_eligible(statement_id, account, "opening_disposition_basis_required",
+                             "A reviewed opening fingerprint requires its disposition basis.")
     if statement_id and (account or on):
         raise StatementOpeningError("choose_one_form", "Pass --statement-id, or --account with --on, not both.")
     if not statement_id and not (account and on and amount is not None):
