@@ -105,6 +105,103 @@ class AccrualImportTests(AccrualFixture):
         self.assertEqual(dict(self.store.load_entries()[-1].meta)["accrual-treatment"], "new_cash_event")
         self.assertEqual(import_transactions(self.entity, [bank_row()], "retry").skipped_duplicate, 1)
 
+    def test_new_cash_event_cannot_bypass_registered_receivable_in_any_queue_write(self):
+        from bookkeeping.cli import main
+        from bookkeeping.queue import propose_split
+
+        invoice = {"operation_id": "invoice", "id": "invoice", "kind": "receivable", "account": AR,
+                   "original_amount": "1000.00", "as_of": "2026-01-01",
+                   "origin": {"mode": "new", "source_id": "invoice-origin", "counter_account": INCOME},
+                   "evidence_ids": [self.eid]}
+        apply_item(self.entity, preview_item(self.entity, invoice))
+        for operation in ("confirm", "confirm-split", "correct", "confirm-group"):
+            with self.subTest(operation=operation):
+                identity = f"receipt-{operation}"
+                import_transactions(self.entity, [bank_row(identity, amount="400.00")], "intake-" + operation)
+                if operation == "confirm-split":
+                    propose_split(self.entity, identity, "Synthetic split", [f"{AR}=-250.00", f"{INCOME}=-150.00"])
+                else:
+                    propose(self.entity, identity, INCOME if operation == "correct" else AR, "Synthetic receipt")
+                args = ["queue", operation, "--entity", str(self.root), "--accrual-treatment", "new_cash_event"]
+                if operation != "confirm-group":
+                    args += ["--item", identity]
+                if operation in {"correct", "confirm-group"}:
+                    args += ["--category", AR]
+                def snapshot():
+                    return {file.relative_to(self.root): file.read_bytes() for file in self.root.rglob("*")
+                            if file.is_file() and file.name != ".books.lock"}
+
+                before = snapshot()
+                with redirect_stdout(StringIO()), redirect_stderr(StringIO()) as error:
+                    self.assertEqual(main(args), 1)
+                self.assertIn("registered control account", error.getvalue())
+                self.assertIn(AR, error.getvalue())
+                self.assertEqual(snapshot(), before)
+        self.assertEqual(self.balances()[AR], Decimal("1000.00"))
+
+    def test_cash_event_group_preflights_a_later_registered_schedule_before_the_first_write(self):
+        from bookkeeping.accrual.schedules import apply_schedule, preview_schedule
+        from bookkeeping.cli import main
+        from tests.test_accrual_schedules import PREPAID
+
+        schedule = self.schedule(service_start="2026-01-10", method="actual_day")
+        apply_schedule(self.entity, preview_schedule(self.entity, schedule))
+        rows = [bank_row("a-before-support", date="2026-01-05"),
+                bank_row("z-after-support", date="2026-01-15")]
+        import_transactions(self.entity, rows, "intake")
+        for row in rows:
+            propose(self.entity, row["id"], PREPAID, "Synthetic prepaid cash event")
+        before = self.store.content_digest(), self.store.load_audit_events()
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) as error:
+            self.assertEqual(main(["queue", "confirm-group", "--entity", str(self.root), "--category", PREPAID,
+                                  "--accrual-treatment", "new_cash_event"]), 1)
+        self.assertIn(PREPAID, error.getvalue())
+        self.assertEqual((self.store.content_digest(), self.store.load_audit_events()), before)
+        self.assertEqual({row["id"] for row in _load_pending_categorization(self.entity)}, {row["id"] for row in rows})
+
+    def test_cash_event_split_group_does_not_finish_recovery_before_later_refusal(self):
+        from unittest.mock import patch
+        from bookkeeping.accrual.schedules import apply_schedule, preview_schedule
+        from bookkeeping.queue import confirm_group, confirm_split, propose_split
+        from tests.test_accrual_schedules import PREPAID
+
+        schedule = self.schedule(service_start="2026-01-10", method="actual_day")
+        apply_schedule(self.entity, preview_schedule(self.entity, schedule))
+        recovered = bank_row("a-recovered", date="2026-01-05")
+        denied = bank_row("z-denied", date="2026-01-15")
+        import_transactions(self.entity, [recovered, denied], "intake")
+        for row in (recovered, denied):
+            propose_split(self.entity, row["id"], "Synthetic split", [f"{PREPAID}=50.00", f"{EXPENSE}=50.00"])
+
+        # Simulate interruption after the ledger commits but before the queue is finalized.
+        with patch("bookkeeping.ledger.staging.StagingStore.mark_seen", side_effect=OSError("interrupted")):
+            with self.assertRaisesRegex(OSError, "interrupted"):
+                confirm_split(self.entity, recovered["id"], "reviewed", accrual_treatment="new_cash_event")
+        self.assertTrue(self.store.source_exists(recovered["id"]))
+
+        def snapshot():
+            return {file.relative_to(self.root): file.read_bytes() for file in self.root.rglob("*")
+                    if file.is_file() and file.name != ".books.lock"}
+
+        before = snapshot()
+        with self.assertRaisesRegex(ValueError, "registered control account"):
+            confirm_group(self.entity, "Split transaction", "reviewed", accrual_treatment="new_cash_event")
+        self.assertEqual(snapshot(), before)
+        self.assertFalse(self.store.source_exists(denied["id"]))
+        result = confirm_split(self.entity, recovered["id"], "reviewed", accrual_treatment="new_cash_event")
+        self.assertEqual(result["status"], "confirmed")
+
+    def test_new_cash_event_can_post_to_an_unregistered_balance_account(self):
+        from bookkeeping.cli import main
+
+        row = bank_row(amount="400.00")
+        import_transactions(self.entity, [row], "intake")
+        propose(self.entity, row["id"], AR, "Synthetic ledger-only receivable")
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) as error:
+            self.assertEqual(main(["queue", "confirm", "--entity", str(self.root), "--item", row["id"],
+                                  "--accrual-treatment", "new_cash_event"]), 0, error.getvalue())
+        self.assertEqual(self.balances()[AR], Decimal("-400.00"))
+
     def test_bank_intake_settlement_uses_staged_source_once_without_revenue(self):
         self.post("opening", "2025-12-31", [(AR, "1000"), ("Equity:Opening-Balances", "-1000")])
         item = {"operation_id": "opening-item", "id": "invoice", "kind": "receivable", "account": AR, "original_amount": "1000.00",
