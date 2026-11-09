@@ -17,7 +17,8 @@ import time
 
 from .ledger.projections import render_store_ledger
 from .ledger import importer
-from .ledger.store import LedgerStore, SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, _DDL
+from .ledger.store import (LedgerStore, SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, FINANCIAL_KIND_COLUMN,
+                           _DDL, parse_catalog_schema)
 from .entity import resolve_basis
 from .ledger.validator import validate
 from .remote_contract import ContractError, relative_path
@@ -281,13 +282,18 @@ class _ReadOnlyStore(LedgerStore):
 def _schema(sql):
     with closing(sqlite3.connect(":memory:")) as expected:
         expected.executescript(_DDL)
-        version = sql.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-        require(version is not None and version[0] in {str(SCHEMA_VERSION), str(ACCRUAL_SCHEMA_VERSION), "3"}, "unsupported_schema")
-        if version[0] in {str(ACCRUAL_SCHEMA_VERSION), "3"}:
+        record = sql.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        try:
+            version, typed = parse_catalog_schema(str(record[0]) if record else "")
+        except ValueError:
+            raise Rejected("unsupported_schema") from None
+        if typed:
+            expected.execute(f"ALTER TABLE accounts ADD COLUMN {FINANCIAL_KIND_COLUMN}")
+        if version in {ACCRUAL_SCHEMA_VERSION, 3}:
             from .accrual.store import TABLES, table_ddl
             for table in TABLES:
                 expected.execute(table_ddl(table))
-        if version[0] == "3":
+        if version == 3:
             from .business import BUSINESS_TABLES
             for table in BUSINESS_TABLES:
                 expected.execute(f"CREATE TABLE business_{table} (id TEXT PRIMARY KEY, version INTEGER NOT NULL CHECK(version=1), revision INTEGER NOT NULL CHECK(revision>0), payload_json TEXT NOT NULL)")
@@ -379,6 +385,7 @@ def _ledger(files, report, references, blockers):
                 _carried_accrual_facts(config, version, row[0] if row else None, ledger_known=True)
             require(store.get_meta("canonical") == "true", "noncanonical_ledger")
             require(store.get_meta("account_catalog") == "sqlite", "external_catalog_requires_review")
+            store.load_financial_kinds(sql)
             report["checks"]["canonical_schema"] = True
             require(not store.verify_audit_chain(), "audit_chain_invalid")
             require(not sql.execute("SELECT 1 FROM entries LIMIT 1").fetchone() or

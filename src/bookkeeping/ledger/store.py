@@ -28,6 +28,40 @@ SCHEMA_VERSION = 1
 ACCRUAL_SCHEMA_VERSION = 2
 BUSINESS_SCHEMA_VERSION = 3
 SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION})
+FINANCIAL_KINDS = ("bank", "credit_card", "cash", "other")
+_FINANCIAL_KIND_SCHEMA_SUFFIX = "+financial-kind"
+FINANCIAL_KIND_COLUMN = (
+    "financial_kind TEXT CHECK(financial_kind IN ('bank', 'credit_card', 'cash', 'other'))"
+)
+
+
+def parse_catalog_schema(value: str) -> tuple[int, bool]:
+    """Parse the disk format and return the ledger capability version and catalog layout.
+
+    The disk grammar is exactly 1, 2, 3, or one of those with +financial-kind.
+    Older engines reject the tagged format before they can change the catalog.
+    The base number still controls the cash, accrual and business tables.
+    """
+    version, tag, extension = value.partition("+")
+    if version not in {str(v) for v in SUPPORTED_SCHEMA_VERSIONS} or (tag and extension != "financial-kind"):
+        raise ValueError("Unsupported ledger schema; use a compatible engine and do not downgrade.")
+    return int(version), bool(tag)
+
+
+def validate_financial_kind(account: str, kind: str) -> None:
+    """Check the explicit kind against the accounting root, independent of its label."""
+    root = account.partition(":")[0]
+    if kind not in FINANCIAL_KINDS:
+        raise ValueError("Financial kind must be bank, credit_card, cash or other.")
+    allowed_roots = {
+        "bank": ("Assets",),
+        "cash": ("Assets",),
+        "credit_card": ("Liabilities",),
+        "other": ("Assets", "Liabilities"),
+    }
+    if root not in allowed_roots[kind]:
+        raise ValueError("Financial kind does not match the account's accounting type.")
+
 STORE_FILENAME = "ledger.sqlite"
 
 
@@ -189,12 +223,10 @@ class LedgerStore:
         if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").fetchone():
             return None
         row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
-        try:
-            version = int(row[0]) if row else None
-        except (TypeError, ValueError):
-            version = None
-        if version not in SUPPORTED_SCHEMA_VERSIONS:
-            raise ValueError("Unsupported ledger schema; use a compatible engine and do not downgrade.")
+        version, typed = parse_catalog_schema(str(row[0]) if row else "")
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(accounts)")}
+        if typed != ("financial_kind" in columns):
+            raise ValueError("Account catalog layout does not match its ledger schema.")
         if version in {ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION}:
             from ..accrual.store import RECORD_VERSION, TABLES
             for table in TABLES:
@@ -346,6 +378,8 @@ class LedgerStore:
             with self.transaction() as tx:
                 self.set_meta(key, value, tx)
             return
+        if key == "schema_version" and self.has_financial_kinds(conn):
+            value = value.removesuffix(_FINANCIAL_KIND_SCHEMA_SUFFIX) + _FINANCIAL_KIND_SCHEMA_SUFFIX
         conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
 
     def get_meta(self, key: str) -> str | None:
@@ -370,6 +404,44 @@ class LedgerStore:
                     item.date.isoformat(),
                 ),
             )
+
+    def has_financial_kinds(self, conn: sqlite3.Connection) -> bool:
+        row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        return row is not None and parse_catalog_schema(str(row[0]))[1]
+
+    def load_financial_kinds(self, conn: sqlite3.Connection | None = None) -> dict[str, str]:
+        """Read only explicit classifications. Missing keys are unclassified."""
+        if conn is None:
+            with self.connection() as tx:
+                return self.load_financial_kinds(tx)
+        if not self.has_financial_kinds(conn):
+            return {}
+        kinds = dict(conn.execute("SELECT name, financial_kind FROM accounts WHERE financial_kind IS NOT NULL"))
+        for account, kind in kinds.items():
+            validate_financial_kind(account, kind)
+        return kinds
+
+    def assign_financial_kinds(self, kinds: dict[str, str], conn: sqlite3.Connection) -> None:
+        """Assign previously unclassified accounts in a caller's audited transaction."""
+        if not kinds:
+            return
+        current = self.load_financial_kinds(conn)
+        for account, kind in kinds.items():
+            validate_financial_kind(account, kind)
+            if account in current and current[account] != kind:
+                raise ValueError(f"Account '{account}' already has a different financial kind.")
+        if not self.has_financial_kinds(conn):
+            version = self.schema_version(conn)
+            if version is None:
+                raise ValueError("Financial kinds require an initialized account catalog.")
+            conn.execute(f"ALTER TABLE accounts ADD COLUMN {FINANCIAL_KIND_COLUMN}")
+            self.set_meta("schema_version", str(version) + _FINANCIAL_KIND_SCHEMA_SUFFIX, conn)
+        for account, kind in kinds.items():
+            if current.get(account) == kind:
+                continue
+            result = conn.execute("UPDATE accounts SET financial_kind=? WHERE name=?", (kind, account))
+            if result.rowcount != 1:
+                raise ValueError(f"Account '{account}' is not in the account catalog.")
 
     def book_currency(self, conn: sqlite3.Connection) -> str:
         """The company currency recorded in meta (absent means USD, as before)."""
@@ -515,6 +587,8 @@ class LedgerStore:
             "SELECT id, date, flag, payee, narration, tags_json, links_json, metadata_json, source_id"
             + (", " + optional_columns if optional_columns else "") + " FROM entries ORDER BY id"
         )
+        if self.has_financial_kinds(conn):
+            queries["accounts"] = "SELECT name, currency, open_date, financial_kind FROM accounts ORDER BY name"
         for table, sql in queries.items():
             payload[table] = [dict(row) for row in conn.execute(sql).fetchall()]
         if self.schema_version(conn) in {ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION}:
