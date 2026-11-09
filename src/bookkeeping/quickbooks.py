@@ -1680,6 +1680,86 @@ OPENING_OVERLAP_ERROR = (
 )
 
 
+def _exact_reversal_targets(entries) -> set[int]:
+    """``id()`` of each entry that one other entry reverses exactly.
+
+    An entry counts as reversed only when all of these hold (it fails closed otherwise, so the entry stays
+    active): the ``reverses`` ID names exactly one other entry, under either spelling of a feed ID (see
+    ``ledger.books_policy_check``); that original is not itself a reversal and no other entry claims it; the
+    reversal has the same date and the same postings with every amount negated, and has postings.
+    """
+    from collections import Counter
+
+    from .source_ids import source_id_variants
+
+    by_spelling: dict[str, set[int]] = {}
+    for index, entry in enumerate(entries):
+        for spelling in source_id_variants(entry.source_id) if entry.source_id else ():
+            by_spelling.setdefault(spelling, set()).add(index)
+    claims: dict[int, list[int]] = {}
+    for index, entry in enumerate(entries):
+        target = dict(entry.meta).get("reverses")
+        if not target:
+            continue
+        found = set().union(*(by_spelling.get(spelling, set()) for spelling in source_id_variants(str(target))))
+        # Unique across every entry with that ID, the claimant included; then the target must not be the claimant.
+        if len(found) == 1 and index not in found:
+            claims.setdefault(next(iter(found)), []).append(index)
+    reversed_originals: set[int] = set()
+    for original_index, claimers in claims.items():
+        original = entries[original_index]
+        if len(claimers) != 1 or dict(original.meta).get("reverses") or not original.postings:
+            continue
+        reversal = entries[claimers[0]]
+        if original.date == reversal.date and Counter((p.account, p.amount, p.currency) for p in original.postings) \
+                == Counter((p.account, -p.amount, p.currency) for p in reversal.postings):
+            reversed_originals.add(id(original))
+    return reversed_originals
+
+
+def _active_openings(entries, reversed_ids, sources=("quickbooks-opening",)) -> list:
+    return [entry for entry in entries if dict(entry.meta).get("import-source") in sources
+            and id(entry) not in reversed_ids]
+
+
+# Opening entries that a statement opening must not stack on (``statement-opening`` has its own replace rules).
+OTHER_OPENING_SOURCES = ("quickbooks-opening", "accrual-opening", "accrual-tracking-opening")
+# Opening entries that a QuickBooks opening must not stack on, whatever their date.
+NON_QUICKBOOKS_OPENING_SOURCES = ("statement-opening", "accrual-opening", "accrual-tracking-opening")
+
+
+def active_opening_for_account(entity_path, account: str, currency: str, sources, entries=None) -> dict | None:
+    """The active opening of ``account`` in ``currency`` that one of ``sources`` posted, or ``None``.
+
+    One rule for both directions (statement opening vs QuickBooks or accrual opening). An opening is a
+    committed entry whose ``import-source`` is in ``sources`` and that has a posting to ``account`` in
+    ``currency``. The presence of the posting counts, so a posting of 0.00 is an opening. The rule is per
+    account: another account's opening, and the Equity side of an opening, are not conflicts. An opening
+    that an exact reversal cancelled (see ``_exact_reversal_targets``) is not active, and a reversal entry
+    is not an opening.
+    """
+    if entries is None:
+        from .ledger.store import LedgerStore, default_store_path
+
+        store = LedgerStore(default_store_path(entity_path))
+        entries = store.load_entries() if store.path.exists() else []
+    for entry in _active_openings(entries, _exact_reversal_targets(entries), sources):
+        if "reverses" in dict(entry.meta):
+            continue
+        lines = [p for p in entry.postings if p.account == account and p.currency == currency]
+        if lines:
+            amount = sum((p.amount for p in lines), Decimal("0"))
+            return {"source_id": entry.source_id, "date": entry.date.isoformat(),
+                    "import_source": dict(entry.meta)["import-source"],
+                    "amount": format(amount.quantize(Decimal("0.01")), "f")}
+    return None
+
+
+def account_opening_from_other_source(entity_path, account: str, currency: str) -> dict | None:
+    """The QuickBooks or accrual opening of ``account`` that a statement opening would stack on."""
+    return active_opening_for_account(entity_path, account, currency, OTHER_OPENING_SOURCES)
+
+
 def check_opening_overlap(entity, cutover: date, proposed_postings) -> tuple[str, str | None]:
     """Compare the ledger with a proposed QuickBooks opening.
 
@@ -1693,24 +1773,25 @@ def check_opening_overlap(entity, cutover: date, proposed_postings) -> tuple[str
 
     store = LedgerStore(default_store_path(entity.path))
     entries = store.load_entries() if store.path.exists() else []
-    originals = {entry.source_id: entry for entry in entries if entry.source_id}
-    reversed_ids = set()
-    for entry in entries:
-        original_id = dict(entry.meta).get("reverses")
-        original = originals.get(original_id)
-        if original is not None and original.date == entry.date and sorted(
-                (p.account, -p.amount, p.currency) for p in original.postings) == sorted(
-                (p.account, p.amount, p.currency) for p in entry.postings):
-            reversed_ids.add(original_id)
-    active = [entry for entry in entries if dict(entry.meta).get("import-source") == "quickbooks-opening"
-              and entry.source_id not in reversed_ids]
+    reversed_ids = _exact_reversal_targets(entries)
+    active = _active_openings(entries, reversed_ids)
     if active:
         expected = sorted((p["account"], Decimal(p["amount"]), p["currency"]) for p in proposed_postings)
         actual = sorted((p.account, p.amount, p.currency) for entry in active for p in entry.postings)
         if actual != expected or any(entry.date != cutover for entry in active):
             return "conflict", OPENING_DIFFERS_ERROR
         return "same", None
-    if any(entry.date <= cutover and entry.source_id not in reversed_ids for entry in entries):
+    for posting in proposed_postings:
+        # A statement or accrual opening of the same account counts on any date, also after the cutover.
+        if not str(posting["account"]).startswith(("Assets:", "Liabilities:")):
+            continue
+        found = active_opening_for_account(entity.path, posting["account"], posting["currency"],
+                                           NON_QUICKBOOKS_OPENING_SOURCES, entries)
+        if found is not None:
+            return "conflict", (f"{posting['account']} already has an opening balance dated {found['date']} from "
+                                f"{found['import_source']}; a QuickBooks opening would count the balance twice. "
+                                "Use the explicit correction/adoption workflow")
+    if any(entry.date <= cutover and id(entry) not in reversed_ids for entry in entries):
         return "conflict", OPENING_OVERLAP_ERROR
     return "clear", None
 
