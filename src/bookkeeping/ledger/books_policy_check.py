@@ -226,7 +226,8 @@ def parse_request(document: Any) -> CheckRequest:
         schema_version = REQUEST_SCHEMA_VERSION  # the released test, unchanged
     else:
         raise _invalid(f"the check request schema_version must be {FULL_ENTRY_REQUEST_SCHEMA_VERSION} "
-                       f"(or {REQUEST_SCHEMA_VERSION}, the weaker released version)")
+                       f"(or {REQUEST_SCHEMA_VERSION}, the weaker released version), or "
+                       f"{PRIOR_DAY_REQUEST_SCHEMA_VERSION} for the {PRIOR_DAY_OPERATION} operation only")
     if schema_version != REQUEST_SCHEMA_VERSION:
         try:
             json.dumps(document, allow_nan=False)

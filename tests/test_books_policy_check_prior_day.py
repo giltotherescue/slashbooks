@@ -288,6 +288,11 @@ class PriorDayOpeningTests(unittest.TestCase):
         self.assert_invalid(self.v3([dict(good, postings=[])]), "exactly the fields")
         self.assert_invalid(self.v3([dict(good, entry_date="2026-06-30")]), "exactly the fields")
         self.assert_invalid(dict(self.v3(), scope=[CHECKING, float("nan")]), "non-finite")
+        for version in (0, 4, "3", True, 3.0, None):
+            with self.subTest(version=version):
+                self.assert_invalid(dict(self.v3(), schema_version=version),
+                                    "must be 2 (or 1, the weaker released version), or 3 for the "
+                                    "accrual_opening_prior_day operation only")
 
     def test_versions_1_and_2_do_not_read_the_prior_day_operation(self) -> None:
         row = self.row(CHECKING)
