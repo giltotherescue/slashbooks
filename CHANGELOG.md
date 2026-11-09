@@ -21,6 +21,38 @@
   change. `python -I -m bookkeeping.opening_presentation show --request R.json
   --entity DIR` does the same check and reads the financial kinds read-only.
 
+- Add `books compare review-diff` and `review_difference()`, a typed review of
+  one QuickBooks comparison difference (request version 1). The request binds
+  the period and the exact difference (grain, account, ours, reference, delta
+  and category), the reviewer, the explanation and an optional `reviewed_at`.
+  The engine checks the request before it does anything that can write. Under
+  the company lock, it compares the period again, read-only, and accepts only
+  when the difference is the same. Otherwise it refuses with a typed `code`,
+  for example `DIFFERENCE_CHANGED`, `DIFFERENCE_NOT_FOUND`,
+  `DIFFERENCES_FILE_CORRUPT`, `ALREADY_ACCEPTED` or `DIFFERENCES_FILE_CHANGED`,
+  and writes nothing. No earlier saved compare is necessary: the review writes
+  one row of `differences.json` (it replaces the row, or it appends the row and
+  creates the file when necessary), and every other row keeps its bytes. A
+  saved file that is not in the exact form that the engine writes is refused,
+  so no field is lost. The request also binds `reference_digest`, a digest of
+  the reference files that `books compare period` now returns. The compare
+  reads each reference file one time into a private snapshot and compares only
+  that snapshot, so its digest describes exactly the compared bytes; paths in
+  its output still name the original folder. The review
+  copies each reference file one time into a private snapshot, refuses with
+  `REFERENCE_CHANGED` when the digest of the copy is different (or
+  `REFERENCE_UNAVAILABLE` when a reference file cannot be read), and compares
+  only the copy, so the record never mixes amounts and a digest of different
+  files. The engine reads no clock and sets no reviewer, so the
+  same inputs write the same bytes. An exact retry returns the same result and
+  writes nothing. A successful review clears `re_opened`. A later compare keeps
+  the review and lists in `review_drift` the reviewed fields that changed,
+  including other reference files and changes that are not material.
+  `books compare period` (when it saves), `categorize-diff` and `accept-diff`
+  now also take the company write lock, without the currency repair, as
+  before. Their output does not change, and rows
+  without a typed review keep their released shape. See
+  [docs/quickbooks-sync.md](docs/quickbooks-sync.md).
 - `books qb sync-import` now shows which QuickBooks accounts need a reviewed
   financial kind. Each active Assets or Liabilities account in the result's
   `accounts` has `financial_kind`: `{required, kind, allowed}`. `required` is
