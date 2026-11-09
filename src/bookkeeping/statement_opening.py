@@ -151,8 +151,16 @@ def before_opening_refusal(entity_path: Path | str, account: str, days: list[str
     }
 
 
-def recorded_opening(entity_path: Path | str, source_id: str, account: str) -> JsonObject | None:
-    """The committed opening entry ``source_id`` as facts a host shows directly, with no financial math.
+def recorded_opening(entity_path: Path | str, found: JsonObject, account: str) -> tuple[JsonObject | None, str | None]:
+    """The committed opening entry that ``found`` selected, as facts a host shows directly, with no financial math.
+
+    ``found`` is the live opening that the caller selected (``source_id``, ``date`` and ``amount`` in the ledger
+    sign, and ``import_source`` for another source). The entry is bound to those facts: it must be the one
+    committed opening entry that matches the ID, the day and the ledger amount, that is not a reversal and
+    that has postings to ``account`` in one currency. The answer fails closed with ``(None, reason)`` and
+    never takes a first match. The reasons are ``entry_not_found``, ``ambiguous_entry`` (two entries match),
+    ``amount_differs`` (the entry does not hold the selected amount) and ``mixed_currency`` (the account
+    lines are in more than one currency, so no single amount exists).
 
     ``amount`` is the presentation amount of ``account`` (money held for a bank account, money owed for a card
     or loan), in ``currency``. ``entry`` and ``entry_fingerprint`` are the serialized entry of
@@ -164,26 +172,43 @@ def recorded_opening(entity_path: Path | str, source_id: str, account: str) -> J
     from .tieout import presentation_sign
 
     store = LedgerStore(default_store_path(Path(entity_path)))
-    found = next((e for e in store.load_entries() if e.source_id == source_id), None) if store.path.exists() else None
-    if found is None:
-        return None
-    lines = [p for p in found.postings if p.account == account]
-    if not lines:
-        return None
-    meta = dict(found.meta)
-    total = sum((p.amount for p in lines), Decimal("0")) * presentation_sign(account)
-    reviewed = reviewed_entry(found)
-    return {"date": found.date.isoformat(), "account": account,
-            "amount": format(total.quantize(Decimal("0.01")), "f"), "currency": lines[0].currency,
+    entries = store.load_entries() if store.path.exists() else []
+    wanted_source = found.get("import_source", IMPORT_SOURCE)
+    matches = [e for e in entries
+               if e.source_id == found["source_id"] and e.date.isoformat() == found["date"]
+               and "reverses" not in dict(e.meta) and dict(e.meta).get("import-source") == wanted_source
+               and any(p.account == account for p in e.postings)]
+    if not matches:
+        return None, "entry_not_found"
+    if len(matches) > 1:
+        return None, "ambiguous_entry"
+    entry = matches[0]
+    lines = [p for p in entry.postings if p.account == account]
+    currencies = {p.currency for p in lines}
+    if len(currencies) != 1:
+        return None, "mixed_currency"
+    ledger_total = sum((p.amount for p in lines), Decimal("0")).quantize(Decimal("0.01"))
+    if format(ledger_total, "f") != found["amount"]:
+        return None, "amount_differs"
+    meta = dict(entry.meta)
+    reviewed = reviewed_entry(entry)
+    return {"date": entry.date.isoformat(), "account": account,
+            "amount": format((ledger_total * presentation_sign(account)).quantize(Decimal("0.01")), "f"),
+            "currency": next(iter(currencies)),
             "import_source": meta.get("import-source"), "opening_source": meta.get("opening-source"),
-            "source_id": found.source_id, "statement_id": meta.get("statement-id"),
-            "entry_fingerprint": reviewed["proposed_entry_fingerprint"], "entry": reviewed["proposed_entry"]}
+            "source_id": entry.source_id, "statement_id": meta.get("statement-id"),
+            "entry_fingerprint": reviewed["proposed_entry_fingerprint"], "entry": reviewed["proposed_entry"]}, None
 
 
 def _recorded_facts(entity_path: Path, account: str, found: JsonObject, start: date, presented: Decimal,
                     source: str) -> JsonObject:
-    """``recorded_opening`` (the committed entry) and the candidate fields, kept apart, for an answer."""
-    return {"recorded_opening": recorded_opening(entity_path, found["source_id"], account),
+    """``recorded_opening`` (the committed entry) and the candidate fields, kept apart, for an answer.
+
+    When the entry cannot be bound exactly, ``recorded_opening`` is left out and ``recorded_opening_unavailable``
+    holds the reason (see :func:`recorded_opening`).
+    """
+    facts, reason = recorded_opening(entity_path, found, account)
+    return {**({"recorded_opening": facts} if facts is not None else {"recorded_opening_unavailable": reason}),
             "candidate_date": start.isoformat(), "candidate_amount": format(presented, "f"),
             "candidate_source": source, **({"printed_amount": format(presented, "f")} if source == "printed" else {})}
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+import unittest.mock
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -124,6 +125,67 @@ class RecordedOpeningFactsTests(unittest.TestCase):
         self.assertEqual(done["status"], "recorded")
         self.assertNotIn("recorded_opening", done)
         self.assertEqual(self.checking_total(), Decimal("140.00"))
+
+    def qb_style(self, source_id, day, amount, *, extra=(), account=CHECKING, import_source="quickbooks-opening"):
+        equity = "Equity:Opening-Balances"
+        postings = [Posting(account, Decimal(amount), "USD"), Posting(equity, -Decimal(amount), "USD"), *extra]
+        return Entry(date=day, narration="Synthetic opening",
+                     meta=(("source-id", source_id), ("import-source", import_source)), postings=tuple(postings))
+
+    def reversal(self, original, target_spelling):
+        meta = tuple((k, v) for k, v in original.meta if k != "source-id") + (("reverses", target_spelling),)
+        return Entry(date=original.date, narration="Reversal", meta=meta,
+                     postings=tuple(Posting(p.account, -p.amount, p.currency) for p in original.postings))
+
+    def test_an_ordinary_entry_with_an_alias_of_the_source_id_never_supplies_the_facts(self):
+        # The ordinary entry is first in the ledger (earlier day) and spells the ID as the alias.
+        ordinary = Entry(date=date(2025, 12, 1), narration="Synthetic ordinary entry",
+                         meta=(("source-id", "banksync:shared"),),
+                         postings=(Posting("Assets:Bank:Savings", Decimal("5.00"), "USD"),
+                                   Posting("Expenses:Misc", Decimal("-5.00"), "USD")))
+        opening = self.qb_style("shared", date(2026, 1, 1), "100.00")
+        self.write_entries([opening, ordinary], opens=[Open(date=date(2025, 1, 1), account="Assets:Bank:Savings"),
+                                                       Open(date=date(2025, 1, 1), account="Expenses:Misc"),
+                                                       Open(date=date(2026, 1, 1), account="Equity:Opening-Balances")])
+        answer = record_opening(self.entity, account=CHECKING, on="2026-01-15", amount="140.00")
+        self.assertEqual(answer["reason"], "opening_exists_other_source")
+        self.assert_facts(answer, amount="100.00", day="2026-01-01", import_source="quickbooks-opening")
+        self.assertEqual(answer["recorded_opening"]["source_id"], "shared")
+
+    def test_alias_spelled_openings_with_one_reversed_report_the_active_original(self):
+        reversed_one = self.qb_style("banksync:dup", date(2026, 1, 1), "50.00")
+        active = self.qb_style("other-open", date(2026, 1, 1), "70.00")
+        self.write_entries([reversed_one, self.reversal(reversed_one, "dup"), active],
+                           opens=[Open(date=date(2026, 1, 1), account="Equity:Opening-Balances")])
+        answer = record_opening(self.entity, account=CHECKING, on="2026-01-15", amount="140.00")
+        self.assertEqual(answer["reason"], "opening_exists_other_source")
+        self.assert_facts(answer, amount="70.00", day="2026-01-01", import_source="quickbooks-opening")
+        self.assertEqual(answer["recorded_opening"]["source_id"], "other-open")
+
+    def test_two_entries_that_could_be_the_selected_opening_fail_closed(self):
+        from bookkeeping import statement_opening as so
+        one = self.qb_style("banksync:twin", date(2026, 1, 1), "50.00")
+        self.write_entries([one], opens=[Open(date=date(2026, 1, 1), account="Equity:Opening-Balances")])
+        found = {"source_id": "banksync:twin", "date": "2026-01-01", "amount": "50.00",
+                 "import_source": "quickbooks-opening"}
+        self.assertIsNone(so.recorded_opening(self.entity, found, CHECKING)[1])
+        self.assertEqual(so.recorded_opening(self.entity, {**found, "amount": "51.00"}, CHECKING),
+                         (None, "amount_differs"))
+        self.assertEqual(so.recorded_opening(self.entity, {**found, "source_id": "nope"}, CHECKING),
+                         (None, "entry_not_found"))
+        with unittest.mock.patch.object(LedgerStore, "load_entries",
+                                        lambda self_, *a, **k: [one, one]):
+            self.assertEqual(so.recorded_opening(self.entity, found, CHECKING), (None, "ambiguous_entry"))
+
+    def test_an_opening_with_lines_in_two_currencies_gives_no_summed_amount(self):
+        mixed = self.qb_style("mixed", date(2026, 1, 1), "100.00",
+                              extra=(Posting(CHECKING, Decimal("50.00"), "EUR"),
+                                     Posting("Equity:Opening-Balances", Decimal("-50.00"), "EUR")))
+        self.write_entries([mixed], opens=[Open(date=date(2026, 1, 1), account="Equity:Opening-Balances")])
+        answer = record_opening(self.entity, account=CHECKING, on="2026-01-15", amount="140.00")
+        self.assertEqual(answer["reason"], "opening_exists_other_source")
+        self.assertNotIn("recorded_opening", answer)
+        self.assertEqual(answer["recorded_opening_unavailable"], "mixed_currency")
 
     def test_a_quickbooks_opening_is_the_recorded_source(self):
         self.assertTrue(self.qb_opening()["applied"])
