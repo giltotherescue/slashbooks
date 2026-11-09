@@ -1680,6 +1680,48 @@ OPENING_OVERLAP_ERROR = (
 )
 
 
+def _exactly_reversed_ids(entries) -> set:
+    """Source IDs of entries that a later entry reverses exactly (same day, opposite postings)."""
+    originals = {entry.source_id: entry for entry in entries if entry.source_id}
+    reversed_ids = set()
+    for entry in entries:
+        original_id = dict(entry.meta).get("reverses")
+        original = originals.get(original_id)
+        if original is not None and original.date == entry.date and sorted(
+                (p.account, -p.amount, p.currency) for p in original.postings) == sorted(
+                (p.account, p.amount, p.currency) for p in entry.postings):
+            reversed_ids.add(original_id)
+    return reversed_ids
+
+
+def _active_openings(entries, reversed_ids, sources=("quickbooks-opening",)) -> list:
+    return [entry for entry in entries if dict(entry.meta).get("import-source") in sources
+            and entry.source_id not in reversed_ids]
+
+
+# Opening entries that a statement opening must not stack on (``statement-opening`` has its own replace rules).
+OTHER_OPENING_SOURCES = ("quickbooks-opening", "accrual-opening", "accrual-tracking-opening")
+
+
+def account_opening_from_other_source(entity_path, account: str) -> dict | None:
+    """The active opening of ``account`` that another source posted, or ``None``.
+
+    The rule is per account, so an opening for a different account is not a conflict. An opening that
+    an exact reversal cancelled is not active. Used by ``books statement record-opening``.
+    """
+    from .ledger.store import LedgerStore, default_store_path
+
+    store = LedgerStore(default_store_path(entity_path))
+    entries = store.load_entries() if store.path.exists() else []
+    for entry in _active_openings(entries, _exactly_reversed_ids(entries), OTHER_OPENING_SOURCES):
+        amount = sum((p.amount for p in entry.postings if p.account == account), Decimal("0"))
+        if amount:
+            return {"source_id": entry.source_id, "date": entry.date.isoformat(),
+                    "import_source": dict(entry.meta)["import-source"],
+                    "amount": format(amount.quantize(Decimal("0.01")), "f")}
+    return None
+
+
 def check_opening_overlap(entity, cutover: date, proposed_postings) -> tuple[str, str | None]:
     """Compare the ledger with a proposed QuickBooks opening.
 
@@ -1693,17 +1735,8 @@ def check_opening_overlap(entity, cutover: date, proposed_postings) -> tuple[str
 
     store = LedgerStore(default_store_path(entity.path))
     entries = store.load_entries() if store.path.exists() else []
-    originals = {entry.source_id: entry for entry in entries if entry.source_id}
-    reversed_ids = set()
-    for entry in entries:
-        original_id = dict(entry.meta).get("reverses")
-        original = originals.get(original_id)
-        if original is not None and original.date == entry.date and sorted(
-                (p.account, -p.amount, p.currency) for p in original.postings) == sorted(
-                (p.account, p.amount, p.currency) for p in entry.postings):
-            reversed_ids.add(original_id)
-    active = [entry for entry in entries if dict(entry.meta).get("import-source") == "quickbooks-opening"
-              and entry.source_id not in reversed_ids]
+    reversed_ids = _exactly_reversed_ids(entries)
+    active = _active_openings(entries, reversed_ids)
     if active:
         expected = sorted((p["account"], Decimal(p["amount"]), p["currency"]) for p in proposed_postings)
         actual = sorted((p.account, p.amount, p.currency) for entry in active for p in entry.postings)

@@ -24,7 +24,8 @@ The entry is recorded only when it is the account's opening:
   person names the account and the day;
 * no statement for the account starts earlier;
 * nothing in the books for the account is dated before that day;
-* the account has no opening entry yet.
+* the account has no opening entry yet, from this module or from another source (QuickBooks or accrual
+  opening); the check is per account, so another account's opening is not a conflict.
 
 Anything else returns ``not_eligible`` with the reason, and writes nothing.
 """
@@ -286,6 +287,15 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
         base_id = (f"{IMPORT_SOURCE}-{statement_id}" if statement_id else
                    f"{IMPORT_SOURCE}-{start.isoformat()}-{hashlib.sha256(account.encode()).hexdigest()[:12]}")
         replaced = None
+        from .quickbooks import account_opening_from_other_source
+        other = account_opening_from_other_source(entity_path, account)
+        if other is not None:
+            return _not_eligible(ref, account, "opening_exists_other_source",
+                                 f"{account} already has an opening balance of {other['amount']} dated {other['date']} "
+                                 f"from {other['import_source']}. A statement opening on top of it would count the "
+                                 "balance twice, so none was recorded. The rows of the statement that are dated on or "
+                                 "after that day import as usual. To use the statement opening instead, reverse the "
+                                 "other opening first.", opening_entry=other)
         if facts["openings"]:
             found = facts["openings"][0]
             if found["date"] == start.isoformat() and found["amount"] == format(amount_ledger, "f") \
