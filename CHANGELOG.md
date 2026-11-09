@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `books qb sync-import` now shows which QuickBooks accounts need a reviewed
+  financial kind. Each active Assets or Liabilities account in the result's
+  `accounts` has `financial_kind`: `{required, kind, allowed}`. `required` is
+  true when the account type does not decide the kind. `allowed` lists only the
+  kinds that the chart accepts for that account type. The saved snapshot
+  evidence (`manifest.json` and `accounts.qbo.json`) does not have this field
+  and does not change. A version 2 chart choice that leaves out reviewed kinds
+  now stops with `FinancialKindReviewRequired` (a `ValueError`). Its
+  `account_ids` lists every account that needs a review, not only the first
+  one. Read `account_ids`, not the message text.
 - Add request version 2 to the trusted books start check
   (`books_policy_check`). A version 2 opening authorization binds the complete
   opening entry with `entry_fingerprint`: every entry field (narration, payee,
