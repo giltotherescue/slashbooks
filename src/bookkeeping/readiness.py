@@ -394,7 +394,8 @@ def _question_blockers(entity_path: Path, start: date, end: date) -> tuple[list[
     return ([{"code": "unresolved_questions", "message": "The period has unanswered accounting questions.", "refs": sorted(refs)}], open_items)
 
 
-def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool, action_entity: str | None) -> list[dict[str, Any]]:
+def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool,
+                 action_entity: str | None = None) -> list[dict[str, Any]]:
     reports = [
         profit_and_loss(entity_path, start, end, action_entity=action_entity),
         balance_sheet(entity_path, end, action_entity=action_entity),
