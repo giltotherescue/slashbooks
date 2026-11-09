@@ -29,6 +29,26 @@
   result is the same, but it does not write `differences.json`. Reading the
   saved differences no longer creates the `reports/migration-confidence`
   folder.
+- Readiness with a disposition context (`assess_review_readiness(...,
+  disposition_context=...)`) no longer gives two false messages for books that
+  start in the middle of a month. A staged row that a confirmed outside-books
+  decision resolves is no longer counted as "staged for review" in a statement
+  tie-out warning. The check is the same one that leaves the row out of the
+  open work: the exact row digest, every spelling, and a unique alias. A changed
+  row, a repeated alias or an unresolved row is still counted. The tie-out
+  difference does not change. For a cash company, a source account that the
+  context's enforced policy authorizes from a day inside the period needs
+  source evidence from that day, not from the first day of the month, and only
+  its statements from that day are checked. Gaps after that day, transaction-only
+  coverage and the month-end reconciliation still block or warn as before. A
+  start after the period changes nothing. An `unset` or
+  `authorized_pending_opening` source account keeps the whole month and gets a
+  new `books_start_unset` or `books_start_opening_required` blocker. An accrual
+  company keeps its verified cutover. Without a context, or with a `legacy`
+  policy, the document does not change. `check_coverage` takes the new optional
+  `account_from` and `exclude_waiting` arguments. Balances and reports do not
+  change.
+
 - Add request version 2 to the trusted books start check
   (`books_policy_check`). A version 2 opening authorization binds the complete
   opening entry with `entry_fingerprint`: every entry field (narration, payee,

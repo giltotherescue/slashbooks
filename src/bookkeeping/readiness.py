@@ -17,7 +17,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .coverage import check_coverage, readiness_items as coverage_readiness_items
 from .accrual.scope import DISCIPLINE_PER_ACCOUNT, accrual_active, default_view, discipline
@@ -193,8 +193,12 @@ def _account_from_mapping(value: Any) -> str:
 
 
 def _source_rows(config: Mapping[str, Any], start: date, end: date,
-                 required_accounts: tuple[str, ...] = ()) -> list[dict[str, Any]]:
-    """Normalize affirmative expected-source coverage without inferring activity."""
+                 required_accounts: tuple[str, ...] = (),
+                 account_from: Mapping[str, date] | None = None) -> list[dict[str, Any]]:
+    """Normalize affirmative expected-source coverage without inferring activity.
+
+    ``account_from`` gives a later first required day for an account (see ``_policy_bounds``).
+    """
     coverage = config.get("source_coverage")
     coverage = coverage if isinstance(coverage, Mapping) else {}
     candidates: list[dict[str, Any]] = []
@@ -234,6 +238,7 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date,
     for candidate in candidates:
         source = str(candidate.get("source") or "")
         account = str(candidate.get("account") or "")
+        first = (account_from or {}).get(account, start)
         raw_from = str(candidate.get("coverage_from") or "")
         raw_to = str(candidate.get("coverage_to") or "")
         status = "complete"
@@ -241,14 +246,14 @@ def _source_rows(config: Mapping[str, Any], start: date, end: date,
             available_from = date.fromisoformat(raw_from)
             available_to = date.fromisoformat(raw_to)
             from .entity import coverage_spans
-            if not coverage_spans(candidate, start, end) and (available_from > start or available_to < end):
+            if not coverage_spans(candidate, first, end) and (available_from > first or available_to < end):
                 status = "partial"
         except ValueError:
             status = "missing" if not raw_from and not raw_to else "invalid"
         rows.append({
             "source": source,
             "account": account or None,
-            "requested_from": start.isoformat(),
+            "requested_from": first.isoformat(),
             "requested_to": end.isoformat(),
             "coverage_from": raw_from or None,
             "coverage_to": raw_to or None,
@@ -308,15 +313,26 @@ def _resolved_row(item: Mapping[str, Any], resolved: Mapping[tuple[str, str], Ma
 
 def _open_work(entity_path: Path, start: date, end: date, *,
                resolved: Mapping[tuple[str, str], Mapping[str, Any]] | None = None,
-               ) -> tuple[list[dict[str, str]], list[dict[str, Any]], list[dict[str, Any]]]:
+               ) -> tuple[list[dict[str, str]], list[dict[str, Any]], list[dict[str, Any]],
+                          Callable[[Mapping[str, Any]], bool] | None]:
+    """Open work in the period, the resolved rows left out of it, and the same exclusion for other readers.
+
+    The exclusion is ``_resolved_row`` with the alias counts of the staged rows read here. It is ``None``
+    when nothing is resolved. A reader that reads the staged rows again under the same lock (the statement
+    tie-out) gives it each row, so a row is checked again on the bytes that reader read.
+    """
     blockers: list[dict[str, str]] = []
     snapshot: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
+    aliases: Counter[str] = Counter()
+    exclude = None
+    if resolved:
+        def exclude(row: Mapping[str, Any]) -> bool:
+            return _resolved_row(row, resolved, aliases) is not None
     pending, error = _read_json(entity_path / "staging" / "pending-categorization.json")
     if error or (pending is not None and not isinstance(pending, list)):
         blockers.append({"code": "staged_transactions_unreadable", "message": "Staged transactions could not be verified.", "refs": []})
     elif isinstance(pending, list):
-        aliases: Counter[str] = Counter()
         if resolved:
             from .source_ids import source_id_variants
             for item in pending:
@@ -361,7 +377,34 @@ def _open_work(entity_path: Path, start: date, end: date, *,
         refs = sorted(item["ref"] for item in snapshot)
         blockers.append({"code": "unresolved_period_work", "message": "The period still has staged transactions, proposals, or duplicate decisions.", "refs": refs})
     return (blockers, sorted(snapshot, key=lambda item: (item["kind"], item["date"], item["ref"])),
-            sorted(suppressed, key=lambda item: (item["source_id"], item["row_digest"])))
+            sorted(suppressed, key=lambda item: (item["source_id"], item["row_digest"])), exclude)
+
+
+def _policy_bounds(context: ReadinessDispositionContext | None, start: date, end: date,
+                   ) -> tuple[dict[str, date], dict[str, str]]:
+    """Per-account first required day, and accounts with no usable start, from the trusted native policy.
+
+    Only an ``enforced`` policy in a :class:`ReadinessDispositionContext` counts. An ``authorized`` account
+    whose ``start_day`` is after ``start`` and on or before ``end`` needs source evidence from that day
+    (inclusive), the same as the verified accrual cutover. A start after ``end`` changes nothing: it cannot
+    supply coverage or a reconciliation. ``unset`` and ``authorized_pending_opening`` accounts keep the whole
+    period and are returned with their state, so readiness reports them.
+    """
+    if context is None:
+        return {}, {}
+    from .ledger.books_policy import AUTHORIZED, parse_policy
+
+    policy = parse_policy(context.policy)
+    if not policy.enforced:
+        return {}, {}
+    starts: dict[str, date] = {}
+    unstarted: dict[str, str] = {}
+    for account, found in policy.accounts.items():
+        if found.state != AUTHORIZED:
+            unstarted[account] = found.state
+        elif found.start_day is not None and start < found.start_day <= end:
+            starts[account] = found.start_day
+    return starts, unstarted
 
 
 def _question_blockers(entity_path: Path, start: date, end: date) -> tuple[list[dict[str, Any]], list[Any]]:
@@ -428,10 +471,11 @@ def _annotate_blockers(blockers: list[dict[str, Any]], path: Path | str, period:
         if code == "source_coverage_incomplete":
             row = by_source.get(ref, {})
             have = f"{row.get('coverage_from') or 'no date'} through {row.get('coverage_to') or 'no date'}"
+            first = row.get("requested_from") or start
             item["message"] = (f"Source {ref} (account {row.get('account') or 'unbound'}) has recorded coverage {have}, "
-                               f"but period {period} needs {start} through {end}.")
+                               f"but period {period} needs {first} through {end}.")
             item["action"] = (f'After you confirm the source covers it, run: books entity source-coverage {path} --source "{ref}" '
-                              f"--from {start} --to {end}. Coverage is additive; earlier ranges stay.")
+                              f"--from {first} --to {end}. Coverage is additive; earlier ranges stay.")
         elif code == "source_account_missing":
             item["message"] = f"Source {ref} is not bound to a ledger account for period {period}."
             item["action"] = (f'Run: books entity source-coverage {path} --source "{ref}" --from {start} --to {end} '
@@ -469,9 +513,17 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     With a :class:`ReadinessDispositionContext`, a staged row in the period is left out of open work only when a
     confirmed ``outside_books`` decision resolves now to that exact row (source ID, every spelling, row digest),
     the row is the only staged row with those spellings, and the books have not booked or recorded it
-    (``source_disposition.resolved_identity``). Each row is checked again where it is read. Nothing else changes:
-    proposals, duplicates, questions, coverage and ledger checks block as before, and no file is changed. The
-    document gets ``disposition_basis`` (the binding and the rows left out) before its ``package_id`` is computed.
+    (``source_disposition.resolved_identity``). Each row is checked again where it is read. The same check leaves
+    such a row out of the staged-row count of a statement tie-out; the tie-out difference does not change.
+
+    For a cash company, the context's ``enforced`` policy also bounds source coverage (``_policy_bounds``). An
+    ``authorized`` account whose start is inside the period needs source evidence from its start day, and only
+    its statements from that day are checked. An ``unset`` or ``authorized_pending_opening`` source account
+    keeps the whole period and gets a ``books_start_unset`` or ``books_start_opening_required`` blocker.
+
+    Nothing else changes: proposals, duplicates, questions, reconciliations and ledger checks block as before,
+    balances and reports are the same, and no file is changed. The document gets ``disposition_basis`` (the
+    binding and the rows left out) before its ``package_id`` is computed.
 
     The native context alone is not host trust. The host captures its authority, its stored decision state and
     their currentness atomically, and checks them again before it uses the package.
@@ -506,7 +558,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         blockers.append({"code": f"period_{period_status}", "message": "Final review readiness requires a completed calendar period.", "refs": [period]})
 
     resolved = None if disposition_context is None else _resolved_dispositions(entity.path, disposition_context)
-    work_blockers, open_work, suppressed = _open_work(entity.path, start, end, resolved=resolved)
+    work_blockers, open_work, suppressed, exclude_waiting = _open_work(entity.path, start, end, resolved=resolved)
     blockers.extend(work_blockers)
     question_blockers, open_questions = _question_blockers(entity.path, start, end)
     blockers.extend(question_blockers)
@@ -529,7 +581,10 @@ def assess_review_readiness(entity_path: Path | str, period: str,
 
     if accrual_in_use:
         card_activity.update(account for account, balance in ledger_balances.items() if balance and is_credit_card_account(account))
-    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)))
+    # A cash company with a trusted enforced policy needs each authorized account's evidence from its books
+    # start. An accrual company keeps the verified cutover above.
+    account_from, unstarted = ({}, {}) if accrual_in_use else _policy_bounds(disposition_context, start, end)
+    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)), account_from)
 
     # Source coverage per account and day of the month (statements, feed
     # windows, declared coverage, then transaction dates).
@@ -540,7 +595,9 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     verified_accounts: set[str] = set()
     if coverage_accounts:
         try:
-            coverage_document = check_coverage(entity.path, start, end, accounts=coverage_accounts)
+            coverage_document = check_coverage(
+                entity.path, start, end, accounts=coverage_accounts, exclude_waiting=exclude_waiting,
+                account_from={account: day for account, day in account_from.items() if account in coverage_accounts})
         except Exception as exc:  # noqa: BLE001 - any failure must block, not pass
             coverage_items = ([{"code": "source_coverage_unverifiable",
                                 "message": "Source coverage could not be checked.", "refs": [type(exc).__name__]}], [])
@@ -568,6 +625,13 @@ def assess_review_readiness(entity_path: Path | str, period: str,
 
     source_accounts = sorted({str(source["account"]) for source in sources if source["account"]})
     for account in source_accounts:
+        if unstarted.get(account) == "unset":
+            blockers.append({"code": "books_start_unset", "message": "The books start for this source account is not set.",
+                             "refs": [account]})
+        elif account in unstarted:
+            blockers.append({"code": "books_start_opening_required",
+                             "message": "The opening balance on this source account's books start is not recorded.",
+                             "refs": [account]})
         if (not account.startswith(("Assets:", "Liabilities:"))
                 or account not in account_catalog):
             blockers.append({
