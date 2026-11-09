@@ -503,6 +503,21 @@ class StarterAccounts(Fixture):
         self.assertEqual((code, again["status"]), (0, "already_applied"))
         self.assertEqual(self.accounts(), after)
 
+    def test_enable_classifies_only_new_starter_balance_accounts_in_a_typed_catalog(self) -> None:
+        from bookkeeping.entity import add_account
+
+        self.root = self.work / "typed"
+        init_entity(self.root, name="Typed company", classify_starter_accounts=True)
+        # Existing accounts must keep the person's original classification state.
+        add_account(self.root, AR, open_date="2026-01-01")
+        before = self.store().load_financial_kinds()
+        self.assertNotIn(AR, before)
+        receipt = self.enable()
+        expected = {name: "other" for name in receipt["accounts_opened"] if name.startswith(("Assets:", "Liabilities:"))}
+        self.assertIn(AP, expected)
+        self.assertEqual(self.store().load_financial_kinds(), {**before, **expected})
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
     def test_each_business_type_gets_the_accounts_of_a_new_accrual_company(self) -> None:
         from bookkeeping.entity import _STARTER_ACCOUNTS
         for business_type in sorted(_STARTER_ACCOUNTS):

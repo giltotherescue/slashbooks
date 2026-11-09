@@ -27,7 +27,9 @@ import os
 import sqlite3
 from typing import Any, Mapping
 
-from ..entity import ACCRUAL_CAPABILITY_VERSION, Entity, accrual_starter_accounts, load_entity, resolve_basis
+from ..entity import (
+    ACCRUAL_CAPABILITY_VERSION, Entity, _starter_financial_kinds, accrual_starter_accounts, load_entity, resolve_basis,
+)
 from ..ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore, default_store_path
 from .intake import canonical_hash
 from .journals import JournalError
@@ -251,7 +253,10 @@ def apply_enable(entity: Entity, plan: Any) -> dict[str, Any]:
             store.set_meta(TRACKING_KEY, day.isoformat(), conn)
             if accounts:
                 from ..ledger.model import Open
-                store.insert_opens([Open(day, account, (entity.currency,)) for account in accounts], conn)
+                opens = [Open(day, account, (entity.currency,)) for account in accounts]
+                store.insert_opens(opens, conn)
+                if store.has_financial_kinds(conn):
+                    store.assign_financial_kinds(_starter_financial_kinds(opens), conn)
             store.append_audit_event("accrual-enabled", {
                 "operation_id": operation_id, "tracking_start": day.isoformat(), "accounts_opened": accounts,
                 "default_view": receipt["default_view"], "plan_hash": plan["plan_hash"]}, conn)
