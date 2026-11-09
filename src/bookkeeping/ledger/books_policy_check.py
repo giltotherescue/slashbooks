@@ -428,10 +428,11 @@ def request_digest(request_document: Any) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def workspace_digest(entity_dir: Path | str) -> str:
+def workspace_digest(entity_dir: Path | str, *, ignore_empty_lock: bool = False) -> str:
     """SHA-256 of a workspace: the UTF-8 lines ``<sha256 of the file>  <relative POSIX path>\\n`` of every
     regular file, sorted by path (the format of ``sha256sum``). Empty folders do not count. A symbolic link or
-    any other special file is refused."""
+    any other special file is refused. The optional normalization omits only the empty
+    root engine lock file, which a caller may create when taking the workspace lock."""
     root = Path(entity_dir)
     if not root.is_dir() or root.is_symlink():
         raise ValueError(f"{root} is not a workspace folder")
@@ -445,7 +446,10 @@ def workspace_digest(entity_dir: Path | str) -> str:
             if name in files:
                 if not path.is_file():
                     raise ValueError(f"The workspace has a special file: {relative!r}")
-                lines.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {relative}\n")
+                contents = path.read_bytes()
+                if ignore_empty_lock and relative == ".books.lock" and not contents:
+                    continue
+                lines.append(f"{hashlib.sha256(contents).hexdigest()}  {relative}\n")
     return hashlib.sha256("".join(sorted(lines, key=lambda line: line[66:])).encode("utf-8")).hexdigest()
 
 

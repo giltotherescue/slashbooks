@@ -218,6 +218,30 @@ written. A repeat returns `already_recorded`. A cash flow statement that starts
 on that day counts the entry as a beginning balance, and the statement tie-out
 leaves it out of the period movement.
 
+A trusted Python integration can pass an `OpeningDispositionBasis` to
+`record_opening` or through the `opening_disposition_basis` keyword on
+`statement_import.run`. The basis carries the exact base workspace digest,
+the current enforced policy, and confirmed outside-books claims for that
+account. Compute the digest with `workspace_digest(..., ignore_empty_lock=True)`
+to omit the empty root engine lock. The engine checks the base under its write
+lock and evaluates each claim against the retained source. The integration
+must authenticate the decisions and recheck the current policy and decision
+versions when it publishes the result. A write must supply the complete
+entry fingerprint returned by its reviewed dry run. Use
+`expected_entry_fingerprint` on `record_opening` or
+`expected_opening_entry_fingerprint` on `statement_import.run`. These inputs
+are available only to Python callers.
+
+This path applies to the first opening on the authorized pending start day.
+The target must already be in the account catalog with an open date on or
+before that day. Each statement ending before the start needs at least one
+resolved retained source row from its period. This association identifies a
+source for the decision. It does not prove coverage of every statement line.
+If a statement ends the day before the start and gives a closing balance,
+the opening must match it. The statements and source rows remain in the
+workspace. An overlapping statement, an earlier posting, or a remaining
+earlier waiting row still prevents the opening.
+
 The opening balance already includes every earlier row of the account. So an
 import refuses rows dated before it:
 
