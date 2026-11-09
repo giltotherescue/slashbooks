@@ -69,11 +69,39 @@ class QuickBooksSyncTests(unittest.TestCase):
         kinds = {row["id"]: row.get("financial_kind") for row in result["accounts"]}
         self.assertEqual(kinds, {
             "1": {"required": False, "kind": "bank", "allowed": ["bank"]}, "2": None, "3": None,
-            "4": {"required": True, "kind": None, "allowed": ["bank", "credit_card", "cash", "other"]}, "5": None})
+            "4": {"required": True, "kind": None, "allowed": ["bank", "cash", "other"]}, "5": None})
         self.assertEqual([i for i, kind in kinds.items() if kind and kind["required"]], ["4"])
         # The stored evidence keeps its earlier bytes: the decision is in the result only.
         stored = json.loads((self.entity_path / result["reference_path"]).parent.joinpath("manifest.json").read_text())
         self.assertTrue(all("financial_kind" not in row for row in stored["accounts"]))
+
+    def test_offered_kinds_are_exactly_the_kinds_that_the_chart_accepts(self):
+        from bookkeeping.ledger.store import FINANCIAL_KINDS, validate_financial_kind
+        self.snapshot["accounts"].extend([
+            {"Id": "4", "Name": "Settlement balance", "AccountType": "Other Current Asset"},
+            {"Id": "6", "Name": "Payroll clearing", "AccountType": "Other Current Liability"},
+            {"Id": "7", "Name": "Equipment loan", "AccountType": "Long Term Liability"}])
+        rows = {row["id"]: row for row in sync.sync_import(self.entity, self.write())["accounts"]}
+        self.assertEqual(rows["4"]["financial_kind"]["allowed"], ["bank", "cash", "other"])
+        self.assertEqual(rows["6"]["financial_kind"]["allowed"], ["credit_card", "other"])
+        self.assertEqual(rows["7"]["financial_kind"], {"required": False, "kind": "other", "allowed": ["other"]})
+        self.assertEqual(rows["1"]["financial_kind"], {"required": False, "kind": "bank", "allowed": ["bank"]})
+        for identity in ("4", "6"):
+            account = rows[identity]["mapped_account"]
+            allowed = rows[identity]["financial_kind"]["allowed"]
+            for kind in FINANCIAL_KINDS:
+                with self.subTest(account=identity, kind=kind):
+                    if kind in allowed:
+                        validate_financial_kind(account, kind)
+                        manifest = sync.chart_manifest(self.snapshot, "a" * 64, "preserve", version=2,
+                                                       financial_kinds={"4": "other", "6": "other",
+                                                                        identity: kind})
+                        chosen = {r["source_id"]: r["financial_kind"] for r in manifest["accounts"]
+                                  if "financial_kind" in r}
+                        self.assertEqual(chosen[identity], kind)
+                    else:
+                        with self.assertRaises(ValueError):
+                            validate_financial_kind(account, kind)
 
     def test_import_of_an_unambiguous_chart_requires_no_kind_review(self):
         result = sync.sync_import(self.entity, self.write())

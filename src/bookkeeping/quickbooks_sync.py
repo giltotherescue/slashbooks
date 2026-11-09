@@ -600,16 +600,25 @@ def _financial_kind_decision(row: dict) -> dict | None:
     """The financial kind decision for one source account, or ``None`` when no decision applies.
 
     A decision applies to an active Assets or Liabilities account. ``required`` is true when the source type does
-    not decide the kind (:func:`_chart_financial_kind` gives none): a person chooses one of ``allowed``. Otherwise
-    ``kind`` is the kind that the source type gives, and it is the only allowed kind.
+    not decide the kind (:func:`_chart_financial_kind` gives none): a person chooses one of ``allowed``, which are
+    the kinds that the ledger validator (``ledger.store.validate_financial_kind``) accepts for the proposed account.
+    Otherwise ``kind`` is the kind that the source type gives, and it is the only allowed kind.
     """
-    from .ledger.store import FINANCIAL_KINDS
-    if row["active"] is not True or row["mapped_account"].split(":")[0] not in ("Assets", "Liabilities"):
+    from .ledger.store import FINANCIAL_KINDS, validate_financial_kind
+    account = row["mapped_account"]
+    if row["active"] is not True or account.split(":")[0] not in ("Assets", "Liabilities"):
         return None
     kind = _chart_financial_kind(row)
-    if kind is None:
-        return {"required": True, "kind": None, "allowed": list(FINANCIAL_KINDS)}
-    return {"required": False, "kind": kind, "allowed": [kind]}
+    if kind is not None:
+        return {"required": False, "kind": kind, "allowed": [kind]}
+    allowed = []
+    for candidate in FINANCIAL_KINDS:
+        try:
+            validate_financial_kind(account, candidate)
+        except ValueError:
+            continue
+        allowed.append(candidate)
+    return {"required": True, "kind": None, "allowed": allowed}
 
 
 def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
