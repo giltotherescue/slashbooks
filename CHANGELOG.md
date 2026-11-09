@@ -12,6 +12,17 @@
   now stops with `FinancialKindReviewRequired` (a `ValueError`). Its
   `account_ids` lists every account that needs a review, not only the first
   one. Read `account_ids`, not the message text.
+- Add request version 3 to the trusted books start check
+  (`books_policy_check`) for one operation only, `accrual_opening_prior_day`.
+  A fresh accrual opening posts on the day before the cutover, so a version 1
+  or 2 authorization can never match it. In version 3, `start_day` is the
+  cutover and the check derives the entry date as the day before. The request
+  has one authorization for each protected account that the entry posts to,
+  each with its own `operation_id`, and all with the same `entry_source_id` and
+  `entry_fingerprint`. The group passes only for one added entry on empty books
+  with the exact fresh accrual opening metadata, and only when every account is
+  pending with the authorized start and version. Otherwise the check refuses
+  with `BOOKS_OPENING_AUTHORIZATION_MISMATCH`. Versions 1 and 2 do not change.
 - Add request version 2 to the trusted books start check
   (`books_policy_check`). A version 2 opening authorization binds the complete
   opening entry with `entry_fingerprint`: every entry field (narration, payee,

@@ -34,6 +34,16 @@ command and before publication:
   the entry date, the source ID and the postings only. It does not bind the narration, the payee, the flag, the
   tags, the links or the entry metadata. Do not use version 1 for a new host.
 
+  Request version 3 (``PRIOR_DAY_REQUEST_SCHEMA_VERSION``) has one operation only, ``accrual_opening_prior_day``:
+  a fresh accrual opening, which the native accrual opening posts on the day before the cutover. Its rows have
+  the version 2 fields. ``start_day`` is the reviewed cutover; the engine derives the entry date (``start_day``
+  minus one day), and a request cannot give another date. There is one row for each protected account that the
+  entry posts to. Each row has its own ``operation_id`` (a reviewed authorization ID; two rows with one ID make the
+  request invalid). Every row has the same ``start_day``, the same ``entry_source_id`` (the native
+  ``accounting_plan.id``, which is the entry's ``source-id``) and the same ``entry_fingerprint``. See
+  :func:`_prior_day_group` for the complete rules. The other request versions do not read this operation, and
+  version 3 reads no other operation.
+
 * ``BASE_ENTITY_DIR`` is the workspace that the host published before the job. ``CANDIDATE_ENTITY_DIR`` is
   the workspace that the job wants to publish.
 
@@ -88,7 +98,7 @@ import sys
 import tempfile
 from collections import Counter
 from dataclasses import dataclass, fields, is_dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -100,11 +110,22 @@ from .model import Entry
 REQUEST_SCHEMA_VERSION = 1
 #: The request version that binds an opening authorization to ``entry_fingerprint`` of the complete entry.
 FULL_ENTRY_REQUEST_SCHEMA_VERSION = 2
-REQUEST_SCHEMA_VERSIONS = (REQUEST_SCHEMA_VERSION, FULL_ENTRY_REQUEST_SCHEMA_VERSION)
+#: The request version of a fresh accrual opening on the day before the cutover (one operation only).
+PRIOR_DAY_REQUEST_SCHEMA_VERSION = 3
+REQUEST_SCHEMA_VERSIONS = (REQUEST_SCHEMA_VERSION, FULL_ENTRY_REQUEST_SCHEMA_VERSION,
+                           PRIOR_DAY_REQUEST_SCHEMA_VERSION)
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 HISTORY_CHANGED = "BOOKS_LEDGER_HISTORY_CHANGED"
 OPENING_OPERATIONS = ("quickbooks_sync_opening", "quickbooks_import_opening", "statement_opening",
                       "starting_balance", "accrual_opening")
+#: The only operation of request version 3. Request versions 1 and 2 do not read it.
+PRIOR_DAY_OPERATION = "accrual_opening_prior_day"
+#: A version 3 opening group that does not match the one added entry exactly.
+OPENING_AUTHORIZATION_MISMATCH = "BOOKS_OPENING_AUTHORIZATION_MISMATCH"
+#: The complete entry metadata of a fresh accrual opening (``accrual.migration._effects``), with no tracking or
+#: summary keys.
+_PRIOR_DAY_META_KEYS = frozenset({"source-id", "import-source", "accrual-opening", "coverage-id", "cutover-date"})
+_DAY_TEXT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 @dataclass(frozen=True)
@@ -135,20 +156,30 @@ def _text(value: Any, where: str) -> str:
 
 def _authorization(raw: Any, index: int, schema_version: int = REQUEST_SCHEMA_VERSION) -> OpeningAuthorization:
     where = f"opening_authorizations[{index}]"
+    full = schema_version in (FULL_ENTRY_REQUEST_SCHEMA_VERSION, PRIOR_DAY_REQUEST_SCHEMA_VERSION)
     fields = {"account", "start_day", "version", "operation", "operation_id", "entry_source_id",
-              "entry_fingerprint" if schema_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION else "postings"}
+              "entry_fingerprint" if full else "postings"}
     if not isinstance(raw, dict) or set(raw) != fields:
         raise _invalid(f"{where} must have exactly the fields {', '.join(sorted(fields))}")
+    text = _text(raw["start_day"], f"{where}.start_day")
     try:
-        start = date.fromisoformat(_text(raw["start_day"], f"{where}.start_day"))
+        start = date.fromisoformat(text)
     except ValueError:
         raise _invalid(f"{where}.start_day must be a YYYY-MM-DD date") from None
     version = raw["version"]
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise _invalid(f"{where}.version must be an integer of 1 or more")
-    if raw["operation"] not in OPENING_OPERATIONS:
+    if schema_version == PRIOR_DAY_REQUEST_SCHEMA_VERSION:
+        if raw["operation"] != PRIOR_DAY_OPERATION:
+            raise _invalid(f"{where}.operation: a schema_version {PRIOR_DAY_REQUEST_SCHEMA_VERSION} check request "
+                           f"reads only the operation {PRIOR_DAY_OPERATION}")
+        if not _DAY_TEXT.fullmatch(text) or start.isoformat() != text:
+            raise _invalid(f"{where}.start_day must be exact YYYY-MM-DD text")
+        if start == date.min:
+            raise _invalid(f"{where}.start_day has no day before it")
+    elif raw["operation"] not in OPENING_OPERATIONS:
         raise _invalid(f"{where}.operation must be one of {', '.join(OPENING_OPERATIONS)}")
-    if schema_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION:
+    if full:
         fingerprint = raw["entry_fingerprint"]
         if not isinstance(fingerprint, str) or not _FINGERPRINT.fullmatch(fingerprint):
             raise _invalid(f"{where}.entry_fingerprint must be the 64 lowercase hexadecimal characters of "
@@ -189,16 +220,20 @@ def parse_request(document: Any) -> CheckRequest:
     raw_version = document.get("schema_version")
     if type(raw_version) is int and raw_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION:
         schema_version = FULL_ENTRY_REQUEST_SCHEMA_VERSION
+    elif type(raw_version) is int and raw_version == PRIOR_DAY_REQUEST_SCHEMA_VERSION:
+        schema_version = PRIOR_DAY_REQUEST_SCHEMA_VERSION
     elif raw_version == REQUEST_SCHEMA_VERSION and not isinstance(raw_version, bool):
         schema_version = REQUEST_SCHEMA_VERSION  # the released test, unchanged
     else:
         raise _invalid(f"the check request schema_version must be {FULL_ENTRY_REQUEST_SCHEMA_VERSION} "
-                       f"(or {REQUEST_SCHEMA_VERSION}, the weaker released version)")
-    if schema_version == FULL_ENTRY_REQUEST_SCHEMA_VERSION:
+                       f"(or {REQUEST_SCHEMA_VERSION}, the weaker released version), or "
+                       f"{PRIOR_DAY_REQUEST_SCHEMA_VERSION} for the {PRIOR_DAY_OPERATION} operation only")
+    if schema_version != REQUEST_SCHEMA_VERSION:
         try:
             json.dumps(document, allow_nan=False)
         except (TypeError, ValueError):
-            raise _invalid("a version 2 check request must be JSON data with no non-finite number") from None
+            raise _invalid(f"a version {schema_version} check request must be JSON data with no non-finite "
+                           "number") from None
     if "policy" not in document or "scope" not in document:
         raise _invalid("the check request needs policy and scope")
     scope = document["scope"]
@@ -213,8 +248,26 @@ def parse_request(document: Any) -> CheckRequest:
     if twice:
         raise _invalid(f"more than one authorization names {twice[0][0]} on {twice[0][1].isoformat()} "
                        f"version {twice[0][2]}")
-    return CheckRequest(parse_policy(document["policy"]), frozenset(_text(a, "scope item") for a in scope), openings,
-                        schema_version)
+    policy = parse_policy(document["policy"])
+    if schema_version == PRIOR_DAY_REQUEST_SCHEMA_VERSION:
+        _check_prior_day_rows(openings, policy)
+    return CheckRequest(policy, frozenset(_text(a, "scope item") for a in scope), openings, schema_version)
+
+
+def _check_prior_day_rows(openings: Sequence[OpeningAuthorization], policy: BooksPolicy) -> None:
+    """The request-level rules of a version 3 group: one entry, one cutover, one row and one ID per account."""
+    if not policy.enforced:
+        raise _invalid(f"a schema_version {PRIOR_DAY_REQUEST_SCHEMA_VERSION} check request needs an enforced policy")
+    if not openings:
+        raise _invalid(f"a schema_version {PRIOR_DAY_REQUEST_SCHEMA_VERSION} check request needs its opening "
+                       "authorizations")
+    if len({(auth.start_day, auth.entry_source_id, auth.entry_fingerprint) for auth in openings}) != 1:
+        raise _invalid("every version 3 authorization must have the same start_day, entry_source_id and "
+                       "entry_fingerprint")
+    if len({auth.account for auth in openings}) != len(openings):
+        raise _invalid("a version 3 request has one authorization for each account")
+    if len({auth.operation_id for auth in openings}) != len(openings):
+        raise _invalid("each version 3 authorization needs its own operation_id")
 
 
 def _field_value(value: Any) -> Any:
@@ -357,6 +410,70 @@ def _opening_match(request: CheckRequest, matches: Mapping[int, int], account: s
     return None
 
 
+def _prior_day_group(request: CheckRequest, base: Sequence[Entry], added: Sequence[Entry],
+                     removed: Sequence[Entry], scope: set[str]) -> tuple[Entry | None, list[dict[str, Any]]]:
+    """Check a version 3 group against the one added entry. ``(entry, [])`` when every rule holds.
+
+    - The base has no entry, the candidate removes none and adds exactly one.
+    - The entry has the authorized source ID and complete fingerprint, it is dated exactly ``start_day`` minus
+      one day, and its metadata is exactly that of a fresh accrual opening: ``source-id``,
+      ``import-source=accrual-opening``, ``accrual-opening=true``, ``coverage-id=opening`` and
+      ``cutover-date=<start_day>``. A tracking opening or another opening kind is refused.
+    - The protected accounts that the entry posts to (the same scope as the line check) are exactly the
+      authorized accounts. A zero line on a protected account is refused, because the native preview leaves out
+      zero lines.
+    - For each account the current policy row is ``authorized_pending_opening`` with the authorized version and
+      ``start_day``.
+
+    Any failure gives ``BOOKS_OPENING_AUTHORIZATION_MISMATCH`` refusals and the group discharges nothing. This
+    check does not prove the native plan, its support records or account open dates. The host replays the
+    reviewed native plan for that.
+    """
+    first = request.openings[0]
+    cutover = first.start_day
+    problems: list[tuple[str | None, str]] = []
+    entry = added[0] if len(added) == 1 else None
+    if base or removed or entry is None:
+        problems.append((None, "a fresh accrual opening needs empty books and exactly one added entry"))
+    if entry is not None:
+        meta = dict(entry.meta)
+        if entry.source_id != first.entry_source_id or entry_fingerprint(entry) != first.entry_fingerprint:
+            problems.append((None, "the added entry is not the reviewed entry"))
+        if entry.date != cutover - timedelta(days=1):
+            problems.append((None, f"the entry date must be {(cutover - timedelta(days=1)).isoformat()}, the day "
+                                   f"before the cutover {cutover.isoformat()}"))
+        if (len(meta) != len(entry.meta) or set(meta) != _PRIOR_DAY_META_KEYS
+                or meta.get("source-id") != first.entry_source_id or meta.get("import-source") != "accrual-opening"
+                or meta.get("accrual-opening") != "true" or meta.get("coverage-id") != "opening"
+                or meta.get("cutover-date") != cutover.isoformat()):
+            problems.append((None, "the entry is not a fresh accrual opening"))
+        lines = [p for p in entry.postings if p.account in scope]
+        if any(not p.amount for p in lines):
+            problems.append((None, "the entry has a zero line on a protected account"))
+        impacted = set(p.account for p in lines)
+        authorized = {auth.account for auth in request.openings}
+        for account in sorted(impacted - authorized):
+            problems.append((account, "the entry posts to this protected account, and no authorization names it"))
+        for account in sorted(authorized - impacted):
+            problems.append((account, "an authorization names this account, and the entry does not post to it"))
+    for auth in sorted(request.openings, key=lambda item: item.account):
+        found = request.policy.accounts.get(auth.account)
+        if (found is None or found.state != PENDING_OPENING or found.version != auth.version
+                or found.start_day != auth.start_day):
+            problems.append((auth.account, "the policy row is not the authorized pending opening"))
+    refusals = []
+    for account, detail in problems:
+        found = request.policy.accounts.get(account) if account else None
+        refusals.append(BooksPolicyError(
+            OPENING_AUTHORIZATION_MISMATCH, f"The accrual opening authorization does not match: {detail}",
+            "Preview the accrual opening again and review it. Nothing may be published.",
+            account=account, state=found.state if found else None, start_day=cutover,
+            entry_date=entry.date if entry is not None else None,
+            source_id=(entry.source_id or "") if entry is not None else "", policy_epoch=request.policy.epoch,
+            account_version=found.version if found else None).as_dict())
+    return (None, refusals) if refusals else (entry, [])
+
+
 def check_ledger_delta(request_document: Any, base_entries: Sequence[Entry], candidate_entries: Sequence[Entry],
                        mapped_accounts: Iterable[str] = ()) -> dict[str, Any]:
     """Check the entries that ``candidate_entries`` adds to ``base_entries``. A pure function: no environment.
@@ -378,7 +495,17 @@ def check_ledger_delta(request_document: Any, base_entries: Sequence[Entry], can
     if request.policy.enforced:
         scope = set(request.scope) | set(mapped_accounts) | set(request.policy.accounts)
         reversals = _exact_reversals(added, base_entries)
-        matches = _opening_matches(request, added)
+        prior_day = request.schema_version == PRIOR_DAY_REQUEST_SCHEMA_VERSION
+        group_entry: Entry | None = None
+        if prior_day:
+            # The version 3 group is checked as a whole before the line check. Only a complete exact group
+            # discharges the pending opening refusals of its one entry; versions 1 and 2 never match here.
+            group_entry, mismatches = _prior_day_group(request, base_entries, added, removed, scope)
+            refusals.extend(mismatches)
+            matches: dict[int, int] = {}
+        else:
+            matches = _opening_matches(request, added)
+        group = {auth.account: index for index, auth in enumerate(request.openings)} if group_entry else {}
         for entry in added:
             if id(entry) in reversals:
                 continue
@@ -389,11 +516,21 @@ def check_ledger_delta(request_document: Any, base_entries: Sequence[Entry], can
                 if refusal is None:
                     continue
                 if refusal.code == OPENING_REQUIRED:
-                    match = _opening_match(request, matches, account, entry)
+                    if prior_day:
+                        match = group.get(account) if entry is group_entry else None
+                    else:
+                        match = _opening_match(request, matches, account, entry)
                     if match is not None:
                         used.add(match)
                         continue
                 refusals.append(refusal.as_dict())
+        if group_entry is not None and len(used) != len(request.openings):
+            refusals.append(BooksPolicyError(
+                OPENING_AUTHORIZATION_MISMATCH, "The accrual opening authorization does not match: an "
+                "authorization was not used", "Preview the accrual opening again and review it. Nothing may "
+                "be published.", entry_date=group_entry.date, source_id=group_entry.source_id or "",
+                policy_epoch=request.policy.epoch).as_dict())
+            used.clear()
     from .. import __version__
     return {"status": "refused" if refusals else "ok", "mode": request.policy.mode,
             "policy_epoch": request.policy.epoch, "checked_entries": len(added),

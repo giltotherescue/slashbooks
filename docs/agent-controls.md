@@ -372,6 +372,43 @@ when the posting has any) in place of `entry_fingerprint`. It binds the entry
 date, the source ID and the postings only, so an entry with another narration,
 payee, flag, tags, links or entry metadata still matches. Use version 2.
 
+Request version 3 is for one operation only, `accrual_opening_prior_day`: a
+fresh accrual opening (`books accrual opening preview` on a company with no
+accrual tracking start). The native accrual opening posts on the day before the
+cutover, so a version 1 or version 2 authorization, which matches the entry date
+with `start_day`, never matches it. A version 3 authorization has the version 2
+fields. `start_day` is the reviewed cutover, and the check derives the entry date
+as the day before it. A request cannot give another date. The request has one
+authorization for each protected account that the entry posts to:
+
+- Each authorization has its own `operation_id`. Two authorizations with one
+  `operation_id` make the request invalid.
+- All authorizations have the same `start_day`, the same `entry_source_id` (the
+  `accounting_plan.id` of the reviewed preview, which is the entry's source ID)
+  and the same `entry_fingerprint` (`proposed_entry_fingerprint`).
+- The request is invalid when it has no authorization, when its policy is not
+  `enforced`, when a `start_day` is not exact `YYYY-MM-DD` text, or when it names
+  any other operation. Versions 1 and 2 do not read `accrual_opening_prior_day`.
+
+The authorizations pass as one group, or none of them passes. The group passes
+only when the published books have no entry, the proposal removes no entry and
+adds exactly one, and all of these are true:
+
+- The entry has the authorized source ID and fingerprint, and its date is the
+  day before `start_day`.
+- Its metadata is exactly `source-id`, `import-source` = `accrual-opening`,
+  `accrual-opening` = `true`, `coverage-id` = `opening` and `cutover-date` =
+  `start_day`. A tracking opening or another opening kind does not pass.
+- The authorized accounts are exactly the protected accounts (the scope above)
+  that the entry posts to, and the entry has no zero line on them.
+- For each account, the policy entry is `authorized_pending_opening` with the
+  authorized `start_day` and `version`.
+
+When one of these is false, the check refuses with
+`BOOKS_OPENING_AUTHORIZATION_MISMATCH` and the group lets nothing through. The
+check does not prove the support records, the account open dates or the replay of
+the native plan. The host applies the reviewed native plan and compares it.
+
 The host makes an authorization only from its own receipt of a reviewed opening
 operation and the preview that the person reviewed. Each supported opening
 preview prints `proposed_entry`, the complete entry that the apply records (every
@@ -389,6 +426,7 @@ field. Make sure that `entry_fingerprint` of the entry it reads is
 | `statement_opening` | `books statement record-opening --statement-id ID --dry-run` | The empty entity lock file `.books.lock` |
 | `starting_balance` | `books statement record-opening --account A --on DAY --amount N --dry-run` | The empty entity lock file `.books.lock` |
 | `accrual_opening` | `books accrual opening preview` and `books accrual migration preview` (a plan that is `ready` and not a replay) | None |
+| `accrual_opening_prior_day` (version 3 only) | `books accrual opening preview` on a company with no accrual tracking start (a plan that is `ready` and not a replay) | None |
 
 These paths have no supported preview of the complete entry, so they are
 BLOCKED for a version 2 authorization: `books qb import-opening` on an accrual
