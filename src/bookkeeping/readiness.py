@@ -394,11 +394,11 @@ def _question_blockers(entity_path: Path, start: date, end: date) -> tuple[list[
     return ([{"code": "unresolved_questions", "message": "The period has unanswered accounting questions.", "refs": sorted(refs)}], open_items)
 
 
-def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool) -> list[dict[str, Any]]:
+def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool, action_entity: str | None) -> list[dict[str, Any]]:
     reports = [
-        profit_and_loss(entity_path, start, end),
-        balance_sheet(entity_path, end),
-        trial_balance(entity_path, end),
+        profit_and_loss(entity_path, start, end, action_entity=action_entity),
+        balance_sheet(entity_path, end, action_entity=action_entity),
+        trial_balance(entity_path, end, action_entity=action_entity),
     ]
     result = []
     for report in reports:
@@ -414,7 +414,7 @@ def _report_refs(entity_path: Path, start: date, end: date, *, provisional: bool
     return result
 
 
-def _annotate_blockers(blockers: list[dict[str, Any]], path: Path, period: str, start: date, end: date,
+def _annotate_blockers(blockers: list[dict[str, Any]], path: Path | str, period: str, start: date, end: date,
                        sources: list[dict[str, Any]]) -> None:
     """Give each blocker the account/period it concerns and the exact next command."""
     by_source = {str(row["source"]): row for row in sources}
@@ -457,10 +457,13 @@ def _annotate_blockers(blockers: list[dict[str, Any]], path: Path, period: str, 
 @_locked_entity_operation(shared=True)
 def assess_review_readiness(entity_path: Path | str, period: str,
                             dependencies: DependencyVersions, *, as_of: date,
-                            disposition_context: ReadinessDispositionContext | None = None) -> ReadinessAssessment:
+                            disposition_context: ReadinessDispositionContext | None = None,
+                            portable_actions: bool = False) -> ReadinessAssessment:
     """Assess one immutable period snapshot without writing company state.
 
     With ``disposition_context=None`` the document is the same as without the argument.
+    Set ``portable_actions=True`` to put the literal ``@entity`` in action instructions and keep the package
+    independent of its directory. Substitute the company directory when using an action locally.
 
     With a :class:`ReadinessDispositionContext`, a staged row in the period is left out of open work only when a
     confirmed ``outside_books`` decision resolves now to that exact row (source ID, every spelling, row digest),
@@ -480,6 +483,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         raise TypeError("A ReadinessDispositionContext is required.")
     start, end = _period_dates(period)
     entity = load_entity(entity_path)
+    action_entity = "@entity" if portable_actions else None
     accrual_in_use = _accrual_in_use(entity)
     if accrual_in_use:
         from .accrual.reports import is_credit_card_account
@@ -657,12 +661,12 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             if audit_errors or validation_errors:
                 refs = [str(item) for item in [*audit_errors, *validation_errors][:20]]
                 blockers.append({"code": "ledger_validation_failed", "message": "The ledger or its audit chain failed deterministic validation.", "refs": refs})
-            reports = _report_refs(entity.path, start, end, provisional=True)
+            reports = _report_refs(entity.path, start, end, provisional=True, action_entity=action_entity)
             if accrual_in_use:
                 from .accrual.reports import support_snapshot, unresolved, opening_coverage, coverage_metadata
                 with store.connection() as conn:
                     coverage_metadata(conn, "pnl", start, end)
-                    blockers.extend(unresolved(conn, end))
+                    blockers.extend(unresolved(conn, end, action_entity=action_entity))
                     accrual_snapshot = {"coverage": opening_coverage(conn), "support": support_snapshot(conn, end),
                                         "periods": [dict(row) for row in conn.execute("SELECT * FROM accrual_periods ORDER BY id")]}
         except Exception as exc:
@@ -670,7 +674,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
 
     from .taxview import readiness_notes
     warnings.extend(readiness_notes(entity))  # notes only: never a blocker, and none unless tax_method is cash with capability 1
-    _annotate_blockers(blockers, entity.path, period, start, end, sources)
+    _annotate_blockers(blockers, action_entity or entity.path, period, start, end, sources)
     blockers = sorted(blockers, key=lambda item: (item["code"], item["refs"], item["message"]))
     warnings = sorted(warnings, key=lambda item: (item["code"], item["refs"], item["message"]))
     state = "ready_for_review" if not blockers else "blocked"

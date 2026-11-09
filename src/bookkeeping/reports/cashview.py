@@ -519,7 +519,7 @@ def compute(conn: Any, from_date: date, to_date: date) -> dict[str, Any]:
             "issues": [i for i in ledger.issues if start <= i["date"] <= end]}
 
 
-def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
+def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date, *, action_entity: str | None = None):
     """Cash-basis profit and loss derived from accrual books."""
     from ..accrual.reports import CoverageError, financial_metadata, opening_coverage
     from ..accrual.scope import accrual_active
@@ -544,7 +544,7 @@ def profit_and_loss(entity_path: Path | str, from_date: date, to_date: date):
         if cutover and from_date.isoformat() < cutover:
             raise CoverageError(f"A cash-basis view is not available before the accrual cutover. The books hold no cash-basis detail before {cutover}.",
                                 cutover, "from")
-        metadata = financial_metadata(conn, "pnl", from_date, to_date, view="cash")
+        metadata = financial_metadata(conn, "pnl", from_date, to_date, view="cash", action_entity=action_entity)
         result = compute(conn, from_date, to_date)
         from .. import chart_presentation
         presentation = chart_presentation.read(conn)

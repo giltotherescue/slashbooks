@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -108,6 +109,33 @@ class ReadinessDispositionTests(unittest.TestCase):
         self.assertEqual(set(legacy), LEGACY_KEYS)
         self.assertEqual(self.staged_refs(legacy), ["banksync:r1"])
         self.assertEqual(legacy["state"], "blocked")
+
+    def test_portable_actions_keep_the_complete_package_stable_across_roots(self):
+        self.stage([feed_row(), feed_row("banksync:r2", "2026-09-11")])
+        with tempfile.TemporaryDirectory() as temporary:
+            copied = Path(temporary) / "same-books"
+            shutil.copytree(self.entity, copied)
+            self.assertEqual(workspace_digest(self.entity), workspace_digest(copied))
+            context = self.context()
+            local = self.assess(context)
+            copied_local = assess_review_readiness(copied, "2026-09", DependencyVersions(17, 9, 4, 3),
+                                                   as_of=date(2026, 10, 13), disposition_context=context).to_document()
+            self.assertNotEqual(local["package_id"], copied_local["package_id"])
+            original = self.assess(context, portable_actions=True)
+            relocated = assess_review_readiness(copied, "2026-09", DependencyVersions(17, 9, 4, 3),
+                                                as_of=date(2026, 10, 13), disposition_context=context,
+                                                portable_actions=True).to_document()
+            self.assertEqual(relocated, original)
+        blocker = next(b for b in original["blockers"] if b["code"] == "unresolved_period_work")
+        self.assertEqual(blocker["action"], "Run: books queue list --entity @entity and confirm, correct, or withdraw each item.")
+        self.assertEqual(self.staged_refs(original), ["banksync:r2"])
+        self.assertNotIn(str(self.entity.resolve()), json.dumps(original))
+
+        legacy = self.assess(context)
+        self.assertEqual(legacy, self.assess(context, portable_actions=False))
+        self.assertNotEqual(legacy["package_id"], original["package_id"])
+        self.assertEqual(next(b["action"] for b in legacy["blockers"] if b["code"] == "unresolved_period_work"),
+                         blocker["action"].replace("@entity", str(self.entity.resolve())))
 
     def test_a_context_that_resolves_nothing_still_binds_the_package(self):
         stale = self.context(policy_document=policy(version=3))

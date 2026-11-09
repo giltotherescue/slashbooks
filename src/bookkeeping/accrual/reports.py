@@ -90,10 +90,10 @@ def coverage_metadata(conn, kind, start, end, view=None):
     return result
 
 
-def financial_metadata(conn, kind, start, end, view=None):
+def financial_metadata(conn, kind, start, end, view=None, *, action_entity=None):
     result = coverage_metadata(conn, kind, start, end, view)
     if accrual_active(conn):
-        result["unresolved_issues"].extend(unresolved(conn, end))
+        result["unresolved_issues"].extend(unresolved(conn, end, action_entity=action_entity))
     return result
 
 
@@ -304,7 +304,7 @@ def _plain_journals(conn, account, as_of):
     return sorted(found, key=lambda j: (j["date"], j["journal_id"]))
 
 
-def _unexplained_message(conn, account, as_of, financial, detail, managed_ids, stale=None):
+def _unexplained_message(conn, account, as_of, financial, detail, managed_ids, stale=None, *, action_entity=None):
     managed, unexplained = detail, financial - detail
     journals = _plain_journals(conn, account, as_of)
     named = "; ".join(f"journal {j['journal_id']} ({j['date']}, {j['amount']})" for j in journals[:5]) or "an entry with no registered item or schedule"
@@ -318,12 +318,13 @@ def _unexplained_message(conn, account, as_of, financial, detail, managed_ids, s
                "managed_support_ids": managed_ids,
                "details": [{"id": "<detail-id>", "balance": f"{unexplained:.2f}", "description": "<what the balance is>"}],
                "evidence_ids": ["<supporting document id returned by books accrual intake>"]}
-    action = (f"Explain the amount with a supporting-detail snapshot: run books accrual support preview --entity {_entity_arg(conn)} --input <file>, then books accrual support apply with the saved preview, "
-              "with this request in <file>: " + json.dumps(request, sort_keys=True) + f". Or register the amount as an item (books accrual item preview --entity {_entity_arg(conn)} --input <file>) or a schedule.")
+    action_entity = action_entity or _entity_arg(conn)
+    action = (f"Explain the amount with a supporting-detail snapshot: run books accrual support preview --entity {action_entity} --input <file>, then books accrual support apply with the saved preview, "
+              "with this request in <file>: " + json.dumps(request, sort_keys=True) + f". Or register the amount as an item (books accrual item preview --entity {action_entity} --input <file>) or a schedule.")
     return message, action
 
 
-def reconciliation(conn, as_of):
+def reconciliation(conn, as_of, *, action_entity=None):
     """Control-account rows.
 
     An account requires supporting detail only when it has registered items or
@@ -366,19 +367,21 @@ def reconciliation(conn, as_of):
                "support_required": True, "support_ids": sorted(refs.get(account, [])), "currency": book_currency(conn)}
         if detail != financial:
             row["message"], row["action"] = _unexplained_message(
-                conn, account, as_of, financial, detail, sorted(managed_refs.get(account, [])), stale.get(account))
+                conn, account, as_of, financial, detail, sorted(managed_refs.get(account, [])), stale.get(account),
+                action_entity=action_entity)
         rows.append(row)
     return rows
 
 
-def unresolved(conn, as_of):
+def unresolved(conn, as_of, *, action_entity=None):
     from .schedules import installments
     as_of = as_of.isoformat() if isinstance(as_of, date) else as_of
     issues = []
     database = next((r[2] for r in conn.execute("PRAGMA database_list") if r[1] == "main"), "")
-    if database:
+    root = Path(database).resolve().parent if database else None
+    action_entity = action_entity or (str(root) if root is not None else "<entity>")
+    if root is not None:
         import hashlib
-        root = Path(database).resolve().parent
         refs = []
         opening = opening_coverage(conn)
         if opening:
@@ -393,8 +396,8 @@ def unresolved(conn, as_of):
                     and not any(root.joinpath(*path.parts[:i]).is_symlink() for i in range(1, len(path.parts) + 1)))
             if not safe or not digest or hashlib.sha256((root / path).read_bytes()).hexdigest() != digest:
                 issues.append({"code": "supporting_evidence_changed", "message": f"Retained supporting document {reference} is missing or differs from its recorded hash.", "refs": [reference],
-                               "action": f"Restore the original file at {reference} inside {root}, or record a corrected supporting document with books accrual intake --entity {root} --input <file>."})
-    for row in reconciliation(conn, as_of):
+                               "action": f"Restore the original file at {reference} inside {action_entity}, or record a corrected supporting document with books accrual intake --entity {action_entity} --input <file>."})
+    for row in reconciliation(conn, as_of, action_entity=action_entity):
         if row["status"] == "unreconciled":
             issues.append({"code": "control_balance_unreconciled", "message": row["message"], "action": row["action"],
                            "refs": [row["account"], *row["support_ids"]]})
@@ -408,10 +411,10 @@ def unresolved(conn, as_of):
                 identity = f"recognition:{row['id']}:{row.get('generation', 0)}:{part['date']}"
                 if part["date"] <= as_of and identity not in allocated:
                     issues.append({"code": "recognition_due", "message": f"Schedule {row['id']} has unposted recognition on {part['date']} ({part['amount']} {row.get('currency', 'USD')}).", "refs": [row["id"], identity],
-                                   "action": f"Run books accrual schedule due-preview --entity {_entity_arg(conn)} --through {as_of}, review it, then books accrual schedule due-apply --entity {_entity_arg(conn)} --input <saved preview>."})
+                                   "action": f"Run books accrual schedule due-preview --entity {action_entity} --through {as_of}, review it, then books accrual schedule due-apply --entity {action_entity} --input <saved preview>."})
         except ValueError as exc:
             issues.append({"code": "schedule_incomplete", "message": f"Schedule {row['id']}: {exc}", "refs": [row["id"]],
-                           "action": f"Fix schedule {row['id']} with books accrual schedule change-preview --entity {_entity_arg(conn)} --input <file> (action cancel or supersede)."})
+                           "action": f"Fix schedule {row['id']} with books accrual schedule change-preview --entity {action_entity} --input <file> (action cancel or supersede)."})
     intents = _records(conn, "intents")
     for intent in _records(conn, "intents"):
         if intent.get("kind") != "scheduled_reversal" or intent.get("strategy") != "reverse" or intent.get("date", "9999-12-31") > as_of:
@@ -423,11 +426,11 @@ def unresolved(conn, as_of):
         posted = any(conn.execute("SELECT 1 FROM entries WHERE source_id=? AND date<=?", (source_id, as_of)).fetchone() for source_id in source_ids)
         if not posted:
             issues.append({"code": "reversal_due", "message": f"Journal {original_id} has an unposted reversal due {intent['date']}.", "refs": [original_id],
-                           "action": f"Run books accrual journal due-reversals --entity {_entity_arg(conn)} --as-of {as_of} (add --apply to post it)."})
+                           "action": f"Run books accrual journal due-reversals --entity {action_entity} --as-of {as_of} (add --apply to post it)."})
     for row in _records(conn, "coverage"):
         if row.get("kind") == "unresolved_settlement" and row.get("status") != "resolved" and row.get("as_of", row.get("date", "9999-12-31")) <= as_of:
             issues.append({"code": "settlement_unresolved", "message": f"Imported cash movement {row['id']} needs explicit settlement treatment.", "refs": [row["id"]],
-                           "action": f"Settle it against an item with books accrual item settle-preview --entity {_entity_arg(conn)} --input <file>, or record it as a plain journal with books accrual journal preview."})
+                           "action": f"Settle it against an item with books accrual item settle-preview --entity {action_entity} --input <file>, or record it as a plain journal with books accrual journal preview."})
     return sorted(issues, key=lambda i: (i["code"], i["refs"]))
 
 
