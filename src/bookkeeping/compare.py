@@ -89,6 +89,7 @@ import json
 import os
 import re
 import sys
+import dataclasses
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -384,10 +385,12 @@ def save_differences(entity: Entity, diffs: list[DiffRecord]) -> None:
     os.replace(str(tmp), str(path))
 
 
-def _review_drift(d: DiffRecord, period: Optional[tuple[date, date]] = None, previous: Optional[list] = None) -> list[str]:
+def _review_drift(d: DiffRecord, period: Optional[tuple[date, date]] = None, previous: Optional[list] = None,
+                  reference: Optional[str] = None) -> list[str]:
     """The bound fields of a typed review that differ from the current difference, in a fixed order.
 
-    ``period`` is the compared period. When it is None (no compare), a ``period`` signal from before is kept.
+    ``period`` is the compared period and ``reference`` the digest of the compared reference files. When one is None
+    (no compare), its signal from before (``previous``) is kept.
     """
     review = d.review or {}
     drift: list[str] = []
@@ -396,6 +399,11 @@ def _review_drift(d: DiffRecord, period: Optional[tuple[date, date]] = None, pre
             drift.append("period")
     elif "period" in (previous or []):
         drift.append("period")
+    if reference is not None:
+        if review.get("reference_digest") != reference:
+            drift.append("reference_digest")
+    elif "reference_digest" in (previous or []):
+        drift.append("reference_digest")
     for name in ("ours", "reference", "delta"):
         if Decimal(str(review.get(name))) != getattr(d, name):
             drift.append(name)
@@ -410,6 +418,7 @@ def _merge_differences(
     abs_t: Decimal,
     pct_t: Decimal,
     period: Optional[tuple[date, date]] = None,
+    reference: Optional[str] = None,
 ) -> list[DiffRecord]:
     """Merge fresh diffs with existing, preserving accepted/fixed dispositions.
 
@@ -423,8 +432,8 @@ def _merge_differences(
 
     A record with a typed review keeps the review. Its material-change baseline is the reviewed delta, not the last
     saved delta, so small changes add up. ``review_drift`` lists the reviewed fields that differ from the fresh
-    difference (and ``period`` when ``period`` is not the reviewed period), so a later change never hides behind a
-    stale acceptance.
+    difference (``period`` when ``period`` is not the reviewed period, and ``reference_digest`` when ``reference`` is
+    not the digest of the reviewed reference files), so a later change never hides behind a stale acceptance.
     """
     existing_by_key: dict[str, DiffRecord] = {d.key: d for d in existing}
     result: list[DiffRecord] = []
@@ -469,7 +478,7 @@ def _merge_differences(
                     review=prev.review,
                 )
             if merged.review is not None:
-                merged.review_drift = _review_drift(merged, period, prev.review_drift)
+                merged.review_drift = _review_drift(merged, period, prev.review_drift, reference)
             result.append(merged)
         else:
             result.append(fresh_d)
@@ -1637,11 +1646,21 @@ def _compare_period(
     try:
         if view:
             return report
-        existing = load_differences(entity)
         all_fresh = report.material_diffs + report.immaterial_diffs
-        merged = _merge_differences(existing, all_fresh, abs_t, pct_t, period=(from_date, to_date))
+
+        def merge_saved() -> list[DiffRecord]:
+            existing = load_differences(entity)
+            digest = reference_digest(qb_folder) if any(d.review is not None for d in existing) else None
+            return _merge_differences(existing, all_fresh, abs_t, pct_t, period=(from_date, to_date), reference=digest)
+
         if persist_differences:
-            save_differences(entity, merged)
+            # Every writer of differences.json reads, changes and saves it under the company write lock.
+            from .ledger.importer import _entity_write_lock
+            with _entity_write_lock(entity.path, repair=False):
+                merged = merge_saved()
+                save_differences(entity, merged)
+        else:
+            merged = merge_saved()
         # Update report's diffs to reflect merged dispositions
         merged_by_key = {d.key: d for d in merged}
         report.material_diffs = [merged_by_key[d.key] for d in report.material_diffs if d.key in merged_by_key]
@@ -2540,29 +2559,33 @@ def categorize_diff(entity: Entity, key: str, category: str, note: str = "") -> 
     """Set the category and note for a difference by key. Returns True if found."""
     if category not in _VALID_CATEGORIES:
         raise ValueError(f"Invalid category {category!r}. Valid: {sorted(_VALID_CATEGORIES)}")
-    diffs = load_differences(entity)
-    for d in diffs:
-        if d.key == key:
-            d.category = category
-            if note:
-                d.note = note
-            if d.review is not None:
-                d.review_drift = _review_drift(d, previous=d.review_drift)
-            save_differences(entity, diffs)
-            return True
+    from .ledger.importer import _entity_write_lock
+    with _entity_write_lock(entity.path, repair=False):
+        diffs = load_differences(entity)
+        for d in diffs:
+            if d.key == key:
+                d.category = category
+                if note:
+                    d.note = note
+                if d.review is not None:
+                    d.review_drift = _review_drift(d, previous=d.review_drift)
+                save_differences(entity, diffs)
+                return True
     return False
 
 
 def accept_diff(entity: Entity, key: str, note: str = "") -> bool:
     """Mark a difference as accepted. Returns True if found."""
-    diffs = load_differences(entity)
-    for d in diffs:
-        if d.key == key:
-            d.status = "accepted"
-            if note:
-                d.note = note
-            save_differences(entity, diffs)
-            return True
+    from .ledger.importer import _entity_write_lock
+    with _entity_write_lock(entity.path, repair=False):
+        diffs = load_differences(entity)
+        for d in diffs:
+            if d.key == key:
+                d.status = "accepted"
+                if note:
+                    d.note = note
+                save_differences(entity, diffs)
+                return True
     return False
 
 
@@ -2575,24 +2598,27 @@ REVIEW_REFUSAL_CODES = (
     "REQUEST_INVALID",            # the request does not have the version 1 shape
     "ENTITY_NOT_FOUND",           # the company directory has no entity.json
     "REFERENCE_FOLDER_MISSING",   # the QuickBooks reference folder does not exist
-    "DIFFERENCES_FILE_MISSING",   # no saved differences.json; run `books compare period` first
-    "DIFFERENCES_FILE_CORRUPT",   # differences.json is not a valid list of difference records
+    "DIFFERENCES_FILE_CORRUPT",   # differences.json exists but is not a valid list in the form the engine writes
     "COMPARE_INCOMPLETE",         # the difference is not in the compare, and the compare reported errors
     "DIFFERENCE_NOT_FOUND",       # the compare of the period has no difference with this grain and account
-    "DIFFERENCE_NOT_SAVED",       # the difference exists now, but the saved differences.json does not have it
     "DIFFERENCE_CHANGED",         # an amount or the category differs from the current difference
-    "ALREADY_ACCEPTED",           # a different review of the same current amounts is already accepted
+    "ALREADY_ACCEPTED",           # a different review of the same difference and source is already accepted
+    "DIFFERENCES_FILE_CHANGED",   # differences.json changed while the review compared; nothing was written
 )
 _REVIEW_FIELDS = frozenset({"schema_version", "period", "difference", "reviewer", "explanation", "reviewed_at"})
 _REVIEW_DIFFERENCE_FIELDS = ("grain", "account", "ours", "reference", "delta", "category")
-_REVIEW_KEYS = frozenset({"schema_version", "period", "ours", "reference", "delta", "category",
+_REVIEW_KEYS = frozenset({"schema_version", "period", "reference_digest", "ours", "reference", "delta", "category",
                           "reviewer", "explanation", "reviewed_at"})
+_REVIEW_DRIFT_FIELDS = ("period", "reference_digest", "ours", "reference", "delta", "category")
+_LEGACY_ROW_KEYS = ("key", "grain", "account", "ours", "reference", "delta", "category", "status", "note", "re_opened")
 _REVIEWER_LIMIT = 200
 _EXPLANATION_LIMIT = 2000
 _AMOUNT = re.compile(r"-?\d+(\.\d+)?\Z")
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 _INSTANT = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})\Z")
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_CONTROL_EXCEPT_LINES = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
 class _ReviewRefusal(Exception):
@@ -2601,123 +2627,188 @@ class _ReviewRefusal(Exception):
         self.code, self.message, self.detail = code, message, detail
 
 
-def _review_text(request: dict, name: str, limit: int, *, single_line: bool) -> str:
-    value = request.get(name)
-    if not isinstance(value, str) or not value.strip() or len(value) > limit:
-        raise _ReviewRefusal("REQUEST_INVALID", f"{name} must be a non-empty string of at most {limit} characters.")
-    if single_line and (value != value.strip() or _CONTROL.search(value)):
-        raise _ReviewRefusal("REQUEST_INVALID", f"{name} must be one line with no leading or trailing space.")
-    return value
+def reference_digest(qb_folder: Path) -> str:
+    """A digest of the QuickBooks reference files that a compare reads: each file name and its SHA-256.
+
+    The folder path is not part of the digest, so a copy of the same files in another place has the same digest.
+    """
+    import hashlib
+    lines = []
+    for path in iter_export_files(Path(qb_folder)):
+        lines.append(json.dumps([path.name, hashlib.sha256(path.read_bytes()).hexdigest()]))
+    return "sha256:" + hashlib.sha256(("\n".join(lines) + "\n").encode("utf-8")).hexdigest()
+
+
+def _is_day(value: Any) -> bool:
+    if not isinstance(value, str) or not _DAY.match(value):
+        return False
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_amount(value: Any) -> bool:
+    """A finite decimal string such as "-12.50". NaN, Infinity, exponents and JSON numbers are not amounts."""
+    return isinstance(value, str) and bool(_AMOUNT.match(value))
+
+
+def _is_label(value: Any) -> bool:
+    return isinstance(value, str) and bool(value) and not _CONTROL.search(value)
+
+
+def _is_reviewer(value: Any) -> bool:
+    return (isinstance(value, str) and bool(value.strip()) and len(value) <= _REVIEWER_LIMIT
+            and value == value.strip() and not _CONTROL.search(value))
+
+
+def _is_explanation(value: Any) -> bool:
+    """Not blank, at most the limit, and no control character except a line break or a tab."""
+    return (isinstance(value, str) and bool(value.strip()) and len(value) <= _EXPLANATION_LIMIT
+            and not _CONTROL_EXCEPT_LINES.search(value))
+
+
+def _is_instant(value: Any) -> bool:
+    if not isinstance(value, str) or not _INSTANT.match(value):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _is_category(value: Any) -> bool:
+    return isinstance(value, str) and value in _VALID_CATEGORIES
+
+
+def _is_period(value: Any) -> bool:
+    return (isinstance(value, dict) and set(value) == {"from", "to"} and _is_day(value["from"])
+            and _is_day(value["to"]) and value["from"] <= value["to"])
 
 
 def _parse_review_request(request: Any) -> dict:
-    """Validate a version 1 review request. Unknown fields, floats and loose text are refused, never guessed."""
+    """Validate a version 1 review request. Unknown fields, numbers and loose text are refused, never guessed."""
     def invalid(message: str) -> _ReviewRefusal:
         return _ReviewRefusal("REQUEST_INVALID", message)
 
     if not isinstance(request, dict):
         raise invalid("The request must be a JSON object.")
-    unknown = sorted(set(request) - _REVIEW_FIELDS)
+    unknown = sorted(str(name) for name in set(request) - _REVIEW_FIELDS)
     if unknown:
         raise invalid(f"Unknown request fields: {', '.join(unknown)}.")
     version = request.get("schema_version")
     if type(version) is not int or version != REVIEW_SCHEMA_VERSION:
         raise invalid(f"schema_version must be {REVIEW_SCHEMA_VERSION}.")
-
     period = request.get("period")
-    if not isinstance(period, dict) or set(period) != {"from", "to"}:
-        raise invalid("period must be an object with exactly from and to.")
-    days = []
-    for name in ("from", "to"):
-        value = period[name]
-        try:
-            if not isinstance(value, str) or not _DAY.match(value):
-                raise ValueError
-            days.append(date.fromisoformat(value))
-        except ValueError:
-            raise invalid(f"period.{name} must be a day in YYYY-MM-DD form.") from None
-    if days[0] > days[1]:
-        raise invalid("period.from must not be after period.to.")
-
+    if not _is_period(period):
+        raise invalid("period must be an object with exactly from and to, two YYYY-MM-DD days, from not after to.")
     difference = request.get("difference")
     if not isinstance(difference, dict) or set(difference) != set(_REVIEW_DIFFERENCE_FIELDS):
         raise invalid(f"difference must be an object with exactly {', '.join(_REVIEW_DIFFERENCE_FIELDS)}.")
     for name in ("grain", "account"):
-        if not isinstance(difference[name], str) or not difference[name]:
-            raise invalid(f"difference.{name} must be a non-empty string.")
-    amounts = {}
+        if not _is_label(difference[name]):
+            raise invalid(f"difference.{name} must be a non-empty string with no control character.")
     for name in ("ours", "reference", "delta"):
-        value = difference[name]
-        if not isinstance(value, str) or not _AMOUNT.match(value):
-            raise invalid(f"difference.{name} must be a decimal string such as \"-12.50\".")
-        amounts[name] = Decimal(value)
-    if difference["category"] not in _VALID_CATEGORIES:
+        if not _is_amount(difference[name]):
+            raise invalid(f"difference.{name} must be a finite decimal string such as \"-12.50\".")
+    if not _is_category(difference["category"]):
         raise invalid(f"difference.category must be one of {', '.join(sorted(_VALID_CATEGORIES))}.")
-
+    if "reviewer" not in request or not _is_reviewer(request["reviewer"]):
+        raise invalid(f"reviewer must be one line of at most {_REVIEWER_LIMIT} characters, with no leading or "
+                      "trailing space and no control character.")
+    if "explanation" not in request or not _is_explanation(request["explanation"]):
+        raise invalid(f"explanation must not be blank, must have at most {_EXPLANATION_LIMIT} characters, and must "
+                      "have no control character except a line break or a tab.")
     reviewed_at = request.get("reviewed_at")
-    if reviewed_at is not None:
-        try:
-            if not isinstance(reviewed_at, str) or not _INSTANT.match(reviewed_at):
-                raise ValueError
-            datetime.fromisoformat(reviewed_at.replace("Z", "+00:00"))
-        except ValueError:
-            raise invalid("reviewed_at must be null or a time with a zone, such as 2026-11-09T15:04:05Z.") from None
-
+    if reviewed_at is not None and not _is_instant(reviewed_at):
+        raise invalid("reviewed_at must be null or a time with a zone, such as 2026-11-09T15:04:05Z.")
     return {
-        "from": days[0], "to": days[1], "grain": difference["grain"], "account": difference["account"],
-        "category": difference["category"], **amounts,
-        "reviewer": _review_text(request, "reviewer", _REVIEWER_LIMIT, single_line=True),
-        "explanation": _review_text(request, "explanation", _EXPLANATION_LIMIT, single_line=False),
-        "reviewed_at": reviewed_at,
+        "from": date.fromisoformat(period["from"]), "to": date.fromisoformat(period["to"]),
+        "grain": difference["grain"], "account": difference["account"], "category": difference["category"],
+        **{name: Decimal(difference[name]) for name in ("ours", "reference", "delta")},
+        "reviewer": request["reviewer"], "explanation": request["explanation"], "reviewed_at": reviewed_at,
     }
 
 
-def _load_differences_strict(entity: Entity) -> list[DiffRecord]:
-    """Read differences.json for a typed write. A missing or damaged file is a refusal, never an empty list."""
-    path = entity.reports_dir / _CONFIDENCE_DIR / _DIFFERENCES_FILE
-    if not path.is_file():
-        raise _ReviewRefusal("DIFFERENCES_FILE_MISSING",
-                             "No saved differences. Run `books compare period` for this period first.")
+def _valid_saved_review(review: Any) -> bool:
+    return (isinstance(review, dict) and set(review) == _REVIEW_KEYS
+            and type(review["schema_version"]) is int and review["schema_version"] == REVIEW_SCHEMA_VERSION
+            and _is_period(review["period"])
+            and isinstance(review["reference_digest"], str) and bool(_DIGEST.match(review["reference_digest"]))
+            and all(_is_amount(review[name]) for name in ("ours", "reference", "delta"))
+            and _is_category(review["category"]) and _is_reviewer(review["reviewer"])
+            and _is_explanation(review["explanation"])
+            and (review["reviewed_at"] is None or _is_instant(review["reviewed_at"])))
+
+
+def _valid_saved_row(row: Any) -> bool:
+    """Every field of a saved difference row has its exact type; a typed review is checked in full."""
+    if not isinstance(row, dict):
+        return False
+    typed = "review" in row
+    if list(row) != list(_LEGACY_ROW_KEYS) + (["review", "review_drift"] if typed else []):
+        return False
+    if not (_is_label(row["grain"]) and _is_label(row["account"]) and row["key"] == _diff_key(row["grain"], row["account"])
+            and all(_is_amount(row[name]) for name in ("ours", "reference", "delta"))
+            and _is_category(row["category"]) and isinstance(row["status"], str) and row["status"] in _VALID_STATUSES
+            and isinstance(row["note"], str) and type(row["re_opened"]) is bool):
+        return False
+    if typed:
+        drift = row["review_drift"]
+        if not (_valid_saved_review(row["review"]) and isinstance(drift, list)
+                and all(isinstance(name, str) for name in drift)
+                and drift == [name for name in _REVIEW_DRIFT_FIELDS if name in drift]):
+            return False
+    return True
+
+
+def _differences_text(rows: list) -> str:
+    """The exact bytes that ``save_differences`` writes for a list of rows."""
+    return json.dumps(rows, indent=2, sort_keys=False) + "\n"
+
+
+def _read_differences_bytes(path: Path) -> Optional[bytes]:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _load_differences_strict(path: Path, raw: Optional[bytes]) -> tuple[list[DiffRecord], list[dict]]:
+    """Parse differences.json for a typed write: the records and the raw rows.
+
+    A missing file (``raw`` None) is an empty prior list. A file that exists but has any invalid row, or is not in
+    the exact form that the engine writes, is a refusal, never an empty list: a typed write keeps the bytes of every
+    other row, so it must understand all of them.
+    """
+    if raw is None:
+        return [], []
 
     def corrupt(reason: str) -> _ReviewRefusal:
         return _ReviewRefusal("DIFFERENCES_FILE_CORRUPT", f"The saved differences file is not valid: {reason}")
 
+    def no_constant(name: str) -> Any:
+        raise ValueError(name)
+
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
+        text = raw.decode("utf-8")
+        data = json.loads(text, parse_constant=no_constant)
+    except (UnicodeDecodeError, ValueError, RecursionError):
         raise corrupt("it is not readable JSON.") from None
     if not isinstance(data, list):
         raise corrupt("it is not a list.")
-    records: list[DiffRecord] = []
+    if _differences_text(data) != text:
+        raise corrupt("it is not in the form that the engine writes, so its other rows cannot be kept unchanged.")
     seen: set[str] = set()
     for index, row in enumerate(data):
-        if not isinstance(row, dict):
-            raise corrupt(f"row {index} is not an object.")
-        try:
-            if not all(isinstance(row[name], str) for name in ("key", "grain", "account", "ours", "reference", "delta")):
-                raise ValueError
-            record = _dict_to_diff(row)
-        except (KeyError, TypeError, ValueError, ArithmeticError):
-            raise corrupt(f"row {index} does not have the difference fields.") from None
-        if record.key != _diff_key(record.grain, record.account) or record.key in seen:
-            raise corrupt(f"row {index} has a wrong or repeated key.")
-        if record.status not in _VALID_STATUSES or record.category not in _VALID_CATEGORIES:
-            raise corrupt(f"row {index} has an unknown status or category.")
-        if record.review is not None and not _valid_saved_review(record.review):
-            raise corrupt(f"row {index} has a review with the wrong fields.")
-        seen.add(record.key)
-        records.append(record)
-    return records
-
-
-def _valid_saved_review(review: Any) -> bool:
-    if not isinstance(review, dict) or set(review) != _REVIEW_KEYS:
-        return False
-    period = review["period"]
-    return (isinstance(period, dict) and set(period) == {"from", "to"}
-            and all(isinstance(period[name], str) and _DAY.match(period[name]) for name in ("from", "to"))
-            and all(isinstance(review[name], str) and _AMOUNT.match(review[name])
-                    for name in ("ours", "reference", "delta")))
+        if not _valid_saved_row(row):
+            raise corrupt(f"row {index} does not have the exact difference fields and types.")
+        if row["key"] in seen:
+            raise corrupt(f"row {index} repeats the key of another row.")
+        seen.add(row["key"])
+    return [_dict_to_diff(row) for row in data], data
 
 
 def _review_current(d: DiffRecord) -> dict:
@@ -2725,80 +2816,110 @@ def _review_current(d: DiffRecord) -> dict:
             "delta": str(d.delta), "category": d.category}
 
 
-@_locked_entity_operation
 def review_difference(entity_path: Path, qb_folder: Path, request: Any) -> dict:
     """Accept one difference for a reviewer, bound to the exact difference that the engine derives again.
 
     The engine compares ``request.period`` again, read-only, and finds the difference by grain and account. If
     ``ours``, ``reference``, ``delta`` or ``category`` differ from the request, it refuses (``DIFFERENCE_CHANGED``).
     It reads no clock and sets no reviewer: ``reviewer``, ``explanation`` and the optional ``reviewed_at`` come from
-    the caller. The written record is the same for the same inputs. It is ``accepted``, ``re_opened`` is false,
-    ``note`` is the explanation, and ``review`` keeps the bound amounts, the period and the review fields.
+    the caller. The review also binds ``reference_digest`` (see :func:`reference_digest`) of the reference files.
+    The written record is the same for the same inputs: the record that a compare saves for that difference, with
+    ``status`` ``accepted``, ``re_opened`` false, ``note`` the explanation, ``review`` and ``review_drift`` ``[]``.
 
-    An exact retry returns the same result and writes nothing. A different review of the same current amounts is
-    refused (``ALREADY_ACCEPTED``). A new review is allowed when the record is open, has only a legacy acceptance,
-    or has a ``review_drift``. The result is ``{"schema_version": 1, "status": "accepted", "key", "record"}`` or
-    ``{"schema_version": 1, "status": "refused", "code", "message", ...}``; see ``REVIEW_REFUSAL_CODES``.
+    The only write is differences.json, as ``json.dumps(rows, indent=2) + "\n"``. ``rows`` is the saved list (an
+    empty list when no file exists) with the selected row replaced in place, or appended at the end when the saved
+    list does not have it. No earlier compare write is necessary. Every other row keeps its bytes, and the other
+    current differences are not written. Under the entity lock, the file is read before the compare and read
+    again before the write; if it changed, the review refuses (``DIFFERENCES_FILE_CHANGED``). A refusal writes
+    nothing.
+
+    An exact retry returns the same result and writes nothing. A different review of the same current difference
+    and reference files is refused (``ALREADY_ACCEPTED``). A new review is allowed when the record is open, has only
+    a legacy acceptance, or has a ``review_drift``. The result is ``{"schema_version": 1, "status": "accepted",
+    "key", "record"}`` or ``{"schema_version": 1, "status": "refused", "code", "message", ...}``; see
+    ``REVIEW_REFUSAL_CODES``.
     """
     key = None
     try:
+        # Validate the request before anything that can write, including the lock file and its currency repair.
         parsed = _parse_review_request(request)
         key = _diff_key(parsed["grain"], parsed["account"])
-        try:
-            entity = load_entity(Path(entity_path))
-        except (FileNotFoundError, NotADirectoryError):
-            raise _ReviewRefusal("ENTITY_NOT_FOUND", f"No company at {entity_path}.") from None
-        folder = Path(qb_folder)
-        if not folder.is_dir():
-            raise _ReviewRefusal("REFERENCE_FOLDER_MISSING", f"No QuickBooks reference folder at {folder}.")
-        stored = _load_differences_strict(entity)
-
-        report = compare_period(entity, folder.resolve(), parsed["from"], parsed["to"], persist_differences=False)
-        current = next((d for d in report.material_diffs + report.immaterial_diffs if d.key == key), None)
-        if current is None:
-            if report.errors:
-                raise _ReviewRefusal("COMPARE_INCOMPLETE", "The compare reported errors, so the difference was not found.",
-                                     errors=list(report.errors))
-            raise _ReviewRefusal("DIFFERENCE_NOT_FOUND", "The compare of this period has no such difference.")
-        changed = [name for name in ("ours", "reference", "delta") if parsed[name] != getattr(current, name)]
-        if parsed["category"] != current.category:
-            changed.append("category")
-        if changed:
-            raise _ReviewRefusal("DIFFERENCE_CHANGED", "The difference is not the same as the request.",
-                                 changed_fields=changed, current=_review_current(current))
-        index = next((i for i, d in enumerate(stored) if d.key == key), None)
-        if index is None:
-            raise _ReviewRefusal("DIFFERENCE_NOT_SAVED",
-                                 "The saved differences do not have this difference. Run `books compare period` "
-                                 "for this period, then review again.")
-
-        review = {
-            "schema_version": REVIEW_SCHEMA_VERSION,
-            "period": {"from": str(parsed["from"]), "to": str(parsed["to"])},
-            **{name: value for name, value in _review_current(current).items() if name not in ("grain", "account")},
-            "reviewer": parsed["reviewer"],
-            "explanation": parsed["explanation"],
-            "reviewed_at": parsed["reviewed_at"],
-        }
-        accepted = DiffRecord(
-            key=key, grain=current.grain, account=current.account, ours=current.ours, reference=current.reference,
-            delta=current.delta, category=current.category, status="accepted", note=parsed["explanation"],
-            re_opened=False, review=review, review_drift=[],
-        )
-        record = _diff_to_dict(accepted)
-        result = {"schema_version": REVIEW_SCHEMA_VERSION, "status": "accepted", "key": key, "record": record}
-        if _diff_to_dict(stored[index]) == record:
-            return result  # An exact retry: the same result and no second write.
-        if (current.status == "accepted" and current.review is not None and not current.review_drift
-                and current.review != review):
-            raise _ReviewRefusal("ALREADY_ACCEPTED", "A different review of these amounts is already accepted.",
-                                 accepted_review=current.review)
-        stored[index] = accepted
-        save_differences(entity, stored)
-        return result
+        if not (Path(entity_path) / "entity.json").is_file():
+            raise _ReviewRefusal("ENTITY_NOT_FOUND", f"No company at {entity_path}.")
+        from .ledger.importer import _entity_write_lock
+        with _entity_write_lock(Path(entity_path), repair=False):
+            return _review_locked(Path(entity_path), Path(qb_folder), parsed, key)
     except _ReviewRefusal as refusal:
         return {"schema_version": REVIEW_SCHEMA_VERSION, "status": "refused", "code": refusal.code,
                 "message": refusal.message, **({"key": key} if key else {}), **refusal.detail}
+
+
+def _review_locked(entity_path: Path, folder: Path, parsed: dict, key: str) -> dict:
+    """The part of :func:`review_difference` that runs under the company write lock."""
+    try:
+        entity = load_entity(entity_path)
+    except (FileNotFoundError, NotADirectoryError):
+        raise _ReviewRefusal("ENTITY_NOT_FOUND", f"No company at {entity_path}.") from None
+    if not folder.is_dir():
+        raise _ReviewRefusal("REFERENCE_FOLDER_MISSING", f"No QuickBooks reference folder at {folder}.")
+    path = entity.reports_dir / _CONFIDENCE_DIR / _DIFFERENCES_FILE
+    before = _read_differences_bytes(path)
+    stored, rows = _load_differences_strict(path, before)
+
+    digest = reference_digest(folder)
+    report = compare_period(entity, folder.resolve(), parsed["from"], parsed["to"], persist_differences=False)
+    current = next((d for d in report.material_diffs + report.immaterial_diffs if d.key == key), None)
+    if current is None:
+        if report.errors:
+            raise _ReviewRefusal("COMPARE_INCOMPLETE", "The compare reported errors, so the difference was not found.",
+                                 errors=list(report.errors))
+        raise _ReviewRefusal("DIFFERENCE_NOT_FOUND", "The compare of this period has no such difference.")
+    changed = [name for name in ("ours", "reference", "delta") if parsed[name] != getattr(current, name)]
+    if parsed["category"] != current.category:
+        changed.append("category")
+    if changed:
+        raise _ReviewRefusal("DIFFERENCE_CHANGED", "The difference is not the same as the request.",
+                             changed_fields=changed, current=_review_current(current), reference_digest=digest)
+    index = next((i for i, d in enumerate(stored) if d.key == key), None)
+
+    review = {
+        "schema_version": REVIEW_SCHEMA_VERSION,
+        "period": {"from": str(parsed["from"]), "to": str(parsed["to"])},
+        "reference_digest": digest,
+        **{name: value for name, value in _review_current(current).items() if name not in ("grain", "account")},
+        "reviewer": parsed["reviewer"],
+        "explanation": parsed["explanation"],
+        "reviewed_at": parsed["reviewed_at"],
+    }
+    accepted = DiffRecord(
+        key=key, grain=current.grain, account=current.account, ours=current.ours, reference=current.reference,
+        delta=current.delta, category=current.category, status="accepted", note=parsed["explanation"],
+        re_opened=False, review=review, review_drift=[],
+    )
+    record = _diff_to_dict(accepted)
+    result = {"schema_version": REVIEW_SCHEMA_VERSION, "status": "accepted", "key": key, "record": record,
+              "review": review, "review_drift": [], "reference_digest": digest}
+    if index is not None and rows[index] == record:
+        return result  # An exact retry: the same result and no second write.
+    prior = stored[index] if index is not None else None
+    # An accepted review that is still current for this period, these reference files and these amounts is not
+    # replaced by a different one. An out-of-date review (any drift) may be replaced.
+    if (prior is not None and prior.status == "accepted" and prior.review is not None
+            and not _review_drift(dataclasses.replace(current, review=prior.review),
+                                  (parsed["from"], parsed["to"]), reference=digest)):
+        raise _ReviewRefusal("ALREADY_ACCEPTED", "A different review of this difference is already accepted.",
+                             accepted_review=prior.review, review_drift=[], reference_digest=digest)
+    # The one typed write: replace the selected row in place, or append it when it is absent. Every other row
+    # keeps its bytes, and the other current differences of the compare are not written.
+    if index is None:
+        rows.append(record)
+    else:
+        rows[index] = record
+    if _read_differences_bytes(path) != before:
+        raise _ReviewRefusal("DIFFERENCES_FILE_CHANGED",
+                             "The saved differences changed during the review. Nothing was written; try again.")
+    _atomic_write(_confidence_dir(entity) / _DIFFERENCES_FILE, _differences_text(rows))
+    return result
 
 
 @_locked_entity_operation

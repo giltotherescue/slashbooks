@@ -1,8 +1,9 @@
 """Typed review of a QuickBooks comparison difference (``books compare review-diff``, request version 1).
 
-The review binds the exact difference that the engine derives again: grain, account, period, ours, reference,
-delta and category. It writes a deterministic record under the entity lock, and it refuses with a typed code.
-The legacy ``books compare accept-diff`` keeps its behavior.
+The review binds the exact difference that the engine derives again (grain, account, period, ours, reference,
+delta and category) and the digest of the reference files. It validates the request before anything that can
+write, writes one deterministic record under the company lock, and refuses with a typed code and no write. It needs
+no earlier saved compare. The legacy ``books compare accept-diff`` keeps its behavior.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import json
 import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -22,12 +24,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from golden_support import run_cli  # noqa: E402
-from test_compare import FIXTURE_LEDGER_WITH_DELTA, _QB_MATCH, _make_entity  # noqa: E402
+from test_compare import FIXTURE_LEDGER_WITH_DELTA, _QB_MATCH, _make_entity, _tree_state  # noqa: E402
 
 _FROM = date(2026, 1, 1)
 _TO = date(2026, 3, 31)
 _KEY = "pnl:Income:Consulting-Revenue"
-_LEGACY_FIELDS = {"key", "grain", "account", "ours", "reference", "delta", "category", "status", "note", "re_opened"}
+_OTHER = "pnl:Expenses:Office-Supplies"
+_SOFTWARE = "pnl:Expenses:Software"  # in the February compare only
+_LEGACY_FIELDS = ["key", "grain", "account", "ours", "reference", "delta", "category", "status", "note", "re_opened"]
+_EXPLANATION = "The extra payment is a deposit that QuickBooks did not record."
+_DROP = object()
 
 
 def _request(**changes) -> dict:
@@ -37,7 +43,7 @@ def _request(**changes) -> dict:
         "difference": {"grain": "pnl", "account": "Income:Consulting-Revenue", "ours": "10500.00",
                        "reference": "10000.00", "delta": "500.00", "category": "uncategorized"},
         "reviewer": "person-17",
-        "explanation": "The extra payment is a deposit that QuickBooks did not record.",
+        "explanation": _EXPLANATION,
     }
     for name, value in changes.items():
         if name in request["difference"]:
@@ -49,7 +55,19 @@ def _request(**changes) -> dict:
     return request
 
 
-_DROP = object()
+def _software_request(**changes) -> dict:
+    """An exact request for the Software difference of the February compare."""
+    return _request(period={"from": "2026-01-01", "to": "2026-02-28"}, account="Expenses:Software",
+                    ours="200.00", reference="350.00", delta="-150.00", **changes)
+
+
+def _text(rows: list) -> str:
+    return json.dumps(rows, indent=2) + "\n"
+
+
+def _digest(folder: Path = _QB_MATCH) -> str:
+    from bookkeeping.compare import reference_digest
+    return reference_digest(folder)
 
 
 class _Companies(unittest.TestCase):
@@ -82,8 +100,14 @@ class _Companies(unittest.TestCase):
     def differences(self) -> Path:
         return self.path / "reports" / "migration-confidence" / "differences.json"
 
+    def rows(self) -> list:
+        return json.loads(self.differences.read_text(encoding="utf-8"))
+
     def stored(self) -> dict:
-        return {d["key"]: d for d in json.loads(self.differences.read_text(encoding="utf-8"))}
+        return {d["key"]: d for d in self.rows()}
+
+    def write_rows(self, rows: list) -> None:
+        self.differences.write_text(_text(rows), encoding="utf-8")
 
     def review(self, request, qb_folder: Path = _QB_MATCH, path: Path | None = None) -> dict:
         from bookkeeping.compare import review_difference
@@ -95,41 +119,55 @@ class _Companies(unittest.TestCase):
         self.assertIsInstance(result["message"], str)
         return result
 
-    def qb_copy(self, consulting_reference: str) -> Path:
-        """A copy of the reference reports with another Consulting Revenue total."""
-        folder = Path(shutil.copytree(_QB_MATCH, self._tmp / f"qb-{consulting_reference}"))
+    def refused_without_write(self, request, code: str, qb_folder: Path = _QB_MATCH) -> dict:
+        """The review refuses, and no file or directory of the company changes, including mtimes."""
+        before = _tree_state(self.path)
+        result = self.assert_refused(self.review(request, qb_folder), code)
+        self.assertEqual(_tree_state(self.path), before)
+        return result
+
+    def qb_copy(self, consulting_reference: str = "10000.00", software_reference: str = "350.00") -> Path:
+        """A copy of the reference reports with other Consulting Revenue or Software totals."""
+        folder = Path(shutil.copytree(_QB_MATCH, self._tmp / f"qb-{consulting_reference}-{software_reference}"))
         pnl = folder / "profit_and_loss.csv"
         text = pnl.read_text(encoding="utf-8")
         self.assertIn('Consulting Revenue,"10000.00"', text)
-        pnl.write_text(text.replace('Consulting Revenue,"10000.00"', f'Consulting Revenue,"{consulting_reference}"'),
-                       encoding="utf-8")
+        self.assertIn('Software,"350.00"', text)
+        text = text.replace('Consulting Revenue,"10000.00"', f'Consulting Revenue,"{consulting_reference}"')
+        pnl.write_text(text.replace('Software,"350.00"', f'Software,"{software_reference}"'), encoding="utf-8")
         return folder
+
+    def make_fresh(self) -> None:
+        """A company that compared only read-only: no saved differences and no migration-confidence folder."""
+        shutil.rmtree(self.differences.parent)
 
 
 class TestExactReview(_Companies):
     def test_exact_review_writes_the_bound_record(self):
-        before = self.stored()
+        before_rows = self.rows()
         result = self.review(_request(reviewed_at="2026-11-09T15:04:05Z"))
+        digest = _digest()
+        self.assertRegex(digest, r"^sha256:[0-9a-f]{64}$")
         expected_review = {
             "schema_version": 1,
             "period": {"from": "2026-01-01", "to": "2026-03-31"},
+            "reference_digest": digest,
             "ours": "10500.00", "reference": "10000.00", "delta": "500.00", "category": "uncategorized",
             "reviewer": "person-17",
-            "explanation": "The extra payment is a deposit that QuickBooks did not record.",
+            "explanation": _EXPLANATION,
             "reviewed_at": "2026-11-09T15:04:05Z",
         }
         expected_record = {
             "key": _KEY, "grain": "pnl", "account": "Income:Consulting-Revenue",
             "ours": "10500.00", "reference": "10000.00", "delta": "500.00", "category": "uncategorized",
-            "status": "accepted", "note": "The extra payment is a deposit that QuickBooks did not record.",
+            "status": "accepted", "note": _EXPLANATION,
             "re_opened": False, "review": expected_review, "review_drift": [],
         }
-        self.assertEqual(result, {"schema_version": 1, "status": "accepted", "key": _KEY, "record": expected_record})
-        after = self.stored()
-        self.assertEqual(after[_KEY], expected_record)
-        # Only the reviewed record changes, and the order of the file stays the same.
-        self.assertEqual(list(after), list(before))
-        self.assertEqual({k: v for k, v in after.items() if k != _KEY}, {k: v for k, v in before.items() if k != _KEY})
+        self.assertEqual(result, {"schema_version": 1, "status": "accepted", "key": _KEY, "record": expected_record,
+                                  "review": expected_review, "review_drift": [], "reference_digest": digest})
+        # The file is the saved list with only the selected row replaced in place: every other row keeps its bytes.
+        expected_rows = [expected_record if row["key"] == _KEY else row for row in before_rows]
+        self.assertEqual(self.differences.read_text(encoding="utf-8"), _text(expected_rows))
 
     def test_without_a_time_the_engine_records_none(self):
         result = self.review(_request())
@@ -141,12 +179,16 @@ class TestExactReview(_Companies):
         self.assertEqual(result["status"], "accepted")
         self.assertEqual(result["record"]["review"]["delta"], "500.00")
 
+    def test_multi_line_explanation_is_kept(self):
+        result = self.review(_request(explanation="First line.\n\tSecond line."))
+        self.assertEqual(result["record"]["review"]["explanation"], "First line.\n\tSecond line.")
+
     def test_review_clears_re_opened(self):
-        rows = json.loads(self.differences.read_text(encoding="utf-8"))
+        rows = self.rows()
         for row in rows:
             if row["key"] == _KEY:
                 row.update(status="open", re_opened=True, note="Changed after an earlier acceptance")
-        self.differences.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
+        self.write_rows(rows)
         result = self.review(_request())
         self.assertEqual(result["status"], "accepted")
         self.assertFalse(self.stored()[_KEY]["re_opened"])
@@ -161,6 +203,10 @@ class TestExactReview(_Companies):
         other_file = other / "reports" / "migration-confidence" / "differences.json"
         self.assertEqual(self.differences.read_bytes(), other_file.read_bytes())
 
+    def test_reference_digest_ignores_the_folder_location(self):
+        self.assertEqual(_digest(self.qb_copy()), _digest())
+        self.assertNotEqual(_digest(self.qb_copy(software_reference="351.00")), _digest())
+
     def test_compare_after_review_keeps_the_review(self):
         from bookkeeping.compare import compare_period
         from bookkeeping.entity import load_entity
@@ -172,115 +218,191 @@ class TestExactReview(_Companies):
         self.assertEqual(self.stored()[_KEY]["review_drift"], [])
 
 
-class TestReviewRefusals(_Companies):
-    def assert_unchanged(self, request, code: str, qb_folder: Path = _QB_MATCH) -> dict:
-        before = self.differences.read_bytes()
-        result = self.assert_refused(self.review(request, qb_folder), code)
-        self.assertEqual(self.differences.read_bytes(), before)
-        return result
+class TestFreshEnforcedEquivalent(_Companies):
+    """A company that compared only read-only can review: the review itself writes its one record."""
 
+    def test_fresh_enforced_equivalent_no_file_creates_one_record(self):
+        from bookkeeping.compare import compare_period
+        from bookkeeping.entity import load_entity
+        self.make_fresh()
+        before = _tree_state(self.path)
+        result = self.review(_request(reviewed_at="2026-11-09T15:04:05Z"))
+        self.assertEqual(result["status"], "accepted", result)
+        self.assertEqual(self.differences.read_text(encoding="utf-8"), _text([result["record"]]))
+        # Only the migration-confidence folder and its one file are new.
+        after = _tree_state(self.path)
+        added = sorted(set(after) - set(before))
+        self.assertEqual(added, ["reports/migration-confidence", "reports/migration-confidence/differences.json"])
+        self.assertEqual({k: v for k, v in after.items() if k in before and k != "reports"},
+                         {k: v for k, v in before.items() if k != "reports"})
+        # The record is the one that a saving compare writes for that difference, plus the review.
+        control = Path(shutil.copytree(self.path, self._tmp / "control"))
+        shutil.rmtree(control / "reports" / "migration-confidence")
+        compare_period(load_entity(control), _QB_MATCH, _FROM, _TO)
+        saved = {row["key"]: row for row in json.loads(
+            (control / "reports" / "migration-confidence" / "differences.json").read_text(encoding="utf-8"))}
+        self.assertEqual({**saved[_KEY], "status": "accepted", "note": _EXPLANATION,
+                          "review": result["review"], "review_drift": []}, result["record"])
+        # An exact retry gives the same result and writes nothing.
+        settled = _tree_state(self.path)
+        self.assertEqual(self.review(_request(reviewed_at="2026-11-09T15:04:05Z")), result)
+        self.assertEqual(_tree_state(self.path), settled)
+
+    def test_fresh_enforced_equivalent_file_without_the_key_appends_one_record(self):
+        old = self.differences.read_text(encoding="utf-8")
+        self.assertNotIn(_SOFTWARE, old)
+        result = self.review(_software_request())
+        self.assertEqual(result["status"], "accepted", result)
+        new = self.differences.read_text(encoding="utf-8")
+        self.assertEqual(new, _text(json.loads(old) + [result["record"]]))
+        # Byte for byte, the old rows are a prefix of the new file: only the appended row is new.
+        self.assertTrue(new.startswith(old[: -len("\n]\n")] + ",\n"))
+        # The other current differences of the February compare are not written.
+        self.assertEqual(len(json.loads(new)), len(json.loads(old)) + 1)
+        settled = _tree_state(self.path)
+        self.assertEqual(self.review(_software_request()), result)
+        self.assertEqual(_tree_state(self.path), settled)
+
+    def test_fresh_enforced_equivalent_empty_list_takes_one_record(self):
+        self.differences.write_text("[]\n", encoding="utf-8")
+        result = self.review(_request())
+        self.assertEqual(self.differences.read_text(encoding="utf-8"), _text([result["record"]]))
+
+    def test_fresh_enforced_equivalent_mismatch_writes_nothing(self):
+        self.make_fresh()
+        result = self.refused_without_write(_request(delta="499.00"), "DIFFERENCE_CHANGED")
+        self.assertEqual(result["changed_fields"], ["delta"])
+        self.refused_without_write(_request(account="Income:Other"), "DIFFERENCE_NOT_FOUND")
+        self.refused_without_write(_request(schema_version=999), "REQUEST_INVALID")
+        self.assertFalse(self.differences.parent.exists())
+
+
+class TestReviewRefusals(_Companies):
     def test_each_changed_amount_or_category_refuses(self):
         cases = {"ours": "10499.99", "reference": "10000.01", "delta": "499.00", "category": "our-bug"}
         for name, value in cases.items():
             with self.subTest(field=name):
-                result = self.assert_unchanged(_request(**{name: value}), "DIFFERENCE_CHANGED")
+                result = self.refused_without_write(_request(**{name: value}), "DIFFERENCE_CHANGED")
                 self.assertEqual(result["changed_fields"], [name])
                 self.assertEqual(result["key"], _KEY)
                 self.assertEqual(result["current"], {
                     "grain": "pnl", "account": "Income:Consulting-Revenue", "ours": "10500.00",
                     "reference": "10000.00", "delta": "500.00", "category": "uncategorized"})
+                self.assertEqual(result["reference_digest"], _digest())
 
     def test_another_period_refuses(self):
-        result = self.assert_unchanged(_request(period={"from": "2026-01-01", "to": "2026-02-28"}), "DIFFERENCE_CHANGED")
+        result = self.refused_without_write(_request(period={"from": "2026-01-01", "to": "2026-02-28"}),
+                                            "DIFFERENCE_CHANGED")
         self.assertEqual(result["changed_fields"], ["ours", "delta"])
         self.assertEqual(result["current"]["ours"], "8000.00")
 
     def test_changed_reference_reports_refuse(self):
-        result = self.assert_unchanged(_request(), "DIFFERENCE_CHANGED", qb_folder=self.qb_copy("10010.00"))
+        result = self.refused_without_write(_request(), "DIFFERENCE_CHANGED", qb_folder=self.qb_copy("10010.00"))
         self.assertEqual(result["changed_fields"], ["reference", "delta"])
 
     def test_changed_category_on_the_saved_record_refuses(self):
         from bookkeeping.compare import categorize_diff
         from bookkeeping.entity import load_entity
         self.assertTrue(categorize_diff(load_entity(self.path), _KEY, "our-bug"))
-        result = self.assert_unchanged(_request(), "DIFFERENCE_CHANGED")
+        result = self.refused_without_write(_request(), "DIFFERENCE_CHANGED")
         self.assertEqual(result["changed_fields"], ["category"])
 
     def test_another_grain_or_account_is_not_found(self):
         for changes in ({"grain": "bs"}, {"account": "Income:Other"}):
             with self.subTest(changes=changes):
-                self.assert_unchanged(_request(**changes), "DIFFERENCE_NOT_FOUND")
-
-    def test_a_difference_that_was_never_saved_refuses(self):
-        # The February compare has a Software difference that the saved first-quarter compare does not have.
-        request = _request(period={"from": "2026-01-01", "to": "2026-02-28"}, account="Expenses:Software",
-                           ours="200.00", reference="350.00", delta="-150.00")
-        self.assert_unchanged(request, "DIFFERENCE_NOT_SAVED")
-
-    def test_missing_differences_file_refuses(self):
-        self.differences.unlink()
-        result = self.assert_refused(self.review(_request()), "DIFFERENCES_FILE_MISSING")
-        self.assertNotIn("record", result)
-        self.assertFalse(self.differences.exists())
+                self.refused_without_write(_request(**changes), "DIFFERENCE_NOT_FOUND")
 
     def test_corrupt_differences_file_refuses(self):
-        good = json.loads(self.differences.read_text(encoding="utf-8"))
-        bad_amount = [dict(row, ours="ten") if row["key"] == _KEY else row for row in good]
-        no_key = [{k: v for k, v in row.items() if k != "key"} for row in good]
-        bad_status = [dict(row, status="done") for row in good]
-        review = {"schema_version": 1, "period": {"from": "2026-01-01", "to": "2026-03-31"}, "ours": "1",
-                  "reference": "x", "delta": "1", "category": "uncategorized", "reviewer": "person-17",
-                  "explanation": "Reviewed.", "reviewed_at": None}
-        bad_review = [dict(row, review=review, review_drift=[]) if row["key"] == _KEY else row for row in good]
+        good = self.rows()
+        first = self.review(_request())
+        reviewed = self.stored()[_KEY]
+        self.write_rows(good)
+
+        def with_row(target, /, **fields):
+            return [dict(row, **fields) if row["key"] == target else row for row in good]
+
+        forged = dict(reviewed, review=dict(reviewed["review"], reviewer=["forged"]))
         cases = {
             "not json": "{not json",
-            "an object": "{}",
-            "a row that is not an object": json.dumps(["x"]),
-            "a missing field": json.dumps(no_key),
-            "a bad amount": json.dumps(bad_amount),
-            "a bad status": json.dumps(bad_status),
-            "a duplicate key": json.dumps(good + good[:1]),
-            "a review with a bad amount": json.dumps(bad_review),
+            "an object": _text({}),
+            "a row that is not an object": _text(["x"]),
+            "a missing field": _text([{k: v for k, v in row.items() if k != "key"} for row in good]),
+            "a bad amount": _text(with_row(_KEY, ours="ten")),
+            "a NaN amount on another row": _text(with_row(_OTHER, ours="NaN")),
+            "an Infinity amount on another row": _text(with_row(_OTHER, ours="Infinity")),
+            "a JSON NaN number on another row": _text(with_row(_OTHER, ours=float("nan"))),
+            "a number amount on another row": _text(with_row(_OTHER, delta=100)),
+            "a list category on another row": _text(with_row(_OTHER, category=[])),
+            "a bad status": _text(with_row(_OTHER, status="done")),
+            "a text re_opened": _text(with_row(_OTHER, re_opened="no")),
+            "a duplicate key": _text(good + good[:1]),
+            "a key that is not grain and account": _text(with_row(_OTHER, key="pnl:Other")),
+            "an extra field on another row": _text(with_row(_OTHER, owner_flag=True)),
+            "a review with a bad amount": _text(with_row(_KEY, review=dict(reviewed["review"], delta="x"),
+                                                         review_drift=[])),
+            "a forged earlier reviewer": _text([forged if row["key"] == _KEY else row for row in good]),
+            "a drift name that is not known": _text(with_row(_KEY, review=reviewed["review"], review_drift=["x"])),
+            "compact JSON": json.dumps(good),
         }
+        self.assertEqual(first["status"], "accepted")
         for name, text in cases.items():
             with self.subTest(case=name):
                 self.differences.write_text(text, encoding="utf-8")
-                self.assert_unchanged(_request(), "DIFFERENCES_FILE_CORRUPT")
+                self.refused_without_write(_request(), "DIFFERENCES_FILE_CORRUPT")
 
     def test_invalid_requests_refuse(self):
         cases = {
             "not an object": [],
-            "another version": _request(schema_version=2),
+            "another version": _request(schema_version=999),
             "a boolean version": _request(schema_version=True),
             "an unknown field": {**_request(), "key": _KEY},
             "no reviewer": _request(reviewer=_DROP),
             "an empty reviewer": _request(reviewer=""),
             "a padded reviewer": _request(reviewer=" person-17"),
+            "a reviewer with a tab": _request(reviewer="person\t17"),
+            "a list reviewer": _request(reviewer=["person-17"]),
             "no explanation": _request(explanation=_DROP),
             "a blank explanation": _request(explanation="  "),
+            "an explanation with NUL": _request(explanation="abc\x00def"),
             "a number amount": _request(ours=10500.0),
             "an exponent amount": _request(delta="5E+2"),
+            "a NaN amount": _request(delta="NaN"),
+            "an Infinity amount": _request(ours="Infinity"),
             "an unknown category": _request(category="other"),
+            "a list category": _request(category=[]),
+            "a list grain": _request(grain=["pnl"]),
+            "an account with a line break": _request(account="Income:\nConsulting-Revenue"),
             "a bad day": _request(period={"from": "2026-02-30", "to": "2026-03-31"}),
+            "a list day": _request(period={"from": ["2026-01-01"], "to": "2026-03-31"}),
             "a reversed period": _request(period={"from": "2026-03-31", "to": "2026-01-01"}),
             "an extra period field": _request(period={"from": "2026-01-01", "to": "2026-03-31", "view": "cash"}),
             "an extra difference field": {**_request(), "difference": {**_request()["difference"], "key": _KEY}},
             "a time without a zone": _request(reviewed_at="2026-11-09T15:04:05"),
             "a time that is a day": _request(reviewed_at="2026-11-09"),
+            "a number time": _request(reviewed_at=1.5),
         }
         for name, request in cases.items():
             with self.subTest(case=name):
-                self.assert_unchanged(request, "REQUEST_INVALID")
+                self.refused_without_write(request, "REQUEST_INVALID")
+
+    def test_invalid_request_is_refused_before_the_lock_and_its_repair(self):
+        """A stale entity.json would be repaired under the write lock. An invalid request must not get there."""
+        store = self.path / "ledger.sqlite"
+        with contextlib.closing(sqlite3.connect(store)) as conn, conn:
+            conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('currency', 'EUR')")
+        (self.path / ".books.lock").unlink(missing_ok=True)
+        self.refused_without_write(_request(schema_version=999), "REQUEST_INVALID")
+        self.assertNotIn("currency", json.loads((self.path / "entity.json").read_text(encoding="utf-8")))
+        self.assertFalse((self.path / ".books.lock").exists())
 
     def test_missing_company_or_reference_folder_refuses(self):
         self.assert_refused(self.review(_request(), path=self._tmp / "nowhere"), "ENTITY_NOT_FOUND")
         self.assertFalse((self._tmp / "nowhere").exists())
-        self.assert_unchanged(_request(), "REFERENCE_FOLDER_MISSING", qb_folder=self._tmp / "no-reports")
+        self.refused_without_write(_request(), "REFERENCE_FOLDER_MISSING", qb_folder=self._tmp / "no-reports")
 
 
 class TestRepeatedReview(_Companies):
     def test_exact_retry_is_idempotent(self):
-        from test_compare import _tree_state
         request = _request(reviewed_at="2026-11-09T15:04:05Z")
         first = self.review(request)
         before = _tree_state(self.path)
@@ -288,15 +410,14 @@ class TestRepeatedReview(_Companies):
         self.assertEqual(second, first)
         self.assertEqual(_tree_state(self.path), before)
 
-    def test_another_acceptance_of_the_same_amounts_refuses(self):
-        self.review(_request(reviewed_at="2026-11-09T15:04:05Z"))
-        before = self.differences.read_bytes()
+    def test_another_acceptance_of_the_same_difference_refuses(self):
+        first = self.review(_request(reviewed_at="2026-11-09T15:04:05Z"))
         for changes in ({"reviewer": "person-18"}, {"explanation": "Another reason."},
                         {"reviewed_at": "2026-11-10T09:00:00Z"}, {"reviewed_at": _DROP}):
             with self.subTest(changes=changes):
-                result = self.assert_refused(self.review(_request(**changes)), "ALREADY_ACCEPTED")
-                self.assertEqual(result["accepted_review"]["reviewer"], "person-17")
-                self.assertEqual(self.differences.read_bytes(), before)
+                result = self.refused_without_write(_request(**changes), "ALREADY_ACCEPTED")
+                self.assertEqual(result["accepted_review"], first["review"])
+                self.assertEqual(result["review_drift"], [])
 
     def test_a_legacy_acceptance_can_take_a_typed_review(self):
         from bookkeeping.compare import accept_diff
@@ -317,7 +438,7 @@ class TestRepeatedReview(_Companies):
         @contextlib.contextmanager
         def other_writer_first(path, **kwargs):
             if not entered:
-                entered.append(Path(path).resolve())
+                entered.append((Path(path).resolve(), kwargs.get("repair", True)))
                 with real(path, **kwargs):
                     self.assertTrue(categorize_diff(load_entity(self.path), _KEY, "timing-pending"))
             with real(path, **kwargs):
@@ -325,17 +446,59 @@ class TestRepeatedReview(_Companies):
 
         with patch.object(importer, "_entity_write_lock", other_writer_first):
             result = self.review(_request())
-        self.assertEqual(entered, [self.path.resolve()])
+        self.assertEqual(entered, [(self.path.resolve(), False)])
         self.assertEqual(self.assert_refused(result, "DIFFERENCE_CHANGED")["changed_fields"], ["category"])
+        self.assertNotIn("review", self.stored()[_KEY])
+
+    def test_every_writer_of_the_differences_file_takes_the_company_lock(self):
+        from bookkeeping.compare import accept_diff, categorize_diff, compare_period
+        from bookkeeping.entity import load_entity
+        from bookkeeping.ledger import importer
+        real = importer._entity_write_lock
+        calls = []
+
+        @contextlib.contextmanager
+        def recording(path, **kwargs):
+            calls.append((Path(path).resolve(), kwargs.get("repair", True)))
+            with real(path, **kwargs):
+                yield
+
+        writers = {
+            "categorize-diff": lambda: categorize_diff(load_entity(self.path), _OTHER, "our-bug"),
+            "accept-diff": lambda: accept_diff(load_entity(self.path), _OTHER),
+            "compare period": lambda: compare_period(load_entity(self.path), _QB_MATCH, _FROM, _TO),
+            "review-diff": lambda: self.review(_request()),
+        }
+        with patch.object(importer, "_entity_write_lock", recording):
+            for name, write in writers.items():
+                with self.subTest(writer=name):
+                    calls.clear()
+                    write()
+                    self.assertIn((self.path.resolve(), False), calls)
+
+    def test_a_concurrent_write_during_the_compare_refuses_and_keeps_it(self):
+        """A writer changes another row while the review compares: the review writes nothing and keeps that change."""
+        from bookkeeping import compare
+        from bookkeeping.entity import load_entity
+        actual = compare.compare_period
+
+        def interleave(*args, **kwargs):
+            self.assertTrue(compare.categorize_diff(load_entity(self.path), _OTHER, "timing-pending"))
+            return actual(*args, **kwargs)
+
+        with patch.object(compare, "compare_period", side_effect=interleave):
+            result = self.review(_request())
+        self.assert_refused(result, "DIFFERENCES_FILE_CHANGED")
+        self.assertEqual(self.stored()[_OTHER]["category"], "timing-pending")
         self.assertNotIn("review", self.stored()[_KEY])
 
 
 class TestLaterChange(_Companies):
-    def compare(self, qb_folder: Path) -> dict:
+    def compare(self, qb_folder: Path, key: str = _KEY) -> dict:
         from bookkeeping.compare import compare_period
         from bookkeeping.entity import load_entity
         report = compare_period(load_entity(self.path), qb_folder, _FROM, _TO).to_dict()
-        return next(d for d in report["material_diffs"] if d["key"] == _KEY)
+        return next(d for d in report["material_diffs"] + report["immaterial_diffs"] if d["key"] == key)
 
     def test_a_non_material_change_keeps_the_acceptance_with_a_signal(self):
         self.review(_request())
@@ -344,15 +507,27 @@ class TestLaterChange(_Companies):
         self.assertEqual((row["status"], row["re_opened"]), ("accepted", False))
         self.assertEqual((row["reference"], row["delta"]), ("10010.00", "490.00"))
         self.assertEqual((row["review"]["reference"], row["review"]["delta"]), ("10000.00", "500.00"))
-        self.assertEqual(row["review_drift"], ["reference", "delta"])
-        self.assertEqual(self.stored()[_KEY]["review_drift"], ["reference", "delta"])
+        self.assertEqual(row["review_drift"], ["reference_digest", "reference", "delta"])
+        self.assertEqual(self.stored()[_KEY]["review_drift"], ["reference_digest", "reference", "delta"])
         code, out, err = run_cli(["compare", "period", "--entity", str(self.path), "--qb-folder", str(folder),
                                   "--from", str(_FROM), "--to", str(_TO), "--no-save-differences"])
         self.assertEqual(code, 0, err)
-        self.assertIn("changed since review: reference, delta", out)
+        self.assertIn("changed since review: reference_digest, reference, delta", out)
         # A new review of the current amounts replaces the old one and clears the signal.
         result = self.review(_request(reference="10010.00", delta="490.00"), qb_folder=folder)
         self.assertEqual(result["status"], "accepted")
+        self.assertEqual(self.compare(folder)["review_drift"], [])
+
+    def test_other_reference_files_with_the_same_amounts_show_a_signal(self):
+        first = self.review(_request())
+        folder = self.qb_copy(software_reference="351.00")
+        row = self.compare(folder)
+        self.assertEqual((row["status"], row["reference"], row["delta"]), ("accepted", "10000.00", "500.00"))
+        self.assertEqual(row["review_drift"], ["reference_digest"])
+        # The out-of-date review may be replaced by a review of the new reference files.
+        second = self.review(_request(), qb_folder=folder)
+        self.assertEqual(second["status"], "accepted")
+        self.assertNotEqual(second["reference_digest"], first["reference_digest"])
         self.assertEqual(self.compare(folder)["review_drift"], [])
 
     def test_another_period_shows_a_signal(self):
@@ -369,12 +544,13 @@ class TestLaterChange(_Companies):
         row = self.compare(self.qb_copy("9000.00"))
         self.assertEqual((row["status"], row["re_opened"]), ("open", True))
         self.assertEqual(row["review"]["delta"], "500.00")
-        self.assertEqual(row["review_drift"], ["reference", "delta"])
+        self.assertEqual(row["review_drift"], ["reference_digest", "reference", "delta"])
 
     def test_small_changes_add_up_against_the_reviewed_amounts(self):
         from bookkeeping.compare import _DEFAULT_MATERIAL_ABS, _DEFAULT_MATERIAL_PCT, _diff_record, _merge_differences
         reviewed = _diff_record("tb", "total_debits", Decimal("10100"), Decimal("10000"), status="accepted")
         reviewed.review = {"schema_version": 1, "period": {"from": "2026-01-01", "to": "2026-03-31"},
+                           "reference_digest": "sha256:" + "0" * 64,
                            "ours": "10100", "reference": "10000", "delta": "100", "category": "uncategorized",
                            "reviewer": "person-17", "explanation": "Reviewed.", "reviewed_at": None}
         reviewed.review_drift = []
@@ -407,6 +583,7 @@ class TestCommand(_Companies):
         result = json.loads(out)
         self.assertEqual(result["status"], "accepted")
         self.assertEqual(result["record"], self.stored()[_KEY])
+        self.assertEqual((result["review_drift"], result["reference_digest"]), ([], _digest()))
 
     def test_review_diff_refusal_exits_one(self):
         code, out, _ = self.cli("review-diff", "--entity", str(self.path), "--qb-folder", str(_QB_MATCH),
@@ -438,12 +615,12 @@ class TestLegacyAcceptDiff(_Companies):
                                   "--note", "Owner confirmed"])
         self.assertEqual((code, out.strip()), (0, f"Accepted difference {_KEY!r}"), err)
         row = self.stored()[_KEY]
-        self.assertEqual(set(row), _LEGACY_FIELDS)
+        self.assertEqual(list(row), _LEGACY_FIELDS)
         self.assertEqual((row["status"], row["note"]), ("accepted", "Owner confirmed"))
         # A re-accept still succeeds, and the file has no review fields.
         code, _, _ = run_cli(["compare", "accept-diff", "--entity", str(self.path), "--key", _KEY])
         self.assertEqual(code, 0)
-        self.assertTrue(all(set(r) == _LEGACY_FIELDS for r in self.stored().values()))
+        self.assertTrue(all(list(r) == _LEGACY_FIELDS for r in self.rows()))
 
     def test_accept_diff_on_a_missing_or_corrupt_file_reads_as_not_found(self):
         for text in (None, "{not json"):
@@ -461,7 +638,7 @@ class TestLegacyAcceptDiff(_Companies):
         from bookkeeping.entity import load_entity
         report = compare_period(load_entity(self.path), _QB_MATCH, _FROM, _TO).to_dict()
         for row in report["material_diffs"] + report["immaterial_diffs"]:
-            self.assertEqual(set(row), _LEGACY_FIELDS)
+            self.assertEqual(list(row), _LEGACY_FIELDS)
 
 
 if __name__ == "__main__":

@@ -117,6 +117,16 @@ or every possible transaction-detail layout.
 compare without a write. The command still reads the saved decisions, and its
 output is the same.
 
+`books compare period` also returns `summary` (`accounts_compared`, `matched`, `differs`, and the same three counts per grain `pnl`, `bs` and `tb`) and a `matched` list of rows with no difference. The cash-basis `tb` grain compares two totals, so it is counted only under `grains.tb`, which adds the reference `total_debits`, `total_credits` and `balanced`.
+
+Importing QuickBooks classifications and reproducing its totals tests reference
+fidelity. Independent categorization backtesting requires separate transaction
+inputs and a held-out period. Never score historical rule-training examples as
+independent predictions.
+
+To score categories in a backtest against a ground-truth file, and to write a
+report that others can re-run, see [accuracy-report.md](accuracy-report.md).
+
 ### Review a difference (typed request)
 
 `books compare accept-diff --key K` marks a saved difference as accepted. It
@@ -144,24 +154,76 @@ unknown field is refused:
 }
 ```
 
-- Amounts are decimal strings. They are compared by value, so `"500"` and
-  `"500.00"` are the same amount. A JSON number is refused.
-- `reviewer` is one line with no leading or trailing space (at most 200
-  characters). `explanation` is not blank (at most 2000 characters).
+- Amounts are finite decimal strings, such as `"-12.50"`. They are compared by
+  value, so `"500"` and `"500.00"` are the same amount. A JSON number, `NaN`,
+  `Infinity` and an exponent are refused.
+- `grain`, `account` and `reviewer` have no control character. `reviewer` is
+  one line with no leading or trailing space (at most 200 characters).
+- `explanation` is not blank (at most 2000 characters). Its only permitted
+  control characters are a line break and a tab.
 - `reviewed_at` is optional. It is `null` or a time with a zone. The engine
   reads no clock and sets no reviewer. It stores only the values that you send.
 
-Under the company lock, the command reads the saved `differences.json`. It then
-compares the period again, read-only, and finds the difference by grain and
-account. It accepts only when `ours`, `reference`, `delta` and `category` are
-the same as the current difference. The record that it writes is the same for
-the same inputs: `status` is `accepted`, `re_opened` is `false`, `note` is the
-explanation, `review` keeps the bound amounts, the period and the review
-fields, and `review_drift` is `[]`. Other records do not change.
+The command checks the request before it does anything that can write. An
+invalid request takes no lock and changes no file. Then, under the company
+write lock (without the `entity.json` currency repair), the command does these
+steps:
+
+1. It reads `differences.json`. A missing file is an empty list. No earlier
+   `books compare period` is necessary. A file that exists must be a list in
+   the exact form that the engine writes, and every row must have the exact
+   fields and types of a difference row. Otherwise the command refuses with
+   `DIFFERENCES_FILE_CORRUPT`. It never reads such a file as empty, and it
+   never drops a field that it does not know.
+2. It computes `reference_digest`, the SHA-256 of the name and the SHA-256 of
+   each QuickBooks export file in the reference folder. The folder path is not
+   part of the digest.
+3. It compares the period again, read-only, and finds the difference by grain
+   and account. It accepts only when `ours`, `reference`, `delta` and
+   `category` are the same as the current difference.
+4. It reads `differences.json` again. If the bytes changed during the compare,
+   it refuses with `DIFFERENCES_FILE_CHANGED` and writes nothing.
+5. It writes the file one time (see "The write" below).
+
+Every other writer of `differences.json` (`books compare period` when it saves,
+`categorize-diff` and `accept-diff`) also takes the company write lock.
+
+#### The write
+
+The command writes one file,
+`reports/migration-confidence/differences.json`, and changes one row in it. It
+creates the `reports/migration-confidence` folder when it is missing. The new
+file is exactly `json.dumps(rows, indent=2) + "\n"`:
+
+- `rows` is the saved list (an empty list when there was no file).
+- When the list has the selected key, the command replaces that row in place.
+- When the list does not have the key, the command appends the row at the end.
+- Every other row keeps its bytes. The command does not write the other
+  current differences that the compare found.
+
+The written row is the row that a saving compare writes for that difference,
+with these changes: `status` is `accepted`, `re_opened` is `false`, `note` is
+the explanation, `review` is added, and `review_drift` is `[]`. `review` has
+`schema_version`, `period`, `reference_digest`, `ours`, `reference`, `delta`,
+`category`, `reviewer`, `explanation` and `reviewed_at`. The same inputs (the
+request, the books, the reference files and the saved file) give the same
+bytes. A verifier can replay the write from these inputs.
+
+The lock file `.books.lock` in the company directory is created when it is
+missing, as for every engine write. A company that the engine has written to
+already has it.
+
+#### The result
 
 The command prints a JSON result and exits 0 when the difference is accepted:
-`{"schema_version": 1, "status": "accepted", "key": ..., "record": {...}}`. It
-exits 1 for a refusal:
+
+```json
+{"schema_version": 1, "status": "accepted", "key": "pnl:Income:Consulting-Revenue",
+ "record": {"...": "the written row"}, "review": {"...": "record.review"},
+ "review_drift": [], "reference_digest": "sha256:..."}
+```
+
+It exits 1 for a refusal, and a refusal writes nothing:
 `{"schema_version": 1, "status": "refused", "code": ..., "message": ...}`.
 Read `code`, not the message text.
 
@@ -170,39 +232,38 @@ Read `code`, not the message text.
 | `REQUEST_INVALID` | The request does not have the version 1 shape, or the file is not JSON. |
 | `ENTITY_NOT_FOUND` | The company directory has no `entity.json`. |
 | `REFERENCE_FOLDER_MISSING` | The QuickBooks reference folder does not exist. |
-| `DIFFERENCES_FILE_MISSING` | There is no saved `differences.json`. Run `books compare period` first. |
-| `DIFFERENCES_FILE_CORRUPT` | `differences.json` is not a valid list of difference records. It never reads as empty. |
+| `DIFFERENCES_FILE_CORRUPT` | `differences.json` exists, but it is not a valid list in the exact form that the engine writes. |
 | `COMPARE_INCOMPLETE` | The difference was not found, and the compare reported `errors`. |
 | `DIFFERENCE_NOT_FOUND` | The compare of the period has no difference with this grain and account. |
-| `DIFFERENCE_NOT_SAVED` | The difference exists now, but the saved file does not have it. Run `books compare period`, then review again. |
-| `DIFFERENCE_CHANGED` | An amount or the category is different. `changed_fields` and `current` show the current difference. |
-| `ALREADY_ACCEPTED` | A different review of the same current amounts is accepted. `accepted_review` shows it. |
+| `DIFFERENCE_CHANGED` | An amount or the category is different. `changed_fields`, `current` and `reference_digest` show the current difference. |
+| `ALREADY_ACCEPTED` | A different review of the same difference is accepted and current. `accepted_review` shows it. |
+| `DIFFERENCES_FILE_CHANGED` | Another write changed `differences.json` during the review. Try again. |
 
 An exact retry with the same request returns the same result and writes
-nothing. A different reviewer, explanation or time for the same amounts is
-refused with `ALREADY_ACCEPTED`. A new review is allowed when the difference is
-open, has only an `accept-diff` acceptance, or has a `review_drift`.
+nothing. A different reviewer, explanation or time for a review that is still
+current is refused with `ALREADY_ACCEPTED`. A new review is allowed when the
+difference is open, has only an `accept-diff` acceptance, or has an earlier
+review that is out of date.
 
-After a review, each `books compare period` keeps `review` on the record and
-sets `review_drift` to the reviewed fields that differ from the current
-difference, in this order: `period`, `ours`, `reference`, `delta`, `category`.
-`period` is in the list when the compared period is not the reviewed period. A
-change that is not material keeps the status `accepted`, but `review_drift` is
-not empty, and the text output adds "changed since review". A material change
-re-opens the difference. For a reviewed difference, the material-change check
-uses the reviewed delta, not the last saved delta, so small changes add up.
-`books compare categorize-diff` also updates `review_drift`. Records without a
-typed review keep their released shape, with no `review` or `review_drift`.
+#### A current review and an out-of-date review
 
-`books compare period` also returns `summary` (`accounts_compared`, `matched`, `differs`, and the same three counts per grain `pnl`, `bs` and `tb`) and a `matched` list of rows with no difference. The cash-basis `tb` grain compares two totals, so it is counted only under `grains.tb`, which adds the reference `total_debits`, `total_credits` and `balanced`.
+Each `books compare period` keeps `review` on the row and sets `review_drift`
+to the reviewed fields that differ from the current difference, in this order:
+`period`, `reference_digest`, `ours`, `reference`, `delta`, `category`. A
+review is current only when `review_drift` is `[]`.
 
-Importing QuickBooks classifications and reproducing its totals tests reference
-fidelity. Independent categorization backtesting requires separate transaction
-inputs and a held-out period. Never score historical rule-training examples as
-independent predictions.
+- `period` is in the list when the compared period is not the reviewed period.
+- `reference_digest` is in the list when the reference files are not the
+  reviewed files, also when the selected amounts did not change.
+- A change that is not material keeps the status `accepted`, but
+  `review_drift` is not empty, and the text output adds "changed since review".
+- A material change re-opens the difference. For a reviewed difference, the
+  material-change check uses the reviewed delta, not the last saved delta, so
+  small changes add up.
+- `books compare categorize-diff` also updates `review_drift`.
 
-To score categories in a backtest against a ground-truth file, and to write a
-report that others can re-run, see [accuracy-report.md](accuracy-report.md).
+Rows without a typed review keep their released shape, with no `review` or
+`review_drift`.
 
 ## Category agreement on held-out history
 
