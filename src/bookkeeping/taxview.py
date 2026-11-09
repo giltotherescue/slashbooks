@@ -547,9 +547,12 @@ PRIOR_RETURN_METHODS = ("cash", "accrual", "unknown", "none")
 ENTITY_TYPES = ("sole_proprietor", "single_member_llc", "partnership", "s_corp", "c_corp", "nonprofit", "other", "unknown")
 PROFILE_FIELDS = {PRIOR_RETURN_METHOD_KEY: PRIOR_RETURN_METHODS, ENTITY_TYPE_KEY: ENTITY_TYPES}
 SET_TAX_PROFILE_KIND = "tax_profile_set"
-PROFILE_NOTE = ("Records facts about the company for the tax preparer: the method of the last tax return filed "
-                f"({PRIOR_RETURN_METHOD_KEY}; none for a first-year business) and the kind of business entity ({ENTITY_TYPE_KEY}). "
-                f"The tax export lists them. {product_name()} applies no tax rule to them: it does not decide, block or compute anything from them.")
+
+
+def _profile_note() -> str:
+    return ("Records facts about the company for the tax preparer: the method of the last tax return filed "
+            f"({PRIOR_RETURN_METHOD_KEY}; none for a first-year business) and the kind of business entity ({ENTITY_TYPE_KEY}). "
+            f"The tax export lists them. {product_name()} applies no tax rule to them: it does not decide, block or compute anything from them.")
 
 
 def tax_profile(config: Mapping[str, Any]) -> dict[str, str]:
@@ -593,14 +596,16 @@ def preview_set_tax_profile(entity: Any, prior_return_method: Any = None, entity
             "changes": target != current, "ledger_digest": store.content_digest(),
             "configuration_hash": canonical_hash(config),
             "effects": {"from": current, "to": target, "entries_changed": 0, "period_locks_changed": 0,
-                        "published_statements_changed": False, "note": PROFILE_NOTE}}
+                        "published_statements_changed": False}}
     if invalid:
         body["warnings"] = [{"code": "invalid_stored_value", "refs": invalid,
                              "message": "entity.json holds a value that is not allowed for " + ", ".join(invalid) + ". "
                                         + ("This change replaces it." if all(key in request for key in invalid)
                                            else "Give a valid value for it to repair it.")}]
     body["request_hash"] = canonical_hash({"kind": SET_TAX_PROFILE_KIND, "request": request})
+    # Presentation can use a different brand during review and independent apply.
     body["plan_hash"] = canonical_hash(body)
+    body["effects"]["note"] = _profile_note()
     return body
 
 

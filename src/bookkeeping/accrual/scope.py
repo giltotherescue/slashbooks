@@ -37,6 +37,7 @@ from datetime import date
 from typing import Any
 
 from ..entity import ACCRUAL_CAPABILITY_VERSION, resolve_basis
+from ..ledger.store import ACCRUAL_SCHEMA_VERSION, BUSINESS_SCHEMA_VERSION, _FINANCIAL_KIND_SCHEMA_SUFFIX
 
 DISCIPLINE_ALL = "all"
 DISCIPLINE_PER_ACCOUNT = "per_account"
@@ -65,7 +66,8 @@ def capability(source: Any) -> int:
     """Return 1 when accrual features are available, otherwise 0."""
     if isinstance(source, sqlite3.Connection):
         try:
-            return 1 if str(_meta(source).get("schema_version")) in {"2", "3"} else 0
+            version = str(_meta(source).get("schema_version")).removesuffix(_FINANCIAL_KIND_SCHEMA_SUFFIX)
+            return int(version in {str(ACCRUAL_SCHEMA_VERSION), str(BUSINESS_SCHEMA_VERSION)})
         except sqlite3.Error:
             return 0
     resolve_basis(_config(source))

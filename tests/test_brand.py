@@ -109,6 +109,43 @@ class OutputTests(unittest.TestCase):
             self.assertIn("Example Books does not convert", note)
             self.assertNotIn("Slashbooks", note)
 
+    def test_company_setting_plan_hashes_survive_a_brand_change(self):
+        from bookkeeping.entity import init_entity, load_entity
+
+        with tempfile.TemporaryDirectory() as tmp, _clean_env():
+            root = Path(tmp) / "books"
+            init_entity(root, name="Synthetic Settings")
+            entity = load_entity(root)
+            with brand.use_product_name("Example Books"):
+                tax = taxview.preview_set_tax_profile(entity, entity_type="single_member_llc")
+                book = currency.preview_set_currency(entity, "EUR")
+            self.assertIn("Example Books", tax["effects"]["note"])
+            self.assertIn("Example Books", book["effects"]["note"])
+            with brand.use_product_name("Other Books"):
+                self.assertIn("Other Books", taxview.preview_set_tax_profile(entity, entity_type="single_member_llc")["effects"]["note"])
+                self.assertEqual(currency.apply_set_currency(entity, "EUR", book["plan_hash"])["status"], "applied")
+                # The first apply legitimately changes the ledger. Review tax again before comparing brands.
+                tax = taxview.preview_set_tax_profile(entity, entity_type="single_member_llc")
+            with brand.use_product_name("Example Books"):
+                self.assertEqual(taxview.apply_set_tax_profile(entity, entity_type="single_member_llc",
+                                                                plan_hash=tax["plan_hash"])["status"], "applied")
+
+    def test_typed_accrual_ledger_keeps_capability_in_cash_view(self):
+        from bookkeeping.accrual import enable, scope
+        from bookkeeping.entity import init_entity, load_entity
+        from bookkeeping.ledger.store import LedgerStore
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "books"
+            init_entity(root, name="Synthetic Typed Accrual", basis="accrual", classify_starter_accounts=True)
+            entity = load_entity(root)
+            preview = enable.preview_set_view(entity, "cash")
+            enable.apply_set_view(entity, "cash", preview["plan_hash"])
+            with LedgerStore(root / "ledger.sqlite").connection() as sql:
+                self.assertEqual(scope.default_view(sql), "cash")
+                self.assertEqual(scope.capability(sql), 1)
+                self.assertEqual(scope.discipline(sql), scope.DISCIPLINE_ALL)
+
     def test_tax_labels_name_no_product(self):
         for label in taxview.LABELS.values():
             self.assertNotIn("Slashbooks", label)
