@@ -58,7 +58,8 @@ preview refuses a scope before the company cutover, before a company opening (a 
 summarizes the whole company before its day), later than the current scope (an open date only moves earlier),
 or over a closed period. A statement opening is for one account; the statement opening and intake controls of
 that account keep its earlier rows out of the books, so the preview lists it and does not refuse. No entry
-changes. A repeat of an applied plan returns ``already_applied`` and writes nothing.
+changes. A repeat of an applied plan with the same request returns ``already_applied`` and writes nothing; the
+same plan hash with another request refuses (``replay_request_differs``).
 """
 from __future__ import annotations
 
@@ -402,7 +403,14 @@ def preview(entity_path: Path | str, books_from: Any, accounts: Sequence[str] = 
 
 def apply(entity_path: Path | str, books_from: Any, plan_hash: str | None,
           accounts: Sequence[str] = ()) -> dict[str, Any]:
-    """Apply the previewed plan with ``plan_hash``. A replay of an applied plan returns ``already_applied``."""
+    """Apply the previewed plan with ``plan_hash``.
+
+    The audit receipt of an applied plan (``books-from-set``) keeps the normalized request: the date and the
+    sorted list of accounts that the person named, apart from the accounts that moved. A replay of the plan hash
+    with the same request returns ``already_applied`` and writes nothing. A replay of the plan hash with another
+    date or another list of named accounts refuses (``replay_request_differs``) and writes nothing, so a caller
+    never reports a request as saved that was not applied.
+    """
     from .accrual.enable import _seal
     from .ledger.importer import _entity_write_lock
     from .ledger.store import LedgerStore, default_store_path
@@ -410,6 +418,7 @@ def apply(entity_path: Path | str, books_from: Any, plan_hash: str | None,
     if not plan_hash:
         raise BooksFromError("plan_hash_required", "--apply needs the plan_hash of the preview.",
                              "Run the preview, review it, then apply with --plan-hash.")
+    request = {"books_from": parse_day(books_from).isoformat(), "accounts": _check_names(accounts)}
     root = Path(entity_path).resolve()
     if not (root / "entity.json").is_file():
         raise BooksFromError("no_company", f"No entity.json found at '{root}'.", "Run books entity init first.")
@@ -419,8 +428,16 @@ def apply(entity_path: Path | str, books_from: Any, plan_hash: str | None,
             for event in store.load_audit_events():
                 if event["type"] == SET_EVENT and event["payload"].get("plan_hash") == plan_hash:
                     payload = event["payload"]
+                    applied = payload.get("request")
+                    if applied != request:
+                        raise BooksFromError(
+                            "replay_request_differs",
+                            "This plan_hash belongs to a plan that was already applied with another request. "
+                            "Nothing was written.",
+                            "Run the preview for the new request, review it, then apply with its plan_hash.",
+                            plan_hash=plan_hash, applied_request=applied, request=request)
                     return {"status": "already_applied", "kind": KIND, "replayed": True, "plan_hash": plan_hash,
-                            "books_from": {"from": payload.get("from"), "to": payload.get("to")},
+                            "request": applied, "books_from": {"from": payload.get("from"), "to": payload.get("to")},
                             "accounts": payload.get("accounts", []), "effects": {"entries_changed": 0}}
         fresh = preview(root, books_from, accounts)
         if plan_hash != fresh["plan_hash"]:
@@ -450,7 +467,8 @@ def apply(entity_path: Path | str, books_from: Any, plan_hash: str | None,
             record["books_from"], record["books_from_source"] = day, "scope"
             store.save_open_date_provenance(record, conn)
             store.append_audit_event(SET_EVENT, {
-                "session_id": SESSION, "entries": 0, "from": fresh["books_from"]["from"], "to": day,
+                "session_id": SESSION, "entries": 0, "request": fresh["request"],
+                "from": fresh["books_from"]["from"], "to": day,
                 "accounts": [{"account": item["account"], "from": item["open_date"], "to": day,
                               "evidence": item["evidence"]} for item in fresh["accounts"]],
                 "plan_hash": fresh["plan_hash"]}, conn)

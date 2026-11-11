@@ -303,9 +303,12 @@ scope and writes nothing. It lists each account that moves, with its
 `evidence`, and each account that stays, with its `reason` and, for an
 uncertain account, what is known (`in_starter_chart`, and the account-add and
 account-remove audit events). `--apply --plan-hash H` runs only the previewed
-plan and writes the audit event `books-from-set`. No entry changes. A replay of
-an applied plan returns `already_applied`. Standing automation cannot run this
-command.
+plan and writes the audit event `books-from-set`, which keeps the request (the
+date and the named accounts) apart from the accounts that moved. No entry
+changes. A replay of an applied plan hash with the same request returns
+`already_applied`. A replay of that hash with another date or other named
+accounts refuses with `replay_request_differs` and writes nothing. Standing
+automation cannot run this command.
 
 A generic account moves only when no bank or CSV mapping names it and one of
 these is true:

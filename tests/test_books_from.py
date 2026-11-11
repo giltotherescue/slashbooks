@@ -315,6 +315,47 @@ class RepairTests(Company):
         self.assertEqual(books_from.apply(self.path, SCOPE, again["plan_hash"])["status"], "already_applied")
         self.assertEqual(self.snapshot(), after)
 
+    def test_a_replay_with_another_request_refuses_and_writes_nothing(self) -> None:
+        self.existing_company()
+        plan = books_from.preview(self.path, SCOPE)
+        books_from.apply(self.path, SCOPE, plan["plan_hash"])
+        receipt = [e for e in self.store.load_audit_events() if e["type"] == "books-from-set"][-1]["payload"]
+        self.assertEqual(receipt["request"], {"books_from": SCOPE, "accounts": []})
+        self.assertIn(SOFTWARE, {item["account"] for item in receipt["accounts"]})  # moved, apart from named
+        after = self.snapshot()
+        for books_from_day, named in (("2024-01-01", []), (SCOPE, [SOFTWARE])):
+            with self.subTest(books_from=books_from_day, named=named):
+                with self.assertRaises(BooksFromError) as caught:
+                    books_from.apply(self.path, books_from_day, plan["plan_hash"], named)
+                error = caught.exception.as_dict()["errors"][0]
+                self.assertEqual(error["code"], "replay_request_differs")
+                self.assertEqual(error["applied_request"], {"books_from": SCOPE, "accounts": []})
+                self.assertEqual(error["request"], {"books_from": books_from_day, "accounts": named})
+                self.assertEqual(self.snapshot(), after)
+        replay = books_from.apply(self.path, SCOPE, plan["plan_hash"])
+        self.assertEqual((replay["status"], replay["request"]), ("already_applied", {"books_from": SCOPE, "accounts": []}))
+        self.assertEqual(self.snapshot(), after)
+        code, refused = self.run_cli("entity", "set-books-from", str(self.path), "--books-from", "2024-01-01",
+                                     "--apply", "--plan-hash", plan["plan_hash"])
+        self.assertEqual((code, refused["status"], refused["errors"][0]["code"]), (1, "blocked", "replay_request_differs"))
+
+    def test_a_replay_of_named_accounts_compares_the_normalized_set(self) -> None:
+        self.create()
+        self.make_legacy()
+        plan = books_from.preview(self.path, SCOPE, [SOFTWARE, "Expenses:Rent"])
+        books_from.apply(self.path, SCOPE, plan["plan_hash"], [SOFTWARE, "Expenses:Rent"])
+        receipt = [e for e in self.store.load_audit_events() if e["type"] == "books-from-set"][-1]["payload"]
+        self.assertEqual(receipt["request"]["accounts"], ["Expenses:Rent", SOFTWARE])
+        after = self.snapshot()
+        # The same set in another order, with a repeat, is the same request.
+        replay = books_from.apply(self.path, SCOPE, plan["plan_hash"], [SOFTWARE, "Expenses:Rent", SOFTWARE])
+        self.assertEqual(replay["status"], "already_applied")
+        for named in ([SOFTWARE], [SOFTWARE, "Expenses:Rent", "Expenses:Meals"]):
+            with self.subTest(named=named), self.assertRaises(BooksFromError) as caught:
+                books_from.apply(self.path, SCOPE, plan["plan_hash"], named)
+            self.assertEqual(caught.exception.code, "replay_request_differs")
+        self.assertEqual(self.snapshot(), after)
+
     def test_a_scope_later_than_the_current_scope_is_refused(self) -> None:
         self.existing_company()
         with self.assertRaises(BooksFromError) as caught:
