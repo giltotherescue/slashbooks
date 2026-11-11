@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+- Give bank interest a category. Interest that a bank pays on a business
+  account (for example a few dollars a month on checking) had no category in
+  any starter chart, so an unattended run, which may not add accounts, could
+  not file it. Every starter chart now ends with `Income:Interest-Income`. It
+  opens like the other starter income accounts: on the books scope when one is
+  given, on the cutover with a cutover, and on the fallback date otherwise. In
+  the profit and loss it is its own row under Money In (Revenue on the accrual
+  view). The tax view maps it to the interest income line (Schedule K for a
+  partnership or an S corporation, line 5 of Form 1120, and not on Schedule C),
+  not to gross receipts. Existing companies do not change: a company with no
+  entries gets the account from `books entity starter-accounts`, and any other
+  company adds it with `books entity account-add PATH --account
+  Income:Interest-Income --category`. `books entity account-remove` keeps the
+  account when the starter chart created it, as it keeps the other starter
+  accounts. When the company created it with `books entity account-add` (the
+  audit log has that event), it is the company's own category, and the usual
+  removal checks apply.
+
+- Remove a loan account that was added by mistake. `books entity
+  account-remove` now also removes an account under `Liabilities:Loans:` that
+  `books entity account-add` created and nothing uses: no posting (reversed and
+  corrected entries and opening balances included), no balance assertion, a
+  reliable open-date record that shows no opening set its open date (a stale or
+  legacy record refuses), and no setting or record that names it (bank and
+  CSV mappings, payee rules, open review items and proposals, staged rows,
+  accrual records, saved statements and reconciliation records). The starter
+  `Liabilities:Loans:Mortgage`, a loan account with the card financial kind,
+  and bank, card and other liabilities stay (`protected_account`). The JSON
+  output, the error codes, the preview and plan hash, and the
+  `account-removed` audit event are the same as for a category.
+
+- Tell an outdated saved QuickBooks snapshot from damaged evidence. When
+  `books qb sync-import` or `books qb sync-opening` cannot use the saved
+  evidence of a snapshot, its JSON error now has a stable `code`:
+  `snapshot_format_outdated` (an earlier engine saved the chart accounts
+  without account numbers; fetch a new snapshot), `snapshot_evidence_mismatch`
+  (a digest collision, or a changed or damaged file; the message is unchanged)
+  or `snapshot_evidence_concurrent` (another import saved evidence for the
+  same source with different derived files at the same time). Before, the
+  outdated format gave the collision message. When another import installs the
+  evidence folder first, the import now accepts it only when every file is the
+  same, with no symbolic link; before, a matching `snapshot.json` was enough,
+  and on macOS the rename error of such a race was not handled. Other errors
+  keep the earlier shape.
+
 - Let a company record history before 2026. A company created with no cutover
   opened every starter category on a fixed date, 2026-01-01, and new categories
   got the same date. Because the books refuse an entry before an account's open

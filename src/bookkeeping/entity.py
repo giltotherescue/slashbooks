@@ -237,6 +237,12 @@ _COMMON_EXPENSE_ACCOUNTS: tuple[str, ...] = (
     "Expenses:Bank-Fees",
     "Expenses:Professional-Fees",
 )
+# Income that every small business can receive, whatever it sells: interest that the bank pays on a
+# business account. A chart adds these after its common overhead accounts. The account is an ordinary
+# income account, and its name maps to the interest income tax line (``taxmap``), not to gross receipts.
+_COMMON_INCOME_ACCOUNTS: tuple[str, ...] = (
+    "Income:Interest-Income",
+)
 _LEGACY_SERVICE_ACCOUNTS: tuple[str, ...] = (
     "Expenses:Software",
     "Expenses:Subcontractors",
@@ -259,12 +265,12 @@ _SHOP_OVERHEAD_ACCOUNTS: tuple[str, ...] = (
 # accounts as before and gains the common accounts at the end.
 _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
     "services": _CORE_ACCOUNTS + ("Income:Consulting",) + _LEGACY_SERVICE_ACCOUNTS
-    + ("Income:Services",) + _COMMON_EXPENSE_ACCOUNTS,
+    + ("Income:Services",) + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
     "saas": _CORE_ACCOUNTS + ("Income:Subscriptions",) + _LEGACY_SERVICE_ACCOUNTS
-    + ("Expenses:Hosting", "Expenses:Payment-Fees") + _COMMON_EXPENSE_ACCOUNTS,
+    + ("Expenses:Hosting", "Expenses:Payment-Fees") + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
     "services_and_subscriptions": _CORE_ACCOUNTS + ("Income:Consulting", "Income:Subscriptions")
     + _LEGACY_SERVICE_ACCOUNTS + ("Expenses:Hosting", "Expenses:Payment-Fees")
-    + ("Income:Services",) + _COMMON_EXPENSE_ACCOUNTS,
+    + ("Income:Services",) + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
     "retail": _CORE_ACCOUNTS + (
         "Income:Sales",
         "Liabilities:Sales-Tax-Payable",
@@ -272,7 +278,7 @@ _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
         "Expenses:Cost-of-Goods-Sold",
         "Expenses:Shipping",
         "Expenses:Payment-Fees",
-    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
     "restaurant": _CORE_ACCOUNTS + (
         "Income:Sales",
         "Liabilities:Sales-Tax-Payable",
@@ -282,7 +288,7 @@ _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
         "Expenses:Repairs",
         "Expenses:Licenses-and-Permits",
         "Expenses:Payment-Fees",
-    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
     "trades": _CORE_ACCOUNTS + (
         "Income:Services",
         "Expenses:Cost-of-Sales:Materials",
@@ -291,7 +297,7 @@ _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
         "Expenses:Vehicle",
         "Expenses:Licenses-and-Permits",
         "Expenses:Payment-Fees",
-    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
     "real_estate": _CORE_ACCOUNTS + (
         "Liabilities:Loans:Mortgage",
         "Assets:Fixed:Property",
@@ -301,12 +307,12 @@ _STARTER_ACCOUNTS: dict[str, tuple[str, ...]] = {
         "Expenses:Mortgage-Interest",
         "Expenses:Property-Management",
         "Expenses:Payment-Fees",
-    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
     "other": _CORE_ACCOUNTS + (
         "Income:Sales",
         "Income:Services",
         "Expenses:Payment-Fees",
-    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS,
+    ) + _SHOP_OVERHEAD_ACCOUNTS + _COMMON_EXPENSE_ACCOUNTS + _COMMON_INCOME_ACCOUNTS,
 }
 # Older names for a business type. The alias opens the chart of the type it names.
 _BUSINESS_TYPE_ALIASES: dict[str, str] = {"consulting": "services"}
@@ -1529,10 +1535,10 @@ def add_parser(subparsers: Any) -> None:
 
     remove_account_parser = entity_sub.add_parser(
         "account-remove",
-        help="Remove an unused income or expense account that account-add created. Previews unless --apply is given",
+        help="Remove an unused income, expense or loan (Liabilities:Loans:) account that account-add created. Previews unless --apply is given",
     )
     remove_account_parser.add_argument("path", type=Path, help="Path to the entity directory")
-    remove_account_parser.add_argument("--account", required=True, help="Account to remove, such as Income:Installs")
+    remove_account_parser.add_argument("--account", required=True, help="Account to remove, such as Income:Installs or Liabilities:Loans:Equipment-Loan")
     remove_account_parser.add_argument("--added-event", type=int, default=None, metavar="ID",
                                        help="The id of the audit event that account-add wrote when it created the account; default: the latest one")
     remove_account_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")

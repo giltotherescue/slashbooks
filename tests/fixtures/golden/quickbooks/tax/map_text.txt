@@ -29,6 +29,7 @@ Tax line mapping for Form 1065 (form from workspace)
   Expenses:Travel  0.00 -> 1065/p1/21  Other deductions — Travel (name) [review]
   Expenses:Utilities  0.00 -> 1065/p1/21  Other deductions — Utilities (name) [review]
   Income:Consulting  0.00 -> 1065/p1/1a  Gross receipts or sales (account_type) [review]
+  Income:Interest-Income  0.00 -> 1065/K/5  Interest income (name) [review]
   Income:Services  -12100.00 -> 1065/p1/1a  Gross receipts or sales (account_type) [review]
   Liabilities:CreditCard  0.00 -> 1065/L/17  Other current liabilities (name) [review]
   Liabilities:Other:Accrued-Liabilities  0.00 -> 1065/L/17  Other current liabilities (name) [review]
@@ -38,4 +39,4 @@ Tax line mapping for Form 1065 (form from workspace)
   Liabilities:Payable:Accounts-Payable  -300.00 -> 1065/L/15  Accounts payable (name) [review]
 
 Unmapped: 2: Expenses:Operating-Costs, Liabilities:Other:Customer-Deposits
-Needs review: 33
+Needs review: 34

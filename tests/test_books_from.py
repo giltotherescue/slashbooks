@@ -643,6 +643,54 @@ class ProvenancePathTests(Company):
         self.assertEqual(self.marker("Liabilities:Payable:Accounts-Payable")["source"], "default")
         self.assertFalse(self.provenance().get("stale"))
 
+    def test_the_interest_income_starter_gets_the_starter_income_open_date(self) -> None:
+        interest = "Income:Interest-Income"
+        for kwargs, expected in (({"books_from": SCOPE}, {"source": "scope", "open_date": SCOPE}),
+                                 ({}, {"source": "default", "open_date": FALLBACK}),
+                                 ({"cutover_date": "2025-07-01"}, {"source": "cutover", "open_date": "2025-07-01"})):
+            with self.subTest(**kwargs):
+                self.path = self.root / ("books-" + "-".join(kwargs) if kwargs else "books-plain")
+                self.create(**kwargs)
+                markers = self.provenance()["accounts"]
+                self.assertEqual(markers[interest], markers["Income:Consulting"])
+                self.assertEqual(markers[interest], expected)
+
+    def test_an_existing_company_keeps_its_chart_and_adds_interest_income_explicitly(self) -> None:
+        """A company made with the earlier chart has no interest income account. Nothing adds it silently."""
+        from bookkeeping.entity import apply_starter_accounts
+        interest = "Income:Interest-Income"
+        self.create(books_from=SCOPE)
+        with self.store.transaction(immediate=True) as conn:  # the earlier starter chart
+            self.store.delete_accounts([interest], conn)
+            self.store.append_audit_event("ledger-store-sealed", {
+                "session_id": "synthetic-earlier-chart", "entries": 0,
+                "store_sha256": self.store.content_digest(conn)}, conn)
+        before = self.snapshot()
+        from bookkeeping.reports.statements import profit_and_loss
+        load_entity(self.path)
+        profit_and_loss(self.path, date(2026, 1, 1), date(2026, 3, 31))
+        self.assertEqual(self.snapshot(), before)
+        self.assertNotIn(interest, self.opens())
+        # A company with no entries: books entity starter-accounts adds the missing starter account.
+        result = apply_starter_accounts(self.path, "consulting")
+        self.assertEqual(result["added"], [interest])
+        self.assertEqual(self.provenance()["accounts"][interest], {"source": "scope", "open_date": SCOPE})
+        self.assert_books_valid()
+        # A company with entries: the host adds the account itself, and it opens on the books scope.
+        with self.store.transaction(immediate=True) as conn:
+            self.store.delete_accounts([interest], conn)
+            self.store.append_audit_event("ledger-store-sealed", {
+                "session_id": "synthetic-earlier-chart", "entries": 0,
+                "store_sha256": self.store.content_digest(conn)}, conn)
+        self.map_feed("feed-1", OPERATING)
+        self.stage(row("r-1", "2025-03-04"))
+        self.confirm("r-1")
+        with self.assertRaises(ValueError):
+            apply_starter_accounts(self.path, "consulting")
+        report = add_account(self.path, interest, category=True)
+        self.assertEqual((report["open_date"], report["open_date_source"]), (SCOPE, "scope"))
+        self.assert_books_valid()
+
     def test_a_migrated_beancount_ledger_marks_import(self) -> None:
         from bookkeeping.ledger.migrate import migrate_beancount_to_store
         other = self.root / "migrated"

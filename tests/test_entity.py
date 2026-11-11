@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -1242,7 +1243,8 @@ class TestIndustryStarterCharts(unittest.TestCase):
     COMMON = {"Expenses:Rent", "Expenses:Payroll", "Expenses:Payroll-Taxes", "Expenses:Utilities",
               "Expenses:Insurance", "Expenses:Bank-Fees", "Expenses:Software", "Expenses:Marketing",
               "Expenses:Meals", "Expenses:Travel", "Expenses:Professional-Fees",
-              "Equity:Owner-Draws", "Equity:Owner-Contributions", "Assets:Bank:Checking"}
+              "Equity:Owner-Draws", "Equity:Owner-Contributions", "Assets:Bank:Checking",
+              "Income:Interest-Income"}
     INDUSTRY = {
         "retail": {"Income:Sales", "Assets:Other:Inventory", "Expenses:Cost-of-Goods-Sold", "Expenses:Payment-Fees",
                    "Liabilities:Sales-Tax-Payable"},
@@ -1310,6 +1312,52 @@ class TestIndustryStarterCharts(unittest.TestCase):
                 init_entity(target, business_type=key)
                 names = {o.account for o in LedgerStore(target / "ledger.sqlite").load_opens()}
                 self.assertEqual(names, set(starter_chart(key)))
+
+    def test_every_chart_ends_with_interest_income(self) -> None:
+        """Bank interest on a business account has a category in every chart, so an unattended run can file it."""
+        from bookkeeping.entity import BUSINESS_TYPES, check_category_account, starter_chart
+        from bookkeeping.engine_accounts import engine_owned_accounts
+        from bookkeeping.taxmap import map_account
+
+        interest = "Income:Interest-Income"
+        check_category_account(interest)
+        self.assertIn(interest, engine_owned_accounts())
+        for key in BUSINESS_TYPES:
+            with self.subTest(business_type=key):
+                chart = starter_chart(key)
+                self.assertEqual(chart[-1], interest)  # appended: the earlier accounts keep their order
+                self.assertEqual([a for a in chart if "Interest-Income" in a], [interest])
+        # The tax view files it as interest income, not as gross receipts.
+        expected = {"schc": "schc/none/personal", "1065": "1065/K/5", "1120s": "1120s/K/4", "1120": "1120/p1/5"}
+        for form, code in expected.items():
+            with self.subTest(form=form):
+                self.assertEqual(map_account(interest, form).line.code, code)
+
+    def test_interest_income_is_its_own_money_in_row(self) -> None:
+        """The profit and loss shows bank interest as its own income row. The other income rows keep their amounts."""
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        from bookkeeping.reports.statements import profit_and_loss
+        from bookkeeping.reports.structure import build_structure
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "company"
+            init_entity(target, business_type="services")
+            entity = load_entity(target)
+            rows = [("fee", "Income:Services", "-500.00"), ("int-1", "Income:Interest-Income", "-1.12"),
+                    ("int-2", "Income:Interest-Income", "-1.38"), ("int-3", "Income:Interest-Income", "-1.29")]
+            _atomic_ledger_write(entity, [], [
+                Entry(date=date(2026, 2, 1 + index), narration="Synthetic", meta=(("source-id", sid),),
+                      postings=(Posting("Assets:Bank:Checking", -Decimal(amount)), Posting(account, Decimal(amount))))
+                for index, (sid, account, amount) in enumerate(rows)], "test-seed", None, "seed")
+            result = profit_and_loss(target, date(2026, 2, 1), date(2026, 2, 28))
+            income = {row["account"]: row["amount"] for row in result.sections[0]["rows"]}
+            self.assertEqual(income, {"Income:Interest-Income": Decimal("3.79"), "Income:Services": Decimal("500.00")})
+            self.assertEqual(result.totals["net_income"], Decimal("503.79"))
+            lines = build_structure(result)["lines"]
+            row = next(line for line in lines if line.get("account") == "Income:Interest-Income")
+            self.assertEqual((row["section"], row["label"], row["amount"]),
+                             ("revenue", "Income › Interest-Income", "3.79"))
 
     def test_cli_accepts_every_business_type(self) -> None:
         import argparse

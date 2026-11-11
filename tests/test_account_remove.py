@@ -28,6 +28,7 @@ from bookkeeping.remote_contract import command_spec  # noqa: E402
 
 BANK = "Assets:Bank:Checking"
 INSTALLS = "Income:Installs"
+LOAN = "Liabilities:Loans:Equipment-Loan"
 
 
 def books(*argv: str):
@@ -436,6 +437,226 @@ class AccountRemoveTests(unittest.TestCase):
         self.assertNotIn(INSTALLS, self.catalog())
         learned = self.root / "learned-context" / "counterparties.json"
         self.assertNotIn(INSTALLS, learned.read_text(encoding="utf-8") if learned.exists() else "")
+
+    # -- loan accounts -----------------------------------------------------------------------------
+
+    def add_loan(self, account: str = LOAN, **kwargs) -> None:
+        add_account(self.root, account, open_date="2026-01-01", **kwargs)
+
+    def test_unused_loan_is_removed_and_the_provenance_record_stays_current(self):
+        self.add_loan()
+        with self.store.connection() as conn:
+            self.assertEqual(self.store.load_open_date_provenance(conn)["accounts"][LOAN]["source"], "user")
+        code, plan, _ = self.remove(LOAN)
+        self.assertEqual((code, plan["changes"], plan["effects"]["accounts_removed"]), (0, True, 1), plan)
+        code, done, _ = self.remove(LOAN, "--apply", "--plan-hash", plan["plan_hash"])
+        self.assertEqual((code, done["status"], done["entries_changed"]), (0, "applied", 0), done)
+        self.assertNotIn(LOAN, self.catalog())
+        events = [e for e in self.store.load_audit_events() if e["type"] == "account-removed"]
+        self.assertEqual([(e["payload"]["account"], e["payload"]["plan_hash"]) for e in events], [(LOAN, plan["plan_hash"])])
+        with self.store.connection() as conn:
+            record = self.store.load_open_date_provenance(conn)
+        self.assertNotIn(LOAN, record["accounts"])
+        self.assertFalse(record.get("stale"), record)
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+        # A retry and a second removal are already_applied and write nothing, as for a category.
+        before = self.state()
+        for extra in (("--apply", "--plan-hash", plan["plan_hash"]), ("--apply",)):
+            code, again, _ = self.remove(LOAN, *extra)
+            self.assertEqual((code, again["status"]), (0, "already_applied"), again)
+        self.assertEqual(self.state(), before)
+        code, preview, _ = self.remove(LOAN)
+        self.assertEqual((code, preview["changes"]), (0, False), preview)
+
+    def test_loan_with_a_posting_or_an_opening_is_refused(self):
+        self.add_loan()
+        self.post(LOAN, "loan-in")
+        self.assertIn("1 postings", self.assert_refused("account_in_use", LOAN)["errors"][0]["message"])
+        other = "Liabilities:Loans:Truck-Loan"
+        self.add_loan(other)
+        _atomic_ledger_write(load_entity(self.root), [], [Entry(
+            date=date(2026, 1, 1), narration="Opening balance", meta=(("source-id", "loan-opening"),),
+            postings=(Posting("Equity:Opening-Balances", Decimal("5000.00")), Posting(other, Decimal("-5000.00"))))],
+            "test-opening", None, "opening")
+        self.assert_refused("account_in_use", other)
+
+    def test_loan_whose_open_date_an_opening_set_is_refused(self):
+        from bookkeeping.accrual.enable import _seal
+        from bookkeeping.ledger.model import Open
+        self.add_loan()
+        with self.store.transaction(immediate=True) as conn:
+            self.store.insert_opens([Open(date(2026, 1, 1), LOAN, ("USD",))], conn, provenance="opening")
+            _seal(self.store, conn, "test-opening-marker")
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+        result = self.assert_refused("account_in_use", LOAN)
+        self.assertIn("opening", result["errors"][0]["message"])
+
+    def test_loan_in_a_reversed_or_corrected_chain_is_refused(self):
+        from bookkeeping.ledger.importer import reverse_and_correct
+        self.add_loan()
+        self.post(LOAN, "wrong-loan")
+        reverse_and_correct(load_entity(self.root), "wrong-loan", Entry(
+            date=date(2026, 2, 3), narration="Install", payee="Oak Co", meta=(("source-id", "right-income"),),
+            postings=(Posting(BANK, Decimal("80.00")), Posting(INSTALLS, Decimal("-80.00")))), "test-correct")
+        self.assert_refused("account_in_use", LOAN)  # The original and its reversal still post to it.
+
+    def test_loan_named_by_a_proposal_rule_mapping_or_record_is_refused(self):
+        from bookkeeping import queue
+        from bookkeeping.ledger.importer import import_transactions
+        self.add_loan()
+        self.edit_json("entity.json", lambda c: c.setdefault("bank_account_mappings", {}).update({"feed-1": BANK}))
+        clean = {name: (self.root / name).read_bytes() for name in ("entity.json", "trust-policy.json")}
+        import_transactions(load_entity(self.root), [{
+            "id": "loan-row", "accountId": "feed-1", "accountName": "Synthetic account", "accountType": "checking",
+            "date": "2026-02-02", "amount": "-450.00", "currency": "USD", "description": "SYNTHETIC LENDER",
+            "pending": False}], "intake", intake_only=True)
+        staged = {path: path.read_bytes() for folder in ("staging", "review-queue")
+                  for path in (self.root / folder).rglob("*") if path.is_file()}
+        self.assertEqual(self.remove(LOAN)[0], 0)  # A staged row with no proposal does not name the loan.
+
+        def restore():
+            for name, data in clean.items():
+                (self.root / name).write_bytes(data)
+            for folder in ("staging", "review-queue", "learned-context", "ingestion/statements", "reports"):
+                for path in sorted((self.root / folder).rglob("*"), reverse=True):
+                    if path.is_file() and path not in staged:
+                        path.unlink()
+            for path, data in staged.items():
+                path.write_bytes(data)
+
+        cases = {
+            "pending proposal": lambda: queue.propose(load_entity(self.root), "loan-row", LOAN, "Synthetic loan payment"),
+            "saved payee rule": lambda: queue.set_taught(load_entity(self.root), "synthetic lender", LOAN,
+                                                         by="person", by_name="Owner"),
+            "bank mapping": lambda: self.edit_json("entity.json", lambda c: c["bank_account_mappings"].update({"feed-2": LOAN})),
+            "csv mapping": lambda: self.edit_json("entity.json", lambda c: c.setdefault("csv_account_mappings", {}).update(
+                {"lender-export.csv": LOAN})),
+            "saved statement": lambda: self.write_json("ingestion/statements/stmt-1.json", {"id": "stmt-1", "account": LOAN}),
+            "reconciliation": lambda: self.write_json("reports/reconciliation.json", [{"account": LOAN, "status": "matched"}]),
+        }
+        for label, make in cases.items():
+            with self.subTest(label):
+                make()
+                result = self.assert_refused("account_referenced", LOAN)
+                self.assertTrue(result["errors"][0]["refs"], result)
+                restore()
+        # A statement file that is not JSON is not read. The loan can go.
+        (self.root / "ingestion" / "statements" / "files").mkdir(parents=True, exist_ok=True)
+        (self.root / "ingestion" / "statements" / "files" / "s.pdf").write_bytes(b"%PDF " + LOAN.encode())
+        code, plan, _ = self.remove(LOAN)
+        self.assertEqual((code, plan["changes"]), (0, True), plan)
+
+    def test_loan_named_by_an_accrual_schedule_is_refused(self):
+        from unittest.mock import patch
+        self.add_loan()
+
+        def records(store, table, conn=None):
+            return [{"id": "sch-1", "liability_account": LOAN}] if table == "schedules" else []
+
+        with patch("bookkeeping.accrual.store.list_records", records):
+            result = self.assert_refused("account_referenced", LOAN)
+        self.assertIn("accrual schedules sch-1:liability_account", result["errors"][0]["refs"])
+
+    def seal_raw(self, *statements: tuple) -> None:
+        """Raw catalog SQL, as an earlier engine writes it: the open-date provenance record is not kept."""
+        from bookkeeping.accrual.enable import _seal
+        with self.store.transaction(immediate=True) as conn:
+            for statement in statements:
+                conn.execute(*statement)
+            _seal(self.store, conn, "test-older-writer")
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_loan_with_uncertain_open_date_evidence_is_refused(self):
+        self.add_loan()
+        self.assertEqual(self.remove(LOAN)[1]["changes"], True)  # control: a reliable user marker
+        # An earlier engine changes the catalog: the record is stale, so no marker is evidence any more.
+        self.seal_raw(("INSERT INTO accounts (name, currency, open_date) VALUES (?, ?, ?)",
+                       ("Expenses:Older-Writer", "USD", "2026-01-01")))
+        with self.store.connection() as conn:
+            record = self.store.load_open_date_provenance(conn)
+        self.assertTrue(record["stale"])
+        self.assertEqual(record["accounts"][LOAN]["source"], "legacy")
+        result = self.assert_refused("account_in_use", LOAN)
+        self.assertIn("not reliable", result["errors"][0]["message"])
+        # A category keeps its earlier checks: a stale record does not block it.
+        self.assertEqual(self.remove(INSTALLS)[1]["changes"], True)
+
+    def test_loan_with_a_stale_opening_marker_stays_protected(self):
+        """The case the stale rule exists for: an opening marker that an unrelated older catalog edit downgrades."""
+        from bookkeeping.accrual.enable import _seal
+        from bookkeeping.ledger.model import Open
+        self.add_loan()
+        with self.store.transaction(immediate=True) as conn:
+            self.store.insert_opens([Open(date(2026, 1, 1), LOAN, ("USD",))], conn, provenance="opening")
+            _seal(self.store, conn, "test-opening-marker")
+        self.seal_raw(("INSERT INTO accounts (name, currency, open_date) VALUES (?, ?, ?)",
+                       ("Expenses:Older-Writer", "USD", "2026-01-01")))
+        self.assert_refused("account_in_use", LOAN)
+
+    def test_loan_without_a_provenance_record_or_marker_is_refused(self):
+        self.add_loan()
+        self.seal_raw(("DELETE FROM meta WHERE key='open_date_provenance'",))
+        self.assert_refused("account_in_use", LOAN)
+        self.assertEqual(self.remove(INSTALLS)[1]["changes"], True)  # a category is not affected
+
+    def test_interest_income_from_the_starter_chart_stays(self):
+        interest = "Income:Interest-Income"
+        self.assertIn(interest, self.catalog())
+        self.assert_refused("protected_account", interest)
+        # An account-add update of the starter account is not the record that account-add created it.
+        add_account(self.root, interest, open_date="2025-06-01")
+        self.assert_refused("protected_account", interest)
+
+    def test_interest_income_that_the_company_added_itself_follows_the_usual_checks(self):
+        """A company made before the account joined the starter charts, and that added it with account-add."""
+        interest = "Income:Interest-Income"
+        with self.store.transaction(immediate=True) as conn:  # the earlier starter chart
+            self.store.delete_accounts([interest], conn)
+            self.store.append_audit_event("ledger-store-sealed", {
+                "session_id": "test-earlier-chart", "entries": 0, "store_sha256": self.store.content_digest(conn)}, conn)
+        add_account(self.root, interest, category=True)
+        self.post(interest, "int-1")
+        self.assert_refused("account_in_use", interest)  # in use: the usual check, not protected_account
+        reverse_entry(load_entity(self.root), "int-1", "test-reverse")
+        self.assert_refused("account_in_use", interest)
+        # The same account, unused.
+        other = Path(self.tmp.name).resolve() / "earlier"
+        self.assertEqual(run_cli(["entity", "init", str(other), "--name", "Earlier Co"])[0], 0)
+        store = LedgerStore(other / "ledger.sqlite")
+        with store.transaction(immediate=True) as conn:
+            store.delete_accounts([interest], conn)
+            store.append_audit_event("ledger-store-sealed", {
+                "session_id": "test-earlier-chart", "entries": 0, "store_sha256": store.content_digest(conn)}, conn)
+        add_account(other, interest, category=True)
+        code, plan, _ = books("entity", "account-remove", str(other), "--account", interest)
+        self.assertEqual((code, plan["changes"]), (0, True), plan)
+        code, done, _ = books("entity", "account-remove", str(other), "--account", interest,
+                              "--apply", "--plan-hash", plan["plan_hash"])
+        self.assertEqual((code, done["status"]), (0, "applied"), done)
+        self.assertNotIn(interest, {o.account for o in store.load_opens()})
+        self.assertEqual(check_integrity(load_entity(other)).status, "ok")
+
+    def test_bank_card_starter_and_group_liabilities_are_refused(self):
+        add_account(self.root, "Liabilities:CreditCard:Amex", open_date="2026-01-01")
+        self.assert_refused("protected_account", "Liabilities:CreditCard:Amex")
+        add_account(self.root, "Liabilities:Line-Of-Credit", open_date="2026-01-01")
+        self.assert_refused("protected_account", "Liabilities:Line-Of-Credit")
+        self.add_loan("Liabilities:Loans:Card-Line", financial_kind="credit_card")
+        result = self.assert_refused("protected_account", "Liabilities:Loans:Card-Line")
+        self.assertIn("credit_card", result["errors"][0]["message"])
+        add_account(self.root, "Liabilities:Loans", open_date="2026-01-01")
+        self.assert_refused("protected_account", "Liabilities:Loans")
+        # The starter mortgage of a real estate company is the engine's own account, even when unused.
+        add_account(self.root, "Liabilities:Loans:Mortgage", open_date="2026-01-01")
+        self.assert_refused("protected_account", "Liabilities:Loans:Mortgage")
+        # A loan that account-add did not create stays, as a category does.
+        from bookkeeping.ledger.model import Open
+        _atomic_ledger_write(load_entity(self.root), [Open(date(2026, 1, 1), "Liabilities:Loans:Imported", ("USD",))], [],
+                             "test-open", None, "open a loan without account-add")
+        self.assert_refused("not_added_by_command", "Liabilities:Loans:Imported")
+        # A loan with the financial kind other is a loan.
+        self.add_loan("Liabilities:Loans:Typed", financial_kind="other")
+        self.assertEqual(self.remove("Liabilities:Loans:Typed")[1]["changes"], True)
 
     def edit_json(self, name: str, change) -> None:
         path = self.root / name

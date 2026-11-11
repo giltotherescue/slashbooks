@@ -94,12 +94,12 @@
   ],
   "format": "slashbooks-company-snapshot",
   "ledger": {
-    "content_sha256": "09564c2d9a30b8058f1be4c5a5320992073023acde0928b92b47efa70ab7edc0",
+    "content_sha256": "1e09f39b4b3ad9ff55360de9724f211d17b662716b8b007f634298f1925c286d",
     "schema_version": 2,
     "tables": {
       "accounts": {
-        "rows": 35,
-        "sha256": "ca936a5cdc1c809f0e785164ef87616ac8fbe6cd23575e6ab14c252a52e80a8d"
+        "rows": 36,
+        "sha256": "f692c4a424c0c91e358f23e483b1a74785757c9625c78e8b443608d6958b1c33"
       },
       "accrual_allocations": {
         "rows": 5,
@@ -115,7 +115,7 @@
       },
       "accrual_intents": {
         "rows": 21,
-        "sha256": "e0e63c6fca297924bb3de291a94676eecb8c89bc5d6aa7c01c9afd7f8812d7ff"
+        "sha256": "a1aaff7dbc30c5e3af655e6db33db43ec8c6b7cda124edc2d394566539228b5a"
       },
       "accrual_items": {
         "rows": 3,
@@ -123,7 +123,7 @@
       },
       "accrual_periods": {
         "rows": 1,
-        "sha256": "cb4185ca1aa5865e10d1a002a95e11db50e2910730f3b0e9725f5b759eeadc35"
+        "sha256": "6f896d37352c12b693320edf17be71e5df47efda85c6735c3ef126b5adcc8e91"
       },
       "accrual_schedules": {
         "rows": 2,
@@ -131,7 +131,7 @@
       },
       "audit_events": {
         "rows": 58,
-        "sha256": "fb1fe9614bcb6ff1f70979b41f44d8b3a780d76073c733f6298e1fa69931f090"
+        "sha256": "bf7959c294d17f8dcd336eb9bb322a4266c617481a09c125f2c6beca02eb0a94"
       },
       "balance_assertions": {
         "rows": 0,
@@ -147,7 +147,7 @@
       },
       "meta": {
         "rows": 7,
-        "sha256": "d8840cc8ec03fd347ca2511a1d94cdd9265cf5327769c7d7ff06b9091224b413"
+        "sha256": "4270c71905926d002bb0a71a1a618b3240733e80b4592e309a0fdee9793a1255"
       },
       "postings": {
         "rows": 25,
@@ -159,7 +159,7 @@
       },
       "sqlite_sequence": {
         "rows": 4,
-        "sha256": "0246fa9c7b16585d06151a6d0733cd916b28ae3e9a8580454b2189a58e223289"
+        "sha256": "d94c842628aba3c260d000d6aab0f854d8326437019a59e1fae4df6df270865a"
       }
     }
   },

@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -43,6 +44,70 @@ def _money(value: object) -> Decimal:
         return amount.quantize(Decimal("0.01"))
     except InvalidOperation as exc:
         raise ValueError("Invalid monetary value") from exc
+
+
+class SnapshotEvidenceError(ValueError):
+    """Saved QuickBooks snapshot evidence cannot be used. ``code`` is stable; the message is for people.
+
+    * ``snapshot_format_outdated``: the saved source (``snapshot.json``) is intact, and the files derived from it
+      differ only because an earlier engine wrote them in an older format (chart rows without account numbers).
+    * ``snapshot_evidence_mismatch``: the saved evidence differs from the evidence of this source in another way
+      (a digest collision, a changed or damaged file, or a symbolic link).
+    * ``snapshot_evidence_concurrent``: another import saved evidence for the same source under the same ID at the
+      same time, and its derived files differ from the evidence of this import.
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+def _older_format_bytes(name: str, data: bytes) -> bytes:
+    """The bytes that an engine before account numbers wrote for one derived evidence file."""
+    if not name.endswith(".json") or name == "snapshot.json":
+        return data
+    value = json.loads(data.decode("utf-8"))
+    rows = value.get("accounts") if isinstance(value, dict) else None
+    if isinstance(rows, list):
+        value["accounts"] = [{k: v for k, v in row.items() if k != "account_number"} if isinstance(row, dict) else row
+                             for row in rows]
+    return _json_bytes(value)
+
+
+def _existing_evidence_error(root: Path, stage: Path, source_bytes: bytes, *,
+                             concurrent: bool = False) -> SnapshotEvidenceError | None:
+    """Compare a saved evidence folder with the evidence this import staged. ``None`` only for an exact match.
+
+    An exact match has the same file set, the same bytes in each file, and no symbolic link (the folder itself
+    or any entry in it). ``concurrent`` is true when another import installed the folder during this import:
+    then a folder that differs in its files or bytes gives ``snapshot_evidence_concurrent``. A symbolic link
+    or a changed ``snapshot.json`` always gives ``snapshot_evidence_mismatch``, and the older format always
+    gives ``snapshot_format_outdated``.
+    """
+    linked = root.is_symlink() or any(p.is_symlink() for p in root.rglob("*"))
+    expected_files = {p.relative_to(stage) for p in stage.rglob("*") if p.is_file()}
+    actual_files = {p.relative_to(root) for p in root.rglob("*") if p.is_file()}
+    if not linked and expected_files == actual_files and all(
+            (root / rel).read_bytes() == (stage / rel).read_bytes() for rel in expected_files):
+        return None
+    mismatch = SnapshotEvidenceError("snapshot_evidence_mismatch", "Snapshot evidence digest collision or corruption")
+    if linked or ((root / "snapshot.json").is_file() and (root / "snapshot.json").read_bytes() != source_bytes):
+        return mismatch
+    other = (SnapshotEvidenceError("snapshot_evidence_concurrent", "Concurrent snapshot evidence mismatch")
+             if concurrent else mismatch)
+    if expected_files != actual_files:
+        return other
+    try:
+        older = all((root / rel).read_bytes() == _older_format_bytes(rel.as_posix(), (stage / rel).read_bytes())
+                    for rel in expected_files)
+    except (ValueError, UnicodeDecodeError):
+        older = False
+    if not older:
+        return other
+    return SnapshotEvidenceError(
+        "snapshot_format_outdated",
+        f"Saved QuickBooks snapshot evidence {root.name} is from an older format (chart accounts without account "
+        "numbers) and cannot be used. Fetch a new QuickBooks snapshot: it is saved under a new ID.")
 
 
 def _json_bytes(value: object) -> bytes:
@@ -545,19 +610,21 @@ def sync_import(entity, input_path: Path) -> dict:
         if book != company:
             result["adopts_currency"] = book  # Applying the opening sets this company currency.
         (stage / "manifest.json").write_bytes(_json_bytes(result))
-        if root.exists():
-            expected_files = {p.relative_to(stage) for p in stage.rglob("*") if p.is_file()}
-            actual_files = {p.relative_to(root) for p in root.rglob("*") if p.is_file()}
-            if (root.is_symlink() or expected_files != actual_files or any(
-                    (root / rel).is_symlink() or (root / rel).read_bytes() != (stage / rel).read_bytes()
-                    for rel in expected_files)):
-                raise ValueError("Snapshot evidence digest collision or corruption")
+        if root.exists() or root.is_symlink():
+            error = _existing_evidence_error(root, stage, source_bytes)
+            if error is not None:
+                raise error
         else:
             try:
                 stage.rename(root)
-            except FileExistsError:
-                if (root / "snapshot.json").read_bytes() != source_bytes:
-                    raise ValueError("Concurrent snapshot evidence mismatch")
+            except OSError as exc:
+                # Another import installed the folder first. POSIX gives EEXIST or ENOTEMPTY for a rename onto a
+                # non-empty directory (macOS gives ENOTEMPTY). Accept only a winner that is exactly this evidence.
+                if exc.errno not in (errno.EEXIST, errno.ENOTEMPTY):
+                    raise
+                error = _existing_evidence_error(root, stage, source_bytes, concurrent=True)
+                if error is not None:
+                    raise error from None
     # The financial kind decision is added to the result only, after the evidence files are written, so the
     # stored evidence of an existing snapshot stays byte for byte the same.
     result["accounts"] = [{**row, "financial_kind": decision} if (decision := _financial_kind_decision(row)) else row
@@ -910,5 +977,6 @@ def run(args) -> int:
         print(json.dumps(result, sort_keys=True))
         return 0 if result.get("success") and result.get("opening", {}).get("success", True) else 1
     except (ValueError, KeyError, TypeError, OSError) as exc:
-        print(json.dumps({"success": False, "error": str(exc)}))
+        code = getattr(exc, "code", None) if isinstance(exc, SnapshotEvidenceError) else None
+        print(json.dumps({"success": False, "error": str(exc), **({"code": code} if code else {})}))
         return 1

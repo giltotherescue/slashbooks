@@ -358,6 +358,19 @@
       "type": "Income"
     },
     {
+      "account": "Income:Interest-Income",
+      "currency": "USD",
+      "display_name": "Income › Interest-Income",
+      "has_postings": false,
+      "name": "Income:Interest-Income",
+      "open_date": "2026-01-01",
+      "reconciles_to_support": false,
+      "role": "income",
+      "subtype": "income",
+      "support_records": {},
+      "type": "Income"
+    },
+    {
       "account": "Income:Services",
       "currency": "USD",
       "display_name": "Income › Services",

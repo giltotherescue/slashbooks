@@ -27,6 +27,7 @@ Expenses:Taxes                                 Expenses     expense        expen
 Expenses:Travel                                Expenses     expense        expense                   2026-01-01
 Expenses:Utilities                             Expenses     expense        expense                   2025-12-31
 Income:Consulting                              Income       income         income                    2026-01-01
+Income:Interest-Income                         Income       income         income                    2026-01-01
 Income:Services                                Income       income         income                    2026-01-01
 Liabilities:CreditCard                         Liabilities  card           credit_card               2026-01-01
 Liabilities:Other:Accrued-Liabilities          Liabilities  control        accrued_liabilities       2026-01-01
