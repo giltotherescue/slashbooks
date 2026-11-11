@@ -22,23 +22,23 @@
       "evidence": [],
       "id": "close-july",
       "kind": "period_close",
-      "ledger_digest": "e2396d8571c64fdb9c88630dbd68a756aa8a6836fc069bd126e9ed42427702b0",
+      "ledger_digest": "efbdaae7ee9bd129d5483de0f772b19a2f320ffbba41612222a73e82c4652b12",
       "opens": [],
-      "plan_hash": "c55a48ff9b940a38c21292f67f82f4af8a39f8b304befba25a2e65bad5ce9e64",
+      "plan_hash": "9e5d3f6a630707cd066ed29cb7a2471ed1d0afa5328282dc8f830e10640814de",
       "request": {
         "action": "close",
         "as_of": "2026-08-05",
         "operation_id": "close-july",
         "period": "2026-07",
-        "readiness_package_id": "bc5b466062a6b230436596ac857e3989580487804723aae4c7e265614338a36e",
+        "readiness_package_id": "6d36af246ab552e62dc00a57c8d0b548817271f86fd0a94f1e3530bb7949ac98",
         "reason": "Synthetic owner reviewed exact reconciliation package"
       },
-      "request_hash": "164ab8f00dea801db6361a3ac8b0d86d232919e400abae605e6864c09c2ccdcb",
+      "request_hash": "b4015e1ad8cb55af69ca5b24127a2a9b3b97e293ee00f315d6982e939f93e64b",
       "schema_version": 1,
-      "supporting_hash": "db928e05388b5d42d8d6fa8306635e9f89ab11dbecec93885ac70a3a9bcd9238",
+      "supporting_hash": "90f31ebcc5926f6d9a6794b7eeedca403ecc7dc711900b4889b26e8f4a6d492e",
       "warnings": []
     },
-    "plan_hash": "c55a48ff9b940a38c21292f67f82f4af8a39f8b304befba25a2e65bad5ce9e64",
+    "plan_hash": "9e5d3f6a630707cd066ed29cb7a2471ed1d0afa5328282dc8f830e10640814de",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -47,8 +47,8 @@
       "evidence_ids": [],
       "id": "close-july",
       "kind": "period_close",
-      "plan_hash": "c55a48ff9b940a38c21292f67f82f4af8a39f8b304befba25a2e65bad5ce9e64",
-      "request_hash": "164ab8f00dea801db6361a3ac8b0d86d232919e400abae605e6864c09c2ccdcb",
+      "plan_hash": "9e5d3f6a630707cd066ed29cb7a2471ed1d0afa5328282dc8f830e10640814de",
+      "request_hash": "b4015e1ad8cb55af69ca5b24127a2a9b3b97e293ee00f315d6982e939f93e64b",
       "status": "applied",
       "warnings": []
     },
@@ -57,10 +57,10 @@
       "as_of": "2026-08-05",
       "operation_id": "close-july",
       "period": "2026-07",
-      "readiness_package_id": "bc5b466062a6b230436596ac857e3989580487804723aae4c7e265614338a36e",
+      "readiness_package_id": "6d36af246ab552e62dc00a57c8d0b548817271f86fd0a94f1e3530bb7949ac98",
       "reason": "Synthetic owner reviewed exact reconciliation package"
     },
-    "request_hash": "164ab8f00dea801db6361a3ac8b0d86d232919e400abae605e6864c09c2ccdcb",
+    "request_hash": "b4015e1ad8cb55af69ca5b24127a2a9b3b97e293ee00f315d6982e939f93e64b",
     "status": "applied"
   },
   {
@@ -124,9 +124,9 @@
       ],
       "id": "customer-receipt",
       "kind": "item_settlement",
-      "ledger_digest": "04e2822e89813fdeabe236cf42aaf6e7b701fd2a1f011a193168d0a890d62958",
+      "ledger_digest": "0cfb3ec47fd0dc74f024c129b537a1a3e17bc30985d17b8c57a6c1d595ebd139",
       "opens": [],
-      "plan_hash": "21e6e5b7dfd775ab31bb5cd70cc153c54ce66d8f8a53c31d324c77f1aec3079b",
+      "plan_hash": "58e7006c3cd4b859f6dc8f9c4bcf6fb670c6f11cc51154f22e97a71bf3e39aef",
       "request": {
         "allocations": [
           {
@@ -151,7 +151,7 @@
       "supporting_hash": "e9cf8064bbb077a409524e450ad37058fff060b0261fc0ea624918ebfb4810bc",
       "warnings": []
     },
-    "plan_hash": "21e6e5b7dfd775ab31bb5cd70cc153c54ce66d8f8a53c31d324c77f1aec3079b",
+    "plan_hash": "58e7006c3cd4b859f6dc8f9c4bcf6fb670c6f11cc51154f22e97a71bf3e39aef",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -164,7 +164,7 @@
       ],
       "id": "customer-receipt",
       "kind": "item_settlement",
-      "plan_hash": "21e6e5b7dfd775ab31bb5cd70cc153c54ce66d8f8a53c31d324c77f1aec3079b",
+      "plan_hash": "58e7006c3cd4b859f6dc8f9c4bcf6fb670c6f11cc51154f22e97a71bf3e39aef",
       "request_hash": "528ff72df310ca3f399fe48bedaf7faa14917ad7bcc6d7eaab211b999e20e979",
       "status": "applied",
       "warnings": []
@@ -221,9 +221,9 @@
       ],
       "id": "depreciation-support",
       "kind": "external_support",
-      "ledger_digest": "80d4800e761d7bd38952373b94b19dcaab009a1fc310f6f7555358755c8c7361",
+      "ledger_digest": "f8c6bf5c736408d8c9ff79d2bde3dfbe80713427b394b7c83e77821cb73085d2",
       "opens": [],
-      "plan_hash": "34402411866d2f24800ee9a09e2ffa5e2f8f059e0087be8f5b5d6bcfa2c7f8d2",
+      "plan_hash": "d3dfd7b6812393062c8a8331ed23952f64de2e4cc0d189b27672da9874681065",
       "request": {
         "account": "Assets:Fixed:Accumulated-Depreciation",
         "as_of": "2026-07-31",
@@ -246,7 +246,7 @@
       "supporting_hash": "4c40203529b869f1bb6f2ff6e31adb52eea288f1fc7f9b89aa1ccedbc2df0746",
       "warnings": []
     },
-    "plan_hash": "34402411866d2f24800ee9a09e2ffa5e2f8f059e0087be8f5b5d6bcfa2c7f8d2",
+    "plan_hash": "d3dfd7b6812393062c8a8331ed23952f64de2e4cc0d189b27672da9874681065",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -257,7 +257,7 @@
       ],
       "id": "depreciation-support",
       "kind": "external_support",
-      "plan_hash": "34402411866d2f24800ee9a09e2ffa5e2f8f059e0087be8f5b5d6bcfa2c7f8d2",
+      "plan_hash": "d3dfd7b6812393062c8a8331ed23952f64de2e4cc0d189b27672da9874681065",
       "request_hash": "5f1fa6b32c7e67978d23b778cf194ec7aa0a70a698bc8cc3000c837f6655b781",
       "status": "applied",
       "warnings": []
@@ -312,9 +312,9 @@
       ],
       "id": "evidence:073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
       "kind": "evidence",
-      "ledger_digest": "bcbb52874babcf01aa5bb210d40d95cad4b99fcca2d3cc3f64f00f1da9c647b7",
+      "ledger_digest": "3ded2ffae98279f3d4cc61e68afbe581cbf4bb295f3f80bbb09dc8144f04f68c",
       "opens": [],
-      "plan_hash": "9910ccce8fa9ae67982d73662f57b380466cdedf187473eb1cb77461d322b111",
+      "plan_hash": "6a88b74cd94f2016869679532f2a0838b6f4f186b25dfd9d97b39a01e51819df",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -351,7 +351,7 @@
       "supporting_hash": "6ed29ceb92dbfbe3dea28a29f5023f5d078a4485bd66ba76512b3ef8a2a227a6",
       "warnings": []
     },
-    "plan_hash": "9910ccce8fa9ae67982d73662f57b380466cdedf187473eb1cb77461d322b111",
+    "plan_hash": "6a88b74cd94f2016869679532f2a0838b6f4f186b25dfd9d97b39a01e51819df",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -362,7 +362,7 @@
       ],
       "id": "evidence:073a63a87a84bbd05921d695f0dfe4717462cabc16af7e05b1f7d665f2ba27c6",
       "kind": "evidence",
-      "plan_hash": "9910ccce8fa9ae67982d73662f57b380466cdedf187473eb1cb77461d322b111",
+      "plan_hash": "6a88b74cd94f2016869679532f2a0838b6f4f186b25dfd9d97b39a01e51819df",
       "request_hash": "bb6a923af9f8b86af42f65ad1ec223c732bef7772d39801f2727407fc9e7a87c",
       "status": "applied",
       "warnings": []
@@ -431,9 +431,9 @@
       ],
       "id": "evidence:6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
       "kind": "evidence",
-      "ledger_digest": "e33996b5ac51177db373bc9d2cc3255dbbd5c3f55337cb00345014e6a054b64c",
+      "ledger_digest": "f8bdf0055f3288b45922a34fb87f0ea6c753681a6f1929506081f225cfb15fc2",
       "opens": [],
-      "plan_hash": "ec638bf7ef5d568015b21e91e398088d6b89378621d456142cd860e9395fb497",
+      "plan_hash": "f0cb2d8e48e1df9b6ab666da762bc0c4ffb03b7b5d064c0e39fa36a8d9383f3d",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -470,7 +470,7 @@
       "supporting_hash": "cb9fdfc8bd75c485cdc0d22dbc602bbaadb55da6d6e632881b3833f66ce51e86",
       "warnings": []
     },
-    "plan_hash": "ec638bf7ef5d568015b21e91e398088d6b89378621d456142cd860e9395fb497",
+    "plan_hash": "f0cb2d8e48e1df9b6ab666da762bc0c4ffb03b7b5d064c0e39fa36a8d9383f3d",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -481,7 +481,7 @@
       ],
       "id": "evidence:6b76136a231f4e1e155c4e816d8a689cf187431ab9df559560b5320d3a52adb6",
       "kind": "evidence",
-      "plan_hash": "ec638bf7ef5d568015b21e91e398088d6b89378621d456142cd860e9395fb497",
+      "plan_hash": "f0cb2d8e48e1df9b6ab666da762bc0c4ffb03b7b5d064c0e39fa36a8d9383f3d",
       "request_hash": "8f14c6c371a44f8e8139d144d4cc3df78a0e62b005b2d6d977daabef1fe9b273",
       "status": "applied",
       "warnings": []
@@ -550,9 +550,9 @@
       ],
       "id": "evidence:ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
       "kind": "evidence",
-      "ledger_digest": "100185ea24962c9101a9c6b2cbfd284cabcb9d90a5403bea3c0c931ef56fac68",
+      "ledger_digest": "11201acc5f32470a635ee8b00b4a2abbf55f94fb73d0b03e0999bb68ab12e15e",
       "opens": [],
-      "plan_hash": "46d3742c98d776d7c660f64745050b3ae76fa5799f3fd19aceb68f8d6d5c9f3d",
+      "plan_hash": "f6803d1f267da677888ec0c2b44dfaa1928fad21f867e14034c297cb8f931d81",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -589,7 +589,7 @@
       "supporting_hash": "6c8a7cb4e04dfe226c03b4892cf48875986fee958509bb4724fdab68c5342a31",
       "warnings": []
     },
-    "plan_hash": "46d3742c98d776d7c660f64745050b3ae76fa5799f3fd19aceb68f8d6d5c9f3d",
+    "plan_hash": "f6803d1f267da677888ec0c2b44dfaa1928fad21f867e14034c297cb8f931d81",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -600,7 +600,7 @@
       ],
       "id": "evidence:ac36ba94e649a3beb1618d6e3872c8ce1932a8bb53c4a1ac57f1843c36e89b0d",
       "kind": "evidence",
-      "plan_hash": "46d3742c98d776d7c660f64745050b3ae76fa5799f3fd19aceb68f8d6d5c9f3d",
+      "plan_hash": "f6803d1f267da677888ec0c2b44dfaa1928fad21f867e14034c297cb8f931d81",
       "request_hash": "8ddeaf0e7f597a3362daca840ca1943cb7f3ddcb3c347dda692108fd3d23aaa6",
       "status": "applied",
       "warnings": []
@@ -669,9 +669,9 @@
       ],
       "id": "evidence:dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
       "kind": "evidence",
-      "ledger_digest": "f847710629aea59a8d13110840fdbfa15ee8ada66cab43bbb27392e999edeb0c",
+      "ledger_digest": "2db85dee17594c797d5b43d1c9e2d7196e3ec0aed5448058255c95e9f5a0c7c6",
       "opens": [],
-      "plan_hash": "04d457ff861a0e3ae59df41a94b309a400c8de2907a77c159e4ab5999df4dc37",
+      "plan_hash": "4d4019fb441aad60cab47e4d684ae4a88ef32cc00472935b8b8e6ecd720fdf90",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -708,7 +708,7 @@
       "supporting_hash": "0179480de65243e149d64f04520a4890174d67594e0e363b19e821840e46ba1d",
       "warnings": []
     },
-    "plan_hash": "04d457ff861a0e3ae59df41a94b309a400c8de2907a77c159e4ab5999df4dc37",
+    "plan_hash": "4d4019fb441aad60cab47e4d684ae4a88ef32cc00472935b8b8e6ecd720fdf90",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -719,7 +719,7 @@
       ],
       "id": "evidence:dfec9f09ff725c9b2724ccea8b2f9fc394555491c5487ccf7ca9438f3e1698ba",
       "kind": "evidence",
-      "plan_hash": "04d457ff861a0e3ae59df41a94b309a400c8de2907a77c159e4ab5999df4dc37",
+      "plan_hash": "4d4019fb441aad60cab47e4d684ae4a88ef32cc00472935b8b8e6ecd720fdf90",
       "request_hash": "0ce91e11f0af2dbea4e4b7a02bd4db59c3cab2fc5f49375c57c4489c74c27492",
       "status": "applied",
       "warnings": []
@@ -788,9 +788,9 @@
       ],
       "id": "evidence:e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
       "kind": "evidence",
-      "ledger_digest": "63ffaf7c6209c4fca34979d7cdb72b49e65d8d13a6cf75a5752dff19e38acb01",
+      "ledger_digest": "1818e60c3bc0e91f88c8f4b1528631f450a6c3a39a7a16c2e1edf41152f5410f",
       "opens": [],
-      "plan_hash": "bc772948c41509300cc7a1b638a71c17b227091fcf6edd73c7b7860e5cb4e41a",
+      "plan_hash": "ef1eade0fed53648856b830d8281d1f74ca6d72b43fede22a26852ebbd3bd036",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -827,7 +827,7 @@
       "supporting_hash": "c04d786694aafe9ba3c6e3271f8c3c9a14d74d7ebf3179200261bbeb1cd10669",
       "warnings": []
     },
-    "plan_hash": "bc772948c41509300cc7a1b638a71c17b227091fcf6edd73c7b7860e5cb4e41a",
+    "plan_hash": "ef1eade0fed53648856b830d8281d1f74ca6d72b43fede22a26852ebbd3bd036",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -838,7 +838,7 @@
       ],
       "id": "evidence:e2888908cab2704b2f5e15e7c46f9f35364b5f7bbd3550684ac9f6550e1570b1",
       "kind": "evidence",
-      "plan_hash": "bc772948c41509300cc7a1b638a71c17b227091fcf6edd73c7b7860e5cb4e41a",
+      "plan_hash": "ef1eade0fed53648856b830d8281d1f74ca6d72b43fede22a26852ebbd3bd036",
       "request_hash": "1be707e6ed342b6ce58a0eeea49d2041cadac66d5a2cd9aca956bced115de0e7",
       "status": "applied",
       "warnings": []
@@ -907,9 +907,9 @@
       ],
       "id": "evidence:fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
       "kind": "evidence",
-      "ledger_digest": "815f968b28d5a024a563e518ee20dd9bfa0c6f29293429a6512cfb11dc83f111",
+      "ledger_digest": "6fef5d4f0e640cc2677866da04dc262208d70fc58eace106662c36f06f69a8a0",
       "opens": [],
-      "plan_hash": "da610aade0c7b450898903cf7d394c8b01317e7974925543d7f544030364983a",
+      "plan_hash": "763a3ae7be58dd4066c9416fae4c491f498100c0db9acf6eb4478eb0bb8a50bc",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -946,7 +946,7 @@
       "supporting_hash": "b664c418cdaddf0bcc5bad906884c29b26f6f153b7429747aa9b6d82e5f7eef1",
       "warnings": []
     },
-    "plan_hash": "da610aade0c7b450898903cf7d394c8b01317e7974925543d7f544030364983a",
+    "plan_hash": "763a3ae7be58dd4066c9416fae4c491f498100c0db9acf6eb4478eb0bb8a50bc",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -957,7 +957,7 @@
       ],
       "id": "evidence:fc802c7fe7afb6b37b43862406fa685feaab96f720abc3a2b19b4b64ccaa0c09",
       "kind": "evidence",
-      "plan_hash": "da610aade0c7b450898903cf7d394c8b01317e7974925543d7f544030364983a",
+      "plan_hash": "763a3ae7be58dd4066c9416fae4c491f498100c0db9acf6eb4478eb0bb8a50bc",
       "request_hash": "da6744a75710a4911e5df156d0187df350d468571ac0d723bc794635af95c09d",
       "status": "applied",
       "warnings": []
@@ -1058,9 +1058,9 @@
       ],
       "id": "july-depreciation",
       "kind": "journal",
-      "ledger_digest": "1db9a4702741d45f26d8ff087fa19047fc90008dd95979fc17b66b7019afc99d",
+      "ledger_digest": "57010c58787d90ac41e3a08646abad523f6a9124b34b29789b61664e619dcfa3",
       "opens": [],
-      "plan_hash": "3d8f7c89116c29c59dd9e88ca33d1519c62d04d970f0572041367ea27698abfd",
+      "plan_hash": "24fe71dec712dcaeba380128c7af28b4195e97dd1519013faae9d302537fd4c5",
       "request": {
         "date": "2026-07-31",
         "description": "Synthetic asset roll-forward",
@@ -1092,7 +1092,7 @@
         }
       ]
     },
-    "plan_hash": "3d8f7c89116c29c59dd9e88ca33d1519c62d04d970f0572041367ea27698abfd",
+    "plan_hash": "24fe71dec712dcaeba380128c7af28b4195e97dd1519013faae9d302537fd4c5",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1105,7 +1105,7 @@
       ],
       "id": "july-depreciation",
       "kind": "journal",
-      "plan_hash": "3d8f7c89116c29c59dd9e88ca33d1519c62d04d970f0572041367ea27698abfd",
+      "plan_hash": "24fe71dec712dcaeba380128c7af28b4195e97dd1519013faae9d302537fd4c5",
       "request_hash": "302340fdb228ef16c2d7cdd8398090da7ef18e0d7623159265e4e762f76c6030",
       "status": "applied",
       "warnings": [
@@ -1230,9 +1230,9 @@
       ],
       "id": "july-recognition",
       "kind": "schedule_due",
-      "ledger_digest": "39b5b0e1c78afc673ec7dd94fd80f105ae19df551679764a6ada999e577e9576",
+      "ledger_digest": "28aa0c49d75ec5396e9325abfc99a22b86560efc5cafd0fc478474bea411ac76",
       "opens": [],
-      "plan_hash": "a094785f1f23f0bb10997ca4ff0d475b849cd4558ff1833f469074a8e69a977c",
+      "plan_hash": "b8aefb85d86275cfad113a93ecc5cc65f912e5dda417a315fe94c7b6122bbf17",
       "request": {
         "operation_id": "july-recognition",
         "through": "2026-07-31"
@@ -1242,7 +1242,7 @@
       "supporting_hash": "6521a2b40801f9c3d0b873a5911248585b842c5d266ce22b414e9d85bc68baae",
       "warnings": []
     },
-    "plan_hash": "a094785f1f23f0bb10997ca4ff0d475b849cd4558ff1833f469074a8e69a977c",
+    "plan_hash": "b8aefb85d86275cfad113a93ecc5cc65f912e5dda417a315fe94c7b6122bbf17",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1256,7 +1256,7 @@
       ],
       "id": "july-recognition",
       "kind": "schedule_due",
-      "plan_hash": "a094785f1f23f0bb10997ca4ff0d475b849cd4558ff1833f469074a8e69a977c",
+      "plan_hash": "b8aefb85d86275cfad113a93ecc5cc65f912e5dda417a315fe94c7b6122bbf17",
       "request_hash": "ff5b826a2fbeed5e46d64a5b20758d21fc13131a8811abc0403d460175c94a45",
       "status": "applied",
       "warnings": []
@@ -1329,9 +1329,9 @@
       ],
       "id": "payroll-payment",
       "kind": "item_settlement",
-      "ledger_digest": "3e6af00d50b5425f15a18cada51cef051846d91630f937005cd9e08dcceb51e4",
+      "ledger_digest": "387d4745a4d10cc691c2f4e384fcf60e395266d8fc1200fbaae8d318d6412c56",
       "opens": [],
-      "plan_hash": "5752679322e9014c4ede854c723c7eccea970ae94775236f6b056d60683f7b38",
+      "plan_hash": "7418fe05d0e464ca341005a3b2cf6f034a321452925cb2a3a805f038d008de2d",
       "request": {
         "allocations": [
           {
@@ -1356,7 +1356,7 @@
       "supporting_hash": "69a349e44d29325d7c7094a8627a0e4d90303bf6fc863a06477f8b779d70c2e1",
       "warnings": []
     },
-    "plan_hash": "5752679322e9014c4ede854c723c7eccea970ae94775236f6b056d60683f7b38",
+    "plan_hash": "7418fe05d0e464ca341005a3b2cf6f034a321452925cb2a3a805f038d008de2d",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1369,7 +1369,7 @@
       ],
       "id": "payroll-payment",
       "kind": "item_settlement",
-      "plan_hash": "5752679322e9014c4ede854c723c7eccea970ae94775236f6b056d60683f7b38",
+      "plan_hash": "7418fe05d0e464ca341005a3b2cf6f034a321452925cb2a3a805f038d008de2d",
       "request_hash": "61547c20d9ec0b5c926441229a7c339ae24fdae8547d1903a2ab36762dd1125c",
       "status": "applied",
       "warnings": []
@@ -1426,9 +1426,9 @@
       ],
       "id": "payroll-support",
       "kind": "item_create",
-      "ledger_digest": "99c473ce518a5a05536febdb2a8708a5ca9a1caf87a371cc39ad92c7cd1615a6",
+      "ledger_digest": "78ea34452ab5ae441de035107709060080f4d1aee374375443e878821e11ec71",
       "opens": [],
-      "plan_hash": "81c9ee0d76b556e04d72f3adf615e876293ea7bc373a7533cfe4e669c4ce591b",
+      "plan_hash": "27dd65c6e9a47d41e857135c0ce04aa8a153b283f4965d78f8c1792957ac345d",
       "request": {
         "account": "Liabilities:Other:Payroll-Payable",
         "as_of": "2026-07-20",
@@ -1450,7 +1450,7 @@
       "supporting_hash": "8f3dfb44bc173b370b152eeefe0c8670c8d9a9b7fa0fe23e7c5bcabc834d91b4",
       "warnings": []
     },
-    "plan_hash": "81c9ee0d76b556e04d72f3adf615e876293ea7bc373a7533cfe4e669c4ce591b",
+    "plan_hash": "27dd65c6e9a47d41e857135c0ce04aa8a153b283f4965d78f8c1792957ac345d",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1461,7 +1461,7 @@
       ],
       "id": "payroll-support",
       "kind": "item_create",
-      "plan_hash": "81c9ee0d76b556e04d72f3adf615e876293ea7bc373a7533cfe4e669c4ce591b",
+      "plan_hash": "27dd65c6e9a47d41e857135c0ce04aa8a153b283f4965d78f8c1792957ac345d",
       "request_hash": "9cc14ecfcfcd7a11b7841e137e0b7a90f8dc2faced715d7bdf4379e32b1353f4",
       "status": "applied",
       "warnings": []
@@ -1547,9 +1547,9 @@
       ],
       "id": "provider-payroll-journal",
       "kind": "journal",
-      "ledger_digest": "e0be52f24f0d3e0fc2c1432405a125781ae8fa03f1821c372ed770a87ff8edf1",
+      "ledger_digest": "6c4c8598b4e4de008c5e9c596d8f0bd62623bce043665c19c93430f5c7b5f0a0",
       "opens": [],
-      "plan_hash": "db666eed07e3fcf30bea94e3be88f54224977f180dbd615e3901b7a34c0a18c8",
+      "plan_hash": "36acef90a5b23d38c52e4c30aec62fa2bbe084109604ba6503cf8e14855eb52a",
       "request": {
         "date": "2026-07-20",
         "description": "Synthetic provider payroll",
@@ -1581,7 +1581,7 @@
         }
       ]
     },
-    "plan_hash": "db666eed07e3fcf30bea94e3be88f54224977f180dbd615e3901b7a34c0a18c8",
+    "plan_hash": "36acef90a5b23d38c52e4c30aec62fa2bbe084109604ba6503cf8e14855eb52a",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1594,7 +1594,7 @@
       ],
       "id": "provider-payroll-journal",
       "kind": "journal",
-      "plan_hash": "db666eed07e3fcf30bea94e3be88f54224977f180dbd615e3901b7a34c0a18c8",
+      "plan_hash": "36acef90a5b23d38c52e4c30aec62fa2bbe084109604ba6503cf8e14855eb52a",
       "request_hash": "31d2e2ddf7319c062a3a317f2b540b361c6e5910bbfcee8b4617845d46707111",
       "status": "applied",
       "warnings": [
@@ -1757,7 +1757,7 @@
       ],
       "id": "quickbooks-opening-trial-balance-2026-07-01",
       "kind": "migration",
-      "ledger_digest": "7b2fb8f410707db965961533d83e4e3e13640cf52648035fa830c994d7cf417a",
+      "ledger_digest": "1d2028a8d4490cda0ffdece77305aa76f95448daa2fd67850adc71e80666b6f5",
       "opens": [
         {
           "account": "Liabilities:Payable:Accounts-Payable",
@@ -1837,7 +1837,7 @@
           "date": "2026-06-30"
         }
       ],
-      "plan_hash": "d8e8a56072a41e7bc989b5b65b55ddd98b62cdfb72dab160d25b895e8e4cc694",
+      "plan_hash": "3699005ebe4de48ef183eda31dfde99460a16b66e4949ee04d4741cba480c0e4",
       "request": {
         "chart_hash": "5166ec820f907349628c59ccb8aaaafe18e41306568c8a1763e35541f86ecd34",
         "cutover": "2026-07-01",
@@ -1859,7 +1859,7 @@
       "supporting_hash": "d766ba3a69c72ffc71d412c17071f0a4468f9093f05cb528d1eae2d1715d433c",
       "warnings": []
     },
-    "plan_hash": "d8e8a56072a41e7bc989b5b65b55ddd98b62cdfb72dab160d25b895e8e4cc694",
+    "plan_hash": "3699005ebe4de48ef183eda31dfde99460a16b66e4949ee04d4741cba480c0e4",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1872,7 +1872,7 @@
       ],
       "id": "quickbooks-opening-trial-balance-2026-07-01",
       "kind": "migration",
-      "plan_hash": "d8e8a56072a41e7bc989b5b65b55ddd98b62cdfb72dab160d25b895e8e4cc694",
+      "plan_hash": "3699005ebe4de48ef183eda31dfde99460a16b66e4949ee04d4741cba480c0e4",
       "request_hash": "631c0d0a2d86ff3f6ce8c891eee1859c52bd3f6e3d573e12a0df1043dd54d81e",
       "status": "applied",
       "warnings": []
@@ -1957,9 +1957,9 @@
       ],
       "id": "vendor-payment",
       "kind": "item_settlement",
-      "ledger_digest": "9d0c01a1521e45407a4a42958e249122018e57d28b118dfd595d4ddd05971e0e",
+      "ledger_digest": "aa36552f4f2fa23d7cf481ad389a9ba327d4d5ea2ff6ad184e07275c6734e432",
       "opens": [],
-      "plan_hash": "a28b78743c6e9a335d5f5eba8745b581844a5341c40dd1d3e89b71d729a8d00d",
+      "plan_hash": "e1964fdfbf4ab44391c7f7e7f4498f3bcf52efd99c649809b570922bc4ef202d",
       "request": {
         "allocations": [
           {
@@ -1984,7 +1984,7 @@
       "supporting_hash": "15587f6e4914ff3f56fc9823db481864a16027d70e916a54dc0e4ff0868372d4",
       "warnings": []
     },
-    "plan_hash": "a28b78743c6e9a335d5f5eba8745b581844a5341c40dd1d3e89b71d729a8d00d",
+    "plan_hash": "e1964fdfbf4ab44391c7f7e7f4498f3bcf52efd99c649809b570922bc4ef202d",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1997,7 +1997,7 @@
       ],
       "id": "vendor-payment",
       "kind": "item_settlement",
-      "plan_hash": "a28b78743c6e9a335d5f5eba8745b581844a5341c40dd1d3e89b71d729a8d00d",
+      "plan_hash": "e1964fdfbf4ab44391c7f7e7f4498f3bcf52efd99c649809b570922bc4ef202d",
       "request_hash": "ca0b977e3d4693489593c5480ff8d6037d9f7628afc931559dec4296fd0527fe",
       "status": "applied",
       "warnings": []

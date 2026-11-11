@@ -1,7 +1,7 @@
 {
   "as_of": "2026-01-31",
   "basis": "accrual",
-  "canonical_digest": "cc12b79db9c89f9ec105a95febaffdfe6dcf5a6646c5d7024787c0951caefc3f",
+  "canonical_digest": "f86224be24ea495442572625bbf472917c98ce4f73ee673b2bf26827d500e9c2",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -75,8 +75,8 @@
     "cutover_date": "2026-01-01",
     "fiscal_start": "2026-01-01",
     "id": "opening",
-    "intent_hash": "a15d2bb65f109f17a60cf71f0e2cc0c9cf719dfac87387624869b6156300127f",
-    "mapping_hash": "b1dfdac55fcf42bfb57bb58b0e713e515af0fbb9d7a5e99550488629dc03cfcb",
+    "intent_hash": "952c8e04f6c5f9af1ea6c59a26f03ea9458f13814d857195232755ce630ac295",
+    "mapping_hash": "acfff38235438345b1723f115a2fc61947cc1fa503d3925999475f6d4aef11b6",
     "opening_source_id": "golden-opening",
     "source_as_of": "2025-12-31",
     "source_hashes": {},
@@ -89,7 +89,7 @@
     "verified": true
   },
   "currency": "USD",
-  "fingerprint": "05d9b8dc300c0de9102730cfe64d5b0c2103a0f020436e09786617fab2478f41",
+  "fingerprint": "d41355082c6e73900724c0b89aed4fe6d7fc63a85ce05e6d12d197b8215c0293",
   "from_date": null,
   "issues": [],
   "kind": "adjustments",
@@ -113,7 +113,7 @@
           ],
           "id": "golden-opening",
           "kind": "migration",
-          "plan_hash": "40fe0a150e8d8d1873fca8141f918b63a0412ea5c9c2194f6cb1ed0e88b4b79c",
+          "plan_hash": "2cc3fc4ef8737d883d5b9104e810eefb900bd01699463d5e6d6be8e09515e01e",
           "role": "posted_effect"
         }
       ],
@@ -176,7 +176,7 @@
           ],
           "id": "inv-1001-create",
           "kind": "item_create",
-          "plan_hash": "8b60284be61d3b0c746e42365f6909dba0d2f0adaeeeaf498c80bbf2aaa7a8b1",
+          "plan_hash": "03ac37df8e142bb1faf12230ba712713b5e3c8108796a2866ba3bd7ebb92b9ed",
           "role": "posted_effect"
         }
       ],
@@ -209,7 +209,7 @@
           ],
           "id": "inv-1003-create",
           "kind": "item_create",
-          "plan_hash": "c2b882643a5ded511918e6f5eead55ae24e0bb976be9ef9b6f5ce39c6c0df62b",
+          "plan_hash": "2331d87e112be6e0e38c0a5c854530f6625a5a3a55f65f148caed653e528b90e",
           "role": "posted_effect"
         }
       ],
@@ -241,7 +241,7 @@
           ],
           "id": "pay-bill-open-1",
           "kind": "item_settlement",
-          "plan_hash": "645933489e23532bd23993d46a2bdcb8ee7691cc0874b219767ba178451efc9e",
+          "plan_hash": "45281be19cc46fa286df608726f888097d519b69afbbf8686052990384d1f992",
           "role": "posted_effect"
         }
       ],
@@ -273,7 +273,7 @@
           ],
           "id": "pay-inv-open-1",
           "kind": "item_settlement",
-          "plan_hash": "f2f9d90dd96f9b771514acd3bf096aa078eb01726ec4627d7249527cd04a5c5d",
+          "plan_hash": "7850df86cf8ab1b29a46f0a78ae4ea113342a5452d6c0da51384ee97080fd97d",
           "role": "posted_effect"
         }
       ],
@@ -305,7 +305,7 @@
           "evidence_ids": [],
           "id": "utilities-estimate-jan",
           "kind": "journal",
-          "plan_hash": "3bf8adf62373c9b4da2875ef9a54166e991e8fb17028c807a4989ef1fc599d8e",
+          "plan_hash": "33a7b36b80607c4f19404791166aa4f65d9be4f594aea14b2a38e0c060f95fb7",
           "role": "posted_effect"
         }
       ],
@@ -337,7 +337,7 @@
           ],
           "id": "recognize-2026-01-31",
           "kind": "schedule_due",
-          "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
+          "plan_hash": "4530a594aae0d635230dd6b8519cd2480eab97af2e9029364570fcb8f66948fb",
           "role": "posted_effect"
         }
       ],
@@ -369,7 +369,7 @@
           ],
           "id": "recognize-2026-01-31",
           "kind": "schedule_due",
-          "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
+          "plan_hash": "4530a594aae0d635230dd6b8519cd2480eab97af2e9029364570fcb8f66948fb",
           "role": "posted_effect"
         }
       ],
@@ -401,7 +401,7 @@
           ],
           "id": "recognize-2026-01-31",
           "kind": "schedule_due",
-          "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
+          "plan_hash": "4530a594aae0d635230dd6b8519cd2480eab97af2e9029364570fcb8f66948fb",
           "role": "posted_effect"
         }
       ],

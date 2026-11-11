@@ -321,6 +321,22 @@
       "ultratax_code": null
     },
     {
+      "account": "Income:Interest-Income",
+      "account_number": null,
+      "balance": "0.00",
+      "basis": "name",
+      "detail": null,
+      "form_line": "personal",
+      "label": "Owner's personal return item, not Schedule C",
+      "line": "schc/none/personal",
+      "on_return": false,
+      "reason": "Matched by account name.",
+      "return_type": "schc",
+      "review": true,
+      "schedule": "none",
+      "ultratax_code": null
+    },
+    {
       "account": "Income:Services",
       "account_number": null,
       "balance": "0.00",
@@ -396,6 +412,7 @@
     "Expenses:Travel",
     "Expenses:Utilities",
     "Income:Consulting",
+    "Income:Interest-Income",
     "Income:Services"
   ],
   "schema_version": 1,

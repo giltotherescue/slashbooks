@@ -52,12 +52,15 @@ because the goals change no amounts. Standing posting authority does not cover
 approves each move. The command refuses an entry in a locked month
 (`period_locked`).
 
-## Remove an unused category
+## Remove an unused category or loan account
 
 `books entity account-remove PATH --account ACCOUNT [--added-event ID]` removes an
-income or expense account from the account catalog. It does not change the books:
-no entry changes, and the account has no postings. A host can use it to undo a
-category that it added, while nothing uses the category.
+income or expense account, or a loan account under `Liabilities:Loans:` (for
+example `Liabilities:Loans:Equipment-Loan`), from the account catalog. It does not
+change the books: no entry changes, and the account has no postings. A host can
+use it to undo a category or a loan account that it added by mistake, while
+nothing uses the account. Other balance sheet accounts (bank, card, sales tax and
+other liabilities) stay.
 
 The command is narrow. It removes an account only when `books entity account-add`
 created it: the audit log has the event that `account-add` writes when it creates
@@ -83,11 +86,11 @@ The command refuses before any write:
 | Code | Reason |
 |---|---|
 | `invalid_account` | The name is not a valid account name, for example it has a control character such as a final newline. |
-| `protected_account` | The account is not an income or expense account, or the engine creates or names it: the starter catalogs, the accrual starters, the Stripe accounts and the report accounts (one list, `engine_accounts.engine_owned_accounts()`). |
+| `protected_account` | The account is not an income or expense account or a loan account under `Liabilities:Loans:`, or the engine creates or names it: the starter catalogs (for example the `Liabilities:Loans:Mortgage` starter of a real estate company), the accrual starters, the Stripe accounts and the report accounts (one list, `engine_accounts.engine_owned_accounts()`). A loan account with the financial kind `credit_card` is a card account, so it also stays. |
 | `not_added_by_command` | No account-add event shows that `account-add` created the account. |
 | `added_event_mismatch` | `--added-event` does not name the latest account-add event of the account. |
-| `account_in_use` | A posting in any period (reversals too) or a balance assertion uses the account. |
-| `account_referenced` | Company settings or records name the account: `entity.json` (bank mappings, related entities, tax lines and other settings), `trust-policy.json`, learned context (payee rules, accrual rules), an open review item, a staged row, an accrual record, a saved source row (`source_transactions`) or an import session (`import_sessions`). `refs` names the file or the table and record id. The check parses the JSON and compares decoded names, so a name written with JSON escapes is found too. A saved accrual rule that selects the account through a parent account also counts, when the parent would then select no account. `refs` lists up to 20 places. |
+| `account_in_use` | A posting in any period (reversals and corrected entries too, including an opening balance entry) or a balance assertion uses the account. For a loan account, also when an opening operation set its open date (the `opening` source in `open_date_provenance`). |
+| `account_referenced` | Company settings or records name the account: `entity.json` (bank mappings, related entities, tax lines and other settings), `trust-policy.json`, learned context (payee rules, accrual rules), an open review item or proposal, a staged row, an accrual record (a schedule, for example), a saved source row (`source_transactions`) or an import session (`import_sessions`). For a loan account, the check also reads the JSON files of the saved statements (`ingestion/statements/`) and the reconciliation records (`reports/reconciliation.json`). `refs` names the file or the table and record id. The check parses the JSON and compares decoded names, so a name written with JSON escapes is found too. A saved accrual rule that selects the account through a parent account also counts, when the parent would then select no account. `refs` lists up to 20 places. |
 | `reference_check_failed` | A settings file or folder is a symbolic link, cannot be read, is not valid JSON, or does not have the expected shape (for example a `trust-policy.json` that is not an object, or an accrual rule whose `match` is not an object), so the references cannot be checked. |
 | `audit_history_missing` | The ledger has entries and no audit history. |
 
@@ -98,7 +101,8 @@ The reference check does not read these, on purpose:
 - the narration and metadata of entries and postings (the postings are checked by
   account);
 - files outside the settings folders: `reports/`, `ingestion/` and
-  `business-profile.md`.
+  `business-profile.md`. The exception is a loan account: its saved statements
+  and reconciliation records are read, as the table above says.
 
 `books queue` teaching checks the account catalog under the same company lock, so a
 removal cannot come between that check and the save. `books ledger reverse`,

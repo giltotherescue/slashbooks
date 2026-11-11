@@ -28,9 +28,9 @@
       "evidence": [],
       "id": "apply-orbit-credit",
       "kind": "item_offset",
-      "ledger_digest": "1b7fc2ca6a9edb63b5208a27e2eeb487b1992e4c7e0e8c7b9821f00d3a7b504f",
+      "ledger_digest": "4e226c66ec105efeafe6f3ae42c86156fcb8864aeec7e00faba6719aaec69435",
       "opens": [],
-      "plan_hash": "c82fbacbb8f55eff7cc8ab4cc0483bfbd85641f51e1db56952da21fb161619bf",
+      "plan_hash": "070a04d5141bf76255401993c755f000577adc1d0a502f8116642fdc859eda7c",
       "request": {
         "amount": "500.00",
         "credit_item_id": "orbit-credit",
@@ -45,7 +45,7 @@
       "supporting_hash": "539754680866629329c33e1ce0e3dc1c58dc91938250ebd0ecc555d9e15325db",
       "warnings": []
     },
-    "plan_hash": "c82fbacbb8f55eff7cc8ab4cc0483bfbd85641f51e1db56952da21fb161619bf",
+    "plan_hash": "070a04d5141bf76255401993c755f000577adc1d0a502f8116642fdc859eda7c",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -54,7 +54,7 @@
       "evidence_ids": [],
       "id": "apply-orbit-credit",
       "kind": "item_offset",
-      "plan_hash": "c82fbacbb8f55eff7cc8ab4cc0483bfbd85641f51e1db56952da21fb161619bf",
+      "plan_hash": "070a04d5141bf76255401993c755f000577adc1d0a502f8116642fdc859eda7c",
       "request_hash": "03ec3e74a07baa6af99e647a81eb3c3569e8ccc8038c566c6096a50b6bdd565a",
       "status": "applied",
       "warnings": []
@@ -133,9 +133,9 @@
       ],
       "id": "bill-2001-create",
       "kind": "item_create",
-      "ledger_digest": "d890cbeef25aca5ae85874ec28f1a9b7dbfcbf7205541ef03b38d6d7027edc74",
+      "ledger_digest": "c61f87d9f41b549943d693ddff125cac2f37fa7d3bd10312f0945ea67564bf28",
       "opens": [],
-      "plan_hash": "a9ed88fe2a561f9a0a67510b48a53efc4c467a26649dbdf52290249354b40f6f",
+      "plan_hash": "b81ce607b00e9c6df06464e265622b9057b8b9b47af0bb139be52991f15c41af",
       "request": {
         "account": "Liabilities:Payable:Accounts-Payable",
         "as_of": "2026-02-03",
@@ -160,7 +160,7 @@
       "supporting_hash": "29fd9a4ad011009d98a71d2fb56c43784fc46d41187dc3b608198f4dbeffd70f",
       "warnings": []
     },
-    "plan_hash": "a9ed88fe2a561f9a0a67510b48a53efc4c467a26649dbdf52290249354b40f6f",
+    "plan_hash": "b81ce607b00e9c6df06464e265622b9057b8b9b47af0bb139be52991f15c41af",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -173,7 +173,7 @@
       ],
       "id": "bill-2001-create",
       "kind": "item_create",
-      "plan_hash": "a9ed88fe2a561f9a0a67510b48a53efc4c467a26649dbdf52290249354b40f6f",
+      "plan_hash": "b81ce607b00e9c6df06464e265622b9057b8b9b47af0bb139be52991f15c41af",
       "request_hash": "a678fc6b30defeeac3b81f00d121fd2e60f5fcb0e6ceb2779a98d4f11dd24b6e",
       "status": "applied",
       "warnings": []
@@ -262,9 +262,9 @@
       ],
       "id": "bonus-actual-create",
       "kind": "item_create",
-      "ledger_digest": "8cca3c635aaf615ffac844dc6d4a182d6e1677bda3898d38158672a099a39d97",
+      "ledger_digest": "c4b644ce998967e9999562d63ee5cc755f86c70ffef9039ed4aabebce78610d8",
       "opens": [],
-      "plan_hash": "a7caa58b4db20ce2e1d831712b677a634e2f35d24af41385960cf03268a5ae32",
+      "plan_hash": "536f15076ac99253c3d6c876c1b93c16d51e435ceebdef128127645ce5fbd704",
       "request": {
         "account": "Liabilities:Payable:Accounts-Payable",
         "as_of": "2026-03-10",
@@ -288,7 +288,7 @@
       "supporting_hash": "ca68fda4fa7424ab7729b7c203e81336673245d3d4532362b83635fde745ecfd",
       "warnings": []
     },
-    "plan_hash": "a7caa58b4db20ce2e1d831712b677a634e2f35d24af41385960cf03268a5ae32",
+    "plan_hash": "536f15076ac99253c3d6c876c1b93c16d51e435ceebdef128127645ce5fbd704",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -301,7 +301,7 @@
       ],
       "id": "bonus-actual-create",
       "kind": "item_create",
-      "plan_hash": "a7caa58b4db20ce2e1d831712b677a634e2f35d24af41385960cf03268a5ae32",
+      "plan_hash": "536f15076ac99253c3d6c876c1b93c16d51e435ceebdef128127645ce5fbd704",
       "request_hash": "dedb93502f8ce3433e7fcf7e22a6edec16d0d02f4a3af6ee9c277385b0272f1f",
       "status": "applied",
       "warnings": []
@@ -383,9 +383,9 @@
       "evidence": [],
       "id": "bonus-estimate-create",
       "kind": "item_create",
-      "ledger_digest": "b5241e24c9cae1553d79b6023dc5b9a20077cf604a51fe4ef9721d8fd078ab3c",
+      "ledger_digest": "000a0271ad834fb1e629845b283d56dc6f619da178139ce2ece01da9ae5a4fa7",
       "opens": [],
-      "plan_hash": "8ad5f619a0d57a9600bda414e1696c7361a8dda64ad6a719557d1d1aa9ef557a",
+      "plan_hash": "768dd6573cc2b8ae9c0cd908b964a7161002251a2a30d76a319210b4000e8ce0",
       "request": {
         "account": "Liabilities:Payable:Accounts-Payable",
         "as_of": "2026-02-28",
@@ -409,7 +409,7 @@
       "supporting_hash": "97d8dfdb357605c97a2797380026f54461f09d58af446dc0a8d86bb1e6cb7950",
       "warnings": []
     },
-    "plan_hash": "8ad5f619a0d57a9600bda414e1696c7361a8dda64ad6a719557d1d1aa9ef557a",
+    "plan_hash": "768dd6573cc2b8ae9c0cd908b964a7161002251a2a30d76a319210b4000e8ce0",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -420,7 +420,7 @@
       "evidence_ids": [],
       "id": "bonus-estimate-create",
       "kind": "item_create",
-      "plan_hash": "8ad5f619a0d57a9600bda414e1696c7361a8dda64ad6a719557d1d1aa9ef557a",
+      "plan_hash": "768dd6573cc2b8ae9c0cd908b964a7161002251a2a30d76a319210b4000e8ce0",
       "request_hash": "4006e6e5157272de4ffdfe71818cdaf4c96f2f68ba684263d737637d5bec66ce",
       "status": "applied",
       "warnings": []
@@ -507,9 +507,9 @@
       "evidence": [],
       "id": "bonus-true-up",
       "kind": "item_adjustment",
-      "ledger_digest": "4176d8523795ec5074f56b4a72a555212a8a39a3ff963ab24c66d39bf60301ad",
+      "ledger_digest": "c8924fa51d3c704c2241a109e0d5e03758dbf47b6475bfed3a57ecc7307c126d",
       "opens": [],
-      "plan_hash": "f0ef4810d077d59a657c9967c032b44304630fd6dcf0065391bd11b44982f673",
+      "plan_hash": "952cc58351c06ed91c2e5a9bb4f8ff0a3a804c50aeea7d339108d75d22c8b027",
       "request": {
         "action": "true_up",
         "actual_item_id": "bonus-actual",
@@ -527,7 +527,7 @@
       "supporting_hash": "e18dfd15759b942369126f8b7ff02220f9be26a542b471686bffbdb60207edbf",
       "warnings": []
     },
-    "plan_hash": "f0ef4810d077d59a657c9967c032b44304630fd6dcf0065391bd11b44982f673",
+    "plan_hash": "952cc58351c06ed91c2e5a9bb4f8ff0a3a804c50aeea7d339108d75d22c8b027",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -546,7 +546,7 @@
       "evidence_ids": [],
       "id": "bonus-true-up",
       "kind": "item_adjustment",
-      "plan_hash": "f0ef4810d077d59a657c9967c032b44304630fd6dcf0065391bd11b44982f673",
+      "plan_hash": "952cc58351c06ed91c2e5a9bb4f8ff0a3a804c50aeea7d339108d75d22c8b027",
       "request_hash": "9e36419877824508bdfe7ff5fe7e65f1cf3aeffd204f13352ac99632668eb303",
       "status": "applied",
       "warnings": []
@@ -589,23 +589,23 @@
       "evidence": [],
       "id": "close-2026-01",
       "kind": "period_close",
-      "ledger_digest": "ce9158e4a823c145501423e0c7e099c51c00f8b7883df3fe0324787b1710f97a",
+      "ledger_digest": "319bdc390e5d2565329540f2b6becc289426eea55cf870e8375aa72f20c584ff",
       "opens": [],
-      "plan_hash": "86d42e0bf4116a5cf2a8aea99311d8f2cb2cc38b244d6ec1f7995254fe86a86f",
+      "plan_hash": "64b0137266bdff93d94aa8e635d0f6a17bbd7c017a13928a26811a6f84f1ff88",
       "request": {
         "action": "close",
         "as_of": "2026-08-05",
         "operation_id": "close-2026-01",
         "period": "2026-01",
-        "readiness_package_id": "644f2a1e97b8e7b75e96ab0b8a27f1b8c214409f9de7d5f0df3df081b5c50ac1",
+        "readiness_package_id": "e757c20d46e026de6eb086154f12d7d2dcd1574498f395cb8084f34595538388",
         "reason": "Synthetic owner reviewed the January package"
       },
-      "request_hash": "f43125941c041fcf618dae6292c4d74d7231c536b6b0673ff6c4b16cf28e776d",
+      "request_hash": "e365155a7327a09487eb438d2f5ea60a815a0a10fe768da16b7faae4f84a92c0",
       "schema_version": 1,
-      "supporting_hash": "b95960749bbd669ea14dec4e743a6efc842c3f3252e37ee34d4affb2f67b6410",
+      "supporting_hash": "f39ad1bbda05cbb50a84854d77ba438b582ada1ea90ef8662fa4436ecdd465e3",
       "warnings": []
     },
-    "plan_hash": "86d42e0bf4116a5cf2a8aea99311d8f2cb2cc38b244d6ec1f7995254fe86a86f",
+    "plan_hash": "64b0137266bdff93d94aa8e635d0f6a17bbd7c017a13928a26811a6f84f1ff88",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -614,8 +614,8 @@
       "evidence_ids": [],
       "id": "close-2026-01",
       "kind": "period_close",
-      "plan_hash": "86d42e0bf4116a5cf2a8aea99311d8f2cb2cc38b244d6ec1f7995254fe86a86f",
-      "request_hash": "f43125941c041fcf618dae6292c4d74d7231c536b6b0673ff6c4b16cf28e776d",
+      "plan_hash": "64b0137266bdff93d94aa8e635d0f6a17bbd7c017a13928a26811a6f84f1ff88",
+      "request_hash": "e365155a7327a09487eb438d2f5ea60a815a0a10fe768da16b7faae4f84a92c0",
       "status": "applied",
       "warnings": []
     },
@@ -624,10 +624,10 @@
       "as_of": "2026-08-05",
       "operation_id": "close-2026-01",
       "period": "2026-01",
-      "readiness_package_id": "644f2a1e97b8e7b75e96ab0b8a27f1b8c214409f9de7d5f0df3df081b5c50ac1",
+      "readiness_package_id": "e757c20d46e026de6eb086154f12d7d2dcd1574498f395cb8084f34595538388",
       "reason": "Synthetic owner reviewed the January package"
     },
-    "request_hash": "f43125941c041fcf618dae6292c4d74d7231c536b6b0673ff6c4b16cf28e776d",
+    "request_hash": "e365155a7327a09487eb438d2f5ea60a815a0a10fe768da16b7faae4f84a92c0",
     "status": "applied"
   },
   {
@@ -685,9 +685,9 @@
       "evidence": [],
       "id": "due:utilities-estimate-jan",
       "kind": "reversal",
-      "ledger_digest": "1601e6d32b964b2216cf7aa0669d853fd0480250e4fa8d3c54f685efc4af50c5",
+      "ledger_digest": "e8168db26439963223e62d3ea5728decbb27b7d2f33ae249ae66d0af7a8a0a72",
       "opens": [],
-      "plan_hash": "8bdd4519a977d6aa2708d0fb9d8ba952c337911e708f4d701feffbc536c53313",
+      "plan_hash": "4484547fad84229330a2fa9934d7260460c3555dd2b55f8795bb9862716b4636",
       "request": {
         "date": "2026-02-01",
         "description": "Reversal of: Estimated January utilities",
@@ -699,7 +699,7 @@
       "supporting_hash": "bd1d65c3cc22295f47a1017e274013205cf63fb017e73c34e91b72eec058c94f",
       "warnings": []
     },
-    "plan_hash": "8bdd4519a977d6aa2708d0fb9d8ba952c337911e708f4d701feffbc536c53313",
+    "plan_hash": "4484547fad84229330a2fa9934d7260460c3555dd2b55f8795bb9862716b4636",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -710,7 +710,7 @@
       "evidence_ids": [],
       "id": "due:utilities-estimate-jan",
       "kind": "reversal",
-      "plan_hash": "8bdd4519a977d6aa2708d0fb9d8ba952c337911e708f4d701feffbc536c53313",
+      "plan_hash": "4484547fad84229330a2fa9934d7260460c3555dd2b55f8795bb9862716b4636",
       "request_hash": "ac26d8c987ee763edb2b3bc98fdcd41d312a4915c49fa105f22d30355ed1eb85",
       "status": "applied",
       "warnings": []
@@ -754,9 +754,9 @@
       ],
       "id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e",
       "kind": "evidence",
-      "ledger_digest": "120ebf1441eec6600ffdce179694572782ca9ab54f3c57a5bcd3e02f9b59c22a",
+      "ledger_digest": "70f4c8f7a82ec673b4622c9fb3e736fdd954e701fba69c305317778b3886dd21",
       "opens": [],
-      "plan_hash": "5a68590b9971f08dcf2f7136b4926c0385a165ef95f9f69a4445d5917ae1031d",
+      "plan_hash": "190b4560585adf3656be14757328c505c178f9777bd26ee1bdd5083f86b95938",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -789,7 +789,7 @@
       "supporting_hash": "324769dc13dd2d7c3a6526f4793a919ee863cc5e411c6dcf6a2b9dbb51077ae5",
       "warnings": []
     },
-    "plan_hash": "5a68590b9971f08dcf2f7136b4926c0385a165ef95f9f69a4445d5917ae1031d",
+    "plan_hash": "190b4560585adf3656be14757328c505c178f9777bd26ee1bdd5083f86b95938",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -800,7 +800,7 @@
       ],
       "id": "evidence:1f329f453851ba98c982865830036e2bd859b0b2c53557418789c1713e5e895e",
       "kind": "evidence",
-      "plan_hash": "5a68590b9971f08dcf2f7136b4926c0385a165ef95f9f69a4445d5917ae1031d",
+      "plan_hash": "190b4560585adf3656be14757328c505c178f9777bd26ee1bdd5083f86b95938",
       "request_hash": "519531d5f41ae5ccef872ae5e7ad4785fefb704b8848bffcce8a9227551f390b",
       "status": "applied",
       "warnings": []
@@ -865,9 +865,9 @@
       ],
       "id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353",
       "kind": "evidence",
-      "ledger_digest": "5c117bb60fac52454d85e0bc28d54528b6b5c9f7054d1a5d2cd677e6d3822060",
+      "ledger_digest": "9d1c1d3f9a34cb80f3d9712487d8cfd93bb76bf16487846b70f88c093b6ed87f",
       "opens": [],
-      "plan_hash": "43e2c3c736be9c51ded9ad46b7afe45e4b5821e3a4ca5cbf46f37f03a9a1740e",
+      "plan_hash": "d0107c1108ee0605c21a9113045fcd97ab540cb829a8bc1d640c6ecfb063f4aa",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -900,7 +900,7 @@
       "supporting_hash": "abfbf6c7bd5650eb628ff59a0894ad0d4eaf0e0ea40d84a79aaea8b4f2c6913e",
       "warnings": []
     },
-    "plan_hash": "43e2c3c736be9c51ded9ad46b7afe45e4b5821e3a4ca5cbf46f37f03a9a1740e",
+    "plan_hash": "d0107c1108ee0605c21a9113045fcd97ab540cb829a8bc1d640c6ecfb063f4aa",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -911,7 +911,7 @@
       ],
       "id": "evidence:3e65af4f2e402ea479b99afef0a132af7e3048ead47f4bd90cd8d0b455517353",
       "kind": "evidence",
-      "plan_hash": "43e2c3c736be9c51ded9ad46b7afe45e4b5821e3a4ca5cbf46f37f03a9a1740e",
+      "plan_hash": "d0107c1108ee0605c21a9113045fcd97ab540cb829a8bc1d640c6ecfb063f4aa",
       "request_hash": "ba0cdc94d950ecf64425fc148efb9bd52b08240cc26207a4f473c681794cbd63",
       "status": "applied",
       "warnings": []
@@ -976,9 +976,9 @@
       ],
       "id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9",
       "kind": "evidence",
-      "ledger_digest": "48fd821c2d7e78705ac50e6705e9fcef16384a2ac6d1ef1f051f78cde4df5f2d",
+      "ledger_digest": "ceaf26574924c6deffa9cb8a64de4e15377a7afd08048ed62e97beb4c21fb982",
       "opens": [],
-      "plan_hash": "b23193d73f88c71f349fde6f81700cff0d7bc1524912dcf443c2ced3ab4868ef",
+      "plan_hash": "59151ee0292bb6e926bb0c7a91e28b9aa84c7aa815f2685d1a94774ee812d6e0",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1011,7 +1011,7 @@
       "supporting_hash": "2ae5e179a2f0655151fe02e17bb8ecd47fd1a9b9f97d2af540f6cc46898462cc",
       "warnings": []
     },
-    "plan_hash": "b23193d73f88c71f349fde6f81700cff0d7bc1524912dcf443c2ced3ab4868ef",
+    "plan_hash": "59151ee0292bb6e926bb0c7a91e28b9aa84c7aa815f2685d1a94774ee812d6e0",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1022,7 +1022,7 @@
       ],
       "id": "evidence:481f2a013f311f53964a41deeb7a73b7b3054052a7ff3b8f9ba949054f4cc9e9",
       "kind": "evidence",
-      "plan_hash": "b23193d73f88c71f349fde6f81700cff0d7bc1524912dcf443c2ced3ab4868ef",
+      "plan_hash": "59151ee0292bb6e926bb0c7a91e28b9aa84c7aa815f2685d1a94774ee812d6e0",
       "request_hash": "ffcc45157ddd2e61a3784aeaaad8043548e34d2b3f895813aeb9194b6e2f73ad",
       "status": "applied",
       "warnings": []
@@ -1087,9 +1087,9 @@
       ],
       "id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913",
       "kind": "evidence",
-      "ledger_digest": "3e5d477fa1cb78e6b8bb990c7136f38fa21e5940144d04825c859d0039c9159a",
+      "ledger_digest": "b7d7bc522972c673efdfad34ce2251b6dec1d4366401e12f1cce0156e226b2a7",
       "opens": [],
-      "plan_hash": "234c5a7064848c5057b2abec366043929666702640a7d745cb8da24513123ddd",
+      "plan_hash": "dfe45644683647049ccfc7baa8f4348b3067fc32dda4a77c2691ff3b2657c414",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1122,7 +1122,7 @@
       "supporting_hash": "568144eeb2afc64a6969cb52bb79874a77f83f854cd3a664ffda08cdc8708299",
       "warnings": []
     },
-    "plan_hash": "234c5a7064848c5057b2abec366043929666702640a7d745cb8da24513123ddd",
+    "plan_hash": "dfe45644683647049ccfc7baa8f4348b3067fc32dda4a77c2691ff3b2657c414",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1133,7 +1133,7 @@
       ],
       "id": "evidence:560c89515557d87329ffdae66e0a3747d4f51c59323712222e3834d9b64fc913",
       "kind": "evidence",
-      "plan_hash": "234c5a7064848c5057b2abec366043929666702640a7d745cb8da24513123ddd",
+      "plan_hash": "dfe45644683647049ccfc7baa8f4348b3067fc32dda4a77c2691ff3b2657c414",
       "request_hash": "708408c319662739b04d52cb5ced99410260177b2ec5250288cfbc883ca5d713",
       "status": "applied",
       "warnings": []
@@ -1198,9 +1198,9 @@
       ],
       "id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b",
       "kind": "evidence",
-      "ledger_digest": "28fb042fcb7085f60f2acfc39c72757c70c980213d284c1239eca91f2dc48794",
+      "ledger_digest": "58b985e4c523df134a93263352ae63fca60bbeab955890d93b3e95f51da4a630",
       "opens": [],
-      "plan_hash": "dd95add9fb32f7b5aef28952cde560149def4f48179355c8d9ce477132ce5fae",
+      "plan_hash": "9836a30b4436980abacc2034a0f248ced4df98a72c09ca7c893b451e851bc7de",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1233,7 +1233,7 @@
       "supporting_hash": "8d2eed23133cb760e434c8414d0e0fc37f521e7e27a90dce17f179ea3c73a958",
       "warnings": []
     },
-    "plan_hash": "dd95add9fb32f7b5aef28952cde560149def4f48179355c8d9ce477132ce5fae",
+    "plan_hash": "9836a30b4436980abacc2034a0f248ced4df98a72c09ca7c893b451e851bc7de",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1244,7 +1244,7 @@
       ],
       "id": "evidence:60c13cbd9562f15a0a729e72a536c54e227c083fc24bfda52e069b6c2ac1d27b",
       "kind": "evidence",
-      "plan_hash": "dd95add9fb32f7b5aef28952cde560149def4f48179355c8d9ce477132ce5fae",
+      "plan_hash": "9836a30b4436980abacc2034a0f248ced4df98a72c09ca7c893b451e851bc7de",
       "request_hash": "1a356921c365beca85d317b0662e67b10cd0a0309fac44c018cb1e4fcb0b1cf9",
       "status": "applied",
       "warnings": []
@@ -1309,9 +1309,9 @@
       ],
       "id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0",
       "kind": "evidence",
-      "ledger_digest": "5684fef2bed876f7c4ee34ef5961ffe1c933ad03c425bfcffdc6fe619ed7fee3",
+      "ledger_digest": "4033739de5bd551ccee3740263090710644035df6867d006348c10ea42aa147d",
       "opens": [],
-      "plan_hash": "cea8c86b78b1733fe81aac910037589decb85598a844c9a6f88aa8e8cfcf69d7",
+      "plan_hash": "5041c0086754e604da5a87a531b9690aa7a887776533b344dcb22656a9ba90cb",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1344,7 +1344,7 @@
       "supporting_hash": "ea25ad73ffaf9875653dbb850a1a1d3d15187aa951fcc30b549b0ebdab3e025e",
       "warnings": []
     },
-    "plan_hash": "cea8c86b78b1733fe81aac910037589decb85598a844c9a6f88aa8e8cfcf69d7",
+    "plan_hash": "5041c0086754e604da5a87a531b9690aa7a887776533b344dcb22656a9ba90cb",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1355,7 +1355,7 @@
       ],
       "id": "evidence:673148314394127672aea83155c25c2314210371589cbea32d25516bec0dcaf0",
       "kind": "evidence",
-      "plan_hash": "cea8c86b78b1733fe81aac910037589decb85598a844c9a6f88aa8e8cfcf69d7",
+      "plan_hash": "5041c0086754e604da5a87a531b9690aa7a887776533b344dcb22656a9ba90cb",
       "request_hash": "554f173064c83ca279d72dbb23149283b9b8c796509b5fa736f5e3607b9baea1",
       "status": "applied",
       "warnings": []
@@ -1420,9 +1420,9 @@
       ],
       "id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18",
       "kind": "evidence",
-      "ledger_digest": "0eab0f33e27d47de850cd2e72137b71d1c9881d5aa28e447d993c62088ee853d",
+      "ledger_digest": "84d72183ce87a9d0f442cad1e9e71f24c9da13b1d8ec5354bc6d329325b885e3",
       "opens": [],
-      "plan_hash": "a27882e130a6739206985f5f41c0472b260a52046530f4b74b717dcf08f7b406",
+      "plan_hash": "e86ab6df6bdf4aab7f8383e79b69f9fff3aef08e3cf97fcd07144ec1bafd2d4c",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1455,7 +1455,7 @@
       "supporting_hash": "e19d83dcf94be09737dcd185889d6ff0ec983d1425a9cb5ca3064effbf0bab05",
       "warnings": []
     },
-    "plan_hash": "a27882e130a6739206985f5f41c0472b260a52046530f4b74b717dcf08f7b406",
+    "plan_hash": "e86ab6df6bdf4aab7f8383e79b69f9fff3aef08e3cf97fcd07144ec1bafd2d4c",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1466,7 +1466,7 @@
       ],
       "id": "evidence:9e082a05bfcba695ce8e8e35cf99a8825648be444fa2aa8c780ac17ffd46ad18",
       "kind": "evidence",
-      "plan_hash": "a27882e130a6739206985f5f41c0472b260a52046530f4b74b717dcf08f7b406",
+      "plan_hash": "e86ab6df6bdf4aab7f8383e79b69f9fff3aef08e3cf97fcd07144ec1bafd2d4c",
       "request_hash": "efcdd6324621d91bed50b3c421ebdfdb1de31bbc23e198db2c120fff89c19929",
       "status": "applied",
       "warnings": []
@@ -1531,9 +1531,9 @@
       ],
       "id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050",
       "kind": "evidence",
-      "ledger_digest": "dd970d971c00bad1a9e24e7aaf8713d93cd93276fb9cfbc3aa4ac90086e35efa",
+      "ledger_digest": "0caa097e70f98bc2a1643ce672bd202edd3a0d0b4ab96bfa32328aae503ac0a5",
       "opens": [],
-      "plan_hash": "d63daa2311f9e4e36d6da2466f659d86b2e37f40b1a16164c624e3ab42e95e6f",
+      "plan_hash": "aa0a5b59d1051ebf1241e6755fc0bcd9320b848a5d24902cc8f493130579ca50",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1566,7 +1566,7 @@
       "supporting_hash": "c82d47ce0642efc973cdd8c08eb821ff50de8425578617791233ea665ea88be8",
       "warnings": []
     },
-    "plan_hash": "d63daa2311f9e4e36d6da2466f659d86b2e37f40b1a16164c624e3ab42e95e6f",
+    "plan_hash": "aa0a5b59d1051ebf1241e6755fc0bcd9320b848a5d24902cc8f493130579ca50",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1577,7 +1577,7 @@
       ],
       "id": "evidence:a45d1ee08b5a16fb096fafb8b22aeac582d39baed73ee79823e8cb654de8e050",
       "kind": "evidence",
-      "plan_hash": "d63daa2311f9e4e36d6da2466f659d86b2e37f40b1a16164c624e3ab42e95e6f",
+      "plan_hash": "aa0a5b59d1051ebf1241e6755fc0bcd9320b848a5d24902cc8f493130579ca50",
       "request_hash": "589de35ffcd2c5620e12b57c5fdf4552aecb343168640b8bb91b302350194b37",
       "status": "applied",
       "warnings": []
@@ -1642,9 +1642,9 @@
       ],
       "id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6",
       "kind": "evidence",
-      "ledger_digest": "4132d4e6c24ab76bcf7ac7d868ae3cbbb2f8953f5d216ee0de5c6ee31d38dd16",
+      "ledger_digest": "ec38c38deca24e6cc9411a36279c0424296a3aeeb24dd3235cb33c5f83cc0382",
       "opens": [],
-      "plan_hash": "3c80943dc8b146be88e8d72fcc481af8e15b7a1c3da406f034e03f0a514d0911",
+      "plan_hash": "ccc94e94a5e6ed94825c6ef42b939359836f33bd1a45be91d23503d7a7e293ce",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1677,7 +1677,7 @@
       "supporting_hash": "b5c3c1cc94d9d1ee0a740a523c848a8d17f3c95091146bc59d7c05bdf566a47a",
       "warnings": []
     },
-    "plan_hash": "3c80943dc8b146be88e8d72fcc481af8e15b7a1c3da406f034e03f0a514d0911",
+    "plan_hash": "ccc94e94a5e6ed94825c6ef42b939359836f33bd1a45be91d23503d7a7e293ce",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1688,7 +1688,7 @@
       ],
       "id": "evidence:a525ab281be68f73287dd00f7706ba2ad07b36c0c00f0705e03b767bb66cdaa6",
       "kind": "evidence",
-      "plan_hash": "3c80943dc8b146be88e8d72fcc481af8e15b7a1c3da406f034e03f0a514d0911",
+      "plan_hash": "ccc94e94a5e6ed94825c6ef42b939359836f33bd1a45be91d23503d7a7e293ce",
       "request_hash": "23435164dd87531b6761465f9a572ce8019bc703b8ca1281f2faff7a2e67b891",
       "status": "applied",
       "warnings": []
@@ -1753,9 +1753,9 @@
       ],
       "id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b",
       "kind": "evidence",
-      "ledger_digest": "1e9ada98815a27fcb91c52412f10ea47e2f25e54ef0bd736655de8679e9d271e",
+      "ledger_digest": "3f9eadfd1eff1a8c3361f5b3dc32078670f3e9e574a6ea73373d57afb4ac0b13",
       "opens": [],
-      "plan_hash": "b5b225204886ecab0f00c1e437a41261056ec7617a8c0ed3a057880fffbc7fcd",
+      "plan_hash": "0e8f05ce802266fb3e4376281efcfd706c22a9cff7eeb8c641ad93722c49a911",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1788,7 +1788,7 @@
       "supporting_hash": "91089ab3ddac8fcc402357033c4816f4fec8e23e60d752a161a4640a41780a0a",
       "warnings": []
     },
-    "plan_hash": "b5b225204886ecab0f00c1e437a41261056ec7617a8c0ed3a057880fffbc7fcd",
+    "plan_hash": "0e8f05ce802266fb3e4376281efcfd706c22a9cff7eeb8c641ad93722c49a911",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1799,7 +1799,7 @@
       ],
       "id": "evidence:a7175bc53fa5590113cd0eb97244bacc837da04f07d1c09495b2eac7d2d4416b",
       "kind": "evidence",
-      "plan_hash": "b5b225204886ecab0f00c1e437a41261056ec7617a8c0ed3a057880fffbc7fcd",
+      "plan_hash": "0e8f05ce802266fb3e4376281efcfd706c22a9cff7eeb8c641ad93722c49a911",
       "request_hash": "6711887b7ee4ae8719741428f46a034990e881f271cb7c2b1319481c7ab51ddb",
       "status": "applied",
       "warnings": []
@@ -1864,9 +1864,9 @@
       ],
       "id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21",
       "kind": "evidence",
-      "ledger_digest": "306eb3e5e148dfbd2ccb30cfb734169951aa18dd775c4155064055ba45d8ff49",
+      "ledger_digest": "d12a388bc0efde0698c63126dd54960bbd1f9e94d63b9b0c58f2c9be587a9564",
       "opens": [],
-      "plan_hash": "b32de6dd25775896b4f2a00a33feec396d2d7ecd182c4ff1c2b60455966abf18",
+      "plan_hash": "91469ff33dfc5353d1ea03b0599aae4032304fca6f0e0e918fd21055ce5ec344",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -1899,7 +1899,7 @@
       "supporting_hash": "4aba94b16cf6a1149b23c4d270e0e7f1a85624b924523de66dcaff2cb87278cc",
       "warnings": []
     },
-    "plan_hash": "b32de6dd25775896b4f2a00a33feec396d2d7ecd182c4ff1c2b60455966abf18",
+    "plan_hash": "91469ff33dfc5353d1ea03b0599aae4032304fca6f0e0e918fd21055ce5ec344",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -1910,7 +1910,7 @@
       ],
       "id": "evidence:aeb67c8ef4f7ce1f8704b91eea7c55b2bf9c5ae3b0790f78a3fbbe462d98ed21",
       "kind": "evidence",
-      "plan_hash": "b32de6dd25775896b4f2a00a33feec396d2d7ecd182c4ff1c2b60455966abf18",
+      "plan_hash": "91469ff33dfc5353d1ea03b0599aae4032304fca6f0e0e918fd21055ce5ec344",
       "request_hash": "fbe74261b18f9187ba3fd9718735d8724ca1433d0e01bbdbfdf7a7d4a50db956",
       "status": "applied",
       "warnings": []
@@ -1975,9 +1975,9 @@
       ],
       "id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb",
       "kind": "evidence",
-      "ledger_digest": "4332fe00f2b3285728006b50d9f9c5c03ce904f4cf8f8f9a373cef0e42be924e",
+      "ledger_digest": "3fc3808fc9a405984c4220514b9522df24df15f624602191359d354649e57845",
       "opens": [],
-      "plan_hash": "4c1b8c70d6a092bd89b541151b244416b4979f60213d79ddcd72900c27204d6d",
+      "plan_hash": "83e4fb61bd9b9a8162c2aa384cc41018eee87062f254b81fed146b1407912d34",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -2010,7 +2010,7 @@
       "supporting_hash": "01f661cb92a6ba8287eab722e7c8c5fdfa2fe17ceb80a362210e4d422e7f1c73",
       "warnings": []
     },
-    "plan_hash": "4c1b8c70d6a092bd89b541151b244416b4979f60213d79ddcd72900c27204d6d",
+    "plan_hash": "83e4fb61bd9b9a8162c2aa384cc41018eee87062f254b81fed146b1407912d34",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2021,7 +2021,7 @@
       ],
       "id": "evidence:b67c46c5a5cf621138e6b27a06d7c314ee84d210ed66bf6bb26f086333df3abb",
       "kind": "evidence",
-      "plan_hash": "4c1b8c70d6a092bd89b541151b244416b4979f60213d79ddcd72900c27204d6d",
+      "plan_hash": "83e4fb61bd9b9a8162c2aa384cc41018eee87062f254b81fed146b1407912d34",
       "request_hash": "68cebce2aecd3d946418cac128aad192cdaa12d0ed6885b87b3e41819af75c1a",
       "status": "applied",
       "warnings": []
@@ -2086,9 +2086,9 @@
       ],
       "id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127",
       "kind": "evidence",
-      "ledger_digest": "0279c92eabf6d24ccbae5e034c15d6a18b69aa46fcaf531cf632158a4623a1a2",
+      "ledger_digest": "a2d8ed5ee3da87e2693379c517a279e7913c1a6a72d54caee23a77c95744adff",
       "opens": [],
-      "plan_hash": "a050e7ca721bfb65f3e6cb7954c6ff6968be6387ecbbac7a097de2593b37cd95",
+      "plan_hash": "bd45f6c1daaed198be41e6aeb93ab2b0086123ba539cd39ff70252f19173b367",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -2121,7 +2121,7 @@
       "supporting_hash": "cdd65d560828e481071fb73a27f5ed1d3b78dd16ea6010b695b229b57ca3fa13",
       "warnings": []
     },
-    "plan_hash": "a050e7ca721bfb65f3e6cb7954c6ff6968be6387ecbbac7a097de2593b37cd95",
+    "plan_hash": "bd45f6c1daaed198be41e6aeb93ab2b0086123ba539cd39ff70252f19173b367",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2132,7 +2132,7 @@
       ],
       "id": "evidence:c89c301d088676a9db9b7a6c6856351dfd6bc2bab31f6fac333ed88619a40127",
       "kind": "evidence",
-      "plan_hash": "a050e7ca721bfb65f3e6cb7954c6ff6968be6387ecbbac7a097de2593b37cd95",
+      "plan_hash": "bd45f6c1daaed198be41e6aeb93ab2b0086123ba539cd39ff70252f19173b367",
       "request_hash": "e94f72d78ba28669ebe0323c3087529dcd3272482e2474ec8d52b6cffe37e848",
       "status": "applied",
       "warnings": []
@@ -2197,9 +2197,9 @@
       ],
       "id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6",
       "kind": "evidence",
-      "ledger_digest": "abd36bdf9720fad5db676841b7a38ebda1609960b781d075a9bae5b8e9493d39",
+      "ledger_digest": "8c5a2c79a133a9c235a52f691d4c879e8ca728e5987246c6a081fdf41829ad68",
       "opens": [],
-      "plan_hash": "7bbfe1ab289fa3b9892fa1cacd30f179399440ff0522bad37c90dc81d3f10eff",
+      "plan_hash": "e3264df422d8293a8984b764e06f648930ca2943d2837aca2f63045217587e20",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -2232,7 +2232,7 @@
       "supporting_hash": "c4ba5567184e13edc9be6c5773ea5aebe1f280a4ce81ddf74ffa060c390bd4f1",
       "warnings": []
     },
-    "plan_hash": "7bbfe1ab289fa3b9892fa1cacd30f179399440ff0522bad37c90dc81d3f10eff",
+    "plan_hash": "e3264df422d8293a8984b764e06f648930ca2943d2837aca2f63045217587e20",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2243,7 +2243,7 @@
       ],
       "id": "evidence:cea41e7c1ea19aae16fbb2c4f51a197a6f15531908156f3c69a76db25a2e27d6",
       "kind": "evidence",
-      "plan_hash": "7bbfe1ab289fa3b9892fa1cacd30f179399440ff0522bad37c90dc81d3f10eff",
+      "plan_hash": "e3264df422d8293a8984b764e06f648930ca2943d2837aca2f63045217587e20",
       "request_hash": "8df441ab06434d8952c60fc06edd7507f38563688ab3f9c0ed5445692b92456e",
       "status": "applied",
       "warnings": []
@@ -2308,9 +2308,9 @@
       ],
       "id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95",
       "kind": "evidence",
-      "ledger_digest": "b88dfcc5c5286a8c7a6f970bb8d3c8bcf0e4180a7200c0eb6187418a3dff99a9",
+      "ledger_digest": "21bdbcda25fdaec2dfeb11664820019bee9d6248f8eb62fa6333ae8931afa5b7",
       "opens": [],
-      "plan_hash": "ef8e4501e8740ba520b573066836f6df6ee0109d183351c1ab4628ef43b1be52",
+      "plan_hash": "fe526832fcac52c6be6ad2c688d344633d4097f5885e03f25d63427cf27ef7bf",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -2343,7 +2343,7 @@
       "supporting_hash": "cae9cbb103ca7d5e32212b9734d8db77f8721f7b3e4785b23b0d8ba8a05d640d",
       "warnings": []
     },
-    "plan_hash": "ef8e4501e8740ba520b573066836f6df6ee0109d183351c1ab4628ef43b1be52",
+    "plan_hash": "fe526832fcac52c6be6ad2c688d344633d4097f5885e03f25d63427cf27ef7bf",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2354,7 +2354,7 @@
       ],
       "id": "evidence:d724cf7d2e7d01c075497cefe95f8a2b072bc460308c7e5fa45a13e0e96a8e95",
       "kind": "evidence",
-      "plan_hash": "ef8e4501e8740ba520b573066836f6df6ee0109d183351c1ab4628ef43b1be52",
+      "plan_hash": "fe526832fcac52c6be6ad2c688d344633d4097f5885e03f25d63427cf27ef7bf",
       "request_hash": "6e1e30a9e10cf2c721c97ba6a775e0dd63b2efc5e36734709408feef781d24b9",
       "status": "applied",
       "warnings": []
@@ -2419,9 +2419,9 @@
       ],
       "id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058",
       "kind": "evidence",
-      "ledger_digest": "6e121fedae4fd9a0742535407e68b4515a093436795174d41d0d8cc9be2f0dee",
+      "ledger_digest": "c7ece4b1fea41d39dc40fbb9097bd4aadc829d8669afbd777038ecaea3280a88",
       "opens": [],
-      "plan_hash": "36e14ed256acb0bbe55143446615aa008cd034a3ebdc2f9bcc5cae112d306e49",
+      "plan_hash": "a90be44ef08c73b35223bad5ff62596c4ebdc4dcf77df6e2101096529df7f10f",
       "request": {
         "envelope": {
           "currency": "USD",
@@ -2454,7 +2454,7 @@
       "supporting_hash": "da859b0cee5e96575facd1b9c439f218183a35cbb11a7e14a8962a08f8e3d28b",
       "warnings": []
     },
-    "plan_hash": "36e14ed256acb0bbe55143446615aa008cd034a3ebdc2f9bcc5cae112d306e49",
+    "plan_hash": "a90be44ef08c73b35223bad5ff62596c4ebdc4dcf77df6e2101096529df7f10f",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2465,7 +2465,7 @@
       ],
       "id": "evidence:f95da16d41ebadcf09bb15aa5b1314e6e62641d3fe78664f9c1bdc55de7e6058",
       "kind": "evidence",
-      "plan_hash": "36e14ed256acb0bbe55143446615aa008cd034a3ebdc2f9bcc5cae112d306e49",
+      "plan_hash": "a90be44ef08c73b35223bad5ff62596c4ebdc4dcf77df6e2101096529df7f10f",
       "request_hash": "b9216ab6a0c6a676f0ba8847a18c883553a6617347b1385be28d671953a3ef34",
       "status": "applied",
       "warnings": []
@@ -2606,7 +2606,7 @@
       ],
       "id": "golden-opening",
       "kind": "migration",
-      "ledger_digest": "971c6de0ab638824ea95180089dd0a66e67b54a71f34329f17ec14c78d22a823",
+      "ledger_digest": "6f93e17af2893ad86d004e2d5ad5bf589ea88be149a9db97c96e011200e4b182",
       "opens": [
         {
           "account": "Assets:Bank:Checking",
@@ -2665,23 +2665,23 @@
           "date": "2025-12-31"
         }
       ],
-      "plan_hash": "40fe0a150e8d8d1873fca8141f918b63a0412ea5c9c2194f6cb1ed0e88b4b79c",
+      "plan_hash": "2cc3fc4ef8737d883d5b9104e810eefb900bd01699463d5e6d6be8e09515e01e",
       "request": {
         "chart_hash": "cf56f30672e88caf60ad6cfbfeb35b2ed8a9b268807c52ac84bade11a895396c",
         "cutover": "2026-01-01",
-        "facts_hash": "71fc2b7398f9e6ad2eb280097b4cf5e7fba11da9058d4dad6bde94a6e213d513",
+        "facts_hash": "971213b6ff96e79cda92bd4ad65ad721177c0d398849414a7140f767db6bcae5",
         "fiscal_start": "2026-01-01",
         "opening": "accrual-opening",
         "support_evidence_hashes": {
           "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
         }
       },
-      "request_hash": "f1a0b76a852b33f96a5ae310ff06c2b2c0e9fe8f0883f80c93893832fb994240",
+      "request_hash": "0bb93a9f1112d5c4acd3b62c464f99e11902d3d782d611ca0bcef2757b2524d1",
       "schema_version": 1,
-      "supporting_hash": "4a2dabd469ac99bc714dc01b8709477248e9e355bb2a5d095611c61e0fd8e974",
+      "supporting_hash": "fbc367f8d4bc5e04b280f98c59237150e112a122697aceae976a5140c3c76ab4",
       "warnings": []
     },
-    "plan_hash": "40fe0a150e8d8d1873fca8141f918b63a0412ea5c9c2194f6cb1ed0e88b4b79c",
+    "plan_hash": "2cc3fc4ef8737d883d5b9104e810eefb900bd01699463d5e6d6be8e09515e01e",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2694,22 +2694,22 @@
       ],
       "id": "golden-opening",
       "kind": "migration",
-      "plan_hash": "40fe0a150e8d8d1873fca8141f918b63a0412ea5c9c2194f6cb1ed0e88b4b79c",
-      "request_hash": "f1a0b76a852b33f96a5ae310ff06c2b2c0e9fe8f0883f80c93893832fb994240",
+      "plan_hash": "2cc3fc4ef8737d883d5b9104e810eefb900bd01699463d5e6d6be8e09515e01e",
+      "request_hash": "0bb93a9f1112d5c4acd3b62c464f99e11902d3d782d611ca0bcef2757b2524d1",
       "status": "applied",
       "warnings": []
     },
     "request": {
       "chart_hash": "cf56f30672e88caf60ad6cfbfeb35b2ed8a9b268807c52ac84bade11a895396c",
       "cutover": "2026-01-01",
-      "facts_hash": "71fc2b7398f9e6ad2eb280097b4cf5e7fba11da9058d4dad6bde94a6e213d513",
+      "facts_hash": "971213b6ff96e79cda92bd4ad65ad721177c0d398849414a7140f767db6bcae5",
       "fiscal_start": "2026-01-01",
       "opening": "accrual-opening",
       "support_evidence_hashes": {
         "39db4c81ade7817da00490b880ca29530048269000687400fcf737613f524a10": "e09aa25d3ce2c94d575bd6a4a82007f57adbed84b64ac17e2b76a57d63e561f6"
       }
     },
-    "request_hash": "f1a0b76a852b33f96a5ae310ff06c2b2c0e9fe8f0883f80c93893832fb994240",
+    "request_hash": "0bb93a9f1112d5c4acd3b62c464f99e11902d3d782d611ca0bcef2757b2524d1",
     "status": "applied"
   },
   {
@@ -2774,9 +2774,9 @@
       ],
       "id": "inv-1001-create",
       "kind": "item_create",
-      "ledger_digest": "72b7d23ffafa761c707151a8ddefd26305e263aa6d40ccc5f463f18b5517c042",
+      "ledger_digest": "e6ac90fe3381a471afa7aae71cdc91b882474dd5ac95282b4317fc311f87e10f",
       "opens": [],
-      "plan_hash": "8b60284be61d3b0c746e42365f6909dba0d2f0adaeeeaf498c80bbf2aaa7a8b1",
+      "plan_hash": "03ac37df8e142bb1faf12230ba712713b5e3c8108796a2866ba3bd7ebb92b9ed",
       "request": {
         "account": "Assets:Receivable:Accounts-Receivable",
         "as_of": "2026-01-10",
@@ -2801,7 +2801,7 @@
       "supporting_hash": "a0a037ade3b1f89d5f4429f51ee11b8a7040206cba4d9f7557f6fff031cb6c8c",
       "warnings": []
     },
-    "plan_hash": "8b60284be61d3b0c746e42365f6909dba0d2f0adaeeeaf498c80bbf2aaa7a8b1",
+    "plan_hash": "03ac37df8e142bb1faf12230ba712713b5e3c8108796a2866ba3bd7ebb92b9ed",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2814,7 +2814,7 @@
       ],
       "id": "inv-1001-create",
       "kind": "item_create",
-      "plan_hash": "8b60284be61d3b0c746e42365f6909dba0d2f0adaeeeaf498c80bbf2aaa7a8b1",
+      "plan_hash": "03ac37df8e142bb1faf12230ba712713b5e3c8108796a2866ba3bd7ebb92b9ed",
       "request_hash": "d91d54a4b5df1eb360c38e47d3f72b6cb30219d430762b79c72ffaaba062fcdc",
       "status": "applied",
       "warnings": []
@@ -2903,9 +2903,9 @@
       ],
       "id": "inv-1002-create",
       "kind": "item_create",
-      "ledger_digest": "0ebb0470505452f4dab1d0037a5ff05ad33a07c7e29ae4aaeef6b98de1226513",
+      "ledger_digest": "6b1aa21eb9bff69368825161abf2e260c9f458b5fb37c5b798b95eb3c545ad83",
       "opens": [],
-      "plan_hash": "e81f205cac68cb59e599578c4b0d8e406720344c26180973cee3c140c6e1e0cc",
+      "plan_hash": "f5127246bbc69e2de9790f7f46b713b0b5288eca336a6c8250c9f76c194e41ba",
       "request": {
         "account": "Assets:Receivable:Accounts-Receivable",
         "as_of": "2026-02-15",
@@ -2930,7 +2930,7 @@
       "supporting_hash": "25c851fe12eabe8328908f66dc0757f8b4a181aa5dcf1aa5622de666ba4d1af0",
       "warnings": []
     },
-    "plan_hash": "e81f205cac68cb59e599578c4b0d8e406720344c26180973cee3c140c6e1e0cc",
+    "plan_hash": "f5127246bbc69e2de9790f7f46b713b0b5288eca336a6c8250c9f76c194e41ba",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -2943,7 +2943,7 @@
       ],
       "id": "inv-1002-create",
       "kind": "item_create",
-      "plan_hash": "e81f205cac68cb59e599578c4b0d8e406720344c26180973cee3c140c6e1e0cc",
+      "plan_hash": "f5127246bbc69e2de9790f7f46b713b0b5288eca336a6c8250c9f76c194e41ba",
       "request_hash": "6cbd5adff3007e6a9a8bdfaf58d7c6b9c886e98519709eaada3e390840e6dd0a",
       "status": "applied",
       "warnings": []
@@ -3032,9 +3032,9 @@
       ],
       "id": "inv-1003-create",
       "kind": "item_create",
-      "ledger_digest": "67d682dfb1894efd8c27bf9d9b2e5bc4a23176cd337f299d5bad7d22c798646a",
+      "ledger_digest": "29c7da588e1ceac534ab20ed2ac764612a4a8b088fce5b9ef83d34e0531a4a02",
       "opens": [],
-      "plan_hash": "c2b882643a5ded511918e6f5eead55ae24e0bb976be9ef9b6f5ce39c6c0df62b",
+      "plan_hash": "2331d87e112be6e0e38c0a5c854530f6625a5a3a55f65f148caed653e528b90e",
       "request": {
         "account": "Assets:Receivable:Accounts-Receivable",
         "as_of": "2026-01-12",
@@ -3059,7 +3059,7 @@
       "supporting_hash": "ccd01f6e38b0b7b375900fc85fb7aa2a2e192d7f8c8efdd3e7aa585653b0c8e3",
       "warnings": []
     },
-    "plan_hash": "c2b882643a5ded511918e6f5eead55ae24e0bb976be9ef9b6f5ce39c6c0df62b",
+    "plan_hash": "2331d87e112be6e0e38c0a5c854530f6625a5a3a55f65f148caed653e528b90e",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -3072,7 +3072,7 @@
       ],
       "id": "inv-1003-create",
       "kind": "item_create",
-      "plan_hash": "c2b882643a5ded511918e6f5eead55ae24e0bb976be9ef9b6f5ce39c6c0df62b",
+      "plan_hash": "2331d87e112be6e0e38c0a5c854530f6625a5a3a55f65f148caed653e528b90e",
       "request_hash": "3735a09234c05840dd3aa9c3c0461c50c7e410db8bbcec01c4da22cc7deab0e2",
       "status": "applied",
       "warnings": []
@@ -3161,9 +3161,9 @@
       ],
       "id": "inv-1003-writeoff",
       "kind": "item_adjustment",
-      "ledger_digest": "43426cc8d838c744b906d286435086d6a5947650f5ad7588d3f6924e5846fc52",
+      "ledger_digest": "ff1f161b19b811dd189ff5cb481a05246741c47b792e8fc713ee37ade74c178f",
       "opens": [],
-      "plan_hash": "ebe2d239566f212665080666d75ea1b78b051019d245c95112cb55b9e3043a85",
+      "plan_hash": "a80aa45758be3e8815415f3ec73f62d6f9cb7e67426a994c9189b4baf1edb069",
       "request": {
         "action": "writeoff",
         "amount": "300.00",
@@ -3182,7 +3182,7 @@
       "supporting_hash": "915075d6c7b493850a2b5d6dc0e1b53468040ca7c8ebf9618975bd306743c86a",
       "warnings": []
     },
-    "plan_hash": "ebe2d239566f212665080666d75ea1b78b051019d245c95112cb55b9e3043a85",
+    "plan_hash": "a80aa45758be3e8815415f3ec73f62d6f9cb7e67426a994c9189b4baf1edb069",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -3195,7 +3195,7 @@
       ],
       "id": "inv-1003-writeoff",
       "kind": "item_adjustment",
-      "plan_hash": "ebe2d239566f212665080666d75ea1b78b051019d245c95112cb55b9e3043a85",
+      "plan_hash": "a80aa45758be3e8815415f3ec73f62d6f9cb7e67426a994c9189b4baf1edb069",
       "request_hash": "f57055bfdb4d4b82a0c2670719c2030e379eb9f03821c0ead5cad2ace816c853",
       "status": "applied",
       "warnings": []
@@ -3501,9 +3501,9 @@
       ],
       "id": "laptop-new-create",
       "kind": "schedule_create",
-      "ledger_digest": "39eea64c6948e10bead42638945fa929fbc3477c18d6240d483c28727d029478",
+      "ledger_digest": "3d85c53cb454cbcd03dbbdb8518474dbbed3a2baac877d2f625d488d110d2ce8",
       "opens": [],
-      "plan_hash": "5dd5b88a960906586995498ef9ec0031139f405bac3deb4e3533ca8f094b8a85",
+      "plan_hash": "dcc5e81c2608070d425c0c23c8aee3c763b966faf2a0b66258c69a2af0555b9c",
       "request": {
         "account": "Assets:Fixed:Equipment",
         "amount": "3600.00",
@@ -3533,7 +3533,7 @@
       "supporting_hash": "839e79cd407c638777c1c7a39f255bc6f392a547bdeac94004fc9700a93c64c0",
       "warnings": []
     },
-    "plan_hash": "5dd5b88a960906586995498ef9ec0031139f405bac3deb4e3533ca8f094b8a85",
+    "plan_hash": "dcc5e81c2608070d425c0c23c8aee3c763b966faf2a0b66258c69a2af0555b9c",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -3546,7 +3546,7 @@
       ],
       "id": "laptop-new-create",
       "kind": "schedule_create",
-      "plan_hash": "5dd5b88a960906586995498ef9ec0031139f405bac3deb4e3533ca8f094b8a85",
+      "plan_hash": "dcc5e81c2608070d425c0c23c8aee3c763b966faf2a0b66258c69a2af0555b9c",
       "request_hash": "eb7da81bf71a5e0fddeec2abb2821fe6a919a531eb8a9fdf9235b5ec26f6fb39",
       "status": "applied",
       "warnings": []
@@ -3639,9 +3639,9 @@
       ],
       "id": "pay-bill-2001",
       "kind": "item_settlement",
-      "ledger_digest": "e9f2b2db4675a7b6f952032ed4e495f1b744f373fc235d2eef075153281e6979",
+      "ledger_digest": "0bc843ac7852867e2735c6bfb7c59d6c9a9a165e370569995e3ed74a55d38a09",
       "opens": [],
-      "plan_hash": "80fa8ab93b991fba706a74ed51555d827e5cf5ed4a16e68cd8b36d5e1d99ad61",
+      "plan_hash": "0c7afd68716e3c9bcb9d25b933ac1e23651b92ed8d48b87d19c8eff959216ee1",
       "request": {
         "allocations": [
           {
@@ -3666,7 +3666,7 @@
       "supporting_hash": "a091831a89f3adc3912e3394b53f68eb0b491c6f59493e9fe32408ddc732833e",
       "warnings": []
     },
-    "plan_hash": "80fa8ab93b991fba706a74ed51555d827e5cf5ed4a16e68cd8b36d5e1d99ad61",
+    "plan_hash": "0c7afd68716e3c9bcb9d25b933ac1e23651b92ed8d48b87d19c8eff959216ee1",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -3679,7 +3679,7 @@
       ],
       "id": "pay-bill-2001",
       "kind": "item_settlement",
-      "plan_hash": "80fa8ab93b991fba706a74ed51555d827e5cf5ed4a16e68cd8b36d5e1d99ad61",
+      "plan_hash": "0c7afd68716e3c9bcb9d25b933ac1e23651b92ed8d48b87d19c8eff959216ee1",
       "request_hash": "d9b30635e2ecd77cfa88245c894a9bfe644eeb48c2d964139bf515d8cba326bd",
       "status": "applied",
       "warnings": []
@@ -3767,9 +3767,9 @@
       ],
       "id": "pay-bill-open-1",
       "kind": "item_settlement",
-      "ledger_digest": "1dbd8eec3d10e9e2395cd0daa8af19b44a33d44a96807275cf39aa68fd33e7ac",
+      "ledger_digest": "d43224bc947e7e71f9a41a9fafc7f0d1dc7a94eacdd1a328e502e9383a509fee",
       "opens": [],
-      "plan_hash": "645933489e23532bd23993d46a2bdcb8ee7691cc0874b219767ba178451efc9e",
+      "plan_hash": "45281be19cc46fa286df608726f888097d519b69afbbf8686052990384d1f992",
       "request": {
         "allocations": [
           {
@@ -3794,7 +3794,7 @@
       "supporting_hash": "2a682a8c7db5341ea60caad4578fbfe062eee10913612ad33eb6697d1e7c56a0",
       "warnings": []
     },
-    "plan_hash": "645933489e23532bd23993d46a2bdcb8ee7691cc0874b219767ba178451efc9e",
+    "plan_hash": "45281be19cc46fa286df608726f888097d519b69afbbf8686052990384d1f992",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -3807,7 +3807,7 @@
       ],
       "id": "pay-bill-open-1",
       "kind": "item_settlement",
-      "plan_hash": "645933489e23532bd23993d46a2bdcb8ee7691cc0874b219767ba178451efc9e",
+      "plan_hash": "45281be19cc46fa286df608726f888097d519b69afbbf8686052990384d1f992",
       "request_hash": "981f2f8ffc5cc8b29c60e70b6d1cc5d982b59a1accc22cc2d78f4453d691b0e7",
       "status": "applied",
       "warnings": []
@@ -3895,9 +3895,9 @@
       ],
       "id": "pay-bonus-actual",
       "kind": "item_settlement",
-      "ledger_digest": "227389962a7e59125f642fab4d1d1b3bff9c73ef9e60a90e5d609b4fe1e1721e",
+      "ledger_digest": "e0a425374c38f854e7d85cdce7caef7c69f9dca102cb45b26c55dd5b3da46ce5",
       "opens": [],
-      "plan_hash": "328561beb6113fde8eec8cd03fb8f7c40207bdce566c855928017e91c2ae479b",
+      "plan_hash": "bf9730de26fd44b8d22c11c9d604617e853d8fb0d7b2435a87689b58b3f1d4d0",
       "request": {
         "allocations": [
           {
@@ -3922,7 +3922,7 @@
       "supporting_hash": "fc824f7f21fc1024d349dbcbfcb8bf5c282c942b47ab595272b744dbf3bdc9a6",
       "warnings": []
     },
-    "plan_hash": "328561beb6113fde8eec8cd03fb8f7c40207bdce566c855928017e91c2ae479b",
+    "plan_hash": "bf9730de26fd44b8d22c11c9d604617e853d8fb0d7b2435a87689b58b3f1d4d0",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -3935,7 +3935,7 @@
       ],
       "id": "pay-bonus-actual",
       "kind": "item_settlement",
-      "plan_hash": "328561beb6113fde8eec8cd03fb8f7c40207bdce566c855928017e91c2ae479b",
+      "plan_hash": "bf9730de26fd44b8d22c11c9d604617e853d8fb0d7b2435a87689b58b3f1d4d0",
       "request_hash": "d0bef80fd2b5624a6a90b9adc116fb29a324a7dccaa12a035e546bb9e8c4ebfe",
       "status": "applied",
       "warnings": []
@@ -4030,9 +4030,9 @@
       ],
       "id": "pay-inv-1001",
       "kind": "item_settlement",
-      "ledger_digest": "41b3d99a005dce3df52b877bc8860e86b1ba16c66642ec34bead192b0816a727",
+      "ledger_digest": "74425cc54a9c5ad74031159eb40249a8833c7278558fcca318b3b34a7c9ab857",
       "opens": [],
-      "plan_hash": "2b0ce4800ad2ac9028b5baa79469b005a51da794f26b43962849cfb36ca10237",
+      "plan_hash": "fcad9754bd0c8c4fa08bff5421b9e49c5fe085a1bfe7cf0c6342c5e4004de5f6",
       "request": {
         "allocations": [
           {
@@ -4062,7 +4062,7 @@
       "supporting_hash": "a6f9962de8f0035005979cd4d6b79a8d49cb71b04b5e566c8a91b3990df296b3",
       "warnings": []
     },
-    "plan_hash": "2b0ce4800ad2ac9028b5baa79469b005a51da794f26b43962849cfb36ca10237",
+    "plan_hash": "fcad9754bd0c8c4fa08bff5421b9e49c5fe085a1bfe7cf0c6342c5e4004de5f6",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -4075,7 +4075,7 @@
       ],
       "id": "pay-inv-1001",
       "kind": "item_settlement",
-      "plan_hash": "2b0ce4800ad2ac9028b5baa79469b005a51da794f26b43962849cfb36ca10237",
+      "plan_hash": "fcad9754bd0c8c4fa08bff5421b9e49c5fe085a1bfe7cf0c6342c5e4004de5f6",
       "request_hash": "86d96e8aeacea5d587ae289660ad37368a6ca62c35062c812734fff2d074b5f8",
       "status": "applied",
       "warnings": []
@@ -4168,9 +4168,9 @@
       ],
       "id": "pay-inv-1002",
       "kind": "item_settlement",
-      "ledger_digest": "50b5e707276a031a7a33e0019239dc7352a4cf8b3a8816d8fbaf9792bfca757c",
+      "ledger_digest": "d317fe5302aa9b6f78031de385b6625ba4895fcbc94b915f8ac3d4240602d843",
       "opens": [],
-      "plan_hash": "ad8ec13edbf5948c27166d281b7624d0592a01318f5104c0955a3a16c887efea",
+      "plan_hash": "939fcb2e1ed72fa9280efb870b5f69e3a68e3eb5a968e00664ddd2b6a0600eaf",
       "request": {
         "allocations": [
           {
@@ -4195,7 +4195,7 @@
       "supporting_hash": "26f16d7836fafc1423df6a0079bdf36dc63d002e6b6ffa33d4ace5b47b1a1249",
       "warnings": []
     },
-    "plan_hash": "ad8ec13edbf5948c27166d281b7624d0592a01318f5104c0955a3a16c887efea",
+    "plan_hash": "939fcb2e1ed72fa9280efb870b5f69e3a68e3eb5a968e00664ddd2b6a0600eaf",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -4208,7 +4208,7 @@
       ],
       "id": "pay-inv-1002",
       "kind": "item_settlement",
-      "plan_hash": "ad8ec13edbf5948c27166d281b7624d0592a01318f5104c0955a3a16c887efea",
+      "plan_hash": "939fcb2e1ed72fa9280efb870b5f69e3a68e3eb5a968e00664ddd2b6a0600eaf",
       "request_hash": "bb1a53e42f23354952a084e6e46bc1d3359336a30fa9af7c4b8ce6cfdd9b2d9a",
       "status": "applied",
       "warnings": []
@@ -4296,9 +4296,9 @@
       ],
       "id": "pay-inv-open-1",
       "kind": "item_settlement",
-      "ledger_digest": "a2c7fbc93ab4e8b7a74f339c2ff4bf53bbc0a8e260b82b6e6f2e1f157a038087",
+      "ledger_digest": "fc4eb31338ee08368f469492116c5f7e35975ae939882a65cd9eacfae597e2c1",
       "opens": [],
-      "plan_hash": "f2f9d90dd96f9b771514acd3bf096aa078eb01726ec4627d7249527cd04a5c5d",
+      "plan_hash": "7850df86cf8ab1b29a46f0a78ae4ea113342a5452d6c0da51384ee97080fd97d",
       "request": {
         "allocations": [
           {
@@ -4323,7 +4323,7 @@
       "supporting_hash": "fac53b9ac8170a0a3971bdfc09900ef478d74250e239bcfb59858ffde8b974d0",
       "warnings": []
     },
-    "plan_hash": "f2f9d90dd96f9b771514acd3bf096aa078eb01726ec4627d7249527cd04a5c5d",
+    "plan_hash": "7850df86cf8ab1b29a46f0a78ae4ea113342a5452d6c0da51384ee97080fd97d",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -4336,7 +4336,7 @@
       ],
       "id": "pay-inv-open-1",
       "kind": "item_settlement",
-      "plan_hash": "f2f9d90dd96f9b771514acd3bf096aa078eb01726ec4627d7249527cd04a5c5d",
+      "plan_hash": "7850df86cf8ab1b29a46f0a78ae4ea113342a5452d6c0da51384ee97080fd97d",
       "request_hash": "db8c74b76970c929051d4e0f9add5d267f945c826a85851db8293c00e4f8fb4c",
       "status": "applied",
       "warnings": []
@@ -4484,9 +4484,9 @@
       ],
       "id": "recognize-2026-01-31",
       "kind": "schedule_due",
-      "ledger_digest": "4b8bdc3e3c59e8efd48cad8691b87f469c566885d302c78bc8cf2ad7b02d5369",
+      "ledger_digest": "02bdf0d1119ba8e39f657f305552caa5a48f15b1a5a39c8178b18ac0b08f3d7c",
       "opens": [],
-      "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
+      "plan_hash": "4530a594aae0d635230dd6b8519cd2480eab97af2e9029364570fcb8f66948fb",
       "request": {
         "operation_id": "recognize-2026-01-31",
         "through": "2026-01-31"
@@ -4496,7 +4496,7 @@
       "supporting_hash": "70f7c4460b2bd217f590f3f39fe4c8de87fd14a8af33c523aa4f5dd5f4845347",
       "warnings": []
     },
-    "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
+    "plan_hash": "4530a594aae0d635230dd6b8519cd2480eab97af2e9029364570fcb8f66948fb",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -4511,7 +4511,7 @@
       ],
       "id": "recognize-2026-01-31",
       "kind": "schedule_due",
-      "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
+      "plan_hash": "4530a594aae0d635230dd6b8519cd2480eab97af2e9029364570fcb8f66948fb",
       "request_hash": "e498c4e19291d114210da7fdfd5388983cfbcccf713becf2c8c83d077c0578b1",
       "status": "applied",
       "warnings": []
@@ -4752,9 +4752,9 @@
       ],
       "id": "recognize-2026-02-28",
       "kind": "schedule_due",
-      "ledger_digest": "4a2e2ea52ec25826747d3fb7352bbc91cdda0a995ccb14a8215fb867f978910f",
+      "ledger_digest": "f8b0b3b9fab40d461f869fc0a7c81a1c2670d8ae3245f1eca1c0d28fb422c2fc",
       "opens": [],
-      "plan_hash": "adce5893268d2c418221a1f6ea9a3c7e3d2f155a8f8c18f2ff7269d2d013201d",
+      "plan_hash": "aadc673d07ad9bcafc57a1f084d33048b73a71e8f12f25d93ae097a1f312926e",
       "request": {
         "operation_id": "recognize-2026-02-28",
         "through": "2026-02-28"
@@ -4764,7 +4764,7 @@
       "supporting_hash": "9150f054217352499b9a9f8d7f8e6dab166252588b2fbc705e0a31c167293293",
       "warnings": []
     },
-    "plan_hash": "adce5893268d2c418221a1f6ea9a3c7e3d2f155a8f8c18f2ff7269d2d013201d",
+    "plan_hash": "aadc673d07ad9bcafc57a1f084d33048b73a71e8f12f25d93ae097a1f312926e",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -4785,7 +4785,7 @@
       ],
       "id": "recognize-2026-02-28",
       "kind": "schedule_due",
-      "plan_hash": "adce5893268d2c418221a1f6ea9a3c7e3d2f155a8f8c18f2ff7269d2d013201d",
+      "plan_hash": "aadc673d07ad9bcafc57a1f084d33048b73a71e8f12f25d93ae097a1f312926e",
       "request_hash": "d4b6ec4db32af008f1ea8f446e636d3f133b6352eb757c1be96a84e10315ac9a",
       "status": "applied",
       "warnings": []
@@ -5026,9 +5026,9 @@
       ],
       "id": "recognize-2026-03-31",
       "kind": "schedule_due",
-      "ledger_digest": "9b8dfddc53c41039167c483782e0d9f3d48e83e9a1185297a29c2745d0b23e80",
+      "ledger_digest": "6a25dcd1c1ec9e08cb730c447b7002187540d8857ce98fa8bff821e34397a593",
       "opens": [],
-      "plan_hash": "956d536c7ccc3f4065557aafdd2f79516bb4d2ce2da1b93c19c91dd004af6b32",
+      "plan_hash": "9655271ae1ef149c40d9484241c4c5fddb92832c39e0b17e076891e678d299ff",
       "request": {
         "operation_id": "recognize-2026-03-31",
         "through": "2026-03-31"
@@ -5038,7 +5038,7 @@
       "supporting_hash": "e31eccf103ec22bfc28f52b02b8841e18ad9ee7c6a4c071912bad47afe9166e5",
       "warnings": []
     },
-    "plan_hash": "956d536c7ccc3f4065557aafdd2f79516bb4d2ce2da1b93c19c91dd004af6b32",
+    "plan_hash": "9655271ae1ef149c40d9484241c4c5fddb92832c39e0b17e076891e678d299ff",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -5059,7 +5059,7 @@
       ],
       "id": "recognize-2026-03-31",
       "kind": "schedule_due",
-      "plan_hash": "956d536c7ccc3f4065557aafdd2f79516bb4d2ce2da1b93c19c91dd004af6b32",
+      "plan_hash": "9655271ae1ef149c40d9484241c4c5fddb92832c39e0b17e076891e678d299ff",
       "request_hash": "ff51213d767368143642df5b8f1e507593a263234fbcde9a59e868e5a111fb0b",
       "status": "applied",
       "warnings": []
@@ -5176,9 +5176,9 @@
       ],
       "id": "retainer-new-create",
       "kind": "schedule_create",
-      "ledger_digest": "62f8a824364d9e1b0221c45134b59f59b72e838a6b869eb58f0312a67d25c3f1",
+      "ledger_digest": "923bc43272896bc7de4cd3d192d391a27b8eabd0df6a2e7b89b488af4e05db8f",
       "opens": [],
-      "plan_hash": "0d31630be3bd53c3af7cfbcaf0e8abb46ff7e44e8cf67bdf0b2253af9690f76d",
+      "plan_hash": "875747e06f9afe24b5fe758b7ca8d51698d15eef63a560633b8f9d419f6966db",
       "request": {
         "account": "Liabilities:Other:Deferred-Revenue",
         "amount": "3600.00",
@@ -5207,7 +5207,7 @@
       "supporting_hash": "0a0bfcaa63d85c0edb3cb8fce6dae2ecd4a9b437f46517588a91383793ed2e22",
       "warnings": []
     },
-    "plan_hash": "0d31630be3bd53c3af7cfbcaf0e8abb46ff7e44e8cf67bdf0b2253af9690f76d",
+    "plan_hash": "875747e06f9afe24b5fe758b7ca8d51698d15eef63a560633b8f9d419f6966db",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -5220,7 +5220,7 @@
       ],
       "id": "retainer-new-create",
       "kind": "schedule_create",
-      "plan_hash": "0d31630be3bd53c3af7cfbcaf0e8abb46ff7e44e8cf67bdf0b2253af9690f76d",
+      "plan_hash": "875747e06f9afe24b5fe758b7ca8d51698d15eef63a560633b8f9d419f6966db",
       "request_hash": "4f610375e41f262d54f8d78eddd09e2fe0af0e80aab47ab010de7ce11ade9de2",
       "status": "applied",
       "warnings": []
@@ -5392,9 +5392,9 @@
       ],
       "id": "sw-annual-create",
       "kind": "schedule_create",
-      "ledger_digest": "21ccb141351b6169088fa78c223d3178c1fd320f9c48e58d05c373fd9cbbe652",
+      "ledger_digest": "9bd0203b565c833e23dc158b2956f08540cd07280f25fbe77c646244c4941cdc",
       "opens": [],
-      "plan_hash": "4fe05d7e125dda5560b6947256291324bb6b5487dd29d7bd124ce27d821ea7d4",
+      "plan_hash": "07d52cde92ad89610acac39cbce9d5e93a153cff80296b138603b5fc089bc6e0",
       "request": {
         "account": "Assets:Other:Prepaid-Expenses",
         "amount": "1200.00",
@@ -5423,7 +5423,7 @@
       "supporting_hash": "7bf0dd4c402f2f813745a520b7e7f834b7108b73b150e52af5330b8edf6c7ac6",
       "warnings": []
     },
-    "plan_hash": "4fe05d7e125dda5560b6947256291324bb6b5487dd29d7bd124ce27d821ea7d4",
+    "plan_hash": "07d52cde92ad89610acac39cbce9d5e93a153cff80296b138603b5fc089bc6e0",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -5436,7 +5436,7 @@
       ],
       "id": "sw-annual-create",
       "kind": "schedule_create",
-      "plan_hash": "4fe05d7e125dda5560b6947256291324bb6b5487dd29d7bd124ce27d821ea7d4",
+      "plan_hash": "07d52cde92ad89610acac39cbce9d5e93a153cff80296b138603b5fc089bc6e0",
       "request_hash": "62367e10b83d53ef0a96b0688caf541fa68ee47399522e89eff560b8987c72c1",
       "status": "applied",
       "warnings": []
@@ -5524,9 +5524,9 @@
       "evidence": [],
       "id": "utilities-estimate-jan",
       "kind": "journal",
-      "ledger_digest": "9d317642b0ae03224a1d83c81162f033c6a8e8ed2448b2aeae191129e536e23b",
+      "ledger_digest": "823841f6db754a4135c13e931c8168404a30958e580f0b5c0e0bf8ac0954eb0d",
       "opens": [],
-      "plan_hash": "3bf8adf62373c9b4da2875ef9a54166e991e8fb17028c807a4989ef1fc599d8e",
+      "plan_hash": "33a7b36b80607c4f19404791166aa4f65d9be4f594aea14b2a38e0c060f95fb7",
       "request": {
         "date": "2026-01-31",
         "description": "Estimated January utilities",
@@ -5552,7 +5552,7 @@
       "supporting_hash": "5d99562fb6cad3ececf500928a51ebc80a748a755b7b48ca1fabf1b750d0b43a",
       "warnings": []
     },
-    "plan_hash": "3bf8adf62373c9b4da2875ef9a54166e991e8fb17028c807a4989ef1fc599d8e",
+    "plan_hash": "33a7b36b80607c4f19404791166aa4f65d9be4f594aea14b2a38e0c060f95fb7",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -5563,7 +5563,7 @@
       "evidence_ids": [],
       "id": "utilities-estimate-jan",
       "kind": "journal",
-      "plan_hash": "3bf8adf62373c9b4da2875ef9a54166e991e8fb17028c807a4989ef1fc599d8e",
+      "plan_hash": "33a7b36b80607c4f19404791166aa4f65d9be4f594aea14b2a38e0c060f95fb7",
       "request_hash": "3cb724a1640bf066557f51537614db69dd835b94403c0758f1bba42ccfe8c0c7",
       "status": "applied",
       "warnings": []
@@ -5648,9 +5648,9 @@
       "evidence": [],
       "id": "utilities-estimate-mar",
       "kind": "journal",
-      "ledger_digest": "2092571bc2c283d9b128cf202362971e43be2c29ef8e88c65f97d892ad9b4615",
+      "ledger_digest": "06ac58710f5c0632a1319c87ac0c8439b1882c6cf340a4292dceb8b9b7758c5e",
       "opens": [],
-      "plan_hash": "700a98b4ee4971241c5dc0ba10424c209699f9d26bf0663ff0b6abf6fcb9d40d",
+      "plan_hash": "1d2e9f6baded6dc14865adc358727537a626d1560c86abaa41bf2fa3e0f0e958",
       "request": {
         "date": "2026-03-31",
         "description": "Estimated March utilities",
@@ -5676,7 +5676,7 @@
       "supporting_hash": "a130996482e9cc5dfd6a035d70cb9687ad470e42b64c4b547dd4c816d23ffde7",
       "warnings": []
     },
-    "plan_hash": "700a98b4ee4971241c5dc0ba10424c209699f9d26bf0663ff0b6abf6fcb9d40d",
+    "plan_hash": "1d2e9f6baded6dc14865adc358727537a626d1560c86abaa41bf2fa3e0f0e958",
     "receipt": {
       "authority": {
         "mode": "local_operator"
@@ -5687,7 +5687,7 @@
       "evidence_ids": [],
       "id": "utilities-estimate-mar",
       "kind": "journal",
-      "plan_hash": "700a98b4ee4971241c5dc0ba10424c209699f9d26bf0663ff0b6abf6fcb9d40d",
+      "plan_hash": "1d2e9f6baded6dc14865adc358727537a626d1560c86abaa41bf2fa3e0f0e958",
       "request_hash": "98d3690491df6cc0b1f467e7e5366eda30f4a1bcc567f4dcd1756c3c5f24a8fe",
       "status": "applied",
       "warnings": []

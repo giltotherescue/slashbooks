@@ -224,6 +224,13 @@
     "date": "2026-07-01"
   },
   {
+    "account": "Income:Interest-Income",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-07-01"
+  },
+  {
     "account": "Liabilities:CreditCard",
     "currencies": [
       "USD"

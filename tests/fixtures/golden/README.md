@@ -42,3 +42,14 @@ opens the common overhead accounts (rent, payroll, payroll taxes, utilities,
 insurance, bank fees, professional fees) and the services chart opens
 Income:Services. The diffs add zero-balance accounts and change audit and
 ledger digests. Statement amounts are unchanged.
+
+2026-11-11 interest income starter account: regenerated because every starter
+chart now ends with Income:Interest-Income. The diffs add one zero-balance
+account to each company (account counts, trial balance and general ledger
+account lists, accrual account lists, the open-date provenance record with the
+same source as Income:Consulting, and one tax map row on the interest income
+line, which adds one to "Needs review"). Audit, ledger, plan, intent, mapping
+and package hashes change with the catalog. Statement amounts are unchanged.
+The 17 accrual report entries of `tests/fixtures/chart_identity/legacy-proof-hashes.json`
+change for the same reason: only the opening `intent_hash` and `mapping_hash` in
+their coverage metadata differ.

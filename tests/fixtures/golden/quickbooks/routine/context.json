@@ -109,6 +109,10 @@
       "name": "Income:Consulting"
     },
     {
+      "label": "Income:Interest-Income",
+      "name": "Income:Interest-Income"
+    },
+    {
       "label": "Income:Services",
       "name": "Income:Services"
     },

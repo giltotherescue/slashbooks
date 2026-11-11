@@ -449,6 +449,22 @@
       "ultratax_code": null
     },
     {
+      "account": "Income:Interest-Income",
+      "account_number": null,
+      "balance": "0.00",
+      "basis": "name",
+      "detail": null,
+      "form_line": "5",
+      "label": "Interest income",
+      "line": "1065/K/5",
+      "on_return": true,
+      "reason": "Matched by account name.",
+      "return_type": "1065",
+      "review": true,
+      "schedule": "K",
+      "ultratax_code": null
+    },
+    {
       "account": "Income:Services",
       "account_number": null,
       "balance": "-12100.00",
@@ -596,6 +612,7 @@
     "Expenses:Travel",
     "Expenses:Utilities",
     "Income:Consulting",
+    "Income:Interest-Income",
     "Income:Services",
     "Liabilities:CreditCard",
     "Liabilities:Other:Accrued-Liabilities",

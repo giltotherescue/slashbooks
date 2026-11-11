@@ -38,7 +38,7 @@
     },
     {
       "path": "reports/quarterly/2026-Q1.json",
-      "sha256": "f6c7ddf8b7182fbe6490660f816f6a1dd79c2c29d6a7da8a36b88c36e972ecac",
+      "sha256": "d1080ec7dfe45084b31364c3ce70309628b206c0caaae65d5a083c0faa16b362",
       "size": 14182
     },
     {
@@ -64,12 +64,12 @@
   ],
   "format": "slashbooks-company-snapshot",
   "ledger": {
-    "content_sha256": "cc12b79db9c89f9ec105a95febaffdfe6dcf5a6646c5d7024787c0951caefc3f",
+    "content_sha256": "f86224be24ea495442572625bbf472917c98ce4f73ee673b2bf26827d500e9c2",
     "schema_version": 2,
     "tables": {
       "accounts": {
-        "rows": 33,
-        "sha256": "34c08ed9521e2995c7fe805356a2b7b386841c455e373c4bbb319d8a4a7dd4fb"
+        "rows": 34,
+        "sha256": "97d6b128cb03939f724a270acb5acbe9fefe9bf91bffe08341a7ccdde38bfb7c"
       },
       "accrual_allocations": {
         "rows": 26,
@@ -77,7 +77,7 @@
       },
       "accrual_coverage": {
         "rows": 1,
-        "sha256": "068e226960e44dab6f315a8b13745fa773e767c2e5ed97ad348006fbfda74252"
+        "sha256": "c6ed3f69427e596027fd40f1d35e2b7592abd102cca58600943af640e9558754"
       },
       "accrual_evidence": {
         "rows": 17,
@@ -85,7 +85,7 @@
       },
       "accrual_intents": {
         "rows": 60,
-        "sha256": "c2c4b361e4292eba7a49576d4602feb61794c94fd3573574c5029df5f566c834"
+        "sha256": "35c7a9906ccfac24fb9d7d4ddfe875bd15fe3d86dce5bf0702a923dcc8be8f1e"
       },
       "accrual_items": {
         "rows": 9,
@@ -93,7 +93,7 @@
       },
       "accrual_periods": {
         "rows": 1,
-        "sha256": "410ca059bc4659dd718a405ca0f549335bd7f4e4d7957b5a9d4ab6e04f5e4c5e"
+        "sha256": "b79f4fc601b06966442327f4c822c874fe7f1a035cfab95757c7870b2602ff9c"
       },
       "accrual_schedules": {
         "rows": 6,
@@ -101,7 +101,7 @@
       },
       "audit_events": {
         "rows": 172,
-        "sha256": "7f52bdb44d00ea18d892c9fe356ee7b19d6d5abfcc08a104d9280f866e5d211d"
+        "sha256": "7dead9da948907abb770876277d39829dee6738a504f9be2cf8072410b70e718"
       },
       "balance_assertions": {
         "rows": 0,
@@ -117,7 +117,7 @@
       },
       "meta": {
         "rows": 7,
-        "sha256": "99859f75eb5d3bf6af1854d33d4eefe4b2de5049ff54c14f3547f4420ec4685a"
+        "sha256": "ed1fedf9bbb2ebb285c0e0c32c224883f38886e2987e9030f96a7d22efb84caa"
       },
       "postings": {
         "rows": 79,
@@ -129,16 +129,16 @@
       },
       "sqlite_sequence": {
         "rows": 4,
-        "sha256": "1c3d3408a028a6ab981dfdda558337d14985054f336e38784cdc13b2fdac9c2a"
+        "sha256": "6caf5c386a36573950eee7ffe4786f943a8ebd59528863c40c4f090a2db5452b"
       }
     }
   },
   "reports": {
     "fingerprints": {
-      "balance_sheet": "c3d56609b0a89ca42157d486267bfa43ed746bb28dae0b2ecd4df4cc6680541c",
-      "general_ledger": "9d1561bd6bb0f105deec92ff43c6f11a5e36428a1ec0143c2a320978b4dcdae2",
-      "pnl": "4eaf19172d4f08ebe0a8292c2c6954a5d07ef09072b0a18b1db2be417ea118c2",
-      "trial_balance": "d15b237e9253a1727bf9f693857bb9093d20002918d0c448bd85be3d58ff3f5f"
+      "balance_sheet": "0433d54fe32abcd1cc213689ed4b876d078865073c42805d31860e56e540d992",
+      "general_ledger": "b32a18d8999e79c139a6122ef54daf1fc9911484b3465f20a4f7050c14901239",
+      "pnl": "3c73a0bd9a227aae22ebc58c3da757c284c432ec6dc87090d4f4ea8f53b3a320",
+      "trial_balance": "8f159c078d45852e480594679bf769c560b0edc40cc80b2a1dc4e91741685ba5"
     },
     "from": "2026-01-01",
     "to": "2026-03-31"

@@ -259,16 +259,16 @@
   ],
   "format": "slashbooks-company-snapshot",
   "ledger": {
-    "content_sha256": "7c0126235a1d77bbae169142b0fd9a17fbbc79900953b9e6712b33c0ad2415cf",
+    "content_sha256": "0ce3e4248cfde87d04adfde02d234e85070d6889dc42aae62ca40e0a2f9467cf",
     "schema_version": 1,
     "tables": {
       "accounts": {
-        "rows": 23,
-        "sha256": "4584eaabca1d590a42067c7bce60ab581ca287059a5de864358d91c3fa6495fc"
+        "rows": 24,
+        "sha256": "28b235017eadeb8f57cdd3aa596d0bf07f57954073b4af06fac5d0cabfb7c273"
       },
       "audit_events": {
         "rows": 150,
-        "sha256": "48d812f3324b8fee891cb29a4e3fa6139d7e09d061df9cbd6f3de6aa04fa6cf4"
+        "sha256": "0c67db8a8240dbf4ef70358104259f73e1eaec038d165a508ab8a72ddc789fda"
       },
       "balance_assertions": {
         "rows": 0,
@@ -284,7 +284,7 @@
       },
       "meta": {
         "rows": 7,
-        "sha256": "8df6c7454aa17b86d2bf2a83b97cf2564fa38d99c47251a6b313d2b242bd46aa"
+        "sha256": "d98fbe4658855ec501688010225d6833ab4173161c8029f786fdb6a32ab78006"
       },
       "postings": {
         "rows": 73,
@@ -296,7 +296,7 @@
       },
       "sqlite_sequence": {
         "rows": 4,
-        "sha256": "742b15f2cefc8cb0d51eb7865e00573fbc88f6b4610c0a9472668893430d2664"
+        "sha256": "27965e70cf99dbfcee7b6752a81b6cbddca103f2612609e0b14803b7da2542cb"
       }
     }
   },

@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- Give bank interest a category. Interest that a bank pays on a business
+  account (for example a few dollars a month on checking) had no category in
+  any starter chart, so an unattended run, which may not add accounts, could
+  not file it. Every starter chart now ends with `Income:Interest-Income`. It
+  opens like the other starter income accounts: on the books scope when one is
+  given, on the cutover with a cutover, and on the fallback date otherwise. In
+  the profit and loss it is its own row under Money In (Revenue on the accrual
+  view). The tax view maps it to the interest income line (Schedule K for a
+  partnership or an S corporation, line 5 of Form 1120, and not on Schedule C),
+  not to gross receipts. Existing companies do not change: a company with no
+  entries gets the account from `books entity starter-accounts`, and any other
+  company adds it with `books entity account-add PATH --account
+  Income:Interest-Income --category`. Because it is now a starter account,
+  `books entity account-remove` keeps it, as it keeps the other starter
+  accounts.
+
+- Remove a loan account that was added by mistake. `books entity
+  account-remove` now also removes an account under `Liabilities:Loans:` that
+  `books entity account-add` created and nothing uses: no posting (reversed and
+  corrected entries and opening balances included), no balance assertion, no
+  open date set by an opening, and no setting or record that names it (bank and
+  CSV mappings, payee rules, open review items and proposals, staged rows,
+  accrual records, saved statements and reconciliation records). The starter
+  `Liabilities:Loans:Mortgage`, a loan account with the card financial kind,
+  and bank, card and other liabilities stay (`protected_account`). The JSON
+  output, the error codes, the preview and plan hash, and the
+  `account-removed` audit event are the same as for a category.
+
 - Let a company record history before 2026. A company created with no cutover
   opened every starter category on a fixed date, 2026-01-01, and new categories
   got the same date. Because the books refuse an entry before an account's open

@@ -21,9 +21,10 @@ Tax line mapping for Schedule C (Form 1040) (form from workspace)
   Expenses:Travel  568.40 -> schc/II/24a  Travel (name) [review]
   Expenses:Utilities  0.00 -> schc/II/25  Utilities (name) [review]
   Income:Consulting  -26350.00 -> schc/I/1  Gross receipts or sales (account_type) [review]
+  Income:Interest-Income  0.00 -> schc/none/personal  Owner's personal return item, not Schedule C (name) [review]
   Income:Services  0.00 -> schc/I/1  Gross receipts or sales (account_type) [review]
   Liabilities:CreditCard  0.00 -> schc/none/balance_sheet  Balance sheet account (Schedule C has no balance sheet) (name)
   Liabilities:CreditCard:Company  -499.53 -> schc/none/balance_sheet  Balance sheet account (Schedule C has no balance sheet) (name)
 
 Unmapped: 0
-Needs review: 20
+Needs review: 21

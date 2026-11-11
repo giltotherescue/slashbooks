@@ -1,7 +1,7 @@
 {
-  "content_digest": "7c0126235a1d77bbae169142b0fd9a17fbbc79900953b9e6712b33c0ad2415cf",
+  "content_digest": "0ce3e4248cfde87d04adfde02d234e85070d6889dc42aae62ca40e0a2f9467cf",
   "counts": {
-    "accounts": 23,
+    "accounts": 24,
     "audit_events": 150,
     "balances": 0,
     "entries": 36,

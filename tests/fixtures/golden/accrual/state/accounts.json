@@ -203,6 +203,13 @@
     "date": "2026-01-01"
   },
   {
+    "account": "Income:Interest-Income",
+    "currencies": [
+      "USD"
+    ],
+    "date": "2026-01-01"
+  },
+  {
     "account": "Income:Services",
     "currencies": [
       "USD"
