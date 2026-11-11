@@ -32,7 +32,11 @@
     also after a correction. A reversal or a correction of a matched transfer
     must keep its date and its two lines (only the description can change);
     any other reversal or correction is refused with `transfer_match_lineage`
-    and nothing is written. The result adds `live_entry_id`.
+    and nothing is written. The result adds `live_entry_id`. A retry can name
+    the receipt entry or the live entry. Every comparison of source IDs in the
+    match (reversed entries, claims, lineage, replay, open proposals) treats
+    the two spellings of a BankSync row (`banksync:abc` and `abc`) as one row,
+    through `source_ids.source_id_variants`.
   - `books queue transfer-doubles --entity PATH [--date-tolerance-days 3]`
     (read-only, `find_transfer_doubles`) lists transfers that are already in
     the books two times, as pairs of entries. It repairs nothing.
@@ -55,7 +59,12 @@
   the edges of the period. The printed period is a confirmed period. The
   printed balances are recorded only when the printed period contains every
   row, the balance line dates agree with that period, and the rows prove their
-  sign. They use the statement presentation (money owed is positive).
+  sign. A date that is printed but cannot be read (for example `09/31/2026`)
+  is rejected with a warning, never read as a missing date: no balance or
+  period comes from that line, and an unreadable period line gives no period
+  or balance. Two different balance lines of one kind give nothing. A bank
+  statement CSV also takes nothing from a balance line with an unreadable
+  date. They use the statement presentation (money owed is positive).
 
 - Add `opening_presentation.opening_presentation(entry, accounts,
   financial_kinds)`, a pure, read-only function that gives the opening balance

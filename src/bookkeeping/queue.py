@@ -2119,22 +2119,31 @@ def _strict_txn_date(txn: dict) -> date:
         raise ValueError(f"Source '{txn.get('id')}' has no readable date.") from exc
 
 
-def _transfer_claims(sources: Mapping[str, tuple[Any, str]]) -> dict[str, tuple[str, dict]]:
-    """The live transfer-match claims: lineage root source ID -> (matched source ID, link).
+def _source_key(source_id: Any) -> frozenset[str]:
+    """One key for every spelling of one source row (``source_ids.source_id_variants``).
+
+    ``banksync:abc`` and ``abc`` give the same key; ``plaid:abc`` or ``abc2`` give another key. Every
+    comparison of source IDs in the transfer match uses this key, never the raw text.
+    """
+    return source_id_variants(source_id)
+
+
+def _transfer_claims(sources: Mapping[str, tuple[Any, str]]) -> dict[frozenset[str], tuple[str, dict]]:
+    """The live transfer-match claims: key of the lineage root source ID -> (matched source ID, link).
 
     A claim is on the root of the correction lineage of the entry, not on one physical entry, so one posted
     transfer has at most one matched row across corrections. Two claims on one root are refused, because
     the books can no longer say which row the transfer belongs to.
     """
-    claims: dict[str, tuple[str, dict]] = {}
+    claims: dict[frozenset[str], tuple[str, dict]] = {}
     for sid, (payload, status) in sorted(sources.items()):
         link = payload.get(TRANSFER_MATCH_KEY) if isinstance(payload, dict) else None
         if status != TRANSFER_MATCH_STATUS or not isinstance(link, dict) or not link.get("source_id"):
             continue
-        root = str(link["source_id"])
+        root = _source_key(link["source_id"])
         if root in claims:
             raise ValueError(f"Source rows '{claims[root][0]}' and '{sid}' are both matched to the transfer "
-                             f"of source '{root}'. Repair the books before a transfer match is used.")
+                             f"of source '{link['source_id']}'. Repair the books before a transfer match is used.")
         claims[root] = (sid, link)
     return claims
 
@@ -2157,14 +2166,14 @@ def refuse_claimed_transfer_change(conn: Any, new_entries: Sequence[Any]) -> Non
     """
     from .tieout import source_root
 
-    targets: dict[str, list] = {}
+    named: list[tuple[str, Any]] = []  # (the source ID that a reversal or a replacement names, replacement)
     for entry in new_entries:
         meta = dict(entry.meta)
         if meta.get("reverses"):
-            targets.setdefault(str(meta["reverses"]), [False, []])[0] = True
+            named.append((str(meta["reverses"]), None))
         elif meta.get("correction-of"):
-            targets.setdefault(str(meta["correction-of"]), [False, []])[1].append(entry)
-    if not targets:
+            named.append((str(meta["correction-of"]), entry))
+    if not named:
         return
     sources: dict[str, tuple[Any, str]] = {}
     for sid, payload, status in conn.execute(
@@ -2178,8 +2187,16 @@ def refuse_claimed_transfer_change(conn: Any, new_entries: Sequence[Any]) -> Non
         return
     by_source = {str(sid): dict(json.loads(raw or "[]")) for sid, raw in conn.execute(
         "SELECT source_id, metadata_json FROM entries WHERE source_id IS NOT NULL AND source_id != ''")}
-    for target, (reverses, replacements) in sorted(targets.items(), key=lambda item: item[0]):
-        root = source_root({"source-id": target}, by_source)
+    # Group by the root of the lineage, so a reversal named ``abc`` and a replacement named ``banksync:abc``
+    # (or a later correction in the chain) are one change of one transfer.
+    targets: dict[frozenset[str], list] = {}
+    for target, replacement in named:
+        group = targets.setdefault(_source_key(source_root({"source-id": target}, by_source)), [False, [], target])
+        if replacement is None:
+            group[0] = True
+        else:
+            group[1].append(replacement)
+    for root, (reverses, replacements, target) in sorted(targets.items(), key=lambda item: sorted(item[0])):
         if root not in claims:
             continue
         matched, link = claims[root]
@@ -2229,18 +2246,26 @@ def _posted_transfer_legs(entity: Entity) -> list[dict]:
                 sources[str(sid)] = (None, str(status))  # An unreadable source row matches nothing.
     metas = {int(row[0]): dict(json.loads(row[4] or "[]")) for row in entries}
     by_source = {str(row[3]): metas[int(row[0])] for row in entries if row[3]}
-    reversed_ids = {meta["reverses"] for meta in metas.values() if meta.get("reverses")}
+    # A reversal can name its entry by any spelling of the source ID (``abc`` for ``banksync:abc``).
+    reversed_ids: set[str] = set()
+    for meta in metas.values():
+        if meta.get("reverses"):
+            reversed_ids |= _source_key(meta["reverses"])
+    by_key: dict[frozenset[str], tuple[Any, str]] = {}
+    for sid, value in sources.items():
+        key = _source_key(sid)
+        by_key[key] = (None, "") if key in by_key else value  # Two rows for one source ID match nothing.
     claimed = _transfer_claims(sources)
     legs: list[dict] = []
     for entry_id, day, narration, entry_source, _ in entries:
         meta = metas[int(entry_id)]
         lines = postings.get(int(entry_id), [])
-        if (not entry_source or entry_source in reversed_ids or meta.get("reverses") or meta.get("paired-source-id")
-                or len(lines) != 2):
+        if (not entry_source or not reversed_ids.isdisjoint(_source_key(entry_source)) or meta.get("reverses")
+                or meta.get("paired-source-id") or len(lines) != 2):
             continue
         try:
             root = source_root(meta, by_source)
-            payload, status = sources.get(str(root), (None, ""))
+            payload, status = by_key.get(_source_key(root), (None, ""))
             if not isinstance(payload, dict) or status != "posted":
                 continue
             account = _txn_ledger_account(entity, payload)
@@ -2257,7 +2282,7 @@ def _posted_transfer_legs(entity: Entity) -> list[dict]:
             "entry_id": int(entry_id), "entry_source_id": str(entry_source), "source_id": str(root),
             "date": entry_day, "description": str(narration or ""), "account": account,
             "amount": amounts[account], "counter_account": counter_account,
-            "counter_amount": amounts[counter_account], "claimed_by": claimed.get(str(root), (None,))[0],
+            "counter_amount": amounts[counter_account], "claimed_by": claimed.get(_source_key(root), (None,))[0],
         })
     return legs
 
@@ -2294,7 +2319,7 @@ def find_transfer_matches(entity: Entity, source_id: str, counter_account: str,
     matches: list[dict] = []
     for other in _load_pending_categorization(entity) if amount else []:
         other_id = str(other.get("id") or "")
-        if not other_id or other_id == source_id:
+        if not other_id or not _source_key(other_id).isdisjoint(_source_key(source_id)):
             continue
         try:
             if _txn_ledger_account(entity, other) != counter_account or _txn_amount(other) != -amount:
@@ -2341,7 +2366,8 @@ def _live_claim_entry(entity: Entity, link: dict) -> Optional[int]:
     """The live entry in the lineage that a match claims, or None when no live entry keeps the match."""
     amount = Decimal(str(link.get("amount") or "0"))
     for leg in _posted_transfer_legs(entity):
-        if (leg["source_id"] == link.get("source_id") and leg["account"] == link.get("counter_account")
+        if (_source_key(leg["source_id"]) == _source_key(link.get("source_id"))
+                and leg["account"] == link.get("counter_account")
                 and leg["counter_account"] == link.get("account") and leg["counter_amount"] == amount
                 and leg["date"].isoformat() == link.get("date")):
             return leg["entry_id"]
@@ -2378,23 +2404,34 @@ def confirm_transfer_match(entity: Entity, source_id: str, entry_id: int, sessio
         raise ValueError("The entry ID must be a whole number.")
     store_path = default_store_path(entity.path)
     if store_path.is_file():
+        spellings = sorted(_source_key(source_id))
         with LedgerStore(store_path).connection() as conn:
-            row = conn.execute("SELECT payload_json, status FROM source_transactions WHERE id = ?",
-                               (source_id,)).fetchone()
-        if row is not None:
-            payload = json.loads(row[0])
+            rows = conn.execute(
+                f"SELECT id, payload_json, status FROM source_transactions WHERE id IN ({','.join('?' * len(spellings))})",
+                spellings).fetchall()
+        if len(rows) > 1:
+            raise ValueError(f"Source '{source_id}' is recorded in the books more than one time.")
+        if rows:
+            stored_id, raw, status = rows[0]
+            payload = json.loads(raw)
             link = payload.get(TRANSFER_MATCH_KEY) if isinstance(payload, dict) else None
-            if row[1] != TRANSFER_MATCH_STATUS or not isinstance(link, dict) or link.get("entry_id") != entry_id:
+            if status != TRANSFER_MATCH_STATUS or not isinstance(link, dict):
                 raise ValueError(f"Source '{source_id}' is already recorded in the books.")
-            StagingStore(entity.staging_dir).mark_seen(source_id)
-            _remove_from_pending_categorization(entity, source_id, strict=True)
-            return _transfer_match_result(link, payload, recovered=True, live=_live_claim_entry(entity, link))
+            # A replay names the entry of the receipt, or the live entry of the same lineage after a correction.
+            live = _live_claim_entry(entity, link)
+            if entry_id not in {link.get("entry_id"), live}:
+                raise ValueError(f"Source '{source_id}' is already matched to entry {link.get('entry_id')} "
+                                 f"(live entry {live}), not to entry {entry_id}.")
+            StagingStore(entity.staging_dir).mark_seen(str(stored_id))
+            _remove_many_from_pending_categorization(entity, spellings)
+            return _transfer_match_result(link, payload, recovered=True, live=live)
     txn = _get_pending_txn(entity, source_id)
     if txn is None:
         raise ValueError(f"Source ID '{source_id}' is not a staged transaction awaiting review.")
     for item in list_queue_items(entity):
-        if item.get("status") in ACTIONABLE_QUEUE_STATUSES and source_id in (
-                [str(sid) for sid in item.get("source_ids") or []] + [str(item.get("source_id") or "")]):
+        if item.get("status") in ACTIONABLE_QUEUE_STATUSES and any(
+                not _source_key(sid).isdisjoint(_source_key(source_id))
+                for sid in [*(item.get("source_ids") or []), item.get("source_id")] if sid):
             raise ValueError(f"Source '{source_id}' has an open proposal ({item.get('source_id')}); resolve it first.")
     leg = next((leg for leg in _posted_transfer_legs(entity) if leg["entry_id"] == entry_id), None)
     if leg is None:
@@ -2450,7 +2487,7 @@ def find_transfer_doubles(entity: Entity, date_tolerance_days: int = TRANSFER_WI
     for first in legs:
         # The other entry is from a row of this entry's other account, with the same amount on this account.
         for second in by_side.get((first["counter_account"], first["account"], first["counter_amount"]), []):
-            if second["entry_id"] <= first["entry_id"] or first["source_id"] == second["source_id"]:
+            if second["entry_id"] <= first["entry_id"] or _source_key(first["source_id"]) == _source_key(second["source_id"]):
                 continue
             apart = abs((first["date"] - second["date"]).days)
             if apart > date_tolerance_days:

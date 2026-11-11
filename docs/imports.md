@@ -148,7 +148,11 @@ rows prove them: the printed period contains every row, the previous balance
 line is dated on the period's first day or the day before, the new balance
 line is dated on the period's last day, and the rows connect the two balances
 in exactly one sign (the previous balance plus the rows equals the new
-balance). The record then keeps the statement presentation (money owed is
+balance). A balance line with no date is read as a balance of the printed
+period. A date that is printed but cannot be read is rejected with a warning:
+no balance or period comes from that line (for a bank file too). A period line
+that cannot be read, or two different balance lines of one kind, give no
+period and no balances. The record then keeps the statement presentation (money owed is
 positive). If the rows connect them in neither sign, the import warns that rows
 can be missing or extra and records no balances. The printed period is still
 the period. A printed period that does not contain every row date is not used;

@@ -28,7 +28,7 @@ from bookkeeping.cli import main  # noqa: E402
 from bookkeeping.coverage import check_coverage, readiness_items  # noqa: E402
 from bookkeeping.entity import load_entity  # noqa: E402
 from bookkeeping.import_check import check_import  # noqa: E402
-from bookkeeping.connectors.bankcsv import ParsedCsv, ParsedRow, _statement_metadata  # noqa: E402
+from bookkeeping.connectors.bankcsv import ParsedCsv, ParsedRow, _balance_marker, _statement_metadata  # noqa: E402
 from bookkeeping.ledger.importer import reverse_and_correct, reverse_entry  # noqa: E402
 from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
@@ -403,6 +403,159 @@ class TransferMatchReviewTests(unittest.TestCase):
                       "date_days_apart", "action", "actionable", "reason"):
             self.assertIn(field, match)
         self.assertEqual((match["description"], match["amount"], match["actionable"]), ("ONLINE PAYMENT", "-25.00", True))
+
+
+class TransferMatchIdentityTests(unittest.TestCase):
+    """Source IDs have two spellings for a BankSync row (``banksync:abc`` and ``abc``). Every check that
+    decides a live entry or a claim must treat them as one row, and other IDs as other rows."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.company = make_company(Path(self._tmp.name))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @property
+    def entity(self):
+        return load_entity(self.company)
+
+    def post(self, source_id: str, day: str = "2026-10-05", amount: str = "-25.00") -> int:
+        stage(self.company, (source_id, "feed-chk", day, amount, "PAYMENT TO VISA"))
+        queue.propose(self.entity, source_id, VISA, "The owner chose the card account.")
+        queue.confirm(self.entity, source_id, "owner-review", ts=TS)
+        return entry_ids(self.company)[source_id]
+
+    def replacement(self, source_id: str, *, amount: str = "25.00", narration: str = "Memo") -> Entry:
+        return Entry(date=date(2026, 10, 5), narration=narration, flag="*", meta=(("source-id", source_id),),
+                     postings=(Posting(CHECKING, -Decimal(amount)), Posting(VISA, Decimal(amount))))
+
+    def card_row(self, source_id: str = "visa") -> None:
+        stage(self.company, (source_id, "feed-visa", "2026-10-05", "25.00", "PAYMENT THANK YOU"))
+
+    def test_a_reversal_through_either_spelling_removes_the_entry(self):
+        for stored, named in (("banksync:abc", "abc"), ("abc", "banksync:abc"), ("banksync:abc", "banksync:abc")):
+            with self.subTest(stored=stored, named=named):
+                self.tearDown()
+                self.setUp()
+                entry_id = self.post(stored)
+                self.card_row()
+                reverse_entry(self.entity, named, "owner-review", ts=TS)
+                self.assertEqual(queue.find_transfer_matches(self.entity, "visa", CHECKING)["matches"], [])
+                with self.assertRaisesRegex(ValueError, "not a live two-line entry"):
+                    queue.confirm_transfer_match(self.entity, "visa", entry_id, "owner-review", ts=TS)
+                self.assertEqual(staged_ids(self.company), ["visa"])
+
+    def test_a_distinct_id_is_not_the_same_row(self):
+        kept = self.post("banksync:abc")
+        self.post("plaid:abc")
+        self.post("abc2")
+        reverse_entry(self.entity, "plaid:abc", "owner-review", ts=TS)
+        reverse_entry(self.entity, "abc2", "owner-review", ts=TS)
+        self.card_row()
+        self.assertEqual([m["entry_id"] for m in queue.find_transfer_matches(self.entity, "visa", CHECKING)["matches"]],
+                         [kept])
+
+    def test_a_claim_holds_through_any_spelling_and_a_chain_of_corrections(self):
+        original = self.post("banksync:abc")
+        self.card_row()
+        queue.confirm_transfer_match(self.entity, "visa", original, "owner-review", ts=TS)
+        before = ledger_rows(self.company)
+        # A reversal through the other spelling is a change of the matched transfer.
+        with self.assertRaises(queue.TransferMatchLineageError):
+            reverse_entry(self.entity, "abc", "owner-review", ts=TS)
+        with self.assertRaises(queue.TransferMatchLineageError):
+            reverse_and_correct(self.entity, "abc", self.replacement("fix-1", amount="20.00"), "owner-review", ts=TS)
+        self.assertEqual(ledger_rows(self.company), before)
+        # Two memo corrections in a chain, the first named through the other spelling, keep the match.
+        reverse_and_correct(self.entity, "abc", self.replacement("fix-1"), "owner-review", ts=TS)
+        reverse_and_correct(self.entity, "fix-1", self.replacement("fix-2", narration="Memo 2"), "owner-review", ts=TS)
+        live = entry_ids(self.company)["fix-2"]
+        with self.assertRaises(queue.TransferMatchLineageError):
+            reverse_and_correct(self.entity, "fix-2", self.replacement("fix-3", amount="24.00"), "owner-review", ts=TS)
+        self.card_row("visa-2")
+        self.assertEqual(queue.find_transfer_matches(self.entity, "visa-2", CHECKING)["matches"], [])
+        # A replay names the receipt or the live entry; any other entry is refused.
+        for entry_id in (original, live):
+            replay = queue.confirm_transfer_match(self.entity, "visa", entry_id, "owner-review", ts=TS)
+            self.assertEqual((replay["recovered"], replay["entry_id"], replay["live_entry_id"]), (True, original, live))
+        with self.assertRaisesRegex(ValueError, "already matched to entry"):
+            queue.confirm_transfer_match(self.entity, "visa", 999, "owner-review", ts=TS)
+        self.assertEqual(queue.find_transfer_doubles(self.entity)["pairs"], [])
+
+    def test_a_replay_through_the_other_spelling_of_the_row(self):
+        entry_id = self.post("chk")
+        self.card_row("banksync:card1")
+        queue.confirm_transfer_match(self.entity, "banksync:card1", entry_id, "owner-review", ts=TS)
+        replay = queue.confirm_transfer_match(self.entity, "card1", entry_id, "owner-review", ts=TS)
+        self.assertEqual((replay["recovered"], replay["source_id"]), (True, "banksync:card1"))
+
+
+class CardDateEvidenceTests(unittest.TestCase):
+    """Dates printed in a card file: missing, unreadable, outside the period, or in conflict."""
+
+    ROWS = ParsedCsv([ParsedRow(4, "2026-10-02", "charge", Decimal("-25"))])
+
+    def marker(self, text: str, amount: str = "100.00") -> dict:
+        return _balance_marker([text, "", "", amount], ".", "%m/%d/%Y")
+
+    def meta(self, markers: list[dict], period=("2026-10-01", "2026-10-31")) -> dict:
+        rows = ParsedCsv([ParsedRow(4, "2026-10-02", "charge", Decimal("-25"))])
+        return _statement_metadata(rows, [dict(m) for m in markers], "liability", period)
+
+    def test_an_absent_date_and_an_unreadable_date_are_different(self):
+        closing = self.marker("New balance 10/31/2026", "125.00")
+        absent = self.marker("Previous balance")
+        self.assertNotIn("invalid_date", absent)
+        self.assertIsNone(absent["date"])
+        meta = self.meta([absent, closing])
+        self.assertEqual((meta["opening_balance"], meta["opening_balance_date"]), (Decimal("-100.00"), "2026-10-01"))
+        for text in ("Previous balance 09/31/2026", "Previous balance as of Sep 30, 2026", "Previous balance 10/01/2026 08:00"):
+            with self.subTest(text):
+                unreadable = self.marker(text)
+                self.assertIsNone(unreadable["date"])
+                self.assertTrue(unreadable["invalid_date"])
+                meta = self.meta([unreadable, closing])
+                self.assertEqual((meta["opening_balance"], meta["closing_balance"]), (None, None))
+                self.assertTrue(any("cannot be read" in w for w in meta["_warnings"]))
+        # Without a printed period line, no period comes from an unreadable balance line either.
+        meta = self.meta([self.marker("Previous balance 09/31/2026"), closing], period=None)
+        self.assertEqual((meta["period_source"], meta["period_start"]), ("transactions", "2026-10-02"))
+
+    def test_undated_balance_lines_need_a_printed_period(self):
+        meta = self.meta([self.marker("Previous balance"), self.marker("New balance", "125.00")], period=None)
+        self.assertEqual((meta["opening_balance"], meta["period_source"]), (None, "transactions"))
+        self.assertTrue(any("no printed period" in w for w in meta["_warnings"]))
+
+    def test_a_new_balance_inside_the_period_is_not_the_closing_balance(self):
+        meta = self.meta([self.marker("Previous balance 10/01/2026"), self.marker("New balance 10/15/2026", "125.00")])
+        self.assertEqual(meta["closing_balance"], None)
+        self.assertTrue(any("outside the printed statement period" in w for w in meta["_warnings"]))
+
+    def test_an_unreadable_period_line_gives_no_period_or_balances(self):
+        for text in ("Statement 09/31/2026 to 10/31/2026", "Statement 10/31/2026 to 10/01/2026"):
+            with self.subTest(text):
+                from bookkeeping.connectors.bankcsv import _period_line
+                printed = _period_line([text], "%m/%d/%Y")
+                self.assertIsInstance(printed, str)
+                meta = self.meta([self.marker("Previous balance 10/01/2026"),
+                                  self.marker("New balance 10/31/2026", "125.00")], period=printed)
+                self.assertEqual((meta["period_source"], meta["opening_balance"]), ("transactions", None))
+                self.assertTrue(any("cannot be read as two dates" in w for w in meta["_warnings"]))
+
+    def test_two_different_balance_lines_of_one_kind_give_nothing(self):
+        meta = self.meta([self.marker("Previous balance 10/01/2026"), self.marker("Previous balance 10/01/2026", "90.00"),
+                          self.marker("New balance 10/31/2026", "125.00")], period=None)
+        self.assertEqual((meta["period_source"], meta["opening_balance"]), ("transactions", None))
+        self.assertTrue(any("two different balance lines" in w for w in meta["_warnings"]))
+
+    def test_a_bank_file_with_an_unreadable_balance_date_takes_nothing_from_that_line(self):
+        rows = ParsedCsv([ParsedRow(4, "2026-10-02", "deposit", Decimal("25"))])
+        markers = [self.marker("Beginning balance as of 09/31/2026"), self.marker("Ending balance as of 10/31/2026", "125.00")]
+        meta = _statement_metadata(rows, markers, "asset")
+        self.assertEqual((meta["opening_balance"], meta["period_start"]), (None, "2026-10-02"))
+        self.assertEqual((meta["closing_balance"], meta["period_end"]), (Decimal("125.00"), "2026-10-31"))
+        self.assertTrue(any("cannot be read" in w for w in meta["_warnings"]))
 
 
 class StatementScenarioTests(unittest.TestCase):
