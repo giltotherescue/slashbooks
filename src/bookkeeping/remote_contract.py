@@ -117,6 +117,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
             mutates = args.apply
     if path in {("entity", "set-view"), ("entity", "set-tax-method"), ("entity", "set-fiscal-year"),
                 ("entity", "set-tax-profile"), ("entity", "set-currency"), ("entity", "set-reporting-goals"),
+                ("entity", "set-books-from"),
                 ("ledger", "reclassify"), ("entity", "account-remove"), ("entity", "chart-adopt"), ("entity", "chart-present")} and not args.apply:
         mutates = False  # The default is a preview; --apply changes the company.
     if path in {("accrual", "schedule", "tax-treatment"), ("accrual", "schedule", "deposit-kind"), ("accrual", "item", "deposit-kind")}:

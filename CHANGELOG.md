@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Let a company record history before 2026. A company created with no cutover
+  opened every starter category on a fixed date, 2026-01-01, and new categories
+  got the same date. Because the books refuse an entry before an account's open
+  date, such a company could not record a 2025 entry. A fiscal year is not a
+  posting start, so the books start is now a date that a person states:
+  - `books entity init PATH --books-from YYYY-MM-DD` opens the starter income,
+    expense and equity accounts on that day. Bank, card and other balance sheet
+    accounts keep their own start. Without it, the behavior is as before.
+  - `books entity account-add` without `--open-date` opens a new income,
+    expense or equity account on the books scope (or the company cutover). An
+    existing account keeps its open date.
+  - `books entity set-books-from PATH --books-from YYYY-MM-DD [--account
+    ACCOUNT ...] [--apply --plan-hash H]` previews and applies a books scope
+    for an existing company. Only income, expense and equity accounts whose
+    open date is the fixed 2026-01-01 fallback move, by recorded provenance,
+    by the starter chart of a company created before this change, or because a
+    person names them after review. It refuses a scope before a cutover, before
+    a QuickBooks or accrual opening, or over a closed period. No entry changes.
+  - The ledger records where each open date came from (`open_date_provenance`).
+    New companies therefore have different ledger digests; their reports do
+    not change.
+
 - Record a card payment one time when it shows in two files. A payment from
   checking to a card shows as a row in the bank file and as a row in the card
   file. If a person recorded each row against the other account, the payment

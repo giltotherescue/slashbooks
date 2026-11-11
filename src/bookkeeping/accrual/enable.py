@@ -254,7 +254,7 @@ def apply_enable(entity: Entity, plan: Any) -> dict[str, Any]:
             if accounts:
                 from ..ledger.model import Open
                 opens = [Open(day, account, (entity.currency,)) for account in accounts]
-                store.insert_opens(opens, conn)
+                store.insert_opens(opens, conn, provenance="opening")
                 if store.has_financial_kinds(conn):
                     store.assign_financial_kinds(_starter_financial_kinds(opens), conn)
             store.append_audit_event("accrual-enabled", {

@@ -1,7 +1,7 @@
 {
   "as_of": "2026-01-31",
   "basis": "accrual",
-  "canonical_digest": "3c9a5d9b0c9d3693df1d547582ee3d12f12312d61dcea5229dc399af2fa9b860",
+  "canonical_digest": "233fde10dcae6f608ac6a9cec2508b2d117ade2a84ce4c48bee66ab531702f92",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -89,7 +89,7 @@
     "verified": true
   },
   "currency": "USD",
-  "fingerprint": "54b7792f466f643e7a2c264d92054643102a9c2dca137f63e974999278fd5069",
+  "fingerprint": "501175c656936cd578638e868f9029579caf208c2f433e1865961ddb7eef069e",
   "from_date": null,
   "issues": [],
   "kind": "outstanding",

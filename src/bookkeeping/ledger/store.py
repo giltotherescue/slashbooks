@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .model import Balance, Entry, Open, Posting
 
@@ -63,6 +63,34 @@ def validate_financial_kind(account: str, kind: str) -> None:
         raise ValueError("Financial kind does not match the account's accounting type.")
 
 STORE_FILENAME = "ledger.sqlite"
+
+# The meta key of the open-date provenance record (``bookkeeping.books_from``). Meta is part of the content
+# digest, so the audit seal covers the record, and an earlier engine reads and keeps it as an unknown key.
+OPEN_DATE_PROVENANCE_KEY = "open_date_provenance"
+OPEN_DATE_SOURCES = frozenset({"default", "scope", "cutover", "user", "import", "opening", "legacy"})
+
+
+def _iso_day(value: Any) -> bool:
+    try:
+        return isinstance(value, str) and date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def _check_provenance(record: Any) -> None:
+    """Refuse a provenance record of the wrong shape."""
+    valid = (isinstance(record, dict) and set(record) == {"version", "books_from", "books_from_source", "accounts"}
+             and record["version"] == 1 and isinstance(record["accounts"], dict)
+             and (record["books_from"] is None or _iso_day(record["books_from"]))
+             and record["books_from_source"] in ((None,) if record["books_from"] is None else ("scope", "cutover")))
+    if valid:
+        for name, marker in record["accounts"].items():
+            if (not isinstance(name, str) or not isinstance(marker, dict) or set(marker) != {"source", "open_date"}
+                    or marker["source"] not in OPEN_DATE_SOURCES or not _iso_day(marker["open_date"])):
+                valid = False
+                break
+    if not valid:
+        raise ValueError("The open-date provenance record of the ledger is not valid.")
 
 
 _DDL = """
@@ -387,8 +415,47 @@ class LedgerStore:
             row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
             return str(row[0]) if row else None
 
-    def insert_opens(self, opens: Sequence[Open], conn: sqlite3.Connection) -> None:
+    def load_open_date_provenance(self, conn: sqlite3.Connection) -> dict[str, Any] | None:
+        """The open-date provenance record (``bookkeeping.books_from``), or ``None`` for a ledger made before it.
+
+        A record that is not valid refuses, so a damaged record is never read as evidence.
+        """
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (OPEN_DATE_PROVENANCE_KEY,)).fetchone()
+        if row is None:
+            return None
+        try:
+            record = json.loads(str(row[0]))
+        except ValueError:
+            record = None
+        _check_provenance(record)
+        return record
+
+    def save_open_date_provenance(self, record: dict[str, Any], conn: sqlite3.Connection) -> None:
+        _check_provenance(record)
+        self.set_meta(OPEN_DATE_PROVENANCE_KEY, _json(record), conn)
+
+    def forget_open_date_provenance(self, accounts: Sequence[str], conn: sqlite3.Connection) -> None:
+        """Remove the markers of accounts that leave the catalog."""
+        record = self.load_open_date_provenance(conn)
+        if record is not None and any(name in record["accounts"] for name in accounts):
+            for name in accounts:
+                record["accounts"].pop(name, None)
+            self.save_open_date_provenance(record, conn)
+
+    def insert_opens(self, opens: Sequence[Open], conn: sqlite3.Connection,
+                     provenance: str | Mapping[str, str] | None = "import") -> None:
+        """Insert or update catalog accounts. An existing account keeps the earlier of its two open dates.
+
+        When the ledger keeps an open-date provenance record, an account whose open date this call sets (a new
+        account, an earlier date, or the same date) gets the marker ``provenance``: one source for every
+        account, or a source for each account name. ``None`` leaves the markers as they are; use it only for a
+        call that does not state an open date.
+        """
+        record = self.load_open_date_provenance(conn) if provenance is not None else None
+        marked = False
         for item in opens:
+            before = conn.execute("SELECT open_date FROM accounts WHERE name = ?", (item.account,)).fetchone() \
+                if record is not None else None
             conn.execute(
                 """INSERT INTO accounts (name, currency, open_date)
                    VALUES (?, ?, ?)
@@ -404,6 +471,14 @@ class LedgerStore:
                     item.date.isoformat(),
                 ),
             )
+            if record is not None:
+                day = item.date.isoformat()
+                if before is None or day <= str(before[0])[:10]:
+                    source = provenance.get(item.account, "import") if isinstance(provenance, Mapping) else provenance
+                    record["accounts"][item.account] = {"source": str(source), "open_date": day}
+                    marked = True
+        if record is not None and marked:
+            self.save_open_date_provenance(record, conn)
 
     def has_financial_kinds(self, conn: sqlite3.Connection) -> bool:
         row = conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()

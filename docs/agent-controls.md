@@ -234,17 +234,76 @@ At import, a row that a learned category would post goes to Review instead,
 with `review_hold_reason` set to the code.
 
 A ledger write cannot move the open date of an account in the catalog to an
-earlier day (`open_date_change_not_authorized`). Two commands set open dates,
-with their existing permission rules:
+earlier day (`open_date_change_not_authorized`). Three commands set open dates,
+with their own permission rules:
 
 - `books entity account-add --entity PATH --account ACCOUNT --open-date YYYY-MM-DD`
   moves an open date earlier. The trusted preparation boundary does not support
   this command, so standing automation cannot run it.
 - `books accrual opening apply` sets the open dates of its chart from its
   preview.
+- `books entity set-books-from --apply` moves fallback-dated income, expense
+  and equity accounts to a books scope that a person previewed (see below).
 
 Before you move an open date, check whether an opening balance already includes
 the earlier activity.
+
+### The books scope (`books_from`)
+
+A fiscal-year boundary is not a posting start. A business can start its books
+for 2026 and still need its 2025 entries. Income, expense and equity accounts
+have no outside record of their own, so they open on the books scope: the
+earliest day that the books may hold entries. Bank, card and other balance
+sheet accounts never open on the books scope. Each needs its own start (an
+explicit `--open-date`, a cutover or an opening balance), so a row on a bank
+account before that account's start stays refused with
+`source_catalog_conflict`.
+
+- `books entity init PATH --books-from YYYY-MM-DD` opens the starter income,
+  expense and equity accounts on that day. Starter balance sheet accounts keep
+  the fallback date, 2026-01-01. With `--cutover-date`, every starter account
+  opens on the cutover, as before, and the cutover is the books scope. A
+  `--books-from` that differs from `--cutover-date` is refused.
+- Without `--books-from` and `--cutover-date`, every starter account opens on
+  the fallback date 2026-01-01, as before.
+- `books entity account-add` without `--open-date` opens a new income, expense
+  or equity account on the books scope, and another new account on the
+  fallback date. An existing account keeps its open date.
+
+The ledger meta key `open_date_provenance` records the books scope and the
+source of each account's open date: `default` (the fallback), `scope`,
+`cutover`, `user` (`--open-date`), `import`, `opening` or `legacy` (in the
+catalog before the record existed). The audit seal covers it.
+
+`books entity set-books-from PATH --books-from YYYY-MM-DD` previews a new books
+scope and writes nothing. It lists each account that moves, with its
+`evidence`, and each account that stays, with its `reason`. `--apply
+--plan-hash H` runs only the previewed plan and writes the audit event
+`books-from-set`. No entry changes. A replay of an applied plan returns
+`already_applied`. Standing automation cannot run this command.
+
+An account moves only when it is an income, expense or equity account, no bank
+or CSV mapping names it, and one of these is true:
+
+- its open date has the provenance `default` or `scope`;
+- the company has no provenance record (it was created before the record
+  existed) and no cutover, the account is in the starter chart of its business
+  type, and it opens on 2026-01-01;
+- it has no reliable provenance, it opens on 2026-01-01, and a person names it
+  with `--account` after review. The preview lists these accounts in
+  `effects.uncertain`.
+
+A date of 2026-01-01 alone is not evidence. An account with `user`, `import`,
+`opening` or `cutover` provenance never moves. The preview refuses a scope
+before the company cutover (`scope_before_cutover`), before a QuickBooks or
+accrual opening (`scope_before_opening`), later than the current scope
+(`scope_not_earlier`), or over a closed period (`closed_period`). A statement
+opening is for one account, so the preview lists it in `openings` and does not
+refuse.
+
+The books scope does not change the books start policy below. The ledger write
+checks the policy on each in-scope line after the open-date rule, so a wider
+category open date never lets a refused row through.
 
 The exact reversal of an entry in the books is allowed, so a person can remove
 an early posting that an older version recorded. An exact reversal has the

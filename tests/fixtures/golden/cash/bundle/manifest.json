@@ -259,7 +259,7 @@
   ],
   "format": "slashbooks-company-snapshot",
   "ledger": {
-    "content_sha256": "a19da262c8a09f6178f058894650049e041c71d68028537446b73ebc8b693aa5",
+    "content_sha256": "042febf41ea82445db72925b5fdc484f973721750c1db6f5d3b4810657aef594",
     "schema_version": 1,
     "tables": {
       "accounts": {
@@ -268,7 +268,7 @@
       },
       "audit_events": {
         "rows": 150,
-        "sha256": "177ae720169bddf3feec6c753c5c8a7f6c4a4022ab5acfd687f7cca3ec71b962"
+        "sha256": "c65db9626e401186bb1d09c0c88a10a94a5155f000f5f383d68620a3a4f7767d"
       },
       "balance_assertions": {
         "rows": 0,
@@ -283,8 +283,8 @@
         "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       "meta": {
-        "rows": 6,
-        "sha256": "963b03aab9286e4e93f8c86c3eb92c9af5f9035f191cc5053d9c98b3f299250f"
+        "rows": 7,
+        "sha256": "03be696c71557a0298d21e618875533c2605adeb1b9acfa663175aa7118b6aa1"
       },
       "postings": {
         "rows": 73,
