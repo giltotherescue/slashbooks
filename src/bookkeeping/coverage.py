@@ -561,18 +561,27 @@ def _continuity(account: str, label: str, statements: Sequence[StatementRecord],
 
 def _month_tieout(records: Sequence[StatementRecord], ties: Mapping[str, dict[str, Any]],
                   first: date, last: date) -> dict[str, Any] | None:
-    """The statement tie-out for one month, only when one statement is exactly that month.
+    """The statement tie-out for one month, when one statement closes on the month's last day.
 
-    A statement that spans several months (or covers part of a month, or
-    shares the month with another statement) cannot prove a month boundary, so
-    the month is ``not_aligned``. A month with no statement has no tie-out.
+    The month gets the tie-out of the one statement that overlaps it when that
+    statement is exactly the month, or when it ends on the last day of the
+    calendar month and starts on or before the month's first day (a statement
+    of several months gives its tie-out to its end month). The statement
+    closing balance is then a balance on the month's last day. Other months
+    that such a statement covers, a statement that covers part of a month, and
+    a month that two statements share cannot prove a month-end balance, so the
+    month is ``not_aligned``. A month with no statement has no tie-out.
     """
     overlapping = [r for r in records if r.kind == "statement" and r.period_start <= last
                    and r.period_end >= first]
     if not overlapping:
         return None
-    if len(overlapping) == 1 and (overlapping[0].period_start, overlapping[0].period_end) == (first, last):
-        return dict(ties[overlapping[0].statement_id])
+    if len(overlapping) == 1:
+        record = overlapping[0]
+        month_end = _month_bounds(last.year, last.month)[1]
+        if (record.period_start, record.period_end) == (first, last) or (
+                record.period_end == last == month_end and record.period_start <= first):
+            return dict(ties[record.statement_id])
     return tieout_module.not_aligned(overlapping[0].statement_id if len(overlapping) == 1 else None)
 
 
@@ -743,7 +752,12 @@ def check_coverage(
 
 
 def readiness_items(document: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Convert a coverage document into readiness blockers and warnings."""
+    """Convert a coverage document into readiness blockers and warnings.
+
+    A statement tie-out that differs gives one ``statement_tieout_differs`` item: a blocker when the
+    statement ends inside the document period, a warning when staged rows explain the whole difference or
+    when the statement ends after the period.
+    """
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     for account in document.get("accounts", []):
@@ -765,7 +779,16 @@ def readiness_items(document: Mapping[str, Any]) -> tuple[list[dict[str, Any]], 
             if tie.get("status") == "differs":
                 waiting = (f" {tie['waiting_rows']} row(s) are staged for review in this period."
                            if tie.get("waiting_rows") else "")
-                warnings.append({
+                # Rows that wait in review and add up to the whole difference explain it: the books are not
+                # finished, not wrong. The waiting rows are open work, which readiness reports on its own.
+                explained = bool(tie.get("waiting_rows")) and tie.get("waiting_total") == tie.get("difference")
+                if explained:
+                    waiting += " Those rows explain the whole difference."
+                # A statement that closes inside the checked period proves a balance that the period's books
+                # must agree with, so its difference blocks. A statement that closes after the period is a warning.
+                closes_in_period = document.get("from", "") <= statement.get("to", "") <= document.get("to", "")
+                target = blockers if closes_in_period and not explained else warnings
+                target.append({
                     "code": "statement_tieout_differs",
                     "message": (f"{account['label']} statement {statement['statement_id']} closes at "
                                 f"{tie['statement_balance']}, but the books imply {tie['books_balance_through']} "

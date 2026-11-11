@@ -185,11 +185,12 @@ unresolved with the reason `above_ask_first_amount`.
 always enforced, and the lower of the company and standing-policy limits applies. Outside it, the limit is enforced when
 `SLASHBOOKS_ENFORCE_ASK_FIRST=1`. Then `queue propose`, `propose-group`,
 `propose-split`, `propose-transfer`, `confirm`, `confirm-group`,
-`confirm-split`, `confirm-transfer` and `correct` refuse an item above the
-limit before any write. The command exits with code 1 and prints
+`confirm-split`, `confirm-transfer`, `confirm-transfer-match` and `correct`
+refuse an item above the limit before any write. The command exits with code 1 and prints
 `{"error": {"code": "above_ask_first_amount", "message": "..."}}` on standard
 error. A split compares the amount of its source transaction. A transfer pair
-compares the absolute amount of the pair. `confirm-group` and `propose-group`
+compares the absolute amount of the pair. A transfer match compares the
+absolute amount of the staged row. `confirm-group` and `propose-group`
 check every item first.
 
 **Routes that do not check the limit.** Routine captured decisions (a person

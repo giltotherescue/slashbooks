@@ -245,6 +245,46 @@ class CoverageTieoutTests(unittest.TestCase):
         # A month with no statement has no tie-out.
         self.assertIsNone(self.months(self.check())["2026-03"]["tieout"])
 
+    def test_statement_of_several_months_ties_its_end_month(self):
+        # Three months on one statement: August and September cannot prove a month-end balance, but the
+        # statement closes on the last day of October, so October gets the statement tie-out.
+        post(self.company, CHECKING, "2026-08-10", "2000.00")
+        post(self.company, CHECKING, "2026-09-10", "-500.00")
+        post(self.company, CHECKING, "2026-10-05", "-1250.00", other="Liabilities:CreditCard:Visa")
+        post(self.company, CHECKING, "2026-10-06", "-1250.00", other="Liabilities:CreditCard:Visa")  # recorded twice
+        statement(self.company, "q3", "2026-08-01", "2026-10-31", "5000.00", "5250.00")
+        document = self.check("2026-08-01", "2026-10-31")
+        months = self.months(document)
+        for key in ("2026-08", "2026-09"):
+            self.assertEqual((months[key]["tieout"]["status"], months[key]["tieout"]["statement_id"]),
+                             ("not_aligned", "q3"))
+        tie = months["2026-10"]["tieout"]
+        self.assertEqual(tie, {"status": "differs", "statement_id": "q3", "statement_balance": "5250.00",
+                               "books_balance_through": "4000.00", "difference": "1250.00",
+                               "waiting_rows": 0, "waiting_total": "0.00"})
+        blockers, _ = readiness_items(document)
+        [warning] = [w for w in blockers if w["code"] == "statement_tieout_differs"]
+        self.assertEqual(warning["refs"], [CHECKING, "q3"])
+        self.assertIn("(difference 1250.00)", warning["message"])
+        # The month check of October alone sees the same statement.
+        self.assertEqual(self.months(self.check("2026-10-01", "2026-10-31"))["2026-10"]["tieout"]["difference"],
+                         "1250.00")
+
+    def test_statement_of_several_months_with_no_difference_matches_its_end_month(self):
+        post(self.company, CHECKING, "2026-08-10", "2000.00")
+        post(self.company, CHECKING, "2026-10-05", "-1250.00", other="Liabilities:CreditCard:Visa")
+        statement(self.company, "q3", "2026-08-01", "2026-10-31", "5000.00", "5750.00")
+        months = self.months(self.check("2026-08-01", "2026-10-31"))
+        self.assertEqual((months["2026-10"]["tieout"]["status"], months["2026-10"]["tieout"]["difference"]),
+                         ("matches", "0.00"))
+        # A period that ends before the month does not see the statement's month-end balance.
+        partial = self.months(self.check("2026-08-01", "2026-10-15"))
+        self.assertEqual(partial["2026-10"]["tieout"]["status"], "not_aligned")
+        # A second statement in the end month leaves the month not_aligned.
+        statement(self.company, "oct-extra", "2026-10-01", "2026-10-31", "4500.00", "3250.00")
+        self.assertEqual(self.months(self.check("2026-08-01", "2026-10-31"))["2026-10"]["tieout"]["status"],
+                         "not_aligned")
+
     def test_reversal_nets_out(self):
         post(self.company, CHECKING, "2026-01-10", "300.00")
         post(self.company, CHECKING, "2026-01-12", "-300.00")  # the reversal
@@ -287,17 +327,47 @@ class CoverageTieoutTests(unittest.TestCase):
             document = check_coverage(bare, date(2026, 1, 1), date(2026, 1, 31), accounts=[CHECKING])
             self.assertEqual(document["accounts"][0]["months"][0]["tieout"]["status"], "matches")
 
-    def test_readiness_warning_not_blocker(self):
+    def test_readiness_blocks_the_month_in_which_a_differing_statement_ends(self):
         post(self.company, CHECKING, "2026-01-10", "100.00")
         statement(self.company, "jan", "2026-01-01", "2026-01-31", "0.00", "90.00")
         blockers, warnings = readiness_items(self.check("2026-01-01", "2026-01-31"))
+        # One item, in blockers only, so a host shows the message one time.
+        self.assertEqual([w for w in warnings if w["code"] == "statement_tieout_differs"], [])
+        [blocker] = [b for b in blockers if b["code"] == "statement_tieout_differs"]
+        self.assertEqual(blocker, {
+            "code": "statement_tieout_differs",
+            "message": "Checking statement jan closes at 90.00, but the books imply 100.00 (difference -10.00).",
+            "refs": [CHECKING, "jan"]})
+        statement(self.company, "feb", "2026-02-01", "2026-02-28", "90.00", "90.00")
+        blockers, clean = readiness_items(self.check("2026-02-01", "2026-02-28"))
+        self.assertEqual([w for w in blockers + clean if w["code"] == "statement_tieout_differs"], [])
+
+    def test_statement_that_ends_after_the_period_is_a_warning(self):
+        post(self.company, CHECKING, "2026-08-10", "100.00")
+        statement(self.company, "q3", "2026-08-01", "2026-10-31", "0.00", "90.00")
+        blockers, warnings = readiness_items(self.check("2026-08-01", "2026-08-31"))
+        self.assertNotIn("statement_tieout_differs", [b["code"] for b in blockers])
+        self.assertEqual([w["refs"] for w in warnings if w["code"] == "statement_tieout_differs"], [[CHECKING, "q3"]])
+        blockers, warnings = readiness_items(self.check("2026-10-01", "2026-10-31"))
+        self.assertEqual([b["refs"] for b in blockers if b["code"] == "statement_tieout_differs"], [[CHECKING, "q3"]])
+        self.assertNotIn("statement_tieout_differs", [w["code"] for w in warnings])
+
+    def test_difference_that_waiting_rows_explain_is_a_warning(self):
+        post(self.company, CHECKING, "2026-01-10", "100.00")
+        statement(self.company, "jan", "2026-01-01", "2026-01-31", "0.00", "75.00")
+        stage(self.company, [{"id": "a", "date": "2026-01-20", "amount": "-25.00", "accountId": "feed-chk"}])
+        blockers, warnings = readiness_items(self.check("2026-01-01", "2026-01-31"))
         self.assertNotIn("statement_tieout_differs", [b["code"] for b in blockers])
         [warning] = [w for w in warnings if w["code"] == "statement_tieout_differs"]
-        self.assertEqual(warning["refs"], [CHECKING, "jan"])
-        self.assertIn("-10.00", warning["message"])
-        statement(self.company, "feb", "2026-02-01", "2026-02-28", "90.00", "90.00")
-        _, clean = readiness_items(self.check("2026-02-01", "2026-02-28"))
-        self.assertEqual([w for w in clean if w["code"] == "statement_tieout_differs"], [])
+        self.assertEqual(warning["message"], (
+            "Checking statement jan closes at 75.00, but the books imply 100.00 (difference -25.00). "
+            "1 row(s) are staged for review in this period. Those rows explain the whole difference."))
+        # A waiting row that explains only part of the difference does not make it a warning.
+        stage(self.company, [{"id": "a", "date": "2026-01-20", "amount": "-20.00", "accountId": "feed-chk"}])
+        blockers, warnings = readiness_items(self.check("2026-01-01", "2026-01-31"))
+        [blocker] = [b for b in blockers if b["code"] == "statement_tieout_differs"]
+        self.assertTrue(blocker["message"].endswith("1 row(s) are staged for review in this period."))
+        self.assertNotIn("statement_tieout_differs", [w["code"] for w in warnings])
 
     def test_coverage_check_stays_read_only(self):
         post(self.company, CHECKING, "2026-01-10", "100.00")

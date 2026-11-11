@@ -219,7 +219,11 @@ class CoverageTests(unittest.TestCase):
         statement(self.company, "chk-01", "2026-01-01", "2026-01-31", "100.00", "150.00")
         statement(self.company, "chk-02", "2026-02-01", "2026-02-28", "149.00", "150.00")
         blockers, warnings = readiness_items(self.check(end="2026-02-28", accounts=[CHECKING]))
-        self.assertEqual({item["code"] for item in blockers}, {"source_balance_discontinuity"})
+        # The books do not agree with these synthetic statements, and both end in the period, so their
+        # tie-outs block too.
+        self.assertEqual({item["code"] for item in blockers},
+                         {"source_balance_discontinuity", "statement_tieout_differs"})
+        self.assertNotIn("statement_tieout_differs", {item["code"] for item in warnings})
         self.assertTrue(all(set(item) == {"code", "message", "refs"} for item in blockers + warnings))
         blockers, _ = readiness_items(self.check(start="2026-03-01", end="2026-03-31", accounts=[CHECKING]))
         self.assertEqual(blockers[0]["code"], "source_month_missing")

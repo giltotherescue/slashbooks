@@ -284,7 +284,8 @@ def waiting_rows(document):
 
 
 def tieout_warnings(document):
-    return [w for w in document["warnings"] if w["code"] == "statement_tieout_differs"]
+    """The statement tie-out item: a blocker when the books differ, a warning when staged rows explain it."""
+    return [w for w in document["blockers"] + document["warnings"] if w["code"] == "statement_tieout_differs"]
 
 
 class ReadinessWaitingCountTests(DispositionFixture):

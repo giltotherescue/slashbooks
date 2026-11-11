@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+- Record a card payment one time when it shows in two files. A payment from
+  checking to a card shows as a row in the bank file and as a row in the card
+  file. If a person recorded each row against the other account, the payment
+  was in the books two times and cash was wrong. New commands, all with JSON
+  output:
+  - `books queue transfer-matches --entity PATH --source-id ID
+    --counter-account ACCOUNT [--date-tolerance-days 3]` (read-only,
+    `find_transfer_matches`) finds the other side of one staged row on another
+    own bank or card account: a staged row with the exact opposite amount
+    (`match_type: "staged"`, record it with `propose-transfer` and
+    `confirm-transfer`), or a posted entry from that account's own row whose
+    line on this row's account has this row's exact amount (`match_type:
+    "posted"`). Dates are at most 3 days apart. Every match is returned,
+    nearest date first; none is chosen.
+  - `books queue confirm-transfer-match --entity PATH --source-id ID
+    --entry-id N` (`confirm_transfer_match`) records the staged row as the
+    other side of the posted entry. It writes no new entry and changes no entry.
+    The row is kept in the ledger with the source status `matched_to_entry`
+    and a `transferMatch` link to the entry, and it leaves review. Statement
+    import checks count the row at the amount of the linked entry line. It
+    applies the ask-first amount.
+  - `books queue transfer-doubles --entity PATH [--date-tolerance-days 3]`
+    (read-only, `find_transfer_doubles`) lists transfers that are already in
+    the books two times, as pairs of entries. It repairs nothing.
+  - `books queue propose-transfer` and `confirm-transfer` accept `--json`.
+  The remote contract classifies `transfer-matches` and `transfer-doubles` as
+  reads.
+- Month-end tie-out for a statement of several months. A statement that ends
+  on the last day of a month now gives that month its tie-out in `books
+  coverage check`, also when the statement starts in an earlier month. The
+  other months of the statement stay `not_aligned`.
+- A statement whose closing balance differs from the books now blocks
+  readiness for the period in which the statement ends. The readiness item
+  keeps the code `statement_tieout_differs` and moves from `warnings` to
+  `blockers`; it is in one list only. It stays a warning when staged rows in
+  the statement period add up to the whole difference (the message then says
+  so), and when the statement ends after the checked period.
+- Card statement CSV files: a printed period line such as `Statement
+  10/01/2026 to 10/31/2026`, or the dates of the previous and new balance
+  lines, is the statement period, so coverage no longer reports missing days at
+  the edges of the period. The printed period is a confirmed period. The
+  printed balances are recorded only when the rows prove their sign, in the
+  statement presentation (money owed is positive).
+
 - Add `opening_presentation.opening_presentation(entry, accounts,
   financial_kinds)`, a pure, read-only function that gives the opening balance
   of each account of an opening entry in the presentation sign: money held for

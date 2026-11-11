@@ -136,6 +136,10 @@ reversal when `--replace` moves it. That entry is the account's balance on its
 first day, not a bank transaction, so no event counts it: it is not `imported`,
 `recorded` or `corrected`.
 
+`books queue confirm-transfer-match` writes no entry and changes no
+suggestion. It records a staged row as the other side of an entry that is
+already in the books, so it gives no event.
+
 ## Determinism and replay
 
 - The same books before a command and the same command give the same events,

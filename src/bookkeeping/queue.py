@@ -2099,6 +2099,265 @@ def find_transfer_exceptions(entity: Entity, date_tolerance_days: int = 3) -> li
     return sorted(exceptions, key=lambda exception: (exception["date"], exception["source_id"]))
 
 
+# A staged row recorded as the other side of an entry that is already in the books. The row is kept in
+# ``source_transactions`` with this status and a ``transferMatch`` link; no entry is written for it.
+TRANSFER_MATCH_STATUS = "matched_to_entry"
+TRANSFER_MATCH_KEY = "transferMatch"
+TRANSFER_WINDOW_DAYS = 3
+
+
+def _txn_ledger_account(entity: Entity, txn: dict) -> str:
+    from .ledger.importer import _ledger_account_for_txn
+    return _ledger_account_for_txn(
+        txn, entity.entity_config.get("bank_account_mappings"), entity.entity_config.get("csv_account_mappings"))
+
+
+def _strict_txn_date(txn: dict) -> date:
+    try:
+        return date.fromisoformat(str(txn.get("date") or "")[:10])
+    except ValueError as exc:
+        raise ValueError(f"Source '{txn.get('id')}' has no readable date.") from exc
+
+
+def _posted_transfer_legs(entity: Entity) -> list[dict]:
+    """Posted two-line entries that a bank or card row created, one row per entry. Read-only.
+
+    Each row names the entry, the account of the source row behind it (``account``) with the amount on that
+    account, and the other line (``counter_account``, ``counter_amount``). Left out: an entry that is
+    reversed or is a reversal, an entry of a transfer pair (it already has both sides), an entry with more
+    or fewer than two lines, and an entry whose source row is not in the books or does not map to one of
+    its two accounts. ``claimed_by`` is the source ID of a row already matched to the entry, else None.
+    """
+    from .ledger.store import LedgerStore, default_store_path
+    from .tieout import source_root
+
+    store_path = default_store_path(entity.path)
+    if not store_path.is_file():
+        return []
+    with LedgerStore(store_path).connection() as conn:
+        entries = conn.execute(
+            "SELECT id, date, narration, source_id, metadata_json FROM entries ORDER BY date, id").fetchall()
+        postings: dict[int, list[tuple[str, str]]] = {}
+        for entry_id, account, amount in conn.execute("SELECT entry_id, account, amount FROM postings ORDER BY entry_id, id"):
+            postings.setdefault(int(entry_id), []).append((str(account), str(amount)))
+        sources: dict[str, tuple[Any, str]] = {}
+        for sid, payload, status in conn.execute("SELECT id, payload_json, status FROM source_transactions"):
+            try:
+                sources[str(sid)] = (json.loads(payload), str(status))
+            except ValueError:
+                sources[str(sid)] = (None, str(status))  # An unreadable source row matches nothing.
+    metas = {int(row[0]): dict(json.loads(row[4] or "[]")) for row in entries}
+    by_source = {str(row[3]): metas[int(row[0])] for row in entries if row[3]}
+    reversed_ids = {meta["reverses"] for meta in metas.values() if meta.get("reverses")}
+    claimed: dict[int, str] = {}
+    for sid, (payload, status) in sources.items():
+        link = payload.get(TRANSFER_MATCH_KEY) if isinstance(payload, dict) else None
+        if status == TRANSFER_MATCH_STATUS and isinstance(link, dict) and isinstance(link.get("entry_id"), int):
+            claimed[link["entry_id"]] = sid
+    legs: list[dict] = []
+    for entry_id, day, narration, entry_source, _ in entries:
+        meta = metas[int(entry_id)]
+        lines = postings.get(int(entry_id), [])
+        if (not entry_source or entry_source in reversed_ids or meta.get("reverses") or meta.get("paired-source-id")
+                or len(lines) != 2):
+            continue
+        try:
+            root = source_root(meta, by_source)
+            payload, status = sources.get(str(root), (None, ""))
+            if not isinstance(payload, dict) or status != "posted":
+                continue
+            account = _txn_ledger_account(entity, payload)
+            amounts = {line_account: Decimal(raw).quantize(Decimal("0.01")) for line_account, raw in lines}
+            entry_day = date.fromisoformat(str(day)[:10])
+        except (ValueError, ArithmeticError):
+            continue
+        if account not in amounts or len(amounts) != 2:
+            continue
+        counter_account = next(name for name in amounts if name != account)
+        if amounts[account] + amounts[counter_account] != Decimal("0.00"):
+            continue
+        legs.append({
+            "entry_id": int(entry_id), "entry_source_id": str(entry_source), "source_id": str(root),
+            "date": entry_day, "description": str(narration or ""), "account": account,
+            "amount": amounts[account], "counter_account": counter_account,
+            "counter_amount": amounts[counter_account], "claimed_by": claimed.get(int(entry_id)),
+        })
+    return legs
+
+
+def find_transfer_matches(entity: Entity, source_id: str, counter_account: str,
+                          date_tolerance_days: int = TRANSFER_WINDOW_DAYS) -> dict:
+    """Find the other side of one staged row that a person records against another own account. Read-only.
+
+    A match is on ``counter_account`` and is dated at most ``date_tolerance_days`` from the row. It is
+    either a staged row with the exact opposite amount (``match_type`` ``staged``; record the pair with
+    ``propose_transfer`` and ``confirm_transfer``), or a posted entry that a row of ``counter_account``
+    created, whose other line is on this row's account with this row's exact signed amount (``match_type``
+    ``posted``; record the row with ``confirm_transfer_match``, which writes no entry). An entry that a row
+    is already matched to is not a match. Every match is returned, nearest date first; none is chosen.
+    """
+    if type(date_tolerance_days) is not int or date_tolerance_days < 0:
+        raise ValueError("Date tolerance must be zero or greater.")
+    txn = _get_pending_txn(entity, source_id)
+    if txn is None:
+        raise ValueError(f"Source ID '{source_id}' is not a staged transaction awaiting review.")
+    account = _txn_ledger_account(entity, txn)
+    counter_account = str(counter_account or "").strip()
+    if not counter_account.startswith(("Assets:", "Liabilities:")):
+        raise ValueError("The counter account must be an Assets: or Liabilities: ledger account.")
+    if counter_account == account:
+        raise ValueError(f"The counter account must be another account than the row's own account ({account}).")
+    amount = _txn_amount(txn)
+    day = _strict_txn_date(txn)
+    matches: list[dict] = []
+    for other in _load_pending_categorization(entity) if amount else []:
+        other_id = str(other.get("id") or "")
+        if not other_id or other_id == source_id:
+            continue
+        try:
+            if _txn_ledger_account(entity, other) != counter_account or _txn_amount(other) != -amount:
+                continue
+            other_day = _strict_txn_date(other)
+        except (ValueError, ArithmeticError):
+            continue
+        apart = abs((other_day - day).days)
+        if apart <= date_tolerance_days:
+            matches.append({
+                "match_type": "staged", "source_id": other_id, "entry_id": None, "entry_source_id": None,
+                "date": other_day.isoformat(), "amount": f"{-amount:.2f}", "account": counter_account,
+                "description": str(other.get("description") or ""), "date_days_apart": apart,
+                "action": "propose_transfer",
+            })
+    for leg in _posted_transfer_legs(entity) if amount else []:
+        if (leg["account"] != counter_account or leg["counter_account"] != account
+                or leg["counter_amount"] != amount or leg["claimed_by"] is not None):
+            continue
+        apart = abs((leg["date"] - day).days)
+        if apart <= date_tolerance_days:
+            matches.append({
+                "match_type": "posted", "source_id": leg["source_id"], "entry_id": leg["entry_id"],
+                "entry_source_id": leg["entry_source_id"], "date": leg["date"].isoformat(),
+                "amount": f"{leg['amount']:.2f}", "account": counter_account, "description": leg["description"],
+                "date_days_apart": apart, "action": "confirm_transfer_match",
+            })
+    matches.sort(key=lambda match: (match["date_days_apart"], match["match_type"] != "staged", match["date"],
+                                    match["source_id"], match["entry_id"] or 0))
+    return {
+        "schema_version": 1, "kind": "transfer_matches",
+        "source": {"source_id": source_id, "date": day.isoformat(), "amount": f"{amount:.2f}",
+                   "account": account, "description": str(txn.get("description") or "")},
+        "counter_account": counter_account, "date_tolerance_days": date_tolerance_days,
+        "count": len(matches), "matches": matches,
+    }
+
+
+def _transfer_match_result(link: dict, txn: dict, *, recovered: bool) -> dict:
+    return {
+        "schema_version": 1, "kind": "transfer_match_recorded", "source_id": str(txn.get("id") or ""),
+        "date": str(txn.get("date") or "")[:10], "amount": f"{_txn_amount(txn):.2f}",
+        "account": link["account"], "counter_account": link["counter_account"], "entry_id": link["entry_id"],
+        "entry_source_id": link["entry_source_id"], "counter_source_id": link["source_id"],
+        "source_status": TRANSFER_MATCH_STATUS, "entries_written": 0, "recovered": recovered,
+    }
+
+
+@_locked_queue_mutation
+def confirm_transfer_match(entity: Entity, source_id: str, entry_id: int, session_id: str = "queue-session",
+                           ts: Optional[str] = None, *, date_tolerance_days: int = TRANSFER_WINDOW_DAYS) -> dict:
+    """Record a staged row as the other side of a posted entry, with no new ledger entry.
+
+    The entry must be a ``posted`` match of ``find_transfer_matches`` for this row, checked again under
+    the company lock. The row is kept in the ledger's ``source_transactions`` with the status
+    ``matched_to_entry`` and a ``transferMatch`` link to the entry, in one atomic ledger write that adds
+    no entry and changes no entry. The row then leaves review. A retry after an interrupted cleanup
+    finishes the cleanup (``recovered`` true).
+    """
+    from .ledger.importer import _atomic_ledger_write_unlocked
+    from .ledger.staging import StagingStore
+    from .ledger.store import LedgerStore, default_store_path
+
+    if type(entry_id) is not int:
+        raise ValueError("The entry ID must be a whole number.")
+    store_path = default_store_path(entity.path)
+    if store_path.is_file():
+        with LedgerStore(store_path).connection() as conn:
+            row = conn.execute("SELECT payload_json, status FROM source_transactions WHERE id = ?",
+                               (source_id,)).fetchone()
+        if row is not None:
+            payload = json.loads(row[0])
+            link = payload.get(TRANSFER_MATCH_KEY) if isinstance(payload, dict) else None
+            if row[1] != TRANSFER_MATCH_STATUS or not isinstance(link, dict) or link.get("entry_id") != entry_id:
+                raise ValueError(f"Source '{source_id}' is already recorded in the books.")
+            StagingStore(entity.staging_dir).mark_seen(source_id)
+            _remove_from_pending_categorization(entity, source_id, strict=True)
+            return _transfer_match_result(link, payload, recovered=True)
+    txn = _get_pending_txn(entity, source_id)
+    if txn is None:
+        raise ValueError(f"Source ID '{source_id}' is not a staged transaction awaiting review.")
+    for item in list_queue_items(entity):
+        if item.get("status") in ACTIONABLE_QUEUE_STATUSES and source_id in (
+                [str(sid) for sid in item.get("source_ids") or []] + [str(item.get("source_id") or "")]):
+            raise ValueError(f"Source '{source_id}' has an open proposal ({item.get('source_id')}); resolve it first.")
+    leg = next((leg for leg in _posted_transfer_legs(entity) if leg["entry_id"] == entry_id), None)
+    if leg is None:
+        raise ValueError(f"Entry {entry_id} is not a live two-line entry from a bank or card row.")
+    found = find_transfer_matches(entity, source_id, leg["account"], date_tolerance_days)
+    if not any(match["match_type"] == "posted" and match["entry_id"] == entry_id for match in found["matches"]):
+        raise ValueError(
+            f"Entry {entry_id} does not match source '{source_id}': it must post {found['source']['amount']} to "
+            f"{found['source']['account']} within {date_tolerance_days} day(s) of the row, its other line must be "
+            f"on the account of its own source row, and no other row may be matched to it.")
+    _refuse_above_ask_first(entity, abs(_txn_amount(txn)))
+    link = {"entry_id": entry_id, "entry_source_id": leg["entry_source_id"], "source_id": leg["source_id"],
+            "account": found["source"]["account"], "counter_account": leg["account"]}
+    _atomic_ledger_write_unlocked(
+        entity, [], [], session_id, ts,
+        f"queue confirm transfer match source_id={source_id!r} entry_id={entry_id}",
+        [{**txn, TRANSFER_MATCH_KEY: link}], source_status=TRANSFER_MATCH_STATUS)
+    StagingStore(entity.staging_dir).mark_seen(source_id)
+    _remove_from_pending_categorization(entity, source_id, strict=True)
+    return _transfer_match_result(link, txn, recovered=False)
+
+
+def find_transfer_doubles(entity: Entity, date_tolerance_days: int = TRANSFER_WINDOW_DAYS) -> dict:
+    """Find one transfer recorded two times, once from the row of each account. Read-only; repairs nothing.
+
+    A pair is two posted entries, each from its own source row: one from a row of account A with its
+    other line on B, one from a row of B with its other line on A, with the same amount on each account
+    and dates at most ``date_tolerance_days`` apart. An entry can be in more than one pair; none is chosen.
+    """
+    if type(date_tolerance_days) is not int or date_tolerance_days < 0:
+        raise ValueError("Date tolerance must be zero or greater.")
+
+    def side(leg: dict) -> dict:
+        return {"entry_id": leg["entry_id"], "entry_source_id": leg["entry_source_id"],
+                "source_id": leg["source_id"], "date": leg["date"].isoformat(), "account": leg["account"],
+                "amount": f"{leg['amount']:.2f}", "counter_account": leg["counter_account"],
+                "description": leg["description"]}
+
+    legs = _posted_transfer_legs(entity)
+    by_side: dict[tuple[str, str, Decimal], list[dict]] = {}
+    for leg in legs:
+        by_side.setdefault((leg["account"], leg["counter_account"], leg["amount"]), []).append(leg)
+    pairs: list[dict] = []
+    for first in legs:
+        # The other entry is from a row of this entry's other account, with the same amount on this account.
+        for second in by_side.get((first["counter_account"], first["account"], first["counter_amount"]), []):
+            if second["entry_id"] <= first["entry_id"] or first["source_id"] == second["source_id"]:
+                continue
+            apart = abs((first["date"] - second["date"]).days)
+            if apart > date_tolerance_days:
+                continue
+            ordered = sorted((first, second), key=lambda leg: (leg["date"], leg["entry_id"]))
+            pairs.append({"amount": f"{abs(first['amount']):.2f}", "date_days_apart": apart,
+                          "accounts": [ordered[0]["account"], ordered[1]["account"]],
+                          "entries": [side(leg) for leg in ordered]})
+    pairs.sort(key=lambda pair: (pair["date_days_apart"], pair["entries"][0]["date"],
+                                 [entry["entry_id"] for entry in pair["entries"]]))
+    return {"schema_version": 1, "kind": "transfer_doubles", "date_tolerance_days": date_tolerance_days,
+            "count": len(pairs), "pairs": pairs}
+
+
 @_locked_queue_mutation
 def propose_transfer(entity: Entity, source_ids: list[str], reasoning: str) -> dict:
     """Create an owner-reviewable transfer proposal for two staged feed rows."""
@@ -3098,10 +3357,22 @@ def add_parser(subparsers: Any) -> None:
     transfer_exceptions_p = queue_sub.add_parser("transfer-exceptions", help="List unmatched transfer-like rows as timing or missing-source exceptions")
     transfer_exceptions_p.add_argument("--entity", required=True, help="Path to entity directory")
     transfer_exceptions_p.add_argument("--date-tolerance-days", type=int, default=3, help="Maximum date gap; default 3")
+    transfer_matches_p = queue_sub.add_parser(
+        "transfer-matches", help="Find the other side of one staged row on another own bank or card account (read-only JSON)")
+    transfer_matches_p.add_argument("--entity", required=True, help="Path to entity directory")
+    transfer_matches_p.add_argument("--source-id", required=True, dest="source_id", help="Staged source ID")
+    transfer_matches_p.add_argument("--counter-account", required=True, dest="counter_account",
+                                    help="The other own account, such as Liabilities:CreditCard:Visa")
+    transfer_matches_p.add_argument("--date-tolerance-days", type=int, default=TRANSFER_WINDOW_DAYS, help="Maximum date gap; default 3")
+    transfer_doubles_p = queue_sub.add_parser(
+        "transfer-doubles", help="Find transfers recorded two times, once from each account's row (read-only JSON)")
+    transfer_doubles_p.add_argument("--entity", required=True, help="Path to entity directory")
+    transfer_doubles_p.add_argument("--date-tolerance-days", type=int, default=TRANSFER_WINDOW_DAYS, help="Maximum date gap; default 3")
     transfer_p = queue_sub.add_parser("propose-transfer", help="Propose one audited pair of staged transfer rows")
     transfer_p.add_argument("--entity", required=True, help="Path to entity directory")
     transfer_p.add_argument("--source-id", action="append", required=True, dest="source_ids", help="One of exactly two staged source IDs")
     transfer_p.add_argument("--reasoning", required=True, help="Reasoning text (sanitized)")
+    transfer_p.add_argument("--json", action="store_true", dest="as_json", help="Print the proposal as JSON")
 
     # confirm
     conf_p = queue_sub.add_parser("confirm", help="Confirm a proposed categorization")
@@ -3126,6 +3397,16 @@ def add_parser(subparsers: Any) -> None:
     confirm_transfer_p.add_argument("--entity", required=True, help="Path to entity directory")
     confirm_transfer_p.add_argument("--item", required=True, dest="item_id", help="Transfer-pair queue item ID")
     confirm_transfer_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    confirm_transfer_p.add_argument("--json", action="store_true", dest="as_json", help="Print the confirmed item as JSON")
+    confirm_match_p = queue_sub.add_parser(
+        "confirm-transfer-match",
+        help="Record a staged row as the other side of a posted transfer entry; writes no new entry (JSON)")
+    confirm_match_p.add_argument("--entity", required=True, help="Path to entity directory")
+    confirm_match_p.add_argument("--source-id", required=True, dest="source_id", help="Staged source ID")
+    confirm_match_p.add_argument("--entry-id", required=True, type=int, dest="entry_id",
+                                 help="Entry ID of a posted match from transfer-matches")
+    confirm_match_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
+    confirm_match_p.add_argument("--date-tolerance-days", type=int, default=TRANSFER_WINDOW_DAYS, help="Maximum date gap; default 3")
 
     # correct
     corr_p = queue_sub.add_parser("correct", help="Correct a proposed categorization")
@@ -3350,9 +3631,27 @@ def run(args: Any) -> int:
                 _print_error(exc)
                 return 1
 
+        elif qcmd in {"transfer-matches", "transfer-doubles", "confirm-transfer-match"}:
+            try:
+                if qcmd == "transfer-matches":
+                    document = find_transfer_matches(entity, args.source_id, args.counter_account, args.date_tolerance_days)
+                elif qcmd == "transfer-doubles":
+                    document = find_transfer_doubles(entity, args.date_tolerance_days)
+                else:
+                    document = confirm_transfer_match(entity, args.source_id, args.entry_id, args.session_id,
+                                                      date_tolerance_days=args.date_tolerance_days)
+            except ValueError as exc:
+                _print_error(exc)
+                return 1
+            print(json.dumps(document, indent=2, sort_keys=True))
+            return 0
+
         elif qcmd == "propose-transfer":
             try:
                 item = propose_transfer(entity, args.source_ids, args.reasoning)
+                if args.as_json:
+                    print(json.dumps(item, indent=2, sort_keys=True))
+                    return 0
                 print(f"Proposed transfer pair: {item['source_id']}")
                 print("  Sources: " + ", ".join(item["source_ids"]))
                 return 0
@@ -3390,6 +3689,9 @@ def run(args: Any) -> int:
         elif qcmd == "confirm-transfer":
             try:
                 item = confirm_transfer(entity, args.item_id, args.session_id)
+                if args.as_json:
+                    print(json.dumps(item, indent=2, sort_keys=True))
+                    return 0
                 print("Confirmed transfer pair: " + ", ".join(item["source_ids"]))
                 return 0
             except (FileNotFoundError, ValueError) as exc:

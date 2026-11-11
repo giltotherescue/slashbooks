@@ -127,6 +127,23 @@ scripts/books queue propose-transfer --entity <entity-path> --source-id <first-i
 scripts/books queue confirm-transfer --entity <entity-path> --item <transfer-pair-id>
 ```
 
+When the owner says one row is a payment to or from another of the company's
+own bank or card accounts, do not propose that account as a category. First
+look for the other side. A `staged` match is recorded with `propose-transfer`
+and `confirm-transfer`. A `posted` match means the other account's row is
+already in the books: after the owner approves, record this row against that
+entry. It writes no new entry, so the payment is not counted two times. When
+the result has more than one match, show every match to the owner and let the
+owner choose; never choose one. `transfer-doubles` lists transfers that are
+already in the books two times, once from each account's row; show them to the
+owner. It changes nothing.
+
+```
+scripts/books queue transfer-matches --entity <entity-path> --source-id <id> --counter-account <other own account>
+scripts/books queue confirm-transfer-match --entity <entity-path> --source-id <id> --entry-id <entry-id>
+scripts/books queue transfer-doubles --entity <entity-path>
+```
+
 Use a split proposal when the owner has given an allocation for one source
 transaction, such as wages and payroll liabilities. Give the owner the full
 allocation and the liability effect before asking for approval. The posting

@@ -138,8 +138,18 @@ The record goes into coverage only when the statement period is known:
 | File | Period | Balances |
 |---|---|---|
 | OFX, QFX or QBO | `DTSTART` and `DTEND` of the statement. | The `LEDGERBAL` amount is the closing balance only when its `DTASOF` date is the last statement day. The opening balance is then the closing balance less the transactions in the file. |
-| CSV with a printed summary (opening and closing balance rows with dates) | The summary dates. | The summary balances (bank accounts only). |
+| CSV with a printed summary (opening and closing balance rows with dates) | The summary dates. | The summary balances (bank accounts). |
+| Card CSV with a printed period line (`Statement 10/01/2026 to 10/31/2026`) or previous and new balance lines with dates | The printed period line, else the dates of the balance lines. Every row must be inside it. | The previous and new balances, only when the rows prove their sign (see below). |
 | Any other CSV | Not known. Ask the person for the period printed on the statement. | The running balance column, when it follows the amounts. |
+
+A card file can print the amount owed as a positive or as a negative number.
+The importer records the printed card balances only when the rows connect
+them in exactly one sign: the previous balance plus the rows equals the new
+balance. The record then keeps the statement presentation (money owed is
+positive). If the rows connect them in neither sign, the import warns that rows
+can be missing or extra and records no balances. The printed period is still
+the period. A printed period that does not contain every row date is not used;
+the import warns and the period waits for a person, as for any other CSV.
 
 If the `LEDGERBAL` date is after the last statement day (many banks use the
 download date), the importer keeps the balance as `ledger_balance` and does not
@@ -291,12 +301,24 @@ the exit code is 4. A dry run reports the same.
 each month. It compares the books with the statement: the statement opening
 balance plus the books movement in the period, against the statement closing
 balance. `status` is `matches`, `differs`, `no_balances`, or `not_aligned`. A
-month gets a status only when one statement is exactly that month. A statement
-that spans months is checked on its own period and its months are
+month gets the status of a statement only when that statement is the one
+statement in the month, and it starts on or before the month's first day and
+ends on its last day. A statement that spans months is checked on its own period.
+Its end month gets its tie-out when it ends on a month's last day, because its
+closing balance is then a month-end balance. Its other months are
 `not_aligned`. `waiting_rows` counts staged rows in the period that are not in
 the books yet, so a difference can be read with the review backlog. A
-`differs` result adds the readiness warning `statement_tieout_differs`. It is a
-warning, not a blocker.
+`differs` result adds one readiness item with the code
+`statement_tieout_differs`, in `blockers` or in `warnings`, never in both:
+
+- A blocker when the statement ends inside the checked period. The books of
+  the month in which the statement ends do not agree with its printed closing
+  balance, so that month is not ready.
+- A warning when the staged rows of the statement period add up to the whole
+  difference (`waiting_total` equals `difference`). The books are not finished,
+  but nothing in them is wrong. The message says that those rows explain the
+  difference. Readiness reports staged rows in the period as open work.
+- A warning when the statement ends after the checked period.
 
 ```sh
 books statement list --entity ~/Documents/books/acme-co
