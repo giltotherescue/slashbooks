@@ -166,8 +166,20 @@ def _ledger_rows(entity: Any, account: str) -> tuple[dict[str, Decimal], set[str
         with LedgerStore(store_path).connection() as conn:
             metadata = {str(sid): dict(json.loads(raw)) for sid, raw in conn.execute(
                 "SELECT source_id,metadata_json FROM entries WHERE source_id IS NOT NULL")}
-            sources = {str(sid): json.loads(raw) for sid, raw in conn.execute(
-                "SELECT id,payload_json FROM source_transactions")}
+            from .queue import TRANSFER_MATCH_KEY, TRANSFER_MATCH_STATUS
+            from .source_ids import source_id_variants
+            sources, matched = {}, {}
+            for sid, raw, status in conn.execute("SELECT id,payload_json,status FROM source_transactions"):
+                sources[str(sid)] = json.loads(raw)
+                link = sources[str(sid)].get(TRANSFER_MATCH_KEY) if isinstance(sources[str(sid)], dict) else None
+                if status == TRANSFER_MATCH_STATUS and isinstance(link, dict) and link.get("account") == account:
+                    # A row matched to an entry from another account's row: that entry's line on this
+                    # account is this row's amount (``queue.confirm_transfer_match``). The claim is on the
+                    # lineage root; two rows on one root cannot be attributed, so the books side is unknown.
+                    root_key = source_id_variants(link.get("source_id"))
+                    if root_key in matched:
+                        raise _Unreadable
+                    matched[root_key] = str(sid)
             known = set(sources)
             from .statement_import import _txn_amount
             for raw_meta, raw in conn.execute(
@@ -179,6 +191,10 @@ def _ledger_rows(entity: Any, account: str) -> tuple[dict[str, Decimal], set[str
                     continue
                 amount = tieout._dec(raw)
                 if amount is None:
+                    continue
+                if source_id_variants(root) in matched:
+                    sid = matched[source_id_variants(root)]
+                    sums[sid] = sums.get(sid, _ZERO) + amount
                     continue
                 original_meta = metadata.get(root, {})
                 paired = original_meta.get("paired-source-id")

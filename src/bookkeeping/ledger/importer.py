@@ -423,6 +423,9 @@ def _atomic_ledger_write_unlocked(
         # catalog this transaction sees. A refusal rolls back the whole write.
         _refuse_postings_before_open(entity, conn, new_opens, new_entries, source_transactions,
                                      allow_earlier_open_dates=allow_earlier_open_dates)
+        # A reversal or a correction must keep a transfer that a source row is matched to (queue.py).
+        from ..queue import refuse_claimed_transfer_change
+        refuse_claimed_transfer_change(conn, new_entries)
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
         if finalization_receipt is not None:

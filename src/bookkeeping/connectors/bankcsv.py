@@ -42,7 +42,7 @@ import io
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -110,6 +110,13 @@ _MONEY_HEADER = re.compile(r"^\s*(amount|debit|credit|balance|running bal|withdr
 _BALANCE_LINE = re.compile(
     r"^\s*(?P<kind>beginning|opening|starting|previous|ending|closing|new)\s+balance"
     r"(?:\s+(?:as\s+of|on))?\s*(?P<date>[0-9/.\-]{6,10})?",
+    re.IGNORECASE,
+)
+
+# A printed statement period, such as "Visa ending 0042 - Statement 10/01/2026 to 10/31/2026".
+_PERIOD_LINE = re.compile(
+    r"\bstatement(?:\s+period)?(?:\s+from)?\s*:?\s*(?P<start>[0-9][0-9/.\-]{5,9})"
+    r"\s*(?:to|through|thru|-|–)\s*(?P<end>[0-9][0-9/.\-]{5,9})\b",
     re.IGNORECASE,
 )
 
@@ -888,12 +895,14 @@ def parse_rows(rows: list[list[str]], layout: JsonObject, *, kind: str | None,
     if not parsed.rows:
         raise StatementFileError("no_transactions", "The file has no posted transactions to import.")
 
+    printed_period = None
     for line_row in preamble:
         marker = _balance_marker(line_row, decimal, date_format, currency=currency)
         if marker:
             balance_markers.append(marker)
+        printed_period = printed_period or _period_line(line_row, date_format)
 
-    parsed.metadata = _statement_metadata(parsed, balance_markers, kind)
+    parsed.metadata = _statement_metadata(parsed, balance_markers, kind, printed_period)
     parsed.warnings.extend(parsed.metadata.pop("_warnings", []))
     return parsed
 
@@ -907,13 +916,21 @@ def _balance_marker(row: list[str], decimal: str, date_format: str,
         kind = "opening" if match.group("kind").lower() in {"beginning", "opening", "starting",
                                                              "previous"} else "closing"
         when = row_date
-        if match.group("date"):
+        # Date evidence is the date after the words, or any other text with digits after them in the same
+        # cell (for example "as of Sep 30, 2026"). Evidence that is present but cannot be read as a date is
+        # marked invalid, never read as "no date".
+        evidence = (match.group("date") or "") + cell[match.end():]
+        invalid = None
+        if match.group("date") or re.search(r"[0-9]", cell[match.end():]):
+            when = None
             for fmt in (date_format, *DATE_FORMATS):
                 try:
-                    when = parse_date(match.group("date"), fmt)
+                    when = parse_date(match.group("date") or "", fmt)
                     break
                 except ValueError:
                     continue
+            if when is None or re.search(r"[0-9]", cell[match.end():]):
+                when, invalid = None, evidence.strip()
         amount = None
         for other in reversed(row[index + 1:]):
             try:
@@ -924,11 +941,120 @@ def _balance_marker(row: list[str], decimal: str, date_format: str,
                 break
         if amount is None:
             return None
-        return {"kind": kind, "date": when.isoformat() if when else None, "amount": amount}
+        marker: JsonObject = {"kind": kind, "date": when.isoformat() if when else None, "amount": amount}
+        if invalid is not None:
+            marker["invalid_date"] = invalid
+        return marker
     return None
 
 
-def _statement_metadata(parsed: ParsedCsv, markers: list[JsonObject], kind: str | None) -> JsonObject:
+def _period_line(row: list[str], date_format: str) -> tuple[str, str] | str | None:
+    """The printed statement period in a line above the header, as ISO dates, or None.
+
+    A period line whose dates cannot be read, or whose start is after its end, returns the printed text, so
+    the caller can reject it with a warning instead of reading the file as having no period line.
+    """
+    for cell in row:
+        match = _PERIOD_LINE.search(cell)
+        if not match:
+            continue
+        days = []
+        for raw in (match.group("start"), match.group("end")):
+            for fmt in (date_format, *DATE_FORMATS):
+                try:
+                    days.append(parse_date(raw, fmt))
+                    break
+                except ValueError:
+                    continue
+        if len(days) == 2 and days[0] <= days[1]:
+            return days[0].isoformat(), days[1].isoformat()
+        return match.group(0).strip()
+    return None
+
+
+def _card_summary(parsed: ParsedCsv, meta: JsonObject, markers: list[JsonObject],
+                  printed_period: tuple[str, str] | str | None, warnings: list[str]) -> None:
+    """Period and balances that a card (liability) CSV prints.
+
+    The period is the printed statement period line, else the dates of the
+    previous and new balance lines. It is used only when every row is inside it.
+
+    A card file can print what is owed as a positive or as a negative number,
+    so the sign of a printed balance is not known from the file. The balances
+    are recorded only when the dates and the rows both prove them:
+
+    - the period is printed and contains every row (``period_printed``);
+    - the previous balance line is dated on the period's first day or the day
+      before it, and the new balance line on the period's last day (a line with
+      no date is read as the balance of this period);
+    - in ledger sign (a charge is negative), the opening balance plus the rows
+      equals the closing balance under exactly one of the two signs.
+
+    They are stored in ledger sign like every balance in this metadata.
+
+    Date evidence that cannot be trusted gives nothing: a period line whose
+    dates cannot be read gives no period and no balances, and two balance
+    lines of one kind that disagree give no period from those lines and no
+    balances. (A balance line with a date that cannot be read is already left
+    out by ``_statement_metadata``.)
+    """
+    if isinstance(printed_period, str):
+        warnings.append(f"The printed statement period '{printed_period}' cannot be read as two dates in "
+                        "order; no period or balance was taken from the file.")
+        return
+    found = {kind: {(m.get("date"), m["amount"]) for m in markers if m["kind"] == kind}
+             for kind in ("opening", "closing")}
+    if any(len(values) > 1 for values in found.values()):
+        warnings.append("The file prints two different balance lines of one kind; no period or balance was "
+                        "taken from them.")
+        markers = []
+    opening = next((m for m in markers if m["kind"] == "opening"), None)
+    closing = next((m for m in markers if m["kind"] == "closing"), None)
+    dates = (meta["first_transaction_date"], meta["last_transaction_date"])
+    start = printed_period[0] if printed_period else (opening or {}).get("date")
+    end = printed_period[1] if printed_period else (closing or {}).get("date")
+    if start and end and start <= dates[0] and dates[1] <= end:
+        meta["period_start"], meta["period_end"] = start, end
+        meta["period_source"] = "statement" if printed_period else "file_summary"
+        meta["period_printed"] = True
+    elif start and end:
+        warnings.append("The statement dates printed in the file do not contain every transaction date; "
+                        "the period was taken from the transactions.")
+    if not (opening or closing):
+        return
+    if opening and closing:
+        if not meta.get("period_printed"):
+            warnings.append("The printed card balances were not recorded, because the file has no printed "
+                            "period that contains every transaction.")
+            return
+        first_day = date.fromisoformat(meta["period_start"])
+        opening_ok = opening.get("date") in (None, first_day.isoformat(), (first_day - timedelta(days=1)).isoformat())
+        if not opening_ok or closing.get("date") not in (None, meta["period_end"]):
+            warnings.append("The printed card balances are dated outside the printed statement period; "
+                            "they were not recorded.")
+            return
+        total = sum((r.amount for r in parsed.rows), Decimal("0"))
+        first, last = opening["amount"], closing["amount"]
+        fits = [factor for factor in (-1, 1) if factor * first + total == factor * last]
+        if len(fits) == 2 and first == last == 0:
+            fits = [1]
+        if len(fits) == 1:
+            meta["opening_balance"] = fits[0] * first
+            meta["opening_balance_date"] = opening.get("date") or meta["period_start"]
+            meta["closing_balance"] = fits[0] * last
+            meta["closing_balance_date"] = closing.get("date") or meta["period_end"]
+            meta["balance_source"] = "file_summary"
+            return
+        if not fits:
+            warnings.append("The printed card balances do not agree with the transactions in the file in "
+                            "either sign; they were not recorded. Check for missing or extra rows.")
+            return
+    warnings.append("The file prints summary balances, but their sign is not reliable for a "
+                    "card account; they were not recorded.")
+
+
+def _statement_metadata(parsed: ParsedCsv, markers: list[JsonObject], kind: str | None,
+                        printed_period: tuple[str, str] | str | None = None) -> JsonObject:
     warnings: list[str] = []
     dates = sorted(r.date for r in parsed.rows)
     meta: JsonObject = {
@@ -943,6 +1069,14 @@ def _statement_metadata(parsed: ParsedCsv, markers: list[JsonObject], kind: str 
         "first_transaction_date": dates[0],
         "last_transaction_date": dates[-1],
     }
+    # A balance line with date evidence that cannot be read is not evidence: no balance or period comes
+    # from it. It is never read as a line with no date.
+    unreadable = [m for m in markers if m.get("invalid_date") is not None]
+    if unreadable:
+        warnings.append("A printed balance line has a date that cannot be read ("
+                        + ", ".join(sorted({str(m["invalid_date"]) for m in unreadable}))
+                        + "); no balance or period was taken from that line.")
+        markers = [m for m in markers if m.get("invalid_date") is None]
     opening = next((m for m in markers if m["kind"] == "opening"), None)
     closing = next((m for m in markers if m["kind"] == "closing"), None)
     if (opening or closing) and kind == "asset":
@@ -958,6 +1092,8 @@ def _statement_metadata(parsed: ParsedCsv, markers: list[JsonObject], kind: str 
             meta["closing_balance"] = closing["amount"]
             meta["closing_balance_date"] = closing.get("date")
         meta["balance_source"] = "file_summary"
+    elif kind == "liability":
+        _card_summary(parsed, meta, markers, printed_period, warnings)
     elif opening or closing:
         warnings.append("The file prints summary balances, but their sign is not reliable for a "
                         "card account; they were not recorded.")

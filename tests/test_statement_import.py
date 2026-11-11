@@ -499,6 +499,68 @@ class ImportTests(unittest.TestCase):
         args = parser.parse_args(["statement", "import", "f.csv", "--entity", "e", "--profile", "p", "--period-from-rows"])
         self.assertTrue(args.period_from_rows)
 
+    def test_card_csv_printed_period_and_balances_are_recorded(self):
+        from datetime import date
+
+        from bookkeeping.coverage import check_coverage
+
+        self.map("card_printed_period.csv", "visa", account=CARD)
+        result = self.imp("card_printed_period.csv", "visa")
+        stmt = result["statements"][0]
+        record = stmt["statement"]
+        self.assertEqual((record["period_start"], record["period_end"]), ("2026-10-01", "2026-10-31"))
+        self.assertEqual((record["period_source"], record["period_confirmed"]), ("statement", True))
+        self.assertEqual(stmt["coverage"], "recorded")
+        # The file prints what is owed as a positive number. The rows prove that sign, and the record
+        # keeps the statement presentation: money owed on a card is positive.
+        self.assertEqual((record["opening_balance"], record["closing_balance"]), ("1250.00", "541.75"))
+        self.assertEqual(record["balance_source"], "file_summary")
+        self.assertEqual(record["tieout"]["status"], "matches")
+        self.assertFalse(any("sign is not reliable" in w for w in stmt["warnings"]))
+        # Coverage reads the printed period, not the first and last row dates.
+        document = check_coverage(self.entity, date(2026, 10, 1), date(2026, 10, 31), accounts=[CARD])
+        [month] = document["accounts"][0]["months"]
+        self.assertEqual((month["status"], month["gaps"], month["verified"]), ("complete", [], True))
+
+    def card_variant(self, name: str, replace: dict[str, str]) -> Path:
+        text = fixture("card_printed_period.csv").read_text()
+        for old, new in replace.items():
+            text = text.replace(old, new)
+        path = self.root / name
+        path.write_text(text)
+        si.save_profile(self.entity, path, name=name.split(".")[0], ledger_account=CARD)
+        return path
+
+    def test_card_csv_balance_line_dates_give_a_confirmed_period(self):
+        path = self.card_variant("no-title.csv", {"Example Business Visa ending 0042 - Statement 10/01/2026 to 10/31/2026\n": ""})
+        record = si.import_file(self.entity, path, profile="no-title", ts="2026-02-01T00:00:00Z")["statements"][0]["statement"]
+        self.assertEqual((record["period_start"], record["period_end"]), ("2026-10-01", "2026-10-31"))
+        self.assertEqual((record["period_source"], record["period_confirmed"]), ("file_summary", True))
+        self.assertEqual((record["opening_balance"], record["closing_balance"]), ("1250.00", "541.75"))
+
+    def test_card_csv_balances_in_ledger_sign_are_converted(self):
+        path = self.card_variant("ledger-sign.csv", {",,,1250.00": ",,,-1250.00", ",,,541.75": ",,,-541.75"})
+        record = si.import_file(self.entity, path, profile="ledger-sign", ts="2026-02-01T00:00:00Z")["statements"][0]["statement"]
+        self.assertEqual((record["opening_balance"], record["closing_balance"]), ("1250.00", "541.75"))
+
+    def test_card_csv_balances_that_do_not_tie_are_not_recorded(self):
+        path = self.card_variant("wrong-balance.csv", {",,,541.75": ",,,600.00"})
+        stmt = si.import_file(self.entity, path, profile="wrong-balance", ts="2026-02-01T00:00:00Z")["statements"][0]
+        record = stmt["statement"]
+        self.assertEqual((record["opening_balance"], record["closing_balance"]), (None, None))
+        self.assertTrue(any("do not agree with the transactions" in w for w in stmt["warnings"]))
+        # The printed period is still the period.
+        self.assertEqual((record["period_start"], record["period_end"], record["period_confirmed"]),
+                         ("2026-10-01", "2026-10-31", True))
+
+    def test_card_csv_printed_period_must_contain_every_row(self):
+        path = self.card_variant("short-period.csv", {"to 10/31/2026": "to 10/20/2026"})
+        stmt = si.import_file(self.entity, path, profile="short-period", ts="2026-02-01T00:00:00Z")["statements"][0]
+        record = stmt["statement"]
+        self.assertEqual((record["period_start"], record["period_end"]), ("2026-10-02", "2026-10-29"))
+        self.assertFalse(record["period_confirmed"])
+        self.assertTrue(any("do not contain every transaction date" in w for w in stmt["warnings"]))
+
     def test_person_supplied_card_balances_use_statement_presentation(self):
         from bookkeeping import coverage
 

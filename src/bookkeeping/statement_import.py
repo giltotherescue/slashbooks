@@ -948,9 +948,11 @@ def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, la
     opening = _presented(meta.get("opening_balance"), ledger_account)
     closing = _presented(meta.get("closing_balance"), ledger_account)
     period_source = meta.get("period_source")
+    # Dates printed in the file are a confirmed period: a statement period, both summary balance dates, or a
+    # card file's printed period line or balance line dates (``period_printed``).
     confirmed = (period_source == "statement" or (
-        period_source == "file_summary" and bool(meta.get("opening_balance_date"))
-        and bool(meta.get("closing_balance_date"))))
+        period_source == "file_summary" and (meta.get("period_printed") is True or (
+            bool(meta.get("opening_balance_date")) and bool(meta.get("closing_balance_date"))))))
     if confirmed_period is not None:
         start, end = confirmed_period
         if start > end:
