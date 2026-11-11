@@ -143,9 +143,12 @@ The record goes into coverage only when the statement period is known:
 | Any other CSV | Not known. Ask the person for the period printed on the statement. | The running balance column, when it follows the amounts. |
 
 A card file can print the amount owed as a positive or as a negative number.
-The importer records the printed card balances only when the rows connect
-them in exactly one sign: the previous balance plus the rows equals the new
-balance. The record then keeps the statement presentation (money owed is
+The importer records the printed card balances only when the dates and the
+rows prove them: the printed period contains every row, the previous balance
+line is dated on the period's first day or the day before, the new balance
+line is dated on the period's last day, and the rows connect the two balances
+in exactly one sign (the previous balance plus the rows equals the new
+balance). The record then keeps the statement presentation (money owed is
 positive). If the rows connect them in neither sign, the import warns that rows
 can be missing or extra and records no balances. The printed period is still
 the period. A printed period that does not contain every row date is not used;

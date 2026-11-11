@@ -42,7 +42,7 @@ import io
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -966,10 +966,16 @@ def _card_summary(parsed: ParsedCsv, meta: JsonObject, opening: JsonObject | Non
 
     A card file can print what is owed as a positive or as a negative number,
     so the sign of a printed balance is not known from the file. The balances
-    are recorded only when the rows prove it: in ledger sign (a charge is
-    negative), the opening balance plus the rows must equal the closing
-    balance under exactly one of the two signs. They are stored in ledger sign
-    like every balance in this metadata.
+    are recorded only when the dates and the rows both prove them:
+
+    - the period is printed and contains every row (``period_printed``);
+    - the previous balance line is dated on the period's first day or the day
+      before it, and the new balance line on the period's last day (a line with
+      no date is read as the balance of this period);
+    - in ledger sign (a charge is negative), the opening balance plus the rows
+      equals the closing balance under exactly one of the two signs.
+
+    They are stored in ledger sign like every balance in this metadata.
     """
     dates = (meta["first_transaction_date"], meta["last_transaction_date"])
     start = printed_period[0] if printed_period else (opening or {}).get("date")
@@ -984,6 +990,16 @@ def _card_summary(parsed: ParsedCsv, meta: JsonObject, opening: JsonObject | Non
     if not (opening or closing):
         return
     if opening and closing:
+        if not meta.get("period_printed"):
+            warnings.append("The printed card balances were not recorded, because the file has no printed "
+                            "period that contains every transaction.")
+            return
+        first_day = date.fromisoformat(meta["period_start"])
+        opening_ok = opening.get("date") in (None, first_day.isoformat(), (first_day - timedelta(days=1)).isoformat())
+        if not opening_ok or closing.get("date") not in (None, meta["period_end"]):
+            warnings.append("The printed card balances are dated outside the printed statement period; "
+                            "they were not recorded.")
+            return
         total = sum((r.amount for r in parsed.rows), Decimal("0"))
         first, last = opening["amount"], closing["amount"]
         fits = [factor for factor in (-1, 1) if factor * first + total == factor * last]

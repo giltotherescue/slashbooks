@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
+from decimal import Decimal
 import io
 import json
 from pathlib import Path
@@ -27,7 +28,9 @@ from bookkeeping.cli import main  # noqa: E402
 from bookkeeping.coverage import check_coverage, readiness_items  # noqa: E402
 from bookkeeping.entity import load_entity  # noqa: E402
 from bookkeeping.import_check import check_import  # noqa: E402
-from bookkeeping.ledger.model import Open  # noqa: E402
+from bookkeeping.connectors.bankcsv import ParsedCsv, ParsedRow, _statement_metadata  # noqa: E402
+from bookkeeping.ledger.importer import reverse_and_correct, reverse_entry  # noqa: E402
+from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
 from bookkeeping.remote_contract import command_spec  # noqa: E402
 
@@ -141,14 +144,15 @@ class TransferMatchTests(unittest.TestCase):
             "match_type": "posted", "source_id": "chk-pay", "entry_id": entry_id, "entry_source_id": "chk-pay",
             "date": "2026-10-05", "amount": "-1250.00", "account": CHECKING,
             "description": "PAYMENT TO VISA ENDING IN 0042", "date_days_apart": 0,
-            "action": "confirm_transfer_match"})
+            "action": "confirm_transfer_match", "actionable": True, "reason": None})
         before = ledger_rows(self.company)
         result = queue.confirm_transfer_match(self.entity, "visa-pay", entry_id, "owner-review", ts=TS)
         self.assertEqual(result, {
             "schema_version": 1, "kind": "transfer_match_recorded", "source_id": "visa-pay",
             "date": "2026-10-05", "amount": "1250.00", "account": VISA, "counter_account": CHECKING,
             "entry_id": entry_id, "entry_source_id": "chk-pay", "counter_source_id": "chk-pay",
-            "source_status": "matched_to_entry", "entries_written": 0, "recovered": False})
+            "source_status": "matched_to_entry", "entries_written": 0, "recovered": False,
+            "live_entry_id": entry_id})
         self.assertEqual(ledger_rows(self.company), before)
         self.assertEqual(staged_ids(self.company), [])
         with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
@@ -300,6 +304,105 @@ class TransferMatchTests(unittest.TestCase):
         self.assertEqual((code, item["proposal_type"], item["status"]), (0, "transfer-pair", "open"))
         code, out, _ = run_cli("queue", "confirm-transfer", "--entity", entity, "--item", item["source_id"], "--json")
         self.assertEqual((code, json.loads(out)["status"]), (0, "confirmed"))
+
+
+class TransferMatchReviewTests(unittest.TestCase):
+    """Reproductions from an independent review of the transfer match."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.company = make_company(Path(self._tmp.name))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    @property
+    def entity(self):
+        return load_entity(self.company)
+
+    def matched_transfer(self, day: str = "2026-10-31") -> int:
+        stage(self.company, ("chk", "feed-chk", day, "-100.00", "PAYMENT TO VISA"),
+              ("visa", "feed-visa", day, "100.00", "PAYMENT THANK YOU"))
+        queue.propose(self.entity, "chk", VISA, "The owner chose the card account.")
+        queue.confirm(self.entity, "chk", "owner-review", ts=TS)
+        entry_id = entry_ids(self.company)["chk"]
+        queue.confirm_transfer_match(self.entity, "visa", entry_id, "owner-review", ts=TS)
+        return entry_id
+
+    def replacement(self, *, day: date = date(2026, 10, 31), amount: str = "100.00",
+                    narration: str = "Corrected memo") -> Entry:
+        return Entry(date=day, narration=narration, flag="*", meta=(("source-id", "chk-corrected"),),
+                     postings=(Posting(CHECKING, -Decimal(amount)), Posting(VISA, Decimal(amount))))
+
+    def test_claim_follows_a_memo_correction_and_takes_no_second_row(self):
+        original = self.matched_transfer()
+        reverse_and_correct(self.entity, "chk", self.replacement(), "owner-review", ts=TS)
+        successor = entry_ids(self.company)["chk-corrected"]
+        stage(self.company, ("visa2", "feed-visa", "2026-10-31", "100.00", "OTHER PAYMENT"))
+        # The corrected entry is the same transfer, and a row is matched to it already.
+        self.assertEqual(queue.find_transfer_matches(self.entity, "visa2", CHECKING)["matches"], [])
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            queue.confirm_transfer_match(self.entity, "visa2", successor, "owner-review", ts=TS)
+        self.assertEqual(staged_ids(self.company), ["visa2"])
+        # The receipt keeps the entry that the person matched; the live claim is the corrected entry.
+        replay = queue.confirm_transfer_match(self.entity, "visa", original, "owner-review", ts=TS)
+        self.assertEqual((replay["recovered"], replay["entry_id"], replay["live_entry_id"]),
+                         (True, original, successor))
+
+    def test_a_correction_that_breaks_the_match_is_refused(self):
+        self.matched_transfer()
+        before = ledger_rows(self.company)
+        for name, entry in (("amount", self.replacement(amount="90.00")),
+                            ("date", self.replacement(day=date(2026, 10, 30)))):
+            with self.subTest(name), self.assertRaises(queue.TransferMatchLineageError) as caught:
+                reverse_and_correct(self.entity, "chk", entry, "owner-review", ts=TS)
+            self.assertIn("source row 'visa' is matched to", str(caught.exception))
+        with self.assertRaises(queue.TransferMatchLineageError):
+            reverse_entry(self.entity, "chk", "owner-review", ts=TS)
+        self.assertEqual(ledger_rows(self.company), before)
+
+    def test_a_posted_match_on_another_day_is_not_actionable(self):
+        stage(self.company, ("chk", "feed-chk", "2026-10-31", "-100.00", "PAYMENT TO VISA"),
+              ("visa", "feed-visa", "2026-11-01", "100.00", "PAYMENT THANK YOU"))
+        queue.propose(self.entity, "chk", VISA, "The owner chose the card account.")
+        queue.confirm(self.entity, "chk", "owner-review", ts=TS)
+        entry_id = entry_ids(self.company)["chk"]
+        [match] = queue.find_transfer_matches(self.entity, "visa", CHECKING)["matches"]
+        self.assertEqual((match["entry_id"], match["date_days_apart"], match["action"], match["actionable"],
+                          match["reason"]), (entry_id, 1, "none", False, "dates_differ"))
+        before = ledger_rows(self.company)
+        with self.assertRaisesRegex(ValueError, "must have the same date"):
+            queue.confirm_transfer_match(self.entity, "visa", entry_id, "owner-review", ts=TS)
+        self.assertEqual((ledger_rows(self.company), staged_ids(self.company)), (before, ["visa"]))
+
+    def test_card_balances_need_dates_that_agree_with_the_period(self):
+        rows = ParsedCsv([ParsedRow(4, "2026-10-02", "charge", Decimal("-25"))])
+        september = [{"kind": "opening", "date": "2026-09-01", "amount": Decimal("100")},
+                     {"kind": "closing", "date": "2026-09-30", "amount": Decimal("125")}]
+        for name, period in (("period excludes the rows", ("2026-09-01", "2026-09-30")),
+                             ("balance lines outside the period", ("2026-10-01", "2026-10-31"))):
+            with self.subTest(name):
+                meta = _statement_metadata(rows, [dict(m) for m in september], "liability", period)
+                self.assertEqual((meta["opening_balance"], meta["closing_balance"], meta["balance_source"]),
+                                 (None, None, None))
+                self.assertTrue(any("were not recorded" in w for w in meta["_warnings"]))
+        october = [{"kind": "opening", "date": "2026-09-30", "amount": Decimal("100")},
+                   {"kind": "closing", "date": "2026-10-31", "amount": Decimal("125")}]
+        meta = _statement_metadata(rows, october, "liability", ("2026-10-01", "2026-10-31"))
+        self.assertEqual((meta["opening_balance"], meta["closing_balance"]), (Decimal("-100"), Decimal("-125")))
+
+    def test_every_candidate_carries_its_evidence(self):
+        # A refund on the card and a payment from checking can look like one transfer. The engine cannot
+        # tell, so it returns the candidate with its evidence and chooses nothing.
+        stage(self.company, ("payment", "feed-chk", "2026-10-05", "-25.00", "ONLINE PAYMENT"),
+              ("card-refund", "feed-visa", "2026-10-05", "25.00", "REFUND SOFTWARE"))
+        document = queue.find_transfer_matches(self.entity, "card-refund", CHECKING)
+        self.assertEqual(document["source"]["description"], "REFUND SOFTWARE")
+        [match] = document["matches"]
+        for field in ("match_type", "source_id", "date", "amount", "account", "description",
+                      "date_days_apart", "action", "actionable", "reason"):
+            self.assertIn(field, match)
+        self.assertEqual((match["description"], match["amount"], match["actionable"]), ("ONLINE PAYMENT", "-25.00", True))
 
 
 class StatementScenarioTests(unittest.TestCase):

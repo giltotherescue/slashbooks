@@ -15,14 +15,24 @@
     `confirm-transfer`), or a posted entry from that account's own row whose
     line on this row's account has this row's exact amount (`match_type:
     "posted"`). Dates are at most 3 days apart. Every match is returned,
-    nearest date first; none is chosen.
+    nearest date first; none is chosen. Each match has `actionable` and
+    `reason`: a posted match dated on another day than the row has `action:
+    "none"`, `actionable: false` and `reason: "dates_differ"`, because the row
+    writes no entry and its account would move on the wrong day. Use two
+    staged rows (`propose-transfer`, which keeps both dates) for that case.
   - `books queue confirm-transfer-match --entity PATH --source-id ID
     --entry-id N` (`confirm_transfer_match`) records the staged row as the
     other side of the posted entry. It writes no new entry and changes no entry.
     The row is kept in the ledger with the source status `matched_to_entry`
     and a `transferMatch` link to the entry, and it leaves review. Statement
     import checks count the row at the amount of the linked entry line. It
-    applies the ask-first amount.
+    applies the ask-first amount and refuses a posted match on another day.
+    The link keeps the matched entry as a receipt; the claim is on the root of
+    the entry's correction lineage, so one posted transfer has one matched row,
+    also after a correction. A reversal or a correction of a matched transfer
+    must keep its date and its two lines (only the description can change);
+    any other reversal or correction is refused with `transfer_match_lineage`
+    and nothing is written. The result adds `live_entry_id`.
   - `books queue transfer-doubles --entity PATH [--date-tolerance-days 3]`
     (read-only, `find_transfer_doubles`) lists transfers that are already in
     the books two times, as pairs of entries. It repairs nothing.
@@ -43,8 +53,9 @@
   10/01/2026 to 10/31/2026`, or the dates of the previous and new balance
   lines, is the statement period, so coverage no longer reports missing days at
   the edges of the period. The printed period is a confirmed period. The
-  printed balances are recorded only when the rows prove their sign, in the
-  statement presentation (money owed is positive).
+  printed balances are recorded only when the printed period contains every
+  row, the balance line dates agree with that period, and the rows prove their
+  sign. They use the statement presentation (money owed is positive).
 
 - Add `opening_presentation.opening_presentation(entry, accounts,
   financial_kinds)`, a pure, read-only function that gives the opening balance

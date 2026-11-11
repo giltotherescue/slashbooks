@@ -92,7 +92,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import Any, Callable, Mapping, Optional, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .ledger.model import Entry
@@ -2119,6 +2119,85 @@ def _strict_txn_date(txn: dict) -> date:
         raise ValueError(f"Source '{txn.get('id')}' has no readable date.") from exc
 
 
+def _transfer_claims(sources: Mapping[str, tuple[Any, str]]) -> dict[str, tuple[str, dict]]:
+    """The live transfer-match claims: lineage root source ID -> (matched source ID, link).
+
+    A claim is on the root of the correction lineage of the entry, not on one physical entry, so one posted
+    transfer has at most one matched row across corrections. Two claims on one root are refused, because
+    the books can no longer say which row the transfer belongs to.
+    """
+    claims: dict[str, tuple[str, dict]] = {}
+    for sid, (payload, status) in sorted(sources.items()):
+        link = payload.get(TRANSFER_MATCH_KEY) if isinstance(payload, dict) else None
+        if status != TRANSFER_MATCH_STATUS or not isinstance(link, dict) or not link.get("source_id"):
+            continue
+        root = str(link["source_id"])
+        if root in claims:
+            raise ValueError(f"Source rows '{claims[root][0]}' and '{sid}' are both matched to the transfer "
+                             f"of source '{root}'. Repair the books before a transfer match is used.")
+        claims[root] = (sid, link)
+    return claims
+
+
+class TransferMatchLineageError(ValueError):
+    """A reversal or a correction would change a posted transfer that a row is matched to."""
+
+    code = "transfer_match_lineage"
+
+
+def refuse_claimed_transfer_change(conn: Any, new_entries: Sequence[Any]) -> None:
+    """Refuse a write that reverses or corrects a matched transfer in a way that breaks the match.
+
+    ``ledger.importer`` calls this for every ledger write, inside its transaction. A row matched with
+    ``confirm_transfer_match`` has no entry of its own: its amount is the line of the matched entry on the
+    row's account. So a reversal or a correction in the lineage of that entry must keep the match true. It
+    must reverse the live entry and write exactly one replacement with the same date and the same two lines;
+    only the description and other metadata can change. Anything else (a reversal with no replacement, or a
+    replacement with another date, amount or account) is refused, and nothing is written.
+    """
+    from .tieout import source_root
+
+    targets: dict[str, list] = {}
+    for entry in new_entries:
+        meta = dict(entry.meta)
+        if meta.get("reverses"):
+            targets.setdefault(str(meta["reverses"]), [False, []])[0] = True
+        elif meta.get("correction-of"):
+            targets.setdefault(str(meta["correction-of"]), [False, []])[1].append(entry)
+    if not targets:
+        return
+    sources: dict[str, tuple[Any, str]] = {}
+    for sid, payload, status in conn.execute(
+            "SELECT id, payload_json, status FROM source_transactions WHERE status = ?", (TRANSFER_MATCH_STATUS,)):
+        try:
+            sources[str(sid)] = (json.loads(payload), str(status))
+        except ValueError:
+            continue
+    claims = _transfer_claims(sources)
+    if not claims:
+        return
+    by_source = {str(sid): dict(json.loads(raw or "[]")) for sid, raw in conn.execute(
+        "SELECT source_id, metadata_json FROM entries WHERE source_id IS NOT NULL AND source_id != ''")}
+    for target, (reverses, replacements) in sorted(targets.items(), key=lambda item: item[0]):
+        root = source_root({"source-id": target}, by_source)
+        if root not in claims:
+            continue
+        matched, link = claims[root]
+        amount = Decimal(str(link["amount"]))
+        expected = {link["account"]: amount, link["counter_account"]: -amount}
+
+        def keeps(entry: Any) -> bool:
+            return (entry.date.isoformat() == link["date"] and len(entry.postings) == 2
+                    and {p.account: Decimal(str(p.amount)).quantize(Decimal("0.01")) for p in entry.postings} == expected)
+
+        if not (reverses and len(replacements) == 1 and keeps(replacements[0])):
+            raise TransferMatchLineageError(
+                f"transfer_match_lineage: the entry of source '{target}' is the posted side of a transfer that "
+                f"source row '{matched}' is matched to. A reversal or a correction of it must write one replacement "
+                f"dated {link['date']} with {link['account']} {amount:.2f} and {link['counter_account']} "
+                f"{-amount:.2f}; only its description can change. Nothing was written.")
+
+
 def _posted_transfer_legs(entity: Entity) -> list[dict]:
     """Posted two-line entries that a bank or card row created, one row per entry. Read-only.
 
@@ -2126,7 +2205,9 @@ def _posted_transfer_legs(entity: Entity) -> list[dict]:
     account, and the other line (``counter_account``, ``counter_amount``). Left out: an entry that is
     reversed or is a reversal, an entry of a transfer pair (it already has both sides), an entry with more
     or fewer than two lines, and an entry whose source row is not in the books or does not map to one of
-    its two accounts. ``claimed_by`` is the source ID of a row already matched to the entry, else None.
+    its two accounts. ``source_id`` is the root of the entry's correction lineage (``tieout.source_root``).
+    ``claimed_by`` is the source ID of a row already matched to that lineage, else None: a claim follows
+    the lineage, so the replacement of a corrected entry is still claimed.
     """
     from .ledger.store import LedgerStore, default_store_path
     from .tieout import source_root
@@ -2149,11 +2230,7 @@ def _posted_transfer_legs(entity: Entity) -> list[dict]:
     metas = {int(row[0]): dict(json.loads(row[4] or "[]")) for row in entries}
     by_source = {str(row[3]): metas[int(row[0])] for row in entries if row[3]}
     reversed_ids = {meta["reverses"] for meta in metas.values() if meta.get("reverses")}
-    claimed: dict[int, str] = {}
-    for sid, (payload, status) in sources.items():
-        link = payload.get(TRANSFER_MATCH_KEY) if isinstance(payload, dict) else None
-        if status == TRANSFER_MATCH_STATUS and isinstance(link, dict) and isinstance(link.get("entry_id"), int):
-            claimed[link["entry_id"]] = sid
+    claimed = _transfer_claims(sources)
     legs: list[dict] = []
     for entry_id, day, narration, entry_source, _ in entries:
         meta = metas[int(entry_id)]
@@ -2180,7 +2257,7 @@ def _posted_transfer_legs(entity: Entity) -> list[dict]:
             "entry_id": int(entry_id), "entry_source_id": str(entry_source), "source_id": str(root),
             "date": entry_day, "description": str(narration or ""), "account": account,
             "amount": amounts[account], "counter_account": counter_account,
-            "counter_amount": amounts[counter_account], "claimed_by": claimed.get(int(entry_id)),
+            "counter_amount": amounts[counter_account], "claimed_by": claimed.get(str(root), (None,))[0],
         })
     return legs
 
@@ -2194,7 +2271,12 @@ def find_transfer_matches(entity: Entity, source_id: str, counter_account: str,
     ``propose_transfer`` and ``confirm_transfer``), or a posted entry that a row of ``counter_account``
     created, whose other line is on this row's account with this row's exact signed amount (``match_type``
     ``posted``; record the row with ``confirm_transfer_match``, which writes no entry). An entry that a row
-    is already matched to is not a match. Every match is returned, nearest date first; none is chosen.
+    is already matched to (in any correction of it) is not a match. Every match is returned, nearest date
+    first; none is chosen, and a person confirms even a single match.
+
+    ``actionable`` says whether the match can be recorded now. A posted match dated on another day than the
+    row has ``action`` ``"none"``, ``actionable`` false and ``reason`` ``"dates_differ"``: recording the row
+    against it would move the row's account on the wrong day. Every other match has ``reason`` null.
     """
     if type(date_tolerance_days) is not int or date_tolerance_days < 0:
         raise ValueError("Date tolerance must be zero or greater.")
@@ -2226,7 +2308,7 @@ def find_transfer_matches(entity: Entity, source_id: str, counter_account: str,
                 "match_type": "staged", "source_id": other_id, "entry_id": None, "entry_source_id": None,
                 "date": other_day.isoformat(), "amount": f"{-amount:.2f}", "account": counter_account,
                 "description": str(other.get("description") or ""), "date_days_apart": apart,
-                "action": "propose_transfer",
+                "action": "propose_transfer", "actionable": True, "reason": None,
             })
     for leg in _posted_transfer_legs(entity) if amount else []:
         if (leg["account"] != counter_account or leg["counter_account"] != account
@@ -2234,11 +2316,15 @@ def find_transfer_matches(entity: Entity, source_id: str, counter_account: str,
             continue
         apart = abs((leg["date"] - day).days)
         if apart <= date_tolerance_days:
+            # The matched row has no entry of its own, so its account moves on the entry's date. That is
+            # correct only on the same day; a different day needs both dates in the books.
+            same_day = apart == 0
             matches.append({
                 "match_type": "posted", "source_id": leg["source_id"], "entry_id": leg["entry_id"],
                 "entry_source_id": leg["entry_source_id"], "date": leg["date"].isoformat(),
                 "amount": f"{leg['amount']:.2f}", "account": counter_account, "description": leg["description"],
-                "date_days_apart": apart, "action": "confirm_transfer_match",
+                "date_days_apart": apart, "action": "confirm_transfer_match" if same_day else "none",
+                "actionable": same_day, "reason": None if same_day else "dates_differ",
             })
     matches.sort(key=lambda match: (match["date_days_apart"], match["match_type"] != "staged", match["date"],
                                     match["source_id"], match["entry_id"] or 0))
@@ -2251,13 +2337,25 @@ def find_transfer_matches(entity: Entity, source_id: str, counter_account: str,
     }
 
 
-def _transfer_match_result(link: dict, txn: dict, *, recovered: bool) -> dict:
+def _live_claim_entry(entity: Entity, link: dict) -> Optional[int]:
+    """The live entry in the lineage that a match claims, or None when no live entry keeps the match."""
+    amount = Decimal(str(link.get("amount") or "0"))
+    for leg in _posted_transfer_legs(entity):
+        if (leg["source_id"] == link.get("source_id") and leg["account"] == link.get("counter_account")
+                and leg["counter_account"] == link.get("account") and leg["counter_amount"] == amount
+                and leg["date"].isoformat() == link.get("date")):
+            return leg["entry_id"]
+    return None
+
+
+def _transfer_match_result(link: dict, txn: dict, *, recovered: bool, live: Optional[int]) -> dict:
     return {
         "schema_version": 1, "kind": "transfer_match_recorded", "source_id": str(txn.get("id") or ""),
         "date": str(txn.get("date") or "")[:10], "amount": f"{_txn_amount(txn):.2f}",
         "account": link["account"], "counter_account": link["counter_account"], "entry_id": link["entry_id"],
         "entry_source_id": link["entry_source_id"], "counter_source_id": link["source_id"],
         "source_status": TRANSFER_MATCH_STATUS, "entries_written": 0, "recovered": recovered,
+        "live_entry_id": live,
     }
 
 
@@ -2290,7 +2388,7 @@ def confirm_transfer_match(entity: Entity, source_id: str, entry_id: int, sessio
                 raise ValueError(f"Source '{source_id}' is already recorded in the books.")
             StagingStore(entity.staging_dir).mark_seen(source_id)
             _remove_from_pending_categorization(entity, source_id, strict=True)
-            return _transfer_match_result(link, payload, recovered=True)
+            return _transfer_match_result(link, payload, recovered=True, live=_live_claim_entry(entity, link))
     txn = _get_pending_txn(entity, source_id)
     if txn is None:
         raise ValueError(f"Source ID '{source_id}' is not a staged transaction awaiting review.")
@@ -2302,21 +2400,30 @@ def confirm_transfer_match(entity: Entity, source_id: str, entry_id: int, sessio
     if leg is None:
         raise ValueError(f"Entry {entry_id} is not a live two-line entry from a bank or card row.")
     found = find_transfer_matches(entity, source_id, leg["account"], date_tolerance_days)
-    if not any(match["match_type"] == "posted" and match["entry_id"] == entry_id for match in found["matches"]):
+    match = next((match for match in found["matches"]
+                  if match["match_type"] == "posted" and match["entry_id"] == entry_id), None)
+    if match is not None and not match["actionable"]:
+        raise ValueError(
+            f"Entry {entry_id} is dated {match['date']}, but source '{source_id}' is dated {found['source']['date']}. "
+            "A posted match must have the same date, because the row writes no entry of its own. Nothing was written.")
+    if match is None:
         raise ValueError(
             f"Entry {entry_id} does not match source '{source_id}': it must post {found['source']['amount']} to "
             f"{found['source']['account']} within {date_tolerance_days} day(s) of the row, its other line must be "
             f"on the account of its own source row, and no other row may be matched to it.")
     _refuse_above_ask_first(entity, abs(_txn_amount(txn)))
+    # The receipt names the entry as it was when the person matched it. The live claim is on the lineage
+    # root (``source_id``), with the date and the two lines that a correction must keep.
     link = {"entry_id": entry_id, "entry_source_id": leg["entry_source_id"], "source_id": leg["source_id"],
-            "account": found["source"]["account"], "counter_account": leg["account"]}
+            "account": found["source"]["account"], "counter_account": leg["account"],
+            "date": found["source"]["date"], "amount": found["source"]["amount"]}
     _atomic_ledger_write_unlocked(
         entity, [], [], session_id, ts,
         f"queue confirm transfer match source_id={source_id!r} entry_id={entry_id}",
         [{**txn, TRANSFER_MATCH_KEY: link}], source_status=TRANSFER_MATCH_STATUS)
     StagingStore(entity.staging_dir).mark_seen(source_id)
     _remove_from_pending_categorization(entity, source_id, strict=True)
-    return _transfer_match_result(link, txn, recovered=False)
+    return _transfer_match_result(link, txn, recovered=False, live=entry_id)
 
 
 def find_transfer_doubles(entity: Entity, date_tolerance_days: int = TRANSFER_WINDOW_DAYS) -> dict:

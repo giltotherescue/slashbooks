@@ -173,7 +173,10 @@ def _ledger_rows(entity: Any, account: str) -> tuple[dict[str, Decimal], set[str
                 link = sources[str(sid)].get(TRANSFER_MATCH_KEY) if isinstance(sources[str(sid)], dict) else None
                 if status == TRANSFER_MATCH_STATUS and isinstance(link, dict) and link.get("account") == account:
                     # A row matched to an entry from another account's row: that entry's line on this
-                    # account is this row's amount (``queue.confirm_transfer_match``).
+                    # account is this row's amount (``queue.confirm_transfer_match``). The claim is on the
+                    # lineage root; two rows on one root cannot be attributed, so the books side is unknown.
+                    if str(link.get("source_id")) in matched:
+                        raise _Unreadable
                     matched[str(link.get("source_id"))] = str(sid)
             known = set(sources)
             from .statement_import import _txn_amount
