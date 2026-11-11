@@ -654,24 +654,98 @@ class QuickBooksSyncTests(unittest.TestCase):
                 import shutil
                 shutil.rmtree(folder)
 
-    def test_concurrent_different_evidence_has_its_own_code(self):
+    def race(self, make_winner):
+        """Run an import while another import installs ``make_winner(stage, root)`` first.
+
+        The winner is a real non-empty folder, and the real ``Path.rename`` raises the operating system error
+        (EEXIST or ENOTEMPTY). Returns the exception (or ``None``) and the errors that rename raised.
+        """
+        import errno
+        import shutil
         from unittest.mock import patch
         real_rename = Path.rename
+        raised = []
 
-        def rival_first(stage, target):
-            # Another import saves different evidence under the same ID between the check and the rename.
-            Path(target).mkdir()
-            (Path(target) / "snapshot.json").write_text("{}")
-            raise FileExistsError(str(target))
+        def other_import_first(stage, target):
+            target = Path(target)
+            if target.parent.name == "quickbooks" and not target.exists():
+                make_winner(Path(stage), target)
+            try:
+                return real_rename(stage, target)
+            except OSError as exc:
+                raised.append(exc)
+                raise
 
-        with patch.object(Path, "rename", rival_first):
-            with self.assertRaises(sync.SnapshotEvidenceError) as caught:
+        caught = None
+        with patch.object(Path, "rename", other_import_first):
+            try:
                 sync.sync_import(self.entity, self.write())
-        self.assertEqual(caught.exception.code, "snapshot_evidence_concurrent")
-        self.assertIs(Path.rename, real_rename)
-        import shutil
+            except sync.SnapshotEvidenceError as exc:
+                caught = exc
+        self.assertEqual(len(raised), 1)
+        self.assertIn(raised[0].errno, (errno.EEXIST, errno.ENOTEMPTY))
         for folder in (self.entity_path / "sources" / "quickbooks").iterdir():
-            shutil.rmtree(folder)  # the rival evidence
+            if folder.is_symlink():
+                folder.unlink()
+            else:
+                shutil.rmtree(folder)
+        return caught
+
+    def test_a_real_rename_race_accepts_only_an_exact_winner(self):
+        import shutil
+        self.snapshot["accounts"][0]["AcctNum"] = "1000"
+
+        def copy(stage, root):
+            shutil.copytree(stage, root)
+
+        def edit(name, change):
+            def make(stage, root):
+                shutil.copytree(stage, root)
+                path = root / name
+                change(path)
+            return make
+
+        def older_format(stage, root):
+            shutil.copytree(stage, root)
+            for name in ("manifest.json", "reference/accounts.qbo.json"):
+                value = json.loads((root / name).read_text(encoding="utf-8"))
+                value["accounts"] = [{k: v for k, v in row.items() if k != "account_number"}
+                                     for row in value["accounts"]]
+                (root / name).write_bytes(sync._json_bytes(value))
+
+        def linked(stage, root):
+            shutil.copytree(stage, root)
+            outside = self.root / "outside.json"
+            outside.write_bytes((root / "manifest.json").read_bytes())
+            (root / "manifest.json").unlink()
+            (root / "manifest.json").symlink_to(outside)
+
+        self.assertIsNone(self.race(copy))  # control: the same evidence is accepted
+        cases = {
+            # The same source, different derived evidence: refused even though snapshot.json matches.
+            "different derived bytes": (edit("manifest.json", lambda p: p.write_text(p.read_text().replace(
+                '"success":true', '"success":true,"other":1'))), "snapshot_evidence_concurrent"),
+            "extra file": (edit("reference/extra.qbo.json", lambda p: p.write_text("{}")), "snapshot_evidence_concurrent"),
+            "missing file": (edit("reference/accounts.qbo.json", lambda p: p.unlink()), "snapshot_evidence_concurrent"),
+            "older format": (older_format, "snapshot_format_outdated"),
+            "different source": (edit("snapshot.json", lambda p: p.write_text("{}")), "snapshot_evidence_mismatch"),
+            "symbolic link": (linked, "snapshot_evidence_mismatch"),
+        }
+        for label, (make, code) in cases.items():
+            with self.subTest(label):
+                caught = self.race(make)
+                self.assertIsNotNone(caught)
+                self.assertEqual(caught.code, code)
+
+    def test_other_rename_errors_are_not_hidden(self):
+        import errno
+        from unittest.mock import patch
+
+        def denied(stage, target):
+            raise PermissionError(errno.EACCES, "denied")
+
+        with patch.object(Path, "rename", denied), self.assertRaises(PermissionError):
+            sync.sync_import(self.entity, self.write())
         # Other errors keep the earlier JSON shape: no code.
         code, out = self.cli_json("qb", "sync-opening", str(self.write()), "--entity", str(self.entity_path),
                                   "--cutover", "2026-01-02")

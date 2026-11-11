@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -52,7 +53,8 @@ class SnapshotEvidenceError(ValueError):
       differ only because an earlier engine wrote them in an older format (chart rows without account numbers).
     * ``snapshot_evidence_mismatch``: the saved evidence differs from the evidence of this source in another way
       (a digest collision, a changed or damaged file, or a symbolic link).
-    * ``snapshot_evidence_concurrent``: another import saved different evidence under the same ID at the same time.
+    * ``snapshot_evidence_concurrent``: another import saved evidence for the same source under the same ID at the
+      same time, and its derived files differ from the evidence of this import.
     """
 
     def __init__(self, code: str, message: str) -> None:
@@ -72,26 +74,36 @@ def _older_format_bytes(name: str, data: bytes) -> bytes:
     return _json_bytes(value)
 
 
-def _existing_evidence_error(root: Path, stage: Path, source_bytes: bytes) -> SnapshotEvidenceError | None:
-    """Compare the saved evidence folder with the evidence this import made. ``None`` when they are the same."""
+def _existing_evidence_error(root: Path, stage: Path, source_bytes: bytes, *,
+                             concurrent: bool = False) -> SnapshotEvidenceError | None:
+    """Compare a saved evidence folder with the evidence this import staged. ``None`` only for an exact match.
+
+    An exact match has the same file set, the same bytes in each file, and no symbolic link (the folder itself
+    or any entry in it). ``concurrent`` is true when another import installed the folder during this import:
+    then a folder that differs in its files or bytes gives ``snapshot_evidence_concurrent``. A symbolic link
+    or a changed ``snapshot.json`` always gives ``snapshot_evidence_mismatch``, and the older format always
+    gives ``snapshot_format_outdated``.
+    """
+    linked = root.is_symlink() or any(p.is_symlink() for p in root.rglob("*"))
     expected_files = {p.relative_to(stage) for p in stage.rglob("*") if p.is_file()}
     actual_files = {p.relative_to(root) for p in root.rglob("*") if p.is_file()}
-    if not root.is_symlink() and expected_files == actual_files and not any(
-            (root / rel).is_symlink() or (root / rel).read_bytes() != (stage / rel).read_bytes()
-            for rel in expected_files):
+    if not linked and expected_files == actual_files and all(
+            (root / rel).read_bytes() == (stage / rel).read_bytes() for rel in expected_files):
         return None
     mismatch = SnapshotEvidenceError("snapshot_evidence_mismatch", "Snapshot evidence digest collision or corruption")
-    if (root.is_symlink() or expected_files != actual_files
-            or any((root / rel).is_symlink() for rel in actual_files)
-            or (root / "snapshot.json").read_bytes() != source_bytes):
+    if linked or ((root / "snapshot.json").is_file() and (root / "snapshot.json").read_bytes() != source_bytes):
         return mismatch
+    other = (SnapshotEvidenceError("snapshot_evidence_concurrent", "Concurrent snapshot evidence mismatch")
+             if concurrent else mismatch)
+    if expected_files != actual_files:
+        return other
     try:
         older = all((root / rel).read_bytes() == _older_format_bytes(rel.as_posix(), (stage / rel).read_bytes())
                     for rel in expected_files)
     except (ValueError, UnicodeDecodeError):
         older = False
     if not older:
-        return mismatch
+        return other
     return SnapshotEvidenceError(
         "snapshot_format_outdated",
         f"Saved QuickBooks snapshot evidence {root.name} is from an older format (chart accounts without account "
@@ -605,9 +617,14 @@ def sync_import(entity, input_path: Path) -> dict:
         else:
             try:
                 stage.rename(root)
-            except FileExistsError:
-                if (root / "snapshot.json").read_bytes() != source_bytes:
-                    raise SnapshotEvidenceError("snapshot_evidence_concurrent", "Concurrent snapshot evidence mismatch")
+            except OSError as exc:
+                # Another import installed the folder first. POSIX gives EEXIST or ENOTEMPTY for a rename onto a
+                # non-empty directory (macOS gives ENOTEMPTY). Accept only a winner that is exactly this evidence.
+                if exc.errno not in (errno.EEXIST, errno.ENOTEMPTY):
+                    raise
+                error = _existing_evidence_error(root, stage, source_bytes, concurrent=True)
+                if error is not None:
+                    raise error from None
     # The financial kind decision is added to the result only, after the evidence files are written, so the
     # stored evidence of an existing snapshot stays byte for byte the same.
     result["accounts"] = [{**row, "financial_kind": decision} if (decision := _financial_kind_decision(row)) else row

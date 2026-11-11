@@ -39,9 +39,13 @@
   `snapshot_format_outdated` (an earlier engine saved the chart accounts
   without account numbers; fetch a new snapshot), `snapshot_evidence_mismatch`
   (a digest collision, or a changed or damaged file; the message is unchanged)
-  or `snapshot_evidence_concurrent` (another import saved different evidence at
-  the same time). Before, the outdated format gave the collision message. Other
-  errors keep the earlier shape.
+  or `snapshot_evidence_concurrent` (another import saved evidence for the
+  same source with different derived files at the same time). Before, the
+  outdated format gave the collision message. When another import installs the
+  evidence folder first, the import now accepts it only when every file is the
+  same, with no symbolic link; before, a matching `snapshot.json` was enough,
+  and on macOS the rename error of such a race was not handled. Other errors
+  keep the earlier shape.
 
 - Let a company record history before 2026. A company created with no cutover
   opened every starter category on a fixed date, 2026-01-01, and new categories

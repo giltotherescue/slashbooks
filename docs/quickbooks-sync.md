@@ -64,7 +64,14 @@ do:
 |---|---|---|
 | `snapshot_format_outdated` | The saved source (`snapshot.json`) is intact. An earlier engine wrote the files derived from it in an older format: chart accounts without account numbers. Nothing else differs. | Fetch a new snapshot. Its `fetched_at` differs, so it is saved under a new ID. |
 | `snapshot_evidence_mismatch` | The saved evidence differs in another way: a digest collision, a changed, missing, extra or damaged file, or a symbolic link. The message stays "Snapshot evidence digest collision or corruption". | Do not use the saved evidence. Find out what changed the folder before you import again. |
-| `snapshot_evidence_concurrent` | Another import saved different evidence under the same ID at the same time. | Run the import again after the other import ends. |
+| `snapshot_evidence_concurrent` | Another import saved evidence for the same source (the same `snapshot.json`) under the same ID at the same time, and its derived files differ from the evidence of this import: other bytes, or an extra or missing file. | Run the import again after the other import ends. |
+
+When another import installs the folder first, the command accepts that folder
+only when it is exactly the evidence of this import: the same files, the same
+bytes and no symbolic link. A matching `snapshot.json` alone is not enough. In
+that case a different `snapshot.json` or a symbolic link gives
+`snapshot_evidence_mismatch`, and the older format gives
+`snapshot_format_outdated`, as for a folder that was saved earlier.
 
 Other errors print `success` and `error` only, as before.
 
