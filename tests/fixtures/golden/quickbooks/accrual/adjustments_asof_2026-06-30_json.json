@@ -1,7 +1,7 @@
 {
   "as_of": "2026-06-30",
   "basis": "accrual",
-  "canonical_digest": "941deeb4d065515b27bd312b355ac6135d00a1a71d5574aff5c85890e0c0bb61",
+  "canonical_digest": "09564c2d9a30b8058f1be4c5a5320992073023acde0928b92b47efa70ab7edc0",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -124,7 +124,7 @@
     "verified": true
   },
   "currency": "USD",
-  "fingerprint": "6e2099e7ae2ee45bca9446e502d7d8db5f18e024b3873e040ecb99cfd414bed3",
+  "fingerprint": "15656d0ae79aca91d0f1affbdf8e79572c4552f109b6c3fba48efec74c089df5",
   "from_date": null,
   "issues": [],
   "kind": "adjustments",
@@ -150,7 +150,7 @@
           ],
           "id": "quickbooks-opening-trial-balance-2026-07-01",
           "kind": "migration",
-          "plan_hash": "6a599ae075a96eac00dff5e99e007f1dffb1d0b08871447b5e97fce481c9443c",
+          "plan_hash": "d8e8a56072a41e7bc989b5b65b55ddd98b62cdfb72dab160d25b895e8e4cc694",
           "role": "posted_effect"
         }
       ],

@@ -463,12 +463,15 @@ def init_entity(
 ) -> dict[str, list[str]]:
     """Initialise (or safely re-init) an entity directory at *target*.
 
-    ``books_from`` is the books scope: the earliest day the books may hold entries. Starter income, expense
-    and equity accounts open on it, and so do the categories that ``add_account`` adds later. Bank, card and
-    other balance sheet accounts keep the fixed fallback date; each needs its own start. Without
+    ``books_from`` is the books scope: the host-stated start of the historical scope, and the source of the
+    default open date of the generic accounts (income, expense, and the ordinary owner equity accounts; see
+    ``bookkeeping.books_from``). The starter generic accounts open on it, and so do the generic accounts that
+    ``add_account`` adds later without a date. It is not a posting fence: each account's open date stays the
+    only open-date fence (plus the books start policy in enforced mode). Bank, card and other balance sheet
+    accounts, and control equity accounts, keep the fixed fallback date; each needs its own start. Without
     ``books_from`` and ``cutover_date``, every starter account opens on the fixed fallback date, as before,
-    with the provenance ``default`` (see ``bookkeeping.books_from``). A cutover is the books start, so a
-    ``books_from`` that differs from it is refused.
+    with the provenance ``default``. A cutover is the books start, so a ``books_from`` that differs from it
+    is refused.
 
     Returns a report dict with keys ``"created"`` and ``"existed"``, each a
     list of relative path strings.
@@ -712,9 +715,9 @@ def add_account(
     With ``category`` the account must also be an income or expense category of an
     approved shape (``check_category_account``). The usual checks apply in both cases.
 
-    Without ``open_date``, a new income, expense or equity account opens on the company's books scope
-    (``books_from``, or the cutover of a company created before the scope was recorded), and any other new
-    account on the fixed fallback date (``books_from.added_open``). An existing account keeps its open date.
+    Without ``open_date``, a new generic account (income, expense, ordinary owner equity) opens on the
+    company's books scope (``books_from``; without a recorded scope, the ``entity.json`` cutover), and any other
+    new account on the fixed fallback date (``books_from.added_open``). An existing account keeps its open date.
     ``open_date`` can move an open date earlier; ``open_date_source`` is its provenance (``user``, or
     ``import`` for a connector).
     """
@@ -788,9 +791,11 @@ def add_account(
                 raise ValueError(f"Account '{account}' already has a different financial kind.")
             assign_kind = financial_kind is not None and current_kind is None
             # An explicit date equal to the current one changes the provenance (for example from the fallback
-            # ``default`` to ``user``), so a later repair does not treat a chosen date as a fallback.
-            marker_change = (record is not None and source is not None and normalized_open_date == effective_date
-                             and record["accounts"].get(account) != {"source": source, "open_date": effective_date})
+            # ``default`` to ``user``), so a later repair does not treat a chosen date as a fallback. In a ledger
+            # made before the provenance record, this write creates the record (``LedgerStore.insert_opens``).
+            marker_change = (source is not None and normalized_open_date == effective_date
+                             and (record is None
+                                  or record["accounts"].get(account) != {"source": source, "open_date": effective_date}))
             if assign_kind or not existing or marker_change or (existing["currency"], existing["open_date"]) != (effective_currency, effective_date):
                 # Catalog, intent and seal share one transaction without
                 # initializing the store or rewriting its metadata.
@@ -891,9 +896,7 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
                 store.insert_opens(opens, conn, provenance=sources)
                 if store.has_financial_kinds(conn):
                     store.assign_financial_kinds(_starter_financial_kinds(opens), conn)
-                for account in removed:
-                    conn.execute("DELETE FROM accounts WHERE name=?", (account,))
-                store.forget_open_date_provenance(removed, conn)
+                store.delete_accounts(removed, conn)
             if type_changed:
                 store.set_meta("business_type", business_type, conn)
             if changed:
@@ -1472,8 +1475,9 @@ def add_parser(subparsers: Any) -> None:
     init_parser.add_argument(
         "--books-from",
         default="",
-        help="Books scope in YYYY-MM-DD format: the earliest day the books may hold entries. Starter and later "
-             "income, expense and equity accounts open on it. Bank and card accounts need their own start",
+        help="Books scope in YYYY-MM-DD format: the start of the historical scope, and the default open date of "
+             "income, expense and owner contribution and draw accounts. It is not a posting fence; each account's "
+             "open date is. Bank, card, other balance sheet and control equity accounts need their own start",
     )
 
     add_account_parser = entity_sub.add_parser(
@@ -1485,9 +1489,9 @@ def add_parser(subparsers: Any) -> None:
     add_account_parser.add_argument(
         "--open-date",
         default="",
-        help="Account open date in YYYY-MM-DD format. Default for a new income, expense or equity account: the "
-             "books scope (books-from). Default for another new account: the starter fallback date. An existing "
-             "account keeps its date",
+        help="Account open date in YYYY-MM-DD format. Default for a new income, expense or owner contribution or "
+             "draw account: the books scope (books-from). Default for another new account: the starter fallback "
+             "date. An existing account keeps its date",
     )
     from .ledger.store import FINANCIAL_KINDS
     add_account_parser.add_argument("--financial-kind", choices=FINANCIAL_KINDS,
@@ -1552,15 +1556,16 @@ def add_parser(subparsers: Any) -> None:
 
     books_from_parser = entity_sub.add_parser(
         "set-books-from",
-        help="Set the books scope and move fallback-dated income, expense and equity accounts to it (person-only). "
-             "Previews unless --apply is given",
+        help="Set the books scope (the start of the historical scope and the default open date of income, expense "
+             "and owner contribution and draw accounts) and move those accounts from the fallback date to it "
+             "(person-only). Previews unless --apply is given",
     )
     books_from_parser.add_argument("path", type=Path, help="Path to the entity directory")
     books_from_parser.add_argument("--books-from", required=True,
-                                   help="Earliest day the books may hold entries, YYYY-MM-DD")
+                                   help="Start of the historical scope, YYYY-MM-DD. Not a posting fence")
     books_from_parser.add_argument("--account", action="append", default=[], metavar="ACCOUNT",
                                    help="An account that the preview lists as uncertain_provenance, after a person "
-                                        "reviewed it; repeat for more accounts")
+                                        "reviewed it; the plan records it as named_by_person. Repeat for more accounts")
     books_from_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     books_from_parser.add_argument("--plan-hash", default=None, help="With --apply (required): the plan_hash from the preview")
 

@@ -11,7 +11,7 @@
     "unapplied_credit": "Unapplied credit",
     "unknown_due_date": "Due date not provided"
   },
-  "canonical_digest": "233fde10dcae6f608ac6a9cec2508b2d117ade2a84ce4c48bee66ab531702f92",
+  "canonical_digest": "cc12b79db9c89f9ec105a95febaffdfe6dcf5a6646c5d7024787c0951caefc3f",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -100,7 +100,7 @@
   },
   "credits_netted": false,
   "currency": "USD",
-  "fingerprint": "0f870ad33aa16db1b5d246bb4bcc384cf152ee369a428304e64f35a9680f011a",
+  "fingerprint": "8cd1ed4fd9db38667438ff44418617ecbe2e4bfb340714e9c60318d1eba53d1d",
   "from_date": null,
   "issues": [],
   "kind": "aging",

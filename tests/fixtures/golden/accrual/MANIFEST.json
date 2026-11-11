@@ -37,7 +37,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "e66c01d9790dc8409badce4253ab6242681f20acfd8c3f2a0adb892e15f026af"
+    "stdout_sha256": "218e6276dbe53657d2209616c1fb93db026e2112ea3af175d9faed250669ad8a"
   },
   "accrual/adjustments_asof_2026-01-31_text.txt": {
     "argv": [
@@ -69,7 +69,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "498864dea2fe53b2667c9c0bd5d2c7e4064e8feaf9496388670d17e384bbe119"
+    "stdout_sha256": "6e15f8afc9fdb92d1d34ff1a253b7fa6770ece210b320a1930926a91b5cd835a"
   },
   "accrual/adjustments_asof_2026-03-31_text.txt": {
     "argv": [
@@ -103,7 +103,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "a59bfbb9a6f1d0529096f73f1f562624588e1363ceddf47bbe4e1cd08252357e"
+    "stdout_sha256": "57bb8030ebec548a9b3b0ee18993febe18bbdc842af6267cb1f7256eb9488108"
   },
   "accrual/adjustments_range_2026-01-01_2026-03-31_text.txt": {
     "argv": [
@@ -139,7 +139,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "1109933b7b3db51f982efacf7556a085ca0c33c9ecebe9a9ca87f45680450858"
+    "stdout_sha256": "068b70940dbabc6769fcec8350d78aa1fa450537550a05cd95a1eca430900e87"
   },
   "accrual/adjustments_range_2026-03-01_2026-03-31_text.txt": {
     "argv": [
@@ -173,7 +173,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "4a3f47dce8000a5ce1bdaec4c50b40546bb03cf47ee288e8eff60667bac973bd"
+    "stdout_sha256": "5355e2bd43210b8450354cbf6d6fd0aab969dad34ebf0ba87dd7eefde83fa557"
   },
   "accrual/aging_asof_2026-01-31_text.txt": {
     "argv": [
@@ -205,7 +205,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "22302fa557f755d349d715a3d2ab62875c1c2cc06c18c7b11764bcdf2d233bb4"
+    "stdout_sha256": "c0f908c5ba46dfe2a41a4e5812d6757fd25c341899d61de19999bbdc5bc588e5"
   },
   "accrual/aging_asof_2026-03-31_text.txt": {
     "argv": [
@@ -234,7 +234,7 @@
       "2026-12-31"
     ],
     "exit": 0,
-    "stdout_sha256": "a1452f6532f473e9876f7132e06ec6fde4f6010eca5d84d9289579d970439175"
+    "stdout_sha256": "ae76a86554cde6bf3f05ff740bd7339230b699574a0217b9e3706f5351e18756"
   },
   "accrual/item_list.json": {
     "argv": [
@@ -261,7 +261,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "d7becb655c2fac2fee740ea21de50f865f9f1d68510f8cec9d21002cc0cd76f5"
+    "stdout_sha256": "8aa5de313d38ec03a6b0d03c38b5640b3c651f561297589d4bb85a319ef24c4e"
   },
   "accrual/outstanding_asof_2026-01-31_text.txt": {
     "argv": [
@@ -293,7 +293,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "c6dad216784861d7d6c3052692412e79bd25ab5fff734773a41dabc7549a20f4"
+    "stdout_sha256": "ad547e62a5c01028c5ee198c2175616e0b1c5c6eaf97890ed8c229614511b7b3"
   },
   "accrual/outstanding_asof_2026-03-31_text.txt": {
     "argv": [
@@ -321,7 +321,7 @@
       "close-2026-01"
     ],
     "exit": 0,
-    "stdout_sha256": "0ee3808286f7a73d706d83758ef1496edd53bed7c3c03398300bcbe0baa0b9d6"
+    "stdout_sha256": "93c7ec3851260df80c4d91dce8b33c579016707e2aa3724c80e541182d3b9ba7"
   },
   "accrual/reconciliation_asof_2026-01-31_json.json": {
     "argv": [
@@ -337,7 +337,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "00fc777caff92d49ac8eb7dedf885ea5ae588310fd70f3d705487d7db3a73303"
+    "stdout_sha256": "0e5d1299821db6c5304a2f40a8d56fb92daa2286ac62f5b5b521a7137c2aed82"
   },
   "accrual/reconciliation_asof_2026-01-31_text.txt": {
     "argv": [
@@ -369,7 +369,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "42c8bab8673adf598c34e722e53b072d6b845344f032e9750bf38e295fb8135f"
+    "stdout_sha256": "4b3ba488ac8302d711e18eaddbcf5cb399ba5489f0ae636e551f82617058d873"
   },
   "accrual/reconciliation_asof_2026-03-31_text.txt": {
     "argv": [
@@ -449,7 +449,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "44c6aa233024b901d3ba14098d6feea38a8e9025cff85e97743312b0c6c18585"
+    "stdout_sha256": "3c90c87cee645dc9c2aec18487a427fe9a050cfbe85933799440dd72a81c4109"
   },
   "accrual/schedules_asof_2026-01-31_text.txt": {
     "argv": [
@@ -481,7 +481,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "f66e4bab859de7ee48451081cc9cdd94f879944b652df9ffd13f4a5cb6513ad7"
+    "stdout_sha256": "3ee7112762ec9bf2aaef768dd8d1d54baa3a9e6a7f81ca30ad3a59ed0f506d44"
   },
   "accrual/schedules_asof_2026-03-31_text.txt": {
     "argv": [
@@ -515,7 +515,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "602f9df4060650b78f9b0963206877ad4104364b1f70b079ae9166b762fbee62"
+    "stdout_sha256": "0fde1f3afcacf3031e66a55ff5b7cbd394750a2008b6f26a1a575c61aaa80c7f"
   },
   "accrual/schedules_range_2026-01-01_2026-03-31_text.txt": {
     "argv": [
@@ -551,7 +551,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "84fd1c41bd2d4918c024ad599ed42dd71b846cb8b2b6fb195b8a4075560591a9"
+    "stdout_sha256": "181a9c74a87abc2aa2f571f834daa27638627efb23100ae0d7a29b5de6690b4b"
   },
   "accrual/schedules_range_2026-03-01_2026-03-31_text.txt": {
     "argv": [
@@ -585,7 +585,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "1028ea56e6b02f669758a76159a15c9d5bb21855d8335b3252f3e760ed1957e7"
+    "stdout_sha256": "2cdd3e6672f8e9415b34517eec401a8e68a2c3688f9f762c112b629bc454f541"
   },
   "accrual/support_asof_2026-01-31_text.txt": {
     "argv": [
@@ -617,7 +617,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "1d16713b2af4013b89db4493a3d95c5ac5df3b6f5600be6fdaa46c8db8140873"
+    "stdout_sha256": "a53a53b2ed9947b2814bdd1d60e3da39182bc97f4a06da7913e43a0a9cc4933c"
   },
   "accrual/support_asof_2026-03-31_text.txt": {
     "argv": [
@@ -651,7 +651,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "dd541ec9db387fe7981e7727ba803c881784dd8cd36325046a2fed99671af360"
+    "stdout_sha256": "b3907557d10abad28296300f0eb55acf38242be042cc6b5bf3e54f0140150a4c"
   },
   "accrual/support_range_2026-01-01_2026-03-31_text.txt": {
     "argv": [
@@ -687,7 +687,7 @@
       "json"
     ],
     "exit": 0,
-    "stdout_sha256": "6a478d87f35b81267f951a150ee1d33a7c28cb21d32f4dce7a1c7cf63b74bc8e"
+    "stdout_sha256": "1113522eba4ec49e5b80028ccbfee9f5bb73afa403d67346beb1d07ff138640b"
   },
   "accrual/support_range_2026-03-01_2026-03-31_text.txt": {
     "argv": [
@@ -1052,7 +1052,7 @@
       "2026-08-05"
     ],
     "exit": 0,
-    "stdout_sha256": "f8ba579036870607bc4bb6a3f723507ffb337d158b44c993363f22e7e86f3756"
+    "stdout_sha256": "64842936af1e9f6e62d63f093c75ce88b4b155d5fc55db9a6b53647f0b65f5e5"
   },
   "readiness/2026-02.json": {
     "argv": [
@@ -1065,7 +1065,7 @@
       "2026-08-05"
     ],
     "exit": 0,
-    "stdout_sha256": "c2f19900643f04f84d8e0309f6200ab2375995a42cd775760f2971e2f2ccd83b"
+    "stdout_sha256": "dfa31fd5423d3e2addfb5338fcdeb1cc04c4c882274b17a1e2eb579183dbf821"
   },
   "readiness/2026-03.json": {
     "argv": [
@@ -1078,7 +1078,7 @@
       "2026-08-05"
     ],
     "exit": 0,
-    "stdout_sha256": "3076568cb1d7b5e3650f8e5cbf75143af4ab42901f89450dfbb73c7449d77a1f"
+    "stdout_sha256": "cb19d4522ab0c3176ffb9cf825f64d261ec8dcf309ff479465c0f9f083979aa2"
   },
   "reports/balance-sheet_2025-12-31_json.json": {
     "argv": [

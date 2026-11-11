@@ -334,8 +334,7 @@ def apply(entity_path: Path | str, account: str, plan_hash: str | None = None,
             if conn.execute("SELECT 1 FROM postings WHERE account=? UNION ALL SELECT 1 FROM balance_assertions WHERE account=? "
                             "LIMIT 1", (account, account)).fetchone():
                 raise AccountRemoveError("account_in_use", f"{account} is in use.", "Leave the account in the catalog.")
-            conn.execute("DELETE FROM accounts WHERE name=?", (account,))
-            store.forget_open_date_provenance([account], conn)
+            store.delete_accounts([account], conn)
             store.append_audit_event("account-removed", {"account": account, "open_date": effects["open_date"],
                                                          "currency": effects["currency"], "added_event": effects["added_event"],
                                                          "plan_hash": fresh["plan_hash"]}, conn)
