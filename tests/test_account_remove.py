@@ -557,6 +557,85 @@ class AccountRemoveTests(unittest.TestCase):
             result = self.assert_refused("account_referenced", LOAN)
         self.assertIn("accrual schedules sch-1:liability_account", result["errors"][0]["refs"])
 
+    def seal_raw(self, *statements: tuple) -> None:
+        """Raw catalog SQL, as an earlier engine writes it: the open-date provenance record is not kept."""
+        from bookkeeping.accrual.enable import _seal
+        with self.store.transaction(immediate=True) as conn:
+            for statement in statements:
+                conn.execute(*statement)
+            _seal(self.store, conn, "test-older-writer")
+        self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
+
+    def test_loan_with_uncertain_open_date_evidence_is_refused(self):
+        self.add_loan()
+        self.assertEqual(self.remove(LOAN)[1]["changes"], True)  # control: a reliable user marker
+        # An earlier engine changes the catalog: the record is stale, so no marker is evidence any more.
+        self.seal_raw(("INSERT INTO accounts (name, currency, open_date) VALUES (?, ?, ?)",
+                       ("Expenses:Older-Writer", "USD", "2026-01-01")))
+        with self.store.connection() as conn:
+            record = self.store.load_open_date_provenance(conn)
+        self.assertTrue(record["stale"])
+        self.assertEqual(record["accounts"][LOAN]["source"], "legacy")
+        result = self.assert_refused("account_in_use", LOAN)
+        self.assertIn("not reliable", result["errors"][0]["message"])
+        # A category keeps its earlier checks: a stale record does not block it.
+        self.assertEqual(self.remove(INSTALLS)[1]["changes"], True)
+
+    def test_loan_with_a_stale_opening_marker_stays_protected(self):
+        """The case the stale rule exists for: an opening marker that an unrelated older catalog edit downgrades."""
+        from bookkeeping.accrual.enable import _seal
+        from bookkeeping.ledger.model import Open
+        self.add_loan()
+        with self.store.transaction(immediate=True) as conn:
+            self.store.insert_opens([Open(date(2026, 1, 1), LOAN, ("USD",))], conn, provenance="opening")
+            _seal(self.store, conn, "test-opening-marker")
+        self.seal_raw(("INSERT INTO accounts (name, currency, open_date) VALUES (?, ?, ?)",
+                       ("Expenses:Older-Writer", "USD", "2026-01-01")))
+        self.assert_refused("account_in_use", LOAN)
+
+    def test_loan_without_a_provenance_record_or_marker_is_refused(self):
+        self.add_loan()
+        self.seal_raw(("DELETE FROM meta WHERE key='open_date_provenance'",))
+        self.assert_refused("account_in_use", LOAN)
+        self.assertEqual(self.remove(INSTALLS)[1]["changes"], True)  # a category is not affected
+
+    def test_interest_income_from_the_starter_chart_stays(self):
+        interest = "Income:Interest-Income"
+        self.assertIn(interest, self.catalog())
+        self.assert_refused("protected_account", interest)
+        # An account-add update of the starter account is not the record that account-add created it.
+        add_account(self.root, interest, open_date="2025-06-01")
+        self.assert_refused("protected_account", interest)
+
+    def test_interest_income_that_the_company_added_itself_follows_the_usual_checks(self):
+        """A company made before the account joined the starter charts, and that added it with account-add."""
+        interest = "Income:Interest-Income"
+        with self.store.transaction(immediate=True) as conn:  # the earlier starter chart
+            self.store.delete_accounts([interest], conn)
+            self.store.append_audit_event("ledger-store-sealed", {
+                "session_id": "test-earlier-chart", "entries": 0, "store_sha256": self.store.content_digest(conn)}, conn)
+        add_account(self.root, interest, category=True)
+        self.post(interest, "int-1")
+        self.assert_refused("account_in_use", interest)  # in use: the usual check, not protected_account
+        reverse_entry(load_entity(self.root), "int-1", "test-reverse")
+        self.assert_refused("account_in_use", interest)
+        # The same account, unused.
+        other = Path(self.tmp.name).resolve() / "earlier"
+        self.assertEqual(run_cli(["entity", "init", str(other), "--name", "Earlier Co"])[0], 0)
+        store = LedgerStore(other / "ledger.sqlite")
+        with store.transaction(immediate=True) as conn:
+            store.delete_accounts([interest], conn)
+            store.append_audit_event("ledger-store-sealed", {
+                "session_id": "test-earlier-chart", "entries": 0, "store_sha256": store.content_digest(conn)}, conn)
+        add_account(other, interest, category=True)
+        code, plan, _ = books("entity", "account-remove", str(other), "--account", interest)
+        self.assertEqual((code, plan["changes"]), (0, True), plan)
+        code, done, _ = books("entity", "account-remove", str(other), "--account", interest,
+                              "--apply", "--plan-hash", plan["plan_hash"])
+        self.assertEqual((code, done["status"]), (0, "applied"), done)
+        self.assertNotIn(interest, {o.account for o in store.load_opens()})
+        self.assertEqual(check_integrity(load_entity(other)).status, "ok")
+
     def test_bank_card_starter_and_group_liabilities_are_refused(self):
         add_account(self.root, "Liabilities:CreditCard:Amex", open_date="2026-01-01")
         self.assert_refused("protected_account", "Liabilities:CreditCard:Amex")

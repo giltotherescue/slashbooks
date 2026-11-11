@@ -6,7 +6,10 @@ The command is narrow on purpose. It removes an account only when all of these a
   (``is_account_added_event``), later than any ``account-removed`` event for it (``--added-event ID``
   names that event; without it the command finds the latest one);
 * it is an income or expense account, or a loan account under ``Liabilities:Loans:``, and not an
-  account that the engine creates or names itself (``engine_accounts.engine_owned_accounts``);
+  account that the engine creates or names itself (``engine_accounts.engine_owned_accounts``). A starter
+  account in ``SELF_ADDED_STARTERS`` that account-add created is the company's own account, not the engine's;
+* for a loan account, the open-date provenance record is reliable for it (not stale, a marker for its
+  current open date, a source other than ``opening`` or ``legacy``);
 * a loan account has no card financial kind (a card is never a loan here);
 * no posting (in any period, reversals and corrections included) and no balance assertion uses it,
   and, for a loan account, no opening operation set its open date (``open_date_provenance``);
@@ -31,6 +34,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 KIND = "account_remove"
+# Starter accounts that joined the starter charts after companies could add them with account-add.
+SELF_ADDED_STARTERS = frozenset({"Income:Interest-Income"})
 REMOVABLE_ROOTS = ("Income", "Expenses")
 # A loan account that a person adds by mistake can also go. Bank, card and other liabilities stay.
 LOAN_PREFIX = "Liabilities:Loans:"
@@ -39,6 +44,9 @@ SETTINGS_FOLDERS = ("learned-context", "review-queue", "staging")
 # Balance sheet records that can name a loan account and never name a category. Only the JSON files are read.
 LOAN_RECORD_FILES = ("reports/reconciliation.json",)
 LOAN_RECORD_FOLDERS = ("ingestion/statements",)
+# Open-date sources that are reliable evidence that no opening set a loan account's date. Any other state of the
+# marker (``opening``, ``legacy``, a stale record, no marker, or a marker for another date) refuses the removal.
+_LOAN_CLEAR_SOURCES = frozenset({"user", "import", "default", "scope", "cutover"})
 ACCRUAL_RULES_FILE = "learned-context/accrual-rules.json"
 _SEGMENT_RE = re.compile(r"[A-Z0-9][A-Za-z0-9-]*")
 _CLOSED_QUEUE_STATUSES = frozenset({"confirmed", "corrected"})
@@ -254,11 +262,16 @@ def is_account_added_event(event: dict[str, Any], account: str) -> bool:
             and str(payload.get("description", "")).startswith(f"Add account {account}: open "))
 
 
-def _added_event(events: list[dict[str, Any]], account: str, added_event: int | None) -> dict[str, Any]:
-    """The account-add event that created the account now in the catalog."""
+def _latest_added_event(events: list[dict[str, Any]], account: str) -> dict[str, Any] | None:
+    """The account-add event that created the account now in the catalog, or ``None``."""
     added = [e for e in events if is_account_added_event(e, account)]
     removed = [e for e in events if e["type"] == "account-removed" and e["payload"].get("account") == account]
-    latest = added[-1] if added and (not removed or added[-1]["id"] > removed[-1]["id"]) else None
+    return added[-1] if added and (not removed or added[-1]["id"] > removed[-1]["id"]) else None
+
+
+def _added_event(events: list[dict[str, Any]], account: str, added_event: int | None) -> dict[str, Any]:
+    """The account-add event that created the account now in the catalog."""
+    latest = _latest_added_event(events, account)
     if latest is None:
         raise AccountRemoveError("not_added_by_command",
                                  f"No audit event shows that books entity account-add created {account}.",
@@ -305,7 +318,12 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
         "file_fingerprints": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}
     added = None
     if row is not None:
-        if not _removable_type(account) or account in engine_owned_accounts():
+        # A starter account that joined the starter charts later (``SELF_ADDED_STARTERS``) can be one that the
+        # company created itself with account-add before. With that account-add record, it is the company's own
+        # category, and the usual checks apply. Without it, the starter chart created it, and it stays.
+        owned = account in engine_owned_accounts() and not (
+            account in SELF_ADDED_STARTERS and _latest_added_event(events, account) is not None)
+        if not _removable_type(account) or owned:
             raise AccountRemoveError("protected_account",
                                      f"{account} is a system account. Only an income or expense category, or a loan "
                                      f"account under {LOAN_PREFIX}, that books entity account-add created can be removed.")
@@ -324,6 +342,13 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
             raise AccountRemoveError("account_in_use",
                                      f"An opening operation set the open date of {account}, so the opening uses "
                                      "the account. An account in use stays in the catalog.",
+                                     "Leave the account in the catalog.")
+        if loan and (record is None or record.get("stale") or marker.get("source") not in _LOAN_CLEAR_SOURCES
+                     or marker.get("open_date") != str(row["open_date"])[:10]):
+            raise AccountRemoveError("account_in_use",
+                                     f"The open-date record of {account} is not reliable "
+                                     f"(source: {marker.get('source') or 'none'}), so an opening can use the account. "
+                                     "An account in use stays in the catalog.",
                                      "Leave the account in the catalog.")
         found = references(documents, store, account, catalog)
         if found:

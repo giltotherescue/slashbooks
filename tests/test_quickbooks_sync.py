@@ -590,6 +590,94 @@ class QuickBooksSyncTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "corruption"):
             sync.sync_opening(self.entity, self.write(), date(2026, 1, 1), apply=True)
 
+    def cli_json(self, *argv):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from bookkeeping import cli
+        out = StringIO()
+        with redirect_stdout(out):
+            code = cli.main(list(argv))
+        return code, json.loads(out.getvalue())
+
+    def make_older_format(self, result):
+        """Rewrite the saved derived evidence as an engine before account numbers wrote it."""
+        folder = (self.entity_path / result["reference_path"]).parent
+        for path in (folder / "manifest.json", folder / "reference" / "accounts.qbo.json"):
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["accounts"] = [{k: v for k, v in row.items() if k != "account_number"} for row in value["accounts"]]
+            path.write_bytes(sync._json_bytes(value))
+        return folder
+
+    def test_saved_evidence_in_the_older_format_has_its_own_code(self):
+        self.snapshot["accounts"][0]["AcctNum"] = "1000"
+        result = sync.sync_import(self.entity, self.write())
+        self.assertEqual(sync.sync_import(self.entity, self.write())["snapshot_id"], result["snapshot_id"])  # replay
+        folder = self.make_older_format(result)
+        with self.assertRaises(sync.SnapshotEvidenceError) as caught:
+            sync.sync_import(self.entity, self.write())
+        self.assertEqual(caught.exception.code, "snapshot_format_outdated")
+        self.assertIn(result["snapshot_id"], str(caught.exception))
+        for command in (["qb", "sync-import"], ["qb", "sync-opening"]):
+            with self.subTest(command=command):
+                extra = ["--cutover", "2026-01-01"] if command[1] == "sync-opening" else []
+                code, out = self.cli_json(*command, str(self.write()), "--entity", str(self.entity_path), *extra)
+                self.assertEqual((code, out["success"], out["code"]), (1, False, "snapshot_format_outdated"), out)
+        # The older format with any other change is not an outdated format.
+        target = folder / "reference" / "OpeningTrialBalance.qbo.json"
+        target.write_text(target.read_text().replace('"100.00"', '"900.00"'))
+        with self.assertRaises(sync.SnapshotEvidenceError) as caught:
+            sync.sync_import(self.entity, self.write())
+        self.assertEqual(caught.exception.code, "snapshot_evidence_mismatch")
+
+    def test_changed_or_damaged_saved_evidence_has_the_mismatch_code(self):
+        self.snapshot["accounts"][0]["AcctNum"] = "1000"
+        cases = {
+            "changed report": lambda folder: (folder / "reference" / "OpeningTrialBalance.qbo.json").write_text(
+                (folder / "reference" / "OpeningTrialBalance.qbo.json").read_text().replace('"100.00"', '"900.00"')),
+            "changed source": lambda folder: (folder / "snapshot.json").write_bytes(
+                (folder / "snapshot.json").read_bytes().replace(b"Synthetic", b"Changed")),
+            "extra file": lambda folder: (folder / "reference" / "extra.qbo.json").write_text("{}"),
+            "missing file": lambda folder: (folder / "manifest.json").unlink(),
+            "not json": lambda folder: (folder / "reference" / "accounts.qbo.json").write_text("{"),
+        }
+        for label, damage in cases.items():
+            with self.subTest(label):
+                result = sync.sync_import(self.entity, self.write())
+                folder = (self.entity_path / result["reference_path"]).parent
+                damage(folder)
+                with self.assertRaises(sync.SnapshotEvidenceError) as caught:
+                    sync.sync_import(self.entity, self.write())
+                self.assertEqual(caught.exception.code, "snapshot_evidence_mismatch")
+                self.assertEqual(str(caught.exception), "Snapshot evidence digest collision or corruption")
+                code, out = self.cli_json("qb", "sync-import", str(self.write()), "--entity", str(self.entity_path))
+                self.assertEqual((code, out["code"]), (1, "snapshot_evidence_mismatch"), out)
+                import shutil
+                shutil.rmtree(folder)
+
+    def test_concurrent_different_evidence_has_its_own_code(self):
+        from unittest.mock import patch
+        real_rename = Path.rename
+
+        def rival_first(stage, target):
+            # Another import saves different evidence under the same ID between the check and the rename.
+            Path(target).mkdir()
+            (Path(target) / "snapshot.json").write_text("{}")
+            raise FileExistsError(str(target))
+
+        with patch.object(Path, "rename", rival_first):
+            with self.assertRaises(sync.SnapshotEvidenceError) as caught:
+                sync.sync_import(self.entity, self.write())
+        self.assertEqual(caught.exception.code, "snapshot_evidence_concurrent")
+        self.assertIs(Path.rename, real_rename)
+        import shutil
+        for folder in (self.entity_path / "sources" / "quickbooks").iterdir():
+            shutil.rmtree(folder)  # the rival evidence
+        # Other errors keep the earlier JSON shape: no code.
+        code, out = self.cli_json("qb", "sync-opening", str(self.write()), "--entity", str(self.entity_path),
+                                  "--cutover", "2026-01-02")
+        self.assertEqual(code, 1)
+        self.assertNotIn("code", out)
+
     def test_wrong_opening_date_and_unbalanced_tb_block(self):
         self.snapshot["reports"]["OpeningTrialBalance"]["Rows"]["Row"][0]["ColData"][1]["value"] = "101.00"
         del self.snapshot["reports"]["OpeningBalanceSheet"]

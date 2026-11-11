@@ -52,6 +52,22 @@ directory so it survives backups and restore. Repeating the same snapshot is
 idempotent; changing source data produces new evidence. Corrupted existing
 reference files prevent reuse and opening application.
 
+### When saved evidence cannot be used
+
+`sync-import` and `sync-opening` compare the saved evidence of a snapshot with
+the evidence that the current engine makes from the same source. When they
+differ, the command stops, prints `{"success": false, "error": "...", "code":
+"..."}` and exits with 1. Use `code`, not the message text, to choose what to
+do:
+
+| `code` | Reason | What to do |
+|---|---|---|
+| `snapshot_format_outdated` | The saved source (`snapshot.json`) is intact. An earlier engine wrote the files derived from it in an older format: chart accounts without account numbers. Nothing else differs. | Fetch a new snapshot. Its `fetched_at` differs, so it is saved under a new ID. |
+| `snapshot_evidence_mismatch` | The saved evidence differs in another way: a digest collision, a changed, missing, extra or damaged file, or a symbolic link. The message stays "Snapshot evidence digest collision or corruption". | Do not use the saved evidence. Find out what changed the folder before you import again. |
+| `snapshot_evidence_concurrent` | Another import saved different evidence under the same ID at the same time. | Run the import again after the other import ends. |
+
+Other errors print `success` and `error` only, as before.
+
 ## Review financial kinds with an opening chart
 
 To include reviewed financial kinds, set `"version": 2` in the
