@@ -16,8 +16,11 @@ The exact reversal of an entry in the books is not refused: it removes activity 
 day of the original, which is how a person takes out a posting that came in before this
 rule. A ledger write cannot move an open date earlier (``OpenDateChangeError``). The
 commands that set open dates do that: ``books entity account-add --open-date`` (it writes
-the catalog directly, and it can only move a date earlier) and ``books accrual opening
-apply`` (the open dates of its previewed plan). A confirmation never moves an open date.
+the catalog directly, and it can only move a date earlier), ``books accrual opening
+apply`` (the open dates of its previewed plan) and ``books entity set-books-from --apply`` (generic accounts
+with a fallback open date, to a previewed books scope; ``bookkeeping.books_from``). The books scope itself is
+not a fence; the open date of each account is.
+A confirmation never moves an open date.
 """
 from __future__ import annotations
 
@@ -47,7 +50,10 @@ class AccountNotOpenError(ValueError):
                            f"balance of {account}. If they do, do not record this row. If the books must record "
                            f"{account} before {open_date.isoformat()}, {move}.")
         else:
-            self.action = f"Choose an account that is open on {entry_date.isoformat()}, or {move}."
+            self.action = (f"Choose an account that is open on {entry_date.isoformat()}, or {move}. When the "
+                           "category has the 2026-01-01 starter fallback date and the company must record earlier "
+                           "history, preview a books scope with books entity set-books-from PATH --books-from "
+                           "YYYY-MM-DD.")
         super().__init__(
             f"{row} is dated {entry_date.isoformat()}. {account} opens on {open_date.isoformat()} ({code}). "
             f"The books do not record activity for an account before its open date, because an opening balance "

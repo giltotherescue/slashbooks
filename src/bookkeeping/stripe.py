@@ -425,7 +425,7 @@ def stripe_prepare(entity, *, opening_date):
             existing.append(name)
         else:
             cash = role in {"clearing_account", "payout_transit_account", "reserve_account"}
-            add_account(entity.path, name, open_date=opening_date, currency=book,
+            add_account(entity.path, name, open_date=opening_date, currency=book, open_date_source="import",
                         financial_kind="cash" if typed_catalog and cash else None)
             created.append(name)
     return dict(accounts=accounts, created=created, existing=existing, opening_date=opening_date,

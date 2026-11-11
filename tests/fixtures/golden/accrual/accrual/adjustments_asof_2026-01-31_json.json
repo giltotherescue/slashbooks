@@ -1,7 +1,7 @@
 {
   "as_of": "2026-01-31",
   "basis": "accrual",
-  "canonical_digest": "3c9a5d9b0c9d3693df1d547582ee3d12f12312d61dcea5229dc399af2fa9b860",
+  "canonical_digest": "cc12b79db9c89f9ec105a95febaffdfe6dcf5a6646c5d7024787c0951caefc3f",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -89,7 +89,7 @@
     "verified": true
   },
   "currency": "USD",
-  "fingerprint": "c2d7cdac64addf8b6401bd4a483c2f8be99ee666eebfb26455d25c8f3c1ae137",
+  "fingerprint": "05d9b8dc300c0de9102730cfe64d5b0c2103a0f020436e09786617fab2478f41",
   "from_date": null,
   "issues": [],
   "kind": "adjustments",
@@ -113,7 +113,7 @@
           ],
           "id": "golden-opening",
           "kind": "migration",
-          "plan_hash": "52240e9277f203f7e63e1f615b96fb9214cd704553f9bf3e30a52dde7a747622",
+          "plan_hash": "40fe0a150e8d8d1873fca8141f918b63a0412ea5c9c2194f6cb1ed0e88b4b79c",
           "role": "posted_effect"
         }
       ],
@@ -176,7 +176,7 @@
           ],
           "id": "inv-1001-create",
           "kind": "item_create",
-          "plan_hash": "295b0a6e0511bbbb95419c586540203cdab18a7de8d4b9b7bdcf149454263d5c",
+          "plan_hash": "8b60284be61d3b0c746e42365f6909dba0d2f0adaeeeaf498c80bbf2aaa7a8b1",
           "role": "posted_effect"
         }
       ],
@@ -209,7 +209,7 @@
           ],
           "id": "inv-1003-create",
           "kind": "item_create",
-          "plan_hash": "0ef11fa234ee25293eff2d4708998d7fee63a10171bc86e5c29247564a20651b",
+          "plan_hash": "c2b882643a5ded511918e6f5eead55ae24e0bb976be9ef9b6f5ce39c6c0df62b",
           "role": "posted_effect"
         }
       ],
@@ -241,7 +241,7 @@
           ],
           "id": "pay-bill-open-1",
           "kind": "item_settlement",
-          "plan_hash": "2509be45d9a3d9ab7684ac76120ba22030c117625e67cda361cc1ccbbbe6540a",
+          "plan_hash": "645933489e23532bd23993d46a2bdcb8ee7691cc0874b219767ba178451efc9e",
           "role": "posted_effect"
         }
       ],
@@ -273,7 +273,7 @@
           ],
           "id": "pay-inv-open-1",
           "kind": "item_settlement",
-          "plan_hash": "fec5d37ae5f2ae9339a05f77252b5bee7ec4b1a155541953c901d654cbd5603a",
+          "plan_hash": "f2f9d90dd96f9b771514acd3bf096aa078eb01726ec4627d7249527cd04a5c5d",
           "role": "posted_effect"
         }
       ],
@@ -305,7 +305,7 @@
           "evidence_ids": [],
           "id": "utilities-estimate-jan",
           "kind": "journal",
-          "plan_hash": "20cb31c19e53570ec11c0d638af0273e84c3c982b5f53aae90951ef50a5a3f28",
+          "plan_hash": "3bf8adf62373c9b4da2875ef9a54166e991e8fb17028c807a4989ef1fc599d8e",
           "role": "posted_effect"
         }
       ],
@@ -337,7 +337,7 @@
           ],
           "id": "recognize-2026-01-31",
           "kind": "schedule_due",
-          "plan_hash": "82a5ab7425255284003c707b6e3972fece720ee9804634d5063ee5fee4539086",
+          "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
           "role": "posted_effect"
         }
       ],
@@ -369,7 +369,7 @@
           ],
           "id": "recognize-2026-01-31",
           "kind": "schedule_due",
-          "plan_hash": "82a5ab7425255284003c707b6e3972fece720ee9804634d5063ee5fee4539086",
+          "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
           "role": "posted_effect"
         }
       ],
@@ -401,7 +401,7 @@
           ],
           "id": "recognize-2026-01-31",
           "kind": "schedule_due",
-          "plan_hash": "82a5ab7425255284003c707b6e3972fece720ee9804634d5063ee5fee4539086",
+          "plan_hash": "d13a7e7703254b787e7fbdd81d84b73a3983f39695f9ae1ae73459b5ce7bb45a",
           "role": "posted_effect"
         }
       ],

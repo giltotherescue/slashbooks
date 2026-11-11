@@ -1,7 +1,7 @@
 {
   "as_of": "2026-01-31",
   "basis": "accrual",
-  "canonical_digest": "3c9a5d9b0c9d3693df1d547582ee3d12f12312d61dcea5229dc399af2fa9b860",
+  "canonical_digest": "cc12b79db9c89f9ec105a95febaffdfe6dcf5a6646c5d7024787c0951caefc3f",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -89,7 +89,7 @@
     "verified": true
   },
   "currency": "USD",
-  "fingerprint": "d97498a7e7e71f693284eab0b58c1f7fb5663cc4f37fd8aab3a7705e771fd89a",
+  "fingerprint": "b8ee28c778460c18eb833b5b8ec190f6bff71f4367b8504e554e5c43bdfd6d65",
   "from_date": null,
   "issues": [],
   "kind": "reconciliation",

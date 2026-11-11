@@ -673,7 +673,7 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                                 **({"opening_disposition": disposition_intent,
                                                     "opening_entry_fingerprint": expected_entry_fingerprint}
                                                    if disposition_intent is not None else {})}, conn)
-            store.insert_opens(opens, conn)
+            store.insert_opens(opens, conn, provenance="opening")
             store.insert_entries(written, conn)
             store.set_meta("canonical", "true", conn)
             for item in written:

@@ -214,8 +214,13 @@ class TestInitFullLayout(unittest.TestCase):
             explicit = Path(tmp) / "explicit-cutover"
             init_entity(explicit, cutover_date="2024-07-01")
             add_account(explicit, "Expenses:New-Account")
+            add_account(explicit, "Assets:Bank:New-Account")
             opens = {item.account: item.date for item in LedgerStore(explicit / "ledger.sqlite").load_opens()}
-            self.assertEqual(opens["Expenses:New-Account"], date(2026, 1, 1))
+            # A category opens on the books scope, which is the cutover here. Before the books scope, it opened
+            # on the fixed fallback date, after the cutover, and refused the entries between the two days.
+            self.assertEqual(opens["Expenses:New-Account"], date(2024, 7, 1))
+            # A balance sheet account keeps the fixed fallback date; it needs its own start.
+            self.assertEqual(opens["Assets:Bank:New-Account"], date(2026, 1, 1))
 
     def test_reinit_does_not_rewrite_existing_accounts_for_changed_cutover(self) -> None:
         from bookkeeping.ledger.importer import import_transactions
@@ -925,7 +930,15 @@ class TestAccountAddSealing(unittest.TestCase):
             add_account(self.root, "Expenses:No-Catalog-Repair")
             add_account(self.root, "Expenses:No-Catalog-Repair", open_date="2025-01-01")
         with self.store.connection() as conn:
-            self.assertEqual(dict(conn.execute("SELECT key,value FROM meta")), before)
+            after = dict(conn.execute("SELECT key,value FROM meta"))
+            record = self.store.load_open_date_provenance(conn)
+        # account-add keeps the open-date provenance record current (bookkeeping.books_from); every other key
+        # stays exactly as it was.
+        after.pop("open_date_provenance", None)
+        before.pop("open_date_provenance", None)
+        self.assertEqual(after, before)
+        self.assertEqual(record["accounts"]["Expenses:No-Catalog-Repair"],
+                         {"source": "user", "open_date": "2025-01-01"})
         self.assertIsNone(self.store.get_meta("account_catalog"))
         self.assertEqual(check_integrity(load_entity(self.root)).status, "ok")
 

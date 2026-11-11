@@ -234,17 +234,105 @@ At import, a row that a learned category would post goes to Review instead,
 with `review_hold_reason` set to the code.
 
 A ledger write cannot move the open date of an account in the catalog to an
-earlier day (`open_date_change_not_authorized`). Two commands set open dates,
-with their existing permission rules:
+earlier day (`open_date_change_not_authorized`). Three commands set open dates,
+with their own permission rules:
 
 - `books entity account-add --entity PATH --account ACCOUNT --open-date YYYY-MM-DD`
   moves an open date earlier. The trusted preparation boundary does not support
   this command, so standing automation cannot run it.
 - `books accrual opening apply` sets the open dates of its chart from its
   preview.
+- `books entity set-books-from --apply` moves fallback-dated generic accounts
+  to a books scope that a person previewed (see below).
 
 Before you move an open date, check whether an opening balance already includes
 the earlier activity.
+
+### The books scope (`books_from`)
+
+A fiscal-year boundary is not a posting start. A business can start its books
+for 2026 and still need its 2025 entries.
+
+`books_from` is the host-stated start of the historical scope, and the source
+of the default open date of the generic accounts. It is not a posting fence:
+no ledger write reads it. The open date of each account stays the only
+open-date fence, and in enforced mode the books start policy below is the
+host's fence too.
+
+The generic accounts are the income and expense accounts, and the two ordinary
+owner equity accounts of the starter chart, `Equity:Owner-Contributions` and
+`Equity:Owner-Draws`. The books scope never opens another account:
+
+- Bank, card and other balance sheet accounts. Each needs its own start (an
+  explicit `--open-date`, a cutover or an opening).
+- Control equity accounts: `Equity:Opening-Balances`,
+  `Equity:Opening-Balance-Adjustments`, `Equity:Retained-Earnings`,
+  `Equity:Prior-Periods-Net-Income`, `Equity:Accrual-To-Cash-Adjustment`, and
+  every equity account that a person adds (its role is not known). An opening
+  operation sets the date of an opening equity account.
+
+The commands:
+
+- `books entity init PATH --books-from YYYY-MM-DD` opens the starter generic
+  accounts on that day. The other starter accounts keep the fallback date,
+  2026-01-01. With `--cutover-date`, every starter account opens on the
+  cutover, as before, and the cutover is the books scope. A `--books-from`
+  that differs from `--cutover-date` is refused.
+- Without `--books-from` and `--cutover-date`, every starter account opens on
+  the fallback date 2026-01-01, as before.
+- `books entity account-add` without `--open-date` opens a new generic account
+  on the books scope (without a recorded scope, on the `entity.json` cutover),
+  and another new account on the fallback date. An existing account keeps its
+  open date.
+
+The ledger meta key `open_date_provenance` records the books scope and the
+source of each account's open date: `default` (the fallback), `scope`,
+`cutover`, `user` (`--open-date`), `import`, `opening` or `legacy` (no
+reliable source). The audit seal covers it. Every catalog writer keeps it in
+the same transaction as its change. A ledger made by an earlier version gets
+the record at its first catalog write with a source; the accounts already in
+it are `legacy`. The record holds a fingerprint of the catalog rows. If an
+earlier engine version (after a rollback) or a direct edit changes the
+catalog, the fingerprint differs, and no marker is evidence until a person
+reviews each account (`provenance: "stale"` in the preview). An earlier
+version's command that writes nothing leaves no trace, so a ledger without
+reliable markers never gets automatic evidence.
+
+`books entity set-books-from PATH --books-from YYYY-MM-DD` previews a new books
+scope and writes nothing. It lists each account that moves, with its
+`evidence`, and each account that stays, with its `reason` and, for an
+uncertain account, what is known (`in_starter_chart`, and the account-add and
+account-remove audit events). `--apply --plan-hash H` runs only the previewed
+plan and writes the audit event `books-from-set`, which keeps the request (the
+date and the named accounts) apart from the accounts that moved. No entry
+changes. A replay of an applied plan hash with the same request returns
+`already_applied`. A replay of that hash with another date or other named
+accounts refuses with `replay_request_differs` and writes nothing. Standing
+automation cannot run this command.
+
+A generic account moves only when no bank or CSV mapping names it and one of
+these is true:
+
+- its open date has the marker `default` or `scope`, and the record is not
+  stale (`recorded_default`, `recorded_scope`);
+- it has no reliable marker, it opens on 2026-01-01, and a person names it with
+  `--account` after review (`named_by_person`). The preview lists these
+  accounts in `effects.uncertain`. A starter name and the date 2026-01-01 are
+  not evidence.
+
+An account with `user`, `import`, `opening` or `cutover` provenance never
+moves. The preview refuses a scope before the company cutover
+(`scope_before_cutover`), before a QuickBooks or accrual opening
+(`scope_before_opening`, because such an opening summarizes the whole company
+before its day), later than the current scope (`scope_not_earlier`), or over a
+closed period (`closed_period`).
+
+A statement opening is for one account, so the preview lists it in `openings`
+and does not refuse. The account-specific opening controls fence that
+account's earlier history, not the catalog date alone: `books statement
+record-opening` refuses while earlier rows of the account wait
+(`rows_waiting_before`), and intake keeps a row dated before the account's
+opening entry out of review (`before_opening`).
 
 The exact reversal of an entry in the books is allowed, so a person can remove
 an early posting that an older version recorded. An exact reversal has the

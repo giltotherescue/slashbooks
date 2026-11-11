@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- Let a company record history before 2026. A company created with no cutover
+  opened every starter category on a fixed date, 2026-01-01, and new categories
+  got the same date. Because the books refuse an entry before an account's open
+  date, such a company could not record a 2025 entry. A fiscal year is not a
+  posting start, so the start of the historical scope is now a date that the
+  host or a person states. The books scope (`books_from`) is that start and the
+  source of the default open date of income, expense, owner contribution and
+  owner draw accounts. It is not a posting fence: each account's open date stays
+  the only open-date fence (plus the books start policy in enforced mode).
+  - `books entity init PATH --books-from YYYY-MM-DD` opens the starter income,
+    expense, owner contribution and owner draw accounts on that day. Bank, card,
+    other balance sheet and control equity accounts (opening balances, retained
+    earnings and the like) keep their own start. Without it, the behavior is as
+    before.
+  - `books entity account-add` without `--open-date` opens a new income,
+    expense, owner contribution or owner draw account on the books scope (or
+    the company cutover). An existing account keeps its open date.
+  - `books entity set-books-from PATH --books-from YYYY-MM-DD [--account
+    ACCOUNT ...] [--apply --plan-hash H]` previews and applies a books scope
+    for an existing company. An account moves only when its recorded
+    provenance shows the 2026-01-01 fallback, or when a person names it after
+    review. A starter name and the date are not evidence. It refuses a scope
+    before a cutover, before a QuickBooks or accrual opening, or over a closed
+    period. No entry changes.
+  - The ledger records where each open date came from (`open_date_provenance`),
+    with a catalog fingerprint. A catalog change by an earlier engine version
+    makes every marker stale. New companies therefore have different ledger
+    digests; their reports do not change.
+
 - Record a card payment one time when it shows in two files. A payment from
   checking to a card shows as a row in the bank file and as a row in the card
   file. If a person recorded each row against the other account, the payment

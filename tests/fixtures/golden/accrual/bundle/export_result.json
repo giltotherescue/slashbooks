@@ -4,7 +4,7 @@
   "file_count": 12,
   "format": 2,
   "import_ready": false,
-  "ledger_content_sha256": "3c9a5d9b0c9d3693df1d547582ee3d12f12312d61dcea5229dc399af2fa9b860",
+  "ledger_content_sha256": "cc12b79db9c89f9ec105a95febaffdfe6dcf5a6646c5d7024787c0951caefc3f",
   "report_fingerprints": {
     "balance_sheet": "c3d56609b0a89ca42157d486267bfa43ed746bb28dae0b2ecd4df4cc6680541c",
     "general_ledger": "9d1561bd6bb0f105deec92ff43c6f11a5e36428a1ec0143c2a320978b4dcdae2",

@@ -54,9 +54,9 @@
       "evidence": [],
       "id": "due:utilities-estimate-mar",
       "kind": "reversal",
-      "ledger_digest": "3c9a5d9b0c9d3693df1d547582ee3d12f12312d61dcea5229dc399af2fa9b860",
+      "ledger_digest": "cc12b79db9c89f9ec105a95febaffdfe6dcf5a6646c5d7024787c0951caefc3f",
       "opens": [],
-      "plan_hash": "08d0f3c7fa0fd957e7fb36c7c500b4c3026768c1fccde656ba829a09275bb10b",
+      "plan_hash": "35bf34aeb71ed0d2d0d8bef93d074ed86998b7db7084105019c401aae580c131",
       "request": {
         "date": "2026-04-01",
         "description": "Reversal of: Estimated March utilities",

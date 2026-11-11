@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 from urllib.parse import urlsplit
 from .brand import product_name
 
@@ -369,18 +369,47 @@ def _starter_account_opens(business_type: str, open_date: date = _DEFAULT_ACCOUN
     ]
 
 
+def _starter_opens(accounts: Sequence[str], cutover: date | None, books_from: date | None,
+                   currency: str = "USD") -> tuple[list[Any], dict[str, str]]:
+    """Starter account definitions and the provenance of each open date (``books_from.starter_open``)."""
+    from .books_from import starter_open
+    from .ledger.model import Open
+
+    opens, sources = [], {}
+    for account in accounts:
+        day, source = starter_open(account, cutover, books_from)
+        opens.append(Open(date=day, account=account,
+                          currencies=(currency,) if not account.startswith(("Equity:", "Income:")) else ()))
+        sources[account] = source
+    return opens, sources
+
+
+def _starter_dates(store: Any, conn: Any, config: dict[str, Any]) -> tuple[date | None, date | None]:
+    """The cutover and the books scope that open starter accounts added after the company was created."""
+    raw = _normalize_optional_date(str(config.get("cutover_date") or ""))
+    cutover = date.fromisoformat(raw) if raw else None
+    record = store.load_open_date_provenance(conn)
+    books_from = (date.fromisoformat(record["books_from"])
+                  if record and record.get("books_from") and record.get("books_from_source") == "scope" else None)
+    return cutover, books_from
+
+
 def accrual_starter_accounts(business_type: str) -> tuple[str, ...]:
     """Names of the accounts a new accrual company of ``business_type`` gets on top of the cash starter chart."""
     opens = _starter_account_opens(business_type, _DEFAULT_ACCOUNT_OPEN_DATE, "accrual")
     return tuple(opened.account for opened in opens[-len(_ACCRUAL_STARTER_ACCOUNTS):])
 
 
-def _normalize_optional_date(value: str) -> str | None:
+def _normalize_optional_date(value: str, what: str = "Cutover date") -> str | None:
     normalized = str(value or "").strip()
     if not normalized:
         return None
     if not _DATE_RE.match(normalized):
-        raise ValueError("Cutover date must use YYYY-MM-DD format.")
+        raise ValueError(f"{what} must use YYYY-MM-DD format.")
+    try:
+        date.fromisoformat(normalized)
+    except ValueError:
+        raise ValueError(f"{what} {normalized} is not a valid date.") from None
     return normalized
 
 
@@ -430,8 +459,19 @@ def init_entity(
     website_url: str = "",
     basis: str | None = None,
     classify_starter_accounts: bool = False,
+    books_from: str = "",
 ) -> dict[str, list[str]]:
     """Initialise (or safely re-init) an entity directory at *target*.
+
+    ``books_from`` is the books scope: the host-stated start of the historical scope, and the source of the
+    default open date of the generic accounts (income, expense, and the ordinary owner equity accounts; see
+    ``bookkeeping.books_from``). The starter generic accounts open on it, and so do the generic accounts that
+    ``add_account`` adds later without a date. It is not a posting fence: each account's open date stays the
+    only open-date fence (plus the books start policy in enforced mode). Bank, card and other balance sheet
+    accounts, and control equity accounts, keep the fixed fallback date; each needs its own start. Without
+    ``books_from`` and ``cutover_date``, every starter account opens on the fixed fallback date, as before,
+    with the provenance ``default``. A cutover is the books start, so a ``books_from`` that differs from it
+    is refused.
 
     Returns a report dict with keys ``"created"`` and ``"existed"``, each a
     list of relative path strings.
@@ -445,7 +485,21 @@ def init_entity(
             raise ValueError("Re-init preserves accounting basis; use configure_basis for an empty company.")
     website_url = normalize_website(website_url)
     normalized_cutover_date = _normalize_optional_date(cutover_date)
-    starter_open_date = date.fromisoformat(normalized_cutover_date) if normalized_cutover_date else _DEFAULT_ACCOUNT_OPEN_DATE
+    normalized_books_from = _normalize_optional_date(books_from, "Books-from date")
+    if normalized_books_from and normalized_cutover_date and normalized_books_from != normalized_cutover_date:
+        raise ValueError(f"The cutover date {normalized_cutover_date} is the books start: the opening balance on that "
+                         f"day summarizes the earlier history. A books-from date of {normalized_books_from} would "
+                         "differ from it. Give one of the two dates, or the same date.")
+    cutover_day = date.fromisoformat(normalized_cutover_date) if normalized_cutover_date else None
+    books_from_day = date.fromisoformat(normalized_books_from) if normalized_books_from else None
+    if normalized_books_from and (target / "ledger.sqlite").exists():
+        from .ledger.store import LedgerStore
+        existing_store = LedgerStore(target / "ledger.sqlite")
+        with existing_store.connection() as conn:
+            existing_record = existing_store.load_open_date_provenance(conn)
+        if (existing_record or {}).get("books_from") != normalized_books_from:
+            raise ValueError("Re-init does not change the books scope of an existing ledger. Preview the change with "
+                             "books entity set-books-from PATH --books-from YYYY-MM-DD.")
 
     templates = _templates_dir()
     target.mkdir(parents=True, exist_ok=True)
@@ -484,8 +538,12 @@ def init_entity(
                 store.set_meta("basis", selected_basis, conn)
                 if name:
                     store.set_meta("title", name, conn)
-                opens = _starter_account_opens(business_type, starter_open_date, selected_basis)
-                store.insert_opens(opens, conn)
+                from .books_from import new_provenance
+                store.save_open_date_provenance(
+                    new_provenance(cutover_day or books_from_day, "cutover" if cutover_day else "scope"), conn)
+                chart = [item.account for item in _starter_account_opens(business_type, basis=selected_basis)]
+                opens, sources = _starter_opens(chart, cutover_day, books_from_day)
+                store.insert_opens(opens, conn, provenance=sources)
                 if classify_starter_accounts:
                     store.assign_financial_kinds(_starter_financial_kinds(opens), conn)
                     store.append_audit_event("ledger-store-sealed", {
@@ -600,10 +658,10 @@ def configure_basis(entity_path: Path | str, basis: str) -> None:
         with store.transaction(immediate=True) as conn:
             store.set_meta("basis", basis, conn)
             if basis == "accrual":
-                open_day = date.fromisoformat(_normalize_optional_date(str(config.get("cutover_date") or "")) or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat())
-                opens = _starter_account_opens(entity.business_type, open_day, "accrual")[-len(_ACCRUAL_STARTER_ACCOUNTS):]
+                cutover_day, books_from_day = _starter_dates(store, conn, config)
+                opens, sources = _starter_opens(_ACCRUAL_STARTER_ACCOUNTS, cutover_day, books_from_day)
                 existing = store.load_account_names(conn) if store.has_financial_kinds(conn) else None
-                store.insert_opens(opens, conn)
+                store.insert_opens(opens, conn, provenance=sources)
                 if existing is not None:
                     store.assign_financial_kinds(_starter_financial_kinds(
                         [item for item in opens if item.account not in existing]), conn)
@@ -649,12 +707,19 @@ def add_account(
     currency: str | None = None,
     category: bool = False,
     financial_kind: str | None = None,
+    open_date_source: str = "user",
 ) -> dict[str, str]:
     """Add an account to the SQLite account catalog for an existing entity.
 
     The currency defaults to the company currency (USD unless entity.json says otherwise).
     With ``category`` the account must also be an income or expense category of an
     approved shape (``check_category_account``). The usual checks apply in both cases.
+
+    Without ``open_date``, a new generic account (income, expense, ordinary owner equity) opens on the
+    company's books scope (``books_from``; without a recorded scope, the ``entity.json`` cutover), and any other
+    new account on the fixed fallback date (``books_from.added_open``). An existing account keeps its open date.
+    ``open_date`` can move an open date earlier; ``open_date_source`` is its provenance (``user``, or
+    ``import`` for a connector).
     """
     if category:
         check_category_account(account)
@@ -663,7 +728,7 @@ def add_account(
     if currency is None:
         from .currency import company_currency
         currency = company_currency(entity.entity_config)
-    normalized_open_date = _normalize_optional_date(open_date) or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat()
+    explicit_open_date = _normalize_optional_date(open_date, "Open date")
 
     from .ledger.model import Open
     import sqlite3
@@ -697,11 +762,19 @@ def add_account(
             ).fetchone():
                 raise ValueError("Account catalog cannot change on a populated ledger without audit history.")
             existing = conn.execute("SELECT currency,open_date FROM accounts WHERE name=?", (account,)).fetchone()
-            if existing and financial_kind is not None:
-                if requested_currency is None:
-                    currency = effective_currency = existing["currency"]
-                if not open_date:
-                    normalized_open_date = existing["open_date"]
+            if existing and financial_kind is not None and requested_currency is None:
+                currency = effective_currency = existing["currency"]
+            record = store.load_open_date_provenance(conn)
+            source: str | None
+            if explicit_open_date:
+                normalized_open_date, source = explicit_open_date, open_date_source
+            elif existing:
+                # No date given: an existing account keeps its open date and its provenance.
+                normalized_open_date, source = str(existing["open_date"])[:10], None
+            else:
+                from .books_from import added_open, recorded_scope
+                added_day, source = added_open(account, recorded_scope(store, conn, entity.entity_config))
+                normalized_open_date = added_day.isoformat()
             opened = Open(date.fromisoformat(normalized_open_date), account, (effective_currency,))
             if existing and existing["currency"] != effective_currency:
                 conflict = conn.execute(
@@ -717,7 +790,13 @@ def add_account(
             if current_kind is not None and current_kind != financial_kind:
                 raise ValueError(f"Account '{account}' already has a different financial kind.")
             assign_kind = financial_kind is not None and current_kind is None
-            if assign_kind or not existing or (existing["currency"], existing["open_date"]) != (effective_currency, effective_date):
+            # An explicit date equal to the current one changes the provenance (for example from the fallback
+            # ``default`` to ``user``), so a later repair does not treat a chosen date as a fallback. In a ledger
+            # made before the provenance record, this write creates the record (``LedgerStore.insert_opens``).
+            marker_change = (source is not None and normalized_open_date == effective_date
+                             and (record is None
+                                  or record["accounts"].get(account) != {"source": source, "open_date": effective_date}))
+            if assign_kind or not existing or marker_change or (existing["currency"], existing["open_date"]) != (effective_currency, effective_date):
                 # Catalog, intent and seal share one transaction without
                 # initializing the store or rewriting its metadata.
                 store.append_audit_event("intent", {
@@ -725,8 +804,9 @@ def add_account(
                     "description": (f"{'Update' if existing else 'Add'} account {account}: "
                                     f"open {effective_date}, currency {effective_currency}"),
                     **({"financial_kind": financial_kind} if assign_kind else {}),
+                    **({"open_date_source": source} if source is not None else {}),
                 }, conn)
-                store.insert_opens([opened], conn)
+                store.insert_opens([opened], conn, provenance=source)
                 if assign_kind:
                     store.assign_financial_kinds({account: financial_kind}, conn)
                 store.append_audit_event("ledger-store-sealed", {
@@ -734,9 +814,14 @@ def add_account(
                     "store_sha256": store.content_digest(conn),
                 }, conn)
 
+            if source is None:
+                marker = (record or {}).get("accounts", {}).get(account)
+                source = marker["source"] if marker and marker["open_date"] == normalized_open_date else None
+
     return {
         "account": account,
         "open_date": normalized_open_date,
+        "open_date_source": source,
         "currency": currency,
         "status": "existed" if existed_before else "created",
     }
@@ -757,15 +842,12 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
     """
     from .currency import company_currency
     from .ledger.importer import _entity_write_lock, check_integrity
-    from .ledger.model import Open
     from .ledger.store import SUPPORTED_SCHEMA_VERSIONS, LedgerStore, default_store_path
 
     if business_type not in BUSINESS_TYPES:
         raise ValueError(f"Unknown business type {business_type!r}. Choose one of: {', '.join(BUSINESS_TYPES)}.")
     entity = load_entity(entity_path)
     currency = company_currency(entity.entity_config)
-    open_day = date.fromisoformat(_normalize_optional_date(str(entity.entity_config.get("cutover_date") or ""))
-                                  or _DEFAULT_ACCOUNT_OPEN_DATE.isoformat())
     with _entity_write_lock(entity.path):
         store = LedgerStore(default_store_path(entity.path))
         if not store.path.exists():
@@ -801,9 +883,8 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
                                 "WHERE account=? LIMIT 1", (account, account)).fetchone():
                     continue
                 removed.append(account)
-            opens = [Open(date=open_day, account=account,
-                          currencies=(currency,) if not account.startswith(("Equity:", "Income:")) else ())
-                     for account in missing]
+            cutover_day, books_from_day = _starter_dates(store, conn, entity.entity_config)
+            opens, sources = _starter_opens(missing, cutover_day, books_from_day, currency)
             previous_type = conn.execute("SELECT value FROM meta WHERE key='business_type'").fetchone()
             type_changed = previous_type is None or previous_type[0] != business_type
             changed = bool(opens or removed or type_changed)
@@ -812,11 +893,10 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
                     "session_id": "entity-starter-accounts", "entries": 0,
                     "description": f"Add {len(opens)} and remove {len(removed)} starter accounts for business type {business_type}",
                 }, conn)
-                store.insert_opens(opens, conn)
+                store.insert_opens(opens, conn, provenance=sources)
                 if store.has_financial_kinds(conn):
                     store.assign_financial_kinds(_starter_financial_kinds(opens), conn)
-                for account in removed:
-                    conn.execute("DELETE FROM accounts WHERE name=?", (account,))
+                store.delete_accounts(removed, conn)
             if type_changed:
                 store.set_meta("business_type", business_type, conn)
             if changed:
@@ -1392,6 +1472,13 @@ def add_parser(subparsers: Any) -> None:
         default="",
         help="Books start/cutover date in YYYY-MM-DD format",
     )
+    init_parser.add_argument(
+        "--books-from",
+        default="",
+        help="Books scope in YYYY-MM-DD format: the start of the historical scope, and the default open date of "
+             "income, expense and owner contribution and draw accounts. It is not a posting fence; each account's "
+             "open date is. Bank, card, other balance sheet and control equity accounts need their own start",
+    )
 
     add_account_parser = entity_sub.add_parser(
         "account-add",
@@ -1402,7 +1489,9 @@ def add_parser(subparsers: Any) -> None:
     add_account_parser.add_argument(
         "--open-date",
         default="",
-        help="Account open date in YYYY-MM-DD format; defaults to the starter catalog date",
+        help="Account open date in YYYY-MM-DD format. Default for a new income, expense or owner contribution or "
+             "draw account: the books scope (books-from). Default for another new account: the starter fallback "
+             "date. An existing account keeps its date",
     )
     from .ledger.store import FINANCIAL_KINDS
     add_account_parser.add_argument("--financial-kind", choices=FINANCIAL_KINDS,
@@ -1464,6 +1553,21 @@ def add_parser(subparsers: Any) -> None:
     fiscal_parser.add_argument("--start", required=True, help="First day of the fiscal year, MM-01 (for example 07-01)")
     fiscal_parser.add_argument("--apply", action="store_true", help="Apply the previewed setting")
     fiscal_parser.add_argument("--plan-hash", default=None, help="Refuse a changed company using the preview's plan_hash")
+
+    books_from_parser = entity_sub.add_parser(
+        "set-books-from",
+        help="Set the books scope (the start of the historical scope and the default open date of income, expense "
+             "and owner contribution and draw accounts) and move those accounts from the fallback date to it "
+             "(person-only). Previews unless --apply is given",
+    )
+    books_from_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    books_from_parser.add_argument("--books-from", required=True,
+                                   help="Start of the historical scope, YYYY-MM-DD. Not a posting fence")
+    books_from_parser.add_argument("--account", action="append", default=[], metavar="ACCOUNT",
+                                   help="An account that the preview lists as uncertain_provenance, after a person "
+                                        "reviewed it; the plan records it as named_by_person. Repeat for more accounts")
+    books_from_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    books_from_parser.add_argument("--plan-hash", default=None, help="With --apply (required): the plan_hash from the preview")
 
     tax_method_parser = entity_sub.add_parser(
         "set-tax-method",
@@ -1599,6 +1703,7 @@ def run(args: Any) -> int:
                 website_url=getattr(args, "website_url", ""),
                 basis=getattr(args, "basis", None),
                 classify_starter_accounts=getattr(args, "classify_starter_accounts", False),
+                books_from=getattr(args, "books_from", ""),
             )
         except ValueError as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -1724,6 +1829,21 @@ def run(args: Any) -> int:
             from . import fiscal
             entity = load_entity(_resolve_target(args.path))
             result = fiscal.apply(entity, args.start, args.plan_hash) if args.apply else fiscal.preview(entity, args.start)
+        except (FileNotFoundError, ValueError) as exc:
+            result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
+            print(json.dumps(result, sort_keys=True, indent=2))
+            return 1
+        print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
+
+    if args.entity_command == "set-books-from":
+        from . import books_from as books_from_mod
+        try:
+            target = _resolve_target(args.path)
+            if args.apply:
+                result = books_from_mod.apply(target, args.books_from, args.plan_hash, args.account)
+            else:
+                result = books_from_mod.preview(target, args.books_from, args.account)
         except (FileNotFoundError, ValueError) as exc:
             result = exc.as_dict() if hasattr(exc, "as_dict") else {"status": "blocked", "errors": [{"code": "invalid_operation", "message": str(exc)}]}
             print(json.dumps(result, sort_keys=True, indent=2))

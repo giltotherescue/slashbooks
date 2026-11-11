@@ -442,7 +442,9 @@ def _atomic_ledger_write_unlocked(
             conn,
             ts=ts,
         )
-        store.insert_opens(new_opens, conn)
+        # An opening operation (allow_earlier_open_dates) sets open dates from its plan; any other write opens a
+        # new account for the data it writes. Both are evidence, never the fallback (``bookkeeping.books_from``).
+        store.insert_opens(new_opens, conn, provenance="opening" if allow_earlier_open_dates else "import")
         store.insert_entries(new_entries, conn)
         store.insert_source_transactions(source_transactions, conn, imported_at=ts, status=source_status)
         if supporting_mutations:

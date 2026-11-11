@@ -2213,7 +2213,7 @@ def _import_opening(entity, folder, cutover, source, *, _store, _conn, fiscal_st
             },
             conn,
         )
-        store.insert_opens(opens, conn)
+        store.insert_opens(opens, conn, provenance="opening")
         store.insert_entries([opening_entry], conn)
         store.set_meta("canonical", "true", conn)
         store.set_meta("title", entity.entity_config.get("name", "Books"), conn)

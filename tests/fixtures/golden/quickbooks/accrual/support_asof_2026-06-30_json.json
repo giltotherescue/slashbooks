@@ -1,7 +1,7 @@
 {
   "as_of": "2026-06-30",
   "basis": "accrual",
-  "canonical_digest": "1d30529b9e761d4e43dd5c48c442c7e76de3713458f0828147a7aca693cebf73",
+  "canonical_digest": "09564c2d9a30b8058f1be4c5a5320992073023acde0928b92b47efa70ab7edc0",
   "coverage": {
     "basis": "accrual",
     "chart": [
@@ -124,7 +124,7 @@
     "verified": true
   },
   "currency": "USD",
-  "fingerprint": "908158a077bfc096bd84c03c2e94430417e6c55d0b8d5f40be44da15ffd4a0d0",
+  "fingerprint": "064fafb4e44cd96194f2e736d3f1a68b687947381c4f27110164106941484506",
   "from_date": null,
   "issues": [],
   "kind": "support",
