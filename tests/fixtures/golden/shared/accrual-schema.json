@@ -2076,6 +2076,11 @@
                   }
                 ]
               },
+              "party_id": {
+                "description": "Active party ID with the customer/vendor role for this item.",
+                "minLength": 1,
+                "type": "string"
+              },
               "reference": {
                 "description": "Invoice or bill number.",
                 "minLength": 1,
@@ -3959,6 +3964,11 @@
                     "type": "object"
                   }
                 ]
+              },
+              "party_id": {
+                "description": "Active party ID with the customer/vendor role for this item.",
+                "minLength": 1,
+                "type": "string"
               },
               "reference": {
                 "description": "Invoice or bill number.",
