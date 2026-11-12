@@ -231,13 +231,15 @@ def _tie_reports(tb, bs, pnl, mapping, *, closed_position=False, currency="USD")
 
 
 def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store):
+    from .accounts import is_cash_account
+    financial_kinds = store.load_financial_kinds()
     supporting = deepcopy(supporting or {})
     if set(supporting) - {"items", "schedules", "external"}:
         raise ValueError("Unsupported opening supporting collection.")
     sums, mutations, ids, evidence = {}, [], set(), {}
     common_fields = {"id", "account", "currency", "evidence_refs", "evidence_ids", "counterparty", "reference", "description"}
     source_fields = {
-        "items": common_fields | {"kind", "original_amount", "remaining_amount", "direction", "due_date"},
+        "items": common_fields | {"kind", "original_amount", "remaining_amount", "direction", "due_date", "party_id"},
         "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "service_start", "service_end", "method", "recognition_account", "contra_account", "salvage_value"},
         "external": common_fields | {"balance"},
     }
@@ -321,6 +323,17 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                 row["remaining_amount"] = format(remaining, ".2f")
                 row["base_remaining_amount"] = format(remaining, ".2f")
                 if collection == "items":
+                    from .journals import JournalError
+                    if is_cash_account(account, financial_kinds):
+                        raise JournalError("opening_item_cash_account", f"Opening item {identity} cannot use bank, cash, processor or credit-card account {account}.",
+                                           "Use a receivable or payable control account.")
+                    if "party_id" in row:
+                        party_id = row["party_id"]
+                        party = load_record(store, "business_parties", party_id) if isinstance(party_id, str) and party_id else None
+                        role = "customer" if row.get("kind") == "receivable" else "vendor" if row.get("kind") in {"payable", "accrual"} else ("customer" if account.startswith("Assets:") else "vendor")
+                        if not party or party.get("status") != "active" or role not in party.get("roles", []):
+                            raise JournalError("party_role_required", f"Opening item {identity} needs an active {role} party.",
+                                               "Save a party with the required role and supply its party_id.")
                     from .items import validate_due_date
                     due_date = validate_due_date(row)
                     if due_date is not None:
@@ -504,7 +517,30 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
     coverage_id = TRACKING_COVERAGE_ID if tracking else "opening"
     if tracking:
         narration = f"Opening items at accrual tracking start ({cutover.isoformat()})"
-    mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
+    support_financial = dict(financial)
+    if tracking and not load_record(store, "coverage", coverage_id):
+        from .treatment import matches_open_records
+        from .accounts import is_cash_account
+        from .journals import JournalError
+        financial_kinds = store.load_financial_kinds()
+        records = [("items", row) for row in (supporting or {}).get("items", [])
+                   if _money(row.get("remaining_amount", "0.00")) > 0]
+        item_accounts = {row.get("account") for _, row in records}
+        for entry in store.load_entries():
+            if entry.date <= as_of:
+                for posting in entry.postings:
+                    account = posting.account
+                    if (account.startswith(("Assets:", "Liabilities:"))
+                            and not is_cash_account(account, financial_kinds)):
+                        support_financial[account] = support_financial.get(account, Decimal(0)) + posting.amount
+            if entry.date >= cutover and dict(entry.meta).get("import-source") != "quickbooks-opening":
+                for posting in entry.postings:
+                    if is_cash_account(posting.account, financial_kinds) or posting.account in item_accounts:
+                        if matches_open_records({"description": entry.narration, "counterparty": entry.payee, "amount": posting.amount}, records):
+                            raise JournalError("opening_possible_settlement",
+                                f"Posted entry {entry.source_id or entry.narration} dated {entry.date} could settle a listed opening item.",
+                                "Review and correct the posted settlement or the open items before previewing again.")
+    mutations, differences, evidence_hashes = _support(supporting, support_financial, mapping, source_id, cutover, as_of, entity, store)
     coverage = {"id": coverage_id, "basis": "accrual", "currency": entity.currency, "cutover_date": cutover.isoformat(),
                 "source_as_of": as_of.isoformat(), "fiscal_start": fiscal_start.isoformat(),
                 "summary_from": None if closed_position else fiscal_start.isoformat(),

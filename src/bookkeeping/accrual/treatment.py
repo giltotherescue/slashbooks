@@ -141,19 +141,8 @@ def treatment_checker(entity: Any):
         source_id = str(txn.get("id") or txn.get("source_id") or "")
         if source_id and source_id_variants(source_id) & state["sources"]:
             return True
-        amount = _money(txn.get("amount"))
-        txn_words = _words(txn.get("counterparty"), txn.get("description"))
-        for table, row in state["records"]:
-            record_words = _words(row.get("counterparty"), row.get("reference"))
-            if record_words and record_words <= txn_words:
-                return True
-            if amount is not None and amount > 0:
-                candidates = [row.get("remaining_amount")]
-                if table == "schedules":
-                    candidates.append(row.get("amount"))
-                if any(_money(value) == amount for value in candidates):
-                    return True
-        return False
+        return matches_open_records(txn, state["records"])
+
 
     return check
 
@@ -161,3 +150,21 @@ def treatment_checker(entity: Any):
 def needs_treatment(entity: Any, txn: Mapping[str, Any]) -> bool:
     """True when this bank or card transaction must be held for an explicit accrual treatment."""
     return treatment_checker(entity)(txn)
+
+
+def matches_open_records(txn: Mapping[str, Any], records: list[tuple[str, Mapping[str, Any]]]) -> bool:
+    """Conservative name/reference or amount match shared by import and cutover review."""
+    amount = _money(txn.get("amount"))
+    txn_words = _words(txn.get("counterparty"), txn.get("description"))
+    for table, row in records:
+        for field in ("counterparty", "reference"):
+            record_words = _words(row.get(field))
+            if record_words and record_words <= txn_words:
+                return True
+        if amount is not None and amount > 0:
+            candidates = [row.get("remaining_amount")]
+            if table == "schedules":
+                candidates.append(row.get("amount"))
+            if any(_money(value) == amount for value in candidates):
+                return True
+    return False

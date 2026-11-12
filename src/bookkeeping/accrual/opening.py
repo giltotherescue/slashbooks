@@ -22,7 +22,7 @@ from .migration import _build_plan, _hash, _money, require_capability
 REQUEST_FIELDS = {"operation_id", "cutover", "lines", "items", "schedules", "external", "evidence_refs", "evidence_ids"}
 LINE_FIELDS = {"account", "amount", "debit", "credit"}
 ITEM_FIELDS = {"id", "kind", "account", "counterparty", "reference", "description", "due_date", "open_amount",
-               "original_amount", "direction", "evidence_refs", "evidence_ids"}
+               "original_amount", "direction", "party_id", "evidence_refs", "evidence_ids"}
 SCHEDULE_FIELDS = {"id", "kind", "account", "recognition_account", "contra_account", "salvage_value", "amount", "recognized_amount", "remaining_amount",
                    "service_start", "service_end", "method", "counterparty", "reference", "description", "evidence_refs", "evidence_ids", "currency"}
 EXTERNAL_FIELDS = {"id", "account", "balance", "counterparty", "reference", "description", "evidence_refs", "evidence_ids", "currency"}

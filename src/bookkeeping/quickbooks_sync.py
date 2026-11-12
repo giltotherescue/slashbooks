@@ -146,10 +146,12 @@ def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
         account_type = _TYPE_ALIASES.get(item.get("AccountType"), item.get("AccountType", ""))
         if account_type.lower() not in qb._QB_TYPE_ROOT:
             raise ValueError(f"Unsupported QuickBooks account type: {account_type!r}")
-        mapped = qb.map_qb_account(name, account_type)
+        controls = {"accounts receivable (a/r)": "Assets:Receivable:Accounts-Receivable",
+                    "accounts payable (a/p)": "Liabilities:Payable:Accounts-Payable"}
+        mapped = controls.get(account_type.lower()) or qb.map_qb_account(name, account_type)
         qb._reset_collision_registry()
         # A fresh mapping detects normalized-name collisions independently of order.
-        base = qb.map_qb_account(name, account_type)
+        base = controls.get(account_type.lower()) or qb.map_qb_account(name, account_type)
         qb._reset_collision_registry()
         if any(a["mapped_account"] == base for a in accounts):
             raise ValueError("QuickBooks account names collide after normalization; explicit mapping required")
@@ -785,7 +787,8 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         raise ValueError("Opening requires cash-basis accounts and a valid prior-day Trial Balance or Balance Sheet")
     # Reuse the exact existing opening constructor and validator in preview mode.
     target = result.get("adopts_currency")
-    opening_mapping = {row["name"]: row["account"] for row in manifest["accounts"]} if manifest else None
+    opening_mapping = ({row["name"]: row["account"] for row in manifest["accounts"]} if manifest else
+                       {row["name"]: row["mapped_account"] for row in result["accounts"]})
     opening = qb.import_opening(entity, reference, cutover, source=source, _preview=True, currency=target,
                                 check_ledger=False, account_mapping=opening_mapping)
     if not opening.success:
@@ -836,7 +839,7 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
                         raise ValueError("Chart and opening were not applied: " + "; ".join(opening.errors))
             else:
                 opening = qb.import_opening(entity, reference, cutover, source=source, currency=target,
-                                            adopt_currency=bool(target))
+                                            adopt_currency=bool(target), account_mapping=opening_mapping)
     return dict(result, applied=apply and opening.success, opening=asdict(opening))
 
 

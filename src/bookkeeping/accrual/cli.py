@@ -300,6 +300,7 @@ def request_schemas() -> dict[str, Any]:
         "id": text, "kind": {"enum": ["receivable", "payable", "accrual", "credit"]},
         "account": {**text, "description": "Control account that carries the balance, for example Assets:Receivable:Accounts-Receivable."},
         "counterparty": {**text, "description": "Customer or supplier name."}, "reference": {**text, "description": "Invoice or bill number."},
+        "party_id": {**text, "description": "Active party ID with the customer/vendor role for this item."},
         "due_date": {**day, "description": "Original due date; may precede the cutover."},
         "open_amount": {**amount, "description": "Unpaid amount at the cutover."},
         "original_amount": {**amount, "description": "Original invoice or bill amount. Defaults to open_amount."},

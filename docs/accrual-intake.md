@@ -335,3 +335,35 @@ For moving an already operating Slashbooks company, use the separate
 [local-to-hosted migration guide](hosted-migration.md). Its portable bundle retains
 all canonical supporting records, coverage, and period state rather
 than exporting journal text alone.
+
+## Open items when tracking starts in existing cash books
+
+For a QuickBooks cash cutover, apply `books qb sync-opening` first, enable
+`tracking.enable` at that same cutover, then preview and apply one
+`accrual opening` request with open items only. Omit `lines`: the engine derives
+control-account postings and balances them against
+`Equity:Opening-Balance-Adjustments`. QuickBooks A/R and A/P types map to the
+starter `Assets:Receivable:Accounts-Receivable` and
+`Liabilities:Payable:Accounts-Payable` accounts.
+
+The preview checks support against the resulting ledger balances at tracking
+start. Existing unexplained control balances appear in `support_differences`
+and block apply. Review and reconcile those balances before carrying items in.
+Bank, cash, processor and credit-card accounts cannot carry opening items
+(`opening_item_cash_account`), including accounts identified by financial kind.
+
+If posted bank or card activity on or after tracking start matches an item's
+counterparty, reference or remaining amount, the opening refuses with
+`opening_possible_settlement`. Review the posted activity and the open-item list
+before trying again. Amount matching is conservative and can flag unrelated
+activity. The QuickBooks cash opening itself is exempt from settlement matching;
+its existing control balances still take part in the support check. Apply
+rechecks current ledger state, so activity posted after preview cannot bypass
+these checks.
+
+An item may include `party_id` for an active party with the corresponding
+customer or vendor role. The stored opening item retains that ID, so a later
+payment can use the party directly without `party.link_legacy`. Omitting
+`party_id` keeps the legacy linking workflow available. All open items belong
+in the first opening batch; this does not add a later-opening workflow or a
+cash-basis balance sheet.
