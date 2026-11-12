@@ -361,20 +361,43 @@ Bank, cash, processor and credit-card accounts cannot carry opening items
 
 If posted bank or card activity on or after tracking start matches an item's
 counterparty, reference, open amount, original amount or original-minus-open amount, the opening refuses with
-`opening_possible_settlement`. References match whole alphanumeric tokens,
-ignoring invoice/bill prefixes: `1001` does not match `10010`. A numeric reference
-needs an `invoice`, `inv` or `bill` token in the entry description or a matching
-counterparty; a bare short number alone does not identify a settlement. Amounts
-match the open or original amount or a positive difference between them. This
-catches an unidentified receipt equal to the already-paid portion, but cannot
-infer arbitrary partial payments without a matching name/reference/amount.
-Review the posted activity and the open-item list
-before trying again. Amount matching is conservative and can flag unrelated
-activity. This opening flow has no override for an unrelated entry of the same
-amount. Do not reverse valid activity or alter real open amounts to bypass the
-check. If that activity is already posted, keep those books for audit and carry
-out the cutover in a separate new company: cash opening, tracking enable, open
-items, then bank history. A genuinely erroneous receipt can be removed through
+`opening_possible_settlement` by default. The blocked preview includes
+`possible_settlements`: each entry's `entry_id`, date, signed amount, account,
+narration, payee, fingerprint and the item it may settle.
+
+References match whole alphanumeric tokens: `1001` does not match `10010`.
+A numeric reference must appear immediately after a document word or mark
+(`invoice`, `inv`, `bill`, `#`, `no.`), ignoring invoice/bill prefixes on the
+item reference. Dates and check/cheque numbers do not count as document
+references. A document word elsewhere in the narration is insufficient:
+`Utility bill 2026-01-12` does not identify invoice `12`, and
+`Check 1001 for utility bill 7792` does not identify invoice `1001`.
+Matching counterparties and amounts remain independent signals. Amounts match
+the open or original amount or a positive difference between them. This catches
+an unidentified receipt equal to the already-paid portion, but cannot infer
+arbitrary partial payments without a matching name/reference/amount.
+
+The matcher is a review aid. If an entry is unrelated to every listed item,
+the person can explicitly acknowledge that decision **in the same company**:
+
+```json
+{"operation_id":"opening", "evidence_refs":["support.txt"],
+ "not_settlements":["banksync:unrelated-receipt"],
+ "items":[{"id":"invoice", "kind":"receivable",
+           "account":"Assets:Receivable:Accounts-Receivable",
+           "counterparty":"Synthetic Customer", "open_amount":"900.00"}]}
+```
+
+Copy the exact `entry_id` from the blocked preview into `not_settlements` only
+after reviewing it. Every flagged entry must be acknowledged, or the opening
+stays blocked. Unknown, unflagged and duplicate IDs are refused. Preview again,
+then apply that unchanged ready plan. Do not reverse valid entries or alter
+real open amounts to bypass review. The acknowledged IDs and full flagged-entry
+details are retained in the audited opening coverage and bound to its plan
+hash. Apply rechecks the ledger; a new or changed entry requires another
+preview and review. Exact replay retains the original decision.
+
+A genuinely erroneous receipt can use
 `books ledger reverse --entity PATH --source-id ID`; reversed originals and
 reversal entries no longer count as possible settlements, while any live
 replacement still does. The QuickBooks cash opening itself is exempt from settlement matching;

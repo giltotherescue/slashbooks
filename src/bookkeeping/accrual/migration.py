@@ -22,6 +22,22 @@ from ..ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore, default_store_pa
 from .store import SupportingMutation, TABLES, list_records, load_record
 from .intake import canonical_hash, evidence_hash, facts_hash, normalize_evidence, source_identity
 
+from .journals import JournalError
+
+
+class OpeningSettlementReview(JournalError):
+    """Blocked preview with inspectable possible settlements for an explicit decision."""
+
+    def __init__(self, flags, unresolved):
+        self.flags = flags
+        super().__init__("opening_possible_settlement",
+                         "Posted entries could settle listed opening items: " + ", ".join(unresolved),
+                         "Review possible_settlements. Correct real settlements, or put only reviewed unrelated entry_id values in not_settlements and preview again.")
+
+    def as_dict(self):
+        return {**super().as_dict(), "possible_settlements": self.flags}
+
+
 VERSION = 1
 TRACKING_COVERAGE_ID = "tracking"
 
@@ -507,7 +523,7 @@ def _preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clo
 
 def _build_plan(entity, store, *, operation, import_source, narration, financial, mapping, chart, supporting,
                 cutover, fiscal_start, closed_position, source_id, coverage_extra, request_extra, plan_extra,
-                tracking=False):
+                tracking=False, not_settlements=None):
     """Shared opening core: tie support to control balances and bind the accounting preview.
 
     QuickBooks reports and the source-neutral opening request both end here. ``tracking`` is the
@@ -520,12 +536,15 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
     if tracking:
         narration = f"Opening items at accrual tracking start ({cutover.isoformat()})"
     support_financial = dict(financial)
-    if tracking and not load_record(store, "coverage", coverage_id):
+    saved_coverage = load_record(store, "coverage", coverage_id) if tracking else None
+    flags = (saved_coverage or {}).get("possible_settlements", [])
+    not_settlements = sorted(not_settlements or [])
+    if tracking and not saved_coverage:
         from .treatment import matches_open_records
         from .accounts import is_cash_account
-        from .journals import JournalError
         from ..entity import flat_bank_account_mappings
         from ..source_ids import source_id_variants
+        from ..ledger.books_policy_check import entry_fingerprint
         mapped_accounts = set(flat_bank_account_mappings(entity.entity_config).values())
         financial_kinds = store.load_financial_kinds()
         entries = store.load_entries()
@@ -544,10 +563,28 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
             if live and entry.date >= cutover and dict(entry.meta).get("import-source") != "quickbooks-opening":
                 for posting in entry.postings:
                     if is_cash_account(posting.account, financial_kinds, mapped_accounts) or posting.account in item_accounts:
-                        if matches_open_records({"description": entry.narration, "counterparty": entry.payee, "amount": posting.amount}, records):
-                            raise JournalError("opening_possible_settlement",
-                                f"Posted entry {entry.source_id or entry.narration} dated {entry.date} could settle a listed opening item.",
-                                "Review and correct the posted settlement or the open items before previewing again.")
+                        for record in records:
+                            if matches_open_records({"description": entry.narration, "counterparty": entry.payee,
+                                                     "amount": posting.amount}, [record]):
+                                fingerprint = entry_fingerprint(entry)
+                                flags.append({"entry_id": entry.source_id or "entry:" + fingerprint,
+                                              "entry_fingerprint": fingerprint, "date": entry.date.isoformat(),
+                                              "amount": format(posting.amount, ".2f"), "account": posting.account,
+                                              "narration": entry.narration, "payee": entry.payee,
+                                              "item_id": record[1]["id"], "reference": record[1].get("reference"),
+                                              "counterparty": record[1].get("counterparty")})
+    if tracking:
+        flagged_ids = {row["entry_id"] for row in flags}
+        unknown = set(not_settlements) - flagged_ids
+        if unknown:
+            raise JournalError("opening_unflagged_entry", "not_settlements contains entries not flagged by this preview: " + ", ".join(sorted(unknown)),
+                               "Copy only reviewed entry_id values from possible_settlements.")
+        unresolved = sorted(flagged_ids - set(not_settlements))
+        if unresolved:
+            raise OpeningSettlementReview(flags, unresolved)
+        if flags or not_settlements:
+            coverage_extra = {**coverage_extra, "not_settlements": not_settlements, "possible_settlements": flags}
+            plan_extra = {**plan_extra, "not_settlements": not_settlements, "possible_settlements": flags}
     mutations, differences, evidence_hashes = _support(supporting, support_financial, mapping, source_id, cutover, as_of, entity, store)
     coverage = {"id": coverage_id, "basis": "accrual", "currency": entity.currency, "cutover_date": cutover.isoformat(),
                 "source_as_of": as_of.isoformat(), "fiscal_start": fiscal_start.isoformat(),
@@ -634,6 +671,9 @@ def apply(entity, plan):
             fresh = preview(current_entity, plan["folder"], plan["cutover"],
                             fiscal_start=plan["fiscal_start"], supporting=plan["supporting"],
                             closed_position=plan.get("closed_position", False))
+        if (plan.get("not_settlements", []) != fresh.get("not_settlements", [])
+                or plan.get("possible_settlements", []) != fresh.get("possible_settlements", [])):
+            raise ValueError("Opening settlement review was changed; regenerate and review the exact preview.")
         if fresh["preview_hash"] != plan.get("preview_hash") or fresh["config_hash"] != plan.get("config_hash"):
             raise ValueError("Stale opening preview: source supporting document or account mapping changed.")
         if fresh["status"] != "ready":

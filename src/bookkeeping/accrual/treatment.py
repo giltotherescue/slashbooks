@@ -32,7 +32,8 @@ A transaction needs treatment when all of these are true:
    b. Counterparty: every significant word of an open item's or active
       schedule's counterparty or reference appears in the transaction's
       counterparty or description. Numeric references match whole tokens and
-      require an invoice/inv/bill word or a matching counterparty. Case, punctuation and filler words such as
+      require an adjacent invoice/inv/bill/#/no. marker; dates and check numbers
+      do not count. Matching counterparties or amounts remain independent signals. Case, punctuation and filler words such as
       "inc", "llc", "ach" and "payment" are ignored.
    c. Amount: the absolute transaction amount equals the remaining or original
       amount of an open item, or their positive difference (already paid), or
@@ -159,7 +160,10 @@ def matches_open_records(txn: Mapping[str, Any], records: list[tuple[str, Mappin
     amount = _money(txn.get("amount"))
     txn_words = _words(txn.get("counterparty"), txn.get("description"))
     tokens = frozenset(re.findall(r"[a-z0-9]+", " ".join(str(txn.get(k) or "") for k in ("counterparty", "description")).lower()))
-    document_signal = bool(tokens & {"invoice", "inv", "bill"})
+    text = " ".join(str(txn.get(k) or "") for k in ("counterparty", "description")).lower()
+    # Strip dates and check numbers before looking for a document-local numeric reference.
+    reference_text = re.sub(r"\b\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\b", " ", text)
+    reference_text = re.sub(r"\b(?:check|cheque)\s*(?:(?:no\.?|number)\s*)?#?\s*\d+\b", " ", reference_text)
     for table, row in records:
         party_words = _words(row.get("counterparty"))
         party_match = bool(party_words and party_words <= txn_words)
@@ -171,7 +175,12 @@ def matches_open_records(txn: Mapping[str, Any], records: list[tuple[str, Mappin
         # reference needs a document or party signal; arbitrary short numbers
         # in unrelated bank descriptions are not identifiers by themselves.
         numeric = bool(reference) and all(token.isdigit() for token in reference)
-        if reference and set(reference) <= tokens and (not numeric or document_signal or party_match):
+        if numeric:
+            number = r"\s+".join(re.escape(token) for token in reference)
+            marker = r"(?:\b(?:invoice|inv|bill)\b[.: -]*(?:(?:no\.?|number|#)\s*)?|#\s*|\bno\.\s*)"
+            if re.search(marker + number + r"(?![a-z0-9]|[-/])", reference_text):
+                return True
+        elif reference and set(reference) <= tokens:
             return True
         if amount is not None and amount > 0:
             remaining = _money(row.get("remaining_amount"))
