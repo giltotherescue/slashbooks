@@ -300,12 +300,14 @@ def request_schemas() -> dict[str, Any]:
         "id": text, "kind": {"enum": ["receivable", "payable", "accrual", "credit"]},
         "account": {**text, "description": "Control account that carries the balance, for example Assets:Receivable:Accounts-Receivable."},
         "counterparty": {**text, "description": "Customer or supplier name."}, "reference": {**text, "description": "Invoice or bill number."},
+        "party_id": {**text, "description": "Active party ID with the customer/vendor role for this item."},
         "due_date": {**day, "description": "Original due date; may precede the cutover."},
         "open_amount": {**amount, "description": "Unpaid amount at the cutover."},
         "original_amount": {**amount, "description": "Original invoice or bill amount. Defaults to open_amount."},
         "direction": {"enum": ["debit", "credit"]}, "description": text, **refs})
     opening = record(["cutover", "lines"], {
         "operation_id": {**text, "description": "Stable ID. Defaults to opening-<cutover>."},
+        "not_settlements": {**ids, "uniqueItems": True, "maxItems": 1000, "description": "Tracking opening only: reviewed entry_id values from possible_settlements that the person confirms are unrelated to the listed items. Unknown IDs are refused; the decision is retained in opening coverage."},
         "cutover": {**day, "description": "First day of the accrual books. The opening entry is dated the day before; accounts it uses are opened as of that date."},
         "lines": {"type": "array", "minItems": 1, "items": line, "description": "Opening balance lines. Debits must equal credits; balance sheet accounts only."},
         "items": {"type": "array", "items": open_item, "description": "Open customer invoices and supplier bills. Their open amounts must equal the control account balance."},

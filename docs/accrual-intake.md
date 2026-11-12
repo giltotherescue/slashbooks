@@ -335,3 +335,79 @@ For moving an already operating Slashbooks company, use the separate
 [local-to-hosted migration guide](hosted-migration.md). Its portable bundle retains
 all canonical supporting records, coverage, and period state rather
 than exporting journal text alone.
+
+## Open items when tracking starts in existing cash books
+
+For a QuickBooks cash cutover, apply `books qb sync-opening` first, enable
+`tracking.enable` at that same cutover, then preview and apply one
+`accrual opening` request with open items only. Omit `lines`: the engine derives
+control-account postings and balances them against
+`Equity:Opening-Balance-Adjustments`. QuickBooks A/R and A/P types map to the
+starter `Assets:Receivable:Accounts-Receivable` and
+`Liabilities:Payable:Accounts-Payable` accounts when there is one source
+account of that type and it is active. Multiple source controls keep distinct mappings and can
+use a reviewed chart crosswalk. Inactive controls keep their source-derived
+mapping, so an inactive zero-balance account does not collide with the starter.
+Replaying an existing snapshot retains its previously stored mapping and
+immutable evidence and reviewed preserve-chart manifest; it does not rename an existing company's accounts.
+Control names that normalize to the same key receive distinct source-evidence
+keys so a reviewed rebuild crosswalk can still assign distinct targets.
+
+The preview checks support against the resulting ledger balances at tracking
+start. Existing unexplained control balances appear in `support_differences`
+and block apply. Review and reconcile those balances before carrying items in.
+Bank, cash, processor and credit-card accounts cannot carry opening items
+(`opening_item_cash_account`), including accounts identified by financial kind.
+
+If posted bank or card activity on or after tracking start matches an item's
+counterparty, reference, open amount, original amount or original-minus-open amount, the opening refuses with
+`opening_possible_settlement` by default. The blocked preview includes
+`possible_settlements`: each entry's `entry_id`, date, signed amount, account,
+narration, payee, fingerprint and the item it may settle.
+
+References match whole alphanumeric tokens: `1001` does not match `10010`.
+A numeric reference must appear immediately after a document word or mark
+(`invoice`, `inv`, `bill`, `#`, `no.`), ignoring invoice/bill prefixes on the
+item reference. Dates and check/cheque numbers do not count as document
+references. A document word elsewhere in the narration is insufficient:
+`Utility bill 2026-01-12` does not identify invoice `12`, and
+`Check 1001 for utility bill 7792` does not identify invoice `1001`.
+Matching counterparties and amounts remain independent signals. Amounts match
+the open or original amount or a positive difference between them. This catches
+an unidentified receipt equal to the already-paid portion, but cannot infer
+arbitrary partial payments without a matching name/reference/amount.
+
+The matcher is a review aid. If an entry is unrelated to every listed item,
+the person can explicitly acknowledge that decision **in the same company**:
+
+```json
+{"operation_id":"opening", "evidence_refs":["support.txt"],
+ "not_settlements":["banksync:unrelated-receipt"],
+ "items":[{"id":"invoice", "kind":"receivable",
+           "account":"Assets:Receivable:Accounts-Receivable",
+           "counterparty":"Synthetic Customer", "open_amount":"900.00"}]}
+```
+
+Copy the exact `entry_id` from the blocked preview into `not_settlements` only
+after reviewing it. Every flagged entry must be acknowledged, or the opening
+stays blocked. Unknown, unflagged and duplicate IDs are refused. Preview again,
+then apply that unchanged ready plan. Do not reverse valid entries or alter
+real open amounts to bypass review. The acknowledged IDs and full flagged-entry
+details are retained in the audited opening coverage and bound to its plan
+hash. Apply rechecks the ledger; a new or changed entry requires another
+preview and review. Exact replay retains the original decision.
+
+A genuinely erroneous receipt can use
+`books ledger reverse --entity PATH --source-id ID`; reversed originals and
+reversal entries no longer count as possible settlements, while any live
+replacement still does. The QuickBooks cash opening itself is exempt from settlement matching;
+its existing control balances still take part in the support check. Apply
+rechecks current ledger state, so activity posted after preview cannot bypass
+these checks.
+
+An item may include `party_id` for an active party with the corresponding
+customer or vendor role. The stored opening item retains that ID, so a later
+payment can use the party directly without `party.link_legacy`. Omitting
+`party_id` keeps the legacy linking workflow available. All open items belong
+in the first opening batch; this does not add a later-opening workflow or a
+cash-basis balance sheet.

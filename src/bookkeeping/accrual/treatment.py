@@ -31,10 +31,13 @@ A transaction needs treatment when all of these are true:
    a. Source: a record already names the transaction as ``origin.source_id``.
    b. Counterparty: every significant word of an open item's or active
       schedule's counterparty or reference appears in the transaction's
-      counterparty or description. Case, punctuation and filler words such as
+      counterparty or description. Numeric references match whole tokens and
+      require an adjacent invoice/inv/bill/#/no. marker; dates and check numbers
+      do not count. Matching counterparties or amounts remain independent signals. Case, punctuation and filler words such as
       "inc", "llc", "ach" and "payment" are ignored.
-   c. Amount: the absolute transaction amount equals the remaining amount of an
-      open item, or the remaining or original amount of an active schedule.
+   c. Amount: the absolute transaction amount equals the remaining or original
+      amount of an open item, or their positive difference (already paid), or
+      the remaining or original amount of an active schedule.
       The sign is not compared, because card and bank accounts use opposite
       signs. A same-amount charge from an unrelated vendor is also held. That
       is a deliberate false hold.
@@ -141,19 +144,8 @@ def treatment_checker(entity: Any):
         source_id = str(txn.get("id") or txn.get("source_id") or "")
         if source_id and source_id_variants(source_id) & state["sources"]:
             return True
-        amount = _money(txn.get("amount"))
-        txn_words = _words(txn.get("counterparty"), txn.get("description"))
-        for table, row in state["records"]:
-            record_words = _words(row.get("counterparty"), row.get("reference"))
-            if record_words and record_words <= txn_words:
-                return True
-            if amount is not None and amount > 0:
-                candidates = [row.get("remaining_amount")]
-                if table == "schedules":
-                    candidates.append(row.get("amount"))
-                if any(_money(value) == amount for value in candidates):
-                    return True
-        return False
+        return matches_open_records(txn, state["records"])
+
 
     return check
 
@@ -161,3 +153,45 @@ def treatment_checker(entity: Any):
 def needs_treatment(entity: Any, txn: Mapping[str, Any]) -> bool:
     """True when this bank or card transaction must be held for an explicit accrual treatment."""
     return treatment_checker(entity)(txn)
+
+
+def matches_open_records(txn: Mapping[str, Any], records: list[tuple[str, Mapping[str, Any]]]) -> bool:
+    """Conservative name/reference or amount match shared by import and cutover review."""
+    amount = _money(txn.get("amount"))
+    txn_words = _words(txn.get("counterparty"), txn.get("description"))
+    tokens = frozenset(re.findall(r"[a-z0-9]+", " ".join(str(txn.get(k) or "") for k in ("counterparty", "description")).lower()))
+    text = " ".join(str(txn.get(k) or "") for k in ("counterparty", "description")).lower()
+    # Strip dates and check numbers before looking for a document-local numeric reference.
+    reference_text = re.sub(r"\b\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}\b", " ", text)
+    reference_text = re.sub(r"\b(?:check|cheque)\s*(?:(?:no\.?|number)\s*)?#?\s*\d+\b", " ", reference_text)
+    for table, row in records:
+        party_words = _words(row.get("counterparty"))
+        party_match = bool(party_words and party_words <= txn_words)
+        if party_match:
+            return True
+        reference = tuple(token for token in re.findall(r"[a-z0-9]+", str(row.get("reference") or "").lower())
+                          if token not in _FILLER)
+        # Match whole tokens (1001 does not match 10010). A purely numeric
+        # reference needs a document or party signal; arbitrary short numbers
+        # in unrelated bank descriptions are not identifiers by themselves.
+        numeric = bool(reference) and all(token.isdigit() for token in reference)
+        if numeric:
+            number = r"\s+".join(re.escape(token) for token in reference)
+            marker = r"(?:\b(?:invoice|inv|bill)\b[.: -]*(?:(?:no\.?|number|#)\s*)?|#\s*|\bno\.\s*)"
+            if re.search(marker + number + r"(?![a-z0-9]|[-/])", reference_text):
+                return True
+        elif reference and set(reference) <= tokens:
+            return True
+        if amount is not None and amount > 0:
+            remaining = _money(row.get("remaining_amount"))
+            candidates = [remaining]
+            if table == "schedules":
+                candidates.append(_money(row.get("amount")))
+            else:
+                original = _money(row.get("original_amount"))
+                candidates.append(original)
+                if original is not None and remaining is not None and original > remaining:
+                    candidates.append(original - remaining)
+            if amount in candidates:
+                return True
+    return False

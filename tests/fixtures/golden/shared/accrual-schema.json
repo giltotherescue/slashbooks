@@ -2076,6 +2076,11 @@
                   }
                 ]
               },
+              "party_id": {
+                "description": "Active party ID with the customer/vendor role for this item.",
+                "minLength": 1,
+                "type": "string"
+              },
               "reference": {
                 "description": "Invoice or bill number.",
                 "minLength": 1,
@@ -2178,6 +2183,16 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "not_settlements": {
+          "description": "Tracking opening only: reviewed entry_id values from possible_settlements that the person confirms are unrelated to the listed items. Unknown IDs are refused; the decision is retained in opening coverage.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
         },
         "operation_id": {
           "description": "Stable ID. Defaults to opening-<cutover>.",
@@ -3960,6 +3975,11 @@
                   }
                 ]
               },
+              "party_id": {
+                "description": "Active party ID with the customer/vendor role for this item.",
+                "minLength": 1,
+                "type": "string"
+              },
               "reference": {
                 "description": "Invoice or bill number.",
                 "minLength": 1,
@@ -3975,6 +3995,16 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "not_settlements": {
+          "description": "Tracking opening only: reviewed entry_id values from possible_settlements that the person confirms are unrelated to the listed items. Unknown IDs are refused; the decision is retained in opening coverage.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array",
+          "uniqueItems": true
         },
         "operation_id": {
           "description": "Stable ID. Defaults to opening-<cutover>.",

@@ -19,10 +19,10 @@ from ..ledger.store import LedgerStore, default_store_path
 from .journals import JournalError
 from .migration import _build_plan, _hash, _money, require_capability
 
-REQUEST_FIELDS = {"operation_id", "cutover", "lines", "items", "schedules", "external", "evidence_refs", "evidence_ids"}
+REQUEST_FIELDS = {"operation_id", "cutover", "lines", "items", "schedules", "external", "evidence_refs", "evidence_ids", "not_settlements"}
 LINE_FIELDS = {"account", "amount", "debit", "credit"}
 ITEM_FIELDS = {"id", "kind", "account", "counterparty", "reference", "description", "due_date", "open_amount",
-               "original_amount", "direction", "evidence_refs", "evidence_ids"}
+               "original_amount", "direction", "party_id", "evidence_refs", "evidence_ids"}
 SCHEDULE_FIELDS = {"id", "kind", "account", "recognition_account", "contra_account", "salvage_value", "amount", "recognized_amount", "remaining_amount",
                    "service_start", "service_end", "method", "counterparty", "reference", "description", "evidence_refs", "evidence_ids", "currency"}
 EXTERNAL_FIELDS = {"id", "account", "balance", "counterparty", "reference", "description", "evidence_refs", "evidence_ids", "currency"}
@@ -77,6 +77,14 @@ def normalize_request(request: Any, *, tracking_start: str | None = None, curren
     if not isinstance(request, Mapping):
         raise _err("invalid_request", "Opening request must be an object.", "Pass one JSON object; see `books accrual schema` request opening.")
     _unknown(request, REQUEST_FIELDS, "the opening request")
+    acknowledgments = request.get("not_settlements", [])
+    if (not isinstance(acknowledgments, list) or len(acknowledgments) > 1000
+            or any(not isinstance(value, str) or not value.strip() for value in acknowledgments)
+            or len(set(acknowledgments)) != len(acknowledgments)):
+        raise _err("invalid_not_settlements", "not_settlements must be a list of unique flagged entry IDs.",
+                   "Copy only reviewed entry_id values from possible_settlements in the blocked preview.")
+    if acknowledgments and not tracking_start:
+        raise _err("invalid_not_settlements", "not_settlements applies only to a tracking opening.", "Remove not_settlements.")
     if tracking_start:
         if "lines" in request:
             raise _err("tracking_lines_derived", "This company turned accrual on later, so opening lines are worked out from the items, schedules and external rows.",
@@ -258,7 +266,7 @@ def preview_opening(entity: Entity, request: Any) -> dict[str, Any]:
             source_id=request["operation_id"], coverage_extra={"source_hashes": {}, "mapping_hash": _hash(mapping)},
             request_extra={"opening": "accrual-tracking-opening" if start else "accrual-opening"},
             plan_extra={"request": raw_request, "folder": None, **({"accounts_to_open": starter} if start else {})},
-            tracking=bool(start))
+            tracking=bool(start), not_settlements=sorted(raw_request.get("not_settlements", [])))
     except ValueError as exc:
         if isinstance(exc, JournalError):
             raise

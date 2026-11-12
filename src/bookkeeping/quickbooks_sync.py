@@ -124,7 +124,7 @@ def _load(path: Path) -> dict:
     return value
 
 
-def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
+def _accounts(raw: list[dict], *, canonical_controls: bool = True) -> tuple[list[dict], list[str]]:
     accounts = []
     by_id = {}
     names = set()
@@ -132,6 +132,12 @@ def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
     qb._reset_collision_registry()
     if any(not isinstance(item, dict) for item in raw):
         raise ValueError("Account records must be objects")
+    source_types = {}
+    for item in raw:
+        if not isinstance(item.get("AccountType"), str):
+            raise ValueError("AccountType must be text")
+        kind = _TYPE_ALIASES.get(item.get("AccountType"), item.get("AccountType", ""))
+        source_types[kind.lower()] = source_types.get(kind.lower(), 0) + 1
     for item in sorted(raw, key=lambda a: str(a.get("Id", ""))):
         account_id = str(item.get("Id", ""))
         name = item.get("FullyQualifiedName") or item.get("Name")
@@ -146,13 +152,21 @@ def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
         account_type = _TYPE_ALIASES.get(item.get("AccountType"), item.get("AccountType", ""))
         if account_type.lower() not in qb._QB_TYPE_ROOT:
             raise ValueError(f"Unsupported QuickBooks account type: {account_type!r}")
-        mapped = qb.map_qb_account(name, account_type)
+        controls = {"accounts receivable (a/r)": "Assets:Receivable:Accounts-Receivable",
+                    "accounts payable (a/p)": "Liabilities:Payable:Accounts-Payable"}
+        canonical = (controls.get(account_type.lower()) if canonical_controls and item.get("Active", True) is True
+                     and source_types.get(account_type.lower()) == 1 else None)
+        mapped = canonical or qb.map_qb_account(name, account_type)
         qb._reset_collision_registry()
         # A fresh mapping detects normalized-name collisions independently of order.
-        base = qb.map_qb_account(name, account_type)
+        base = canonical or qb.map_qb_account(name, account_type)
         qb._reset_collision_registry()
         if any(a["mapped_account"] == base for a in accounts):
-            raise ValueError("QuickBooks account names collide after normalization; explicit mapping required")
+            if account_type.lower() not in controls:
+                raise ValueError("QuickBooks account names collide after normalization; explicit mapping required")
+            # Source evidence must stay independent of a later reviewed crosswalk.
+            # Keep colliding controls distinct so the crosswalk can be reviewed.
+            mapped = base + "-Source-" + hashlib.sha256(account_id.encode()).hexdigest()[:12]
         number = item.get("AcctNum")
         if number is not None and not isinstance(number, str):
             raise ValueError("QuickBooks account number must be text; numeric coercion could lose leading zeros")
@@ -508,6 +522,17 @@ def sync_import(entity, input_path: Path) -> dict:
     if snapshot["accounting_basis"] != "Cash":
         warnings.append("Accrual source evidence retained; current opening and comparison operations support cash basis only")
     root = entity.path / "sources" / "quickbooks" / snapshot_id
+    # Preserve a previous engine's deterministic mapping for the same immutable snapshot.
+    # The ordinary evidence comparison below still verifies every stored byte and rejects tampering.
+    saved_chart = root / "reference" / "accounts.qbo.json"
+    if saved_chart.is_file() and not saved_chart.is_symlink():
+        legacy_accounts, _ = _accounts(snapshot["accounts"], canonical_controls=False)
+        try:
+            saved_accounts = json.loads(saved_chart.read_bytes()).get("accounts")
+        except (ValueError, AttributeError):
+            saved_accounts = None
+        if saved_accounts == legacy_accounts:
+            accounts = legacy_accounts
     counts = {"accounts": len(accounts), "customers": len(snapshot["customers"]),
               "vendors": len(snapshot["vendors"]),
               "transactions": {k: len(v) for k, v in snapshot["entities"].items()}}
@@ -690,7 +715,8 @@ def _financial_kind_decision(row: dict) -> dict | None:
 
 def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
                    targets: dict[str, str] | None = None, *, version: int = 1,
-                   financial_kinds: dict[str, str] | None = None) -> dict:
+                   financial_kinds: dict[str, str] | None = None,
+                   source_mapping: dict[str, str] | None = None) -> dict:
     """Create an exact source manifest; rebuild needs an explicit complete crosswalk."""
     from .chart_adoption import validate
     if type(version) is not int or version not in (1, 2):
@@ -701,6 +727,10 @@ def chart_manifest(snapshot: dict, snapshot_id: str, decision: str,
     if decision not in {"preserve", "rebuild"}:
         raise ValueError("Choose preserve or rebuild for the QuickBooks chart")
     accounts, _ = _accounts(snapshot["accounts"])
+    if source_mapping is not None:
+        if set(source_mapping) != {row["id"] for row in accounts}:
+            raise ValueError("Source mapping must cover every snapshot account.")
+        accounts = [{**row, "mapped_account": source_mapping[row["id"]]} for row in accounts]
     identities = {row["id"] for row in accounts}
     if decision == "rebuild" and (not isinstance(targets, dict) or set(targets) != identities):
         raise ValueError("Rebuild requires a reviewed target for every source account, including inactive and zero-balance accounts")
@@ -763,7 +793,8 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         if target_currency and target_currency != entity.currency:
             raise ValueError("Set and review the company currency before adopting its QuickBooks chart and opening balances together")
         manifest = chart_manifest(snapshot, result["snapshot_id"], chart_decision, chart_targets,
-                                  version=chart_manifest_version, financial_kinds=chart_financial_kinds)
+                                  version=chart_manifest_version, financial_kinds=chart_financial_kinds,
+                                  source_mapping={row["id"]: row["mapped_account"] for row in result["accounts"]})
         from .ledger.store import LedgerStore
         with LedgerStore(entity.path / "ledger.sqlite").connection() as existing_conn:
             existing = {row["name"]: dict(row) for row in existing_conn.execute("SELECT name,currency,open_date FROM accounts")}
@@ -785,7 +816,8 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
         raise ValueError("Opening requires cash-basis accounts and a valid prior-day Trial Balance or Balance Sheet")
     # Reuse the exact existing opening constructor and validator in preview mode.
     target = result.get("adopts_currency")
-    opening_mapping = {row["name"]: row["account"] for row in manifest["accounts"]} if manifest else None
+    opening_mapping = ({row["name"]: row["account"] for row in manifest["accounts"]} if manifest else
+                       {row["name"]: row["mapped_account"] for row in result["accounts"]})
     opening = qb.import_opening(entity, reference, cutover, source=source, _preview=True, currency=target,
                                 check_ledger=False, account_mapping=opening_mapping)
     if not opening.success:
@@ -836,7 +868,7 @@ def sync_opening(entity, input_path: Path, cutover: date, *, apply: bool = False
                         raise ValueError("Chart and opening were not applied: " + "; ".join(opening.errors))
             else:
                 opening = qb.import_opening(entity, reference, cutover, source=source, currency=target,
-                                            adopt_currency=bool(target))
+                                            adopt_currency=bool(target), account_mapping=opening_mapping)
     return dict(result, applied=apply and opening.success, opening=asdict(opening))
 
 

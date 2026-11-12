@@ -22,6 +22,22 @@ from ..ledger.store import ACCRUAL_SCHEMA_VERSION, LedgerStore, default_store_pa
 from .store import SupportingMutation, TABLES, list_records, load_record
 from .intake import canonical_hash, evidence_hash, facts_hash, normalize_evidence, source_identity
 
+from .journals import JournalError
+
+
+class OpeningSettlementReview(JournalError):
+    """Blocked preview with inspectable possible settlements for an explicit decision."""
+
+    def __init__(self, flags, unresolved):
+        self.flags = flags
+        super().__init__("opening_possible_settlement",
+                         "Posted entries could settle listed opening items: " + ", ".join(unresolved),
+                         "Review possible_settlements. Correct real settlements, or put only reviewed unrelated entry_id values in not_settlements and preview again.")
+
+    def as_dict(self):
+        return {**super().as_dict(), "possible_settlements": self.flags}
+
+
 VERSION = 1
 TRACKING_COVERAGE_ID = "tracking"
 
@@ -231,13 +247,17 @@ def _tie_reports(tb, bs, pnl, mapping, *, closed_position=False, currency="USD")
 
 
 def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store):
+    from .accounts import is_cash_account
+    from ..entity import flat_bank_account_mappings
+    mapped_accounts = set(flat_bank_account_mappings(entity.entity_config).values())
+    financial_kinds = store.load_financial_kinds()
     supporting = deepcopy(supporting or {})
     if set(supporting) - {"items", "schedules", "external"}:
         raise ValueError("Unsupported opening supporting collection.")
     sums, mutations, ids, evidence = {}, [], set(), {}
     common_fields = {"id", "account", "currency", "evidence_refs", "evidence_ids", "counterparty", "reference", "description"}
     source_fields = {
-        "items": common_fields | {"kind", "original_amount", "remaining_amount", "direction", "due_date"},
+        "items": common_fields | {"kind", "original_amount", "remaining_amount", "direction", "due_date", "party_id"},
         "schedules": common_fields | {"kind", "amount", "recognized_amount", "remaining_amount", "service_start", "service_end", "method", "recognition_account", "contra_account", "salvage_value"},
         "external": common_fields | {"balance"},
     }
@@ -321,6 +341,17 @@ def _support(supporting, financial, mapping, source_id, cutover, as_of, entity, 
                 row["remaining_amount"] = format(remaining, ".2f")
                 row["base_remaining_amount"] = format(remaining, ".2f")
                 if collection == "items":
+                    from .journals import JournalError
+                    if is_cash_account(account, financial_kinds, mapped_accounts):
+                        raise JournalError("opening_item_cash_account", f"Opening item {identity} cannot use bank, cash, processor or credit-card account {account}.",
+                                           "Use a receivable or payable control account.")
+                    if "party_id" in row:
+                        party_id = row["party_id"]
+                        party = load_record(store, "business_parties", party_id) if isinstance(party_id, str) and party_id else None
+                        role = "customer" if row.get("kind") == "receivable" else "vendor" if row.get("kind") in {"payable", "accrual"} else ("customer" if account.startswith("Assets:") else "vendor")
+                        if not party or party.get("status") != "active" or role not in party.get("roles", []):
+                            raise JournalError("party_role_required", f"Opening item {identity} needs an active {role} party.",
+                                               "Save a party with the required role and supply its party_id.")
                     from .items import validate_due_date
                     due_date = validate_due_date(row)
                     if due_date is not None:
@@ -492,7 +523,7 @@ def _preview(entity, folder, cutover, *, fiscal_start=None, supporting=None, clo
 
 def _build_plan(entity, store, *, operation, import_source, narration, financial, mapping, chart, supporting,
                 cutover, fiscal_start, closed_position, source_id, coverage_extra, request_extra, plan_extra,
-                tracking=False):
+                tracking=False, not_settlements=None):
     """Shared opening core: tie support to control balances and bind the accounting preview.
 
     QuickBooks reports and the source-neutral opening request both end here. ``tracking`` is the
@@ -504,7 +535,57 @@ def _build_plan(entity, store, *, operation, import_source, narration, financial
     coverage_id = TRACKING_COVERAGE_ID if tracking else "opening"
     if tracking:
         narration = f"Opening items at accrual tracking start ({cutover.isoformat()})"
-    mutations, differences, evidence_hashes = _support(supporting, financial, mapping, source_id, cutover, as_of, entity, store)
+    support_financial = dict(financial)
+    saved_coverage = load_record(store, "coverage", coverage_id) if tracking else None
+    flags = (saved_coverage or {}).get("possible_settlements", [])
+    not_settlements = sorted(not_settlements or [])
+    if tracking and not saved_coverage:
+        from .treatment import matches_open_records
+        from .accounts import is_cash_account
+        from ..entity import flat_bank_account_mappings
+        from ..source_ids import source_id_variants
+        from ..ledger.books_policy_check import entry_fingerprint
+        mapped_accounts = set(flat_bank_account_mappings(entity.entity_config).values())
+        financial_kinds = store.load_financial_kinds()
+        entries = store.load_entries()
+        reversed_ids = set().union(*(source_id_variants(dict(e.meta)["reverses"]) for e in entries if dict(e.meta).get("reverses")))
+        records = [("items", row) for row in (supporting or {}).get("items", [])
+                   if _money(row.get("remaining_amount", "0.00")) > 0]
+        item_accounts = {row.get("account") for _, row in records}
+        for entry in entries:
+            if entry.date <= as_of:
+                for posting in entry.postings:
+                    account = posting.account
+                    if (account.startswith(("Assets:", "Liabilities:"))
+                            and not is_cash_account(account, financial_kinds, mapped_accounts)):
+                        support_financial[account] = support_financial.get(account, Decimal(0)) + posting.amount
+            live = not dict(entry.meta).get("reverses") and not (source_id_variants(entry.source_id) & reversed_ids if entry.source_id else False)
+            if live and entry.date >= cutover and dict(entry.meta).get("import-source") != "quickbooks-opening":
+                for posting in entry.postings:
+                    if is_cash_account(posting.account, financial_kinds, mapped_accounts) or posting.account in item_accounts:
+                        for record in records:
+                            if matches_open_records({"description": entry.narration, "counterparty": entry.payee,
+                                                     "amount": posting.amount}, [record]):
+                                fingerprint = entry_fingerprint(entry)
+                                flags.append({"entry_id": entry.source_id or "entry:" + fingerprint,
+                                              "entry_fingerprint": fingerprint, "date": entry.date.isoformat(),
+                                              "amount": format(posting.amount, ".2f"), "account": posting.account,
+                                              "narration": entry.narration, "payee": entry.payee,
+                                              "item_id": record[1]["id"], "reference": record[1].get("reference"),
+                                              "counterparty": record[1].get("counterparty")})
+    if tracking:
+        flagged_ids = {row["entry_id"] for row in flags}
+        unknown = set(not_settlements) - flagged_ids
+        if unknown:
+            raise JournalError("opening_unflagged_entry", "not_settlements contains entries not flagged by this preview: " + ", ".join(sorted(unknown)),
+                               "Copy only reviewed entry_id values from possible_settlements.")
+        unresolved = sorted(flagged_ids - set(not_settlements))
+        if unresolved:
+            raise OpeningSettlementReview(flags, unresolved)
+        if flags or not_settlements:
+            coverage_extra = {**coverage_extra, "not_settlements": not_settlements, "possible_settlements": flags}
+            plan_extra = {**plan_extra, "not_settlements": not_settlements, "possible_settlements": flags}
+    mutations, differences, evidence_hashes = _support(supporting, support_financial, mapping, source_id, cutover, as_of, entity, store)
     coverage = {"id": coverage_id, "basis": "accrual", "currency": entity.currency, "cutover_date": cutover.isoformat(),
                 "source_as_of": as_of.isoformat(), "fiscal_start": fiscal_start.isoformat(),
                 "summary_from": None if closed_position else fiscal_start.isoformat(),
@@ -590,6 +671,9 @@ def apply(entity, plan):
             fresh = preview(current_entity, plan["folder"], plan["cutover"],
                             fiscal_start=plan["fiscal_start"], supporting=plan["supporting"],
                             closed_position=plan.get("closed_position", False))
+        if (plan.get("not_settlements", []) != fresh.get("not_settlements", [])
+                or plan.get("possible_settlements", []) != fresh.get("possible_settlements", [])):
+            raise ValueError("Opening settlement review was changed; regenerate and review the exact preview.")
         if fresh["preview_hash"] != plan.get("preview_hash") or fresh["config_hash"] != plan.get("config_hash"):
             raise ValueError("Stale opening preview: source supporting document or account mapping changed.")
         if fresh["status"] != "ready":

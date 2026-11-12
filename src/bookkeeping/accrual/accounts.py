@@ -120,3 +120,10 @@ def render_accounts(result: dict[str, Any]) -> str:
     for row in result["accounts"]:
         lines.append(f"{row['name']:<46} {row['type']:<12} {row['role']:<14} {row['subtype']:<25} {row['open_date']}")
     return "\n".join(lines)
+
+
+def is_cash_account(name: str, financial_kinds: dict[str, str], mapped_accounts: set[str] = frozenset()) -> bool:
+    """Whether an opening item must never carry this financial account."""
+    return (name in mapped_accounts or financial_kinds.get(name) in {"bank", "cash", "credit_card"}
+            or _subtype(name, {}) in {"bank", "cash", "credit_card"}
+            or name.startswith("Assets:Processor"))
