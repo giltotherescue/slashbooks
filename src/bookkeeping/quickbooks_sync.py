@@ -124,7 +124,7 @@ def _load(path: Path) -> dict:
     return value
 
 
-def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
+def _accounts(raw: list[dict], *, canonical_controls: bool = True) -> tuple[list[dict], list[str]]:
     accounts = []
     by_id = {}
     names = set()
@@ -132,6 +132,12 @@ def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
     qb._reset_collision_registry()
     if any(not isinstance(item, dict) for item in raw):
         raise ValueError("Account records must be objects")
+    source_types = {}
+    for item in raw:
+        if not isinstance(item.get("AccountType"), str):
+            raise ValueError("AccountType must be text")
+        kind = _TYPE_ALIASES.get(item.get("AccountType"), item.get("AccountType", ""))
+        source_types[kind.lower()] = source_types.get(kind.lower(), 0) + 1
     for item in sorted(raw, key=lambda a: str(a.get("Id", ""))):
         account_id = str(item.get("Id", ""))
         name = item.get("FullyQualifiedName") or item.get("Name")
@@ -148,10 +154,12 @@ def _accounts(raw: list[dict]) -> tuple[list[dict], list[str]]:
             raise ValueError(f"Unsupported QuickBooks account type: {account_type!r}")
         controls = {"accounts receivable (a/r)": "Assets:Receivable:Accounts-Receivable",
                     "accounts payable (a/p)": "Liabilities:Payable:Accounts-Payable"}
-        mapped = controls.get(account_type.lower()) or qb.map_qb_account(name, account_type)
+        canonical = (controls.get(account_type.lower()) if canonical_controls and item.get("Active", True) is True
+                     and source_types.get(account_type.lower()) == 1 else None)
+        mapped = canonical or qb.map_qb_account(name, account_type)
         qb._reset_collision_registry()
         # A fresh mapping detects normalized-name collisions independently of order.
-        base = controls.get(account_type.lower()) or qb.map_qb_account(name, account_type)
+        base = canonical or qb.map_qb_account(name, account_type)
         qb._reset_collision_registry()
         if any(a["mapped_account"] == base for a in accounts):
             raise ValueError("QuickBooks account names collide after normalization; explicit mapping required")
@@ -510,6 +518,17 @@ def sync_import(entity, input_path: Path) -> dict:
     if snapshot["accounting_basis"] != "Cash":
         warnings.append("Accrual source evidence retained; current opening and comparison operations support cash basis only")
     root = entity.path / "sources" / "quickbooks" / snapshot_id
+    # Preserve a previous engine's deterministic mapping for the same immutable snapshot.
+    # The ordinary evidence comparison below still verifies every stored byte and rejects tampering.
+    saved_chart = root / "reference" / "accounts.qbo.json"
+    if saved_chart.is_file() and not saved_chart.is_symlink():
+        legacy_accounts, _ = _accounts(snapshot["accounts"], canonical_controls=False)
+        try:
+            saved_accounts = json.loads(saved_chart.read_bytes()).get("accounts")
+        except (ValueError, AttributeError):
+            saved_accounts = None
+        if saved_accounts == legacy_accounts:
+            accounts = legacy_accounts
     counts = {"accounts": len(accounts), "customers": len(snapshot["customers"]),
               "vendors": len(snapshot["vendors"]),
               "transactions": {k: len(v) for k, v in snapshot["entities"].items()}}

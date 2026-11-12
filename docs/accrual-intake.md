@@ -344,7 +344,12 @@ For a QuickBooks cash cutover, apply `books qb sync-opening` first, enable
 control-account postings and balances them against
 `Equity:Opening-Balance-Adjustments`. QuickBooks A/R and A/P types map to the
 starter `Assets:Receivable:Accounts-Receivable` and
-`Liabilities:Payable:Accounts-Payable` accounts.
+`Liabilities:Payable:Accounts-Payable` accounts when there is one source
+account of that type and it is active. Multiple source controls keep distinct mappings and can
+use a reviewed chart crosswalk. Inactive controls keep their source-derived
+mapping, so an inactive zero-balance account does not collide with the starter.
+Replaying an existing snapshot retains its previously stored mapping and
+immutable evidence; it does not rename an existing company's accounts.
 
 The preview checks support against the resulting ledger balances at tracking
 start. Existing unexplained control balances appear in `support_differences`
@@ -356,7 +361,14 @@ If posted bank or card activity on or after tracking start matches an item's
 counterparty, reference or remaining amount, the opening refuses with
 `opening_possible_settlement`. Review the posted activity and the open-item list
 before trying again. Amount matching is conservative and can flag unrelated
-activity. The QuickBooks cash opening itself is exempt from settlement matching;
+activity. This opening flow has no override for an unrelated entry of the same
+amount. Do not reverse valid activity or alter real open amounts to bypass the
+check. If that activity is already posted, keep those books for audit and carry
+out the cutover in a separate new company: cash opening, tracking enable, open
+items, then bank history. A genuinely erroneous receipt can be removed through
+`books ledger reverse --entity PATH --source-id ID`; reversed originals and
+reversal entries no longer count as possible settlements, while any live
+replacement still does. The QuickBooks cash opening itself is exempt from settlement matching;
 its existing control balances still take part in the support check. Apply
 rechecks current ledger state, so activity posted after preview cannot bypass
 these checks.
