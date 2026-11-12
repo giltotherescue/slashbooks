@@ -349,7 +349,9 @@ account of that type and it is active. Multiple source controls keep distinct ma
 use a reviewed chart crosswalk. Inactive controls keep their source-derived
 mapping, so an inactive zero-balance account does not collide with the starter.
 Replaying an existing snapshot retains its previously stored mapping and
-immutable evidence; it does not rename an existing company's accounts.
+immutable evidence and reviewed preserve-chart manifest; it does not rename an existing company's accounts.
+Control names that normalize to the same key receive distinct source-evidence
+keys so a reviewed rebuild crosswalk can still assign distinct targets.
 
 The preview checks support against the resulting ledger balances at tracking
 start. Existing unexplained control balances appear in `support_differences`
@@ -358,8 +360,15 @@ Bank, cash, processor and credit-card accounts cannot carry opening items
 (`opening_item_cash_account`), including accounts identified by financial kind.
 
 If posted bank or card activity on or after tracking start matches an item's
-counterparty, reference or remaining amount, the opening refuses with
-`opening_possible_settlement`. Review the posted activity and the open-item list
+counterparty, reference, open amount, original amount or original-minus-open amount, the opening refuses with
+`opening_possible_settlement`. References match whole alphanumeric tokens,
+ignoring invoice/bill prefixes: `1001` does not match `10010`. A numeric reference
+needs an `invoice`, `inv` or `bill` token in the entry description or a matching
+counterparty; a bare short number alone does not identify a settlement. Amounts
+match the open or original amount or a positive difference between them. This
+catches an unidentified receipt equal to the already-paid portion, but cannot
+infer arbitrary partial payments without a matching name/reference/amount.
+Review the posted activity and the open-item list
 before trying again. Amount matching is conservative and can flag unrelated
 activity. This opening flow has no override for an unrelated entry of the same
 amount. Do not reverse valid activity or alter real open amounts to bypass the

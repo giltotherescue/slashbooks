@@ -47,7 +47,7 @@ class TrackingOpeningCliTests(unittest.TestCase):
             # fixtures or accepting arbitrary persisted mappings in the product.
             command = [sys.executable, '-c',
                        'from bookkeeping import quickbooks_sync as s; '
-                       'old=s._accounts; s._accounts=lambda raw: old(raw, canonical_controls=False); '
+                       'old=s._accounts; s._accounts=lambda raw, **kw: old(raw, canonical_controls=False); '
                        'from bookkeeping.cli import main; import sys; sys.exit(main(sys.argv[1:]))']
         result = subprocess.run(command + [str(arg) for arg in args], cwd=self.work,
                                 env=env, text=True, capture_output=True)
@@ -185,3 +185,83 @@ class TrackingOpeningCliTests(unittest.TestCase):
         controls = {o.account for o in LedgerStore(self.root / 'ledger.sqlite').load_opens()
                     if o.account.startswith('Assets:Receivable:')}
         self.assertEqual(controls, {AR, 'Assets:Receivable:Other'})
+
+    def test_legacy_preserve_chart_replay_keeps_the_same_operation(self):
+        snapshot = json.loads(FIXTURE.read_text())
+        snapshot['accounts'].append({'Id': 'ar', 'Name': 'Trade Receivables', 'AccountType': 'Accounts Receivable'})
+        source = self.file(snapshot)
+        choice = {'decision': 'preserve'}
+        plan = self.ok('qb', 'sync-opening', source, '--entity', self.root,
+                       '--cutover', '2026-01-01', '--chart-choice', self.file(choice), legacy=True)
+        choice['plan_hash'] = plan['chart']['plan_hash']
+        first = self.ok('qb', 'sync-opening', source, '--entity', self.root, '--cutover', '2026-01-01',
+                        '--chart-choice', self.file(choice), '--apply', legacy=True)
+        store = LedgerStore(self.root / 'ledger.sqlite')
+        before = store.content_digest()
+        evidence = self.root / 'sources/quickbooks' / first['snapshot_id']
+        saved = {p.relative_to(evidence): p.read_bytes() for p in evidence.rglob('*') if p.is_file()}
+        replay = self.ok('qb', 'sync-opening', source, '--entity', self.root, '--cutover', '2026-01-01',
+                         '--chart-choice', self.file(choice), '--apply')
+        self.assertTrue(replay['already_applied'])
+        self.assertEqual(replay['chart']['status'], 'already_applied')
+        self.assertEqual(store.content_digest(), before)
+        self.assertEqual(saved, {p.relative_to(evidence): p.read_bytes() for p in evidence.rglob('*') if p.is_file()})
+
+    def test_normalized_control_names_accept_distinct_reviewed_targets(self):
+        snapshot = json.loads(FIXTURE.read_text())
+        snapshot['accounts'] += [
+            {'Id': 'ar-1', 'Name': 'Accounts Receivable', 'AccountType': 'Accounts Receivable'},
+            {'Id': 'ar-2', 'Name': 'Accounts-Receivable', 'AccountType': 'Accounts Receivable', 'Active': False}]
+        source = self.file(snapshot)
+        choice = {'decision': 'rebuild', 'targets': {
+            '1': 'Assets:Bank:Checking', '2': 'Equity:Opening-Balances', '3': 'Expenses:Software',
+            'ar-1': AR, 'ar-2': 'Assets:Receivable:Retired'}}
+        plan = self.ok('qb', 'sync-opening', source, '--entity', self.root,
+                       '--cutover', '2026-01-01', '--chart-choice', self.file(choice))
+        choice['plan_hash'] = plan['chart']['plan_hash']
+        result = self.ok('qb', 'sync-opening', source, '--entity', self.root, '--cutover', '2026-01-01',
+                         '--chart-choice', self.file(choice), '--apply')
+        self.assertTrue(result['opening']['success'])
+        replay = self.ok('qb', 'sync-opening', source, '--entity', self.root, '--cutover', '2026-01-01',
+                         '--chart-choice', self.file(choice), '--apply')
+        self.assertTrue(replay['already_applied'])
+
+    def test_numeric_invoice_reference_identifies_partial_receipt(self):
+        self.posted_receipt(amount='37.00', description='Payment invoice 1001')
+        self.enable()
+        for reference in ('1001', 'INV-1001'):
+            with self.subTest(reference=reference):
+                self.request['items'][0].update(reference=reference, original_amount='1000.00')
+                code, output, error = self.preview()
+                self.assertEqual(code, 1, (output, error))
+                self.assertEqual(output['errors'][0]['code'], 'opening_possible_settlement')
+
+    def test_partial_receipt_matches_original_minus_open_amount(self):
+        self.posted_receipt(amount='100.00', description='Unidentified deposit')
+        self.enable()
+        self.request['items'][0].update(reference='1001', original_amount='1000.00')
+        code, output, error = self.preview()
+        self.assertEqual(code, 1, (output, error))
+        self.assertEqual(output['errors'][0]['code'], 'opening_possible_settlement')
+
+    def test_receipt_matches_original_amount(self):
+        self.posted_receipt(amount='1000.00', description='Unidentified deposit')
+        self.enable()
+        self.request['items'][0].update(reference='1001', original_amount='1000.00')
+        code, output, error = self.preview()
+        self.assertEqual(code, 1, (output, error))
+        self.assertEqual(output['errors'][0]['code'], 'opening_possible_settlement')
+
+    def test_bare_numeric_reference_alone_does_not_match(self):
+        self.posted_receipt(amount='37.00', description='Route 12 station')
+        self.enable()
+        self.request['items'][0].update(reference='12', original_amount='1000.00')
+        code, output, error = self.preview()
+        self.assertEqual((code, output.get('status')), (0, 'ready'), (output, error))
+
+    def test_numeric_reference_requires_whole_tokens(self):
+        self.posted_receipt(amount='37.00', description='Payment invoice 10010')
+        self.enable()
+        self.request['items'][0].update(reference='1001', original_amount='1000.00')
+        code, output, error = self.preview()
+        self.assertEqual((code, output.get('status')), (0, 'ready'), (output, error))

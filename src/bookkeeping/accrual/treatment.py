@@ -31,10 +31,12 @@ A transaction needs treatment when all of these are true:
    a. Source: a record already names the transaction as ``origin.source_id``.
    b. Counterparty: every significant word of an open item's or active
       schedule's counterparty or reference appears in the transaction's
-      counterparty or description. Case, punctuation and filler words such as
+      counterparty or description. Numeric references match whole tokens and
+      require an invoice/inv/bill word or a matching counterparty. Case, punctuation and filler words such as
       "inc", "llc", "ach" and "payment" are ignored.
-   c. Amount: the absolute transaction amount equals the remaining amount of an
-      open item, or the remaining or original amount of an active schedule.
+   c. Amount: the absolute transaction amount equals the remaining or original
+      amount of an open item, or their positive difference (already paid), or
+      the remaining or original amount of an active schedule.
       The sign is not compared, because card and bank accounts use opposite
       signs. A same-amount charge from an unrelated vendor is also held. That
       is a deliberate false hold.
@@ -156,15 +158,31 @@ def matches_open_records(txn: Mapping[str, Any], records: list[tuple[str, Mappin
     """Conservative name/reference or amount match shared by import and cutover review."""
     amount = _money(txn.get("amount"))
     txn_words = _words(txn.get("counterparty"), txn.get("description"))
+    tokens = frozenset(re.findall(r"[a-z0-9]+", " ".join(str(txn.get(k) or "") for k in ("counterparty", "description")).lower()))
+    document_signal = bool(tokens & {"invoice", "inv", "bill"})
     for table, row in records:
-        for field in ("counterparty", "reference"):
-            record_words = _words(row.get(field))
-            if record_words and record_words <= txn_words:
-                return True
+        party_words = _words(row.get("counterparty"))
+        party_match = bool(party_words and party_words <= txn_words)
+        if party_match:
+            return True
+        reference = tuple(token for token in re.findall(r"[a-z0-9]+", str(row.get("reference") or "").lower())
+                          if token not in _FILLER)
+        # Match whole tokens (1001 does not match 10010). A purely numeric
+        # reference needs a document or party signal; arbitrary short numbers
+        # in unrelated bank descriptions are not identifiers by themselves.
+        numeric = bool(reference) and all(token.isdigit() for token in reference)
+        if reference and set(reference) <= tokens and (not numeric or document_signal or party_match):
+            return True
         if amount is not None and amount > 0:
-            candidates = [row.get("remaining_amount")]
+            remaining = _money(row.get("remaining_amount"))
+            candidates = [remaining]
             if table == "schedules":
-                candidates.append(row.get("amount"))
-            if any(_money(value) == amount for value in candidates):
+                candidates.append(_money(row.get("amount")))
+            else:
+                original = _money(row.get("original_amount"))
+                candidates.append(original)
+                if original is not None and remaining is not None and original > remaining:
+                    candidates.append(original - remaining)
+            if amount in candidates:
                 return True
     return False
