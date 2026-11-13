@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -106,6 +107,48 @@ option "inferred_tolerance_default" "USD:0.005"
             self.assertFalse(result.success)
             self.assertIn("--force", result.error_message)
             self.assertEqual((entity / "ledger.sqlite").read_text(encoding="utf-8"), "not sqlite")
+
+    def test_force_migration_preserves_source_rows_and_transfer_claims(self) -> None:
+        from bookkeeping.queue import _transfer_claims
+
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            self.assertTrue(migrate_beancount_to_store(entity))
+            store = LedgerStore(entity / "ledger.sqlite")
+            rows = [
+                ("matched-row", '{"id":"matched-row","transferMatch":{"source_id":"txn_001"}}',
+                 "matched_to_entry", "2026-01-02T00:00:00Z"),
+                ("source-only", '{"id":"source-only","amount":"12.00"}',
+                 "posted", "2026-01-03T00:00:00Z"),
+            ]
+            with store.transaction() as conn:
+                conn.executemany("INSERT INTO source_transactions VALUES (?, ?, ?, ?)", rows)
+
+            def read_rows():
+                with store.connection() as conn:
+                    return [tuple(row) for row in conn.execute(
+                        "SELECT id, payload_json, status, imported_at FROM source_transactions ORDER BY id")]
+            before = read_rows()
+            claims = _transfer_claims({sid: (json.loads(payload), status)
+                                      for sid, payload, status, _ in before})
+            for _ in range(2):
+                result = migrate_beancount_to_store(entity, force=True)
+                self.assertTrue(result.success, result.error_message)
+                self.assertEqual(read_rows(), before)
+                self.assertTrue(store.source_exists("source-only"))
+                self.assertEqual(_transfer_claims({sid: (json.loads(payload), status)
+                                                  for sid, payload, status, _ in read_rows()}), claims)
+                self.assertEqual(store.verify_audit_chain(), [])
+
+    def test_force_migration_refuses_unreadable_source_store(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            dest = entity / "ledger.sqlite"
+            dest.write_bytes(b"not sqlite")
+            result = migrate_beancount_to_store(entity, force=True)
+            self.assertFalse(result.success)
+            self.assertEqual(dest.read_bytes(), b"not sqlite")
+            self.assertFalse(dest.with_suffix(".sqlite.tmp").exists())
 
     def test_migration_is_idempotent_for_same_ledger(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

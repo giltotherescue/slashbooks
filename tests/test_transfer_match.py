@@ -170,6 +170,24 @@ class TransferMatchTests(unittest.TestCase):
             queue.confirm_transfer_match(self.entity, "visa-pay-2", entry_id, "owner-review", ts=TS)
         self.assertEqual(queue.find_transfer_doubles(self.entity)["pairs"], [])
 
+    def test_migration_keeps_posted_transfer_claim_and_lineage_guard(self):
+        from bookkeeping.ledger.migrate import migrate_beancount_to_store
+        from bookkeeping.ledger.projections import render_store_ledger
+
+        stage(self.company,
+              ("chk-pay", "feed-chk", "2026-10-05", "-1250.00", "PAYMENT TO VISA"),
+              ("visa-pay", "feed-visa", "2026-10-05", "1250.00", "PAYMENT THANK YOU"))
+        entry_id = self.post("chk-pay", VISA)
+        queue.confirm_transfer_match(self.entity, "visa-pay", entry_id, "owner-review", ts=TS)
+        (self.company / "books.beancount").write_text(render_store_ledger(self.company / "ledger.sqlite"))
+        result = migrate_beancount_to_store(self.company, force=True)
+        self.assertTrue(result.success, result.error_message)
+        stage(self.company, ("visa-pay-2", "feed-visa", "2026-10-05", "1250.00", "SECOND PAYMENT"))
+        self.assertEqual(self.matches("visa-pay-2", CHECKING), [])
+        with self.assertRaises(queue.TransferMatchLineageError):
+            reverse_entry(self.entity, "chk-pay", "owner-review")
+        self.assertEqual(LedgerStore(self.company / "ledger.sqlite").verify_audit_chain(), [])
+
     def test_matched_card_row_counts_in_the_card_import_check(self):
         si.save_profile(self.company, FIXTURES / "checking_three_months.csv", name="chk", ledger_account=CHECKING)
         si.save_profile(self.company, FIXTURES / "card_printed_period.csv", name="visa", ledger_account=VISA)
