@@ -153,6 +153,7 @@ class Snapshot:
     duplicates: Mapping[str, dict] = field(default_factory=dict)
     account_mappings: Mapping[str, Any] = field(default_factory=dict)
     csv_mappings: Mapping[str, Any] = field(default_factory=dict)
+    reversed_source_ids: frozenset[str] = frozenset()
 
 
 EMPTY_SNAPSHOT = Snapshot()
@@ -173,10 +174,10 @@ def _connect_read_only(path: Path) -> sqlite3.Connection | None:
     return conn
 
 
-def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[str], tuple[EntryRow, ...]]:
+def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[str], tuple[EntryRow, ...], frozenset[str]]:
     conn = _connect_read_only(path)
     if conn is None:
-        return 0, frozenset(), ()
+        return 0, frozenset(), (), frozenset()
     try:
         try:
             max_id = int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM entries").fetchone()[0])
@@ -186,9 +187,20 @@ def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[
                 )
             )
         except sqlite3.DatabaseError:
-            return 0, frozenset(), ()
+            return 0, frozenset(), (), frozenset()
+        reversed_ids = set()
+        for (raw,) in conn.execute(
+            "SELECT metadata_json FROM entries WHERE metadata_json LIKE '%reverses%'"
+        ):
+            try:
+                target = dict(json.loads(raw or "[]")).get("reverses")
+                if target:
+                    reversed_ids.add(str(target))
+            except (ValueError, TypeError):
+                continue
+        reversed_ids = frozenset(reversed_ids)
         if entries_after is None:
-            return max_id, source_ids, ()
+            return max_id, source_ids, (), reversed_ids
         rows = conn.execute(
             "SELECT id, date, source_id, metadata_json FROM entries WHERE id > ? ORDER BY id",
             (entries_after,),
@@ -217,7 +229,7 @@ def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[
                 accounts=accounts,
                 amounts=tuple(posting_amounts.get(int(row["id"]), ())),
             ))
-        return max_id, source_ids, tuple(entries)
+        return max_id, source_ids, tuple(entries), reversed_ids
     finally:
         conn.close()
 
@@ -300,7 +312,7 @@ def take_snapshot(
         return EMPTY_SNAPSHOT
     config = _read_json(root / "entity.json")
     config = config if isinstance(config, dict) else {}
-    max_id, source_ids, entries = _load_ledger(root / "ledger.sqlite", entries_after)
+    max_id, source_ids, entries, reversed_ids = _load_ledger(root / "ledger.sqlite", entries_after)
     pending = {
         str(txn.get("id")): txn
         for txn in _load_list(root / "staging" / "pending-categorization.json")
@@ -331,6 +343,7 @@ def take_snapshot(
     return Snapshot(
         max_entry_id=max_id,
         entry_source_ids=source_ids,
+        reversed_source_ids=reversed_ids,
         entries=entries,
         pending=pending,
         queue=queue,
@@ -539,7 +552,11 @@ def work_events(
         entry_sources = {entry.source_id, entry.paired_source_id} - {""}
         if "reverses" in entry.meta:
             reversals.append(entry)
-        elif "correction-of" in entry.meta or entry_sources & corrected_sources:
+        # A replacement after an earlier Undo is a fresh recording. A real
+        # correction reverses the live entry in this command, not a prior one.
+        elif (("correction-of" in entry.meta
+               and entry.meta["correction-of"] not in before.reversed_source_ids)
+              or entry_sources & corrected_sources):
             corrections.append(entry)
         elif entry_sources & confirmed_sources:
             recorded_suggested.append(entry)
@@ -556,9 +573,8 @@ def work_events(
             arrived[source_id] = (str(txn.get("date") or "")[:10], _source_account(after, txn))
     # Queue corrections post a staged source; ledger corrections (correction-of)
     # post a replacement of an entry that already existed, which is no import.
-    arrivals = recorded_direct + recorded_suggested + [
-        entry for entry in corrections if "correction-of" not in entry.meta
-    ]
+    arrivals = [entry for entry in recorded_direct + recorded_suggested + corrections
+                if "correction-of" not in entry.meta]
     for entry in sorted(arrivals, key=lambda row: row.id):
         for source_id in (entry.source_id, entry.paired_source_id):
             if source_id and source_id not in known:
