@@ -521,5 +521,68 @@ class ReviewFixTests(unittest.TestCase):
         self.assertTrue(command_spec(["queue", "context-adopt", "--entity", "@entity"])["mutates"])
 
 
+class SecondReviewTests(unittest.TestCase):
+    def test_a_context_row_never_uses_up_a_book_entry_after_its_cutover(self) -> None:
+        """Books have 04-01 at -9.99 and no 03-30 entry. The feed sends 03-30 (context) and 04-01."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            set_taught(load_entity(root), "COFFEE", "Expenses:Services", by="owner", by_name="Owner",
+                       ts="2026-01-01T00:00:00Z")
+            import_transactions(load_entity(root), [_row("bk1", "2026-04-01", "-9.99", "COFFEE", "bs_1")], "old", POST)
+            _ingest(root, [_row("f1", "2026-03-30", "-9.99", "COFFEE"), _row("f2", "2026-04-01", "-9.99", "COFFEE")])
+            held = [c["source_id"] for c in list_duplicate_candidates(load_entity(root))]
+            self.assertEqual(held, ["plaid:f2"])           # the real repeat is held
+            self.assertNotIn("plaid:f2", _posted_ids(root))  # and no learned rule posted it
+            self.assertEqual(_load_pending_categorization(load_entity(root)), [])
+            self.assertEqual(_counts(root)["context"], 1)
+
+    def test_a_context_row_still_uses_up_an_entry_on_or_before_its_cutover(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            import_transactions(load_entity(root), [_row("bk1", "2026-03-31", "-9.99", "COFFEE", "bs_1")], "old", POST)
+            _ingest(root, [_row("f1", "2026-03-30", "-9.99", "COFFEE"), _row("f2", "2026-04-01", "-9.99", "COFFEE")])
+            self.assertEqual(list_duplicate_candidates(load_entity(root)), [])
+            self.assertEqual([i["id"] for i in _load_pending_categorization(load_entity(root))], ["plaid:f2"])
+
+    def test_a_stop_after_the_import_leaves_no_false_record(self) -> None:
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, [_row("c1", "2026-01-10", "-10.00", "FIRST"), _row("c2", "2026-01-11", "-11.00", "SECOND")])
+            with mock.patch.object(context_history, "mark_released", side_effect=RuntimeError("stop")):
+                with self.assertRaises(RuntimeError):
+                    context_history.release_context_rows(load_entity(root), ["plaid:c1"])
+            self.assertEqual([i["id"] for i in _load_pending_categorization(load_entity(root))], ["plaid:c1"])
+            records = context_history.load_records(load_entity(root))
+            self.assertEqual({r["source_id"]: r["status"] for r in records},
+                             {"plaid:c1": "context-only", "plaid:c2": "context-only"})  # the stale record
+            doc = context_history.summarize_context_history(load_entity(root))
+            self.assertEqual(doc["accounts"][0]["count"], 1)          # the summary leaves it out
+            self.assertEqual(_counts(root)["context"], 1)
+            _ingest(root, [_row("c1", "2026-01-10", "-10.00", "FIRST")])  # a later sync repairs the record
+            states = {r["source_id"]: r["status"] for r in context_history.load_records(load_entity(root))}
+            self.assertEqual(states, {"plaid:c1": "released", "plaid:c2": "context-only"})
+
+    def test_a_persons_release_is_recorded_as_a_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, [_row("c1", "2026-01-10", "-10.00", "FIRST")])
+            _cli("queue", "context-release", "--entity", str(root), "--source-id", "plaid:c1")
+            (record,) = context_history.load_records(load_entity(root))
+            self.assertEqual((record["status"], record["release_how"], record["release_session"]),
+                             ("released", "released", "context-release"))
+
+    def test_a_damaged_hold_file_cannot_fail_an_import_after_it_posted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, [_row("c1", "2026-01-10", "-10.00", "FIRST")])
+            (root / "staging" / "duplicate-candidates.json").write_text("{bad", encoding="utf-8")
+            row = _row("plaid:c1", "2026-01-10", "-10.00", "FIRST")  # the same row, now on the normal path
+            result = import_transactions(load_entity(root), [row], "s", POST)
+            self.assertEqual((result.new_entries, result.errors), (1, []))
+            (record,) = context_history.load_records(load_entity(root))
+            self.assertEqual(record["status"], "released")
+
+
 if __name__ == "__main__":
     unittest.main()

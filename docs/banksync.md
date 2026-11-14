@@ -226,8 +226,9 @@ earlier import already held in "To check" into context history. A hold marked
 `before_cutover_not_in_books` is a row that the books never had and may be real,
 so it stays in "To check" unless `--include-unmatched` is given; the result counts
 `moved_by_match_rule` and `left_by_match_rule`. A context row still uses up the book
-entry that it matches in the duplicate check, so a later row is judged exactly as in
-`review` mode. A pending row on or before the date is still skipped, and a row after
+entry that it matches in the duplicate check, but only an entry dated on or before the
+cutover date, so a later row is judged as in `review` mode and a real repeat after the
+cutover is still held. A pending row on or before the date is still skipped, and a row after
 the date follows the normal rules. `staging/context-history.json` has a
 `schema_version`. It is read in full once for each ingest and rewritten once for each
 ingest that adds rows; a two-year history of a busy account is a few thousand rows

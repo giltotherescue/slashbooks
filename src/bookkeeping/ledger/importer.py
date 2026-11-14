@@ -733,7 +733,9 @@ def _import_transactions_unlocked(
     context_cutovers = dict(context_only_cutovers or {})
     cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers)
     # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
-    # later row is judged exactly as in review mode. Its plan result is never used: it makes no hold.
+    # later row is judged as in review mode. It may use up only an entry dated on or before its cutover
+    # date (``pool_limits``): an entry after it is for a real later row to match. Its plan result is
+    # never used: it makes no hold.
     from .. import context_history
     # A damaged context file stops the import here, before any write. A missing file is empty.
     context_known = context_history.known_ids(entity)
@@ -742,7 +744,8 @@ def _import_transactions_unlocked(
     guarded = bool(legacy_duplicate_guard or cutover_hold_ids)
     feed_holds = (_plan_feed_holds(
         entity, normalized_txns if legacy_duplicate_guard else
-        [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids)
+        [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids,
+        {sid: date.fromisoformat(day) for sid, day in context_cutovers.items()})
         if guarded else {})
     # A row that is already held for review stays held on every later sync, under
     # either spelling of its ID, until a person resolves it.
@@ -1004,10 +1007,18 @@ def _import_transactions_unlocked(
         # Mark all source IDs as seen.
         staging.bulk_mark_seen(source_ids_to_mark)
 
-    if normal_path_known:
-        # A stored context row that is now posted, queued or held is no longer "not imported".
-        done = context_history.outcome_ids(entity, normal_path_known)
-        context_history.mark_released(entity, sorted(done), session_id=session_id, how="normal-path")
+    if context_known and not context_history.releasing():
+        # A stored context row that is now posted, queued or held is no longer "not imported". This also
+        # repairs a record that an earlier run left stale: its row is seen and skipped above, so only this
+        # step meets it again.
+        sent = set(normal_path_known)
+        for txn in normalized_txns:
+            sid = str(txn.get("id") or "")
+            if sid and source_id_variants(sid) & context_known:
+                sent.add(sid)
+        if sent:
+            done = context_history.outcome_ids(entity, sorted(sent))
+            context_history.mark_released(entity, sorted(done), session_id=session_id, how="normal-path")
 
     return result
 
@@ -1038,7 +1049,8 @@ _SAME_DAY_RULE = "legacy_id_same_account_date_amount_description"
 
 
 def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
-                     cutover_hold_ids: frozenset[str] = frozenset()) -> dict[str, dict[str, Any]]:
+                     cutover_hold_ids: frozenset[str] = frozenset(),
+                     pool_limits: dict[str, date] | None = None) -> dict[str, dict[str, Any]]:
     """Rows of a connected-feed batch that may repeat activity already recorded.
 
     This is the statement-import duplicate plan (``plan_duplicates``): a row is
@@ -1075,7 +1087,7 @@ def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
             {**txn, "id": source_id, "date": day, "description": text})
     holds: dict[str, dict[str, Any]] = {}
     for (account, family), rows in groups.items():
-        plan = plan_duplicates(entity, rows, account, family)
+        plan = plan_duplicates(entity, rows, account, family, pool_limits)
         for row in plan["import"]:
             # Dated on or before the cutover and not matched to anything: a late row the old
             # source may never have sent. A person decides; it is never dropped or posted.

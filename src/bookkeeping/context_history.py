@@ -34,6 +34,7 @@ in "To check" as it always was. This module changes no posting rule.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import os
 from datetime import date
@@ -48,6 +49,14 @@ CONTEXT_STATUS = "context-only"
 RELEASED_STATUS = "released"
 _ALIASES_FILE = "source-id-aliases.json"
 _DUPLICATES_FILE = "duplicate-candidates.json"
+
+
+# Set while ``release_context_rows`` runs, so that the importer leaves the audit mark to it.
+_RELEASING: contextvars.ContextVar[bool] = contextvars.ContextVar("context_history_releasing", default=False)
+
+
+def releasing() -> bool:
+    return _RELEASING.get()
 
 
 def _path(entity: Any) -> Path:
@@ -145,9 +154,17 @@ def append_records(entity: Any, records: list[dict[str, Any]]) -> None:
 
 
 def list_context_history(entity: Any, account: str | None = None, include_released: bool = False) -> list[dict[str, Any]]:
-    """Context rows, oldest first. Read-only."""
+    """Context rows, oldest first. Read-only.
+
+    A stored row that is already posted, queued or held (a stop between an import and its
+    record update can leave one) is not context any more and is left out, unless
+    ``include_released`` is given.
+    """
     rows = [r for r in load_records(entity)
             if (include_released or r.get("status") == CONTEXT_STATUS) and (not account or r.get("account") == account)]
+    if not include_released and rows:
+        done = outcome_ids(entity, [str(r.get("source_id")) for r in rows])
+        rows = [r for r in rows if str(r.get("source_id")) not in done]
     return sorted(rows, key=lambda r: (str(r.get("date") or ""), str(r.get("source_id") or "")))
 
 
@@ -233,8 +250,14 @@ def outcome_ids(entity: Any, source_ids: list[str]) -> set[str]:
     queued: set[str] = set()
     for txn in _load_pending_categorization(entity):
         queued |= source_id_variants(txn.get("id"))
+    # Lenient on purpose, like the importer: this runs after a write, and a damaged file must not turn
+    # a finished import into a failure. (The import itself holds nothing it cannot write.)
     held: set[str] = set()
-    for item in _load_list(Path(entity.staging_dir) / _DUPLICATES_FILE):
+    try:
+        held_items = _load_list(Path(entity.staging_dir) / _DUPLICATES_FILE)
+    except ValueError:
+        held_items = []
+    for item in held_items:
         if item.get("status") == "duplicate-candidate":
             held |= source_id_variants(item.get("source_id"))
     done = set()
@@ -329,8 +352,12 @@ def release_context_rows(entity: Any, source_ids: list[str], session_id: str = "
         to_import = [r for r in chosen if str(r["source_id"]) not in refused]
         result = None
         if to_import:
-            result = import_transactions(entity, [r["transaction"] for r in to_import], session_id,
-                                         categorizer=make_categorizer(entity), legacy_duplicate_guard=duplicate_guard)
+            token = _RELEASING.set(True)
+            try:
+                result = import_transactions(entity, [r["transaction"] for r in to_import], session_id,
+                                             categorizer=make_categorizer(entity), legacy_duplicate_guard=duplicate_guard)
+            finally:
+                _RELEASING.reset(token)
         done = outcome_ids(entity, [str(r["source_id"]) for r in to_import])
         released = [sid for sid in (str(r["source_id"]) for r in to_import) if sid in done]
         mark_released(entity, released, session_id=session_id, how="released")
