@@ -10,9 +10,11 @@
   The row is never posted, and it makes no review item and no "To check" item,
   so a provider switch no longer creates one item for each earlier transaction.
   `books queue context-history` gives one summary for each account;
-  `books queue context-release` releases one row, or every row after a date
-  when the cutover was set too late; `books queue context-adopt` moves rows that
-  an earlier import held in "To check" into context history. The default is
+  `books queue context-release` releases one row (it refuses a row that matches
+  a posted entry unless `--force` is given), or every row after a date when the
+  cutover was set too late; `books queue context-adopt` moves rows that an
+  earlier import held in "To check" into context history, and leaves a hold for
+  a row the books never had unless `--include-unmatched` is given. The default is
   unchanged: without the setting, each such row is held for review as before.
   Rows after the cutover, pending rows, `--backfill` and the duplicate check
   behave as before.

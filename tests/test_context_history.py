@@ -299,8 +299,15 @@ class SafetyTests(unittest.TestCase):
             map_bank_account(root, "plaid_1", CHECKING, history_before_cutover="context_only")
             _ingest(root, _b_rows())  # a resync does not duplicate the held rows
             self.assertEqual(_counts(root), {"posted": 40, "queued": 0, "held": 100, "context": 0})
+            # By default a hold for a row the books never had stays in To check: a person should look at it.
             code, doc = _cli("queue", "context-adopt", "--entity", str(root))
-            self.assertEqual((code, doc["moved"], doc["left_in_review"]), (0, 100, 0))
+            self.assertEqual((code, doc["moved"], doc["left_in_review"]), (0, 40, 60))
+            self.assertEqual(doc["left_by_match_rule"], {"before_cutover_not_in_books": 60})
+            self.assertEqual(sum(doc["moved_by_match_rule"].values()), 40)
+            self.assertEqual(_counts(root), {"posted": 40, "queued": 0, "held": 60, "context": 40})
+            code, doc = _cli("queue", "context-adopt", "--entity", str(root), "--include-unmatched")
+            self.assertEqual((code, doc["moved"], doc["left_in_review"]), (0, 60, 0))
+            self.assertEqual(doc["moved_by_match_rule"], {"before_cutover_not_in_books": 60})
             self.assertEqual(_counts(root), {"posted": 40, "queued": 0, "held": 0, "context": 100})
             self.assertEqual(load_entity(root) and list_queue_items(load_entity(root)), [])
             _ingest(root, _b_rows())
@@ -312,7 +319,10 @@ class SafetyTests(unittest.TestCase):
             _ingest(root, [_row("b15", _day(46), "-25.00", "VENDOR 15"), _row("o1", "2026-01-05", "-5.00", "OLD")])
             map_bank_account(root, "plaid_1", CHECKING, history_before_cutover="context_only")
             code, doc = _cli("queue", "context-adopt", "--entity", str(root))
+            self.assertEqual((doc["moved"], doc["left_in_review"]), (0, 2))  # o1 is unmatched; b15 is after the cutover
+            code, doc = _cli("queue", "context-adopt", "--entity", str(root), "--include-unmatched")
             self.assertEqual((doc["moved"], doc["left_in_review"]), (1, 1))
+            self.assertEqual(doc["left_by_match_rule"], {"legacy_id_same_account_date_amount_description": 1})
 
     def test_pending_rows_before_the_cutover_are_skipped_and_the_posted_row_follows_its_own_date(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -363,6 +373,152 @@ class SafetyTests(unittest.TestCase):
                                          context_only_cutovers={"plaid:z1": CUTOVER})
             self.assertEqual((result.new_entries, result.pending_categorization, result.duplicate_candidates,
                               result.context_only), (0, 0, 0, 1))
+
+
+class ReviewFixTests(unittest.TestCase):
+    def test_a_release_that_refuses_rows_does_not_stay_stuck(self) -> None:
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, _b_rows())
+            opening = {CHECKING: date(2025, 11, 1)}
+            with mock.patch("bookkeeping.statement_opening.opening_dates", return_value=opening):
+                code, doc = _cli("queue", "context-release", "--entity", str(root), "--account", CHECKING,
+                                 "--after", "2025-10-15")
+            self.assertEqual(code, 1)
+            self.assertEqual({r["reason"] for r in doc["refused"]}, {"before_opening"})
+            self.assertEqual(len(doc["refused"]), 16)
+            self.assertEqual((doc["released"], doc["held_as_duplicate"]), (69, 40))
+            # Every row that was imported is released; the refused rows and the rows on or before the date remain context only.
+            self.assertEqual(_counts(root), {"posted": 40, "queued": 29, "held": 40, "context": 31})
+            with mock.patch("bookkeeping.statement_opening.opening_dates", return_value=opening):
+                code, doc = _cli("queue", "context-release", "--entity", str(root), "--account", CHECKING,
+                                 "--after", "2025-10-15")
+            self.assertEqual((code, doc["released"]), (1, 0))
+            self.assertEqual(_counts(root), {"posted": 40, "queued": 29, "held": 40, "context": 31})
+
+    def test_a_damaged_alias_file_stops_a_release_before_any_write(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, _b_rows())
+            (root / "staging" / "source-id-aliases.json").write_text("{bad", encoding="utf-8")
+            code, _ = _cli("queue", "context-release", "--entity", str(root), "--source-id", "plaid:o3", "--force")
+            self.assertEqual(code, 1)
+            self.assertEqual(_load_pending_categorization(load_entity(root)), [])
+            self.assertEqual(len(context_history.list_context_history(load_entity(root))), 100)
+
+    def test_a_first_context_row_in_a_new_currency_adopts_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "company"
+            init_entity(root, name="Harbor Studio", business_type="consulting", legal_structure="llc")
+            for account in (CHECKING, "Expenses:Services"):
+                add_account(root, account, open_date="2025-01-01")
+            map_bank_account(root, "plaid_1", CHECKING, provider="plaid", cutover_date=CUTOVER,
+                             history_before_cutover="context_only")
+            early = {**_row("e1", "2026-01-10", "-10.00", "EARLY"), "currency": "EUR"}
+            late = {**_row("e2", "2026-04-02", "-20.00", "LATER"), "currency": "EUR"}
+            self.assertEqual(_ingest(root, [early])[0], 0)
+            self.assertEqual(load_entity(root).currency, "EUR")
+            code, _ = _ingest(root, [late])
+            self.assertEqual(code, 0)
+            self.assertEqual([i["id"] for i in _load_pending_categorization(load_entity(root))], ["plaid:e2"])
+
+    def test_a_row_that_takes_the_normal_path_is_no_longer_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, _b_rows()[40:])
+            map_bank_account(root, "plaid_1", CHECKING, cutover_date="2025-12-31")  # moved earlier: all older rows stay
+            map_bank_account(root, "plaid_1", CHECKING, cutover_date="2025-10-10")  # rows after 10-10 now normal
+            _ingest(root, _b_rows()[40:])
+            queued = len(_load_pending_categorization(load_entity(root)))
+            self.assertEqual(queued, 50)  # 2025-10-11 .. 2025-11-29
+            entity = load_entity(root)
+            self.assertEqual(len(context_history.list_context_history(entity)), 10)
+            doc = context_history.summarize_context_history(entity)
+            self.assertEqual((doc["total_count"], doc["inactive_count"]), (10, 0))
+            self.assertEqual(doc["accounts"][0]["last_date"], "2025-10-10")
+
+    def test_turning_the_mode_off_makes_the_summary_say_so(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, _b_rows()[40:])
+            map_bank_account(root, "plaid_1", CHECKING, history_before_cutover="review")
+            doc = context_history.summarize_context_history(load_entity(root))
+            self.assertEqual((doc["total_count"], doc["inactive_count"]), (0, 60))
+            self.assertNotIn("were not imported because", doc["accounts"][0]["message"])
+            _ingest(root, _b_rows()[40:])  # now held for review: no longer stored as context
+            self.assertEqual(_counts(root), {"posted": 40, "queued": 0, "held": 60, "context": 0})
+            self.assertEqual(context_history.summarize_context_history(load_entity(root))["accounts"], [])
+
+    def test_reissued_ids_are_counted_by_id_and_by_distinct_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            older = _b_rows()[40:]
+            reissued = [{**r, "id": "x" + r["id"]} for r in older]
+            _ingest(root, older)
+            _ingest(root, reissued)
+            (item,) = context_history.summarize_context_history(load_entity(root))["accounts"]
+            self.assertEqual((item["count"], item["distinct_count"]), (120, 60))
+            self.assertIn("120 earlier transaction records", item["message"])
+            self.assertIn("60 different", item["message"])
+
+    def test_context_mode_judges_a_later_row_as_review_mode_does(self) -> None:
+        """Books have 03-30 at -9.99. The feed sends 03-30 and 04-01 at -9.99, cutover 03-31."""
+        def run(mode: str | None) -> tuple[dict[str, int], list[str]]:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = _company(tmp, mode=mode)
+                import_transactions(load_entity(root), [_row("bk1", "2026-03-30", "-9.99", "COFFEE", "bs_1")], "old", POST)
+                _ingest(root, [_row("f1", "2026-03-30", "-9.99", "COFFEE"), _row("f2", "2026-04-01", "-9.99", "COFFEE")])
+                held = sorted(c["source_id"] for c in list_duplicate_candidates(load_entity(root)))
+                queued = sorted(i["id"] for i in _load_pending_categorization(load_entity(root)))
+                return {"held": len(held), "context": _counts(root)["context"]}, queued
+        review_counts, review_queued = run(None)
+        context_counts, context_queued = run("context_only")
+        self.assertEqual(review_queued, ["plaid:f2"])
+        self.assertEqual(context_queued, review_queued)  # the 04-01 row is imported as in review mode
+        self.assertEqual((review_counts["held"], review_counts["context"]), (1, 0))
+        self.assertEqual((context_counts["held"], context_counts["context"]), (0, 1))
+
+    def test_releasing_a_row_that_repeats_a_posted_entry_is_refused_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, [_row("b5", _day(36), "-15.00", "VENDOR 5")])  # repeats A's a5
+            self.assertEqual(_counts(root)["context"], 1)
+            code, doc = _cli("queue", "context-release", "--entity", str(root), "--source-id", "plaid:b5")
+            self.assertEqual(code, 1)
+            (refusal,) = doc["refused"]
+            self.assertEqual((refusal["reason"], refusal["existing_source_id"]), ("matches_existing_entry", "a5"))
+            self.assertEqual((doc["released"], _counts(root)["queued"], _counts(root)["context"]), (0, 0, 1))
+            code, doc = _cli("queue", "context-release", "--entity", str(root), "--source-id", "plaid:b5", "--force")
+            self.assertEqual((code, doc["released"], doc["queued_for_review"]), (0, 1, 1))
+            self.assertEqual(_counts(root)["context"], 0)
+
+    def test_a_release_after_a_date_with_no_rows_returns_every_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            code, doc = _cli("queue", "context-release", "--entity", str(root), "--account", CHECKING,
+                             "--after", "2030-01-01")
+            self.assertEqual(code, 0)
+            for key in ("released", "posted", "queued_for_review", "held_as_duplicate", "skipped_duplicate",
+                        "refused", "not_released", "errors"):
+                self.assertIn(key, doc)
+
+    def test_the_file_has_a_schema_version_and_an_unknown_one_stops_an_import(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            _ingest(root, _b_rows()[40:42])
+            path = root / "staging" / "context-history.json"
+            data = json.loads(path.read_text())
+            self.assertEqual((data["schema_version"], len(data["rows"])), (1, 2))
+            data["schema_version"] = 2
+            path.write_text(json.dumps(data))
+            self.assertEqual(_ingest(root, _b_rows()[42:44])[0], 1)
+
+    def test_read_and_write_classification_for_hosts(self) -> None:
+        from bookkeeping.remote_contract import command_spec
+        self.assertFalse(command_spec(["queue", "context-history", "--entity", "@entity", "--json"])["mutates"])
+        self.assertTrue(command_spec(["queue", "context-release", "--entity", "@entity", "--source-id", "x"])["mutates"])
+        self.assertTrue(command_spec(["queue", "context-adopt", "--entity", "@entity"])["mutates"])
 
 
 if __name__ == "__main__":

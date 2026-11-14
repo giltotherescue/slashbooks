@@ -732,17 +732,17 @@ def _import_transactions_unlocked(
     # are planned; every other row follows the unguarded path.
     context_cutovers = dict(context_only_cutovers or {})
     cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers)
-    # Context-only rows are never planned or held: they make no review item (``context_history``).
-    context_known: set[str] = set()
+    # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
+    # later row is judged exactly as in review mode. Its plan result is never used: it makes no hold.
+    from .. import context_history
+    # A damaged context file stops the import here, before any write. A missing file is empty.
+    context_known = context_history.known_ids(entity)
     context_new: list[dict[str, Any]] = []
-    if context_cutovers:
-        from .. import context_history
-        context_known = context_history.known_ids(entity)  # raises on a damaged file, before any write
-    planned = [t for t in normalized_txns if str(t.get("id") or "") not in context_cutovers]
+    normal_path_known: list[str] = []
     guarded = bool(legacy_duplicate_guard or cutover_hold_ids)
     feed_holds = (_plan_feed_holds(
-        entity, planned if legacy_duplicate_guard else
-        [t for t in planned if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids)
+        entity, normalized_txns if legacy_duplicate_guard else
+        [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids)
         if guarded else {})
     # A row that is already held for review stays held on every later sync, under
     # either spelling of its ID, until a person resolves it.
@@ -812,17 +812,19 @@ def _import_transactions_unlocked(
         if source_id in context_cutovers:
             status = _legacy_alias_status(entity, source_id)
             if status == "confirmed-distinct":
-                pass  # A person released it on purpose: it follows the normal path.
+                normal_path_known.append(source_id)  # A person released it: it follows the normal path.
             elif spellings & context_known or spellings & open_hold_ids or status == "confirmed-duplicate":
                 result.skipped_duplicate += 1  # Already context, already held for review, or decided.
                 continue
             else:
-                from .. import context_history
+                before_staged_write()  # A first row in a new currency adopts it, as a held row does.
                 context_new.append(context_history.make_record(
                     txn, account=bank_account, cutover_date=context_cutovers[source_id],
                     session_id=session_id, created_at=_now_iso()))
                 result.context_only += 1
                 continue
+        elif spellings & context_known:
+            normal_path_known.append(source_id)  # A stored context row now takes the normal path.
         opening_day = openings.get(bank_account)
         if opening_day is not None:
             # Read the date as a date. A row with no date, or a date that is not valid, is an error:
@@ -976,7 +978,6 @@ def _import_transactions_unlocked(
         result.new_entries += 1
 
     if context_new:
-        from .. import context_history
         context_history.append_records(entity, context_new)
 
     # Write to ledger if we have new entries.
@@ -1002,6 +1003,11 @@ def _import_transactions_unlocked(
 
         # Mark all source IDs as seen.
         staging.bulk_mark_seen(source_ids_to_mark)
+
+    if normal_path_known:
+        # A stored context row that is now posted, queued or held is no longer "not imported".
+        done = context_history.outcome_ids(entity, normal_path_known)
+        context_history.mark_released(entity, sorted(done), session_id=session_id, how="normal-path")
 
     return result
 

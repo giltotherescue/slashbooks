@@ -93,7 +93,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
                         ("connector", "csv", "parse"), ("ledger", "snapshot"),
                         ("queue", "list"), ("queue", "show"), ("queue", "summary"),
                         ("queue", "split-template-list"), ("queue", "taught"), ("queue", "transfer-candidates"),
-                        ("queue", "transfer-exceptions"), ("queue", "duplicates"),
+                        ("queue", "transfer-exceptions"), ("queue", "duplicates"), ("queue", "context-history"),
                         ("queue", "transfer-matches"), ("queue", "transfer-doubles"),
                         ("bank", "match-account"),  # A proposal; a person confirms before any mapping
                         ("procedures", "list"), ("procedures", "show")}

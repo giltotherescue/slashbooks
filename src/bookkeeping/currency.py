@@ -267,6 +267,8 @@ def books_activity(entity_path: Path | str, exclude: Iterable[str] = ()) -> list
             except (json.JSONDecodeError, OSError):
                 found.append(label)
                 continue
+            if isinstance(data, dict):  # The context history file wraps its rows.
+                data = data.get("rows")
             if data:
                 found.append(label)
     return found

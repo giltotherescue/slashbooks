@@ -3606,6 +3606,8 @@ def add_parser(subparsers: Any) -> None:
     release_p.add_argument("--entity", required=True, help="Path to entity directory")
     release_p.add_argument("--source-id", action="append", dest="source_ids", default=[],
                            help="A context row to release; repeat for more. The row skips the duplicate check")
+    release_p.add_argument("--force", action="store_true",
+                           help="Release a --source-id row even when it matches a posted entry or a queued item")
     release_p.add_argument("--account", default=None, help="With --after: the ledger account")
     release_p.add_argument("--after", default=None,
                            help="YYYY-MM-DD. Release every context row on --account dated after this day, "
@@ -3616,6 +3618,9 @@ def add_parser(subparsers: Any) -> None:
              "mapping is now context_only")
     adopt_p.add_argument("--entity", required=True, help="Path to entity directory")
     adopt_p.add_argument("--account", default=None, help="Limit to one ledger account")
+    adopt_p.add_argument("--include-unmatched", action="store_true",
+                         help="Also move holds marked before_cutover_not_in_books: rows the books never had, which "
+                              "may be real. Without it they stay in To check")
 
     # list
     list_p = queue_sub.add_parser("list", help="List queue items")
@@ -3890,7 +3895,7 @@ def run(args: Any) -> int:
             from . import context_history
             try:
                 if qcmd == "context-adopt":
-                    document = context_history.adopt_open_holds(entity, args.account)
+                    document = context_history.adopt_open_holds(entity, args.account, include_unmatched=args.include_unmatched)
                 elif qcmd == "context-release":
                     if bool(args.source_ids) == bool(args.after):
                         raise ValueError("Give --source-id (one or more), or --account with --after.")
@@ -3902,10 +3907,9 @@ def run(args: Any) -> int:
                         except ValueError:
                             raise ValueError("--after must be a date in YYYY-MM-DD form.") from None
                         ids = context_history.rows_after(entity, args.account, after)
-                        document = (context_history.release_context_rows(entity, ids, duplicate_guard=True)
-                                    if ids else {"schema_version": 1, "kind": "context_release", "released": 0})
+                        document = context_history.release_context_rows(entity, ids, duplicate_guard=True)
                     else:
-                        document = context_history.release_context_rows(entity, args.source_ids)
+                        document = context_history.release_context_rows(entity, args.source_ids, force=args.force)
                 elif args.account:
                     document = _collection_page(context_history.list_context_history(entity, args.account),
                                                 args, "rows", "context_history")
@@ -3916,6 +3920,8 @@ def run(args: Any) -> int:
                 return 1
             if getattr(args, "as_json", False) or qcmd != "context-history":
                 print(json.dumps(document, indent=2, sort_keys=True))
+                if document.get("refused") or document.get("errors") or document.get("not_released"):
+                    return 1  # Some rows stayed context only; the document says which and why.
             elif not document.get("accounts") and "rows" not in document:
                 print("No context-only rows.")
             elif "rows" in document:
