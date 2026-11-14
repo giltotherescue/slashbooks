@@ -3592,6 +3592,31 @@ def add_parser(subparsers: Any) -> None:
     duplicates_p.add_argument("--offset", type=int, default=0, help="JSON page start; requires --limit")
     duplicates_p.add_argument("--limit", type=int, help="Return 1..100 candidates per JSON page")
 
+    context_p = queue_sub.add_parser(
+        "context-history",
+        help="Summarize feed rows kept as context only (not posted, no review items). Changes nothing")
+    context_p.add_argument("--entity", required=True, help="Path to entity directory")
+    context_p.add_argument("--account", default=None, help="List the rows of one ledger account")
+    context_p.add_argument("--json", action="store_true", dest="as_json", help="Print the JSON document")
+    context_p.add_argument("--offset", type=int, default=0, help="JSON page start; requires --limit")
+    context_p.add_argument("--limit", type=int, help="Return 1..100 rows per JSON page (with --account)")
+    release_p = queue_sub.add_parser(
+        "context-release",
+        help="Release context-only rows into the normal import path, on purpose")
+    release_p.add_argument("--entity", required=True, help="Path to entity directory")
+    release_p.add_argument("--source-id", action="append", dest="source_ids", default=[],
+                           help="A context row to release; repeat for more. The row skips the duplicate check")
+    release_p.add_argument("--account", default=None, help="With --after: the ledger account")
+    release_p.add_argument("--after", default=None,
+                           help="YYYY-MM-DD. Release every context row on --account dated after this day, "
+                                "with the duplicate check on (use it after you move a cutover date earlier)")
+    adopt_p = queue_sub.add_parser(
+        "context-adopt",
+        help="Move rows that an earlier import held in To check into context history, when their "
+             "mapping is now context_only")
+    adopt_p.add_argument("--entity", required=True, help="Path to entity directory")
+    adopt_p.add_argument("--account", default=None, help="Limit to one ledger account")
+
     # list
     list_p = queue_sub.add_parser("list", help="List queue items")
     list_p.add_argument("--entity", required=True, help="Path to entity directory")
@@ -3860,6 +3885,46 @@ def run(args: Any) -> int:
             except (FileNotFoundError, ValueError) as exc:
                 _print_error(exc)
                 return 1
+
+        elif qcmd in ("context-history", "context-release", "context-adopt"):
+            from . import context_history
+            try:
+                if qcmd == "context-adopt":
+                    document = context_history.adopt_open_holds(entity, args.account)
+                elif qcmd == "context-release":
+                    if bool(args.source_ids) == bool(args.after):
+                        raise ValueError("Give --source-id (one or more), or --account with --after.")
+                    if args.after:
+                        if not args.account:
+                            raise ValueError("--after needs --account.")
+                        try:
+                            after = date.fromisoformat(args.after)
+                        except ValueError:
+                            raise ValueError("--after must be a date in YYYY-MM-DD form.") from None
+                        ids = context_history.rows_after(entity, args.account, after)
+                        document = (context_history.release_context_rows(entity, ids, duplicate_guard=True)
+                                    if ids else {"schema_version": 1, "kind": "context_release", "released": 0})
+                    else:
+                        document = context_history.release_context_rows(entity, args.source_ids)
+                elif args.account:
+                    document = _collection_page(context_history.list_context_history(entity, args.account),
+                                                args, "rows", "context_history")
+                else:
+                    document = context_history.summarize_context_history(entity)
+            except ValueError as exc:
+                _print_error(exc)
+                return 1
+            if getattr(args, "as_json", False) or qcmd != "context-history":
+                print(json.dumps(document, indent=2, sort_keys=True))
+            elif not document.get("accounts") and "rows" not in document:
+                print("No context-only rows.")
+            elif "rows" in document:
+                for row in document["rows"]:
+                    print(f"{row['source_id']}: {row['date']} {row['amount']} {row['description']}")
+            else:
+                for item in document["accounts"]:
+                    print(item["message"])
+            return 0
 
         elif qcmd == "duplicates":
             try:

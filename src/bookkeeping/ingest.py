@@ -77,7 +77,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .bank_accounts import clip_windows_to_cutover, split_at_cutover
+from .bank_accounts import clip_windows_to_cutover, context_only_account, context_only_ids, split_at_cutover
 from .entity import flat_bank_account_mappings, load_entity
 from . import queue as queue_module
 from .ledger.importer import import_transactions
@@ -362,11 +362,13 @@ def run(args: argparse.Namespace) -> int:
             txns = namespace_feed_ids(txns, provider)
         before_cutover: dict[str, dict[str, Any]] = {}
         cutover_hold_ids: frozenset[str] = frozenset()
+        context_ids: dict[str, str] = {}
         if not getattr(args, "backfill", False):
             kept, hold_ids, before_cutover = split_at_cutover(entity, txns)
             if prepared is None:  # A prepared snapshot keeps every row.
                 txns = kept
             cutover_hold_ids = frozenset(hold_ids)
+            context_ids = context_only_ids(entity, txns)
             windows = clip_windows_to_cutover(entity, windows)
 
         session_id = args.session_id or (
@@ -382,6 +384,7 @@ def run(args: argparse.Namespace) -> int:
             legacy_duplicate_guard=provider is not None,
             intake_only=getattr(args, "intake_only", False),
             cutover_hold_ids=cutover_hold_ids,
+            context_only_cutovers=context_ids,
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -394,11 +397,21 @@ def run(args: argparse.Namespace) -> int:
     print(f"  posted to ledger:    {result.new_entries}")
     print(f"  queued for review:   {result.pending_categorization}")
     print(f"  duplicates skipped:  {result.skipped_duplicate}")
+    context_rows: dict[str, int] = {}
+    for txn in txns:
+        if str(txn.get("id") or "") in context_ids:
+            account = context_only_account(entity, txn)
+            context_rows[account] = context_rows.get(account, 0) + 1
     for account, item in sorted(before_cutover.items()):
-        print(f"  before cutover:      {account}: {item['held']} row(s) on or before {item['cutover_date']} "
-              "go to review, none are posted"
-              + (f"; {item['pending_skipped']} pending skipped" if item["pending_skipped"] else "")
-              + " (--backfill imports them normally)")
+        review_rows = item["held"] - context_rows.get(account, 0)
+        if review_rows or item["pending_skipped"]:
+            print(f"  before cutover:      {account}: {review_rows} row(s) on or before {item['cutover_date']} "
+                  "go to review, none are posted"
+                  + (f"; {item['pending_skipped']} pending skipped" if item["pending_skipped"] else "")
+                  + " (--backfill imports them normally)")
+    for account, count in sorted(context_rows.items()):
+        print(f"  context only:        {account}: {count} row(s) on or before the cutover date are history only, "
+              "not posted and not queued (books queue context-history)")
     if result.before_opening:
         first = min(item["date"] for item in result.before_opening)
         print(f"  before opening:      {len(result.before_opening)} row(s) from {first} are dated before their "

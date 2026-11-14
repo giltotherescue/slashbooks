@@ -258,7 +258,8 @@ def books_activity(entity_path: Path | str, exclude: Iterable[str] = ()) -> list
             found.append(label)
     staging = path / "staging"
     for name, label in (("pending-categorization.json", "review queue items"), ("pending.json", "staged pending rows"),
-                        ("seen-ids.json", "imported source IDs"), ("duplicate-candidates.json", "duplicate candidates")):
+                        ("seen-ids.json", "imported source IDs"), ("duplicate-candidates.json", "duplicate candidates"),
+                        ("context-history.json", "context-only history rows")):
         target = staging / name
         if target.exists():
             try:

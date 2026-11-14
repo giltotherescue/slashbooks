@@ -925,8 +925,13 @@ def apply_starter_accounts(entity_path: Path | str, business_type: str) -> dict[
 # and a rich entry are both found by the same lookup.
 BANK_IDENTITY_FIELDS = (
     "provider", "provider_account_id", "institution_id", "institution_name",
-    "last4", "account_type", "currency", "cutover_date",
+    "last4", "account_type", "currency", "cutover_date", "history_before_cutover",
 )
+
+# How a feed import treats rows on or before a mapping's ``cutover_date``. ``review`` (the default,
+# stored as no field) holds each such row for review. ``context_only`` keeps it as audit context
+# (``context_history.py``): never posted and never a review item.
+HISTORY_BEFORE_CUTOVER_MODES = ("review", "context_only")
 
 
 def bank_mapping_account(value: Any) -> str | None:
@@ -1002,6 +1007,10 @@ def _clean_identity(fields: dict[str, Any]) -> dict[str, Any]:
                 text = date.fromisoformat(text).isoformat()
             except ValueError:
                 raise ValueError("cutover_date must be a date in YYYY-MM-DD form.") from None
+        elif name == "history_before_cutover":
+            text = text.lower().replace("-", "_")
+            if text not in HISTORY_BEFORE_CUTOVER_MODES:
+                raise ValueError("history_before_cutover must be 'review' or 'context_only'.")
         clean[name] = text
     return clean
 
@@ -1023,6 +1032,11 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     if not stable_id:
         raise ValueError("Feed account ID is required.")
     fields = _clean_identity(identity)
+    clear = tuple(clear)
+    if fields.get("history_before_cutover") == "review":
+        # ``review`` is the default and is stored as no field at all.
+        fields.pop("history_before_cutover")
+        clear += ("history_before_cutover",)
 
     from .ledger.store import LedgerStore, default_store_path
 
@@ -1040,6 +1054,9 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
         previous_fields.pop(name, None)
     if fields or previous_fields:
         merged = {**previous_fields, **fields}
+        if merged.get("history_before_cutover") and not merged.get("cutover_date"):
+            raise ValueError("history_before_cutover needs a cutover_date on the same mapping. "
+                             "To remove the cutover date, also set history_before_cutover to review.")
         merged.setdefault("provider_account_id", stable_id)
         mappings[stable_id] = {"ledger_account": account, **merged}
     else:
@@ -1646,6 +1663,10 @@ def add_parser(subparsers: Any) -> None:
     map_parser.add_argument("--currency", default=None, help="Three-letter currency code")
     map_parser.add_argument("--clear-cutover-date", action="store_true",
                             help="Remove the cutover date from this mapping")
+    map_parser.add_argument("--history-before-cutover", default=None, choices=list(HISTORY_BEFORE_CUTOVER_MODES),
+                            help="How a feed import treats rows on or before the cutover date. review (default): hold "
+                                 "each row for review. context_only: keep each row as audit context, with no review "
+                                 "item and no posting. Needs --cutover-date")
     map_parser.add_argument("--cutover-date", default=None,
                             help="YYYY-MM-DD. A feed import sends rows on or before this day to review, not the books, unless --backfill")
 
@@ -1940,6 +1961,7 @@ def run(args: Any) -> int:
                 institution_name=args.institution_name, last4=args.last4,
                 account_type=args.account_type, currency=args.currency,
                 cutover_date=args.cutover_date,
+                history_before_cutover=args.history_before_cutover,
                 clear=("cutover_date",) if args.clear_cutover_date else ())
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
