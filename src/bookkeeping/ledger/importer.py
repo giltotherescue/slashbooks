@@ -100,6 +100,8 @@ class ImportResult:
     skipped_duplicate: int = 0
     pending_categorization: int = 0
     duplicate_candidates: int = 0
+    # Rows kept as context only (see ``context_history``): stored, never posted, never a review item.
+    context_only: int = 0
     late_arrivals: int = 0
     # Rows dated before their account's opening balance entry: not posted and not queued,
     # because the opening balance already includes them (see statement_opening).
@@ -593,6 +595,7 @@ def import_transactions(
     legacy_duplicate_guard: bool = False,
     intake_only: bool = False,
     cutover_hold_ids: frozenset[str] = frozenset(),
+    context_only_cutovers: dict[str, str] | None = None,
 ) -> ImportResult:
     """Import transactions while serializing staging, queue, and ledger writes.
 
@@ -600,12 +603,18 @@ def import_transactions(
     date. They are never posted or queued, with or without the guard: each
     goes to the duplicate-review hold, so a late row the old source never sent is
     seen by a person instead of being dropped.
+
+    ``context_only_cutovers`` maps the source ID of a posted row to its account's cutover
+    date, for an account whose mapping says ``history_before_cutover: context_only``. Such a
+    row is stored in ``staging/context-history.json`` and is neither posted, queued nor held:
+    it makes no review item. A row that a person already released (``confirmed-distinct``)
+    follows the normal path.
     """
     _validate_normalized_transactions(normalized_txns)
     with _entity_write_lock(entity.path):
         result = _import_transactions_unlocked(
             entity, normalized_txns, session_id, categorizer, ts, session_date,
-            legacy_duplicate_guard, intake_only, cutover_hold_ids,
+            legacy_duplicate_guard, intake_only, cutover_hold_ids, context_only_cutovers or {},
         )
     from ..work import observe_import
     observe_import(result.skipped_duplicate)
@@ -622,6 +631,7 @@ def _import_transactions_unlocked(
     legacy_duplicate_guard: bool = False,
     intake_only: bool = False,
     cutover_hold_ids: frozenset[str] = frozenset(),
+    context_only_cutovers: dict[str, str] | None = None,
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -720,10 +730,22 @@ def _import_transactions_unlocked(
     # A row dated on or before a cutover date is held even when the guard is off (a
     # generic ingest), so no learned rule can post it. Without the guard only those rows
     # are planned; every other row follows the unguarded path.
+    context_cutovers = dict(context_only_cutovers or {})
+    cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers)
+    # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
+    # later row is judged as in review mode. It may use up only an entry dated on or before its cutover
+    # date (``pool_limits``): an entry after it is for a real later row to match. Its plan result is
+    # never used: it makes no hold.
+    from .. import context_history
+    # A damaged context file stops the import here, before any write. A missing file is empty.
+    context_known = context_history.known_ids(entity)
+    context_new: list[dict[str, Any]] = []
+    normal_path_known: list[str] = []
     guarded = bool(legacy_duplicate_guard or cutover_hold_ids)
     feed_holds = (_plan_feed_holds(
         entity, normalized_txns if legacy_duplicate_guard else
-        [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids)
+        [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids,
+        {sid: date.fromisoformat(day) for sid, day in context_cutovers.items()})
         if guarded else {})
     # A row that is already held for review stays held on every later sync, under
     # either spelling of its ID, until a person resolves it.
@@ -790,6 +812,22 @@ def _import_transactions_unlocked(
             txn, entity.entity_config.get("bank_account_mappings"),
             entity.entity_config.get("csv_account_mappings"),
         )
+        if source_id in context_cutovers:
+            status = _legacy_alias_status(entity, source_id)
+            if status == "confirmed-distinct":
+                normal_path_known.append(source_id)  # A person released it: it follows the normal path.
+            elif spellings & context_known or spellings & open_hold_ids or status == "confirmed-duplicate":
+                result.skipped_duplicate += 1  # Already context, already held for review, or decided.
+                continue
+            else:
+                before_staged_write()  # A first row in a new currency adopts it, as a held row does.
+                context_new.append(context_history.make_record(
+                    txn, account=bank_account, cutover_date=context_cutovers[source_id],
+                    session_id=session_id, created_at=_now_iso()))
+                result.context_only += 1
+                continue
+        elif spellings & context_known:
+            normal_path_known.append(source_id)  # A stored context row now takes the normal path.
         opening_day = openings.get(bank_account)
         if opening_day is not None:
             # Read the date as a date. A row with no date, or a date that is not valid, is an error:
@@ -942,6 +980,9 @@ def _import_transactions_unlocked(
         source_transactions_to_write.append(dict(txn))
         result.new_entries += 1
 
+    if context_new:
+        context_history.append_records(entity, context_new)
+
     # Write to ledger if we have new entries.
     if entries_to_write:
         # Build Open directives for any accounts not already in the ledger.
@@ -965,6 +1006,19 @@ def _import_transactions_unlocked(
 
         # Mark all source IDs as seen.
         staging.bulk_mark_seen(source_ids_to_mark)
+
+    if context_known and not context_history.releasing():
+        # A stored context row that is now posted, queued or held is no longer "not imported". This also
+        # repairs a record that an earlier run left stale: its row is seen and skipped above, so only this
+        # step meets it again.
+        sent = set(normal_path_known)
+        for txn in normalized_txns:
+            sid = str(txn.get("id") or "")
+            if sid and source_id_variants(sid) & context_known:
+                sent.add(sid)
+        if sent:
+            done = context_history.outcome_ids(entity, sorted(sent))
+            context_history.mark_released(entity, sorted(done), session_id=session_id, how="normal-path")
 
     return result
 
@@ -995,7 +1049,8 @@ _SAME_DAY_RULE = "legacy_id_same_account_date_amount_description"
 
 
 def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
-                     cutover_hold_ids: frozenset[str] = frozenset()) -> dict[str, dict[str, Any]]:
+                     cutover_hold_ids: frozenset[str] = frozenset(),
+                     pool_limits: dict[str, date] | None = None) -> dict[str, dict[str, Any]]:
     """Rows of a connected-feed batch that may repeat activity already recorded.
 
     This is the statement-import duplicate plan (``plan_duplicates``): a row is
@@ -1032,7 +1087,7 @@ def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
             {**txn, "id": source_id, "date": day, "description": text})
     holds: dict[str, dict[str, Any]] = {}
     for (account, family), rows in groups.items():
-        plan = plan_duplicates(entity, rows, account, family)
+        plan = plan_duplicates(entity, rows, account, family, pool_limits)
         for row in plan["import"]:
             # Dated on or before the cutover and not matched to anything: a late row the old
             # source may never have sent. A person decides; it is never dropped or posted.

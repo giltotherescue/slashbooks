@@ -258,7 +258,8 @@ def books_activity(entity_path: Path | str, exclude: Iterable[str] = ()) -> list
             found.append(label)
     staging = path / "staging"
     for name, label in (("pending-categorization.json", "review queue items"), ("pending.json", "staged pending rows"),
-                        ("seen-ids.json", "imported source IDs"), ("duplicate-candidates.json", "duplicate candidates")):
+                        ("seen-ids.json", "imported source IDs"), ("duplicate-candidates.json", "duplicate candidates"),
+                        ("context-history.json", "context-only history rows")):
         target = staging / name
         if target.exists():
             try:
@@ -266,6 +267,8 @@ def books_activity(entity_path: Path | str, exclude: Iterable[str] = ()) -> list
             except (json.JSONDecodeError, OSError):
                 found.append(label)
                 continue
+            if isinstance(data, dict):  # The context history file wraps its rows.
+                data = data.get("rows")
             if data:
                 found.append(label)
     return found

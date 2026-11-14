@@ -705,8 +705,14 @@ def _load_list(path: Path) -> list[JsonObject]:
 
 
 def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
-                    mapping_key: str) -> JsonObject:
-    """Split *txns* into rows to import, rows to skip and rows to hold."""
+                    mapping_key: str, pool_limits: dict[str, date] | None = None) -> JsonObject:
+    """Split *txns* into rows to import, rows to skip and rows to hold.
+
+    ``pool_limits`` maps a row's ID to the latest date of a book entry that the row may match.
+    A row of a context-only history (``context_history``) uses it so that it never uses up an
+    entry dated after its cutover date, which a real later row has to match.
+    """
+    limits = pool_limits or {}
     from .ledger.importer import _load_pending_categorization
     from .ledger.staging import StagingStore
     from .ledger.store import LedgerStore, default_store_path
@@ -751,13 +757,17 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
         amount = _txn_amount(txn)
         desc = normalize_description(txn["description"])
         match, rule = None, None
+        latest = limits.get(sid)
         for index, item in enumerate(pool):
+            if latest is not None and item["date"] > latest:
+                continue
             if index not in used and item["date"] == day and item["amount"] == amount and item["desc"] == desc:
                 match, rule = index, "same_date_amount_description"
                 break
         if match is None:
             near = [(abs((item["date"] - day).days), index) for index, item in enumerate(pool)
-                    if index not in used and item["amount"] == amount and not same_family(item["family"], mapping_key)
+                    if (latest is None or item["date"] <= latest)
+                    and index not in used and item["amount"] == amount and not same_family(item["family"], mapping_key)
                     and abs((item["date"] - day).days) <= NEAR_DATE_DAYS]
             if near:
                 match, rule = min(near)[1], f"same_amount_within_{NEAR_DATE_DAYS}_days_other_source"

@@ -198,6 +198,42 @@ seen by a person and not lost. Pass `--backfill` to import these rows in the
 normal way. Coverage windows start the day after the cutover date. Remove a
 cutover date with `books entity bank-account-map ... --clear-cutover-date`.
 
+**Keep earlier rows as history only.** When the books already hold the account's
+history through the cutover date from an earlier source, a person can set
+`books entity bank-account-map ... --cutover-date YYYY-MM-DD --history-before-cutover context_only`.
+A posted feed row on or before that date is then stored for audit in
+`staging/context-history.json`. It is never posted, and it makes no "To do" or
+"To check" item and does not block a period close. A later sync of the same row
+is skipped. `books queue context-history --json` gives one summary per account
+(count, dates and a message); add `--account ACCOUNT --json --limit N` to list
+the rows. The default, `review`, is the behavior in the paragraph above. If the
+cutover date was set too late, move it earlier and run
+`books queue context-release --account ACCOUNT --after YYYY-MM-DD`: the stored
+rows after that day go to the normal import path with the duplicate check on.
+`books queue context-release --source-id ID` releases one row on purpose. It
+refuses a row that matches a posted entry or a queued item (the result names the
+matched entry) unless `--force` is given. A release never leaves a half-done
+state: it first sets aside a row dated before its account's opening balance
+(`refused`, reason `before_opening`), then imports the rest, and marks a stored row
+`released` exactly when it is posted, queued or held. The summary keeps `count`
+(stored source IDs) and `distinct_count` (different date, amount and description):
+a provider that issues new IDs for the same transaction is stored once for each
+ID, and the message says so. A stored row that a later sync sends down the normal
+path (after you move the cutover earlier, or set the mode back to `review`) is
+marked `released`, and an `inactive` summary entry says that the setting no longer
+covers the rows still stored. `books queue context-adopt` moves rows that an
+earlier import already held in "To check" into context history. A hold marked
+`before_cutover_not_in_books` is a row that the books never had and may be real,
+so it stays in "To check" unless `--include-unmatched` is given; the result counts
+`moved_by_match_rule` and `left_by_match_rule`. A context row still uses up the book
+entry that it matches in the duplicate check, but only an entry dated on or before the
+cutover date, so a later row is judged as in `review` mode and a real repeat after the
+cutover is still held. A pending row on or before the date is still skipped, and a row after
+the date follows the normal rules. `staging/context-history.json` has a
+`schema_version`. It is read in full once for each ingest and rewritten once for each
+ingest that adds rows; a two-year history of a busy account is a few thousand rows
+(a few megabytes at most), which is the size this design expects.
+
 Every connected feed needs a mapping. `books ingest` stops, and posts nothing,
 when a row's account ID is not mapped, instead of opening a new
 `Assets:Bank:<name>` account.

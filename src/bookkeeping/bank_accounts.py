@@ -208,6 +208,41 @@ def split_at_cutover(entity: Any, txns: list[dict[str, Any]]) -> tuple[list[dict
     return kept, hold_ids - {""}, report
 
 
+def context_only_ids(entity: Any, txns: list[dict[str, Any]]) -> dict[str, str]:
+    """Posted feed rows that are context only: ``{source ID: cutover date}``.
+
+    A row qualifies when its mapping has a ``cutover_date`` and
+    ``history_before_cutover: context_only``, the row is posted (not pending) and
+    it is dated on or before the cutover date. A mapping without that mode, and a
+    row with no readable date, never qualify, so the default stays "held for review".
+    """
+    mappings = entity.entity_config.get("bank_account_mappings")
+    mappings = mappings if isinstance(mappings, dict) else {}
+    found: dict[str, str] = {}
+    for txn in txns:
+        match = _mapping_for_row(mappings, txn)
+        if not match or txn.get("pending") or not txn.get("id"):
+            continue
+        details = bank_mapping_details(match[1])
+        cutover = _cutover(match[1])
+        if details.get("history_before_cutover") != "context_only" or cutover is None:
+            continue
+        try:
+            day = date.fromisoformat(str(txn.get("date") or "")[:10])
+        except ValueError:
+            continue
+        if day <= cutover:
+            found[str(txn["id"])] = cutover.isoformat()
+    return found
+
+
+def context_only_account(entity: Any, txn: dict[str, Any]) -> str:
+    """The ledger account of a feed row's mapping, for a summary line."""
+    mappings = entity.entity_config.get("bank_account_mappings")
+    found = _mapping_for_row(mappings if isinstance(mappings, dict) else {}, txn)
+    return (bank_mapping_account(found[1]) or found[0]) if found else ""
+
+
 def clip_windows_to_cutover(entity: Any, windows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Start each coverage window after its account's cutover date.
 
