@@ -96,6 +96,36 @@ class ReleasedRowCases(SecondRowCases):
         with self.assertRaisesRegex(ValueError, 'review queue'):
             reverse_buffer_decision(self.entity, 'plaid:q')
 
+    # P2-1: a row that is already in the starting balance
+
+    def test_a_deposit_in_transit_at_the_opening_can_be_marked_as_already_in_the_starting_balance(self):
+        from bookkeeping.quickbooks_history import _audit, reverse_buffer_decision
+        self.history([])
+        self.ingest(self.row('transit', '2026-01-03', '30'))
+        self.assertEqual(self.state('transit'), 'held')
+        result = resolve_buffer_decision(self.entity, 'plaid:transit', 'in-opening')
+        self.assertEqual(result['status'], 'already-in-opening')
+        self.assertEqual(list_buffer_decisions(self.entity), [])
+        self.assertEqual(self.bank(), OPENING)
+        self.assertEqual([e['decision'] for _, e in _audit(self.entity, ('qbo-buffer-decision',))][-1], 'in-opening')
+        # It is never posted when the feed sends it again, and it stands in the pairing like a matched row.
+        again = self.ingest(self.row('transit', '2026-01-03', '30'))
+        self.assertEqual((again.new_entries, again.duplicate_candidates), (0, 0))
+        copy = self.statement(('2026-01-03', 'DEPOSIT', '30'))['statements'][0]
+        self.assertEqual((copy['counts'].get('matched_to_history', 0), copy['counts']['held_for_review']), (1, 0))
+        self.assertEqual(self.bank(), OPENING)
+        # A person can change their mind: the row is held again and the copy is held with it.
+        reversed_ = reverse_buffer_decision(self.entity, 'plaid:transit', 'not in the opening')
+        self.assertEqual(len(reversed_['reopened_rows']), 1)
+        self.assertEqual(len(list_buffer_decisions(self.entity)), 2)
+        self.assertEqual(self.bank(), OPENING)
+
+    def test_the_command_line_offers_every_decision(self):
+        from bookkeeping.remote_contract import command_spec
+        for decision in ('release', 'history-match', 'copy', 'in-opening'):
+            argv = ['qb', 'resolve-buffer', '--entity', '/tmp/books', '--source-id', 'plaid:1', '--decision', decision, '--original-id', 'plaid:0']
+            self.assertTrue(command_spec(argv)['mutates'])
+
     # P3 of the previous review: named released rows in a held row
 
     def test_three_rows_two_legs_the_held_row_names_the_released_row(self):

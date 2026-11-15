@@ -934,11 +934,13 @@ def resolve_buffer_decision(entity, source_id, decision, history_source_id=None,
 
     ``release`` says the row is new and posts it through intake. ``history-match`` says it is already in
     the QuickBooks history (a leg). ``copy`` says it is another copy of a bank row that was matched to
-    history (``original_source_id``, by default the row's ``matched_original``).
+    history (``original_source_id``, by default the row's ``matched_original``). ``in-opening`` says the row
+    is already in the starting balance (for example a deposit in transit on the day before the history
+    starts): it is recorded as handled and never posted, and it stands in the pairing like a matched row.
     """
     from .ledger.importer import _entity_write_lock
-    if decision not in {'release', 'history-match', 'copy'}:
-        raise ValueError('Buffer decision must be release, history-match or copy')
+    if decision not in {'release', 'history-match', 'copy', 'in-opening'}:
+        raise ValueError('Buffer decision must be release, history-match, copy or in-opening')
     with _entity_write_lock(entity.path):
         index = HistoryIndex(entity)
         previous = index.decision(source_id)
@@ -979,9 +981,10 @@ def resolve_buffer_decision(entity, source_id, decision, history_source_id=None,
             with store.connection() as conn:
                 store.append_audit_event('qbo-buffer-decision',record,conn,ts=resolved_at)
                 conn.commit()
-        _mark_candidates(entity, {source_id:{'status':'confirmed-duplicate','history_source_id':history_source_id,
+        status = 'already-in-opening' if decision == 'in-opening' else 'confirmed-duplicate'
+        _mark_candidates(entity, {source_id:{'status':status,'history_source_id':history_source_id,
                                              'resolved_at':resolved_at}})
-        return {**row, **record, 'status':'confirmed-duplicate'}
+        return {**row, **record, 'status':status}
 
 
 def release_due_buffer(entity, now=None):

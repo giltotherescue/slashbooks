@@ -2469,7 +2469,8 @@ def add_parser(subparsers) -> None:
             buffer_parser.add_argument('--reason', default='', help='Why the decision is reversed (kept in the audit event)')
         if name == 'resolve-buffer':
             buffer_parser.add_argument('--source-id', required=True)
-            buffer_parser.add_argument('--decision', choices=['release','history-match'], required=True)
+            buffer_parser.add_argument('--decision', choices=['release','history-match','copy','in-opening'], required=True)
+            buffer_parser.add_argument('--original-id')
             buffer_parser.add_argument('--history-source-id')
 
     # import-opening <folder> --entity <path> --cutover YYYY-MM-DD
@@ -2534,7 +2535,7 @@ def run(args) -> int:
         if args.qb_command == 'buffer-decisions':
             result = list_buffer_decisions(entity)
         elif args.qb_command == 'resolve-buffer':
-            result = resolve_buffer_decision(entity,args.source_id,args.decision,args.history_source_id)
+            result = resolve_buffer_decision(entity,args.source_id,args.decision,args.history_source_id,original_source_id=args.original_id)
         elif args.qb_command == 'reverse-buffer':
             result = reverse_buffer_decision(entity,args.source_id,args.reason)
         else:
