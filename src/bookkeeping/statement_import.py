@@ -674,8 +674,12 @@ def _existing_pool(entity: Any, ledger_account: str) -> list[JsonObject]:
                 continue
             for posting in entry.postings:
                 if posting.account == ledger_account:
+                    # A QuickBooks history entry can split one bank settlement over several lines, so
+                    # its bank amount is the sum. Any other entry keeps the amount of its first line.
+                    amount = (sum((p.amount for p in entry.postings if p.account == ledger_account), Decimal(0))
+                              if dict(entry.meta).get("import-source") == "qbo-history" else posting.amount)
                     pool.append({"source_id": entry.source_id, "date": entry.date,
-                                 "amount": sum((p.amount for p in entry.postings if p.account == ledger_account), Decimal(0)).quantize(bankcsv.MONEY),
+                                 "amount": amount.quantize(bankcsv.MONEY),
                                  "desc": normalize_description(entry.narration),
                                  "family": families.get(entry.source_id) or source_family(entry.source_id)})
                     break

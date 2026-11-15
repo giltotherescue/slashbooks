@@ -734,4 +734,21 @@ class CashHistoryTests(HistoryTests):
         self.assertEqual(bs.totals['total_liabilities_and_equity'],Decimal(1101))
         self.assertFalse(any(':Invoice:' in (e.source_id or '') for e in LedgerStore(default_store_path(self.entity.path)).load_entries()))
 
+
+class OrdinaryPoolUnchangedTests(unittest.TestCase):
+    def test_non_history_entry_keeps_its_first_bank_line_amount(self):
+        from bookkeeping.entity import init_entity, load_entity
+        from bookkeeping.ledger.model import Open
+        from bookkeeping.statement_import import _existing_pool
+        with tempfile.TemporaryDirectory() as temp:
+            init_entity(Path(temp)/'books',name='Synthetic pool check',basis='cash')
+            entity=load_entity(Path(temp)/'books')
+            entry=Entry(date(2026,1,3),'Synthetic two-line settlement',meta=(('source-id','stmt:two-line'),),
+                        postings=(Posting('Assets:Bank:Checking',Decimal('30')),Posting('Assets:Bank:Checking',Decimal('20')),
+                                  Posting('Income:Sales',Decimal('-50'))))
+            _atomic_ledger_write(entity,[Open(date(2026,1,1),'Assets:Bank:Checking'),Open(date(2026,1,1),'Income:Sales')],
+                                 [entry],'pool',None,'pool')
+            pool=_existing_pool(entity,'Assets:Bank:Checking')
+            self.assertEqual([p['amount'] for p in pool],[Decimal('30.00')])
+
 if __name__=='__main__':unittest.main()
