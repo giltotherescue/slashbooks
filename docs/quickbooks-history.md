@@ -130,7 +130,10 @@ normal review queue. A released bank leg cannot authorize another owned bank leg
 Retries preserve one receipt and produce at most one source entry.
 
 `books qb release-buffer --entity BOOKS --json` releases rows with no suggested
-history match after their deadline. Rows with plausible matches remain in review.
+history match after their deadline, but only rows outside the history period
+(the three settlement days after it, or dates before it). A row inside the
+period always waits for a person, because QuickBooks owns the books there and
+the row may be a gap in QuickBooks. Rows with plausible matches remain in review.
 The host must schedule this operation; the engine performs no background work.
 Ordinary duplicate review cannot dismiss these rows: use the buffer commands.
 Decisions are durable hash-chained ledger audit events, with retained input and

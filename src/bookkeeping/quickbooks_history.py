@@ -574,7 +574,12 @@ def release_due_buffer(entity, now=None):
     current = _buffer_now(now)
     released, review = [], []
     for row in list_buffer_decisions(entity):
-        if row['history_matches']:
+        receipt = owned(entity, row['account'], row['date'], nearby=True)
+        # QuickBooks owns the books inside its period. A bank row there with no nearby journal
+        # may be a gap in QuickBooks, so only a person releases it. Waiting releases only a row
+        # after the period (the settlement buffer) or before it.
+        inside = bool(receipt and receipt['history_from'] <= str(row['date'])[:10] <= receipt['history_to'])
+        if row['history_matches'] or inside:
             review.append(row['source_id'])
         elif current >= _buffer_now(row['hold_until']):
             resolve_buffer_decision(entity,row['source_id'],'release',now=current)

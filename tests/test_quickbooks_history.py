@@ -678,6 +678,21 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(sync_transactions(self.entity,self.path,apply=True,plan_hash='any')['recorded_entries'],0)
         self.assertEqual(store.content_digest(),before)
 
+    def test_unmatched_row_inside_the_history_period_waits_for_a_person(self):
+        from bookkeeping.quickbooks_history import list_buffer_decisions,release_due_buffer,resolve_buffer_decision
+        self.apply()
+        self.entity.entity_config['bank_account_mappings']={'feed-1':'Assets:Bank:Checking'}
+        row={'id':'plaid:inside-period','date':'2026-02-20','amount':'7.13','description':'Synthetic unmatched row',
+             'accountId':'feed-1','accountName':'Checking','pending':False}
+        import_transactions(self.entity,[row],'hold')
+        held=list_buffer_decisions(self.entity)
+        self.assertEqual(len(held),1);self.assertEqual(held[0]['history_matches'],[])
+        due=release_due_buffer(self.entity,now='2027-01-01T00:00:00Z')
+        self.assertEqual(due,{'released':[],'needs_review':[row['id']]})
+        self.assertEqual(len(list_buffer_decisions(self.entity)),1)
+        resolve_buffer_decision(self.entity,row['id'],'release')
+        self.assertEqual(list_buffer_decisions(self.entity),[])
+
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()
