@@ -108,6 +108,8 @@ class ImportResult:
     before_opening: list[dict[str, Any]] = field(default_factory=list)
     # Rows recognized as copies of a bank row that a person matched to QuickBooks history: not posted, not held.
     matched_to_history: list[dict[str, Any]] = field(default_factory=list)
+    # Rows that pair with a matched bank row that already has its copy from this source: held for a person.
+    possible_second_rows: list[dict[str, Any]] = field(default_factory=list)
     orphaned_tmps: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -763,10 +765,11 @@ def _import_transactions_unlocked(
         except (ValueError, TypeError):
             continue
     history_matched: dict[str, dict[str, Any]] = {}
+    history_second: dict[str, dict[str, Any]] = {}
     if history_copies and history_receipts and any(d["decision"] == "history-match" for d in history_index.decisions.values()):
-        from ..source_ids import source_family
-        from ..statement_import import history_duplicate_of
-        taken: set[str] = set()
+        from ..quickbooks_history import channel_of, record_history_copies
+        taken: dict[str, set[str]] = {}
+        fresh: list[dict[str, Any]] = []
         for txn in sorted(normalized_txns, key=lambda t: (str(t.get("date") or ""), str(t.get("id") or ""))):
             sid = str(txn.get("id") or "")
             if not sid or history_index.decision(sid) or txn.get("pending") or any(staging.is_seen(v) for v in source_id_variants(sid)):
@@ -777,11 +780,26 @@ def _import_transactions_unlocked(
                 amount = _history_amount(txn)
             except (ValueError, TypeError, ArithmeticError):
                 continue
-            original = history_duplicate_of(history_index, account, str(txn.get("csvMappingKey") or source_family(sid)), txn, taken)
-            if original:
-                taken.add(original)
-                history_matched[sid] = {"source_id": sid, "duplicate_of": original, "account": account,
-                                       "date": str(txn.get("date") or "")[:10], "amount": format(amount, "f")}
+            family = channel_of(txn, sid)
+            known = history_index.copy_record(sid)
+            pair = ("copy", known["original"], known["family"]) if known else history_index.pair(account, family, txn, taken)
+            if not pair:
+                continue
+            row = {"source_id": sid, "duplicate_of": pair[1], "account": account,
+                   "date": str(txn.get("date") or "")[:10], "amount": format(amount, "f")}
+            if pair[0] == "copy":
+                history_matched[sid] = row
+                if not known:
+                    taken.setdefault(pair[1], set()).add(family)
+                    fresh.append({"source_id": sid, "original": pair[1], "family": family, "account": account,
+                                  "date": row["date"], "amount": row["amount"],
+                                  "description": str(txn.get("reference") or txn.get("description") or ""), "transaction": dict(txn)})
+            else:
+                history_second[sid] = {**row, "matched_original": pair[1], "description": str(txn.get("description") or ""),
+                                       "transaction": dict(txn)}
+                history_hold_ids.add(sid)
+        record_history_copies(entity, fresh)
+    result.possible_second_rows = [{k: v for k, v in r.items() if k != "transaction"} for r in history_second.values()]
     cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers) | frozenset(history_hold_ids)
     # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
     # later row is judged as in review mode. It may use up only an entry dated on or before its cutover
@@ -801,6 +819,13 @@ def _import_transactions_unlocked(
     for hold_id in history_hold_ids:
         if feed_holds.get(hold_id) is not None:
             feed_holds[hold_id]["held_for_quickbooks_history"] = True
+    for sid, second in history_second.items():
+        feed_holds[sid] = {
+            "source_id": sid, "existing_source_id": "", "account": second["account"], "date": second["date"],
+            "amount": second["amount"], "description": second["description"], "transaction": second["transaction"],
+            "match_rule": "quickbooks_history_possible_second_row", "history_hold_rule": "possible_second_row",
+            "matched_original": second["matched_original"], "held_for_quickbooks_history": True,
+            "status": "duplicate-candidate"}
     # A row that is already held for review stays held on every later sync, under
     # either spelling of its ID, until a person resolves it.
     open_hold_ids = ({str(c.get("source_id") or "") for c in _load_json_list(
@@ -853,7 +878,7 @@ def _import_transactions_unlocked(
             result.matched_to_history.append(history_matched[source_id])
             continue
         history_choice = history_index.decision(source_id) if history_receipts else None
-        if history_choice and history_choice["decision"] == "history-match":
+        if history_choice and history_index.settled_as_duplicate(source_id):
             result.skipped_duplicate += 1
             continue
         if (

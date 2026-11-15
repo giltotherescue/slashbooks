@@ -89,26 +89,6 @@ class DuplicateCases(LagCases):
         self.assertEqual(self.state('copy'), 'none')
         self.assertEqual(self.bank(), before)
 
-    def test_feed_row_with_a_new_id_after_the_match_is_recognized_every_time(self):
-        self.history(self.DEPOSIT)
-        self.ingest(self.row('1', '2026-03-04', '30'))
-        self.match('1')
-        before = self.bank()
-        for _ in range(2):
-            result = self.ingest(self.row('1-again', '2026-03-04', '30'))
-            self.assertEqual([m['duplicate_of'] for m in result.matched_to_history], ['plaid:1'])
-            self.assertEqual(self.state('1-again'), 'none')
-        # The row that was matched keeps being skipped when the feed sends it again.
-        self.assertEqual(self.ingest(self.row('1', '2026-03-04', '30')).skipped_duplicate, 1)
-        self.assertEqual(self.bank(), before)
-
-    def test_feed_copy_and_statement_copy_of_one_matched_row_are_both_recognized(self):
-        self.history(self.DEPOSIT)
-        self.ingest(self.row('1', '2026-03-04', '30'))
-        self.match('1')
-        self.assertEqual(len(self.ingest(self.row('new-id', '2026-03-04', '30')).matched_to_history), 1)
-        self.assertEqual(self.statement(('2026-03-05', 'Deposit 0305', '30'))['statements'][0]['counts']['matched_to_history'], 1)
-
     def test_two_real_rows_of_one_amount_on_one_day_only_one_matched_to_history(self):
         self.history(self.DEPOSIT)
         # The bank paid 30 twice on 03-04: one is the QuickBooks deposit, one is new.
@@ -122,13 +102,6 @@ class DuplicateCases(LagCases):
         result = self.statement(('2026-03-04', 'DEPOSIT A', '30'), ('2026-03-04', 'DEPOSIT B', '30'))
         counts = result['statements'][0]['counts']
         self.assertEqual((counts['matched_to_history'], counts['to_import'] + counts['held_for_review']), (1, 1))
-
-    def test_two_copies_in_one_pass_only_one_is_recognized_as_the_matched_row(self):
-        self.history(self.DEPOSIT)
-        self.ingest(self.row('1', '2026-03-04', '30'))
-        self.match('1')
-        counts = self.statement(('2026-03-04', 'DEPOSIT A', '30'), ('2026-03-04', 'DEPOSIT B', '30'))['statements'][0]['counts']
-        self.assertEqual((counts['matched_to_history'], counts['to_import']), (1, 1))
 
     # B. a person can reverse a buffer decision
 

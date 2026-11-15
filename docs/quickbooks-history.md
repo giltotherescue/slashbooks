@@ -198,14 +198,12 @@ path. One history import per company.
 **A matched bank row stands in the duplicate pool.** When a person matches a bank row to a
 QuickBooks leg, that bank row (account, signed amount, date, description, source ID) is kept as
 handled. A later row on the same account that the ordinary duplicate rule treats as the same bank
-row is not posted and not held again: the same date, amount and description, or the same amount
-within three days from another source (a statement for a feed row, or the reverse). Intake counts
-it in `matched_to_history` (and in `skipped_duplicate`); a statement import returns
-`matched_to_history` for the statement and a `matched_to_history` count. Each item has
-`source_id`, `duplicate_of` (the matched row), `account`, `date` and `amount`. Like a posted entry in
-the ordinary pool, a matched row matches one row in one pass, so two real rows of one amount on one
-day are both possible: the second goes the ordinary path. A re-sent feed row on the same feed with a
-different date or description is not recognized, as the ordinary rule does not recognize it.
+row, from another source, is its recognized copy and is not posted and not held again: the same date,
+amount and description, or the same amount within three days (a statement for a feed row, or the
+reverse). Intake counts it in `matched_to_history` (and in `skipped_duplicate`); a statement import
+returns `matched_to_history` for the statement and a `matched_to_history` count. Each item has
+`source_id`, `duplicate_of` (the matched row), `account`, `date` and `amount`. Only one copy from each
+other source is recognized; see "A real second row that looks like a matched one" below.
 
 **Undo.** `books qb reverse-buffer --entity BOOKS --source-id ID [--reason TEXT] --json` reverses a
 buffer decision. It writes a durable audit event (`qbo-buffer-decision-reversed`). Reversing a
@@ -229,3 +227,40 @@ statement that has such a row follows the ordinary `before_opening_balance` refu
 
 Known limit: an amount that differs from the QuickBooks leg (a tip, a netted fee) is not held after
 the first three days.
+
+
+## A real second row that looks like a matched one
+
+A copy is recognized only once for each other source. From how the ordinary duplicate rule pairs
+rows, a matched bank row has at most **one** recognized copy from **each other source**: a feed row has
+one statement copy, a statement row has one feed copy, and each copy is kept durably with the matched
+row, its source, date, amount and description (`qbo-history-copy` audit events). The same source ID
+is always the same row, so a re-sent copy stays recognized.
+
+A row that pairs with a matched row but is not its one copy from that source is **not** skipped:
+
+- a second row from a source that already has its copy (a second statement row of the same amount and day), or
+- a row from the same source as the matched row under a **new source ID** (the bank re-sent the row, or a
+  second real row).
+
+It is held for a person with `hold_rule: "possible_second_row"` and never releases by time. The person
+answers with `resolve-buffer --decision release` ("This is new: add it": the row posts through intake
+exactly once, even inside the history period) or `--decision copy [--original-id ID]` ("Already in my
+QuickBooks history": the row is kept as a recognized copy). The accepted cost: a bank that re-sends the
+same row under a new ID on the same feed now needs one answer for that row.
+
+`buffer-decisions` returns, for such a row, `hold_rule: "possible_second_row"` and `matched_original`:
+`source_id`, `account`, `date`, `amount`, `description`, `history_source_id` and `leg` (the QuickBooks
+journal: `source_id`, `account`, `date`, `amount`, `type`, `doc_number`, `name`). `candidate_legs` lists
+other unmatched legs of the same amount. The intake result has `possible_second_rows` (each with
+`source_id`, `matched_original`, `account`, `date`, `amount`, `description`) and the held row counts in
+`duplicate_candidates`; `matched_to_history` lists only the recognized copies. A statement import returns
+the held row in `held` with `match_rule: "quickbooks_history_possible_second_row"`.
+
+Reversing the match of a bank row (`reverse-buffer`) ends its copies: every recorded copy and every
+`copy` decision for it is held for a person again (`reopened_rows`), and a statement sent again is held.
+
+A statement that has rows before the history start is refused with the true reason: the starting
+balance comes from the QuickBooks history, so upload a statement that starts on or after the start date.
+A statement opening cannot replace it (`record-opening --replace` is refused with
+`opening_exists_other_source`).

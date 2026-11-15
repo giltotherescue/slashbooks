@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A real second bank row that looks like a bank row already matched to QuickBooks
+  history is no longer skipped without a trace. A matched row has one recognized
+  copy from each other source, kept durably; any other row that pairs with it is held
+  for a person (`possible_second_row`) and can be posted ("release") or recorded as a
+  copy (`resolve-buffer --decision copy`). Reversing a match holds its copies again.
+  The refusal for a statement that spans the history start now says that the
+  starting balance comes from the history.
 - A bank row that a person matched to a QuickBooks history leg now stands in the
   duplicate pool: a later copy through a feed or a statement is not posted and not
   held again (`matched_to_history`). `books qb reverse-buffer` lets a person undo

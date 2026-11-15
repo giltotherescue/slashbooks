@@ -563,6 +563,12 @@ def buffer_decision(entity, source_id):
     return next((r for r in reversed(_buffer_decisions(entity)) if r['source_id'] == source_id), None)
 
 
+def channel_of(txn, source_id):
+    """The source of a bank row: its mapping key (a statement profile) or its feed name in the ID."""
+    from .source_ids import source_family
+    return str((txn or {}).get('csvMappingKey') or source_family(source_id))
+
+
 class HistoryIndex:
     """What a bank row is checked against, loaded once for a whole batch of rows.
 
@@ -575,9 +581,22 @@ class HistoryIndex:
         self.entity = entity
         self.receipts = receipts(entity) if receipts_ is None else receipts_
         self.decisions = {}
+        self.copies = {}
+        self.copy_families = {}
         if self.receipts:
             for record in _buffer_decisions(entity):
                 self.decisions[record['source_id']] = record
+            # A recognized copy counts only while the match of its original stands.
+            def active(original):
+                return (self.decisions.get(original) or {}).get('decision') == 'history-match'
+            for _, record in _audit(entity, ('qbo-history-copy',)):
+                if active(record['original']):
+                    self.copies[record['source_id']] = record
+            for record in self.decisions.values():
+                if record['decision'] == 'copy' and active(record.get('original')):
+                    self.copies[record['source_id']] = {**record, 'family': channel_of(record.get('transaction'), record['source_id'])}
+            for record in self.copies.values():
+                self.copy_families.setdefault(record['original'], set()).add(record['family'])
         self._legs = None
         self.starts = history_start_dates(entity.path) if self.receipts else {}
 
@@ -597,7 +616,7 @@ class HistoryIndex:
             items.append({'source_id': d['source_id'], 'date': date.fromisoformat(str(d['date'])[:10]),
                           'amount': Decimal(str(d['amount'])),
                           'desc': normalize_description(str(txn.get('reference') or txn.get('description') or '')),
-                          'family': str(txn.get('csvMappingKey') or source_family(d['source_id']))})
+                          'family': channel_of(txn, d['source_id']), 'history_source_id': d.get('history_source_id')})
         return sorted(items, key=lambda i: (i['date'], i['source_id']))
 
     def before_books(self, account, day):
@@ -607,6 +626,44 @@ class HistoryIndex:
 
     def decision(self, source_id):
         return self.decisions.get(source_id)
+
+    def settled_as_duplicate(self, source_id):
+        """A person matched this row to history or called it a copy: it is never posted."""
+        return (self.decisions.get(source_id) or {}).get('decision') in {'history-match', 'copy'}
+
+    def copy_record(self, source_id):
+        """A row recognized earlier as the copy of a matched bank row. The same source ID is the same row."""
+        return self.copies.get(source_id)
+
+    def pair(self, account, mapping_key, txn, taken):
+        """Pair a row with a matched bank row by the ordinary duplicate rule.
+
+        Returns ``('copy', original_id, family)`` or ``('second_row', original_id, family)`` or None.
+        A matched bank row has at most one recognized copy for each other source (a feed row has one
+        statement copy, a statement row has one feed copy, as the ordinary rule pairs rows). A row that
+        pairs with a matched row that already has its copy from this source, or that comes from the same
+        source as the matched row (the bank re-sent it under a new ID), may be a second real row: it is
+        held for a person. ``taken`` maps an original to the sources that took it earlier in this pass.
+        """
+        from .statement_import import _match_pool, _txn_amount, normalize_description
+        items = self.handled_items(account)
+        if not items:
+            return None
+        try:
+            day = date.fromisoformat(str(txn['date'])[:10])
+            amount = _txn_amount(txn)
+        except (KeyError, ValueError, ArithmeticError):
+            return None
+        desc = normalize_description(str(txn.get('reference') or txn.get('description') or ''))
+        free = [i for i in items if i['family'] != mapping_key
+                and mapping_key not in self.copy_families.get(i['source_id'], set()) | taken.get(i['source_id'], set())]
+        match, _ = _match_pool(free, set(), day, amount, desc, mapping_key)
+        if match is not None:
+            return ('copy', free[match]['source_id'], mapping_key)
+        match, _ = _match_pool(items, set(), day, amount, desc, mapping_key)
+        if match is None:
+            return None
+        return ('second_row', items[match]['source_id'], mapping_key)
 
     def _matched(self):
         return {(d['history_source_id'], d['account']) for d in self.decisions.values()
@@ -709,8 +766,10 @@ def list_buffer_decisions(entity, now=None, _index=None):
     Each row has ``history_matches`` (a journal touching the account within three days, any
     amount, as a suggestion), ``candidate_legs`` (unmatched history bank legs of the same
     amount and direction: date, amount, QuickBooks type, document number, name) and
-    ``hold_rule`` (``inside_period``, ``unmatched_history_leg``, ``settlement_window`` or
-    None when only an earlier hold remains).
+    ``hold_rule`` (``inside_period``, ``unmatched_history_leg``, ``settlement_window``,
+    ``possible_second_row`` or None when only an earlier hold remains). A ``possible_second_row`` row
+    pairs with a bank row that a person matched to history and that already has its copy from this
+    source (or comes from the same source): ``matched_original`` shows that bank row and its QuickBooks leg.
     """
     path = entity.staging_dir / 'duplicate-candidates.json'
     if not path.exists():
@@ -726,7 +785,10 @@ def list_buffer_decisions(entity, now=None, _index=None):
             amount = None
         if index.before_books(row['account'], row.get('date', '')):
             continue
-        rule = index.holds(row['account'], row.get('date'), amount)
+        original = row.get('matched_original')
+        second = (row.get('history_hold_rule') == 'possible_second_row'
+                  and (index.decisions.get(original) or {}).get('decision') == 'history-match')
+        rule = 'possible_second_row' if second else index.holds(row['account'], row.get('date'), amount)
         if not (rule or row.get('held_for_quickbooks_history') or row.get('match_rule') == 'quickbooks_history_ownership'):
             continue
         day = date.fromisoformat(str(row['date'])[:10])
@@ -741,9 +803,17 @@ def list_buffer_decisions(entity, now=None, _index=None):
                        'days_before_row': (day - date.fromisoformat(leg['date'])).days}
                       for leg in index.candidates(row['account'], row['date'], amount)]
         deadline = _buffer_now(row['created_at']) + timedelta(days=3)
+        matched_original = None
+        if second:
+            d = index.decisions[original]
+            leg = next((l for l in index.legs() if l['source_id'] == d.get('history_source_id') and l['account'] == d['account']), None)
+            matched_original = {'source_id': original, 'account': d['account'], 'date': d['date'], 'amount': d['amount'],
+                                'description': str((d.get('transaction') or {}).get('description') or ''),
+                                'history_source_id': d.get('history_source_id'),
+                                'leg': leg and {k: leg[k] for k in ('source_id', 'account', 'date', 'amount', 'type', 'doc_number', 'name')}}
         result.append({**row, 'held':{k:row[k] for k in ('account','date','amount','description')},
                        'held_for_quickbooks_history':True, 'hold_rule':rule, 'history_matches':matches,
-                       'candidate_legs':candidates, 'hold_until':deadline.isoformat()})
+                       'candidate_legs':candidates, 'matched_original':matched_original, 'hold_until':deadline.isoformat()})
     return result
 
 
@@ -803,16 +873,24 @@ def _release_rows(entity, rows, resolved_at, index):
     return released, errors
 
 
-def resolve_buffer_decision(entity, source_id, decision, history_source_id=None, now=None):
-    """Persist a source-scoped choice before retryable normal intake."""
+def resolve_buffer_decision(entity, source_id, decision, history_source_id=None, now=None, original_source_id=None):
+    """Persist a source-scoped choice before retryable normal intake.
+
+    ``release`` says the row is new and posts it through intake. ``history-match`` says it is already in
+    the QuickBooks history (a leg). ``copy`` says it is another copy of a bank row that was matched to
+    history (``original_source_id``, by default the row's ``matched_original``).
+    """
     from .ledger.importer import _entity_write_lock
-    if decision not in {'release', 'history-match'}:
-        raise ValueError('Buffer decision must be release or history-match')
+    if decision not in {'release', 'history-match', 'copy'}:
+        raise ValueError('Buffer decision must be release, history-match or copy')
     with _entity_write_lock(entity.path):
         index = HistoryIndex(entity)
         previous = index.decision(source_id)
         row = next((r for r in list_buffer_decisions(entity, _index=index) if r['source_id'] == source_id), None)
-        if previous and (previous['decision'] != decision or previous.get('history_source_id') != history_source_id):
+        if decision == 'copy' and row is not None and not original_source_id:
+            original_source_id = (row.get('matched_original') or {}).get('source_id')
+        if previous and (previous['decision'] != decision or previous.get('history_source_id') != history_source_id
+                         or (decision == 'copy' and previous.get('original') != original_source_id)):
             raise ValueError('A durable buffer decision already exists')
         if row is None:
             if previous:
@@ -822,9 +900,15 @@ def resolve_buffer_decision(entity, source_id, decision, history_source_id=None,
             # The leg must have the row's account, amount and direction and be unmatched, within the date window.
             if history_source_id not in {c['source_id'] for c in row['candidate_legs']}:
                 raise ValueError('Select an unmatched history journal entry with the same account, amount and direction')
+        if decision == 'copy':
+            matched = index.decisions.get(original_source_id or '')
+            if not matched or matched['decision'] != 'history-match' or matched['account'] != row['account']:
+                raise ValueError('Name a bank row on the same account that was matched to QuickBooks history')
         resolved_at = _buffer_now(now).isoformat()
         record = {k:row[k] for k in ('source_id','account','date','amount','transaction')}
         record.update(decision=decision, history_source_id=history_source_id, resolved_at=resolved_at)
+        if decision == 'copy':
+            record['original'] = original_source_id
         if decision == 'release':
             released, errors = _release_rows(entity, [row], resolved_at, index)
             if errors:
@@ -844,7 +928,7 @@ def release_due_buffer(entity, now=None):
     """Release rows whose wait is over and that no QuickBooks bank leg could explain.
 
     A row is never released by time when it is inside the history period, when a journal touches
-    the account within three days, or when an unmatched leg of the same amount and direction is
+    the account within three days, when it may be a second real row, or when an unmatched leg of the same amount and direction is
     dated up to HISTORY_BANK_LAG_DAYS before it (``candidate_legs``). Decisions and ledger entries
     are loaded once for the whole call. Per-row failures are returned in ``errors``.
     """
@@ -854,7 +938,7 @@ def release_due_buffer(entity, now=None):
         index = HistoryIndex(entity)
         review, due = [], []
         for row in list_buffer_decisions(entity, _index=index):
-            if row['history_matches'] or row['candidate_legs'] or row['hold_rule'] == 'inside_period':
+            if row['history_matches'] or row['candidate_legs'] or row['hold_rule'] in {'inside_period', 'possible_second_row'}:
                 review.append(row['source_id'])
             elif current >= _buffer_now(row['hold_until']):
                 due.append(row)
@@ -866,7 +950,9 @@ def reverse_buffer_decision(entity, source_id, reason='', now=None):
     """A person undoes a buffer decision. Every reversal is a durable audit event.
 
     - ``history-match``: the leg is unmatched again, the row is held again, and a later copy of that bank
-      row is no longer recognized as already handled.
+      row is no longer recognized as already handled. Every copy that was recorded for it (and every
+      ``copy`` decision for it) is no longer a copy: those rows are held for a person again
+      (``reopened_rows``).
     - ``release``: refused when the row is already posted or waiting in the review queue. Reverse the
       posted entry the normal way first (or withdraw the queued item), because a reversal here must
       not change the ledger behind the books' back. A release that posted nothing is reversed.
@@ -890,9 +976,55 @@ def reverse_buffer_decision(entity, source_id, reason='', now=None):
                   'history_source_id': decision.get('history_source_id'), 'account': decision['account'],
                   'date': decision['date'], 'amount': decision['amount'], 'reason': str(reason or '')[:500],
                   'reversed_at': stamp}
+        # Rows recognized as copies of a matched bank row were never posted. When the match is undone they
+        # are no longer copies: each one is held for a person again.
+        reopened = []
+        if decision['decision'] == 'history-match':
+            reopened = sorted(c['source_id'] for c in index.copies.values() if c['original'] == source_id)
         with store.connection() as conn:
             store.append_audit_event('qbo-buffer-decision-reversed', record, conn, ts=stamp)
+            for copy_id in reopened:
+                if index.decision(copy_id):  # a person's copy decision is reversed with its original
+                    store.append_audit_event('qbo-buffer-decision-reversed',
+                        {'source_id': copy_id, 'reversed_decision': 'copy', 'history_source_id': None,
+                         'account': decision['account'], 'date': index.copies[copy_id]['date'],
+                         'amount': index.copies[copy_id]['amount'], 'reason': 'The matched bank row was reversed',
+                         'reversed_at': stamp}, conn, ts=stamp)
             conn.commit()
         _mark_candidates(entity, {source_id: {'status': 'duplicate-candidate', 'history_source_id': None, 'resolved_at': None}})
+        _hold_again(entity, [index.copies[c] for c in reopened], stamp)
         return {'source_id': source_id, 'reversed_decision': decision['decision'], 'status': 'duplicate-candidate',
-                'reversed_at': stamp}
+                'reopened_rows': reopened, 'reversed_at': stamp}
+
+
+def record_history_copies(entity, copies):
+    """Keep each recognized copy durably: the matched original, the copy's source and channel, date,
+    amount, description and when. One original has at most one copy from each other source."""
+    if not copies:
+        return
+    store = LedgerStore(default_store_path(entity.path))
+    stamp = datetime.now(timezone.utc).isoformat()
+    with store.connection() as conn:
+        for c in copies:
+            store.append_audit_event('qbo-history-copy', {**c, 'recorded_at': stamp}, conn, ts=stamp)
+        conn.commit()
+
+
+def _hold_again(entity, copies, stamp):
+    """Put rows that were recognized as copies back in the review list, held for a person."""
+    from .statement_import import _write_json_atomic
+    if not copies:
+        return
+    path = entity.staging_dir / 'duplicate-candidates.json'
+    rows = json.loads(path.read_text()) if path.exists() else []
+    by_id = {r.get('source_id'): r for r in rows}
+    for c in copies:
+        row = by_id.get(c['source_id'])
+        if row is None:
+            rows.append({'source_id': c['source_id'], 'existing_source_id': '', 'account': c['account'], 'date': c['date'],
+                         'amount': c['amount'], 'description': c.get('description', ''),
+                         'transaction': c.get('transaction'), 'match_rule': 'quickbooks_history_ownership',
+                         'status': 'duplicate-candidate', 'held_for_quickbooks_history': True, 'created_at': stamp})
+        else:
+            row.update(status='duplicate-candidate', history_source_id=None, resolved_at=None, held_for_quickbooks_history=True)
+    _write_json_atomic(path, rows)

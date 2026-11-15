@@ -729,25 +729,6 @@ def _match_pool(pool: list[JsonObject], used: set[int], day: date, amount: Decim
     return match, rule
 
 
-def history_duplicate_of(index: Any, account: str, mapping_key: str, txn: JsonObject, taken: set[str]) -> str | None:
-    """The bank row that a person matched to QuickBooks history and that this row is a copy of.
-
-    It uses the ordinary duplicate rule on the matched rows, so a statement row and a feed row of one
-    bank row are recognized, and two real rows of one amount are not (each matched row counts once).
-    """
-    items = [i for i in index.handled_items(account) if i["source_id"] not in taken]
-    if not items:
-        return None
-    try:
-        day = date.fromisoformat(str(txn["date"])[:10])
-        amount = _txn_amount(txn)
-    except (KeyError, ValueError, ArithmeticError):
-        return None
-    desc = normalize_description(str(txn.get("reference") or txn.get("description") or ""))
-    match, _ = _match_pool(items, set(), day, amount, desc, mapping_key)
-    return None if match is None else items[match]["source_id"]
-
-
 def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                     mapping_key: str, pool_limits: dict[str, date] | None = None, *,
                     history_copies: bool = True) -> JsonObject:
@@ -784,7 +765,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
     pool = [p for p in _existing_pool(entity, ledger_account) if p["source_id"] not in batch_ids]
     used: set[int] = set()
     plan: JsonObject = {"import": [], "held": [], "skipped": Counter()}
-    history_taken: set[str] = set()
+    history_taken: dict[str, set[str]] = {}
     for txn in sorted(txns, key=lambda t: (t["date"], t["id"])):
         sid = txn["id"]
         spellings = source_id_variants(sid)
@@ -794,21 +775,33 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
             continue
         choice = history_index.decision(sid) if history_receipts else None
         if choice:
-            if choice['decision'] == 'history-match':
+            if history_index.settled_as_duplicate(sid):
                 plan['skipped']['confirmed_duplicate'] += 1
                 continue
         if spellings & held_ids and not choice:
             plan["skipped"]["already_held_for_review"] += 1
             continue
         if history_receipts and history_copies and not choice:
-            # A copy of a bank row that a person matched to QuickBooks history is not posted and not held again.
-            original = history_duplicate_of(history_index, ledger_account, mapping_key, txn, history_taken)
-            if original:
-                history_taken.add(original)
+            # A copy of a bank row that a person matched to QuickBooks history is not posted and not held
+            # again. A second real row may look the same: it is held for a person (see HistoryIndex.pair).
+            known = history_index.copy_record(sid)
+            pair = ("copy", known["original"], known["family"]) if known else history_index.pair(
+                ledger_account, mapping_key, txn, history_taken)
+            if pair and pair[0] == "copy":
+                if not known:
+                    history_taken.setdefault(pair[1], set()).add(mapping_key)
                 plan["skipped"]["matched_to_history"] += 1
                 plan.setdefault("matched_to_history", []).append(
-                    {"source_id": sid, "duplicate_of": original, "account": ledger_account, "date": txn["date"],
-                     "amount": format(_txn_amount(txn), "f")})
+                    {"source_id": sid, "duplicate_of": pair[1], "account": ledger_account, "date": txn["date"],
+                     "amount": format(_txn_amount(txn), "f"), "family": mapping_key, "recorded": known is not None,
+                     "description": txn["description"], "transaction": txn})
+                continue
+            if pair:
+                plan["held"].append({"source_id": sid, "existing_source_id": "", "account": ledger_account,
+                    "date": txn["date"], "amount": format(_txn_amount(txn), "f"), "description": txn["description"],
+                    "match_rule": "quickbooks_history_possible_second_row", "history_hold_rule": "possible_second_row",
+                    "matched_original": pair[1], "held_for_quickbooks_history": True, "transaction": txn,
+                    "status": "duplicate-candidate"})
                 continue
         ownership = (history_index.holds(ledger_account, txn["date"], _txn_amount(txn))
                      if history_receipts and not choice else None)
@@ -1334,7 +1327,9 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             entry: JsonObject = {"statement": record, "counts": counts, "tieout": record["tieout"],
                                  "warnings": statement["warnings"] + record_warnings,
                                  "held": [{k: v for k, v in h.items() if k != "transaction"} for h in plan["held"]],
-                                 **({"matched_to_history": plan["matched_to_history"]} if plan.get("matched_to_history") else {}),
+                                 **({"matched_to_history": [{k: v for k, v in m.items() if k != "transaction"}
+                                                            for m in plan["matched_to_history"]]}
+                                    if plan.get("matched_to_history") else {}),
                                  "coverage": ("recorded" if record["period_confirmed"]
                                               else "from_transactions" if record.get("coverage_basis") == "transactions"
                                               else "needs_period")}
@@ -1349,6 +1344,13 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                 observe_import(plan["skipped"].get("already_imported", 0)
                                + plan["skipped"].get("confirmed_duplicate", 0)
                                + statement["in_file_duplicates"])
+                # Kept before intake runs: a matched bank row has at most one copy from each source.
+                from .quickbooks_history import record_history_copies
+                record_history_copies(entity, [
+                    {"source_id": m["source_id"], "original": m["duplicate_of"], "family": m["family"],
+                     "account": m["account"], "date": m["date"], "amount": m["amount"],
+                     "description": m["description"], "transaction": m["transaction"]}
+                    for m in plan.get("matched_to_history", []) if not m["recorded"]])
                 if plan["import"]:
                     outcome = import_transactions(
                         entity, plan["import"], session_id=session_id, history_copies=False,
