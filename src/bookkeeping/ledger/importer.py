@@ -110,6 +110,8 @@ class ImportResult:
     matched_to_history: list[dict[str, Any]] = field(default_factory=list)
     # Rows that pair with a matched bank row that already has its copy from this source: held for a person.
     possible_second_rows: list[dict[str, Any]] = field(default_factory=list)
+    # Rows that pair with a matched bank row only by amount within three days: held for a person.
+    possible_copies: list[dict[str, Any]] = field(default_factory=list)
     orphaned_tmps: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -796,10 +798,13 @@ def _import_transactions_unlocked(
                                   "description": str(txn.get("reference") or txn.get("description") or ""), "transaction": dict(txn)})
             else:
                 history_second[sid] = {**row, "matched_original": pair[1], "description": str(txn.get("description") or ""),
-                                       "transaction": dict(txn)}
+                                       "transaction": dict(txn), "hold_rule": pair[0]}
                 history_hold_ids.add(sid)
         record_history_copies(entity, fresh)
-    result.possible_second_rows = [{k: v for k, v in r.items() if k != "transaction"} for r in history_second.values()]
+    result.possible_second_rows = [{k: v for k, v in r.items() if k not in {"transaction", "hold_rule"}}
+                                   for r in history_second.values() if r["hold_rule"] == "second_row"]
+    result.possible_copies = [{k: v for k, v in r.items() if k not in {"transaction", "hold_rule"}}
+                              for r in history_second.values() if r["hold_rule"] == "possible_copy"]
     cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers) | frozenset(history_hold_ids)
     # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
     # later row is judged as in review mode. It may use up only an entry dated on or before its cutover
@@ -823,7 +828,8 @@ def _import_transactions_unlocked(
         feed_holds[sid] = {
             "source_id": sid, "existing_source_id": "", "account": second["account"], "date": second["date"],
             "amount": second["amount"], "description": second["description"], "transaction": second["transaction"],
-            "match_rule": "quickbooks_history_possible_second_row", "history_hold_rule": "possible_second_row",
+            "match_rule": "quickbooks_history_" + ("possible_second_row" if second["hold_rule"] == "second_row" else second["hold_rule"]),
+            "history_hold_rule": "possible_second_row" if second["hold_rule"] == "second_row" else second["hold_rule"],
             "matched_original": second["matched_original"], "held_for_quickbooks_history": True,
             "status": "duplicate-candidate"}
     # A row that is already held for review stays held on every later sync, under

@@ -635,15 +635,23 @@ class HistoryIndex:
         """A row recognized earlier as the copy of a matched bank row. The same source ID is the same row."""
         return self.copies.get(source_id)
 
-    def pair(self, account, mapping_key, txn, taken):
-        """Pair a row with a matched bank row by the ordinary duplicate rule.
+    def pair(self, account, mapping_key, txn, taken, period=None):
+        """Pair a row with a bank row that a person handled, by the ordinary duplicate rule.
 
-        Returns ``('copy', original_id, family)`` or ``('second_row', original_id, family)`` or None.
-        A matched bank row has at most one recognized copy for each other source (a feed row has one
-        statement copy, a statement row has one feed copy, as the ordinary rule pairs rows). A row that
-        pairs with a matched row that already has its copy from this source, or that comes from the same
-        source as the matched row (the bank re-sent it under a new ID), may be a second real row: it is
-        held for a person. ``taken`` maps an original to the sources that took it earlier in this pass.
+        Returns ``(kind, original_id, family)`` or None. ``kind`` is:
+
+        - ``copy``: the ordinary rule calls the pair an exact duplicate (the same date, amount and
+          description) from another source, that source can hold the original (a feed always; a statement
+          only when ``period`` covers the original's date), and the original has no copy from this source
+          yet. Only this kind is skipped. A matched bank row has at most one recognized copy from each
+          other source (a feed row has one statement copy, a statement row has one feed copy).
+        - ``possible_copy``: the ordinary rule pairs the rows only by "the same amount within three days
+          from another source", or the source cannot hold the original. The ordinary path holds such a
+          pair for a person; so does this one. It is never more permissive than the ordinary path.
+        - ``second_row``: an exact pair that is not the one copy (same source as the original, or the
+          original already has its copy from this source): it may be a second real row.
+
+        ``taken`` maps an original to the sources that took it earlier in this pass.
         """
         from .statement_import import _match_pool, _txn_amount, normalize_description
         items = self.handled_items(account)
@@ -655,15 +663,20 @@ class HistoryIndex:
         except (KeyError, ValueError, ArithmeticError):
             return None
         desc = normalize_description(str(txn.get('reference') or txn.get('description') or ''))
-        free = [i for i in items if i['family'] != mapping_key
-                and mapping_key not in self.copy_families.get(i['source_id'], set()) | taken.get(i['source_id'], set())]
-        match, _ = _match_pool(free, set(), day, amount, desc, mapping_key)
-        if match is not None:
-            return ('copy', free[match]['source_id'], mapping_key)
-        match, _ = _match_pool(items, set(), day, amount, desc, mapping_key)
+        match, rule = _match_pool(items, set(), day, amount, desc, mapping_key)
         if match is None:
             return None
-        return ('second_row', items[match]['source_id'], mapping_key)
+        if rule != 'same_date_amount_description':
+            return ('possible_copy', items[match]['source_id'], mapping_key)
+        free = [i for i in items if i['family'] != mapping_key
+                and mapping_key not in self.copy_families.get(i['source_id'], set()) | taken.get(i['source_id'], set())]
+        free_match, free_rule = _match_pool(free, set(), day, amount, desc, mapping_key)
+        if free_match is None or free_rule != 'same_date_amount_description':
+            return ('second_row', items[match]['source_id'], mapping_key)
+        original = free[free_match]
+        if period is not None and not (period[0] <= original['date'] <= period[1]):
+            return ('possible_copy', original['source_id'], mapping_key)
+        return ('copy', original['source_id'], mapping_key)
 
     def _matched(self):
         return {(d['history_source_id'], d['account']) for d in self.decisions.values()
@@ -767,9 +780,11 @@ def list_buffer_decisions(entity, now=None, _index=None):
     amount, as a suggestion), ``candidate_legs`` (unmatched history bank legs of the same
     amount and direction: date, amount, QuickBooks type, document number, name) and
     ``hold_rule`` (``inside_period``, ``unmatched_history_leg``, ``settlement_window``,
-    ``possible_second_row`` or None when only an earlier hold remains). A ``possible_second_row`` row
-    pairs with a bank row that a person matched to history and that already has its copy from this
-    source (or comes from the same source): ``matched_original`` shows that bank row and its QuickBooks leg.
+    ``possible_second_row``, ``possible_copy`` or None when only an earlier hold remains). A
+    ``possible_second_row`` row pairs exactly with a bank row that a person matched to history and that
+    already has its copy from this source (or comes from the same source). A ``possible_copy`` row pairs
+    with one only by amount within three days, or from a statement that cannot hold it. For both,
+    ``matched_original`` shows that bank row and its QuickBooks leg.
     """
     path = entity.staging_dir / 'duplicate-candidates.json'
     if not path.exists():
@@ -786,9 +801,9 @@ def list_buffer_decisions(entity, now=None, _index=None):
         if index.before_books(row['account'], row.get('date', '')):
             continue
         original = row.get('matched_original')
-        second = (row.get('history_hold_rule') == 'possible_second_row'
+        second = (row.get('history_hold_rule') in {'possible_second_row', 'possible_copy'}
                   and (index.decisions.get(original) or {}).get('decision') == 'history-match')
-        rule = 'possible_second_row' if second else index.holds(row['account'], row.get('date'), amount)
+        rule = row['history_hold_rule'] if second else index.holds(row['account'], row.get('date'), amount)
         if not (rule or row.get('held_for_quickbooks_history') or row.get('match_rule') == 'quickbooks_history_ownership'):
             continue
         day = date.fromisoformat(str(row['date'])[:10])
@@ -938,7 +953,7 @@ def release_due_buffer(entity, now=None):
         index = HistoryIndex(entity)
         review, due = [], []
         for row in list_buffer_decisions(entity, _index=index):
-            if row['history_matches'] or row['candidate_legs'] or row['hold_rule'] in {'inside_period', 'possible_second_row'}:
+            if row['history_matches'] or row['candidate_legs'] or row['hold_rule'] in {'inside_period', 'possible_second_row', 'possible_copy'}:
                 review.append(row['source_id'])
             elif current >= _buffer_now(row['hold_until']):
                 due.append(row)

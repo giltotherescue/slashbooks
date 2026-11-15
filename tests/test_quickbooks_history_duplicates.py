@@ -27,7 +27,7 @@ class DuplicateCases(LagCases):
 
     def row(self, name, day, amount, feed='feed-1'):
         # One description for every row, as a re-sent bank row has the same text under its new ID.
-        return {**super().row(name, day, amount, feed), 'description': 'Synthetic bank deposit'}
+        return {**super().row(name, day, amount, feed), 'description': 'DEPOSIT'}
 
     def reload(self):
         mappings = self.entity.entity_config.get('bank_account_mappings')
@@ -99,7 +99,7 @@ class DuplicateCases(LagCases):
         self.assertIn(self.state('b'), {'posted', 'pending'})
         # A statement shows both. One copy is recognized as the matched row. The other is not: the
         # ordinary rule holds it against the released row, as it holds any copy of a posted row.
-        result = self.statement(('2026-03-04', 'DEPOSIT A', '30'), ('2026-03-04', 'DEPOSIT B', '30'))
+        result = self.statement(('2026-03-04', 'DEPOSIT', '30'), ('2026-03-04', 'DEPOSIT B', '30'))
         counts = result['statements'][0]['counts']
         self.assertEqual((counts['matched_to_history'], counts['to_import'] + counts['held_for_review']), (1, 1))
 

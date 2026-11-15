@@ -33,7 +33,7 @@ class SecondRowCases(DuplicateCases):
             self.confirm_pending(sid)
 
     def second_rows(self):
-        return [r for r in list_buffer_decisions(self.entity) if r['hold_rule'] == 'possible_second_row']
+        return [r for r in list_buffer_decisions(self.entity) if r['hold_rule'] in {'possible_second_row', 'possible_copy'}]
 
     def digest(self):
         return LedgerStore(default_store_path(self.entity.path)).content_digest()
@@ -42,7 +42,7 @@ class SecondRowCases(DuplicateCases):
 
     def test_second_identical_row_in_the_same_pass_is_held_and_posts_once_when_released(self):
         self.matched()
-        counts = self.statement(('2026-03-04', 'DEPOSIT A', '30'), ('2026-03-04', 'DEPOSIT B', '30'))['statements'][0]
+        counts = self.statement(('2026-03-04', 'DEPOSIT', '30'), ('2026-03-04', 'DEPOSIT B', '30'))['statements'][0]
         self.assertEqual((counts['counts']['matched_to_history'], counts['counts']['held_for_review'], counts['counts']['to_import']), (1, 1, 0))
         self.assertEqual(self.bank(), self.START)
         held, = self.second_rows()
@@ -146,7 +146,7 @@ class SecondRowCases(DuplicateCases):
 
     def test_every_pass_is_idempotent(self):
         self.matched()
-        passes = [lambda: self.statement(('2026-03-04', 'DEPOSIT A', '30'), ('2026-03-04', 'DEPOSIT B', '30')),
+        passes = [lambda: self.statement(('2026-03-04', 'DEPOSIT', '30'), ('2026-03-04', 'DEPOSIT B', '30')),
                   lambda: self.ingest(self.row('2', '2026-03-04', '30'))]
         for run in passes:
             run()

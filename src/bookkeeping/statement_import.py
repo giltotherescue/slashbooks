@@ -729,9 +729,23 @@ def _match_pool(pool: list[JsonObject], used: set[int], day: date, amount: Decim
     return match, rule
 
 
+def _statement_period(statement: JsonObject, confirmed_period: tuple[str, str] | None) -> tuple[date, date]:
+    """The days a statement can show: the period a person confirmed, else its printed period, else the
+    first and last row date. A statement cannot contain a bank row outside it."""
+    days = sorted(str(t["date"])[:10] for t in statement["transactions"])
+    for lo, hi in ((confirmed_period or (None, None)), (statement.get("period_start"), statement.get("period_end")),
+                   (days[0] if days else None, days[-1] if days else None)):
+        try:
+            if lo and hi:
+                return date.fromisoformat(str(lo)[:10]), date.fromisoformat(str(hi)[:10])
+        except ValueError:
+            continue
+    return date.min, date.min
+
+
 def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                     mapping_key: str, pool_limits: dict[str, date] | None = None, *,
-                    history_copies: bool = True) -> JsonObject:
+                    history_copies: bool = True, source_period: tuple[date, date] | None = None) -> JsonObject:
     """Split *txns* into rows to import, rows to skip and rows to hold.
 
     ``pool_limits`` maps a row's ID to the latest date of a book entry that the row may match.
@@ -786,7 +800,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
             # again. A second real row may look the same: it is held for a person (see HistoryIndex.pair).
             known = history_index.copy_record(sid)
             pair = ("copy", known["original"], known["family"]) if known else history_index.pair(
-                ledger_account, mapping_key, txn, history_taken)
+                ledger_account, mapping_key, txn, history_taken, source_period)
             if pair and pair[0] == "copy":
                 if not known:
                     history_taken.setdefault(pair[1], set()).add(mapping_key)
@@ -799,7 +813,8 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
             if pair:
                 plan["held"].append({"source_id": sid, "existing_source_id": "", "account": ledger_account,
                     "date": txn["date"], "amount": format(_txn_amount(txn), "f"), "description": txn["description"],
-                    "match_rule": "quickbooks_history_possible_second_row", "history_hold_rule": "possible_second_row",
+                    "match_rule": "quickbooks_history_" + ("possible_second_row" if pair[0] == "second_row" else pair[0]),
+                    "history_hold_rule": "possible_second_row" if pair[0] == "second_row" else pair[0],
                     "matched_original": pair[1], "held_for_quickbooks_history": True, "transaction": txn,
                     "status": "duplicate-candidate"})
                 continue
@@ -1265,7 +1280,8 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             prof = profiles[statement["profile"]]
             txns, outside = _apply_boundary(statement["transactions"], prof)
             planned.append((statement, txns, outside, plan_duplicates(
-                entity, txns, prof["ledger_account"], MAPPING_PREFIX + statement["profile"])))
+                entity, txns, prof["ledger_account"], MAPPING_PREFIX + statement["profile"],
+                source_period=_statement_period(statement, confirmed_period))))
         # Rows before an account's opening balance would count twice: refuse the file before any write.
         from .statement_opening import before_opening_refusal, opening_dates
         openings = opening_dates(entity.path)
