@@ -639,6 +639,8 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
                                         currency=currency))
         if errors:
             raise StatementOpeningError("invalid_entry", "; ".join(str(e) for e in errors))
+        from .quickbooks_history import refuse_owned_write
+        refuse_owned_write(entity, [entry])
         if dry_run:
             # The complete entry that the write records, for a host to bind a person's review to it.
             from .ledger.books_policy_check import reviewed_entry

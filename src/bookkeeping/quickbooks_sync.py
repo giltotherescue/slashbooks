@@ -974,10 +974,13 @@ def sync_rules(entity, input_path: Path, *, apply: bool = False) -> dict:
 
 
 def add_parser(subparsers) -> None:
-    for command in ("sync-import", "sync-opening", "sync-rules"):
+    for command in ("sync-import", "sync-opening", "sync-rules", "sync-transactions"):
         parser = subparsers.add_parser(command, help="Import a read-only QuickBooks API snapshot reference")
         parser.add_argument("input", type=Path)
         parser.add_argument("--entity", type=Path, required=True, dest="entity_path")
+        if command == "sync-transactions":
+            parser.add_argument("--apply", action="store_true")
+            parser.add_argument("--plan-hash")
         if command == "sync-rules":
             parser.add_argument("--apply", action="store_true", help="Save supported proposals for review; never enables automatic posting")
         if command == "sync-opening":
@@ -990,7 +993,10 @@ def run(args) -> int:
     from .entity import load_entity
     try:
         entity = load_entity(args.entity_path)
-        if args.qb_command == "sync-opening":
+        if args.qb_command == "sync-transactions":
+            from .quickbooks_history import sync_transactions
+            result = sync_transactions(entity, args.input, apply=args.apply, plan_hash=args.plan_hash)
+        elif args.qb_command == "sync-opening":
             choice = {}
             if args.chart_choice:
                 choice = json.loads(args.chart_choice.read_text())

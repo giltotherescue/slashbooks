@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Add an optional native QuickBooks Online history import. `books qb
+  sync-transactions MANIFEST --entity BOOKS` previews, and `--apply --plan-hash`
+  records, past transactions from complete raw QuickBooks reports (general
+  ledger, opening and closing trial balance, profit and loss, balance sheet).
+  The preview ties each account to the reports before anything posts. The
+  mapped bank and card accounts then wait in review for the history period
+  plus three days, so a bank feed or statement cannot duplicate an imported
+  entry; `books qb buffer-decisions`, `resolve-buffer` and `release-buffer`
+  handle those rows. The import takes USD only, needs empty mapped accounts,
+  and holds foreign-currency records. Nothing changes unless the command is
+  used. See `docs/quickbooks-history.md`.
+
 - Keep earlier feed history as context when a person switches bank data
   provider. A mapping that has a `cutover_date` can also set
   `history_before_cutover: context_only` (`books entity bank-account-map ...

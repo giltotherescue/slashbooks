@@ -1,0 +1,3333 @@
+{
+  "files": {
+    "0.json": {
+      "QueryResponse": {
+        "Account": [
+          {
+            "AccountType": "Bank",
+            "Id": "1",
+            "Name": "Synthetic 0"
+          },
+          {
+            "AccountType": "Accounts Receivable",
+            "Id": "2",
+            "Name": "Synthetic 1"
+          },
+          {
+            "AccountType": "Accounts Payable",
+            "Id": "3",
+            "Name": "Synthetic 2"
+          },
+          {
+            "AccountType": "Income",
+            "Id": "4",
+            "Name": "Synthetic 3"
+          },
+          {
+            "AccountType": "Expense",
+            "Id": "5",
+            "Name": "Synthetic 4"
+          },
+          {
+            "AccountType": "Other Current Liability",
+            "Id": "6",
+            "Name": "Synthetic 5"
+          },
+          {
+            "AccountType": "Equity",
+            "Id": "7",
+            "Name": "Synthetic 6"
+          },
+          {
+            "AccountType": "Credit Card",
+            "Id": "8",
+            "Name": "Synthetic 7"
+          },
+          {
+            "AccountType": "Bank",
+            "Id": "9",
+            "Name": "Synthetic 8"
+          }
+        ]
+      }
+    },
+    "1.json": {
+      "QueryResponse": {
+        "Invoice": [
+          {
+            "ARAccountRef": {
+              "value": "2"
+            },
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "CustomerRef": {
+              "name": "Synthetic customer",
+              "value": "customer-1"
+            },
+            "Id": "101",
+            "Line": [
+              {
+                "Amount": 100,
+                "DetailType": "SalesItemLineDetail",
+                "Id": "1",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "name": "Synthetic consulting",
+                    "value": "item-1"
+                  },
+                  "TaxCodeRef": {
+                    "value": "TAX"
+                  }
+                }
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-01-02T09:00:00Z",
+              "LastUpdatedTime": "2026-01-02T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 110,
+            "TxnDate": "2026-01-02",
+            "TxnTaxDetail": {
+              "TotalTax": 10
+            }
+          }
+        ]
+      }
+    },
+    "10.json": {
+      "QueryResponse": {
+        "CreditMemo": [
+          {
+            "ARAccountRef": {
+              "value": "2"
+            },
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "CustomerRef": {
+              "name": "Synthetic customer",
+              "value": "customer-1"
+            },
+            "Id": "110",
+            "Line": [
+              {
+                "Amount": 5,
+                "DetailType": "SalesItemLineDetail",
+                "Id": "1",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "name": "Synthetic consulting",
+                    "value": "item-1"
+                  },
+                  "TaxCodeRef": {
+                    "value": "TAX"
+                  }
+                }
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-02-04T09:00:00Z",
+              "LastUpdatedTime": "2026-02-04T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 5,
+            "TxnDate": "2026-02-04",
+            "TxnTaxDetail": {
+              "TotalTax": 0
+            }
+          }
+        ]
+      }
+    },
+    "11.json": {
+      "QueryResponse": {
+        "VendorCredit": [
+          {
+            "APAccountRef": {
+              "value": "3"
+            },
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "Id": "111",
+            "Line": [
+              {
+                "AccountBasedExpenseLineDetail": {
+                  "AccountRef": {
+                    "name": "Supplies",
+                    "value": "5"
+                  },
+                  "ClassRef": {
+                    "name": "North",
+                    "value": "class-1"
+                  }
+                },
+                "Amount": 3,
+                "DetailType": "AccountBasedExpenseLineDetail",
+                "Id": "1"
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-02-05T09:00:00Z",
+              "LastUpdatedTime": "2026-02-05T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 3,
+            "TxnDate": "2026-02-05",
+            "VendorRef": {
+              "name": "Synthetic supplier",
+              "value": "vendor-1"
+            }
+          }
+        ]
+      }
+    },
+    "12.json": {
+      "QueryResponse": {
+        "Deposit": [
+          {
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "DepositToAccountRef": {
+              "value": "1"
+            },
+            "Id": "112",
+            "Line": [
+              {
+                "Amount": 30,
+                "DepositLineDetail": {
+                  "AccountRef": {
+                    "value": "4"
+                  }
+                },
+                "DetailType": "DepositLineDetail",
+                "Id": "1"
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-02-06T09:00:00Z",
+              "LastUpdatedTime": "2026-02-06T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 30,
+            "TxnDate": "2026-02-06"
+          }
+        ]
+      }
+    },
+    "13.json": {
+      "QueryResponse": {
+        "JournalEntry": [
+          {
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "Id": "113",
+            "Line": [
+              {
+                "Amount": 2,
+                "DetailType": "JournalEntryLineDetail",
+                "Id": "1",
+                "JournalEntryLineDetail": {
+                  "AccountRef": {
+                    "value": "5"
+                  },
+                  "PostingType": "Debit"
+                }
+              },
+              {
+                "Amount": 2,
+                "DetailType": "JournalEntryLineDetail",
+                "Id": "2",
+                "JournalEntryLineDetail": {
+                  "AccountRef": {
+                    "value": "7"
+                  },
+                  "PostingType": "Credit"
+                }
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-02-07T09:00:00Z",
+              "LastUpdatedTime": "2026-02-07T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 2,
+            "TxnDate": "2026-02-07"
+          }
+        ]
+      }
+    },
+    "14.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "1",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-03"
+                    },
+                    {
+                      "id": "102",
+                      "value": "Payment"
+                    },
+                    {
+                      "value": "110"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-05"
+                    },
+                    {
+                      "id": "104",
+                      "value": "BillPayment"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "40"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-06"
+                    },
+                    {
+                      "id": "105",
+                      "value": "Transfer"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "20"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "15.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "1",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-01"
+                    },
+                    {
+                      "id": "107",
+                      "value": "CreditCardPayment"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "10"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-02"
+                    },
+                    {
+                      "id": "108",
+                      "value": "SalesReceipt"
+                    },
+                    {
+                      "value": "22"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-03"
+                    },
+                    {
+                      "id": "109",
+                      "value": "RefundReceipt"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "11"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-06"
+                    },
+                    {
+                      "id": "112",
+                      "value": "Deposit"
+                    },
+                    {
+                      "value": "30"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "16.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "2",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-02"
+                    },
+                    {
+                      "id": "101",
+                      "value": "Invoice"
+                    },
+                    {
+                      "value": "110"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-03"
+                    },
+                    {
+                      "id": "102",
+                      "value": "Payment"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "110"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "17.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "2",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-04"
+                    },
+                    {
+                      "id": "110",
+                      "value": "CreditMemo"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "5"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "18.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "3",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-04"
+                    },
+                    {
+                      "id": "103",
+                      "value": "Bill"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "40"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-05"
+                    },
+                    {
+                      "id": "104",
+                      "value": "BillPayment"
+                    },
+                    {
+                      "value": "40"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "19.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "3",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-05"
+                    },
+                    {
+                      "id": "111",
+                      "value": "VendorCredit"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "3"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "2.json": {
+      "QueryResponse": {
+        "Payment": [
+          {
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "CustomerRef": {
+              "value": "customer-1"
+            },
+            "DepositToAccountRef": {
+              "value": "1"
+            },
+            "Id": "102",
+            "Line": [
+              {
+                "Amount": 110,
+                "LinkedTxn": [
+                  {
+                    "TxnId": "101",
+                    "TxnType": "Invoice"
+                  }
+                ]
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-01-03T09:00:00Z",
+              "LastUpdatedTime": "2026-01-03T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 110,
+            "TxnDate": "2026-01-03"
+          }
+        ]
+      }
+    },
+    "20.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "4",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-02"
+                    },
+                    {
+                      "id": "101",
+                      "value": "Invoice"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "100"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "21.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "4",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-02"
+                    },
+                    {
+                      "id": "108",
+                      "value": "SalesReceipt"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "20"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-03"
+                    },
+                    {
+                      "id": "109",
+                      "value": "RefundReceipt"
+                    },
+                    {
+                      "value": "10"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-04"
+                    },
+                    {
+                      "id": "110",
+                      "value": "CreditMemo"
+                    },
+                    {
+                      "value": "5"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-06"
+                    },
+                    {
+                      "id": "112",
+                      "value": "Deposit"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "30"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "22.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "5",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-04"
+                    },
+                    {
+                      "id": "103",
+                      "value": "Bill"
+                    },
+                    {
+                      "value": "40"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-07"
+                    },
+                    {
+                      "id": "106",
+                      "value": "Purchase"
+                    },
+                    {
+                      "value": "10"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "23.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "5",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-05"
+                    },
+                    {
+                      "id": "111",
+                      "value": "VendorCredit"
+                    },
+                    {
+                      "value": "3"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-07"
+                    },
+                    {
+                      "id": "113",
+                      "value": "JournalEntry"
+                    },
+                    {
+                      "value": "2"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "24.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "6",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-02"
+                    },
+                    {
+                      "id": "101",
+                      "value": "Invoice"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "10"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "25.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "6",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-02"
+                    },
+                    {
+                      "id": "108",
+                      "value": "SalesReceipt"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "2"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                },
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-03"
+                    },
+                    {
+                      "id": "109",
+                      "value": "RefundReceipt"
+                    },
+                    {
+                      "value": "1"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "26.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "7",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": []
+            }
+          }
+        ]
+      }
+    },
+    "27.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "7",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-07"
+                    },
+                    {
+                      "id": "113",
+                      "value": "JournalEntry"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "2"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "28.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "8",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-07"
+                    },
+                    {
+                      "id": "106",
+                      "value": "Purchase"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "value": "10"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "29.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "8",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-02-01"
+                    },
+                    {
+                      "id": "107",
+                      "value": "CreditCardPayment"
+                    },
+                    {
+                      "value": "10"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "3.json": {
+      "QueryResponse": {
+        "Bill": [
+          {
+            "APAccountRef": {
+              "value": "3"
+            },
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "Id": "103",
+            "Line": [
+              {
+                "AccountBasedExpenseLineDetail": {
+                  "AccountRef": {
+                    "name": "Supplies",
+                    "value": "5"
+                  },
+                  "ClassRef": {
+                    "name": "North",
+                    "value": "class-1"
+                  }
+                },
+                "Amount": 40,
+                "DetailType": "AccountBasedExpenseLineDetail",
+                "Id": "1"
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-01-04T09:00:00Z",
+              "LastUpdatedTime": "2026-01-04T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 40,
+            "TxnDate": "2026-01-04",
+            "VendorRef": {
+              "name": "Synthetic supplier",
+              "value": "vendor-1"
+            }
+          }
+        ]
+      }
+    },
+    "30.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-01-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "9",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": [
+                {
+                  "ColData": [
+                    {
+                      "value": "2026-01-06"
+                    },
+                    {
+                      "id": "105",
+                      "value": "Transfer"
+                    },
+                    {
+                      "value": "20"
+                    },
+                    {
+                      "value": "0"
+                    },
+                    {
+                      "id": "class-1",
+                      "value": "North"
+                    }
+                  ],
+                  "type": "Data"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "31.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "tx_date",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "tx_date"
+              }
+            ]
+          },
+          {
+            "ColTitle": "txn_type",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "txn_type"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "class",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "class"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "GeneralLedger",
+        "StartPeriod": "2026-02-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "Header": {
+              "ColData": [
+                {
+                  "id": "9",
+                  "value": "Synthetic"
+                }
+              ]
+            },
+            "Rows": {
+              "Row": []
+            }
+          }
+        ]
+      }
+    },
+    "32.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "account",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "account"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2025-12-31",
+        "ReportBasis": "Accrual",
+        "ReportName": "TrialBalance",
+        "StartPeriod": "2025-12-31"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "ColData": [
+              {
+                "id": "1",
+                "value": "Synthetic"
+              },
+              {
+                "value": "1000"
+              },
+              {
+                "value": "0"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "7",
+                "value": "Synthetic"
+              },
+              {
+                "value": "0"
+              },
+              {
+                "value": "1000"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "33.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "account",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "account"
+              }
+            ]
+          },
+          {
+            "ColTitle": "debit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "debit"
+              }
+            ]
+          },
+          {
+            "ColTitle": "credit",
+            "ColType": "Money",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "credit"
+              }
+            ]
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "TrialBalance",
+        "StartPeriod": "2026-02-28"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "ColData": [
+              {
+                "id": "1",
+                "value": "Synthetic"
+              },
+              {
+                "value": "1081"
+              },
+              {
+                "value": "0"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "2",
+                "value": "Synthetic"
+              },
+              {
+                "value": "0"
+              },
+              {
+                "value": "5"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "3",
+                "value": "Synthetic"
+              },
+              {
+                "value": "0"
+              },
+              {
+                "value": "3"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "4",
+                "value": "Synthetic"
+              },
+              {
+                "value": "0"
+              },
+              {
+                "value": "135"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "5",
+                "value": "Synthetic"
+              },
+              {
+                "value": "55"
+              },
+              {
+                "value": "0"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "6",
+                "value": "Synthetic"
+              },
+              {
+                "value": "0"
+              },
+              {
+                "value": "11"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "7",
+                "value": "Synthetic"
+              },
+              {
+                "value": "0"
+              },
+              {
+                "value": "1002"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "9",
+                "value": "Synthetic"
+              },
+              {
+                "value": "20"
+              },
+              {
+                "value": "0"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "34.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "account",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "account"
+              }
+            ]
+          },
+          {
+            "ColTitle": "Total",
+            "ColType": "Money"
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "ProfitAndLoss",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "ColData": [
+              {
+                "id": "4",
+                "value": "Synthetic"
+              },
+              {
+                "value": "135"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "5",
+                "value": "Synthetic"
+              },
+              {
+                "value": "55"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "35.json": {
+      "Columns": {
+        "Column": [
+          {
+            "ColTitle": "account",
+            "ColType": "String",
+            "MetaData": [
+              {
+                "Name": "ColKey",
+                "Value": "account"
+              }
+            ]
+          },
+          {
+            "ColTitle": "Total",
+            "ColType": "Money"
+          }
+        ]
+      },
+      "Header": {
+        "Currency": "USD",
+        "EndPeriod": "2026-02-28",
+        "ReportBasis": "Accrual",
+        "ReportName": "BalanceSheet",
+        "StartPeriod": "2026-01-01"
+      },
+      "Rows": {
+        "Row": [
+          {
+            "ColData": [
+              {
+                "id": "1",
+                "value": "Synthetic"
+              },
+              {
+                "value": "1081"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "2",
+                "value": "Synthetic"
+              },
+              {
+                "value": "-5"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "3",
+                "value": "Synthetic"
+              },
+              {
+                "value": "3"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "6",
+                "value": "Synthetic"
+              },
+              {
+                "value": "11"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "7",
+                "value": "Synthetic"
+              },
+              {
+                "value": "1002"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "id": "9",
+                "value": "Synthetic"
+              },
+              {
+                "value": "20"
+              }
+            ]
+          },
+          {
+            "ColData": [
+              {
+                "value": "Net Income"
+              },
+              {
+                "value": "80"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "4.json": {
+      "QueryResponse": {
+        "BillPayment": [
+          {
+            "CheckPayment": {
+              "BankAccountRef": {
+                "value": "1"
+              }
+            },
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "Id": "104",
+            "Line": [
+              {
+                "Amount": 40,
+                "LinkedTxn": [
+                  {
+                    "TxnId": "103",
+                    "TxnType": "Bill"
+                  }
+                ]
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-01-05T09:00:00Z",
+              "LastUpdatedTime": "2026-01-05T09:00:00Z"
+            },
+            "PayType": "Check",
+            "SyncToken": "0",
+            "TotalAmt": 40,
+            "TxnDate": "2026-01-05",
+            "VendorRef": {
+              "value": "vendor-1"
+            }
+          }
+        ]
+      }
+    },
+    "5.json": {
+      "QueryResponse": {
+        "Transfer": [
+          {
+            "Amount": 20,
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "FromAccountRef": {
+              "value": "1"
+            },
+            "Id": "105",
+            "MetaData": {
+              "CreateTime": "2026-01-06T09:00:00Z",
+              "LastUpdatedTime": "2026-01-06T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "ToAccountRef": {
+              "value": "9"
+            },
+            "TotalAmt": 20,
+            "TxnDate": "2026-01-06"
+          }
+        ]
+      }
+    },
+    "6.json": {
+      "QueryResponse": {
+        "Purchase": [
+          {
+            "AccountRef": {
+              "value": "8"
+            },
+            "Credit": false,
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "Id": "106",
+            "Line": [
+              {
+                "AccountBasedExpenseLineDetail": {
+                  "AccountRef": {
+                    "name": "Supplies",
+                    "value": "5"
+                  },
+                  "ClassRef": {
+                    "name": "North",
+                    "value": "class-1"
+                  }
+                },
+                "Amount": 10,
+                "DetailType": "AccountBasedExpenseLineDetail",
+                "Id": "1"
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-01-07T09:00:00Z",
+              "LastUpdatedTime": "2026-01-07T09:00:00Z"
+            },
+            "PaymentType": "CreditCard",
+            "SyncToken": "0",
+            "TotalAmt": 10,
+            "TxnDate": "2026-01-07",
+            "VendorRef": {
+              "name": "Synthetic supplier",
+              "value": "vendor-1"
+            }
+          }
+        ]
+      }
+    },
+    "7.json": {
+      "QueryResponse": {
+        "CreditCardPayment": [
+          {
+            "Amount": 10,
+            "BankAccountRef": {
+              "value": "1"
+            },
+            "CCAccountRef": {
+              "value": "8"
+            },
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "Id": "107",
+            "MetaData": {
+              "CreateTime": "2026-02-01T09:00:00Z",
+              "LastUpdatedTime": "2026-02-01T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 10,
+            "TxnDate": "2026-02-01"
+          }
+        ]
+      }
+    },
+    "8.json": {
+      "QueryResponse": {
+        "SalesReceipt": [
+          {
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "CustomerRef": {
+              "name": "Synthetic customer",
+              "value": "customer-1"
+            },
+            "DepositToAccountRef": {
+              "value": "1"
+            },
+            "Id": "108",
+            "Line": [
+              {
+                "Amount": 22,
+                "DetailType": "SalesItemLineDetail",
+                "Id": "1",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "name": "Synthetic consulting",
+                    "value": "item-1"
+                  },
+                  "TaxCodeRef": {
+                    "value": "TAX"
+                  }
+                }
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-02-02T09:00:00Z",
+              "LastUpdatedTime": "2026-02-02T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 22,
+            "TxnDate": "2026-02-02",
+            "TxnTaxDetail": {
+              "TotalTax": 2
+            }
+          }
+        ]
+      }
+    },
+    "9.json": {
+      "QueryResponse": {
+        "RefundReceipt": [
+          {
+            "CurrencyRef": {
+              "value": "USD"
+            },
+            "CustomerRef": {
+              "name": "Synthetic customer",
+              "value": "customer-1"
+            },
+            "DepositToAccountRef": {
+              "value": "1"
+            },
+            "Id": "109",
+            "Line": [
+              {
+                "Amount": 11,
+                "DetailType": "SalesItemLineDetail",
+                "Id": "1",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "name": "Synthetic consulting",
+                    "value": "item-1"
+                  },
+                  "TaxCodeRef": {
+                    "value": "TAX"
+                  }
+                }
+              }
+            ],
+            "MetaData": {
+              "CreateTime": "2026-02-03T09:00:00Z",
+              "LastUpdatedTime": "2026-02-03T09:00:00Z"
+            },
+            "SyncToken": "0",
+            "TotalAmt": 11,
+            "TxnDate": "2026-02-03",
+            "TxnTaxDetail": {
+              "TotalTax": 1
+            }
+          }
+        ]
+      }
+    }
+  },
+  "manifest": {
+    "account_map": {
+      "1": "Assets:Bank:Checking",
+      "2": "Assets:Receivable:Trade",
+      "3": "Liabilities:Payable:Trade",
+      "4": "Income:Sales",
+      "5": "Expenses:Supplies",
+      "6": "Liabilities:Tax",
+      "7": "Equity:Capital",
+      "8": "Liabilities:CreditCard:Card",
+      "9": "Assets:Bank:Savings"
+    },
+    "accounting_basis": "Accrual",
+    "currency": "USD",
+    "cutovers": {
+      "Assets:Bank:Checking": "2026-02-28",
+      "Assets:Bank:Savings": "2026-02-28",
+      "Liabilities:CreditCard:Card": "2026-02-28"
+    },
+    "environment": "sandbox",
+    "files": [
+      {
+        "kind": "accounts",
+        "path": "0.json",
+        "sha256": "503b9e671aa1277c4b94a8bed6ccf4249c4ca975165e92716cf50e5411cd72ad"
+      },
+      {
+        "entity_type": "Invoice",
+        "kind": "entities",
+        "path": "1.json",
+        "sha256": "e098135b3e05abd6d4bc68f5f5389430dd8e1e96b4626b131d8fd2bae0f46158"
+      },
+      {
+        "entity_type": "Payment",
+        "kind": "entities",
+        "path": "2.json",
+        "sha256": "abed2f75cade3af85a3710130d60ab2d7e65ef8c66d73e13a990086fad3f2eb2"
+      },
+      {
+        "entity_type": "Bill",
+        "kind": "entities",
+        "path": "3.json",
+        "sha256": "6329b4890362d61b3734865fc19f5552c5daefbb644cce27d4916eebb20a068c"
+      },
+      {
+        "entity_type": "BillPayment",
+        "kind": "entities",
+        "path": "4.json",
+        "sha256": "852c573ccd6275bf8b4b50dc4cede3f7387174e902469138b03984f7d23e8db3"
+      },
+      {
+        "entity_type": "Transfer",
+        "kind": "entities",
+        "path": "5.json",
+        "sha256": "f2b5acd51471f8ca8b3f58a0a0ab9efd0d91c10673dfb850b3365ee859f0fdec"
+      },
+      {
+        "entity_type": "Purchase",
+        "kind": "entities",
+        "path": "6.json",
+        "sha256": "8481289a54cd98c1a97130695f25cd3f544eb84ddd1229c4037fb6c7db127d30"
+      },
+      {
+        "entity_type": "CreditCardPayment",
+        "kind": "entities",
+        "path": "7.json",
+        "sha256": "c7ee394e1ff8b0ad8c9bfe2317be6d340505e3d8ece540363ef02ffa9da45e00"
+      },
+      {
+        "entity_type": "SalesReceipt",
+        "kind": "entities",
+        "path": "8.json",
+        "sha256": "99e3008539f5c48424bc86ac7861d71f352c1a1463c20dd66ac25c2c48103df7"
+      },
+      {
+        "entity_type": "RefundReceipt",
+        "kind": "entities",
+        "path": "9.json",
+        "sha256": "a8869adb5f6eab3ba7f88294590aafc0d8c6a3bcee179e5bb891dff396d52f16"
+      },
+      {
+        "entity_type": "CreditMemo",
+        "kind": "entities",
+        "path": "10.json",
+        "sha256": "175587baf5254d160a0ecad18d16e545fada92c110aa4ba391ac21d3afa55198"
+      },
+      {
+        "entity_type": "VendorCredit",
+        "kind": "entities",
+        "path": "11.json",
+        "sha256": "14dd00eb07fcd925b56c1f8970b83b494d184c79b4b8970573e47e0bd99725b4"
+      },
+      {
+        "entity_type": "Deposit",
+        "kind": "entities",
+        "path": "12.json",
+        "sha256": "bd4477fcf836f589eddaf333d7c6150907ef03cf36b18ea9c527051bc904026c"
+      },
+      {
+        "entity_type": "JournalEntry",
+        "kind": "entities",
+        "path": "13.json",
+        "sha256": "b4a4eb4f3652b729955c27fa4bd7f47f64beb769ef5c28f5e235634761102200"
+      },
+      {
+        "account_id": "1",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "14.json",
+        "sha256": "a45cea5288ed0a93d81c59e7795d9f714fb40f8c037664e5d22846c3818415c5",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "1",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "15.json",
+        "sha256": "b4acdaa74aec79d55e2f7ff1761e266cfe842f1fe3f9c2192f68462161823bdc",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "2",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "16.json",
+        "sha256": "14f0efb0b7114e6f381708f57bc187f6821f0239ccc937e177bc0c94779a6be0",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "2",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "17.json",
+        "sha256": "a342ef85b430b19f8781a4b36bcde29e6fb3d66daf9e34bd98e815b7a71eb74c",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "3",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "18.json",
+        "sha256": "a917009eec1931b848380d8ae503ed6e5a1f4a7461161156fb4d7d7734a8f3da",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "3",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "19.json",
+        "sha256": "64bdb00c34da6b44a88247d3d1cc32abc237ca010bcaec910d76b20d6cc7174d",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "4",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "20.json",
+        "sha256": "7e9f44ff54893dd7f952fce3866130648cb47a171380c6ce4bfa7c158cde25bc",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "4",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "21.json",
+        "sha256": "bfa7def153d0d0e45897b8c3e224156bb1532ddd739467e2618a2bbbcef2bdb5",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "5",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "22.json",
+        "sha256": "5863aea86a1f6b511929992de3353f1425dcb0a4b4e80840730ffd598beeab5a",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "5",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "23.json",
+        "sha256": "4de13549f6ad9f8b8d5b25564ae22aad9c7df85519a98df86d86da61e059f644",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "6",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "24.json",
+        "sha256": "c23a0dc14a845c2e38abbd111ccb08236e6902b9fd531d0a9af0a0679841a781",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "6",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "25.json",
+        "sha256": "2233cfccc64cf5dd9abc85beeac826b37a92ffa22a6278060367ea965eed214f",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "7",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "26.json",
+        "sha256": "03c96a38c431e42af2211f962c82afd825a691f5185328555ed6496ac3bb6065",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "7",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "27.json",
+        "sha256": "29d6cda4ef86dd23deb9ff1510281c087ac32bc52a8429942e40322dc9470e62",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "8",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "28.json",
+        "sha256": "10669eb57ca93bd00e61f6075de0ce40f5865dcc0464f7e5e726c79c1da3ebd7",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "8",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "29.json",
+        "sha256": "84d695c75cfe711579658d3debb43fca93eb52c528f3bb98d0f641492206a24f",
+        "to": "2026-02-28"
+      },
+      {
+        "account_id": "9",
+        "from": "2026-01-01",
+        "kind": "general_ledger",
+        "path": "30.json",
+        "sha256": "a29bf01dd0115542f378ac6d90a350630713d24fbb728ed08d0e7192410f5c25",
+        "to": "2026-01-31"
+      },
+      {
+        "account_id": "9",
+        "from": "2026-02-01",
+        "kind": "general_ledger",
+        "path": "31.json",
+        "sha256": "aaba970bb30b7c61e71f7c57d8156cb90250f1ef254c8a4e2fc9a10264965935",
+        "to": "2026-02-28"
+      },
+      {
+        "kind": "opening_trial_balance",
+        "path": "32.json",
+        "sha256": "a2800f9c09d07727c87699efab72c25598897e6a17ac8f497240a66a54efed1e"
+      },
+      {
+        "kind": "closing_trial_balance",
+        "path": "33.json",
+        "sha256": "9514296c684168d27a925841388fad6ab02d36ba07a1df50c831948a9fd5a65b"
+      },
+      {
+        "kind": "profit_and_loss",
+        "path": "34.json",
+        "sha256": "b13996ed93269bae1a09b517d56b24570262aaa7402dfe93a72c0c3dd7857146"
+      },
+      {
+        "kind": "balance_sheet",
+        "path": "35.json",
+        "sha256": "2914b2999435234831c3eba22e7934f9316abc8d960aea6a04ecc56230b5c7e4"
+      }
+    ],
+    "format": "slashbooks-qbo-history-v1",
+    "history_from": "2026-01-01",
+    "history_to": "2026-02-28",
+    "realm_id": "123"
+  },
+  "synthetic": true
+}

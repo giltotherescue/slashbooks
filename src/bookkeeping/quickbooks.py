@@ -1727,7 +1727,7 @@ def _active_openings(entries, reversed_ids, sources=("quickbooks-opening",)) -> 
 
 
 # Opening entries that a statement opening must not stack on (``statement-opening`` has its own replace rules).
-OTHER_OPENING_SOURCES = ("quickbooks-opening", "accrual-opening", "accrual-tracking-opening")
+OTHER_OPENING_SOURCES = ("qbo-history-opening", "quickbooks-opening", "accrual-opening", "accrual-tracking-opening")
 # Opening entries that a QuickBooks opening must not stack on, whatever their date.
 NON_QUICKBOOKS_OPENING_SOURCES = ("statement-opening", "accrual-opening", "accrual-tracking-opening")
 
@@ -1783,6 +1783,9 @@ def check_opening_overlap(entity, cutover: date, proposed_postings) -> tuple[str
     """
     from .ledger.store import LedgerStore, default_store_path
 
+    from .quickbooks_history import owned
+    if any(owned(entity, p["account"], cutover) for p in proposed_postings):
+        return "conflict", "QuickBooks history already owns these starting balances; a new opening would count them twice"
     store = LedgerStore(default_store_path(entity.path))
     entries = store.load_entries() if store.path.exists() else []
     reversed_ids = _exact_reversal_targets(entries)
@@ -2457,6 +2460,15 @@ def add_parser(subparsers) -> None:
     inv_parser.add_argument("--fiscal-start", type=date.fromisoformat,
                             help="Evidenced fiscal start for accrual opening coverage")
 
+    for name in ('buffer-decisions', 'resolve-buffer', 'release-buffer'):
+        buffer_parser = qb_sub.add_parser(name, help='Review QuickBooks intake buffer')
+        buffer_parser.add_argument('--entity', type=Path, required=True, dest='entity_path')
+        buffer_parser.add_argument('--json', action='store_true', dest='as_json')
+        if name == 'resolve-buffer':
+            buffer_parser.add_argument('--source-id', required=True)
+            buffer_parser.add_argument('--decision', choices=['release','history-match'], required=True)
+            buffer_parser.add_argument('--history-source-id')
+
     # import-opening <folder> --entity <path> --cutover YYYY-MM-DD
     imp_parser = qb_sub.add_parser(
         "import-opening",
@@ -2508,9 +2520,22 @@ def run(args) -> int:
     """Execute the qb subcommand described by *args*."""
     from datetime import datetime
 
-    if args.qb_command in ("sync-import", "sync-opening", "sync-rules"):
+    if args.qb_command in ("sync-import", "sync-opening", "sync-rules", "sync-transactions"):
         from .quickbooks_sync import run as run_sync
         return run_sync(args)
+
+    if args.qb_command in ('buffer-decisions', 'resolve-buffer', 'release-buffer'):
+        from .entity import load_entity
+        from .quickbooks_history import list_buffer_decisions, resolve_buffer_decision, release_due_buffer
+        entity = load_entity(args.entity_path)
+        if args.qb_command == 'buffer-decisions':
+            result = list_buffer_decisions(entity)
+        elif args.qb_command == 'resolve-buffer':
+            result = resolve_buffer_decision(entity,args.source_id,args.decision,args.history_source_id)
+        else:
+            result = release_due_buffer(entity)
+        print(json.dumps(result, indent=2))
+        return 0
 
     if args.qb_command == "agreement":
         from .quickbooks_agreement import run as run_agreement
