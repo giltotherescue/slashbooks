@@ -123,19 +123,6 @@ class DuplicateCases(LagCases):
         resolve_buffer_decision(self.entity, 'plaid:1', 'release')
         self.assertIn(self.state('1'), {'posted', 'pending'})
 
-    def test_reversing_a_release_that_posted_is_refused_and_changes_nothing(self):
-        self.history(self.DEPOSIT)
-        self.ingest(self.row('1', '2026-03-04', '30'))
-        resolve_buffer_decision(self.entity, 'plaid:1', 'release')
-        if self.state('1') == 'pending':
-            self.confirm_pending('plaid:1')
-        self.assertEqual(self.state('1'), 'posted')
-        digest = LedgerStore(default_store_path(self.entity.path)).content_digest()
-        with self.assertRaisesRegex(ValueError, 'already posted'):
-            reverse_buffer_decision(self.entity, 'plaid:1')
-        self.assertEqual(LedgerStore(default_store_path(self.entity.path)).content_digest(), digest)
-        self.assertEqual(HistoryIndex(self.entity).decision('plaid:1')['decision'], 'release')
-
     def test_reversing_a_release_that_waits_in_the_queue_is_refused(self):
         self.history(self.DEPOSIT)
         self.ingest(self.row('1', '2026-03-04', '30'))

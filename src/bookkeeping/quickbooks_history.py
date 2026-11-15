@@ -961,6 +961,9 @@ def resolve_buffer_decision(entity, source_id, decision, history_source_id=None,
             if not matched or matched['decision'] not in ORIGINAL_KINDS or matched['account'] != row['account']:
                 raise ValueError('Name a bank row on the same account that was matched to QuickBooks history, '
                                  'released as new, or marked as already in the starting balance')
+        if decision == 'release' and not previous and LedgerStore(default_store_path(entity.path)).source_exists(source_id):
+            raise ValueError('This row was posted and then reversed. The same source ID cannot be posted again. '
+                             'If the row is new, post a journal entry for it; otherwise choose a different answer.')
         resolved_at = _buffer_now(now).isoformat()
         record = {k:row[k] for k in ('source_id','account','date','amount','transaction')}
         record.update(decision=decision, history_source_id=history_source_id, resolved_at=resolved_at)
@@ -1010,9 +1013,10 @@ def reverse_buffer_decision(entity, source_id, reason='', now=None):
       row is no longer recognized as already handled. Every copy that was recorded for it (and every
       ``copy`` decision for it) is no longer a copy: those rows are held for a person again
       (``reopened_rows``).
-    - ``release``: refused when the row is already posted or waiting in the review queue. Reverse the
-      posted entry the normal way first (or withdraw the queued item), because a reversal here must
-      not change the ledger behind the books' back. A release that posted nothing is reversed.
+    - ``release``: when the row is already posted, the posted entry is reversed first (the engine's own
+      reversing entry, which keeps the original) and then the decision is reversed, so the row is held
+      again and the person can decide again. A row that waits in the review queue is refused: withdraw
+      that item first. A release that posted nothing is simply reversed.
     """
     from .ledger.importer import _entity_write_lock, _load_pending_categorization
     with _entity_write_lock(entity.path):
@@ -1021,18 +1025,27 @@ def reverse_buffer_decision(entity, source_id, reason='', now=None):
         if decision is None:
             raise ValueError('There is no buffer decision to reverse for this source ID')
         store = LedgerStore(default_store_path(entity.path))
+        stamp = _buffer_now(now).isoformat()
+        reversing_entry = None
         if decision['decision'] == 'release':
-            if any(e.source_id == source_id for e in store.load_entries()):
-                raise ValueError('This row was released and is already posted. Reverse the posted entry the normal way '
-                                 'first (books ledger reverse), then reverse this decision.')
             if any(str(t.get('id')) == source_id for t in _load_pending_categorization(entity)):
                 raise ValueError('This row was released and is waiting in the review queue. Withdraw that item first, '
                                  'then reverse this decision.')
-        stamp = _buffer_now(now).isoformat()
+            from .ledger.importer import _find_live_entry, reverse_entry
+            try:
+                _find_live_entry(store, source_id)
+                live = True
+            except ValueError:
+                live = False
+            if live:
+                # The person's own reversal of the posted entry: allowed by the write guard, and done first.
+                # If the next step fails, run this command again: the entry is no longer live, so only the
+                # decision is reversed.
+                reversing_entry = reverse_entry(entity, source_id, 'qbo-buffer-reversal', ts=stamp)
         record = {'source_id': source_id, 'reversed_decision': decision['decision'],
                   'history_source_id': decision.get('history_source_id'), 'account': decision['account'],
                   'date': decision['date'], 'amount': decision['amount'], 'reason': str(reason or '')[:500],
-                  'reversed_at': stamp}
+                  'reversed_at': stamp, 'entry_reversed': reversing_entry is not None}
         # Rows recognized as copies of a matched bank row were never posted. When the match is undone they
         # are no longer copies: each one is held for a person again.
         reopened = []
@@ -1051,7 +1064,7 @@ def reverse_buffer_decision(entity, source_id, reason='', now=None):
         _mark_candidates(entity, {source_id: {'status': 'duplicate-candidate', 'history_source_id': None, 'resolved_at': None}})
         _hold_again(entity, [index.copies[c] for c in reopened], stamp)
         return {'source_id': source_id, 'reversed_decision': decision['decision'], 'status': 'duplicate-candidate',
-                'reopened_rows': reopened, 'reversed_at': stamp}
+                'entry_reversed': reversing_entry is not None, 'reopened_rows': reopened, 'reversed_at': stamp}
 
 
 def record_history_copies(entity, copies):

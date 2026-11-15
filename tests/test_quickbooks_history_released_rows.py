@@ -54,6 +54,48 @@ class ReleasedRowCases(SecondRowCases):
         self.statement(('2026-01-10', 'COFFEE', '-5'))
         self.assertEqual(self.bank(), before)
 
+    # P1-3: a wrong release can be undone
+
+    def test_a_wrong_release_is_undone_with_reverse_buffer_and_the_row_is_held_again(self):
+        from bookkeeping.quickbooks_history import _audit, reverse_buffer_decision
+        self.history([])
+        self.ingest(self.row('r', '2026-01-03', '30'))
+        resolve_buffer_decision(self.entity, 'plaid:r', 'release')
+        self.settle('plaid:r')
+        self.assertEqual(self.bank(), OPENING + 30)
+        result = reverse_buffer_decision(self.entity, 'plaid:r', 'released by mistake')
+        self.assertTrue(result['entry_reversed'])
+        self.assertEqual(self.bank(), OPENING)
+        self.assertEqual([r['source_id'] for r in list_buffer_decisions(self.entity)], ['plaid:r'])
+        events = [e for _, e in _audit(self.entity, ('qbo-buffer-decision-reversed',))]
+        self.assertEqual((events[-1]['reversed_decision'], events[-1]['entry_reversed'], events[-1]['reason']), ('release', True, 'released by mistake'))
+        # The same source ID cannot be posted again: the answer must not silently post nothing.
+        with self.assertRaisesRegex(ValueError, 'posted and then reversed'):
+            resolve_buffer_decision(self.entity, 'plaid:r', 'release')
+        self.assertEqual(self.bank(), OPENING)
+
+    def test_a_person_can_reverse_the_posted_entry_directly_and_then_reverse_the_decision(self):
+        from bookkeeping.ledger.importer import reverse_entry
+        from bookkeeping.quickbooks_history import reverse_buffer_decision
+        self.history([])
+        self.ingest(self.row('r', '2026-01-03', '30'))
+        resolve_buffer_decision(self.entity, 'plaid:r', 'release')
+        self.settle('plaid:r')
+        reverse_entry(self.entity, 'plaid:r', 'undo')
+        self.assertEqual(self.bank(), OPENING)
+        self.assertFalse(reverse_buffer_decision(self.entity, 'plaid:r')['entry_reversed'])
+        self.assertEqual(self.bank(), OPENING)
+
+    def test_a_release_that_waits_in_the_review_queue_is_refused(self):
+        from bookkeeping.quickbooks_history import reverse_buffer_decision
+        self.history([])
+        self.ingest(self.row('q', '2026-01-03', '30'))
+        resolve_buffer_decision(self.entity, 'plaid:q', 'release')
+        if self.state('q') != 'pending':
+            self.skipTest('this basis posts the released row at once')
+        with self.assertRaisesRegex(ValueError, 'review queue'):
+            reverse_buffer_decision(self.entity, 'plaid:q')
+
     # P3 of the previous review: named released rows in a held row
 
     def test_three_rows_two_legs_the_held_row_names_the_released_row(self):
