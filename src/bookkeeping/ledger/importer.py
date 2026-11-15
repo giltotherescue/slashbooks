@@ -106,6 +106,8 @@ class ImportResult:
     # Rows dated before their account's opening balance entry: not posted and not queued,
     # because the opening balance already includes them (see statement_opening).
     before_opening: list[dict[str, Any]] = field(default_factory=list)
+    # Rows recognized as copies of a bank row that a person matched to QuickBooks history: not posted, not held.
+    matched_to_history: list[dict[str, Any]] = field(default_factory=list)
     orphaned_tmps: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -603,6 +605,7 @@ def import_transactions(
     intake_only: bool = False,
     cutover_hold_ids: frozenset[str] = frozenset(),
     context_only_cutovers: dict[str, str] | None = None,
+    history_copies: bool = True,
 ) -> ImportResult:
     """Import transactions while serializing staging, queue, and ledger writes.
 
@@ -621,7 +624,7 @@ def import_transactions(
     with _entity_write_lock(entity.path):
         result = _import_transactions_unlocked(
             entity, normalized_txns, session_id, categorizer, ts, session_date,
-            legacy_duplicate_guard, intake_only, cutover_hold_ids, context_only_cutovers or {},
+            legacy_duplicate_guard, intake_only, cutover_hold_ids, context_only_cutovers or {}, history_copies,
         )
     from ..work import observe_import
     observe_import(result.skipped_duplicate)
@@ -639,6 +642,7 @@ def _import_transactions_unlocked(
     intake_only: bool = False,
     cutover_hold_ids: frozenset[str] = frozenset(),
     context_only_cutovers: dict[str, str] | None = None,
+    history_copies: bool = True,
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -758,6 +762,26 @@ def _import_transactions_unlocked(
                 history_hold_ids.add(str(txn.get("id") or ""))
         except (ValueError, TypeError):
             continue
+    history_matched: dict[str, dict[str, Any]] = {}
+    if history_copies and history_receipts and any(d["decision"] == "history-match" for d in history_index.decisions.values()):
+        from ..source_ids import source_family
+        from ..statement_import import history_duplicate_of
+        taken: set[str] = set()
+        for txn in sorted(normalized_txns, key=lambda t: (str(t.get("date") or ""), str(t.get("id") or ""))):
+            sid = str(txn.get("id") or "")
+            if not sid or history_index.decision(sid) or txn.get("pending") or any(staging.is_seen(v) for v in source_id_variants(sid)):
+                continue
+            try:
+                account = _ledger_account_for_txn(txn, entity.entity_config.get("bank_account_mappings"),
+                                                   entity.entity_config.get("csv_account_mappings"))
+                amount = _history_amount(txn)
+            except (ValueError, TypeError, ArithmeticError):
+                continue
+            original = history_duplicate_of(history_index, account, str(txn.get("csvMappingKey") or source_family(sid)), txn, taken)
+            if original:
+                taken.add(original)
+                history_matched[sid] = {"source_id": sid, "duplicate_of": original, "account": account,
+                                       "date": str(txn.get("date") or "")[:10], "amount": format(amount, "f")}
     cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers) | frozenset(history_hold_ids)
     # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
     # later row is judged as in review mode. It may use up only an entry dated on or before its cutover
@@ -824,6 +848,10 @@ def _import_transactions_unlocked(
         # A BankSync row has two spellings (``abc`` and ``banksync:abc``); every
         # lookup tries both.
         spellings = source_id_variants(source_id)
+        if source_id in history_matched:
+            result.skipped_duplicate += 1
+            result.matched_to_history.append(history_matched[source_id])
+            continue
         history_choice = history_index.decision(source_id) if history_receipts else None
         if history_choice and history_choice["decision"] == "history-match":
             result.skipped_duplicate += 1
@@ -1121,7 +1149,7 @@ def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
             {**txn, "id": source_id, "date": day, "description": text})
     holds: dict[str, dict[str, Any]] = {}
     for (account, family), rows in groups.items():
-        plan = plan_duplicates(entity, rows, account, family, pool_limits)
+        plan = plan_duplicates(entity, rows, account, family, pool_limits, history_copies=False)
         for row in plan["import"]:
             # Dated on or before the cutover and not matched to anything: a late row the old
             # source may never have sent. A person decides; it is never dropped or posted.
