@@ -729,6 +729,14 @@ def _match_pool(pool: list[JsonObject], used: set[int], day: date, amount: Decim
     return match, rule
 
 
+def _history_allowed(index: Any, sid: str, account: str, txn: JsonObject) -> list[JsonObject]:
+    """The answers the engine accepts for a row held for QuickBooks history (see allowed_decisions)."""
+    from .quickbooks_history import allowed_decisions
+    amount = _txn_amount(txn)
+    return allowed_decisions(index, {"source_id": sid, "account": account, "date": txn["date"]}, amount,
+                             index.candidates(account, txn["date"], amount))
+
+
 def _statement_period(statement: JsonObject, confirmed_period: tuple[str, str] | None) -> tuple[date, date]:
     """The days a statement can show: the period a person confirmed, else its printed period, else the
     first and last row date. A statement cannot contain a bank row outside it."""
@@ -813,6 +821,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                 continue
             if pair:
                 plan["held"].append({"source_id": sid, "existing_source_id": "", "account": ledger_account,
+                    "allowed_decisions": _history_allowed(history_index, sid, ledger_account, txn),
                     "date": txn["date"], "amount": format(_txn_amount(txn), "f"), "description": txn["description"],
                     "match_rule": "quickbooks_history_" + ("possible_second_row" if pair[0] == "second_row" else pair[0]),
                     "history_hold_rule": "possible_second_row" if pair[0] == "second_row" else pair[0],
@@ -823,6 +832,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                      if history_receipts and not choice else None)
         if ownership:
             plan["held"].append({"source_id": sid, "existing_source_id": "", "account": ledger_account,
+                "allowed_decisions": _history_allowed(history_index, sid, ledger_account, txn),
                 "date": txn["date"], "amount": format(_txn_amount(txn), "f"),
                 "description": txn["description"], "match_rule": "quickbooks_history_ownership",
                 "held_for_quickbooks_history": True, "transaction": txn, "status": "duplicate-candidate"})

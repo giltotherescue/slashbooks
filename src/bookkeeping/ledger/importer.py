@@ -772,7 +772,7 @@ def _import_transactions_unlocked(
     history_matched: dict[str, dict[str, Any]] = {}
     history_second: dict[str, dict[str, Any]] = {}
     if history_copies and history_receipts and any(d["decision"] in ORIGINAL_KINDS for d in history_index.decisions.values()):
-        from ..quickbooks_history import channel_of, record_history_copies
+        from ..quickbooks_history import allowed_decisions, channel_of, record_history_copies
         taken: dict[str, set[str]] = {}
         fresh: list[dict[str, Any]] = []
         for txn in sorted(normalized_txns, key=lambda t: (str(t.get("date") or ""), str(t.get("id") or ""))):
@@ -792,6 +792,8 @@ def _import_transactions_unlocked(
                 continue
             row = {"source_id": sid, "duplicate_of": pair[1], "account": account,
                    "date": str(txn.get("date") or "")[:10], "amount": format(amount, "f")}
+            row_allowed = allowed_decisions(history_index, {"source_id": sid, "account": account, "date": row["date"]}, amount,
+                                            history_index.candidates(account, row["date"], amount))
             if pair[0] == "copy":
                 history_matched[sid] = row
                 if not known:
@@ -801,7 +803,7 @@ def _import_transactions_unlocked(
                                   "description": str(txn.get("reference") or txn.get("description") or ""), "transaction": dict(txn)})
             else:
                 history_second[sid] = {**row, "matched_original": pair[1], "description": str(txn.get("description") or ""),
-                                       "transaction": dict(txn), "hold_rule": pair[0]}
+                                       "transaction": dict(txn), "hold_rule": pair[0], "allowed_decisions": row_allowed}
                 history_hold_ids.add(sid)
         record_history_copies(entity, fresh)
     result.possible_second_rows = [{k: v for k, v in r.items() if k not in {"transaction", "hold_rule"}}

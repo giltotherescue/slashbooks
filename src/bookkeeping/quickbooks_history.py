@@ -19,6 +19,8 @@ FORMAT = 'slashbooks-qbo-history-v1'
 HISTORY_BANK_LAG_DAYS = 45
 LEG_LOOKAHEAD_DAYS = 3
 SETTLEMENT_DAYS = 3
+# A deposit in transit or a check outstanding at the opening clears within this many days of the history start.
+OPENING_CLEARING_DAYS = 45
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
 
@@ -773,6 +775,42 @@ class HistoryIndex:
         return None
 
 
+def allowed_decisions(index, row, amount, candidates, store=None):
+    """The exact answers the engine accepts for a held row now, with the IDs it accepts.
+
+    ``release`` (this is new): always, unless the row was already posted and reversed (the same source ID
+    cannot post again). ``history-match``: only with unmatched legs of the same account, amount and direction
+    (``history_source_ids``). ``copy``: only with a handled bank row on the same account of the same amount
+    within three days (``original_source_ids``). ``in-opening``: a row on a mapped bank or card account,
+    dated from the history start up to OPENING_CLEARING_DAYS after it, with no candidate leg: a deposit in
+    transit or an outstanding check at the opening clears in that time. The engine cannot see the opening
+    balance's contents, so the person decides; a row that an unmatched leg could explain uses history-match.
+    """
+    allowed = []
+    sid = row['source_id']
+    if store is None or not store.source_exists(sid):
+        allowed.append({'decision': 'release'})
+    if candidates:
+        allowed.append({'decision': 'history-match', 'history_source_ids': [c['source_id'] for c in candidates]})
+    originals = []
+    try:
+        day = date.fromisoformat(str(row['date'])[:10])
+    except (KeyError, ValueError):
+        day = None
+    if day is not None and amount is not None:
+        for d in index.decisions.values():
+            if (d['decision'] in ORIGINAL_KINDS and d['account'] == row['account'] and d['source_id'] != sid
+                    and Decimal(str(d['amount'])) == amount
+                    and abs((date.fromisoformat(str(d['date'])[:10]) - day).days) <= SETTLEMENT_DAYS):
+                originals.append(d['source_id'])
+    if originals:
+        allowed.append({'decision': 'copy', 'original_source_ids': sorted(originals)})
+    start = index.starts.get(row['account'])
+    if (day is not None and start and not candidates and start <= day <= start + timedelta(days=OPENING_CLEARING_DAYS)):
+        allowed.append({'decision': 'in-opening'})
+    return allowed
+
+
 def is_history_hold(entity, candidate):
     """True for a duplicate-review item that the history holds (it needs the buffer commands)."""
     if not candidate.get('account'):
@@ -872,6 +910,7 @@ def list_buffer_decisions(entity, now=None, _index=None):
         result.append({**row, 'held':{k:row[k] for k in ('account','date','amount','description')},
                        'held_for_quickbooks_history':True, 'hold_rule':rule, 'history_matches':matches,
                        'candidate_legs':candidates, 'matched_original':matched_original, 'released_rows':released,
+                       'allowed_decisions':allowed_decisions(index, row, amount, candidates, LedgerStore(default_store_path(entity.path))),
                        'hold_until':deadline.isoformat()})
     return result
 
@@ -957,18 +996,20 @@ def resolve_buffer_decision(entity, source_id, decision, history_source_id=None,
             if previous:
                 return previous
             raise ValueError('No open QuickBooks buffer row')
-        if decision == 'history-match':
-            # The leg must have the row's account, amount and direction and be unmatched, within the date window.
-            if history_source_id not in {c['source_id'] for c in row['candidate_legs']}:
+        if not previous:
+            # The host shows only the answers in row['allowed_decisions']; the engine refuses any other.
+            allowed = {a['decision']: a for a in row['allowed_decisions']}
+            if decision == 'release' and decision not in allowed:
+                raise ValueError('This row was posted and then reversed. The same source ID cannot be posted again. '
+                                 'If the row is new, post a journal entry for it; otherwise choose a different answer.')
+            if decision not in allowed:
+                raise ValueError(f"The answer {decision} is not allowed for this row now. Allowed: "
+                                 f"{', '.join(allowed) or 'none'}.")
+            if decision == 'history-match' and history_source_id not in allowed[decision]['history_source_ids']:
                 raise ValueError('Select an unmatched history journal entry with the same account, amount and direction')
-        if decision == 'copy':
-            matched = index.decisions.get(original_source_id or '')
-            if not matched or matched['decision'] not in ORIGINAL_KINDS or matched['account'] != row['account']:
-                raise ValueError('Name a bank row on the same account that was matched to QuickBooks history, '
-                                 'released as new, or marked as already in the starting balance')
-        if decision == 'release' and not previous and LedgerStore(default_store_path(entity.path)).source_exists(source_id):
-            raise ValueError('This row was posted and then reversed. The same source ID cannot be posted again. '
-                             'If the row is new, post a journal entry for it; otherwise choose a different answer.')
+            if decision == 'copy' and original_source_id not in allowed[decision]['original_source_ids']:
+                raise ValueError('Name a bank row on the same account and amount, within three days, that was matched to '
+                                 'QuickBooks history, released as new, or marked as already in the starting balance')
         resolved_at = _buffer_now(now).isoformat()
         record = {k:row[k] for k in ('source_id','account','date','amount','transaction')}
         record.update(decision=decision, history_source_id=history_source_id, resolved_at=resolved_at)
