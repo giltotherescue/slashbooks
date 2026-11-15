@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Hold a bank or card row that clears up to 45 days after the QuickBooks history
+  end when an unmatched QuickBooks leg has the same amount and direction. It was
+  held for three days only, so a deposit in transit or an outstanding check could
+  post twice. `books qb buffer-decisions` now shows `candidate_legs` and
+  `hold_rule`, `history-match` checks amount and direction, a released row is
+  `released-to-intake`, and `release-buffer` no longer slows down with many rows
+  and reports per-row `errors`.
 - Add an optional native QuickBooks Online history import. `books qb
   sync-transactions MANIFEST --entity BOOKS` previews, and `--apply --plan-hash`
   records, past transactions from complete raw QuickBooks reports (general

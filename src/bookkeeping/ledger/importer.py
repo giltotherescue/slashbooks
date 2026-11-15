@@ -738,15 +738,23 @@ def _import_transactions_unlocked(
     # generic ingest), so no learned rule can post it. Without the guard only those rows
     # are planned; every other row follows the unguarded path.
     context_cutovers = dict(context_only_cutovers or {})
-    from ..quickbooks_history import owned, receipts, buffer_decision
-    history_receipts = receipts(entity)
+    from ..quickbooks_history import HistoryIndex
+    from ..statement_import import _txn_amount as _history_amount
+    history_index = HistoryIndex(entity)
+    history_receipts = history_index.receipts
     history_hold_ids = set()
     # Without a recorded QuickBooks history this loop does nothing, so intake is unchanged.
     for txn in (normalized_txns if history_receipts else ()):
         try:
             account = _ledger_account_for_txn(txn, entity.entity_config.get("bank_account_mappings"),
                                                entity.entity_config.get("csv_account_mappings"))
-            if not buffer_decision(entity, str(txn.get("id") or "")) and owned(entity, account, txn.get("date", ""), nearby=True, _receipts=history_receipts):
+            if history_index.decision(str(txn.get("id") or "")):
+                continue
+            try:
+                amount = _history_amount(txn)
+            except (ValueError, ArithmeticError):
+                amount = None
+            if history_index.holds(account, txn.get("date", ""), amount):
                 history_hold_ids.add(str(txn.get("id") or ""))
         except (ValueError, TypeError):
             continue
@@ -766,6 +774,9 @@ def _import_transactions_unlocked(
         [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids,
         {sid: date.fromisoformat(day) for sid, day in context_cutovers.items()})
         if guarded else {})
+    for hold_id in history_hold_ids:
+        if feed_holds.get(hold_id) is not None:
+            feed_holds[hold_id]["held_for_quickbooks_history"] = True
     # A row that is already held for review stays held on every later sync, under
     # either spelling of its ID, until a person resolves it.
     open_hold_ids = ({str(c.get("source_id") or "") for c in _load_json_list(
@@ -813,7 +824,7 @@ def _import_transactions_unlocked(
         # A BankSync row has two spellings (``abc`` and ``banksync:abc``); every
         # lookup tries both.
         spellings = source_id_variants(source_id)
-        history_choice = buffer_decision(entity, source_id) if history_receipts else None
+        history_choice = history_index.decision(source_id) if history_receipts else None
         if history_choice and history_choice["decision"] == "history-match":
             result.skipped_duplicate += 1
             continue
