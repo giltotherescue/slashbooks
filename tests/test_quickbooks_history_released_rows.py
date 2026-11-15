@@ -1,0 +1,113 @@
+"""A bank row released as new is an ordinary posted bank row: its copies are recognized or held; it can be reversed
+by a person; a row already in the starting balance can be marked so. Synthetic data only."""
+from datetime import date
+from decimal import Decimal
+import unittest
+
+from bookkeeping.ledger.store import LedgerStore, default_store_path
+from bookkeeping.quickbooks_history import (HistoryIndex, list_buffer_decisions, resolve_buffer_decision)
+from bookkeeping.statement_import import plan_duplicates
+
+from test_quickbooks_history_second_rows import SecondRowCases
+from test_quickbooks_history_duplicates import CHECKING
+
+OPENING = Decimal('1500')
+
+
+class ReleasedRowCases(SecondRowCases):
+    START = OPENING  # no QuickBooks bank activity in these histories
+
+    def released_statement_row(self, day='2026-01-10', desc='COFFEE', amount='-5'):
+        self.history([])
+        self.statement((day, desc, amount))
+        sid = list_buffer_decisions(self.entity)[0]['source_id']
+        resolve_buffer_decision(self.entity, sid, 'release')
+        self.settle(sid)
+        self.assertEqual(self.bank(), OPENING + Decimal(amount))
+        return sid
+
+    # P1-2: the other channel's copy of a released row
+
+    def test_the_exact_copy_of_a_released_row_through_the_other_channel_is_recognized(self):
+        sid = self.released_statement_row()
+        result = self.ingest({**self.row('coffee', '2026-01-10', '-5'), 'description': 'COFFEE'})
+        self.assertEqual([m['duplicate_of'] for m in result.matched_to_history], [sid])
+        self.assertEqual((result.new_entries, result.duplicate_candidates), (0, 0))
+        self.assertEqual(self.bank(), OPENING - 5)
+
+    def test_a_near_copy_of_a_released_row_is_held_naming_it_and_can_be_called_a_copy(self):
+        sid = self.released_statement_row()
+        self.ingest(self.row('feedcopy', '2026-01-10', '-5'))  # another description: the ordinary rule only pairs by amount
+        row, = list_buffer_decisions(self.entity)
+        self.assertEqual(row['hold_rule'], 'possible_copy')
+        self.assertEqual((row['matched_original']['source_id'], row['matched_original']['kind']), (sid, 'release'))
+        self.assertEqual(row['released_rows'][0]['source_id'], sid)
+        self.assertEqual(row['released_rows'][0]['posted_entry'], sid)
+        self.assertEqual(self.bank(), OPENING - 5)
+        resolve_buffer_decision(self.entity, 'plaid:feedcopy', 'copy')
+        self.assertEqual(list_buffer_decisions(self.entity), [])
+        self.assertEqual(self.bank(), OPENING - 5)
+
+    def test_a_statement_sent_again_after_the_release_posts_nothing(self):
+        self.released_statement_row()
+        before = self.bank()
+        self.statement(('2026-01-10', 'COFFEE', '-5'))
+        self.assertEqual(self.bank(), before)
+
+    # P3 of the previous review: named released rows in a held row
+
+    def test_three_rows_two_legs_the_held_row_names_the_released_row(self):
+        self.history([('2026-02-27', {'1': '30', '4': '-30'}), ('2026-02-20', {'1': '30', '4': '-30'})])
+        base = self.bank()
+        self.ingest(self.row('1', '2026-03-04', '30'), self.row('2', '2026-03-04', '30'), self.row('3', '2026-03-04', '30'))
+        for name in ('1', '2'):
+            held = {r['source_id']: r for r in list_buffer_decisions(self.entity)}
+            resolve_buffer_decision(self.entity, 'plaid:' + name, 'history-match', held['plaid:' + name]['candidate_legs'][0]['source_id'])
+        resolve_buffer_decision(self.entity, 'plaid:3', 'release')
+        self.settle('plaid:3')
+        self.assertEqual(self.bank(), base + 30)
+        # A statement arrives with a row that is really the copy of the released row.
+        self.statement(('2026-03-04', 'STATEMENT LINE', '30'))
+        row, = list_buffer_decisions(self.entity)
+        self.assertEqual(row['hold_rule'], 'possible_copy')
+        self.assertEqual([(r['source_id'], r['date'], r['amount'], r['posted_entry']) for r in row['released_rows']],
+                         [('plaid:3', '2026-03-04', '30.00', 'plaid:3')])
+        self.assertEqual(self.bank(), base + 30)
+
+
+for _name in [n for n in dir(SecondRowCases) if n.startswith('test_') and n not in ReleasedRowCases.__dict__]:
+    setattr(ReleasedRowCases, _name, None)
+
+
+class AccrualReleasedTests(ReleasedRowCases, unittest.TestCase):
+    basis = 'Accrual'
+
+
+class CashReleasedTests(ReleasedRowCases, unittest.TestCase):
+    basis = 'Cash'
+
+
+class OrdinaryPoolTests(unittest.TestCase):
+    def test_the_ordinary_pool_holds_a_near_copy_of_a_posted_row_with_no_history_at_all(self):
+        # What the ordinary path does for a pair like the released-row case: hold it as a possible duplicate
+        # that names the posted row. (With history, the history hold also names the released row.)
+        import tempfile
+        from pathlib import Path
+        from bookkeeping.entity import init_entity, load_entity
+        from bookkeeping.ledger.importer import import_transactions
+        with tempfile.TemporaryDirectory() as temp:
+            init_entity(Path(temp) / 'books', name='Synthetic ordinary pool', basis='cash')
+            entity = load_entity(Path(temp) / 'books')
+            entity.entity_config['bank_account_mappings'] = {'feed-1': CHECKING}
+            feed = {'id': 'plaid:posted', 'date': '2026-01-10', 'amount': '-5', 'description': 'COFFEE', 'accountId': 'feed-1',
+                    'accountName': 'x', 'pending': False}
+            import_transactions(entity, [feed], 's', categorizer=lambda t: ('Expenses:Supplies', 'auto'))
+            row = {'id': 'stmt:near', 'date': '2026-01-11', 'description': 'OTHER TEXT', 'amount': '-5'}
+            plan = plan_duplicates(entity, [row], CHECKING, 'statement:other')
+            self.assertEqual([(h['source_id'], h['existing_source_id'], h['match_rule']) for h in plan['held']],
+                             [('stmt:near', 'plaid:posted', 'same_amount_within_3_days_other_source')])
+            self.assertEqual(plan['import'], [])
+
+
+if __name__ == '__main__':
+    unittest.main()

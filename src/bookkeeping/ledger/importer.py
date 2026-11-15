@@ -766,9 +766,10 @@ def _import_transactions_unlocked(
                 history_hold_ids.add(str(txn.get("id") or ""))
         except (ValueError, TypeError):
             continue
+    from ..quickbooks_history import ORIGINAL_KINDS
     history_matched: dict[str, dict[str, Any]] = {}
     history_second: dict[str, dict[str, Any]] = {}
-    if history_copies and history_receipts and any(d["decision"] == "history-match" for d in history_index.decisions.values()):
+    if history_copies and history_receipts and any(d["decision"] in ORIGINAL_KINDS for d in history_index.decisions.values()):
         from ..quickbooks_history import channel_of, record_history_copies
         taken: dict[str, set[str]] = {}
         fresh: list[dict[str, Any]] = []
