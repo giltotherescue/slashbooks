@@ -708,19 +708,6 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(sorted(p.amount for p in entry.postings),[Decimal(-10),Decimal(4),Decimal(6)])
         self.assertEqual(sum(p.amount for p in entry.postings),0)
 
-    def test_opening_with_prior_year_income_that_the_closing_report_reset_does_not_tie(self):
-        def prior_year_income(raw):
-            rows=raw['Rows']['Row']
-            next(r for r in rows if r['ColData'][0]['id']=='7')['ColData'][2]['value']='500'
-            rows.append({'ColData':[{'value':'Synthetic','id':'4'},{'value':'0'},{'value':'500'}]})
-        self.mutate_file('opening_trial_balance',prior_year_income)
-        store=LedgerStore(default_store_path(self.entity.path));before=store.content_digest()
-        plan=sync_transactions(self.entity,self.path)
-        self.assertFalse(plan['ready'])
-        self.assertEqual({b['account_id'] for b in plan['blockers'] if b['code']=='control_mismatch'},{'4','7'})
-        self.assertFalse(sync_transactions(self.entity,self.path,apply=True,plan_hash=plan['plan_hash'])['applied'])
-        self.assertEqual(store.content_digest(),before)
-
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()

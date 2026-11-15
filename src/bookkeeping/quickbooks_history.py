@@ -275,6 +275,15 @@ def _plan(entity, path):
         raise ValueError('Every bank and card account needs the explicit history-end cutover')
     singles = {}
     groups, windows, movement = {}, defaultdict(list), defaultdict(Decimal)
+    # QuickBooks closes each fiscal year into Retained Earnings when it makes a report. The engine
+    # does the same when it makes a statement and writes no closing entry (see the balance sheet
+    # in reports/statements.py), so the opening posts the trial balance as it is. The fiscal year
+    # start is the company's ``fiscal_year_start`` (``MM-01``, default ``01-01``), the same value
+    # the engine's reports use. Movement dated before the fiscal year that holds the history end
+    # belongs to a year that QuickBooks has already closed.
+    from .fiscal import year_start
+    year_begin = year_start(last, entity.entity_config.get('fiscal_year_start', '01-01'))
+    early = defaultdict(Decimal)
     for item, raw in loaded:
         kind = item['kind']
         if kind in {'accounts','entities'}:
@@ -331,6 +340,8 @@ def _plan(entity, path):
             group['postings'].append(Posting(mapped[source_account], debit-credit, 'USD', (('qbo-row', attribution),)))
             group['evidence'].append({'account_id':source_account,'cells':cells})
             movement[source_account] += debit-credit
+            if day < year_begin:
+                early[source_account] += debit-credit
     for identity in accounts:
         cursor = first
         for lo, hi in sorted(windows[identity]):
@@ -361,15 +372,32 @@ def _plan(entity, path):
     closing_net = sum((closing.get(k, Decimal(0)) for k in accounts if mapped[k].split(':')[0] in {'Income','Expenses'}), Decimal(0))
     if balance.get('__net_income__', Decimal(0)) != closing_net or sum(balance.values(), Decimal(0)):
         blockers.append({'code':'balance_sheet_net_income_mismatch'})
+    # The opening report is dated the day before the history, in the fiscal year of that day. When a year
+    # end falls between it and the history end, QuickBooks has closed that year's income and expense
+    # into Retained Earnings, and so has every year the history spans.
+    year_closed = year_begin > first-timedelta(days=1)
+    is_pl = lambda k: mapped[k].split(':')[0] in {'Income','Expenses'}
+    closed = {k:(opening.get(k, Decimal(0))+early[k] if year_closed else Decimal(0)) for k in accounts if is_pl(k)}
+    rolled = sum(closed.values(), Decimal(0))
+    retained = [k for k,a in accounts.items() if mapped[k].split(':')[0] == 'Equity'
+                and (a.get('AccountSubType') == 'RetainedEarnings' or a.get('Name') == 'Retained Earnings')]
+    if rolled and len(retained) != 1:
+        blockers.append({'code':'retained_earnings_account_unclear','accounts':sorted(retained)})
     for identity in sorted(accounts):
-        actual = opening.get(identity, Decimal(0))+movement[identity]
+        if is_pl(identity):
+            actual = (movement[identity]-early[identity]) if year_closed else opening.get(identity, Decimal(0))+movement[identity]
+        else:
+            actual = opening.get(identity, Decimal(0))+movement[identity]
+            if retained == [identity]:
+                actual += rolled
         target = closing.get(identity, Decimal(0))
         ok = actual == target
         root = mapped[identity].split(':')[0]
         statement_ok = (movement[identity] == pnl.get(identity, Decimal(0)) if root in {'Income','Expenses'} else
                         target == balance.get(identity, Decimal(0)))
         controls.append({'account_id':identity,'account':mapped[identity], 'opening':str(opening.get(identity,0)),
-                         'movement':str(movement[identity]),'closing':str(target),'balanced':ok,'statement_agrees':statement_ok})
+                         'movement':str(movement[identity]),'closing':str(target),'balanced':ok,'statement_agrees':statement_ok,
+                         'closed_into_retained_earnings':str(closed[identity] if identity in closed else (rolled if retained == [identity] else Decimal(0)))})
         if not ok or not statement_ok:
             blockers.append({'code':'control_mismatch','account_id':identity})
     namespace = f"quickbooks:{manifest['environment']}:{realm}"
