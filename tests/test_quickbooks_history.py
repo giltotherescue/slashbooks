@@ -747,6 +747,23 @@ class HistoryTests(unittest.TestCase):
             _atomic_ledger_write(self.entity,[],[row],'row',None,'row',
                                  source_transactions=[{'id':'plaid:direct','date':'2026-02-15','amount':'9','description':'Row'}])
 
+    def test_a_report_that_starts_inside_the_year_before_the_history_is_refused(self):
+        from bookkeeping.accrual.reports import CoverageError
+        from bookkeeping.reports.statements import profit_and_loss,profit_and_loss_by_month
+        self.apply()
+        view=self.basis.lower()
+        for start in (date(2025,12,1),date(2025,1,2),date(2025,12,31)):
+            with self.subTest(start=start):
+                with self.assertRaises(CoverageError) as caught:
+                    profit_and_loss(self.entity.path,start,date(2026,2,28),basis=view)
+                self.assertEqual((caught.exception.first_date,caught.exception.field),('2026-01-01','from'))
+        # The whole prior year, anything earlier, and the history itself are fine.
+        for start in (date(2025,1,1),date(2024,6,1),date(2026,1,1),date(2026,2,1)):
+            with self.subTest(start=start):
+                profit_and_loss(self.entity.path,start,date(2026,2,28),basis=view)
+        with self.assertRaises(CoverageError):
+            profit_and_loss_by_month(self.entity.path,date(2025,12,1),date(2026,2,28),view=view)
+
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()
