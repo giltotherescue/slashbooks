@@ -622,6 +622,7 @@ class HistoryIndex:
             for record in self.copies.values():
                 self.copy_families.setdefault(record['original'], set()).add(record['family'])
         self._legs = None
+        self._items = {}
         self.starts = history_start_dates(entity.path) if self.receipts else {}
 
     def handled_items(self, account):
@@ -630,7 +631,8 @@ class HistoryIndex:
         Each one stands for the bank row it consumed. Like a posted entry in the ordinary pool, it
         matches one row in one pass, so two real rows of one amount in a pass can both exist.
         """
-        from .source_ids import source_family
+        if account in self._items:
+            return self._items[account]
         from .statement_import import normalize_description
         items = []
         for d in self.decisions.values():
@@ -641,7 +643,8 @@ class HistoryIndex:
                           'amount': Decimal(str(d['amount'])),
                           'desc': normalize_description(str(txn.get('reference') or txn.get('description') or '')),
                           'family': channel_of(txn, d['source_id']), 'history_source_id': d.get('history_source_id')})
-        return sorted(items, key=lambda i: (i['date'], i['source_id']))
+        self._items[account] = sorted(items, key=lambda i: (i['date'], i['source_id']))
+        return self._items[account]
 
     def before_books(self, account, day):
         """True for a bank row dated before the history starts: the opening balance already includes it."""

@@ -610,6 +610,7 @@ def import_transactions(
     cutover_hold_ids: frozenset[str] = frozenset(),
     context_only_cutovers: dict[str, str] | None = None,
     history_copies: bool = True,
+    history_index: Any = None,
 ) -> ImportResult:
     """Import transactions while serializing staging, queue, and ledger writes.
 
@@ -628,7 +629,7 @@ def import_transactions(
     with _entity_write_lock(entity.path):
         result = _import_transactions_unlocked(
             entity, normalized_txns, session_id, categorizer, ts, session_date,
-            legacy_duplicate_guard, intake_only, cutover_hold_ids, context_only_cutovers or {}, history_copies,
+            legacy_duplicate_guard, intake_only, cutover_hold_ids, context_only_cutovers or {}, history_copies, history_index,
         )
     from ..work import observe_import
     observe_import(result.skipped_duplicate)
@@ -647,6 +648,7 @@ def _import_transactions_unlocked(
     cutover_hold_ids: frozenset[str] = frozenset(),
     context_only_cutovers: dict[str, str] | None = None,
     history_copies: bool = True,
+    history_index: Any = None,
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -748,7 +750,7 @@ def _import_transactions_unlocked(
     context_cutovers = dict(context_only_cutovers or {})
     from ..quickbooks_history import HistoryIndex
     from ..statement_import import _txn_amount as _history_amount
-    history_index = HistoryIndex(entity)
+    history_index = history_index or HistoryIndex(entity)
     history_receipts = history_index.receipts
     history_hold_ids = set()
     # Without a recorded QuickBooks history this loop does nothing, so intake is unchanged.
@@ -820,7 +822,7 @@ def _import_transactions_unlocked(
     feed_holds = (_plan_feed_holds(
         entity, normalized_txns if legacy_duplicate_guard else
         [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids,
-        {sid: date.fromisoformat(day) for sid, day in context_cutovers.items()})
+        {sid: date.fromisoformat(day) for sid, day in context_cutovers.items()}, history_index)
         if guarded else {})
     for hold_id in history_hold_ids:
         if feed_holds.get(hold_id) is not None:
@@ -1144,7 +1146,7 @@ _SAME_DAY_RULE = "legacy_id_same_account_date_amount_description"
 
 def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
                      cutover_hold_ids: frozenset[str] = frozenset(),
-                     pool_limits: dict[str, date] | None = None) -> dict[str, dict[str, Any]]:
+                     pool_limits: dict[str, date] | None = None, history_index: Any = None) -> dict[str, dict[str, Any]]:
     """Rows of a connected-feed batch that may repeat activity already recorded.
 
     This is the statement-import duplicate plan (``plan_duplicates``): a row is
@@ -1181,7 +1183,7 @@ def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
             {**txn, "id": source_id, "date": day, "description": text})
     holds: dict[str, dict[str, Any]] = {}
     for (account, family), rows in groups.items():
-        plan = plan_duplicates(entity, rows, account, family, pool_limits, history_copies=False)
+        plan = plan_duplicates(entity, rows, account, family, pool_limits, history_copies=False, history_index=history_index)
         for row in plan["import"]:
             # Dated on or before the cutover and not matched to anything: a late row the old
             # source may never have sent. A person decides; it is never dropped or posted.

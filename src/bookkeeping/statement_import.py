@@ -745,7 +745,8 @@ def _statement_period(statement: JsonObject, confirmed_period: tuple[str, str] |
 
 def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                     mapping_key: str, pool_limits: dict[str, date] | None = None, *,
-                    history_copies: bool = True, source_period: tuple[date, date] | None = None) -> JsonObject:
+                    history_copies: bool = True, source_period: tuple[date, date] | None = None,
+                    history_index: Any = None) -> JsonObject:
     """Split *txns* into rows to import, rows to skip and rows to hold.
 
     ``pool_limits`` maps a row's ID to the latest date of a book entry that the row may match.
@@ -774,7 +775,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
 
     batch_ids = {spelling for t in txns for spelling in source_id_variants(t["id"])}
     from .quickbooks_history import HistoryIndex
-    history_index = HistoryIndex(entity)
+    history_index = history_index or HistoryIndex(entity)
     history_receipts = history_index.receipts
     pool = [p for p in _existing_pool(entity, ledger_account) if p["source_id"] not in batch_ids]
     used: set[int] = set()
@@ -1276,12 +1277,14 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     with _entity_write_lock(entity.path):
         entity = load_entity(entity_path)
         planned = []
+        from .quickbooks_history import HistoryIndex
+        history_index = HistoryIndex(entity)  # read once for the whole file
         for statement in selected:
             prof = profiles[statement["profile"]]
             txns, outside = _apply_boundary(statement["transactions"], prof)
             planned.append((statement, txns, outside, plan_duplicates(
                 entity, txns, prof["ledger_account"], MAPPING_PREFIX + statement["profile"],
-                source_period=_statement_period(statement, confirmed_period))))
+                source_period=_statement_period(statement, confirmed_period), history_index=history_index)))
         # Rows before an account's opening balance would count twice: refuse the file before any write.
         from .statement_opening import before_opening_refusal, opening_dates
         openings = opening_dates(entity.path)
@@ -1369,7 +1372,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                     for m in plan.get("matched_to_history", []) if not m["recorded"]])
                 if plan["import"]:
                     outcome = import_transactions(
-                        entity, plan["import"], session_id=session_id, history_copies=False,
+                        entity, plan["import"], session_id=session_id, history_copies=False, history_index=history_index,
                         categorizer=queue_module.make_categorizer(entity), ts=ts,
                         intake_only=intake_only)
                     if outcome.errors:
