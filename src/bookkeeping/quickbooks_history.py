@@ -86,6 +86,19 @@ def _read(root, item):
     return value
 
 
+def _foreign_currency(record):
+    """True when a source record is not in the single home currency (USD)."""
+    ref = record.get('CurrencyRef')
+    value = ref.get('value') if isinstance(ref, dict) else ref
+    if value and str(value).upper() != 'USD':
+        return True
+    rate = record.get('ExchangeRate')
+    try:
+        return rate not in (None, '') and Decimal(str(rate)) != 1
+    except InvalidOperation:
+        return True
+
+
 def _columns(report):
     columns = report['Columns']['Column']
     result = {}
@@ -199,6 +212,7 @@ def _plan(entity, path):
     loaded = [(item, _read(path.parent, item)) for item in files]
     accounts, versions, reference_versions = {}, {}, {}
     records = 0
+    foreign = []
     source_by_type = defaultdict(int)
     reference_types = {'Customer','Vendor','Item','Class','Department'}
     allowed_types = {'Purchase','Deposit','Transfer','JournalEntry','Invoice','Payment','Bill','BillPayment',
@@ -210,6 +224,8 @@ def _plan(entity, path):
                 if identity in accounts:
                     raise ValueError('Duplicate source account')
                 accounts[identity] = account
+                if _foreign_currency(account):
+                    foreign.append({'type':'Account','id':identity})
         elif item['kind'] == 'entities':
             kind = item['entity_type']
             if kind not in allowed_types | reference_types:
@@ -223,6 +239,8 @@ def _plan(entity, path):
                 if key in target_versions:
                     raise ValueError('Duplicate source entity')
                 target_versions[key] = _digest(record)
+                if kind not in reference_types and _foreign_currency(record):
+                    foreign.append({'type':kind,'id':str(record['Id'])})
                 records += 1
                 source_by_type[kind] += 1
     source_by_type['Account'] = len(accounts)
@@ -332,7 +350,9 @@ def _plan(entity, path):
     opening, closing = (_trial(singles[k], accounts) for k in ('opening_trial_balance','closing_trial_balance'))
     pnl = _statement(singles['profit_and_loss'], accounts, mapped, 'profit_and_loss')
     balance = _statement(singles['balance_sheet'], accounts, mapped, 'balance_sheet')
-    blockers, controls = [], []
+    # Only one home currency is supported. A foreign-currency record is held back, never converted.
+    blockers = [{'code':'foreign_currency_unsupported',**item} for item in sorted(foreign, key=lambda i: (i['type'], i['id']))]
+    controls = []
     if expected_counts is not None:
         for kind, expected in sorted(expected_counts.items()):
             actual = source_by_type.get(kind, 0)

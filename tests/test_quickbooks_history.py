@@ -652,6 +652,18 @@ class HistoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'symbolic link'):
             sync_transactions(self.entity,self.path)
 
+    def test_foreign_currency_records_and_accounts_are_held_never_converted(self):
+        store=LedgerStore(default_store_path(self.entity.path));before=store.content_digest()
+        self.mutate_file('entities',lambda r:next(iter(r['QueryResponse'].values()))[0].update(CurrencyRef={'value':'EUR'},ExchangeRate=1.08))
+        plan=sync_transactions(self.entity,self.path)
+        self.assertFalse(plan['ready'])
+        self.assertEqual([b['code'] for b in plan['blockers']],['foreign_currency_unsupported'])
+        self.mutate_file('accounts',lambda r:r['QueryResponse']['Account'][4].update(CurrencyRef={'value':'GBP'}))
+        plan=sync_transactions(self.entity,self.path)
+        self.assertIn('Account',{b['type'] for b in plan['blockers']})
+        result=sync_transactions(self.entity,self.path,apply=True,plan_hash=plan['plan_hash'])
+        self.assertFalse(result['applied']);self.assertEqual(store.content_digest(),before)
+
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()
