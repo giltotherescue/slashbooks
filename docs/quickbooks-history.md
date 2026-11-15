@@ -166,8 +166,9 @@ when:
 
 - it is dated up to the history end (`inside_period`), or
 - it is dated after the history end, up to `HISTORY_BANK_LAG_DAYS` (45) days after it,
-  and an unmatched leg on the same account has exactly the same signed amount and is
-  dated from 45 days before the row to 3 days after it (`unmatched_history_leg`), or
+  and ANY unmatched leg on the same account has exactly the same signed amount and is
+  dated up to 3 days after the row (`unmatched_history_leg`; there is no lower bound, because
+  a check written in January can clear in March; the closest leg comes first), or
 - it is dated within three days after the history end (`settlement_window`), because a
   split or combined settlement can have a different amount.
 
@@ -188,9 +189,9 @@ is `{"released": [...], "needs_review": [...], "errors": [{"source_id": ..., "er
 
 Known limits: a bank row that is only part of a QuickBooks leg (a split or combined
 settlement) cannot be matched, because a match needs an equal amount; release it
-with `--decision release` only after checking. Reports for ranges before the opening
-date show the prior year as one lump. A history entry has no correction or reversal
-path. One history import per company.
+with `--decision release` only after checking. A history entry has no correction or reversal
+path. One history import per company. A recurring amount (rent) is held while an unmatched leg of
+that amount exists: the safe direction.
 
 
 ## Matched rows, copies, undo and rows before the history
@@ -216,10 +217,14 @@ list, so an agent cannot call it; a host must keep it person-only.
 **A released row** ("This is new") does not match any leg. It is not offered as a candidate again,
 and the next row of the same amount is held while the leg is unmatched.
 
-**Direct ledger writes.** A person's journal is the person's own act and is not blocked. A bank row
-reaches the ledger only through intake (feeds, statements, `ingest`, context release and the buffer
-release, all `import_transactions`) or through a queue that intake filled (confirm, split, transfer,
-Stripe clearing). A test lists every direct writer so a new one is reviewed.
+**Direct ledger writes.** The write guard refuses only an automated write of bank rows (a write that carries
+source rows) that did not pass intake or a person's release. A person's journal or reversal, with no
+source rows, is allowed on any account and date, including inside the history period, and is recorded as
+a `qbo-history-journal` audit event. The engine cannot tell a person from an agent at this layer: the
+host decides who may run the journal and reversal commands. A replay of the same history still reports
+already applied after such a journal. A bank row reaches the ledger only through intake (feeds,
+statements, `ingest`, context release and the buffer release, all `import_transactions`) or through a
+queue that intake filled (confirm, split, transfer, Stripe clearing). A test lists every direct writer.
 
 **Before the history starts.** A bank row dated before `history_from` is before the books: the opening
 balance already includes it. Feed rows are reported in `before_opening` (not posted, not held), and a
@@ -264,3 +269,49 @@ A statement that has rows before the history start is refused with the true reas
 balance comes from the QuickBooks history, so upload a statement that starts on or after the start date.
 A statement opening cannot replace it (`record-opening --replace` is refused with
 `opening_exists_other_source`).
+
+
+## Review fixes: near copies, released rows, undo, opening, reports
+
+**Invariant.** The history path is never more permissive than the ordinary duplicate path. A row is
+skipped as a copy of a handled bank row only where the ordinary rule calls the pair exact (the same date,
+amount and description from another source) and the copy's source can hold the original: a feed always,
+a statement only when its period (the period a person confirmed, else its printed period, else its first
+and last row date) covers the original's date. Every other pair that the ordinary rule would hold
+("the same amount within three days from another source") is held with `hold_rule: "possible_copy"`,
+naming `matched_original` and its leg, and never releases by time. A test checks this over generated cases.
+
+**Originals.** A handled bank row is an original when it was matched to a leg (`history-match`), released
+as new (an ordinary posted bank row, also listed in `released_rows` of a held row with its `posted_entry`),
+or marked `in-opening`. `copy` may name any of them.
+
+**Undo of a release.** `reverse-buffer` on a posted release writes the engine's reversing entry (the
+original stays), reverses the decision and holds the row again. A queued release is refused (withdraw the
+item first). The same source ID cannot be posted again after a reversal, so `release` is then not offered.
+
+**`in-opening`.** "This is already in my starting balance": a row on a bank or card account, dated from the
+history start to `OPENING_CLEARING_DAYS` (45) after it, with no unmatched leg that could explain it (use
+`history-match` then). The engine cannot see the contents of the opening balance, so the person decides.
+The row is recorded as handled, never posted, reversible with `reverse-buffer`, and stands in the pairing
+like a matched row.
+
+**`allowed_decisions`.** Each held row (in `buffer-decisions`, in a statement import's `held` list and in
+the intake result lists) carries the exact answers the engine accepts now:
+`[{"decision": "release"}, {"decision": "history-match", "history_source_ids": [...]},
+{"decision": "copy", "original_source_ids": [...]}, {"decision": "in-opening"}]`.
+`resolve-buffer` refuses any other answer, and any ID not in the list.
+
+**Reports.** The opening entry holds the year-to-date income and expense on the day before the history, so
+any range that contains that day and starts inside that fiscal year is wrong (December 2025 would show the
+whole year to date), not only one lump. `profit_and_loss` (and the monthly series) now refuse a range that
+starts after the first day of that fiscal year and before the history starts, with the coverage error
+and `first_date` set to the history start. A range that starts on or before that fiscal year start holds
+the whole year; a range that starts on or after the history start holds only the history. Other reports
+(cash flow, tax exports) have no such guard: a host should start them on or after the history start.
+
+**Backup.** The held list is `staging/duplicate-candidates.json`. The company snapshot carries every
+non-excluded file under `staging/` and the ledger file with its audit log (decisions and recorded copies),
+so a snapshot keeps the held rows and the decisions together; a test checks it.
+
+**Audit log.** `audit_events` has an index on `(type, id)`, created the first time an older store is opened
+for writing. It changes no content and no seal.
