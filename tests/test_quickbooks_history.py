@@ -664,6 +664,20 @@ class HistoryTests(unittest.TestCase):
         result=sync_transactions(self.entity,self.path,apply=True,plan_hash=plan['plan_hash'])
         self.assertFalse(result['applied']);self.assertEqual(store.content_digest(),before)
 
+    def test_later_balance_and_reference_changes_do_not_break_an_exact_replay(self):
+        self.add('entities',{'QueryResponse':{'Customer':[{'Id':'customer-1','SyncToken':'0','Balance':10}]}},entity_type='Customer')
+        self.write();self.apply()
+        store=LedgerStore(default_store_path(self.entity.path));before=store.content_digest()
+        # QuickBooks activity after the history end moves running balances and customer balances.
+        self.mutate_file('accounts',lambda r:[a.update(CurrentBalance=999) for a in r['QueryResponse']['Account']])
+        item=next(i for i in self.manifest['files'] if i.get('entity_type')=='Customer')
+        path=self.source/item['path'];raw=json.loads(path.read_text());raw['QueryResponse']['Customer'][0].update(Balance=500,SyncToken='4')
+        path.write_text(json.dumps(raw));item['sha256']=hashlib.sha256(path.read_bytes()).hexdigest();self.write()
+        again=sync_transactions(self.entity,self.path)
+        self.assertTrue(again['already_applied']);self.assertEqual(again['blockers'],[])
+        self.assertEqual(sync_transactions(self.entity,self.path,apply=True,plan_hash='any')['recorded_entries'],0)
+        self.assertEqual(store.content_digest(),before)
+
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()

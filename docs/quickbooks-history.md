@@ -71,7 +71,9 @@ Only empty mapped accounts qualify in v1. Existing entries, openings or pending
 review work block import; the engine does not replace or reverse them. Empty
 accounts may have their opening dates moved to H-1 as an explicit part of the
 reviewed plan. Entries, date changes, audit receipt and coverage ownership commit
-atomically. Exact source replays are idempotent even under a new collection job;
+atomically. Exact source replays are idempotent even under a new collection job, and
+even when running account balances or customer, vendor and item records have
+changed since (they never post);
 changed source versions, voids or deletes require an explicit correction workflow.
 A void first encountered without any GL effect remains versioned source evidence
 with `no_source_report_effect`; it does not create a journal entry.

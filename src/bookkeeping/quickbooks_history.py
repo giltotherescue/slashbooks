@@ -392,9 +392,12 @@ def _plan(entity, path):
     source_keys = ('format','environment','realm_id','history_from','history_to','accounting_basis','currency','account_map','cutovers')
     # Collection jobs, filenames, request timestamps and partition layouts do not
     # identify transactions. Retain separate artifact hashes in the reviewed plan.
-    semantic = {**{k:manifest.get(k) for k in source_keys},'account_map':mapped,'cutovers':cutovers, 'accounts':accounts,
+    semantic = {**{k:manifest.get(k) for k in source_keys},'account_map':mapped,'cutovers':cutovers,
+                # Running balances change with every later QuickBooks entry, and reference records
+                # (customers, vendors, items) never post. Neither may break an exact replay.
+                'accounts':{k:{f:x for f,x in a.items() if f not in {'CurrentBalance','CurrentBalanceWithSubAccounts'}}
+                            for k,a in accounts.items()},
                 'versions':{k+':'+v:d for (k,v),d in versions.items()},
-                'reference_versions':{k+':'+v:d for (k,v),d in reference_versions.items()},
                 'groups':{k+':'+v:{'date':g['date'].isoformat(),
                     'evidence':sorted(g['evidence'],key=lambda r:json.dumps(r,sort_keys=True))}
                     for (k,v),g in groups.items()},
