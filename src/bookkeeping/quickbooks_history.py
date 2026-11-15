@@ -65,9 +65,16 @@ def refuse_owned_write(entity, entries):
 
 def _read(root, item):
     relative = Path(item['path'])
-    path = root / relative
-    if relative.is_absolute() or '..' in relative.parts or any(p.is_symlink() for p in [path, *path.parents]):
+    if relative.is_absolute() or '..' in relative.parts or not relative.parts:
         raise ValueError('History evidence path must be confined and cannot be a symbolic link')
+    # Only the parts below the manifest folder are checked. The folder itself may sit under a
+    # symbolic link (for example the system temporary folder on macOS).
+    root = root.resolve()
+    path = root
+    for part in relative.parts:
+        path = path / part
+        if path.is_symlink():
+            raise ValueError('History evidence path must be confined and cannot be a symbolic link')
     if not path.resolve().is_relative_to(root.resolve()) or path.stat().st_size > MAX_FILE_BYTES:
         raise ValueError('History evidence exceeds its bounded file contract')
     raw = path.read_bytes()

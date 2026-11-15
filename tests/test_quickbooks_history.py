@@ -644,6 +644,14 @@ class HistoryTests(unittest.TestCase):
         entries=LedgerStore(default_store_path(self.entity.path)).load_entries()
         self.assertEqual(sum(e.source_id==row['source_id'] for e in entries),1)
 
+    def test_manifest_folder_under_symbolic_link_works_but_linked_evidence_is_refused(self):
+        link=self.root/'linked-source';link.symlink_to(self.source,target_is_directory=True)
+        self.assertTrue(sync_transactions(self.entity,link/'manifest.json')['ready'])
+        first=self.source/self.manifest['files'][0]['path'];real=self.source/'real-evidence.json'
+        first.rename(real);first.symlink_to(real)
+        with self.assertRaisesRegex(ValueError,'symbolic link'):
+            sync_transactions(self.entity,self.path)
+
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()
