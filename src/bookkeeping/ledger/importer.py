@@ -741,11 +741,12 @@ def _import_transactions_unlocked(
     from ..quickbooks_history import owned, receipts, buffer_decision
     history_receipts = receipts(entity)
     history_hold_ids = set()
-    for txn in normalized_txns:
+    # Without a recorded QuickBooks history this loop does nothing, so intake is unchanged.
+    for txn in (normalized_txns if history_receipts else ()):
         try:
             account = _ledger_account_for_txn(txn, entity.entity_config.get("bank_account_mappings"),
                                                entity.entity_config.get("csv_account_mappings"))
-            if history_receipts and not buffer_decision(entity, str(txn.get("id") or "")) and owned(entity, account, txn.get("date", ""), nearby=True, _receipts=history_receipts):
+            if not buffer_decision(entity, str(txn.get("id") or "")) and owned(entity, account, txn.get("date", ""), nearby=True, _receipts=history_receipts):
                 history_hold_ids.add(str(txn.get("id") or ""))
         except (ValueError, TypeError):
             continue
