@@ -693,6 +693,34 @@ class HistoryTests(unittest.TestCase):
         resolve_buffer_decision(self.entity,row['id'],'release')
         self.assertEqual(list_buffer_decisions(self.entity),[])
 
+    def test_split_lines_on_one_account_become_separate_postings_that_still_tie(self):
+        item=next(i for i in self.manifest['files'] if i['kind']=='general_ledger' and i['account_id']=='5' and i['from']=='2026-01-01')
+        path=self.source/item['path'];raw=json.loads(path.read_text())
+        rows=raw['Rows']['Row'][0]['Rows']['Row']
+        index=next(i for i,r in enumerate(rows) if r['ColData'][1]['id']=='106')
+        whole=rows[index];first=json.loads(json.dumps(whole));second=json.loads(json.dumps(whole))
+        first['ColData'][2]['value']='6';second['ColData'][2]['value']='4'
+        rows[index:index+1]=[first,second]
+        path.write_text(json.dumps(raw));item['sha256']=hashlib.sha256(path.read_bytes()).hexdigest();self.write()
+        self.apply()
+        entries=LedgerStore(default_store_path(self.entity.path)).load_entries()
+        entry=next(e for e in entries if e.source_id.endswith(':Purchase:106'))
+        self.assertEqual(sorted(p.amount for p in entry.postings),[Decimal(-10),Decimal(4),Decimal(6)])
+        self.assertEqual(sum(p.amount for p in entry.postings),0)
+
+    def test_opening_with_prior_year_income_that_the_closing_report_reset_does_not_tie(self):
+        def prior_year_income(raw):
+            rows=raw['Rows']['Row']
+            next(r for r in rows if r['ColData'][0]['id']=='7')['ColData'][2]['value']='500'
+            rows.append({'ColData':[{'value':'Synthetic','id':'4'},{'value':'0'},{'value':'500'}]})
+        self.mutate_file('opening_trial_balance',prior_year_income)
+        store=LedgerStore(default_store_path(self.entity.path));before=store.content_digest()
+        plan=sync_transactions(self.entity,self.path)
+        self.assertFalse(plan['ready'])
+        self.assertEqual({b['account_id'] for b in plan['blockers'] if b['code']=='control_mismatch'},{'4','7'})
+        self.assertFalse(sync_transactions(self.entity,self.path,apply=True,plan_hash=plan['plan_hash'])['applied'])
+        self.assertEqual(store.content_digest(),before)
+
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()
