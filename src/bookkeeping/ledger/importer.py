@@ -229,6 +229,7 @@ def _atomic_ledger_write(
     expected_digest: str | None = None,
     adopt_currency: str | None = None,
     allow_earlier_open_dates: bool = False,
+    history_receipt: dict[str, Any] | None = None,
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -240,6 +241,7 @@ def _atomic_ledger_write(
             intent_description=intent_description,
             source_transactions=source_transactions,
             finalization_receipt=finalization_receipt,
+            history_receipt=history_receipt,
             supporting_mutations=supporting_mutations,
             expected_digest=expected_digest,
             adopt_currency=adopt_currency,
@@ -371,6 +373,7 @@ def _atomic_ledger_write_unlocked(
     adopt_currency: str | None = None,
     source_status: str = "posted",
     allow_earlier_open_dates: bool = False,
+    history_receipt: dict[str, Any] | None = None,
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
 
@@ -425,6 +428,10 @@ def _atomic_ledger_write_unlocked(
         # catalog this transaction sees. A refusal rolls back the whole write.
         _refuse_postings_before_open(entity, conn, new_opens, new_entries, source_transactions,
                                      allow_earlier_open_dates=allow_earlier_open_dates)
+        from ..quickbooks_history import refuse_owned_write
+        refuse_owned_write(entity, new_entries)
+        if history_receipt is not None:
+            store.append_audit_event("qbo-history-recorded", history_receipt, conn, ts=ts)
         # A reversal or a correction must keep a transfer that a source row is matched to (queue.py).
         from ..queue import refuse_claimed_transfer_change
         refuse_claimed_transfer_change(conn, new_entries)
@@ -731,7 +738,18 @@ def _import_transactions_unlocked(
     # generic ingest), so no learned rule can post it. Without the guard only those rows
     # are planned; every other row follows the unguarded path.
     context_cutovers = dict(context_only_cutovers or {})
-    cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers)
+    from ..quickbooks_history import owned, receipts, buffer_decision
+    history_receipts = receipts(entity)
+    history_hold_ids = set()
+    for txn in normalized_txns:
+        try:
+            account = _ledger_account_for_txn(txn, entity.entity_config.get("bank_account_mappings"),
+                                               entity.entity_config.get("csv_account_mappings"))
+            if history_receipts and not buffer_decision(entity, str(txn.get("id") or "")) and owned(entity, account, txn.get("date", ""), nearby=True, _receipts=history_receipts):
+                history_hold_ids.add(str(txn.get("id") or ""))
+        except (ValueError, TypeError):
+            continue
+    cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers) | frozenset(history_hold_ids)
     # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
     # later row is judged as in review mode. It may use up only an entry dated on or before its cutover
     # date (``pool_limits``): an entry after it is for a real later row to match. Its plan result is
@@ -794,6 +812,10 @@ def _import_transactions_unlocked(
         # A BankSync row has two spellings (``abc`` and ``banksync:abc``); every
         # lookup tries both.
         spellings = source_id_variants(source_id)
+        history_choice = buffer_decision(entity, source_id) if history_receipts else None
+        if history_choice and history_choice["decision"] == "history-match":
+            result.skipped_duplicate += 1
+            continue
         if (
             any(staging.is_seen(s) for s in spellings)
             or (source_id and spellings & source_ids_in_batch)

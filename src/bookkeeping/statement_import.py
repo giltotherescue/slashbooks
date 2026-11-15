@@ -675,7 +675,7 @@ def _existing_pool(entity: Any, ledger_account: str) -> list[JsonObject]:
             for posting in entry.postings:
                 if posting.account == ledger_account:
                     pool.append({"source_id": entry.source_id, "date": entry.date,
-                                 "amount": posting.amount.quantize(bankcsv.MONEY),
+                                 "amount": sum((p.amount for p in entry.postings if p.account == ledger_account), Decimal(0)).quantize(bankcsv.MONEY),
                                  "desc": normalize_description(entry.narration),
                                  "family": families.get(entry.source_id) or source_family(entry.source_id)})
                     break
@@ -733,6 +733,8 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                      if aliases.get(s)), "")
 
     batch_ids = {spelling for t in txns for spelling in source_id_variants(t["id"])}
+    from .quickbooks_history import owned, receipts, buffer_decision
+    history_receipts = receipts(entity)
     pool = [p for p in _existing_pool(entity, ledger_account) if p["source_id"] not in batch_ids]
     used: set[int] = set()
     plan: JsonObject = {"import": [], "held": [], "skipped": Counter()}
@@ -743,8 +745,20 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                 or (store is not None and any(store.source_exists(s) for s in spellings))):
             plan["skipped"]["already_imported"] += 1
             continue
-        if spellings & held_ids:
+        choice = buffer_decision(entity, sid) if history_receipts else None
+        if choice:
+            if choice['decision'] == 'history-match':
+                plan['skipped']['confirmed_duplicate'] += 1
+                continue
+        if spellings & held_ids and not choice:
             plan["skipped"]["already_held_for_review"] += 1
+            continue
+        ownership = owned(entity, ledger_account, txn["date"], nearby=True, _receipts=history_receipts)
+        if ownership and not choice:
+            plan["held"].append({"source_id": sid, "existing_source_id": "", "account": ledger_account,
+                "date": txn["date"], "amount": format(_txn_amount(txn), "f"),
+                "description": txn["description"], "match_rule": "quickbooks_history_ownership",
+                "transaction": txn, "status": "duplicate-candidate"})
             continue
         status = decision(sid)
         if status == "confirmed-duplicate":
