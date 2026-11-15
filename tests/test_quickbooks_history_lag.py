@@ -47,6 +47,10 @@ class LagCases(FiscalCases):
             return 'pending'
         return 'none'
 
+    def bank(self):
+        entries = LedgerStore(default_store_path(self.entity.path)).load_entries()
+        return sum((p.amount for e in entries for p in e.postings if p.account == 'Assets:Bank:Checking'), Decimal(0))
+
     def held(self, name):
         return next(r for r in list_buffer_decisions(self.entity) if r['source_id'] == 'plaid:' + name)
 
@@ -75,11 +79,33 @@ class LagCases(FiscalCases):
         self.assertEqual(due['released'], [])
         self.assertEqual(len(due['needs_review']), 4)
 
-    def test_row_46_days_after_the_leg_goes_the_normal_path(self):
+    def test_row_after_the_window_goes_the_normal_path(self):
+        # The window is HISTORY_BANK_LAG_DAYS after the history end, not after the leg.
         self.history(self.DEPOSIT)
-        self.ingest(self.row('lag46', self.day('2026-02-27', 46), '30'))
-        self.assertNotEqual(self.state('lag46'), 'held')
-        self.assertIn(self.state('lag46'), {'posted', 'pending'})
+        self.ingest(self.row('late', '2026-04-15', '30'))
+        self.assertIn(self.state('late'), {'posted', 'pending'})
+
+    def test_a_check_written_early_in_a_long_period_is_held_when_it_clears_after_it(self):
+        self.history([('2026-01-05', {'1': '-40', '5': '40'})])
+        before = self.bank()
+        self.ingest(self.row('stale-check', '2026-03-15', '-40'))
+        self.assertEqual(self.state('stale-check'), 'held')
+        row = self.held('stale-check')
+        self.assertEqual(row['hold_rule'], 'unmatched_history_leg')
+        self.assertEqual((row['candidate_legs'][0]['date'], row['candidate_legs'][0]['days_before_row']), ('2026-01-05', 69))
+        self.assertEqual(self.bank(), before)
+
+    def test_a_check_that_clears_8_days_after_the_end_and_is_dated_in_january_is_held(self):
+        self.history([('2026-01-20', {'1': '-40', '5': '40'})])
+        before = self.bank()
+        self.ingest(self.row('check', '2026-03-08', '-40'))
+        self.assertEqual(self.state('check'), 'held')
+        self.assertEqual(self.bank(), before)
+
+    def test_candidate_legs_are_ordered_by_closeness_in_date(self):
+        self.history([('2026-01-05', {'1': '30', '4': '-30'}), ('2026-02-20', {'1': '30', '4': '-30'}), ('2026-02-01', {'1': '30', '4': '-30'})])
+        self.ingest(self.row('near', '2026-03-10', '30'))
+        self.assertEqual([c['date'] for c in self.held('near')['candidate_legs']], ['2026-02-20', '2026-02-01', '2026-01-05'])
 
     def test_row_with_no_same_amount_leg_after_the_settlement_days_goes_the_normal_path_at_once(self):
         self.history(self.DEPOSIT)

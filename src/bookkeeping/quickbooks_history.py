@@ -14,8 +14,8 @@ from .ledger.store import LedgerStore, default_store_path
 
 FORMAT = 'slashbooks-qbo-history-v1'
 # A bank row can clear long after QuickBooks recorded it (a deposit in transit, an outstanding
-# check). A bank row after the history end is held when an unmatched QuickBooks bank leg of the
-# same amount is dated up to this many days before it, or up to LEG_LOOKAHEAD_DAYS after it.
+# check). A bank row up to this many days after the history end is held when ANY unmatched QuickBooks
+# bank leg of the same account, amount and direction is dated up to LEG_LOOKAHEAD_DAYS after the row.
 HISTORY_BANK_LAG_DAYS = 45
 LEG_LOOKAHEAD_DAYS = 3
 SETTLEMENT_DAYS = 3
@@ -704,20 +704,25 @@ class HistoryIndex:
         return self._legs
 
     def candidates(self, account, day, amount):
-        """Unmatched legs on the account with this exact signed amount, from 45 days before the row to 3 days after it."""
+        """Unmatched legs on the account with this exact signed amount, dated up to 3 days after the row.
+
+        There is no lower bound: a check written early in a long period can clear months later. The
+        closest leg in date comes first.
+        """
         if amount is None:
             return []
         day = date.fromisoformat(str(day)[:10])
-        lo, hi = day - timedelta(days=HISTORY_BANK_LAG_DAYS), day + timedelta(days=LEG_LOOKAHEAD_DAYS)
-        return [leg for leg in self.legs() if leg['account'] == account and not leg['matched']
-                and Decimal(leg['amount']) == amount and lo <= date.fromisoformat(leg['date']) <= hi]
+        hi = day + timedelta(days=LEG_LOOKAHEAD_DAYS)
+        found = [leg for leg in self.legs() if leg['account'] == account and not leg['matched']
+                 and Decimal(leg['amount']) == amount and date.fromisoformat(leg['date']) <= hi]
+        return sorted(found, key=lambda leg: (abs((date.fromisoformat(leg['date']) - day).days), leg['date'], leg['source_id']))
 
     def holds(self, account, day, amount=None):
         """Why a bank row waits for a person, or None when it follows the normal path.
 
         ``inside_period``: dated up to the history end; QuickBooks owns the books there.
-        ``unmatched_history_leg``: after the history end, within HISTORY_BANK_LAG_DAYS of it, and an
-        unmatched leg of the same amount and direction could be the same money.
+        ``unmatched_history_leg``: up to HISTORY_BANK_LAG_DAYS after the history end, and an unmatched
+        leg of the same amount and direction (dated anywhere up to 3 days after the row) could be the same money.
         ``settlement_window``: within SETTLEMENT_DAYS after the history end (a split or combined
         settlement can have a different amount).
         """
