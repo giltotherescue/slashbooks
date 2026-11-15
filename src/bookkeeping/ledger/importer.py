@@ -435,7 +435,7 @@ def _atomic_ledger_write_unlocked(
         _refuse_postings_before_open(entity, conn, new_opens, new_entries, source_transactions,
                                      allow_earlier_open_dates=allow_earlier_open_dates)
         from ..quickbooks_history import refuse_owned_write
-        refuse_owned_write(entity, new_entries)
+        refuse_owned_write(entity, new_entries, source_transactions, conn=conn, store=store, ts=ts)
         if history_receipt is not None:
             store.append_audit_event("qbo-history-recorded", history_receipt, conn, ts=ts)
         # A reversal or a correction must keep a transfer that a source row is matched to (queue.py).

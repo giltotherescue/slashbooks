@@ -180,7 +180,8 @@ class HistoryTests(unittest.TestCase):
         entry=Entry(date(2026,1,3),'Duplicate',meta=(('source-id','plaid:new'),),
                     postings=(Posting('Assets:Bank:Checking',Decimal(110)),Posting('Income:Sales',Decimal(-110))))
         with self.assertRaisesRegex(ValueError,'owns'):
-            _atomic_ledger_write(self.entity,[],[entry],'duplicate',None,'duplicate')
+            _atomic_ledger_write(self.entity,[],[entry],'duplicate',None,'duplicate',
+                                 source_transactions=[{'id':'plaid:new','date':'2026-01-03','amount':'110','description':'Duplicate'}])
 
     def test_existing_bank_first_refuses_history(self):
         from bookkeeping.ledger.model import Open
@@ -250,7 +251,8 @@ class HistoryTests(unittest.TestCase):
         entry=Entry(date(2026,3,2),'Previously staged settlement',meta=(('source-id','plaid:staged'),),
                     postings=(Posting('Assets:Bank:Checking',Decimal(110)),Posting('Income:Sales',Decimal(-110))))
         with self.assertRaisesRegex(ValueError,'owns'):
-            _atomic_ledger_write(self.entity,[],[entry],'staged',None,'approve staged row')
+            _atomic_ledger_write(self.entity,[],[entry],'staged',None,'approve staged row',
+                                 source_transactions=[{'id':'plaid:staged','date':'2026-03-02','amount':'110','description':'Staged'}])
 
     def test_raw_trial_money_columns_and_display_label(self):
         for item in self.manifest['files']:
@@ -376,7 +378,8 @@ class HistoryTests(unittest.TestCase):
             Posting('Assets:Bank:Checking',Decimal('-10')),
             Posting('Assets:Bank:Savings',Decimal('20'))))
         with self.assertRaisesRegex(ValueError,'owns'):
-            _atomic_ledger_write(self.entity,[],[split],'split',None,'owner-reviewed split')
+            _atomic_ledger_write(self.entity,[],[split],'split',None,'owner-reviewed split',
+                                 source_transactions=[{'id':'split:new','date':'2026-03-03','amount':'-20','description':'Split'}])
         self.assertEqual(store.content_digest(),before)
 
     def test_owned_hold_stays_visible_until_duplicate_resolution(self):
@@ -579,7 +582,7 @@ class HistoryTests(unittest.TestCase):
                      postings=(Posting('Assets:Bank:Checking',Decimal('8'),'USD'),Posting('Income:Sales',Decimal('-8'),'USD')))
         from bookkeeping.quickbooks_history import refuse_owned_write
         with self.assertRaisesRegex(ValueError,'migration correction'):
-            refuse_owned_write(self.entity,[forged])
+            refuse_owned_write(self.entity,[forged],[{'id':row['id']}])
 
     def test_buffer_case8_history_match_persists_selected_journal(self):
         from bookkeeping.quickbooks_history import resolve_buffer_decision, list_buffer_decisions, buffer_decision
@@ -717,6 +720,32 @@ class HistoryTests(unittest.TestCase):
         result=sync_transactions(self.entity,self.path,apply=True,plan_hash='any')
         self.assertFalse(result['success']);self.assertFalse(result['applied'])
         self.assertEqual(store.content_digest(),before)
+
+    def test_a_persons_journal_inside_the_period_is_allowed_marked_and_a_replay_stays_applied(self):
+        from bookkeeping.quickbooks_history import _audit
+        self.apply()
+        store=LedgerStore(default_store_path(self.entity.path))
+        adjusting=Entry(date(2026,2,15),'Adjusting journal',meta=(('source-id','journal:adjusting'),),
+                        postings=(Posting('Expenses:Supplies',Decimal(5)),Posting('Income:Sales',Decimal(-5))))
+        on_bank=Entry(date(2026,3,2),'Journal on a bank account',meta=(('source-id','journal:bank'),),
+                      postings=(Posting('Assets:Bank:Checking',Decimal(7)),Posting('Income:Sales',Decimal(-7))))
+        outside=Entry(date(2026,6,2),'Journal after the period',meta=(('source-id','journal:outside'),),
+                      postings=(Posting('Expenses:Supplies',Decimal(1)),Posting('Income:Sales',Decimal(-1))))
+        for entry in (adjusting,on_bank,outside):
+            _atomic_ledger_write(self.entity,[],[entry],'journal',None,'journal')
+        marked=[e for _,e in _audit(self.entity,('qbo-history-journal',))]
+        self.assertEqual([m['entries'][0]['source_id'] for m in marked],['journal:adjusting','journal:bank'])
+        self.assertEqual(marked[0]['entries'][0]['accounts'],['Expenses:Supplies','Income:Sales'])
+        before=store.content_digest()
+        again=sync_transactions(self.entity,self.path)
+        self.assertTrue(again['already_applied']);self.assertEqual(again['blockers'],[])
+        self.assertEqual(store.content_digest(),before)
+        # A bank row that did not pass intake is still refused inside the period.
+        row=Entry(date(2026,2,15),'Bank row',meta=(('source-id','plaid:direct'),),
+                  postings=(Posting('Assets:Bank:Checking',Decimal(9)),Posting('Income:Sales',Decimal(-9))))
+        with self.assertRaisesRegex(ValueError,'owns'):
+            _atomic_ledger_write(self.entity,[],[row],'row',None,'row',
+                                 source_transactions=[{'id':'plaid:direct','date':'2026-02-15','amount':'9','description':'Row'}])
 
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)

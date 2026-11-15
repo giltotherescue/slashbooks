@@ -74,18 +74,37 @@ def owned(entity, account, day, *, nearby=False, _receipts=None):
                  and day <= date.fromisoformat(r['history_to']) + timedelta(days=3 if nearby and account in r['cutovers'] else 0)), None)
 
 
-def refuse_owned_write(entity, entries):
+def refuse_owned_write(entity, entries, source_transactions=None, *, conn=None, store=None, ts=None, always=False):
+    """Final guard for a write on accounts that QuickBooks history owns.
+
+    An automated write of bank rows (it carries ``source_transactions``) must have passed intake, so only
+    a row that a person released may post inside the period, and the bank leg must equal the release.
+    A person's journal (a write with no source rows: a manual or adjusting journal, a reversal) is the
+    person's own act: it is allowed on any account and is marked in the audit log (``qbo-history-journal``).
+    The engine cannot tell a person from an agent at this layer; the host decides who may run the
+    journal and reversal commands. ``always`` keeps the refusal for a write that is neither (an opening).
+    """
     history = receipts(entity)
     if not history:
         return
+    if not (source_transactions or always):
+        touched = [{'source_id': entry.source_id, 'date': entry.date.isoformat(),
+                    'accounts': sorted({p.account for p in entry.postings
+                                        if owned(entity, p.account, entry.date, nearby=True, _receipts=history)})}
+                   for entry in entries]
+        touched = [t for t in touched if t['accounts']]
+        if touched and conn is not None and store is not None:
+            store.append_audit_event('qbo-history-journal', {'entries': touched}, conn, ts=ts)
+        return
+    decisions = {d['source_id']: d for d in _buffer_decisions(entity)}
     for entry in entries:
-        released = [p for p in entry.postings if released_entry(entity, entry, p)]
+        released = [p for p in entry.postings if released_entry(entity, entry, p, decisions)]
         for posting in entry.postings:
             # A reviewed cash row permits its category counterpart, but cannot
             # authorize a second owned bank leg on a transfer.
             if released and (posting in released or not any(posting.account in r['cutovers'] for r in history)):
                 continue
-            if owned(entity, posting.account, entry.date, nearby=True, _receipts=history) and not released_entry(entity, entry, posting):
+            if owned(entity, posting.account, entry.date, nearby=True, _receipts=history) and not released_entry(entity, entry, posting, decisions):
                 raise ValueError('QuickBooks owns this account through the history cutover; explicit migration correction is required')
 
 
@@ -767,8 +786,8 @@ def is_history_hold(entity, candidate):
     return bool(index.holds(candidate['account'], candidate.get('date', ''), amount))
 
 
-def released_entry(entity, entry, posting):
-    decision = buffer_decision(entity, entry.source_id)
+def released_entry(entity, entry, posting, decisions=None):
+    decision = buffer_decision(entity, entry.source_id) if decisions is None else decisions.get(entry.source_id)
     return bool(decision and decision['decision'] == 'release'
                 and decision['account'] == posting.account and decision['date'] == entry.date.isoformat()
                 and _money(decision['amount']) == posting.amount)
