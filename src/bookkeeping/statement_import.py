@@ -708,8 +708,49 @@ def _load_list(path: Path) -> list[JsonObject]:
     return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
 
 
+def _match_pool(pool: list[JsonObject], used: set[int], day: date, amount: Decimal, desc: str,
+                mapping_key: str, latest: date | None = None) -> tuple[int | None, str | None]:
+    """The ordinary duplicate rule: the same date, amount and description, or the same amount within
+    NEAR_DATE_DAYS from another source. Each pool item matches one row (``used``)."""
+    match, rule = None, None
+    for index, item in enumerate(pool):
+        if latest is not None and item["date"] > latest:
+            continue
+        if index not in used and item["date"] == day and item["amount"] == amount and item["desc"] == desc:
+            match, rule = index, "same_date_amount_description"
+            break
+    if match is None:
+        near = [(abs((item["date"] - day).days), index) for index, item in enumerate(pool)
+                if (latest is None or item["date"] <= latest)
+                and index not in used and item["amount"] == amount and not same_family(item["family"], mapping_key)
+                and abs((item["date"] - day).days) <= NEAR_DATE_DAYS]
+        if near:
+            match, rule = min(near)[1], f"same_amount_within_{NEAR_DATE_DAYS}_days_other_source"
+    return match, rule
+
+
+def history_duplicate_of(index: Any, account: str, mapping_key: str, txn: JsonObject, taken: set[str]) -> str | None:
+    """The bank row that a person matched to QuickBooks history and that this row is a copy of.
+
+    It uses the ordinary duplicate rule on the matched rows, so a statement row and a feed row of one
+    bank row are recognized, and two real rows of one amount are not (each matched row counts once).
+    """
+    items = [i for i in index.handled_items(account) if i["source_id"] not in taken]
+    if not items:
+        return None
+    try:
+        day = date.fromisoformat(str(txn["date"])[:10])
+        amount = _txn_amount(txn)
+    except (KeyError, ValueError, ArithmeticError):
+        return None
+    desc = normalize_description(str(txn.get("reference") or txn.get("description") or ""))
+    match, _ = _match_pool(items, set(), day, amount, desc, mapping_key)
+    return None if match is None else items[match]["source_id"]
+
+
 def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
-                    mapping_key: str, pool_limits: dict[str, date] | None = None) -> JsonObject:
+                    mapping_key: str, pool_limits: dict[str, date] | None = None, *,
+                    history_copies: bool = True) -> JsonObject:
     """Split *txns* into rows to import, rows to skip and rows to hold.
 
     ``pool_limits`` maps a row's ID to the latest date of a book entry that the row may match.
@@ -743,6 +784,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
     pool = [p for p in _existing_pool(entity, ledger_account) if p["source_id"] not in batch_ids]
     used: set[int] = set()
     plan: JsonObject = {"import": [], "held": [], "skipped": Counter()}
+    history_taken: set[str] = set()
     for txn in sorted(txns, key=lambda t: (t["date"], t["id"])):
         sid = txn["id"]
         spellings = source_id_variants(sid)
@@ -758,6 +800,16 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
         if spellings & held_ids and not choice:
             plan["skipped"]["already_held_for_review"] += 1
             continue
+        if history_receipts and history_copies and not choice:
+            # A copy of a bank row that a person matched to QuickBooks history is not posted and not held again.
+            original = history_duplicate_of(history_index, ledger_account, mapping_key, txn, history_taken)
+            if original:
+                history_taken.add(original)
+                plan["skipped"]["matched_to_history"] += 1
+                plan.setdefault("matched_to_history", []).append(
+                    {"source_id": sid, "duplicate_of": original, "account": ledger_account, "date": txn["date"],
+                     "amount": format(_txn_amount(txn), "f")})
+                continue
         ownership = (history_index.holds(ledger_account, txn["date"], _txn_amount(txn))
                      if history_receipts and not choice else None)
         if ownership:
@@ -776,21 +828,8 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
         day = date.fromisoformat(txn["date"])
         amount = _txn_amount(txn)
         desc = normalize_description(txn["description"])
-        match, rule = None, None
         latest = limits.get(sid)
-        for index, item in enumerate(pool):
-            if latest is not None and item["date"] > latest:
-                continue
-            if index not in used and item["date"] == day and item["amount"] == amount and item["desc"] == desc:
-                match, rule = index, "same_date_amount_description"
-                break
-        if match is None:
-            near = [(abs((item["date"] - day).days), index) for index, item in enumerate(pool)
-                    if (latest is None or item["date"] <= latest)
-                    and index not in used and item["amount"] == amount and not same_family(item["family"], mapping_key)
-                    and abs((item["date"] - day).days) <= NEAR_DATE_DAYS]
-            if near:
-                match, rule = min(near)[1], f"same_amount_within_{NEAR_DATE_DAYS}_days_other_source"
+        match, rule = _match_pool(pool, used, day, amount, desc, mapping_key, latest)
         if match is None:
             plan["import"].append(txn)
             continue
@@ -1295,6 +1334,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             entry: JsonObject = {"statement": record, "counts": counts, "tieout": record["tieout"],
                                  "warnings": statement["warnings"] + record_warnings,
                                  "held": [{k: v for k, v in h.items() if k != "transaction"} for h in plan["held"]],
+                                 **({"matched_to_history": plan["matched_to_history"]} if plan.get("matched_to_history") else {}),
                                  "coverage": ("recorded" if record["period_confirmed"]
                                               else "from_transactions" if record.get("coverage_basis") == "transactions"
                                               else "needs_period")}
@@ -1311,7 +1351,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                                + statement["in_file_duplicates"])
                 if plan["import"]:
                     outcome = import_transactions(
-                        entity, plan["import"], session_id=session_id,
+                        entity, plan["import"], session_id=session_id, history_copies=False,
                         categorizer=queue_module.make_categorizer(entity), ts=ts,
                         intake_only=intake_only)
                     if outcome.errors:

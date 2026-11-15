@@ -128,7 +128,13 @@ def opening_dates(entity_path: Path | str) -> dict[str, date]:
     if not path.is_file():
         return {}
     with LedgerStore(path).connection() as conn:
-        return {item["account"]: date.fromisoformat(item["date"]) for item in reversed(live_openings(conn))}
+        found = {item["account"]: date.fromisoformat(item["date"]) for item in reversed(live_openings(conn))}
+    # An account owned by a recorded QuickBooks history starts on the first history day: the opening
+    # balance already includes every earlier row.
+    from .quickbooks_history import history_start_dates
+    for account, day in history_start_dates(entity_path).items():
+        found.setdefault(account, day)
+    return found
 
 
 def before_opening_refusal(entity_path: Path | str, account: str, days: list[str],

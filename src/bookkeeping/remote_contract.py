@@ -124,7 +124,7 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
         mutates = args.apply  # The default is a preview; --apply records the tax treatment or the deposit kind.
     if path == ("ledger", "migrate") and args.dry_run:
         mutates = False
-    if path in {('qb','buffer-decisions'),('qb','resolve-buffer'),('qb','release-buffer')}:
+    if path in {('qb','buffer-decisions'),('qb','resolve-buffer'),('qb','release-buffer'),('qb','reverse-buffer')}:
         mutates = path != ('qb','buffer-decisions')
     if path == ("qb", "sync-transactions"):
         mutates = args.apply

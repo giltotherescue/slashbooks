@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A bank row that a person matched to a QuickBooks history leg now stands in the
+  duplicate pool: a later copy through a feed or a statement is not posted and not
+  held again (`matched_to_history`). `books qb reverse-buffer` lets a person undo
+  a buffer decision (a posted release must be reversed the normal way first).
+  Bank rows dated before the history starts are before the books and are no longer
+  held.
 - Hold a bank or card row that clears up to 45 days after the QuickBooks history
   end when an unmatched QuickBooks leg has the same amount and direction. It was
   held for three days only, so a deposit in transit or an outstanding check could

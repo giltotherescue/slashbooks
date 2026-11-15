@@ -42,13 +42,29 @@ def _money(value):
         raise ValueError('Malformed monetary value') from exc
 
 
-def receipts(entity):
-    path = default_store_path(entity.path)
+def receipts_at(entity_path):
+    path = default_store_path(Path(entity_path))
     if not path.exists():
         return []
     with LedgerStore(path).connection() as conn:
         return [json.loads(row[0]) for row in conn.execute(
             "SELECT payload_json FROM audit_events WHERE type='qbo-history-recorded'")]
+
+
+def receipts(entity):
+    return receipts_at(entity.path)
+
+
+def history_start_dates(entity_path):
+    """First day of the recorded history for each bank or card account it owns.
+
+    A bank row dated before it is already in the opening balance: the books start there.
+    """
+    found = {}
+    for r in receipts_at(entity_path):
+        for account in r['cutovers']:
+            found.setdefault(account, date.fromisoformat(r['history_from']))
+    return found
 
 
 def owned(entity, account, day, *, nearby=False, _receipts=None):
@@ -525,10 +541,22 @@ def sync_transactions(entity, input_path, *, apply=False, plan_hash=None):
 
 # Buffer decisions are durable ledger audit events. They authorize only the
 # reviewed source identity, account, date and bank amount, never a whole period.
-def _buffer_decisions(entity):
+def _audit(entity, types):
+    marks = ','.join('?' for _ in types)
     with LedgerStore(default_store_path(entity.path)).connection() as conn:
-        return [json.loads(r[0]) for r in conn.execute(
-            "SELECT payload_json FROM audit_events WHERE type='qbo-buffer-decision' ORDER BY id")]
+        return [(r[0], json.loads(r[1])) for r in conn.execute(
+            f"SELECT type, payload_json FROM audit_events WHERE type IN ({marks}) ORDER BY id", tuple(types))]
+
+
+def _buffer_decisions(entity):
+    """The decisions in force: a reversed decision is not in force, and a later one can replace it."""
+    active = {}
+    for kind, record in _audit(entity, ('qbo-buffer-decision', 'qbo-buffer-decision-reversed')):
+        if kind == 'qbo-buffer-decision':
+            active[record['source_id']] = record
+        else:
+            active.pop(record['source_id'], None)
+    return list(active.values())
 
 
 def buffer_decision(entity, source_id):
@@ -551,6 +579,31 @@ class HistoryIndex:
             for record in _buffer_decisions(entity):
                 self.decisions[record['source_id']] = record
         self._legs = None
+        self.starts = history_start_dates(entity.path) if self.receipts else {}
+
+    def handled_items(self, account):
+        """Bank rows a person matched to history, as items for the ordinary duplicate pool.
+
+        Each one stands for the bank row it consumed. Like a posted entry in the ordinary pool, it
+        matches one row in one pass, so two real rows of one amount in a pass can both exist.
+        """
+        from .source_ids import source_family
+        from .statement_import import normalize_description
+        items = []
+        for d in self.decisions.values():
+            if d['decision'] != 'history-match' or d['account'] != account:
+                continue
+            txn = d.get('transaction') or {}
+            items.append({'source_id': d['source_id'], 'date': date.fromisoformat(str(d['date'])[:10]),
+                          'amount': Decimal(str(d['amount'])),
+                          'desc': normalize_description(str(txn.get('reference') or txn.get('description') or '')),
+                          'family': str(txn.get('csvMappingKey') or source_family(d['source_id']))})
+        return sorted(items, key=lambda i: (i['date'], i['source_id']))
+
+    def before_books(self, account, day):
+        """True for a bank row dated before the history starts: the opening balance already includes it."""
+        start = self.starts.get(account)
+        return bool(start and date.fromisoformat(str(day)[:10]) < start)
 
     def decision(self, source_id):
         return self.decisions.get(source_id)
@@ -604,6 +657,8 @@ class HistoryIndex:
         for r in self.receipts:
             if account not in r['account_map'].values():
                 continue
+            if day < date.fromisoformat(r['history_from']):
+                continue  # Before the books start: the opening balance already includes it.
             end = date.fromisoformat(r['history_to'])
             if day <= end:
                 return 'inside_period'
@@ -618,15 +673,18 @@ class HistoryIndex:
 
 def is_history_hold(entity, candidate):
     """True for a duplicate-review item that the history holds (it needs the buffer commands)."""
-    if candidate.get('held_for_quickbooks_history') or candidate.get('match_rule') == 'quickbooks_history_ownership':
-        return True
     if not candidate.get('account'):
         return False
+    index = HistoryIndex(entity)
+    if index.before_books(candidate['account'], candidate.get('date', '')):
+        return False  # Before the books start: not a history hold.
+    if candidate.get('held_for_quickbooks_history') or candidate.get('match_rule') == 'quickbooks_history_ownership':
+        return True
     try:
         amount = Decimal(str(candidate['amount']))
     except (KeyError, ArithmeticError):
         amount = None
-    return bool(HistoryIndex(entity).holds(candidate['account'], candidate.get('date', ''), amount))
+    return bool(index.holds(candidate['account'], candidate.get('date', ''), amount))
 
 
 def released_entry(entity, entry, posting):
@@ -666,6 +724,8 @@ def list_buffer_decisions(entity, now=None, _index=None):
             amount = Decimal(str(row['amount']))
         except (KeyError, ArithmeticError):
             amount = None
+        if index.before_books(row['account'], row.get('date', '')):
+            continue
         rule = index.holds(row['account'], row.get('date'), amount)
         if not (rule or row.get('held_for_quickbooks_history') or row.get('match_rule') == 'quickbooks_history_ownership'):
             continue
@@ -800,3 +860,39 @@ def release_due_buffer(entity, now=None):
                 due.append(row)
         released, errors = _release_rows(entity, due, current.isoformat(), index) if due else ([], [])
         return {'released':released,'needs_review':review,'errors':errors}
+
+
+def reverse_buffer_decision(entity, source_id, reason='', now=None):
+    """A person undoes a buffer decision. Every reversal is a durable audit event.
+
+    - ``history-match``: the leg is unmatched again, the row is held again, and a later copy of that bank
+      row is no longer recognized as already handled.
+    - ``release``: refused when the row is already posted or waiting in the review queue. Reverse the
+      posted entry the normal way first (or withdraw the queued item), because a reversal here must
+      not change the ledger behind the books' back. A release that posted nothing is reversed.
+    """
+    from .ledger.importer import _entity_write_lock, _load_pending_categorization
+    with _entity_write_lock(entity.path):
+        index = HistoryIndex(entity)
+        decision = index.decision(source_id)
+        if decision is None:
+            raise ValueError('There is no buffer decision to reverse for this source ID')
+        store = LedgerStore(default_store_path(entity.path))
+        if decision['decision'] == 'release':
+            if any(e.source_id == source_id for e in store.load_entries()):
+                raise ValueError('This row was released and is already posted. Reverse the posted entry the normal way '
+                                 'first (books ledger reverse), then reverse this decision.')
+            if any(str(t.get('id')) == source_id for t in _load_pending_categorization(entity)):
+                raise ValueError('This row was released and is waiting in the review queue. Withdraw that item first, '
+                                 'then reverse this decision.')
+        stamp = _buffer_now(now).isoformat()
+        record = {'source_id': source_id, 'reversed_decision': decision['decision'],
+                  'history_source_id': decision.get('history_source_id'), 'account': decision['account'],
+                  'date': decision['date'], 'amount': decision['amount'], 'reason': str(reason or '')[:500],
+                  'reversed_at': stamp}
+        with store.connection() as conn:
+            store.append_audit_event('qbo-buffer-decision-reversed', record, conn, ts=stamp)
+            conn.commit()
+        _mark_candidates(entity, {source_id: {'status': 'duplicate-candidate', 'history_source_id': None, 'resolved_at': None}})
+        return {'source_id': source_id, 'reversed_decision': decision['decision'], 'status': 'duplicate-candidate',
+                'reversed_at': stamp}

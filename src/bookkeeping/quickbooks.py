@@ -2460,10 +2460,13 @@ def add_parser(subparsers) -> None:
     inv_parser.add_argument("--fiscal-start", type=date.fromisoformat,
                             help="Evidenced fiscal start for accrual opening coverage")
 
-    for name in ('buffer-decisions', 'resolve-buffer', 'release-buffer'):
+    for name in ('buffer-decisions', 'resolve-buffer', 'release-buffer', 'reverse-buffer'):
         buffer_parser = qb_sub.add_parser(name, help='Review QuickBooks intake buffer')
         buffer_parser.add_argument('--entity', type=Path, required=True, dest='entity_path')
         buffer_parser.add_argument('--json', action='store_true', dest='as_json')
+        if name == 'reverse-buffer':
+            buffer_parser.add_argument('--source-id', required=True)
+            buffer_parser.add_argument('--reason', default='', help='Why the decision is reversed (kept in the audit event)')
         if name == 'resolve-buffer':
             buffer_parser.add_argument('--source-id', required=True)
             buffer_parser.add_argument('--decision', choices=['release','history-match'], required=True)
@@ -2524,14 +2527,16 @@ def run(args) -> int:
         from .quickbooks_sync import run as run_sync
         return run_sync(args)
 
-    if args.qb_command in ('buffer-decisions', 'resolve-buffer', 'release-buffer'):
+    if args.qb_command in ('buffer-decisions', 'resolve-buffer', 'release-buffer', 'reverse-buffer'):
         from .entity import load_entity
-        from .quickbooks_history import list_buffer_decisions, resolve_buffer_decision, release_due_buffer
+        from .quickbooks_history import list_buffer_decisions, resolve_buffer_decision, release_due_buffer, reverse_buffer_decision
         entity = load_entity(args.entity_path)
         if args.qb_command == 'buffer-decisions':
             result = list_buffer_decisions(entity)
         elif args.qb_command == 'resolve-buffer':
             result = resolve_buffer_decision(entity,args.source_id,args.decision,args.history_source_id)
+        elif args.qb_command == 'reverse-buffer':
+            result = reverse_buffer_decision(entity,args.source_id,args.reason)
         else:
             result = release_due_buffer(entity)
         print(json.dumps(result, indent=2))

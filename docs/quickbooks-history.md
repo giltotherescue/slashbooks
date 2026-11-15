@@ -191,3 +191,41 @@ settlement) cannot be matched, because a match needs an equal amount; release it
 with `--decision release` only after checking. Reports for ranges before the opening
 date show the prior year as one lump. A history entry has no correction or reversal
 path. One history import per company.
+
+
+## Matched rows, copies, undo and rows before the history
+
+**A matched bank row stands in the duplicate pool.** When a person matches a bank row to a
+QuickBooks leg, that bank row (account, signed amount, date, description, source ID) is kept as
+handled. A later row on the same account that the ordinary duplicate rule treats as the same bank
+row is not posted and not held again: the same date, amount and description, or the same amount
+within three days from another source (a statement for a feed row, or the reverse). Intake counts
+it in `matched_to_history` (and in `skipped_duplicate`); a statement import returns
+`matched_to_history` for the statement and a `matched_to_history` count. Each item has
+`source_id`, `duplicate_of` (the matched row), `account`, `date` and `amount`. Like a posted entry in
+the ordinary pool, a matched row matches one row in one pass, so two real rows of one amount on one
+day are both possible: the second goes the ordinary path. A re-sent feed row on the same feed with a
+different date or description is not recognized, as the ordinary rule does not recognize it.
+
+**Undo.** `books qb reverse-buffer --entity BOOKS --source-id ID [--reason TEXT] --json` reverses a
+buffer decision. It writes a durable audit event (`qbo-buffer-decision-reversed`). Reversing a
+`history-match` makes the leg unmatched and the row held again. Reversing a `release` is refused
+while the row is posted or waits in the review queue: reverse the posted entry the normal way (or
+withdraw the queued item) first. The engine does not reverse a posted entry here, so the ledger never
+changes behind the books' back. The command is a write that the preparation integration does not
+list, so an agent cannot call it; a host must keep it person-only.
+
+**A released row** ("This is new") does not match any leg. It is not offered as a candidate again,
+and the next row of the same amount is held while the leg is unmatched.
+
+**Direct ledger writes.** A person's journal is the person's own act and is not blocked. A bank row
+reaches the ledger only through intake (feeds, statements, `ingest`, context release and the buffer
+release, all `import_transactions`) or through a queue that intake filled (confirm, split, transfer,
+Stripe clearing). A test lists every direct writer so a new one is reviewed.
+
+**Before the history starts.** A bank row dated before `history_from` is before the books: the opening
+balance already includes it. Feed rows are reported in `before_opening` (not posted, not held), and a
+statement that has such a row follows the ordinary `before_opening_balance` refusal.
+
+Known limit: an amount that differs from the QuickBooks leg (a tip, a netted fee) is not held after
+the first three days.
