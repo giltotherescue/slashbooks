@@ -146,14 +146,25 @@ def before_opening_refusal(entity_path: Path | str, account: str, days: list[str
     early = sorted(day for day in days if day < opening.isoformat())
     if not early:
         return None
+    from .quickbooks_history import history_start_dates
+    if history_start_dates(entity_path).get(account) == opening:
+        # The opening comes from the QuickBooks history, not from a statement: it cannot be replaced here.
+        message = (f"The starting balance of {account} comes from the QuickBooks history, which starts on {opening.isoformat()}. "
+                   f"{len(early)} row(s) are dated before it, from {early[0]}. The history already includes them, "
+                   "so they would count twice. Nothing was imported.")
+        action = (f"Upload a statement that starts on or after {opening.isoformat()}. The starting balance cannot be "
+                  "replaced with a statement opening.")
+    else:
+        message = (f"{account} has an opening balance on {opening.isoformat()}. {len(early)} row(s) are dated before "
+                   f"it, from {early[0]}. The opening balance already includes them, so they would count twice. "
+                   "Nothing was imported.")
+        action = (f"To add the earlier history, move the opening balance to the first day of the earlier statement: "
+                  f"books statement record-opening --entity PATH --account {account} --on YYYY-MM-DD "
+                  "--amount AMOUNT --replace, then import again.")
     return {
         "code": "before_opening_balance",
-        "message": (f"{account} has an opening balance on {opening.isoformat()}. {len(early)} row(s) are dated before "
-                    f"it, from {early[0]}. The opening balance already includes them, so they would count twice. "
-                    "Nothing was imported."),
-        "action": (f"To add the earlier history, move the opening balance to the first day of the earlier statement: "
-                   f"books statement record-opening --entity PATH --account {account} --on YYYY-MM-DD "
-                   "--amount AMOUNT --replace, then import again."),
+        "message": message,
+        "action": action,
         "account": account, "opening_date": opening.isoformat(), "first_row_date": early[0],
         "rows_before_opening": len(early), **detail,
     }
