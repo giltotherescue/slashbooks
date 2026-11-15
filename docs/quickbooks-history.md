@@ -154,3 +154,40 @@ Ordinary duplicate review cannot dismiss these rows: use the buffer commands.
 Decisions are durable hash-chained ledger audit events, with retained input and
 selected history journal source ID. File display status follows the receipt and
 normal intake, so interrupted releases can be retried safely.
+
+
+## Bank rows that clear late
+
+A deposit in transit or an outstanding check can reach the bank days or weeks after
+QuickBooks recorded it. Each QuickBooks bank or card leg stays *unmatched* until a
+person matches a bank row to it with `resolve-buffer --decision history-match`
+(a durable decision). A bank or card row on a mapped account is held for a person
+when:
+
+- it is dated up to the history end (`inside_period`), or
+- it is dated after the history end, up to `HISTORY_BANK_LAG_DAYS` (45) days after it,
+  and an unmatched leg on the same account has exactly the same signed amount and is
+  dated from 45 days before the row to 3 days after it (`unmatched_history_leg`), or
+- it is dated within three days after the history end (`settlement_window`), because a
+  split or combined settlement can have a different amount.
+
+Any other row after the history end follows the normal path at once. A row held for
+`unmatched_history_leg` or `inside_period`, or with a journal on the account within
+three days, is never released by time. `books qb buffer-decisions` shows for each
+held row `hold_rule`, `history_matches` (journals within three days, any amount) and
+`candidate_legs`: the unmatched legs of the same amount and direction, each with
+`source_id`, `account`, `date`, `amount`, `type` (the QuickBooks transaction type),
+`doc_number`, `name` and `days_before_row`. A `history-match` decision must name one
+of the `candidate_legs`, so its account, amount and direction are checked, and a leg
+matches one row only. A released row has the status `released-to-intake`: it goes
+through normal intake, which can still hold it for categorization.
+
+`books qb release-buffer` reads decisions and ledger entries once for the whole call,
+releases the due rows in one intake pass, and keeps going when a row fails. Its result
+is `{"released": [...], "needs_review": [...], "errors": [{"source_id": ..., "error": ...}]}`.
+
+Known limits: a bank row that is only part of a QuickBooks leg (a split or combined
+settlement) cannot be matched, because a match needs an equal amount; release it
+with `--decision release` only after checking. Reports for ranges before the opening
+date show the prior year as one lump. A history entry has no correction or reversal
+path. One history import per company.

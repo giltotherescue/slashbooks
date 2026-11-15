@@ -1226,8 +1226,8 @@ def resolve_duplicate_candidate(
     if candidate is None:
         raise ValueError(f"No open duplicate candidate found for source ID '{source_id}'.")
 
-    from .quickbooks_history import owned
-    if candidate.get('account') and owned(entity,candidate['account'],candidate.get('date',''),nearby=True):
+    from .quickbooks_history import is_history_hold
+    if is_history_hold(entity, candidate):
         raise ValueError('QuickBooks buffer needs an explicit migration correction: release or select a history journal entry')
 
     if decision == "distinct":
@@ -1238,11 +1238,9 @@ def resolve_duplicate_candidate(
                 f"Re-download and ingest the source after updating {product_name()}."
             )
         from .ledger.importer import import_transactions
-        from .quickbooks_history import owned
-
         # Generic duplicate review must not hide an ownership hold that intake
         # would immediately re-create. A migration correction is required.
-        if candidate.get("account") and owned(entity, candidate["account"], txn.get("date", ""), nearby=True):
+        if is_history_hold(entity, candidate):
             raise ValueError("QuickBooks owns this account through the history cutover; explicit migration correction is required")
 
         result = import_transactions(

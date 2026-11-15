@@ -688,7 +688,7 @@ class HistoryTests(unittest.TestCase):
         held=list_buffer_decisions(self.entity)
         self.assertEqual(len(held),1);self.assertEqual(held[0]['history_matches'],[])
         due=release_due_buffer(self.entity,now='2027-01-01T00:00:00Z')
-        self.assertEqual(due,{'released':[],'needs_review':[row['id']]})
+        self.assertEqual(due,{'released':[],'needs_review':[row['id']],'errors':[]})
         self.assertEqual(len(list_buffer_decisions(self.entity)),1)
         resolve_buffer_decision(self.entity,row['id'],'release')
         self.assertEqual(list_buffer_decisions(self.entity),[])

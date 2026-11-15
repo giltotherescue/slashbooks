@@ -13,6 +13,12 @@ from .ledger.model import Entry, Open, Posting, _validate_account_name
 from .ledger.store import LedgerStore, default_store_path
 
 FORMAT = 'slashbooks-qbo-history-v1'
+# A bank row can clear long after QuickBooks recorded it (a deposit in transit, an outstanding
+# check). A bank row after the history end is held when an unmatched QuickBooks bank leg of the
+# same amount is dated up to this many days before it, or up to LEG_LOOKAHEAD_DAYS after it.
+HISTORY_BANK_LAG_DAYS = 45
+LEG_LOOKAHEAD_DAYS = 3
+SETTLEMENT_DAYS = 3
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
 
@@ -340,7 +346,10 @@ def _plan(entity, path):
             if debit < 0 or credit < 0 or (debit and credit):
                 raise ValueError('Invalid GL debit/credit shape')
             key = (label,identity)
-            group = groups.setdefault(key, {'date':day,'postings':[],'evidence':[]})
+            group = groups.setdefault(key, {'date':day,'postings':[],'evidence':[],'doc':'','name':''})
+            for field, column_key in (('doc','doc_num'),('name','name')):
+                if column_key in cols and not group[field]:
+                    group[field] = str(cells[cols[column_key]].get('value') or '')[:120]
             if group['date'] != day:
                 raise ValueError('Transaction identity has conflicting dates')
             # Preserve source dimensions as posting attribution, never interpret them.
@@ -421,6 +430,8 @@ def _plan(entity, path):
             continue
         entries.append(Entry(group['date'], 'QuickBooks '+label+' '+identity,
             meta=(('source-id',namespace+':'+label+':'+identity),('import-source','qbo-history'),
+                  *((('qbo-doc-number',group['doc']),) if group['doc'] else ()),
+                  *((('qbo-name',group['name']),) if group['name'] else ()),
                   ('qbo-source-digest',versions[(label,identity)]),('qbo-posting-digest',_digest(group['evidence']))),
             postings=tuple(group['postings'])))
     store = LedgerStore(default_store_path(entity.path))
@@ -524,6 +535,100 @@ def buffer_decision(entity, source_id):
     return next((r for r in reversed(_buffer_decisions(entity)) if r['source_id'] == source_id), None)
 
 
+class HistoryIndex:
+    """What a bank row is checked against, loaded once for a whole batch of rows.
+
+    A history bank leg is *unmatched* until a person matches a bank row to it (a durable
+    ``history-match`` decision). Only an unmatched leg can make a later bank row a possible
+    duplicate of QuickBooks history.
+    """
+
+    def __init__(self, entity, receipts_=None):
+        self.entity = entity
+        self.receipts = receipts(entity) if receipts_ is None else receipts_
+        self.decisions = {}
+        if self.receipts:
+            for record in _buffer_decisions(entity):
+                self.decisions[record['source_id']] = record
+        self._legs = None
+
+    def decision(self, source_id):
+        return self.decisions.get(source_id)
+
+    def _matched(self):
+        return {(d['history_source_id'], d['account']) for d in self.decisions.values()
+                if d['decision'] == 'history-match'}
+
+    def legs(self):
+        """Every QuickBooks history bank leg: one per entry and bank or card account."""
+        if self._legs is None:
+            bank = {a for r in self.receipts for a in r['cutovers']}
+            matched = self._matched()
+            found = []
+            for entry in LedgerStore(default_store_path(self.entity.path)).load_entries():
+                meta = dict(entry.meta)
+                if meta.get('import-source') != 'qbo-history':
+                    continue
+                for account in sorted({p.account for p in entry.postings if p.account in bank}):
+                    parts = entry.source_id.split(':')
+                    found.append({'source_id': entry.source_id, 'account': account, 'date': entry.date.isoformat(),
+                                  'amount': str(sum((p.amount for p in entry.postings if p.account == account), Decimal(0))),
+                                  'type': parts[-2] if len(parts) >= 2 else '',
+                                  'doc_number': meta.get('qbo-doc-number', ''), 'name': meta.get('qbo-name', ''),
+                                  'description': entry.narration,
+                                  'matched': (entry.source_id, account) in matched})
+            self._legs = found
+        return self._legs
+
+    def candidates(self, account, day, amount):
+        """Unmatched legs on the account with this exact signed amount, from 45 days before the row to 3 days after it."""
+        if amount is None:
+            return []
+        day = date.fromisoformat(str(day)[:10])
+        lo, hi = day - timedelta(days=HISTORY_BANK_LAG_DAYS), day + timedelta(days=LEG_LOOKAHEAD_DAYS)
+        return [leg for leg in self.legs() if leg['account'] == account and not leg['matched']
+                and Decimal(leg['amount']) == amount and lo <= date.fromisoformat(leg['date']) <= hi]
+
+    def holds(self, account, day, amount=None):
+        """Why a bank row waits for a person, or None when it follows the normal path.
+
+        ``inside_period``: dated up to the history end; QuickBooks owns the books there.
+        ``unmatched_history_leg``: after the history end, within HISTORY_BANK_LAG_DAYS of it, and an
+        unmatched leg of the same amount and direction could be the same money.
+        ``settlement_window``: within SETTLEMENT_DAYS after the history end (a split or combined
+        settlement can have a different amount).
+        """
+        if not self.receipts:
+            return None
+        day = date.fromisoformat(str(day)[:10])
+        for r in self.receipts:
+            if account not in r['account_map'].values():
+                continue
+            end = date.fromisoformat(r['history_to'])
+            if day <= end:
+                return 'inside_period'
+            if account not in r['cutovers']:
+                continue
+            if day <= end + timedelta(days=HISTORY_BANK_LAG_DAYS) and self.candidates(account, day, amount):
+                return 'unmatched_history_leg'
+            if day <= end + timedelta(days=SETTLEMENT_DAYS):
+                return 'settlement_window'
+        return None
+
+
+def is_history_hold(entity, candidate):
+    """True for a duplicate-review item that the history holds (it needs the buffer commands)."""
+    if candidate.get('held_for_quickbooks_history') or candidate.get('match_rule') == 'quickbooks_history_ownership':
+        return True
+    if not candidate.get('account'):
+        return False
+    try:
+        amount = Decimal(str(candidate['amount']))
+    except (KeyError, ArithmeticError):
+        amount = None
+    return bool(HistoryIndex(entity).holds(candidate['account'], candidate.get('date', ''), amount))
+
+
 def released_entry(entity, entry, posting):
     decision = buffer_decision(entity, entry.source_id)
     return bool(decision and decision['decision'] == 'release'
@@ -540,88 +645,158 @@ def _buffer_now(now=None):
     return value.astimezone(timezone.utc)
 
 
-def list_buffer_decisions(entity, now=None):
-    """List open ownership holds with journal evidence and elapsed-time deadline."""
+def list_buffer_decisions(entity, now=None, _index=None):
+    """List open holds with their evidence, the hold rule and the elapsed-time deadline.
+
+    Each row has ``history_matches`` (a journal touching the account within three days, any
+    amount, as a suggestion), ``candidate_legs`` (unmatched history bank legs of the same
+    amount and direction: date, amount, QuickBooks type, document number, name) and
+    ``hold_rule`` (``inside_period``, ``unmatched_history_leg``, ``settlement_window`` or
+    None when only an earlier hold remains).
+    """
     path = entity.staging_dir / 'duplicate-candidates.json'
     if not path.exists():
         return []
-    entries = LedgerStore(default_store_path(entity.path)).load_entries()
+    index = _index or HistoryIndex(entity)
     result = []
     for row in json.loads(path.read_text()):
-        if row.get('status') != 'duplicate-candidate' or not owned(entity, row.get('account'), row.get('date'), nearby=True):
+        if row.get('status') != 'duplicate-candidate' or not row.get('account'):
             continue
-        matches = []
-        for entry in entries:
-            if dict(entry.meta).get('import-source') != 'qbo-history':
-                continue
-            if abs((entry.date - date.fromisoformat(row['date'])).days) > 3:
-                continue
-            bank_legs = [p.amount for p in entry.postings if p.account == row['account']]
-            # Settlement aggregation/splits can change a bank row's amount.
-            # Any nearby journal touching this account needs a human decision.
-            if bank_legs:
-                matches.append({'source_id':entry.source_id,'date':entry.date.isoformat(),
-                                'amount':str(sum(bank_legs, Decimal(0))),
-                                'description':entry.narration,'account':row['account']})
+        try:
+            amount = Decimal(str(row['amount']))
+        except (KeyError, ArithmeticError):
+            amount = None
+        rule = index.holds(row['account'], row.get('date'), amount)
+        if not (rule or row.get('held_for_quickbooks_history') or row.get('match_rule') == 'quickbooks_history_ownership'):
+            continue
+        day = date.fromisoformat(str(row['date'])[:10])
+        matches = [{'source_id':leg['source_id'],'date':leg['date'],'amount':leg['amount'],
+                    'description':leg['description'],'account':row['account']}
+                   for leg in index.legs()
+                   # Settlement aggregation/splits can change a bank row's amount.
+                   # Any nearby journal touching this account needs a human decision.
+                   if leg['account'] == row['account'] and not leg['matched']
+                   and abs((date.fromisoformat(leg['date']) - day).days) <= 3]
+        candidates = [{**{k:leg[k] for k in ('source_id','account','date','amount','type','doc_number','name')},
+                       'days_before_row': (day - date.fromisoformat(leg['date'])).days}
+                      for leg in index.candidates(row['account'], row['date'], amount)]
         deadline = _buffer_now(row['created_at']) + timedelta(days=3)
-        result.append({**row, 'held':{k:row[k] for k in ('account','date','amount','description')}, 'held_for_quickbooks_history':True, 'history_matches':matches,
-                       'hold_until':deadline.isoformat()})
+        result.append({**row, 'held':{k:row[k] for k in ('account','date','amount','description')},
+                       'held_for_quickbooks_history':True, 'hold_rule':rule, 'history_matches':matches,
+                       'candidate_legs':candidates, 'hold_until':deadline.isoformat()})
     return result
+
+
+def _mark_candidates(entity, updates):
+    """Set the display status of several review items with one read and one write."""
+    from .statement_import import _write_json_atomic
+    path = entity.staging_dir / 'duplicate-candidates.json'
+    candidates = json.loads(path.read_text())
+    for candidate in candidates:
+        if candidate.get('source_id') in updates:
+            candidate.update(updates[candidate['source_id']], held_for_quickbooks_history=True)
+    _write_json_atomic(path, candidates)
+
+
+def _release_rows(entity, rows, resolved_at, index):
+    """Record the release decision of each row, then run the rows through normal intake.
+
+    Returns ``(released_ids, errors)``. One failing row never stops the rows after it: if the
+    batch fails, each row is tried on its own and its error is kept.
+    """
+    from .ledger.importer import import_transactions
+    from .queue import make_categorizer
+    new = [r for r in rows if r['source_id'] not in index.decisions]
+    if new:
+        store = LedgerStore(default_store_path(entity.path))
+        with store.connection() as conn:
+            for row in new:
+                record = {k:row[k] for k in ('source_id','account','date','amount','transaction')}
+                record.update(decision='release', history_source_id=None, resolved_at=resolved_at)
+                store.append_audit_event('qbo-buffer-decision', record, conn, ts=resolved_at)
+                index.decisions[row['source_id']] = record
+            conn.commit()
+
+    def intake(batch):
+        imported = import_transactions(entity, [r['transaction'] for r in batch], 'qbo-buffer-release',
+                                       categorizer=make_categorizer(entity), legacy_duplicate_guard=False)
+        if imported.errors or imported.before_opening:
+            raise ValueError('Released row requires intake correction: '+str(imported.errors or imported.before_opening))
+
+    released, errors = [], []
+    try:
+        intake(rows)
+        released = [r['source_id'] for r in rows]
+    except Exception as exc:
+        if len(rows) == 1:
+            errors.append({'source_id': rows[0]['source_id'], 'error': str(exc)})
+        else:
+            for row in rows:
+                try:
+                    intake([row])
+                    released.append(row['source_id'])
+                except Exception as inner:
+                    errors.append({'source_id': row['source_id'], 'error': str(inner)})
+    if released:
+        _mark_candidates(entity, {sid:{'status':'released-to-intake','history_source_id':None,'resolved_at':resolved_at}
+                                  for sid in released})
+    return released, errors
 
 
 def resolve_buffer_decision(entity, source_id, decision, history_source_id=None, now=None):
     """Persist a source-scoped choice before retryable normal intake."""
-    from .ledger.importer import _entity_write_lock, import_transactions
-    from .queue import make_categorizer
-    from .statement_import import _write_json_atomic
+    from .ledger.importer import _entity_write_lock
     if decision not in {'release', 'history-match'}:
         raise ValueError('Buffer decision must be release or history-match')
     with _entity_write_lock(entity.path):
-        previous = buffer_decision(entity, source_id)
-        row = next((r for r in list_buffer_decisions(entity) if r['source_id'] == source_id), None)
+        index = HistoryIndex(entity)
+        previous = index.decision(source_id)
+        row = next((r for r in list_buffer_decisions(entity, _index=index) if r['source_id'] == source_id), None)
         if previous and (previous['decision'] != decision or previous.get('history_source_id') != history_source_id):
             raise ValueError('A durable buffer decision already exists')
         if row is None:
             if previous:
                 return previous
             raise ValueError('No open QuickBooks buffer row')
-        if decision == 'history-match' and history_source_id not in {r['source_id'] for r in row['history_matches']}:
-            raise ValueError('Select a supported history journal entry')
+        if decision == 'history-match':
+            # The leg must have the row's account, amount and direction and be unmatched, within the date window.
+            if history_source_id not in {c['source_id'] for c in row['candidate_legs']}:
+                raise ValueError('Select an unmatched history journal entry with the same account, amount and direction')
+        resolved_at = _buffer_now(now).isoformat()
         record = {k:row[k] for k in ('source_id','account','date','amount','transaction')}
-        record.update(decision=decision, history_source_id=history_source_id, resolved_at=_buffer_now(now).isoformat())
+        record.update(decision=decision, history_source_id=history_source_id, resolved_at=resolved_at)
+        if decision == 'release':
+            released, errors = _release_rows(entity, [row], resolved_at, index)
+            if errors:
+                raise ValueError(errors[0]['error'])
+            return {**row, **record, 'status':'released-to-intake'}
         if not previous:
             store = LedgerStore(default_store_path(entity.path))
             with store.connection() as conn:
-                store.append_audit_event('qbo-buffer-decision',record,conn,ts=record['resolved_at'])
+                store.append_audit_event('qbo-buffer-decision',record,conn,ts=resolved_at)
                 conn.commit()
-        if decision == 'release':
-            imported = import_transactions(entity,[row['transaction']],'qbo-buffer-release',
-                                           categorizer=make_categorizer(entity),legacy_duplicate_guard=False)
-            if imported.errors or imported.before_opening:
-                raise ValueError('Released row requires intake correction: '+str(imported.errors or imported.before_opening))
-        path = entity.staging_dir / 'duplicate-candidates.json'
-        candidates = json.loads(path.read_text())
-        for candidate in candidates:
-            if candidate.get('source_id') == source_id:
-                candidate.update(status='confirmed-distinct' if decision == 'release' else 'confirmed-duplicate',
-                                 history_source_id=history_source_id, resolved_at=record['resolved_at'],
-                                 held_for_quickbooks_history=True)
-        _write_json_atomic(path,candidates)
-        return {**row, **record, 'status':'confirmed-distinct' if decision == 'release' else 'confirmed-duplicate'}
+        _mark_candidates(entity, {source_id:{'status':'confirmed-duplicate','history_source_id':history_source_id,
+                                             'resolved_at':resolved_at}})
+        return {**row, **record, 'status':'confirmed-duplicate'}
 
 
 def release_due_buffer(entity, now=None):
+    """Release rows whose wait is over and that no QuickBooks bank leg could explain.
+
+    A row is never released by time when it is inside the history period, when a journal touches
+    the account within three days, or when an unmatched leg of the same amount and direction is
+    dated up to HISTORY_BANK_LAG_DAYS before it (``candidate_legs``). Decisions and ledger entries
+    are loaded once for the whole call. Per-row failures are returned in ``errors``.
+    """
+    from .ledger.importer import _entity_write_lock
     current = _buffer_now(now)
-    released, review = [], []
-    for row in list_buffer_decisions(entity):
-        receipt = owned(entity, row['account'], row['date'], nearby=True)
-        # QuickBooks owns the books inside its period. A bank row there with no nearby journal
-        # may be a gap in QuickBooks, so only a person releases it. Waiting releases only a row
-        # after the period (the settlement buffer) or before it.
-        inside = bool(receipt and receipt['history_from'] <= str(row['date'])[:10] <= receipt['history_to'])
-        if row['history_matches'] or inside:
-            review.append(row['source_id'])
-        elif current >= _buffer_now(row['hold_until']):
-            resolve_buffer_decision(entity,row['source_id'],'release',now=current)
-            released.append(row['source_id'])
-    return {'released':released,'needs_review':review}
+    with _entity_write_lock(entity.path):
+        index = HistoryIndex(entity)
+        review, due = [], []
+        for row in list_buffer_decisions(entity, _index=index):
+            if row['history_matches'] or row['candidate_legs'] or row['hold_rule'] == 'inside_period':
+                review.append(row['source_id'])
+            elif current >= _buffer_now(row['hold_until']):
+                due.append(row)
+        released, errors = _release_rows(entity, due, current.isoformat(), index) if due else ([], [])
+        return {'released':released,'needs_review':review,'errors':errors}

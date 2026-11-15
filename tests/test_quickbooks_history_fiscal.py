@@ -19,7 +19,7 @@ from bookkeeping.reports.statements import balance_sheet, profit_and_loss
 from test_quickbooks_history import column, entity_record, report
 
 CHART = {'1':('Bank','Assets:Bank:Checking'), '4':('Income','Income:Sales'), '5':('Expense','Expenses:Supplies'),
-         '7':('Equity','Equity:Capital'), '10':('Equity','Equity:Retained-Earnings')}
+         '7':('Equity','Equity:Capital'), '10':('Equity','Equity:Retained-Earnings'), '11':('Bank','Assets:Bank:Savings')}
 PL = {'4','5'}
 
 
@@ -65,7 +65,7 @@ class FiscalCases:
             for k,v in legs.items(): movement[k] += Decimal(v)
         manifest = {'format':'slashbooks-qbo-history-v1','environment':'sandbox','realm_id':'456','history_from':first,'history_to':last,
                     'accounting_basis':self.basis,'currency':'USD','account_map':{k:v[1] for k,v in CHART.items()},
-                    'cutovers':{'Assets:Bank:Checking':last},'files':[]}
+                    'cutovers':{'Assets:Bank:Checking':last,'Assets:Bank:Savings':last},'files':[]}
         def add(kind,raw,**extra):
             if 'Header' in raw: raw['Header']['ReportBasis'] = self.basis
             path = source/(str(len(manifest['files']))+'.json');path.write_text(json.dumps(raw,default=float))

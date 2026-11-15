@@ -737,8 +737,9 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                      if aliases.get(s)), "")
 
     batch_ids = {spelling for t in txns for spelling in source_id_variants(t["id"])}
-    from .quickbooks_history import owned, receipts, buffer_decision
-    history_receipts = receipts(entity)
+    from .quickbooks_history import HistoryIndex
+    history_index = HistoryIndex(entity)
+    history_receipts = history_index.receipts
     pool = [p for p in _existing_pool(entity, ledger_account) if p["source_id"] not in batch_ids]
     used: set[int] = set()
     plan: JsonObject = {"import": [], "held": [], "skipped": Counter()}
@@ -749,7 +750,7 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
                 or (store is not None and any(store.source_exists(s) for s in spellings))):
             plan["skipped"]["already_imported"] += 1
             continue
-        choice = buffer_decision(entity, sid) if history_receipts else None
+        choice = history_index.decision(sid) if history_receipts else None
         if choice:
             if choice['decision'] == 'history-match':
                 plan['skipped']['confirmed_duplicate'] += 1
@@ -757,12 +758,13 @@ def plan_duplicates(entity: Any, txns: list[JsonObject], ledger_account: str,
         if spellings & held_ids and not choice:
             plan["skipped"]["already_held_for_review"] += 1
             continue
-        ownership = owned(entity, ledger_account, txn["date"], nearby=True, _receipts=history_receipts)
-        if ownership and not choice:
+        ownership = (history_index.holds(ledger_account, txn["date"], _txn_amount(txn))
+                     if history_receipts and not choice else None)
+        if ownership:
             plan["held"].append({"source_id": sid, "existing_source_id": "", "account": ledger_account,
                 "date": txn["date"], "amount": format(_txn_amount(txn), "f"),
                 "description": txn["description"], "match_rule": "quickbooks_history_ownership",
-                "transaction": txn, "status": "duplicate-candidate"})
+                "held_for_quickbooks_history": True, "transaction": txn, "status": "duplicate-candidate"})
             continue
         status = decision(sid)
         if status == "confirmed-duplicate":
