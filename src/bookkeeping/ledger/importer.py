@@ -110,6 +110,8 @@ class ImportResult:
     matched_to_history: list[dict[str, Any]] = field(default_factory=list)
     # Rows that pair with a matched bank row that already has its copy from this source: held for a person.
     possible_second_rows: list[dict[str, Any]] = field(default_factory=list)
+    # Rows that pair with a matched bank row only by amount within three days: held for a person.
+    possible_copies: list[dict[str, Any]] = field(default_factory=list)
     orphaned_tmps: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -433,7 +435,7 @@ def _atomic_ledger_write_unlocked(
         _refuse_postings_before_open(entity, conn, new_opens, new_entries, source_transactions,
                                      allow_earlier_open_dates=allow_earlier_open_dates)
         from ..quickbooks_history import refuse_owned_write
-        refuse_owned_write(entity, new_entries)
+        refuse_owned_write(entity, new_entries, source_transactions, conn=conn, store=store, ts=ts)
         if history_receipt is not None:
             store.append_audit_event("qbo-history-recorded", history_receipt, conn, ts=ts)
         # A reversal or a correction must keep a transfer that a source row is matched to (queue.py).
@@ -608,6 +610,7 @@ def import_transactions(
     cutover_hold_ids: frozenset[str] = frozenset(),
     context_only_cutovers: dict[str, str] | None = None,
     history_copies: bool = True,
+    history_index: Any = None,
 ) -> ImportResult:
     """Import transactions while serializing staging, queue, and ledger writes.
 
@@ -626,7 +629,7 @@ def import_transactions(
     with _entity_write_lock(entity.path):
         result = _import_transactions_unlocked(
             entity, normalized_txns, session_id, categorizer, ts, session_date,
-            legacy_duplicate_guard, intake_only, cutover_hold_ids, context_only_cutovers or {}, history_copies,
+            legacy_duplicate_guard, intake_only, cutover_hold_ids, context_only_cutovers or {}, history_copies, history_index,
         )
     from ..work import observe_import
     observe_import(result.skipped_duplicate)
@@ -645,6 +648,7 @@ def _import_transactions_unlocked(
     cutover_hold_ids: frozenset[str] = frozenset(),
     context_only_cutovers: dict[str, str] | None = None,
     history_copies: bool = True,
+    history_index: Any = None,
 ) -> ImportResult:
     """Import a list of normalized transactions into the entity ledger.
 
@@ -746,7 +750,7 @@ def _import_transactions_unlocked(
     context_cutovers = dict(context_only_cutovers or {})
     from ..quickbooks_history import HistoryIndex
     from ..statement_import import _txn_amount as _history_amount
-    history_index = HistoryIndex(entity)
+    history_index = history_index or HistoryIndex(entity)
     history_receipts = history_index.receipts
     history_hold_ids = set()
     # Without a recorded QuickBooks history this loop does nothing, so intake is unchanged.
@@ -764,10 +768,11 @@ def _import_transactions_unlocked(
                 history_hold_ids.add(str(txn.get("id") or ""))
         except (ValueError, TypeError):
             continue
+    from ..quickbooks_history import ORIGINAL_KINDS
     history_matched: dict[str, dict[str, Any]] = {}
     history_second: dict[str, dict[str, Any]] = {}
-    if history_copies and history_receipts and any(d["decision"] == "history-match" for d in history_index.decisions.values()):
-        from ..quickbooks_history import channel_of, record_history_copies
+    if history_copies and history_receipts and any(d["decision"] in ORIGINAL_KINDS for d in history_index.decisions.values()):
+        from ..quickbooks_history import allowed_decisions, channel_of, record_history_copies
         taken: dict[str, set[str]] = {}
         fresh: list[dict[str, Any]] = []
         for txn in sorted(normalized_txns, key=lambda t: (str(t.get("date") or ""), str(t.get("id") or ""))):
@@ -787,6 +792,8 @@ def _import_transactions_unlocked(
                 continue
             row = {"source_id": sid, "duplicate_of": pair[1], "account": account,
                    "date": str(txn.get("date") or "")[:10], "amount": format(amount, "f")}
+            row_allowed = allowed_decisions(history_index, {"source_id": sid, "account": account, "date": row["date"]}, amount,
+                                            history_index.candidates(account, row["date"], amount))
             if pair[0] == "copy":
                 history_matched[sid] = row
                 if not known:
@@ -796,10 +803,13 @@ def _import_transactions_unlocked(
                                   "description": str(txn.get("reference") or txn.get("description") or ""), "transaction": dict(txn)})
             else:
                 history_second[sid] = {**row, "matched_original": pair[1], "description": str(txn.get("description") or ""),
-                                       "transaction": dict(txn)}
+                                       "transaction": dict(txn), "hold_rule": pair[0], "allowed_decisions": row_allowed}
                 history_hold_ids.add(sid)
         record_history_copies(entity, fresh)
-    result.possible_second_rows = [{k: v for k, v in r.items() if k != "transaction"} for r in history_second.values()]
+    result.possible_second_rows = [{k: v for k, v in r.items() if k not in {"transaction", "hold_rule"}}
+                                   for r in history_second.values() if r["hold_rule"] == "second_row"]
+    result.possible_copies = [{k: v for k, v in r.items() if k not in {"transaction", "hold_rule"}}
+                              for r in history_second.values() if r["hold_rule"] == "possible_copy"]
     cutover_hold_ids = frozenset(cutover_hold_ids) | frozenset(context_cutovers) | frozenset(history_hold_ids)
     # A context-only row stays in the duplicate plan, so that it uses up the book entry it matches and a
     # later row is judged as in review mode. It may use up only an entry dated on or before its cutover
@@ -814,7 +824,7 @@ def _import_transactions_unlocked(
     feed_holds = (_plan_feed_holds(
         entity, normalized_txns if legacy_duplicate_guard else
         [t for t in normalized_txns if str(t.get("id") or "") in cutover_hold_ids], cutover_hold_ids,
-        {sid: date.fromisoformat(day) for sid, day in context_cutovers.items()})
+        {sid: date.fromisoformat(day) for sid, day in context_cutovers.items()}, history_index)
         if guarded else {})
     for hold_id in history_hold_ids:
         if feed_holds.get(hold_id) is not None:
@@ -823,7 +833,8 @@ def _import_transactions_unlocked(
         feed_holds[sid] = {
             "source_id": sid, "existing_source_id": "", "account": second["account"], "date": second["date"],
             "amount": second["amount"], "description": second["description"], "transaction": second["transaction"],
-            "match_rule": "quickbooks_history_possible_second_row", "history_hold_rule": "possible_second_row",
+            "match_rule": "quickbooks_history_" + ("possible_second_row" if second["hold_rule"] == "second_row" else second["hold_rule"]),
+            "history_hold_rule": "possible_second_row" if second["hold_rule"] == "second_row" else second["hold_rule"],
             "matched_original": second["matched_original"], "held_for_quickbooks_history": True,
             "status": "duplicate-candidate"}
     # A row that is already held for review stays held on every later sync, under
@@ -1137,7 +1148,7 @@ _SAME_DAY_RULE = "legacy_id_same_account_date_amount_description"
 
 def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
                      cutover_hold_ids: frozenset[str] = frozenset(),
-                     pool_limits: dict[str, date] | None = None) -> dict[str, dict[str, Any]]:
+                     pool_limits: dict[str, date] | None = None, history_index: Any = None) -> dict[str, dict[str, Any]]:
     """Rows of a connected-feed batch that may repeat activity already recorded.
 
     This is the statement-import duplicate plan (``plan_duplicates``): a row is
@@ -1174,7 +1185,7 @@ def _plan_feed_holds(entity: Entity, txns: list[dict[str, Any]],
             {**txn, "id": source_id, "date": day, "description": text})
     holds: dict[str, dict[str, Any]] = {}
     for (account, family), rows in groups.items():
-        plan = plan_duplicates(entity, rows, account, family, pool_limits, history_copies=False)
+        plan = plan_duplicates(entity, rows, account, family, pool_limits, history_copies=False, history_index=history_index)
         for row in plan["import"]:
             # Dated on or before the cutover and not matched to anything: a late row the old
             # source may never have sent. A person decides; it is never dropped or posted.

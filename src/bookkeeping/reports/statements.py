@@ -335,6 +335,31 @@ def _statement_view(conn: Any, statement: str, view: Optional[str]) -> Optional[
     return "accrual"
 
 
+def _refuse_range_before_history(entity_path: Path, from_date: date) -> None:
+    """A range that starts inside the fiscal year before a recorded QuickBooks history, and before the
+    history starts, would show a part of that year's income and expense: the opening entry holds the
+    year to date on the day before the history. Such a range is refused with the first day that works.
+    A range that starts on or before the first day of that fiscal year holds the whole year, and a range
+    that starts on or after the history start holds only the history."""
+    from ..quickbooks_history import receipts_at
+    from ..accrual.reports import CoverageError
+    from ..fiscal import year_start
+    for receipt in receipts_at(entity_path):
+        start = date.fromisoformat(receipt["history_from"])
+        if from_date >= start:
+            continue
+        from ..entity import load_entity
+        fiscal = load_entity(entity_path).entity_config.get("fiscal_year_start", "01-01")
+        year_first = year_start(start - timedelta(days=1), fiscal)
+        if from_date > year_first:
+            raise CoverageError(
+                f"The books start on {start.isoformat()} with the QuickBooks history, and the opening entry on "
+                f"{(start - timedelta(days=1)).isoformat()} holds the whole year to date. A range that starts "
+                f"after {year_first.isoformat()} and before {start.isoformat()} would show part of that year. "
+                f"Start on or after {start.isoformat()}, or on or before {year_first.isoformat()}.",
+                start.isoformat(), "from")
+
+
 def profit_and_loss(
     entity_path: Path | str,
     from_date: date,
@@ -352,6 +377,7 @@ def profit_and_loss(
     """
     entity_path = Path(entity_path)
     _check_view(basis)
+    _refuse_range_before_history(entity_path, from_date)
     conn = open_cache(entity_path)
     try:
         default, capable, _ = _view_facts(conn)

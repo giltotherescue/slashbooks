@@ -175,6 +175,9 @@ CREATE TABLE IF NOT EXISTS audit_events (
     prev_hash TEXT NOT NULL,
     record_hash TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS audit_events_type_idx
+    ON audit_events(type, id);
 """
 
 _GENESIS_PREV = "0" * 64
@@ -283,6 +286,13 @@ class LedgerStore:
                 columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
                 if not {"session", "late_arrival"}.issubset(columns):
                     self._repair_legacy_columns()
+                # An index changes no content and no seal. An older store gets it the first time it is opened for
+                # writing; a store that cannot be written (read only) keeps working without it.
+                try:
+                    conn.execute("CREATE INDEX IF NOT EXISTS audit_events_type_idx ON audit_events(type, id)")
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass
                 return
             conn.executescript(_DDL)
             for sql in (

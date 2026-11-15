@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- QuickBooks history review fixes. A copy of a matched bank row is skipped only for an exact
+  duplicate that its source can hold (a statement must cover the original's date); a near-date
+  pair is held (`possible_copy`). A bank row up to 45 days after the history end is held when any
+  unmatched leg of the same amount exists. A row released as new has copies like a matched row.
+  `books qb reverse-buffer` also undoes a posted release; `resolve-buffer --decision in-opening`
+  marks a row that is already in the starting balance; each held row lists `allowed_decisions`.
+  A person's journal is allowed inside the history period (recorded in the audit log). A profit and
+  loss range that starts inside the year before the history is refused. Intake reads the audit
+  log once per call, and the audit log has an index on its type.
 - A real second bank row that looks like a bank row already matched to QuickBooks
   history is no longer skipped without a trace. A matched row has one recognized
   copy from each other source, kept durably; any other row that pairs with it is held
