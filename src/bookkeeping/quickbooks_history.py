@@ -16,6 +16,10 @@ FORMAT = 'slashbooks-qbo-history-v1'
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
 
+class MissingEvidence(Exception):
+    """A file named in the manifest is not there. The preview reports it as a blocker."""
+
+
 def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
 
@@ -207,6 +211,10 @@ def _plan(entity, path):
     files = manifest['files']
     if not isinstance(files, list) or not files or len(files) > 100000:
         raise ValueError('Invalid evidence file manifest')
+    missing = [str(item.get('path')) for item in files
+               if not isinstance(item.get('path'), str) or not (path.parent / item['path']).is_file()]
+    if missing:
+        raise MissingEvidence(missing)
     if sum((path.parent / item['path']).stat().st_size for item in files) > 64 * 1024 * 1024:
         raise ValueError('History evidence exceeds the 64 MiB finalize bound')
     loaded = [(item, _read(path.parent, item)) for item in files]
@@ -479,6 +487,10 @@ def sync_transactions(entity, input_path, *, apply=False, plan_hash=None):
     with _entity_write_lock(entity.path):
         try:
             result, entries, receipt, digest = _plan(entity, Path(input_path))
+        except MissingEvidence as exc:
+            return {'success': not apply, 'ready': False, 'applied': False, 'already_applied': False,
+                    'blockers': [{'code': 'evidence_file_missing', 'path': name} for name in exc.args[0]],
+                    'controls': [], 'counts': {}, 'recorded_entries': 0, 'plan_hash': None}
         except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise ValueError('Malformed or unsupported QuickBooks report shape') from exc
         if not apply:

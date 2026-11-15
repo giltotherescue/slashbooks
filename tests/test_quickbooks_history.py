@@ -708,6 +708,16 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(sorted(p.amount for p in entry.postings),[Decimal(-10),Decimal(4),Decimal(6)])
         self.assertEqual(sum(p.amount for p in entry.postings),0)
 
+    def test_missing_evidence_file_is_a_blocker_not_an_exception(self):
+        store=LedgerStore(default_store_path(self.entity.path));before=store.content_digest()
+        (self.source/self.manifest['files'][2]['path']).unlink()
+        plan=sync_transactions(self.entity,self.path)
+        self.assertFalse(plan['ready'])
+        self.assertEqual(plan['blockers'],[{'code':'evidence_file_missing','path':self.manifest['files'][2]['path']}])
+        result=sync_transactions(self.entity,self.path,apply=True,plan_hash='any')
+        self.assertFalse(result['success']);self.assertFalse(result['applied'])
+        self.assertEqual(store.content_digest(),before)
+
     def test_stale_plan_refused(self):
         plan=sync_transactions(self.entity,self.path)
         self.manifest['environment']='production';self.write()

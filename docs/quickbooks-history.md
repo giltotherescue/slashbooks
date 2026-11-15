@@ -64,8 +64,23 @@ nonzero account. There is no additional opening on history end. Per-account
 opening plus GL movement must equal ending TrialBalance. Income/expense period
 movement must equal ProfitAndLoss. Ending balance-sheet accounts must equal
 BalanceSheet. Its explicit derived Net Income leaf must equal the closing
-TrialBalance's net income, and the complete balance sheet must balance. Cross-year
-rollforward shapes that cannot meet these checks refuse safely.
+TrialBalance's net income, and the complete balance sheet must balance.
+
+QuickBooks closes each fiscal year into Retained Earnings when it makes a
+report, so a trial balance dated on a year end still holds that year's income
+and expense and a later one does not. The engine follows its own year-end rule:
+it writes no closing entry, the opening posts the trial balance as it is, and a
+statement closes earlier years into retained earnings when it is made. The
+checks expect the same roll. The fiscal year start is the company
+`fiscal_year_start` setting (`MM-01`, default `01-01`) and must match the
+QuickBooks company. Income and expense that the opening holds, and movement
+dated before the fiscal year of the history end, are expected in the one
+Retained Earnings account (sub type `RetainedEarnings` or named `Retained
+Earnings`). The preview shows the amount as `closed_into_retained_earnings`.
+When a year is closed and there is not exactly one such account, it blocks
+with `retained_earnings_account_unclear`. A wrong fiscal year setting does not
+tie and blocks with `control_mismatch`. A file named in the manifest that is
+missing gives an `evidence_file_missing` blocker.
 
 Only empty mapped accounts qualify in v1. Existing entries, openings or pending
 review work block import; the engine does not replace or reverse them. Empty
