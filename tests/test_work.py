@@ -485,6 +485,26 @@ class WorkCommandTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
+    def test_fresh_recording_after_undo_is_recorded(self) -> None:
+        from dataclasses import replace
+        from bookkeeping.ledger.store import LedgerStore
+
+        e = str(self.books.entity)
+        self.books.run("ledger", "reverse", "--entity", e, "--source-id", "syn-001")
+        store = LedgerStore(self.books.entity / "ledger.sqlite")
+        original = next(entry for entry in store.load_entries() if entry.source_id == "syn-001")
+        fresh = replace(original, meta=tuple((k, v) for k, v in original.meta if k != "source-id")
+                        + (("source-id", "syn-001-fresh"), ("correction-of", "syn-001")))
+        before = work.take_snapshot(self.books.entity)
+        with store.transaction() as conn:
+            store.insert_entries([fresh], conn)
+        after = work.take_snapshot(self.books.entity, entries_after=before.max_entry_id)
+        events = work.work_events(before, after)
+        self.assertEqual(kinds(events), ["recorded"])
+        self.assertEqual(by_kind(events, "recorded")["counts"],
+                         {"entries": 1, "from_suggestions": 0, "direct": 1})
+        assert_ledger_delta(events, 1)
+
     def test_text_summary(self) -> None:
         code, stdout, _ = run_cli(["work", "--entity", str(self.books.entity)])
         self.assertEqual(code, 0)

@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import sqlite3
 import sys
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -128,7 +130,21 @@ def migrate_beancount_to_store(
     store = LedgerStore(tmp)
     store.initialize()
     try:
+        # Source-only rows (including transfer-match claims) have no Beancount
+        # representation. Copy their exact payload, status and timestamp before
+        # sealing the rebuilt store. Fail closed if the old store cannot be read.
+        sources = []
+        if dest.exists():
+            with closing(sqlite3.connect(dest.resolve().as_uri() + "?mode=ro", uri=True)) as old:
+                if old.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_transactions'").fetchone():
+                    sources = old.execute(
+                        "SELECT id, payload_json, status, imported_at FROM source_transactions"
+                    ).fetchall()
         with store.transaction() as conn:
+            conn.executemany(
+                "INSERT INTO source_transactions (id, payload_json, status, imported_at) VALUES (?, ?, ?, ?)",
+                sources,
+            )
             store.insert_opens(parsed["opens"], conn)
             store.insert_entries(parsed["entries"], conn)
             store.insert_balances(parsed["balances"], conn)
