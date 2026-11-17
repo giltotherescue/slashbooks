@@ -138,7 +138,7 @@ class ImportTieoutTests(unittest.TestCase):
         self.assertTrue(any("check for missing or extra rows" in w for w in wrong["warnings"]))
 
     def test_file_without_balances_is_no_balances(self):
-        self.map("amex_like_card.csv", "amex", account=CARD)
+        self.map("amex_like_card.csv", "amex", account=CARD, sign="inverted")
         [entry] = self.imp("amex_like_card.csv", "amex")["statements"]
         self.assertEqual(entry["tieout"]["status"], "no_balances")
         self.assertIsNone(entry["tieout"]["difference"])
@@ -166,7 +166,7 @@ class ImportTieoutTests(unittest.TestCase):
         ok = self.imp("card_debit_credit.csv", "card", opening_balance="1000.00",
                       closing_balance="769.99", require_tieout=True)
         self.assertEqual(ok["status"], "imported")
-        self.map("amex_like_card.csv", "amex", account=CARD)
+        self.map("amex_like_card.csv", "amex", account=CARD, sign="inverted")
         self.assertEqual(self.imp("amex_like_card.csv", "amex", require_tieout=True)["status"], "imported")
 
     def test_require_tieout_cli_exit_code_and_no_write(self):

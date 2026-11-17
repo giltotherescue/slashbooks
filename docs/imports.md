@@ -190,6 +190,14 @@ the balances from the printed statement, pass `--opening-balance` and
 account and money owed for a card. If the balances do not agree with the
 transactions in the file, the result has a warning.
 
+By default the engine records that a person stated the period and balances
+(`period_source` and `balance_source` of `person`, or `person_and_file` when
+the file gives the other balance). A host that lets an automated agent run the
+command sets `BOOKS_CALLER_KIND=agent` (see `docs/provenance.md`). The engine
+then records `agent` or `agent_and_file`, stores `caller_kind`, returns
+`"caller_kind": "agent"`, and does not count the stated period as confirmed: a
+person must confirm it. Records saved before this field keep their stored values.
+
 ### Opening balance from the first statement
 
 An import records the statement's balances in the statement record only. It

@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from bookkeeping import coverage  # noqa: E402
+from bookkeeping import provenance  # noqa: E402
 from bookkeeping import statement_extract as sx  # noqa: E402
 from bookkeeping import statement_import as si  # noqa: E402
 from bookkeeping.cli import main  # noqa: E402
@@ -256,8 +257,30 @@ class ImportTests(unittest.TestCase):
         self.assertEqual((stored["extraction_method"], stored["balance_source"], stored["period_source"]),
                          ("model", "extracted", "printed"))
         self.assertTrue(stored["tieout"]["balanced"])
+        self.assertEqual(stored["caller_kind"], "person")
         march = self.march()["accounts"][0]["months"][0]
         self.assertEqual((march["status"], march["verified"]), ("complete", True))
+
+    def test_an_extracted_statement_records_the_caller_kind(self):
+        with provenance.use_caller_kind("agent"):
+            result = self.imp("bank_verified.json", evidence=None)
+        [path] = list((self.entity / "ingestion" / "statements" / "unconfirmed").glob("*.json"))
+        self.assertEqual(json.loads(path.read_text())["caller_kind"], "agent")
+        self.assertEqual(result["statement"]["caller_kind"], "agent")
+
+    def test_an_agent_caller_cannot_confirm_an_extracted_period(self):
+        data = fixture("bank_verified.json")
+        data["confirmation"] = {"name": "A Person"}  # untrusted input cannot confirm the period
+        with provenance.use_caller_kind("agent"):
+            result = self.imp(data, evidence=None)
+        self.assertEqual(result["coverage"], "needs_period")
+        self.assertFalse(result["statement"]["period_confirmed"])
+        self.assertEqual(result["statement"]["caller_kind"], "agent")
+        self.assertTrue(any("not a person" in w for w in result["warnings"]))
+        records, _ = coverage.load_statements(self.entity)
+        self.assertEqual(records, [])
+        person = self.imp(fixture("bank_verified.json"), evidence=None)
+        self.assertEqual(person["coverage"], "recorded")
 
     def test_import_is_idempotent(self):
         self.imp("bank_verified.json")

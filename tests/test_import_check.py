@@ -295,7 +295,7 @@ class ImportCheckTests(unittest.TestCase):
         self.assertEqual(result["counts"]["queued"], 5)
 
     def test_pending_rows_are_counted_and_skipped(self):
-        self.map("pending_rows.csv", "pending")
+        self.map("pending_rows.csv", "pending", sign="standard")
         [entry] = self.imp("pending_rows.csv", "pending")["statements"]
         result = entry["import_check"]
         self.assertEqual(result["counts"], {"in_source": 4, "recorded": 0, "queued": 3, "duplicate": 0,
@@ -307,7 +307,7 @@ class ImportCheckTests(unittest.TestCase):
         self.assertEqual(result["status"], "partial")
 
     def test_boundary_rows_count_as_duplicates_at_file_amount(self):
-        self.map("pending_rows.csv", "pending", boundary_date="2026-01-07", side="before")
+        self.map("pending_rows.csv", "pending", sign="standard", boundary_date="2026-01-07", side="before")
         [entry] = self.imp("pending_rows.csv", "pending")["statements"]
         result = entry["import_check"]
         self.assertEqual(result["counts"]["duplicate"], 1)
@@ -354,7 +354,7 @@ class ImportCheckTests(unittest.TestCase):
                          ("differs", "books_differ", "130.01"))
 
     def test_file_without_balances_still_checks_count(self):
-        self.map("amex_like_card.csv", "amex", account=CARD)
+        self.map("amex_like_card.csv", "amex", account=CARD, sign="inverted")
         [entry] = self.imp("amex_like_card.csv", "amex")["statements"]
         result = entry["import_check"]
         c = self.checks(result)

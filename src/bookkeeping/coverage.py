@@ -369,8 +369,13 @@ def record_statement(entity_path: Path | str, record: Mapping[str, Any], *, repl
     existed = destination.exists()
     if existed and not replace:
         raise ValueError(f"Statement {parsed.statement_id} already exists; pass replace to update it.")
+    from . import provenance
+
     document = {**{k: v for k, v in (extra or {}).items() if k not in CONTRACT_FIELDS},
                 **parsed.to_document()}
+    # A writer that already stamped the kind keeps its stamp; otherwise the current caller is recorded.
+    if document.get("caller_kind") not in provenance.KINDS:
+        document["caller_kind"] = provenance.caller_kind()
     tmp = destination.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, destination)

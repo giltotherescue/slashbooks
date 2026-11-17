@@ -23,6 +23,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from bookkeeping import provenance  # noqa: E402
 from bookkeeping import statement_import as si  # noqa: E402
 from bookkeeping import tieout  # noqa: E402
 from bookkeeping.cli import main  # noqa: E402
@@ -424,6 +425,21 @@ class RecordOpeningTests(unittest.TestCase):
                          "already_recorded")
         changed = record_opening(self.entity, record["statement_id"], amount="300.00")
         self.assertEqual((changed["status"], changed["reason"]), ("not_eligible", "opening_exists"))
+
+    def test_a_typed_opening_records_who_typed_it(self):
+        record = self.imp("card_debit_credit.csv", "card", account=CARD, period_start="2026-01-01",
+                          period_end="2026-01-31")
+        with provenance.use_caller_kind("agent"):
+            done = record_opening(self.entity, record["statement_id"], amount="250.00")
+        self.assertEqual((done["status"], done["opening_source"], done["caller_kind"]),
+                         ("recorded", "agent", "agent"))
+        with LedgerStore(default_store_path(self.entity)).connection() as conn:
+            narration, raw = conn.execute("SELECT narration, metadata_json FROM entries").fetchone()
+            events = [json.loads(r[0]) for r in conn.execute("SELECT payload_json FROM audit_events")]
+        self.assertIn("entered by an agent", narration)
+        self.assertEqual(dict(json.loads(raw))["opening-source"], "agent")
+        self.assertTrue(any(e.get("caller_kind") == "agent" for e in events))
+        self.assertEqual(LedgerStore(default_store_path(self.entity)).verify_audit_chain(), [])
 
     def test_account_and_day_take_a_typed_amount_under_the_same_rules(self):
         store = LedgerStore(default_store_path(self.entity))
