@@ -746,6 +746,19 @@ class LedgerStore:
         )
         return record_hash
 
+    def discard_last_audit_event(self, record_hash: str) -> bool:
+        """Remove the newest audit event when it is the one with *record_hash*; never an event in the middle.
+
+        A caller uses this only to undo its own event after the work that the event announced failed, so the
+        chain stays valid. If a later event exists, the work wrote something and the event stays.
+        """
+        with self.transaction(immediate=True) as conn:
+            cursor = conn.execute(
+                "DELETE FROM audit_events WHERE record_hash = ? AND id = (SELECT MAX(id) FROM audit_events)",
+                (record_hash,),
+            )
+            return cursor.rowcount == 1
+
     def verify_audit_chain(self) -> list[str]:
         errors: list[str] = []
         prev = _GENESIS_PREV

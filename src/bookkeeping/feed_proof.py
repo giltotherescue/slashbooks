@@ -373,7 +373,11 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         return books
     marks = ",".join("?" for _ in ledgers)
     try:
-        with LedgerStore(store_path).connection() as conn:
+        store = LedgerStore(store_path)
+        # The mark comes from the audit record of the feed ingest. If the audit chain has an error, no record can be
+        # trusted, so no row counts as delivered by the bank connection. One check for each proof.
+        chain_valid = not store.verify_audit_chain()
+        with store.connection() as conn:
             for name, currency in conn.execute(f"SELECT name, currency FROM accounts WHERE name IN ({marks})", list(ledgers)):
                 books[str(name)].currency = str(currency or "") or None
             rows = conn.execute(
@@ -405,7 +409,7 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         postings[str(account)].append(_Posting(
             day, amount, str(source_id) if source_id else None, text("import-source") in _OPENING_SOURCES,
             text("opening-source"), None if source_id else text("reverses"), text("correction-of"),
-            text(FEED_PROVIDER_META)))
+            text(FEED_PROVIDER_META) if chain_valid else None))
     for ledger, item in books.items():
         item.kinds = [(posting.day, kind, posting.opening_source) for posting, kind in _classify(postings[ledger])]
         item.series = Series(item.items)

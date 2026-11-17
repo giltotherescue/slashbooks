@@ -568,6 +568,13 @@ connected feed. The engine checks exactly this:
   those rows, at ingest or when a person confirms it later, gets the mark only
   while the row still has that digest. The mark never comes from the staging
   files, so an edit there cannot create it, and an edited row loses it.
+  The engine verifies the audit hash chain once for each command. If the chain
+  has an error, no row gets or keeps the mark, and the balance proof counts no
+  row as delivered. A feed ingest that fails leaves no `feed-intake` record.
+  The audit chain has no secret key. It detects an edit that does not
+  recompute the hashes. It is not a defence against a caller who can run code
+  against the ledger store, because that caller can write a whole new chain.
+  The trust boundary is the same as for the ledger file.
 - The provider is in `source_ids.CONNECTED_FEED_PROVIDERS`, and the source ID
   is `<that provider>:<id>`, or has no prefix with the mark `banksync`.
 - It is the only posting of its source ID on the account. A split that puts a

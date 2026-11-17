@@ -16,6 +16,7 @@ function, so the two spellings never disagree.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 # Providers that can be named as a connected bank feed. ``books ingest --source``
@@ -47,9 +48,40 @@ def feed_intake_payload(provider: str, session_id: str, txns: list[dict]) -> dic
             "rows": {str(txn["id"]): _row_digest(txn) for txn in txns if isinstance(txn, dict) and txn.get("id")}}
 
 
+_INDEX_CACHE: dict[str, tuple[tuple, FeedIntake]] = {}
+
+
+def _store_fingerprint(path: Any) -> tuple:
+    """The size and modification time of the ledger file and its write-ahead log; any write changes it."""
+    parts = []
+    for name in (str(path), f"{path}-wal"):
+        try:
+            info = Path(name).stat()
+            parts.append((info.st_size, info.st_mtime_ns))
+        except OSError:
+            parts.append(None)
+    return tuple(parts)
+
+
 def feed_intake_index(entity_path: Any) -> FeedIntake:
-    """Source ID -> provider -> the row digests that a connected-feed ingest recorded for it."""
-    from pathlib import Path
+    """Source ID -> provider -> the row digests that a connected-feed ingest recorded for it.
+
+    The index is empty when the audit hash chain of the ledger store has an error. The chain is verified once for
+    each state of the ledger file, not once for each row that asks.
+    """
+    from .ledger.store import default_store_path
+    path = default_store_path(Path(entity_path))
+    key = str(path.resolve())
+    fingerprint = _store_fingerprint(path)
+    cached = _INDEX_CACHE.get(key)
+    if cached is not None and cached[0] == fingerprint:
+        return cached[1]
+    index = _read_feed_intake(entity_path)
+    _INDEX_CACHE[key] = (fingerprint, index)
+    return index
+
+
+def _read_feed_intake(entity_path: Any) -> FeedIntake:
     import json
     import sqlite3
     from .ledger.store import LedgerStore, default_store_path
@@ -59,7 +91,11 @@ def feed_intake_index(entity_path: Any) -> FeedIntake:
     if not path.is_file():
         return index
     try:
-        with LedgerStore(path).connection() as conn:
+        store = LedgerStore(path)
+        # An edited or inserted audit record breaks the chain. Then no record can be trusted, so no row has a mark.
+        if store.verify_audit_chain():
+            return index
+        with store.connection() as conn:
             rows = conn.execute("SELECT payload_json FROM audit_events WHERE type = ? ORDER BY id",
                                 (FEED_INTAKE_EVENT,)).fetchall()
     except sqlite3.DatabaseError:

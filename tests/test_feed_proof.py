@@ -1114,6 +1114,54 @@ class FeedProofTests(unittest.TestCase):
                   if event["type"] == "feed-intake"]
         self.assertEqual([sorted(event["payload"]["rows"]) for event in events], [["banksync:y2", "banksync:y3"]])
 
+    def test_feed_intake_record_with_a_broken_audit_chain_gives_no_mark_and_no_proof(self):
+        import sqlite3
+        from bookkeeping.source_ids import _row_digest
+        staging = self.company / "staging" / "pending-categorization.json"
+        self.ingest([{"id": "x2", "accountId": "feed-chk", "date": "2026-08-02", "amount": 5.0, "description": "row"}])
+        digest = _row_digest(json.loads(staging.read_text())[0])
+        forged = json.dumps({"provider": "banksync", "rows": {"x2": digest}})
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("INSERT INTO audit_events (type, ts, payload_json, prev_hash, record_hash) "
+                         "VALUES ('feed-intake', '2026-08-02T00:00:00Z', ?, 'bogus', 'bogus')", (forged,))
+            conn.commit()
+        self.confirm("x2")
+        self.assertIsNone(self.entry_marks()["x2"])
+        # An intact feed ingest still gets the mark when the chain is whole, and loses it when the chain breaks.
+        self.reset_books()
+        self.ingest([{"id": "y2", "accountId": "feed-chk", "date": "2026-08-04", "amount": 7.0, "description": "feed"}],
+                    "--source", "banksync")
+        self.confirm("banksync:y2")
+        self.assertEqual(self.entry_marks()["banksync:y2"], "banksync")
+        from bookkeeping.feed_proof import _load_books
+        delivered = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds].count("source")
+        self.assertGreaterEqual(delivered, 1)
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("UPDATE audit_events SET record_hash = 'bogus' WHERE type = 'feed-intake'")
+            conn.commit()
+        after = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds].count("source")
+        self.assertEqual(after, 0)
+
+    def test_failed_feed_ingest_leaves_no_intake_record(self):
+        row = {"id": "banksync:v1", "accountId": "feed-chk", "date": "2026-08-03", "amount": 6.0, "description": "row"}
+        path = Path(self._tmp.name) / "rows.json"
+        path.write_text(json.dumps([{**row, "id": "v1"}]))
+        # The import refuses a damaged review file after the feed record would exist.
+        staging = self.company / "staging" / "pending-categorization.json"
+        staging.parent.mkdir(exist_ok=True)
+        staging.write_text('{"not": "a list"}')
+        code, text = self.run_cli("ingest", str(path), "--entity", str(self.company), "--no-feed-window",
+                                  "--source", "banksync")
+        self.assertEqual(code, 1, text)
+        store = LedgerStore(self.company / "ledger.sqlite")
+        self.assertEqual([e for e in store.load_audit_events() if e["type"] == "feed-intake"], [])
+        self.assertEqual(store.verify_audit_chain(), [])
+        # A generic ingest of the same row, with the same ID and digest, gets no mark.
+        staging.unlink()
+        self.ingest([row])
+        self.confirm("banksync:v1")
+        self.assertIsNone(self.entry_marks()["banksync:v1"])
+
     def test_round3_a_split_that_puts_a_second_posting_on_the_bank_account_does_not_count(self):
         self.only_checking()
         post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
