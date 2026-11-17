@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- A checking or savings month can now be proven against the bank connection when
+  no statement exists, also in the first months after a connection.
+  `books balance prove` computes the opening back from a later balance when every
+  row since the feed started came from a source apart from one opening entry, the
+  feed has no gap, and the newest balance also equals the books. Each proven row
+  has `basis` (`feed_reading` for a balance on the month end with a proven
+  opening, else `feed_computed`), and `books reconcile --proof-basis` stores it.
+  Not-proven rows have new codes (`unsourced_postings`, `opening_entry_unclear`,
+  `no_feed_rows`, `newest_reading_differs`, `opening_conflict`,
+  `statement_available`) and the figures for one sentence. A statement outranks the
+  bank connection: the feed no longer proves a month with a statement, and
+  `books coverage check` shows a month's `proof_basis` and the error
+  `statement_feed_differs` when a statement disagrees with a bank connection record.
+  `books readiness --require-statements` blocks a month checked only against the
+  bank connection (`statement_required`). It is off by default. Cards and loans
+  still need a statement.
 - QuickBooks history review fixes. A copy of a matched bank row is skipped only for an exact
   duplicate that its source can hold (a statement must cover the original's date); a near-date
   pair is held (`possible_copy`). A bank row up to 45 days after the history end is held when any

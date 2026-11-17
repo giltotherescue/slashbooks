@@ -212,6 +212,14 @@ Import new corrected files through the usual duplicate check first. Selection
 never repairs incorrect recorded transactions; correct those separately. A
 reconciliation using a replaced document must be run again with the current one.
 
+A month end that was checked against the bank connection (`books balance prove`)
+is not proven from the feed again once a statement for that month is recorded.
+Reconcile the month from the statement (`books reconcile --statement-id`); the
+record then has `proof_basis` `statement` and replaces the bank connection
+record. When the statement closing differs from the bank connection record,
+readiness blocks with `statement_feed_differs`. See
+[month-end proof from a bank feed](imports.md#month-end-proof-from-a-bank-feed).
+
 ## Reporting goals and report categories
 
 A reporting goal records what the owner wants the reports to show, for example

@@ -25,6 +25,7 @@ from .entity import _locked_entity_operation, load_entity
 from .ledger.projections import render_store_ledger
 from .ledger.store import LedgerStore, default_store_path
 from .ledger.validator import validate
+from .reconcile import FEED_PROOF_BASES, record_basis
 from .reports.statements import balance_sheet, profit_and_loss, trial_balance
 from .queue import ACTIONABLE_QUEUE_STATUSES
 
@@ -520,6 +521,10 @@ def _annotate_blockers(blockers: list[dict[str, Any]], path: Path | str, period:
             item["action"] = (f"Run: books reconcile --entity {path} --account {ref} --source-balance <statement ending balance> --as-of {end} "
                               f"--source-opening-balance <statement opening balance> --source-transaction-total <signed activity {start} to {end}> "
                               f"--source-snapshot-at <ISO time you read the statement> --source-through {end} --source-evidence-ref <statement id>")
+        elif code == "statement_required":
+            item["message"] = f"{item['message']} Account {ref}, period {period}."
+            item["action"] = (f"Import the statement that ends on {end}, then run: books reconcile --entity {path} "
+                              "--statement-id <statement id>")
         elif code in {"period_current", "period_future"}:
             item["action"] = f"Wait until {period} has ended, then run: books readiness --entity {path} --period {period} --as-of {end + timedelta(days=1)}"
         elif code == "unresolved_period_work":
@@ -537,10 +542,18 @@ def _annotate_blockers(blockers: list[dict[str, Any]], path: Path | str, period:
 def assess_review_readiness(entity_path: Path | str, period: str,
                             dependencies: DependencyVersions, *, as_of: date,
                             disposition_context: ReadinessDispositionContext | None = None,
-                            portable_actions: bool = False) -> ReadinessAssessment:
+                            portable_actions: bool = False,
+                            require_statements: bool = False) -> ReadinessAssessment:
     """Assess one immutable period snapshot without writing company state.
 
     With ``disposition_context=None`` the document is the same as without the argument.
+
+    Each reconciliation in the document has ``proof_basis`` when it is known (``reconcile.record_basis``). With
+    ``require_statements=True``, a source account whose period-end balance was checked against the bank
+    connection (``feed_reading`` or ``feed_computed``) and not against a statement gets a ``statement_required``
+    blocker, and the document has ``"require_statements": true``. A bank connection record whose balance equals a
+    statement closing on the period end counts as a statement (the coverage month ``proof_basis``). The default
+    (False) adds no blocker: a month proven from the bank connection is ready like any other reconciled month.
     Set ``portable_actions=True`` to put the literal ``@entity`` in action instructions and keep the package
     independent of its directory. Substitute the company directory when using an action locally.
 
@@ -649,6 +662,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     coverage: list[dict[str, Any]] = []
     coverage_items: tuple[list[dict[str, Any]], list[dict[str, Any]]] = ([], [])
     verified_accounts: set[str] = set()
+    month_end_proof: dict[str, str] = {}
     if coverage_accounts:
         try:
             coverage_document = check_coverage(
@@ -667,6 +681,9 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             # are affirmative coverage, the same as declared coverage dates.
             verified_accounts = {row["account"] for row in coverage_document["accounts"]
                                  if row["status"] == "complete" and row["verified"]}
+            month_end_proof = {row["account"]: month["proof_basis"] for row in coverage_document["accounts"]
+                               for month in row["months"]
+                               if month["to"] == end.isoformat() and month.get("proof_basis")}
     if outside:
         from .coverage import _label
         coverage = sorted([*coverage, *({
@@ -778,10 +795,18 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         )
         if not provenance_complete:
             blockers.append({"code": "source_evidence_provenance_missing", "message": "Reconciliation figures are not bound to verified source records.", "refs": [account]})
-        normalized_recs.append({key: record.get(key) for key in (
+        basis = record_basis(dict(record))
+        if require_statements and month_end_proof.get(account) != "statement" and basis in FEED_PROOF_BASES:
+            blockers.append({"code": "statement_required",
+                             "message": "The period-end balance was checked against the bank connection, and a "
+                                        "statement is required.", "refs": [account]})
+        normalized = {key: record.get(key) for key in (
             "record_id", "account", "as_of", "ledger_balance", "source_balance", "discrepancy", "status",
             "source_opening_balance", "source_transaction_total", "source_integrity_residual",
-            "source_snapshot_at", "source_through", "source_evidence_refs", "source_evidence_hashes")})
+            "source_snapshot_at", "source_through", "source_evidence_refs", "source_evidence_hashes")}
+        if basis is not None:
+            normalized["proof_basis"] = basis  # Only when known, so a package without one keeps its fingerprint.
+        normalized_recs.append(normalized)
 
     ledger_digest = None
     reports: list[dict[str, Any]] = []
@@ -851,6 +876,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
                         imported_summary_through=partial_opening["source_as_of"] if partial_opening else None)
     if disposition_context is not None:
         document["disposition_basis"] = {**disposition_context.binding, "excluded": suppressed}
+    if require_statements:
+        document["require_statements"] = True
     document["package_id"] = _hash(document)
     return ReadinessAssessment(document)
 
@@ -885,6 +912,9 @@ def add_parser(subparsers: Any) -> None:
     parser.add_argument("--period", required=True, help="Calendar period in YYYY-MM format")
     parser.add_argument("--as-of", required=True, help="Deterministic evaluation date in YYYY-MM-DD format")
     parser.add_argument("--output", type=Path, default=None, help="Write the canonical assessment JSON")
+    parser.add_argument("--require-statements", action="store_true", dest="require_statements",
+                        help="Block an account whose period-end balance was checked against the bank connection "
+                             "and not against a statement (blocker statement_required)")
 
 
 def run(args: Any) -> int:
@@ -892,6 +922,7 @@ def run(args: Any) -> int:
         as_of = date.fromisoformat(args.as_of)
         assessment = assess_review_readiness(
             args.entity, args.period, local_dependency_versions(args.entity), as_of=as_of,
+            require_statements=args.require_statements,
         )
     except (FileNotFoundError, TypeError, ValueError) as exc:
         print(f"Error: {exc}")

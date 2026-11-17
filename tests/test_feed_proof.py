@@ -5,6 +5,7 @@ All data is synthetic.
 
 from __future__ import annotations
 
+import contextlib
 from contextlib import redirect_stdout
 from datetime import date
 from decimal import Decimal
@@ -21,12 +22,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from bookkeeping.cli import main  # noqa: E402
-from bookkeeping.coverage import record_feed_window, record_statement  # noqa: E402
+from bookkeeping.coverage import check_coverage, record_feed_window, record_statement  # noqa: E402
 from bookkeeping.feed_proof import prove  # noqa: E402
 from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
 from bookkeeping.ledger.store import LedgerStore  # noqa: E402
 from bookkeeping.readiness import DependencyVersions, assess_review_readiness  # noqa: E402
-from bookkeeping.reconcile import reconcile  # noqa: E402
+from bookkeeping.reconcile import record_basis, reconcile  # noqa: E402
 from bookkeeping.remote_contract import command_spec  # noqa: E402
 from test_tieout import CARD, CHECKING, make_company, stage  # noqa: E402
 
@@ -43,16 +44,18 @@ def reading(balance: str, day: str = "2026-10-05", **kw) -> dict:
 
 
 def post(company: Path, account: str, day: str, amount: str, *, other: str = "Income:Consulting",
-         source: bool = True, currency: str = "USD") -> None:
+         source: bool = True, currency: str = "USD", meta: tuple = ()) -> str | None:
     """Post one two-sided entry from a feed row; ``amount`` is the ledger-sign amount on ``account``."""
     store = LedgerStore(company / "ledger.sqlite")
     store.initialize()
-    meta = (("source-id", f"banksync:t{next(_ids)}"),) if source else ()
+    source_id = f"banksync:t{next(_ids)}" if source else None
+    meta = ((("source-id", source_id),) if source else ()) + meta
     with store.transaction() as conn:
         store.insert_opens([Open(date(2026, 1, 1), name, (currency,)) for name in (account, other)], conn)
         store.insert_entries([Entry(
             date=date.fromisoformat(day), narration="Synthetic", meta=meta,
             postings=(Posting(account, Decimal(amount), currency), Posting(other, -Decimal(amount), currency)))], conn)
+    return source_id
 
 
 def apply(company: Path, figures: dict, ref: str = "evidence:feed-balance-abc"):
@@ -60,7 +63,14 @@ def apply(company: Path, figures: dict, ref: str = "evidence:feed-balance-abc"):
                      source_opening_balance=Decimal(figures["source_opening_balance"]),
                      source_transaction_total=Decimal(figures["source_transaction_total"]),
                      source_snapshot_at=figures["source_snapshot_at"], source_through=figures["source_through"],
-                     source_evidence_refs=[ref], source_evidence_hashes={ref: "b" * 64})
+                     source_evidence_refs=[ref], source_evidence_hashes={ref: "b" * 64},
+                     proof_basis=figures.get("proof_basis"))
+
+
+def month_end(balance: str, day: str) -> dict:
+    """A reading for the month end ``day``, read early the next day after the safety margin."""
+    after = date.fromisoformat(day).toordinal() + 1
+    return {**reading(balance, day), "retrieved_at": f"{date.fromordinal(after).isoformat()}T06:00:00Z"}
 
 
 class FeedProofTests(unittest.TestCase):
@@ -69,6 +79,17 @@ class FeedProofTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.company = make_company(Path(self._tmp.name), {
             "feed-chk": CHECKING, "feed-card": CARD, "feed-sav": SAVINGS})
+        self.books()
+        record_feed_window(self.company, account=CHECKING, start=date(2026, 8, 1), end=date(2026, 10, 5),
+                           source="feed-chk")
+
+    def reset_books(self):
+        """Start the books again with only the rows of ``books``; feed windows and records stay."""
+        for path in self.company.glob("ledger.sqlite*"):
+            path.unlink()
+        self.books()
+
+    def books(self):
         store = LedgerStore(self.company / "ledger.sqlite")
         store.initialize()
         with store.transaction() as conn:
@@ -79,8 +100,6 @@ class FeedProofTests(unittest.TestCase):
         post(self.company, CHECKING, "2026-09-10", "1000.00")
         post(self.company, CHECKING, "2026-09-25", "-200.00", other="Expenses:Software")
         post(self.company, CHECKING, "2026-10-02", "-50.00", other="Expenses:Software")
-        record_feed_window(self.company, account=CHECKING, start=date(2026, 8, 1), end=date(2026, 10, 5),
-                           source="feed-chk")
 
     def proof(self, readings, account_id="feed-chk", account_type="checking", as_of=date(2026, 10, 20), **kw):
         extra = {"time_zone": "UTC", **{key: kw.pop(key) for key in ("currency", "time_zone") if key in kw}}
@@ -97,7 +116,9 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual(september["reconcile"], {
             "account": CHECKING, "as_of": "2026-09-30", "source_balance": "1300.00",
             "source_opening_balance": "500.00", "source_transaction_total": "800.00",
-            "source_snapshot_at": "2026-10-05T09:00:00Z", "source_through": "2026-09-30"})
+            "source_snapshot_at": "2026-10-05T09:00:00Z", "source_through": "2026-09-30",
+            "proof_basis": "feed_computed"})
+        self.assertEqual(september["basis"], "feed_computed", "computed back from a reading on 10-05")
         self.assertEqual(september["reading"]["read_day"], "2026-10-05")
         self.assertEqual(months["2026-08"]["reconcile"]["source_balance"], "500.00")
         self.assertEqual(months["2026-08"]["reconcile"]["source_opening_balance"], "0.00")
@@ -196,18 +217,23 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual(self.proof([month_end, reading("1350.00")])["2026-09"]["reason"], "books_differ")
 
     def test_the_opening_must_chain_from_the_month_before(self):
-        # August has a statement whose closing differs from the books: September's opening is not proven.
+        # A clean August reconciliation record is the opening.
+        apply(self.company, self.proof([reading("1250.00")])["2026-08"]["reconcile"])
+        months = self.proof([reading("1250.00")], from_month="2026-09")
+        self.assertEqual(months["2026-09"]["reason"], "proven")
+        self.assertEqual(months["2026-09"]["reconcile"]["source_opening_balance"], "500.00")
+        # An August statement whose closing differs from that record: neither proves September's opening.
         record_statement(self.company, {"statement_id": "aug", "account": CHECKING, "kind": "statement",
                                         "period_start": "2026-08-01", "period_end": "2026-08-31",
                                         "opening_balance": "0.00", "closing_balance": "480.00"})
         months = self.proof([reading("1250.00")], from_month="2026-09")
-        self.assertEqual((months["2026-09"]["reason"], months["2026-09"]["difference"]), ("opening_differs", "-20.00"))
-        # A clean August reconciliation record is the opening.
-        figures = self.proof([reading("1250.00")])["2026-08"]["reconcile"]
-        apply(self.company, figures)
+        self.assertEqual((months["2026-09"]["reason"], months["2026-09"]["opening_balances"]),
+                         ("opening_conflict", ["480.00", "500.00"]))
+        # Without the record, the statement is the opening, and it differs from the books.
+        (self.company / "reports" / "reconciliation.json").unlink()
         months = self.proof([reading("1250.00")], from_month="2026-09")
-        self.assertEqual(months["2026-09"]["reason"], "proven")
-        self.assertEqual(months["2026-09"]["reconcile"]["source_opening_balance"], "500.00")
+        self.assertEqual((months["2026-09"]["reason"], months["2026-09"]["difference"],
+                          months["2026-09"]["difference_on"]), ("opening_differs", "-20.00", "2026-08-31"))
 
     def test_an_open_prior_record_leaves_the_opening_unproven(self):
         reconcile(self.company, CHECKING, Decimal("1.00"), date(2026, 8, 31))
@@ -215,40 +241,181 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual(months["2026-08"]["reason"], "existing_record")
         self.assertEqual(months["2026-09"]["reason"], "opening_unproven")
 
-    def test_the_first_month_needs_a_zero_opening_with_feed_rows_or_a_statement(self):
-        # Books that start with an opening balance before the feed: the first feed month is not proven.
+    def test_an_opening_entry_and_sourced_rows_prove_the_first_feed_month_as_computed(self):
+        # Rule 7b: an opening entry before the feed, then only rows from a source. The opening is computed back.
         post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
         months = self.proof([reading("1290.00")])
-        self.assertEqual(months["2026-08"]["reason"], "opening_unproven")
-        self.assertEqual(months["2026-09"]["reason"], "opening_unproven", "nothing proves August's closing")
+        self.assertEqual([(months[m]["reason"], months[m]["basis"]) for m in ("2026-08", "2026-09")],
+                         [("proven", "feed_computed"), ("proven", "feed_computed")])
+        self.assertEqual(months["2026-08"]["reconcile"], {
+            "account": CHECKING, "as_of": "2026-08-31", "source_balance": "540.00",
+            "source_opening_balance": "40.00", "source_transaction_total": "500.00",
+            "source_snapshot_at": "2026-10-05T09:00:00Z", "source_through": "2026-08-31",
+            "proof_basis": "feed_computed"})
+        self.assertEqual(months["2026-09"]["reconcile"]["source_opening_balance"], "540.00")
+        # An opening entry dated on the first feed day is also the one opening entry.
+        self.reset_books()
+        post(self.company, CHECKING, "2026-08-01", "40.00", source=False)
+        self.assertEqual(self.proof([reading("1290.00")])["2026-08"]["basis"], "feed_computed")
+
+    def test_the_basis_is_feed_reading_only_for_a_month_end_reading_with_a_read_opening(self):
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        readings = [month_end("540.00", "2026-08-31"), month_end("1340.00", "2026-09-30"), reading("1290.00")]
+        # The opening comes from rule 7b: computed, even with a reading on the month end.
+        months = self.proof(readings)
+        self.assertEqual([months[m]["basis"] for m in ("2026-08", "2026-09")], ["feed_computed", "feed_computed"])
+        # A July statement gives the opening: August is a reading, and September chains from it.
         record_statement(self.company, {"statement_id": "jul", "account": CHECKING, "kind": "statement",
                                         "period_start": "2026-07-01", "period_end": "2026-07-31",
                                         "opening_balance": "0.00", "closing_balance": "40.00"})
-        months = self.proof([reading("1290.00")])
-        self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("proven", "proven"))
+        months = self.proof(readings)
+        self.assertEqual([months[m]["basis"] for m in ("2026-08", "2026-09")], ["feed_reading", "feed_reading"])
+        self.assertEqual(months["2026-08"]["reconcile"]["proof_basis"], "feed_reading")
+        # Without the month-end reading for September, it is computed back from 10-05.
+        months = self.proof([readings[0], readings[2]])
+        self.assertEqual([months[m]["basis"] for m in ("2026-08", "2026-09")], ["feed_reading", "feed_computed"])
+        # A recorded opening keeps its basis: a feed_computed record makes the next month computed.
+        figures = self.proof(readings)["2026-08"]["reconcile"]
+        apply(self.company, {**figures, "proof_basis": "feed_computed"})
+        self.assertEqual(self.proof(readings, from_month="2026-09")["2026-09"]["basis"], "feed_computed")
+        apply(self.company, figures)
+        months = self.proof(readings)
+        self.assertEqual((months["2026-08"]["reason"], months["2026-08"]["basis"]), ("already_reconciled", "feed_reading"))
+        self.assertEqual(months["2026-09"]["basis"], "feed_reading")
 
-    def test_an_opening_balance_entry_inside_the_first_month_needs_a_statement(self):
-        post(self.company, CHECKING, "2026-08-01", "40.00", source=False)
-        months = self.proof([reading("1290.00")])
-        self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("opening_unproven", "opening_unproven"))
+    def test_one_unsourced_posting_in_the_range_refuses_the_computed_opening(self):
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        post(self.company, CHECKING, "2026-09-12", "-5.00", other="Expenses:Software", source=False)
+        months = self.proof([reading("1285.00")])
+        for month in ("2026-08", "2026-09"):
+            self.assertEqual((months[month]["reason"], months[month]["unsourced_count"], months[month]["unsourced_from"]),
+                             ("unsourced_postings", 1, "2026-09-12"), month)
+            self.assertIsNone(months[month]["reconcile"])
+        # An unsourced posting after the newest reading is outside the range.
+        self.reset_books()
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        post(self.company, CHECKING, "2026-10-09", "-5.00", other="Expenses:Software", source=False)
+        self.assertEqual(self.proof([reading("1290.00")])["2026-08"]["reason"], "proven")
 
-    def test_the_zero_opening_applies_only_to_the_first_feed_month(self):
+    def test_an_exact_reversal_of_a_sourced_row_is_not_an_unsourced_posting(self):
+        # A category correction reverses a feed row without a source and posts the replacement with one.
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        original = post(self.company, CHECKING, "2026-09-03", "-30.00", other="Expenses:Software")
+        post(self.company, CHECKING, "2026-09-03", "30.00", other="Expenses:Software", source=False,
+             meta=(("reverses", original),))
+        post(self.company, CHECKING, "2026-09-03", "-30.00", other="Expenses:Travel")
+        self.assertEqual(self.proof([reading("1260.00")])["2026-08"]["reason"], "proven")
+        # A second reversal of the same row, on another day and for another amount, is unsourced.
+        post(self.company, CHECKING, "2026-09-04", "31.00", other="Expenses:Software", source=False,
+             meta=(("reverses", original),))
+        self.assertEqual(self.proof([reading("1291.00")])["2026-08"]["reason"], "unsourced_postings")
+
+    def test_an_opening_import_with_a_source_id_is_the_opening_entry_not_a_bank_row(self):
+        opening = (("import-source", "statement-opening"),)
+        first = post(self.company, CHECKING, "2026-07-31", "50.00", source=True, meta=opening)
+        # The opening was replaced: its exact reversal on the same day and a new opening cancel out of the count.
+        post(self.company, CHECKING, "2026-07-31", "-50.00", source=False, meta=(("reverses", first),) + opening)
+        post(self.company, CHECKING, "2026-08-01", "40.00", source=True, meta=opening)
+        self.assertEqual(self.proof([reading("1290.00")])["2026-08"]["basis"], "feed_computed")
+        # An opening import after the first feed day is not a bank row.
+        self.reset_books()
+        post(self.company, CHECKING, "2026-08-02", "40.00", source=True, meta=opening)
+        months = self.proof([reading("1290.00")])
+        self.assertEqual((months["2026-08"]["reason"], months["2026-08"]["unsourced_from"]),
+                         ("unsourced_postings", "2026-08-02"))
+        # With no bank row at all, only an opening, nothing is proven.
+        record_feed_window(self.company, account=SAVINGS, start=date(2026, 8, 1), end=date(2026, 10, 5), source="feed-sav")
+        post(self.company, SAVINGS, "2026-08-01", "40.00", source=True, meta=opening)
+        self.assertEqual(self.proof([reading("40.00")], account_id="feed-sav", account_type="savings")["2026-08"]["reason"],
+                         "no_feed_rows")
+
+    def test_two_opening_entries_or_an_opening_entry_after_the_feed_start_are_refused(self):
+        post(self.company, CHECKING, "2026-07-30", "20.00", source=False)
+        post(self.company, CHECKING, "2026-07-31", "20.00", source=False)
+        months = self.proof([reading("1290.00")])
+        self.assertEqual((months["2026-08"]["reason"], months["2026-08"]["opening_entries"]), ("opening_entry_unclear", 2))
+        # A row from a source before the feed starts is not the opening entry either.
+        self.reset_books()
+        post(self.company, CHECKING, "2026-07-31", "20.00", source=False)
+        post(self.company, CHECKING, "2026-07-15", "20.00")
+        self.assertEqual(self.proof([reading("1290.00")])["2026-08"]["reason"], "opening_entry_unclear")
+        # An opening entry dated after the first feed day is an unsourced posting.
+        self.reset_books()
+        post(self.company, CHECKING, "2026-08-02", "40.00", source=False)
+        months = self.proof([reading("1290.00")])
+        self.assertEqual((months["2026-08"]["reason"], months["2026-08"]["unsourced_from"]),
+                         ("unsourced_postings", "2026-08-02"))
+
+    def test_a_computed_opening_needs_the_feed_without_a_gap_from_its_first_day(self):
+        record_feed_window(self.company, account=SAVINGS, start=date(2026, 8, 1), end=date(2026, 8, 20), source="feed-sav")
+        record_feed_window(self.company, account=SAVINGS, start=date(2026, 8, 25), end=date(2026, 10, 5), source="feed-sav")
+        post(self.company, SAVINGS, "2026-07-31", "10.00", source=False)
+        post(self.company, SAVINGS, "2026-09-15", "40.00")
+        months = self.proof([reading("50.00")], account_id="feed-sav", account_type="savings")
+        self.assertEqual((months["2026-08"]["reason"], months["2026-08"]["uncovered_from"],
+                          months["2026-08"]["uncovered_to"]), ("feed_incomplete", "2026-08-21", "2026-08-24"))
+        # September's own days are covered, but its computed opening crosses the gap.
+        self.assertEqual((months["2026-09"]["reason"], months["2026-09"]["feed_from"],
+                          months["2026-09"]["uncovered_from"]), ("feed_incomplete", "2026-08-01", "2026-08-21"))
+
+    def test_a_computed_opening_needs_a_complete_reading_after_the_month_end(self):
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        for readings in ([reading("1290.00", partial=True)], [reading("540.00", "2026-08-30")], []):
+            self.assertEqual(self.proof(readings)["2026-08"]["reason"], "no_balance_after_month_end", readings)
+
+    def test_the_newest_reading_must_also_equal_the_books(self):
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        # 10-01 agrees with the books (1340.00); the newest reading, on 10-05, is 10.00 below them.
+        months = self.proof([reading("1340.00", "2026-10-01"), reading("1280.00")])
+        for month in ("2026-08", "2026-09"):
+            row = months[month]
+            self.assertEqual((row["reason"], row["difference"], row["difference_on"], row["books_balance"]),
+                             ("newest_reading_differs", "-10.00", "2026-10-05", "1290.00"), month)
+        # A reading after the feed windows cannot be checked against the books, so it is not the newest one.
+        months = self.proof([reading("1290.00"), reading("1.00", "2026-10-09")])
+        self.assertEqual(months["2026-08"]["reason"], "proven")
+        # Rows that wait in review up to the newest reading refuse the computed opening.
+        stage(self.company, [{"id": "w", "date": "2026-10-04", "amount": "-9.00", "accountId": "feed-chk"}])
+        self.assertEqual(self.proof([reading("1340.00", "2026-10-01"), reading("1290.00")])["2026-08"]["reason"],
+                         "waiting_in_review")
+
+    def test_a_month_with_no_rows_is_computed_back_from_a_later_reading(self):
         record_feed_window(self.company, account=SAVINGS, start=date(2026, 8, 1), end=date(2026, 10, 5), source="feed-sav")
         post(self.company, SAVINGS, "2026-09-15", "40.00")
         months = self.proof([reading("40.00")], account_id="feed-sav", account_type="savings")
-        self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("opening_unproven", "opening_unproven"))
+        self.assertEqual([(months[m]["reason"], months[m]["reconcile"]["source_balance"]) for m in ("2026-08", "2026-09")],
+                         [("proven", "0.00"), ("proven", "40.00")])
 
     def test_a_quiet_zero_month_with_no_feed_rows_is_not_proven(self):
         record_feed_window(self.company, account=SAVINGS, start=date(2026, 8, 1), end=date(2026, 10, 5), source="feed-sav")
         months = self.proof([reading("0.00")], account_id="feed-sav", account_type="savings")
-        self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("opening_unproven", "opening_unproven"))
+        self.assertEqual((months["2026-08"]["reason"], months["2026-09"]["reason"]), ("no_feed_rows", "no_feed_rows"))
+
+    def test_reasons_carry_the_figures_for_one_sentence(self):
+        # The feed does not go back to July.
+        july = self.proof([reading("1250.00")], from_month="2026-07")["2026-07"]
+        self.assertEqual((july["reason"], july["feed_from"], july["uncovered_from"], july["uncovered_to"]),
+                         ("feed_incomplete", "2026-08-01", "2026-07-01", "2026-07-31"))
+        # The bank and the books differ by an amount on a day.
+        september = self.proof([reading("1240.00")])["2026-09"]
+        self.assertEqual((september["reason"], september["difference"], september["difference_on"]),
+                         ("books_differ", "-10.00", "2026-10-05"))
+        # This account type needs a statement.
+        [row] = prove(self.company, [{"account_id": "feed-card", "account_type": "Credit Card", "time_zone": "UTC",
+                                      "readings": [reading("80.00")]}], as_of=date(2026, 10, 20))["months"]
+        self.assertEqual((row["reason"], row["account_type"]), ("not_checking_or_savings", "creditcard"))
 
     def test_cards_and_other_types_are_never_proven(self):
         post(self.company, CARD, "2026-09-05", "-80.00", other="Expenses:Software")
-        for account_id, kind in (("feed-card", "credit"), ("feed-chk", "treasury"), ("feed-chk", "")):
+        # Also with an opening entry and only sourced rows, where rule 7b would apply to a bank account.
+        post(self.company, CARD, "2026-07-31", "-10.00", other="Expenses:Software", source=False)
+        record_feed_window(self.company, account=CARD, start=date(2026, 8, 1), end=date(2026, 10, 5), source="feed-card")
+        for account_id, kind in (("feed-card", "credit"), ("feed-card", "checking"), ("feed-chk", "loan"),
+                                 ("feed-chk", "treasury"), ("feed-chk", "")):
             [row] = prove(self.company, [{"account_id": account_id, "account_type": kind,
-                                          "readings": [reading("1250.00")]}], as_of=date(2026, 10, 20))["months"]
-            self.assertEqual(row["reason"], "not_checking_or_savings")
+                                          "readings": [reading("1250.00")], "time_zone": "UTC"}],
+                                as_of=date(2026, 10, 20))["months"]
+            self.assertEqual((row["reason"], row["reconcile"], row["basis"]), ("not_checking_or_savings", None, None))
         [row] = prove(self.company, [{"account_id": "nope", "account_type": "checking"}], as_of=date(2026, 10, 20))["months"]
         self.assertEqual(row["reason"], "unmapped")
 
@@ -309,20 +476,206 @@ class FeedProofTests(unittest.TestCase):
         post(self.company, CHECKING, "2026-09-28", "-1.00", other="Expenses:Software")
         self.assertEqual(self.proof([reading("1250.00")])["2026-09"]["reason"], "books_differ")
 
-    def test_a_proven_month_clears_the_statement_blockers_in_readiness(self):
+    def test_a_back_dated_row_in_a_computed_month_unproves_it_on_recheck(self):
+        self.only_checking()
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        months = self.proof([reading("1290.00")])
+        for month in ("2026-08", "2026-09"):
+            self.assertEqual(months[month]["basis"], "feed_computed")
+            self.assertTrue(apply(self.company, months[month]["reconcile"]).is_clean)
+        self.assertNotIn("reconciliation_not_clean", self.codes("2026-08"))
+        # The feed delivers a row dated in August after the month was recorded.
+        post(self.company, CHECKING, "2026-08-25", "-30.00", other="Expenses:Software")
+        months = self.proof([reading("1290.00")])
+        self.assertEqual([(months[m]["reason"], months[m]["difference"]) for m in ("2026-08", "2026-09")],
+                         [("books_differ", "30.00"), ("books_differ", "30.00")])
+        self.assertIn("reconciliation_not_clean", self.codes("2026-08"))
+        # A new reading that includes the row proves August again, with the new closing.
+        months = self.proof([reading("1260.00", "2026-10-05")])
+        self.assertEqual((months["2026-08"]["reason"], months["2026-08"]["reconcile"]["source_balance"]),
+                         ("proven", "510.00"))
+
+    def only_checking(self):
         config = json.loads((self.company / "entity.json").read_text())
         config["bank_account_mappings"] = {"feed-chk": CHECKING}
         (self.company / "entity.json").write_text(json.dumps(config))
 
-        def codes():
-            document = assess_review_readiness(self.company, "2026-09", DependencyVersions(1, 1, 1, 1),
-                                               as_of=date(2026, 10, 20)).to_document()
-            return {item["code"] for item in document["blockers"]
-                    if not item["refs"] or CHECKING in item["refs"]} & STATEMENT_CODES
+    def readiness(self, period: str = "2026-09", **kw) -> dict:
+        return assess_review_readiness(self.company, period, DependencyVersions(1, 1, 1, 1),
+                                       as_of=date(2026, 10, 20), **kw).to_document()
 
-        self.assertTrue(codes())
+    def codes(self, period: str = "2026-09", **kw) -> set:
+        return {item["code"] for item in self.readiness(period, **kw)["blockers"]
+                if not item["refs"] or CHECKING in item["refs"]}
+
+    def test_a_proven_month_clears_the_statement_blockers_in_readiness(self):
+        self.only_checking()
+        self.assertTrue(self.codes() & STATEMENT_CODES)
         apply(self.company, self.proof([reading("1250.00")])["2026-09"]["reconcile"])
-        self.assertEqual(codes(), set())
+        self.assertEqual(self.codes() & STATEMENT_CODES, set())
+        # With the flag off, a feed_computed month is ready like any other reconciled month.
+        self.assertEqual((self.readiness()["state"], self.readiness()["blockers"]), ("ready_for_review", []))
+
+    def test_require_statements_blocks_months_checked_against_the_bank_connection(self):
+        self.only_checking()
+        readings = [month_end("500.00", "2026-08-31"), month_end("1300.00", "2026-09-30"), reading("1250.00")]
+        reading_figures = self.proof(readings)["2026-09"]["reconcile"]
+        computed_figures = self.proof([reading("1250.00")])["2026-09"]["reconcile"]
+        self.assertEqual((reading_figures["proof_basis"], computed_figures["proof_basis"]),
+                         ("feed_reading", "feed_computed"))
+        for figures in (reading_figures, computed_figures):
+            apply(self.company, figures)
+            self.assertEqual(self.codes(), set(), "the flag is off by default")
+            document = self.readiness(require_statements=True)
+            [blocker] = [item for item in document["blockers"] if item["code"] == "statement_required"]
+            self.assertEqual(blocker["refs"], [CHECKING])
+            self.assertIn("--statement-id", blocker["action"])
+            self.assertEqual(self.codes(require_statements=True), {"statement_required"})
+            self.assertIs(document["require_statements"], True)
+            self.assertEqual(document["reconciliations"][0]["proof_basis"], figures["proof_basis"])
+            self.assertNotIn("require_statements", self.readiness())
+        # A month reconciled from a statement is not blocked.
+        ref = f"ingestion/statements/files/{'c' * 64}.csv"
+        reconcile(self.company, CHECKING, Decimal("1300.00"), date(2026, 9, 30),
+                  source_opening_balance=Decimal("500.00"), source_transaction_total=Decimal("800.00"),
+                  source_snapshot_at="2026-10-02T12:00:00+00:00", source_through="2026-09-30",
+                  source_evidence_refs=[ref], source_evidence_hashes={ref: "c" * 64})
+        self.assertEqual(self.codes(require_statements=True), set())
+        self.assertEqual(self.readiness(require_statements=True)["reconciliations"][0]["proof_basis"], "statement")
+        # The CLI flag.
+        out = io.StringIO()
+        apply(self.company, computed_figures)
+        with redirect_stdout(out):
+            main(["readiness", "--entity", str(self.company), "--period", "2026-09", "--as-of", "2026-10-20",
+                  "--require-statements"])
+        self.assertIn("statement_required", {item["code"] for item in json.loads(out.getvalue())["blockers"]})
+
+    def test_the_proof_basis_round_trips_through_the_record_coverage_and_readiness(self):
+        self.only_checking()
+        figures = self.proof([reading("1250.00")])["2026-09"]["reconcile"]
+        result = apply(self.company, figures)
+        self.assertEqual(result.proof_basis, "feed_computed")
+        self.assertIn("Proof basis:     feed_computed", result.to_text())
+        [record] = [r for r in json.loads((self.company / "reports" / "reconciliation.json").read_text())
+                    if r["as_of"] == "2026-09-30"]
+        self.assertEqual(record["proof_basis"], "feed_computed")
+        [account] = check_coverage(self.company, date(2026, 9, 1), date(2026, 9, 30), accounts=[CHECKING])["accounts"]
+        self.assertEqual(account["months"][0]["proof_basis"], "feed_computed")
+        self.assertEqual(self.readiness()["reconciliations"][0]["proof_basis"], "feed_computed")
+        self.assertEqual(self.proof([reading("1250.00")])["2026-09"]["basis"], "feed_computed")
+        # A stale record proves nothing in coverage.
+        post(self.company, CHECKING, "2026-09-28", "-1.00", other="Expenses:Software")
+        [account] = check_coverage(self.company, date(2026, 9, 1), date(2026, 9, 30), accounts=[CHECKING])["accounts"]
+        self.assertNotIn("proof_basis", account["months"][0])
+        # The CLI stores the basis it is given.
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = main(["reconcile", "--entity", str(self.company), "--account", CHECKING, "--as-of", "2026-09-30",
+                         "--source-balance", "1299.00", "--source-evidence-ref", "evidence:feed-balance-x",
+                         "--proof-basis", "feed_reading"])
+        self.assertEqual(code, 0)
+        [record] = [r for r in json.loads((self.company / "reports" / "reconciliation.json").read_text())
+                    if r["as_of"] == "2026-09-30"]
+        self.assertEqual(record["proof_basis"], "feed_reading")
+
+    def test_reconcile_refuses_a_proof_basis_that_its_evidence_does_not_support(self):
+        def run(basis, refs):
+            return reconcile(self.company, CHECKING, Decimal("1300.00"), date(2026, 9, 30),
+                             source_evidence_refs=refs, proof_basis=basis)
+        for basis, refs in (("feed_computed", ["stmt-9"]), ("feed_reading", []),
+                            ("feed_reading", ["evidence:feed-balance-a", "stmt-9"]),
+                            ("statement", ["evidence:feed-balance-a"]), ("bank", ["stmt-9"])):
+            with self.assertRaises(ValueError, msg=(basis, refs)):
+                run(basis, refs)
+        self.assertFalse((self.company / "reports" / "reconciliation.json").exists())
+        self.assertEqual(run("statement", ["stmt-9"]).proof_basis, "statement")
+        err = io.StringIO()
+        with redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = main(["reconcile", "--entity", str(self.company), "--statement-id", "s1", "--proof-basis",
+                         "statement"])
+            self.assertEqual(code, 1)
+            code = main(["reconcile", "--entity", str(self.company), "--account", CHECKING, "--as-of", "2026-09-30",
+                         "--source-balance", "1.00", "--source-evidence-ref", "stmt-9", "--proof-basis", "feed_reading"])
+            self.assertEqual(code, 1)
+        self.assertIn("evidence:feed-balance-", err.getvalue())
+
+    def test_a_record_without_a_proof_basis_gets_the_weaker_reading_of_its_evidence(self):
+        feed, archive = ["evidence:feed-balance-a"], [f"ingestion/statements/files/{'d' * 64}.pdf"]
+        cases = (({"source_evidence_refs": feed}, "feed_computed"),
+                 ({"source_evidence_refs": archive}, "statement"),
+                 ({"source_evidence_refs": ["evidence/checking.json"]}, None),
+                 ({"source_evidence_refs": []}, None),
+                 ({"proof_basis": "feed_reading", "source_evidence_refs": feed}, "feed_reading"),
+                 ({"proof_basis": "feed_reading", "source_evidence_refs": archive}, None),
+                 ({"proof_basis": "statement", "source_evidence_refs": feed}, "feed_computed"),
+                 ({"proof_basis": "statement", "source_evidence_refs": ["paper"]}, "statement"),
+                 ({"proof_basis": "guess", "source_evidence_refs": ["paper"]}, None))
+        for record, basis in cases:
+            self.assertEqual(record_basis(record), basis, record)
+
+    def test_a_later_statement_that_agrees_outranks_and_replaces_the_feed_record(self):
+        self.only_checking()
+        months = self.proof([reading("1250.00")])
+        for month in ("2026-08", "2026-09"):
+            apply(self.company, months[month]["reconcile"])
+        record_statement(self.company, {"statement_id": "sep", "account": CHECKING, "kind": "statement",
+                                        "period_start": "2026-09-01", "period_end": "2026-09-30",
+                                        "opening_balance": "500.00", "closing_balance": "1300.00"})
+        # The statement outranks the feed record at once: coverage and readiness count the month as a statement.
+        coverage = check_coverage(self.company, date(2026, 9, 1), date(2026, 9, 30), accounts=[CHECKING])
+        self.assertEqual(coverage["accounts"][0]["months"][0]["proof_basis"], "statement")
+        self.assertEqual(coverage["findings"], [])
+        self.assertEqual(self.codes(require_statements=True), set())
+        self.assertEqual(self.proof([reading("1250.00")])["2026-09"]["reason"], "already_reconciled")
+        # Reconciling from the statement replaces the feed record; the feed then leaves it alone.
+        ref = f"ingestion/statements/files/{'e' * 64}.csv"
+        reconcile(self.company, CHECKING, Decimal("1300.00"), date(2026, 9, 30),
+                  source_opening_balance=Decimal("500.00"), source_transaction_total=Decimal("800.00"),
+                  source_snapshot_at="2026-10-02T12:00:00+00:00", source_through="2026-09-30",
+                  source_evidence_refs=[ref], source_evidence_hashes={ref: "e" * 64})
+        records = [r for r in json.loads((self.company / "reports" / "reconciliation.json").read_text())
+                   if r["as_of"] == "2026-09-30"]
+        self.assertEqual([record_basis(r) for r in records], ["statement"])
+        post(self.company, CHECKING, "2026-09-29", "-2.00", other="Expenses:Software")
+        self.assertEqual(self.proof([reading("1247.00")])["2026-09"]["reason"], "existing_record")
+
+    def test_a_feed_record_goes_stale_and_a_statement_month_is_not_proven_again_from_the_feed(self):
+        months = self.proof([reading("1250.00")])
+        apply(self.company, months["2026-09"]["reconcile"])
+        record_statement(self.company, {"statement_id": "sep", "account": CHECKING, "kind": "statement",
+                                        "period_start": "2026-09-01", "period_end": "2026-09-30",
+                                        "opening_balance": "500.00", "closing_balance": "1299.00"})
+        post(self.company, CHECKING, "2026-09-29", "-1.00", other="Expenses:Software")
+        row = self.proof([reading("1249.00")])["2026-09"]
+        self.assertEqual((row["reason"], row["statement_ids"], row["reconcile"]), ("statement_available", ["sep"], None))
+
+    def test_a_later_statement_that_disagrees_shows_the_difference_and_blocks_readiness(self):
+        self.only_checking()
+        months = self.proof([reading("1250.00")])
+        for month in ("2026-08", "2026-09"):
+            apply(self.company, months[month]["reconcile"])
+        self.assertEqual(self.codes(), set())
+        # The statement closes 10.00 below the books: the existing tie-out difference shows and blocks.
+        record_statement(self.company, {"statement_id": "sep", "account": CHECKING, "kind": "statement",
+                                        "period_start": "2026-09-01", "period_end": "2026-09-30",
+                                        "opening_balance": "500.00", "closing_balance": "1290.00"})
+        document = self.readiness()
+        self.assertEqual(document["state"], "blocked")
+        codes = {item["code"] for item in document["blockers"]}
+        self.assertTrue({"statement_tieout_differs", "statement_feed_differs"} <= codes, codes)
+        [differs] = [item for item in document["blockers"] if item["code"] == "statement_tieout_differs"]
+        self.assertIn("difference -10.00", differs["message"])
+        self.assertNotIn("proof_basis", document["coverage"][0]["months"][0])
+        # An opening and a closing 10.00 lower: the tie-out of the activity matches, but the month end differs.
+        record_statement(self.company, {"statement_id": "sep", "account": CHECKING, "kind": "statement",
+                                        "period_start": "2026-09-01", "period_end": "2026-09-30",
+                                        "opening_balance": "490.00", "closing_balance": "1290.00"}, replace=True)
+        document = self.readiness()
+        self.assertEqual(document["coverage"][0]["months"][0]["tieout"]["status"], "matches")
+        [feed] = [item for item in document["blockers"] if item["code"] == "statement_feed_differs"]
+        self.assertIn("1,290.00", feed["message"])
+        self.assertIn("1,300.00", feed["message"])
+        self.assertEqual(document["state"], "blocked")
 
     def test_cli_is_read_only_and_classified_as_read(self):
         input_path = Path(self._tmp.name) / "readings.json"

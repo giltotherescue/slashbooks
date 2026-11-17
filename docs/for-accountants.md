@@ -142,6 +142,51 @@ outputs use the cash view of the books and flag what you must check. The tax exp
 adds a Tax Assumptions sheet that states how each item is handled and what you decide. The owner can also record the prior return method, the entity
 type, the fiscal year and whether each deposit is refundable.
 
+## Month-end proof from the bank connection
+
+For a checking or savings account, a month can close without a bank statement.
+The month-end balance is then checked against the bank connection: a balance
+that the bank reported after the month end, less the transactions after the
+month end. Each reconciliation says what it was checked against:
+
+- `statement`: a bank or card statement.
+- `feed_reading`: a balance that the bank connection reported for the month end
+  itself, with an opening that a statement or such a balance proved.
+- `feed_computed`: a month end computed back from a later balance, or a month
+  whose opening was computed that way. The first months after a connection are
+  usually `feed_computed`: their opening is the books' opening entry, checked
+  only through the connection.
+
+What this proves: the books equal the balance the bank connection reported, the
+connection covers every day of the month through that balance, nothing waits in
+review, and the opening is proven. When the opening was computed, every row from
+the first day the connection covers came from a source, the books hold one
+opening entry at most before it, and the newest balance also agrees.
+
+What it does not prove:
+
+- It is not third-party evidence. When the opening entry was made from the
+  connection, a transaction that the connection never delivered is inside that
+  opening, and nothing here finds it.
+- Two errors that cancel each other (a missing deposit and a duplicated deposit
+  of the same amount) are not found. A month end between them is wrong by that
+  amount, unless a statement or a balance for that month end falls between them.
+- A transaction that the bank and the books date on different sides of a month
+  end is not found when they agree again by the balance day.
+- It proves balances, not categories.
+- Cards and loans always need a statement (pending charges, sign and billing
+  cycles).
+
+A statement outranks the bank connection. When a statement for the month
+arrives later and agrees, it counts as the evidence. When it disagrees, the
+month shows the difference (`statement_feed_differs`, and the statement tie-out
+when the activity also differs) and is not ready.
+
+To require statements, run readiness with `books readiness --require-statements`.
+A month checked only against the bank connection then has the blocker
+`statement_required`. The basis is in the readiness document and in
+`books coverage check`.
+
 ## Limits
 
 The supported accrual scope is one company, in one currency (USD unless the
@@ -157,6 +202,11 @@ See [accrual books](accrual.md) for limits, [accrual recipes](accrual-recipes.md
 worked requests, and [source-neutral intake](accrual-intake.md) for contracts. It does
 not calculate payroll, tax, tax depreciation methods, inventory costing, or complex
 revenue contracts, and does not provide audit certification or accounting advice.
+
+A month-end balance checked against the bank connection shows that the books
+agree with the connection. It is not a bank statement and not evidence from a
+third party. See [month-end proof from the bank connection](#month-end-proof-from-the-bank-connection)
+for what it finds and what it does not.
 
 When an entity is marked as VAT/GST/HST/sales-tax applicable, Slashbooks preserves
 that context and warns during sanity checks. It doesn't calculate indirect tax,

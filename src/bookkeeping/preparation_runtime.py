@@ -334,7 +334,8 @@ def run_preparation_command(argv: list[str], context: ExecutionContext, *, entit
             if any((args.account, args.as_of, args.all_accounts, args.balances_json,
                     args.source_balance is not None, args.source_opening_balance is not None,
                     args.source_transaction_total is not None, args.source_snapshot_at,
-                    args.source_through, args.source_evidence_refs, args.source_evidence_hashes)):
+                    args.source_through, args.source_evidence_refs, args.source_evidence_hashes,
+                    getattr(args, "proof_basis", None))):
                 raise PreparationDenied(0, "statement_source_override_forbidden")
             preview = reconcile.preview_statement_reconciliation(resolved, statement_id)
             if checked_hashes.pop(statement_id, None) != evidence_hash(preview):
@@ -785,6 +786,10 @@ def _reconciliation_intent(args: Any, source_hashes: Mapping[str, str]) -> Prepa
         "source_snapshot_at": args.source_snapshot_at,
         "source_through": args.source_through,
     }
+    # The proof basis is bound to the authorized evidence only when it is given, so an evidence hash made
+    # before the option existed stays the same.
+    if getattr(args, "proof_basis", None) is not None:
+        evidence["proof_basis"] = args.proof_basis
     expected = evidence_hash(evidence)
     evidence_keys = tuple(sorted(f"evidence:{value}" for value in args.source_evidence_refs))
     if (len(evidence_keys) != len(set(evidence_keys))

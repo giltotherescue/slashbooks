@@ -19,6 +19,19 @@ Evidence, strongest first
    ``max_quiet_days`` counts as covered from its first to its last date. This
    evidence is weak: the report marks such months as not verified.
 
+Month-end proof
+---------------
+Coverage says which days have source evidence. A month row also says what its
+month-end balance was checked against, in ``proof_basis``, when a clean
+reconciliation record on the month's last day still agrees with the books.
+The order, strongest first, is ``statement``, ``feed_reading`` and
+``feed_computed`` (``reconcile.PROOF_BASES``), then a reconciliation that does
+not say (no ``proof_basis`` key). A statement outranks the bank connection: a
+bank connection record whose balance equals a statement closing on that day is
+``statement``. When the two differ, the month has no ``proof_basis`` and a
+``statement_feed_differs`` error gives both figures, also when the statement
+tie-out matches (an opening and a closing that differ by the same amount).
+
 Statement record contract (schema_version 1)
 --------------------------------------------
 Importers, connectors and hosts write one JSON object per file (or a JSON list
@@ -639,6 +652,7 @@ def check_coverage(
         })
     tx_dates = _transaction_dates(entity.path, expected)
     books_postings = tieout_module.load_postings(entity.path, expected)
+    reconciliations = _reconciliation_index(entity.path)
     books_waiting = tieout_module.load_waiting_checked(entity, expected, exclude=exclude_waiting)[0]
 
     account_rows = []
@@ -693,7 +707,7 @@ def check_coverage(
                     f"{label} coverage for {spans} is inferred from transaction dates only; "
                     "add a statement or feed window to confirm it."
                 )
-            month_rows.append({
+            month_row = {
                 "month": month,
                 "from": first.isoformat(),
                 "to": last.isoformat(),
@@ -706,7 +720,15 @@ def check_coverage(
                 "reasons": reasons,
                 "notes": notes,
                 "tieout": _month_tieout(account_records, statement_ties, first, last),
-            })
+            }
+            if last == _month_bounds(last.year, last.month)[1]:
+                proof, conflict = _month_proof(account, label, reconciliations.get((account, last.isoformat())),
+                                               account_records, books_postings[account], last)
+                if proof is not None:
+                    month_row["proof_basis"] = proof
+                if conflict is not None:
+                    findings.append(conflict)
+            month_rows.append(month_row)
         continuity = _continuity(account, label, account_records, first_day, to_date)
         findings.extend(continuity)
         statuses = {row["status"] for row in month_rows}
@@ -754,6 +776,70 @@ def check_coverage(
         "findings": sorted(findings, key=lambda item: (
             str(item.get("account") or ""), str(item.get("from") or ""), item["code"], item["refs"])),
     }
+
+
+def _reconciliation_index(entity_path: Path) -> dict[tuple[str, str], Mapping[str, Any]]:
+    """Reconciliation records by (account, as_of). An unreadable file gives none; readiness reports it."""
+    try:
+        records = json.loads((entity_path / "reports" / "reconciliation.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return {}
+    if not isinstance(records, list):
+        return {}
+    return {(str(item.get("account")), str(item.get("as_of"))): item for item in records if isinstance(item, dict)}
+
+
+def _decimal(value: Any) -> Decimal | None:
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return amount if amount.is_finite() else None
+
+
+def _month_proof(account: str, label: str, record: Mapping[str, Any] | None, records: Sequence[StatementRecord],
+                 postings: "tieout_module.Series", day: date) -> tuple[str | None, dict[str, Any] | None]:
+    """What the month-end balance on ``day`` was checked against, and a finding when a statement contradicts it."""
+    from .reconcile import FEED_PROOF_BASES, record_basis
+
+    if record is None:
+        return None, None
+    basis = record_basis(dict(record))
+    source = _decimal(record.get("source_balance"))
+    sign = tieout_module.presentation_sign(account)
+    closings = sorted((r for r in records if r.kind == "statement" and r.period_end == day
+                       and r.closing_balance is not None), key=lambda r: r.statement_id)
+    conflict = None
+    if basis in FEED_PROOF_BASES and closings:
+        differing = [r for r in closings if source is None or r.closing_balance != source * sign]
+        if differing:
+            statement = differing[0]
+            shown = None if source is None else source * sign
+            conflict = {
+                "code": "statement_feed_differs",
+                "severity": "error",
+                "account": account,
+                "refs": [statement.statement_id],
+                "from": day.isoformat(),
+                "to": day.isoformat(),
+                "statement_balance": str(statement.closing_balance),
+                "feed_balance": None if shown is None else str(shown),
+                "difference": None if shown is None else str(statement.closing_balance - shown),
+                "message": (
+                    f"{label} statement {statement.statement_id} closes at {_money(statement.closing_balance)}, "
+                    f"but the month end checked against the bank connection is "
+                    + ("not readable." if shown is None else
+                       f"{_money(shown)} (difference {_money(statement.closing_balance - shown)}).")
+                ),
+            }
+    ledger_balance = _decimal(record.get("ledger_balance"))
+    current = (record.get("status") == "clean" and ledger_balance is not None
+               and ledger_balance == postings.through(day))
+    if not current or conflict is not None:
+        return None, conflict
+    if basis in FEED_PROOF_BASES and closings:
+        return "statement", None
+    return basis, None
 
 
 def readiness_items(document: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -831,7 +917,8 @@ def render_text(document: Mapping[str, Any]) -> str:
         for month in account["months"]:
             mark = month["status"] if month["verified"] or month["status"] != "complete" else "complete (inferred)"
             basis = ", ".join(month["basis"]) or "none"
-            lines.append(f"  {month['month']}  {mark:<20} basis: {basis}")
+            proof = f"  month end checked against: {month['proof_basis']}" if month.get("proof_basis") else ""
+            lines.append(f"  {month['month']}  {mark:<20} basis: {basis}{proof}")
             for reason in [*month["reasons"], *month["notes"]]:
                 lines.append(f"      - {reason}")
             tie = month.get("tieout") or {}
