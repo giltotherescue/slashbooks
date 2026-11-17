@@ -21,10 +21,12 @@
   longer proves a month with a statement, and `books coverage check` shows each
   month's `proof_basis` and the error `statement_feed_differs` when a statement
   disagrees. Not-proven rows have codes and the figures for one sentence.
-- `books ingest` now marks each row from a connected-feed provider with
-  `feed-provider` (kept through review), and removes the field from other input
-  rows. Only such rows, and corrections that keep their day and amount, count as
-  delivered by the bank connection. Behaviour change for old books: rows imported
+- `books ingest` with a connected-feed provider now records its rows (provider,
+  session, row digests) in a `feed-intake` event of the ledger audit log, and an
+  entry made from an unchanged such row, at ingest or at review, gets the mark
+  `feed-provider`. An edit of the staging files cannot create the mark. Only marked
+  rows that are the only posting of their source ID on the account, and corrections
+  that keep their day and amount, count as delivered by the bank connection. Behaviour change for old books: rows imported
   before this version have no mark, so rule 7b and the zero opening refuse months
   that hold them (`unsourced_postings`), also unprefixed BankSync IDs.
 - `books readiness --require-statements` blocks every month whose end is not proven

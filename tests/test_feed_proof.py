@@ -1059,6 +1059,90 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual(kinds, {"2026-08-01": "none", "2026-08-02": "none", "2026-08-03": "source",
                                  "2026-08-04": "source"})
 
+    # -- Round 3 ----------------------------------------------------------------------------------------------
+
+    def run_cli(self, *argv):
+        with redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            code = main(list(argv))
+        return code, out.getvalue() + err.getvalue()
+
+    def ingest(self, rows, *extra):
+        path = Path(self._tmp.name) / "rows.json"
+        path.write_text(json.dumps(rows))
+        code, text = self.run_cli("ingest", str(path), "--entity", str(self.company), "--no-feed-window", *extra)
+        self.assertEqual(code, 0, text)
+
+    def entry_marks(self):
+        with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
+            return {sid: dict(json.loads(meta)).get("feed-provider")
+                    for sid, meta in conn.execute("SELECT source_id, metadata_json FROM entries")}
+
+    def confirm(self, source_id, *propose):
+        code, text = self.run_cli("queue", *(propose or ("propose",)), "--entity", str(self.company),
+                                  "--source-id", source_id, *(() if propose else ("--category", "Income:Consulting")),
+                                  "--reasoning", "test")
+        self.assertEqual(code, 0, text)
+        item = source_id.replace(":", "_")
+        code, text = self.run_cli("queue", "confirm", "--entity", str(self.company), "--item", item)
+        self.assertEqual(code, 0, text)
+
+    def test_round3_an_edit_of_the_staging_file_cannot_create_or_keep_the_mark(self):
+        staging = self.company / "staging" / "pending-categorization.json"
+        # A generic ingest, then an edit that adds the old field: no mark.
+        self.ingest([{"id": "x1", "accountId": "feed-chk", "date": "2026-08-03", "amount": 6.0, "description": "row"}])
+        rows = json.loads(staging.read_text())
+        for row in rows:
+            row["feed_provider"] = "banksync"
+        staging.write_text(json.dumps(rows))
+        self.confirm("x1")
+        self.assertIsNone(self.entry_marks()["x1"])
+        # A row from a BankSync ingest keeps the mark; the same row edited in staging loses it.
+        self.ingest([{"id": "y2", "accountId": "feed-chk", "date": "2026-08-04", "amount": 7.0, "description": "feed"},
+                     {"id": "y3", "accountId": "feed-chk", "date": "2026-08-05", "amount": 8.0, "description": "feed"}],
+                    "--source", "banksync")
+        rows = json.loads(staging.read_text())
+        for row in rows:
+            if row["id"] == "banksync:y3":
+                row["amount"] = 80.0
+        staging.write_text(json.dumps(rows))
+        self.confirm("banksync:y2")
+        self.confirm("banksync:y3")
+        marks = self.entry_marks()
+        self.assertEqual((marks["banksync:y2"], marks["banksync:y3"]), ("banksync", None))
+        # The record is in the hash-chained audit log of the ledger store.
+        events = [event for event in LedgerStore(self.company / "ledger.sqlite").load_audit_events()
+                  if event["type"] == "feed-intake"]
+        self.assertEqual([sorted(event["payload"]["rows"]) for event in events], [["banksync:y2", "banksync:y3"]])
+
+    def test_round3_a_split_that_puts_a_second_posting_on_the_bank_account_does_not_count(self):
+        self.only_checking()
+        post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
+        self.ingest([{"id": "s1", "accountId": "feed-chk", "date": "2026-08-10", "amount": -100.0,
+                      "description": "split me"}], "--source", "banksync")
+        self.confirm("banksync:s1", "propose-split", "--posting", f"{CHECKING}=60.00",
+                     "--posting", "Expenses:Software=40.00")
+        from bookkeeping.feed_proof import _load_books
+        side = _load_books(self.company, [CHECKING])[CHECKING]
+        self.assertEqual([kind for day, kind, _ in side.kinds if day == date(2026, 8, 10)], ["none", "none"])
+        # Books: 40 + 500 - 100 + 60 + 1000 - 200 - 50 = 1250 on 10-05.
+        row = self.proof([reading("1250.00")])["2026-08"]
+        self.assertEqual((row["reason"], row["unsourced_from"]), ("unsourced_postings", "2026-08-10"))
+
+    def test_round3_a_statement_import_with_a_period_from_rows_reports_period_confirmed_false(self):
+        from bookkeeping import statement_import as si
+        fixture = ROOT / "tests" / "fixtures" / "statements" / "chase_like_checking.csv"
+        si.save_profile(self.company, fixture, name="chase-checking", ledger_account=CHECKING, overrides={})
+        code, text = self.run_cli("statement", "import", str(fixture), "--entity", str(self.company),
+                                  "--profile", "chase-checking", "--period-from-rows")
+        self.assertEqual(code, 0, text)
+        stage(self.company, [])  # Only the statement record matters here, not its rows waiting in review.
+        record_feed_window(self.company, account=CHECKING, start=date(2026, 1, 1), end=date(2026, 2, 5), source="feed-chk")
+        post(self.company, CHECKING, "2026-01-10", "100.00")
+        # The statement says 1,000.00 on 01-01, before its first row; the books hold 0.00.
+        row = self.proof([reading("100.00", "2026-02-05")], as_of=date(2026, 2, 20), from_month="2026-01")["2026-01"]
+        self.assertEqual((row["reason"], row["statement_date"], row["difference"], row["period_confirmed"]),
+                         ("statement_differs", "2026-01-01", "1000.00", False))
+
     def test_cli_is_read_only_and_classified_as_read(self):
         input_path = Path(self._tmp.name) / "readings.json"
         input_path.write_text(json.dumps({"accounts": [{"account_id": "feed-chk", "account_type": "Checking",

@@ -67,7 +67,7 @@ REASON_TEXT_LIMIT = 280
 
 #: Fields that the importer adds to a staged row. They are derived again from the source fields, so they are not
 #: part of the row identity. A test checks that every label the importer writes is in this set.
-DERIVED_FIELDS = frozenset({"review_hold_reason", "accrual_review_required", "accrual_review_action", "feed_provider"})
+DERIVED_FIELDS = frozenset({"review_hold_reason", "accrual_review_required", "accrual_review_action"})
 
 UNMAPPED_ACCOUNT = "Assets:Uncategorized"
 #: The ``import-source`` of each opening entry that this module reads as an opening, and its kind. A statement or

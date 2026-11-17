@@ -81,7 +81,7 @@ from .bank_accounts import clip_windows_to_cutover, context_only_account, contex
 from .entity import flat_bank_account_mappings, load_entity
 from . import queue as queue_module
 from .ledger.importer import import_transactions
-from .source_ids import CONNECTED_FEED_PROVIDERS, FEED_PROVIDER_FIELD, namespaced_feed_id
+from .source_ids import CONNECTED_FEED_PROVIDERS, FEED_INTAKE_EVENT, feed_intake_payload, namespaced_feed_id
 
 
 def add_parser(subparsers: Any) -> None:
@@ -360,10 +360,6 @@ def run(args: argparse.Namespace) -> int:
         # ``<provider>:<id>`` into the snapshot itself.
         if provider and prepared is None:
             txns = namespace_feed_ids(txns, provider)
-        # Only this command marks rows as delivered by a connected feed: every row gets this ingest's provider, or
-        # loses a mark that its input carried.
-        txns = [{**{key: value for key, value in txn.items() if key != FEED_PROVIDER_FIELD},
-                 **({FEED_PROVIDER_FIELD: provider} if provider else {})} for txn in txns]
         before_cutover: dict[str, dict[str, Any]] = {}
         cutover_hold_ids: frozenset[str] = frozenset()
         context_ids: dict[str, str] = {}
@@ -378,6 +374,14 @@ def run(args: argparse.Namespace) -> int:
         session_id = args.session_id or (
             f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
         )
+        if provider:
+            # The durable record that these rows came from a connected feed (source_ids.FEED_INTAKE_EVENT). An entry
+            # made from one of them carries the provider mark only while the row is unchanged.
+            from .ledger.importer import _ensure_ledger_store, _entity_write_lock
+            with _entity_write_lock(entity.path):
+                store = _ensure_ledger_store(entity)
+                with store.transaction() as conn:
+                    store.append_audit_event(FEED_INTAKE_EVENT, feed_intake_payload(provider, session_id, txns), conn)
         categorizer = queue_module.make_categorizer(entity)
         result = import_transactions(
             entity,

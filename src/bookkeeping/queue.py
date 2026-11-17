@@ -99,7 +99,7 @@ if TYPE_CHECKING:
 from functools import wraps
 
 from .entity import Entity, load_entity
-from .source_ids import feed_provider_meta, source_id_variants
+from .source_ids import feed_intake_index, feed_provider_meta, source_id_variants
 from .ledger.normalize import normalize_description
 from .brand import product_name
 
@@ -1938,7 +1938,7 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
             ("source-id", source_id),
             ("import-session", session_id),
             ("review-workflow", "split"),
-            *feed_provider_meta(txn),
+            *feed_provider_meta(feed_intake_index(entity.path), txn),
         ),
         tags=(f"import-{session_id}", "reviewed-split"),
         postings=(Posting(account=bank_account, amount=amount, currency=entity.currency), *allocations),
@@ -2602,7 +2602,7 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
             narration="Internal transfer: " + " / ".join(str(txn.get("description") or source_id) for txn, source_id in ((first, source_ids[0]), (second, source_ids[1]))),
             flag="*",
             meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta,
-                  *feed_provider_meta(first, second)),
+                  *feed_provider_meta(feed_intake_index(entity.path), first, second)),
             tags=(f"import-{session_id}", "internal-transfer"),
             postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=second_account, amount=-first_amount, currency=entity.currency)),
         )]
@@ -2610,8 +2610,8 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
     else:
         clearing = "Assets:Transfers-Clearing"
         entries = [
-            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta, *feed_provider_meta(first)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=clearing, amount=-first_amount, currency=entity.currency))),
-            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta, *feed_provider_meta(second)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency=entity.currency), Posting(account=clearing, amount=first_amount, currency=entity.currency))),
+            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta, *feed_provider_meta(feed_intake_index(entity.path), first)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=clearing, amount=-first_amount, currency=entity.currency))),
+            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta, *feed_provider_meta(feed_intake_index(entity.path), second)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency=entity.currency), Posting(account=clearing, amount=first_amount, currency=entity.currency))),
         ]
         needed_accounts = {first_account, second_account, clearing}
     existing_opens = _get_existing_opens(entity)
@@ -2805,7 +2805,7 @@ def _write_confirmed_entry(
     meta: list[tuple[str, str]] = [
         ("source-id", source_id),
         ("import-session", session_id),
-        *feed_provider_meta(txn),
+        *feed_provider_meta(feed_intake_index(entity.path), txn),
     ]
     if accrual_treatment:
         meta.append(("accrual-treatment", accrual_treatment))

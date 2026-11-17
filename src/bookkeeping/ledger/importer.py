@@ -65,7 +65,7 @@ from .model import Entry, Open, Posting
 from .staging import StagingStore
 from .store import LedgerStore, default_store_path
 from .normalize import normalize_description
-from ..source_ids import feed_provider_meta, source_id_variants
+from ..source_ids import feed_intake_index, feed_provider_meta, source_id_variants
 from ..brand import product_name
 
 # ---------------------------------------------------------------------------
@@ -866,6 +866,7 @@ def _import_transactions_unlocked(
     source_ids_to_mark: list[str] = []
     source_ids_in_batch: set[str] = set()
     source_transactions_to_write: list[dict[str, Any]] = []
+    feed_intake = feed_intake_index(entity.path)
 
     for txn in normalized_txns:
         source_id = str(txn.get("id") or "")
@@ -1026,7 +1027,7 @@ def _import_transactions_unlocked(
         meta: list[tuple[str, str]] = [
             ("source-id", source_id),
             ("import-session", session_id),
-            *feed_provider_meta(txn),
+            *feed_provider_meta(feed_intake, txn),
         ]
 
         # Late-arrival flag.

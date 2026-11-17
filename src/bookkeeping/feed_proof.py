@@ -75,8 +75,10 @@ proven when every condition is true:
    - Every other posting from ``W`` through the later of ``D`` and ``N``'s day
      is a row that the bank connection delivered (else ``unsourced_postings``).
      A row is delivered by the connection when ``books ingest`` wrote it from a
-     connected feed: its entry has the ``feed-provider`` mark that only that
-     command sets, the mark names a provider in
+     connected feed: its entry has the ``feed-provider`` mark, which an entry
+     gets only from the ingest's ``feed-intake`` audit record of that unchanged
+     row, it is the only posting of its source ID on the account, the mark names
+     a provider in
      ``source_ids.CONNECTED_FEED_PROVIDERS``, and the source ID is
      ``<that provider>:<id>`` (or has no prefix, with the mark ``banksync``).
      It is not an opening import. A correction (``correction-of``) is judged
@@ -444,7 +446,8 @@ def _classify(postings: Sequence[_Posting]) -> list[tuple[_Posting, str]]:
     """Each posting with its kind: ``opening``, ``source`` (delivered by the bank connection) or ``none``.
 
     - ``opening``: an entry that an opening import made (``import-source`` in ``_OPENING_SOURCES``).
-    - ``source``: a row that ``books ingest`` wrote from a connected feed (``_ingested_from_feed``). A correction
+    - ``source``: a row that ``books ingest`` wrote from a connected feed (``_ingested_from_feed``), when it is the
+      only posting of its source ID on this account. A correction
       (``correction-of``) is judged only through what it corrects: it counts when it corrects such a row on this
       account (through any number of corrections), it is the only posting of its source ID on this account, and it
       has the same day and amount. Its own source ID and marks do not count.
@@ -469,7 +472,8 @@ def _classify(postings: Sequence[_Posting]) -> list[tuple[_Posting, str]]:
             if posting.opening or not posting.source_id:
                 return False
             if not posting.correction_of:
-                return _ingested_from_feed(posting)
+                # One posting of a feed row on the account: a split that puts a second one there does not count.
+                return single(posting.source_id) is posting and _ingested_from_feed(posting)
             original = single(posting.correction_of)
             if (single(posting.source_id) is not posting or original is None
                     or (original.day, original.amount) != (posting.day, posting.amount)):

@@ -25,20 +25,76 @@ CONNECTED_FEED_PROVIDERS = ("banksync", "plaid", "stripe-financial-connections")
 # The only provider whose rows were stored without a prefix before namespacing.
 LEGACY_UNPREFIXED_PROVIDER = "banksync"
 
-# ``books ingest`` with a connected-feed provider sets this field on every row it stages or posts, and removes it from
-# every other row. The entry it becomes carries the provider in ``FEED_PROVIDER_META``. Nothing else sets either.
-FEED_PROVIDER_FIELD = "feed_provider"
+# ``books ingest`` with a connected-feed provider writes one ``FEED_INTAKE_EVENT`` audit event in the ledger store
+# before it imports: the provider, the session and the digest of every row. An entry made from such a row, now or
+# when a person confirms it later, carries the provider in ``FEED_PROVIDER_META`` only when the row still has that
+# digest. The mark is read from the hash-chained audit log, never from a staged row, so an edit of the staging files
+# cannot create it, and an edited row loses it.
 FEED_PROVIDER_META = "feed-provider"
+FEED_INTAKE_EVENT = "feed-intake"
+
+FeedIntake = dict[str, dict[str, set[str]]]
 
 
-def feed_provider_meta(*txns: Any) -> tuple[tuple[str, str], ...]:
-    """The ``feed-provider`` entry metadata for an entry made from *txns*, when they all name one provider."""
-    providers = {txn.get(FEED_PROVIDER_FIELD) if isinstance(txn, dict) else None for txn in txns}
-    if len(providers) == 1:
-        provider = providers.pop()
-        if isinstance(provider, str) and provider:
-            return ((FEED_PROVIDER_META, provider),)
-    return ()
+def _row_digest(txn: Any) -> str:
+    from .source_disposition import row_identity
+    return row_identity(txn)["row_digest"]
+
+
+def feed_intake_payload(provider: str, session_id: str, txns: list[dict]) -> dict[str, Any]:
+    """The audit payload that ``books ingest`` records for the rows of a connected feed."""
+    return {"provider": provider, "session": session_id,
+            "rows": {str(txn["id"]): _row_digest(txn) for txn in txns if isinstance(txn, dict) and txn.get("id")}}
+
+
+def feed_intake_index(entity_path: Any) -> FeedIntake:
+    """Source ID -> provider -> the row digests that a connected-feed ingest recorded for it."""
+    from pathlib import Path
+    import json
+    import sqlite3
+    from .ledger.store import LedgerStore, default_store_path
+
+    index: FeedIntake = {}
+    path = default_store_path(Path(entity_path))
+    if not path.is_file():
+        return index
+    try:
+        with LedgerStore(path).connection() as conn:
+            rows = conn.execute("SELECT payload_json FROM audit_events WHERE type = ? ORDER BY id",
+                                (FEED_INTAKE_EVENT,)).fetchall()
+    except sqlite3.DatabaseError:
+        return index
+    for (raw,) in rows:
+        try:
+            payload = json.loads(raw or "{}")
+        except ValueError:
+            continue
+        provider, digests = payload.get("provider"), payload.get("rows")
+        if not isinstance(provider, str) or not provider or not isinstance(digests, dict):
+            continue
+        for source_id, digest in digests.items():
+            if isinstance(digest, str):
+                index.setdefault(str(source_id), {}).setdefault(provider, set()).add(digest)
+    return index
+
+
+def feed_provider_meta(index: FeedIntake, *txns: Any) -> tuple[tuple[str, str], ...]:
+    """The ``feed-provider`` entry metadata for an entry made from *txns*.
+
+    Each row must be in a connected-feed ingest's audit record with its current digest, under exactly one provider,
+    and every row must name the same provider. Otherwise the entry gets no mark.
+    """
+    providers: set[str] = set()
+    for txn in txns:
+        if not isinstance(txn, dict):
+            return ()
+        recorded = index.get(str(txn.get("id") or ""), {})
+        digest = _row_digest(txn)
+        matching = {provider for provider, digests in recorded.items() if digest in digests}
+        if len(matching) != 1:
+            return ()
+        providers |= matching
+    return ((FEED_PROVIDER_META, providers.pop()),) if len(providers) == 1 else ()
 
 
 def namespaced_feed_id(provider: str, raw_id: Any) -> str:

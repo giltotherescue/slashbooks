@@ -560,13 +560,18 @@ rows after the month end. Cards, loans and other types are never proven.
 A row was "delivered by the bank connection" when `books ingest` wrote it from a
 connected feed. The engine checks exactly this:
 
-- The entry has the mark `feed-provider: <provider>`. Only `books ingest` sets
-  it, when the ingest has a connected-feed provider (`--source banksync`,
-  `--source plaid`, `--source stripe-financial-connections`, or a BankSync
-  download). The mark goes with the row through review. `books ingest` removes
-  the field from any other input row.
+- The entry has the mark `feed-provider: <provider>`. `books ingest` with a
+  connected-feed provider (`--source banksync`, `--source plaid`,
+  `--source stripe-financial-connections`, or a BankSync download) first writes
+  a `feed-intake` event in the hash-chained audit log of the ledger store: the
+  provider, the session and the digest of every row. An entry made from one of
+  those rows, at ingest or when a person confirms it later, gets the mark only
+  while the row still has that digest. The mark never comes from the staging
+  files, so an edit there cannot create it, and an edited row loses it.
 - The provider is in `source_ids.CONNECTED_FEED_PROVIDERS`, and the source ID
   is `<that provider>:<id>`, or has no prefix with the mark `banksync`.
+- It is the only posting of its source ID on the account. A split that puts a
+  second posting on the bank account makes neither count.
 - The entry is not an opening import.
 - A correction (`correction-of`, from `books ledger correct`,
   `reclassify-bank`, `split-equity` or a category reclassification) is judged
