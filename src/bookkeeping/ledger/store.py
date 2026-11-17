@@ -725,7 +725,14 @@ class LedgerStore:
         *,
         ts: str | None = None,
     ) -> str:
+        from .. import provenance
+
         event_ts = ts or _utc_now()
+        # A caller kind other than the default ``person`` is sealed inside the hash chain. A person event
+        # stays byte-identical to older events, which have no kind and also read as a person.
+        kind = provenance.caller_kind()
+        if kind != provenance.DEFAULT_KIND and isinstance(payload, dict) and "caller_kind" not in payload:
+            payload = {**payload, "caller_kind": kind}
         payload_json = _json(payload)
         row = conn.execute(
             "SELECT record_hash FROM audit_events ORDER BY id DESC LIMIT 1"

@@ -58,7 +58,7 @@ scripts/books statement import <file> --entity <entity-path> --profile <name> --
 
 If the owner reads the opening and closing balances from the printed statement,
 add `--opening-balance` and `--closing-balance`. Use the amounts as printed:
-money held for a bank account, money owed for a card. Add `--stated-by agent`
+money held for a bank account, money owed for a card. Set the caller kind to `agent` (`BOOKS_CALLER_KIND=agent`, see `docs/provenance.md`)
 when an automated agent, not the owner, read the values. Report any warning that
 the balances do not agree with the transactions.
 

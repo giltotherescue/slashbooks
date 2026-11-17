@@ -46,11 +46,16 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping
 
+from . import provenance
+
 JsonObject = dict[str, Any]
 
 IMPORT_SOURCE = "statement-opening"
 OPENING_EQUITY = "Equity:Opening-Balances"
 SESSION = "statement-opening"
+
+
+_ENTERED_BY = {"person": "a person", "agent": "an agent", "system": "the system", "unknown": "an unknown caller"}
 
 
 class StatementOpeningError(ValueError):
@@ -506,7 +511,8 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
             except (OSError, ValueError, TypeError, KeyError, AttributeError):
                 return _not_eligible(ref, account, "opening_disposition_basis_changed",
                                      "The opening or its outside-books decisions changed. Review them again.")
-        source = "person" if typed is not None else "printed"
+        source = provenance.caller_kind() if typed is not None else "printed"
+        caller = provenance.caller_kind()
         amount_ledger = (presented * presentation_sign(account)).quantize(Decimal("0.01"))
 
         facts = _books_facts(store, account, start)
@@ -611,7 +617,8 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
 
         result: JsonObject = {
             "statement_id": statement_id, "account": account, "date": start.isoformat(),
-            "opening_balance": format(presented, "f"), "opening_source": source, "currency": currency,
+            "opening_balance": format(presented, "f"), "opening_source": source, "caller_kind": caller,
+            "currency": currency,
             "source_id": source_id,
             "postings": [{"account": account, "amount": format(amount_ledger, "f")},
                          {"account": OPENING_EQUITY, "amount": format(-amount_ledger + Decimal("0.00"), "f")}],
@@ -631,7 +638,7 @@ def record_opening(entity_path: Path | str, statement_id: str | None = None, *, 
 
         name = label or account.split(":")[-1].replace("-", " ")
         narration = (f"Opening balance from the {name} statement" if source == "printed"
-                     else f"Opening balance for {name}, entered by a person")
+                     else f"Opening balance for {name}, entered by {_ENTERED_BY[source]}")
         meta = [("source-id", source_id), ("import-source", IMPORT_SOURCE), ("opening-source", source),
                 ("opening-balance", format(presented, "f"))]
         if statement_id:

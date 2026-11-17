@@ -193,9 +193,10 @@ transactions in the file, the result has a warning.
 By default the engine records that a person stated the period and balances
 (`period_source` and `balance_source` of `person`, or `person_and_file` when
 the file gives the other balance). A host that lets an automated agent run the
-command passes `--stated-by agent`. The engine then records `agent` or
-`agent_and_file` and returns `"stated_by": "agent"` in the result. The default
-is `person`, and records saved before this option keep their stored values.
+command sets `BOOKS_CALLER_KIND=agent` (see `docs/provenance.md`). The engine
+then records `agent` or `agent_and_file`, stores `caller_kind`, returns
+`"caller_kind": "agent"`, and does not count the stated period as confirmed: a
+person must confirm it. Records saved before this field keep their stored values.
 
 ### Opening balance from the first statement
 

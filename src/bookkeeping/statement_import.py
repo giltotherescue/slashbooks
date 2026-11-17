@@ -63,12 +63,12 @@ from an automated agent; see below). Otherwise the record waits
 in ``ingestion/statements/unconfirmed/`` until the same file is imported again
 with the period.
 
-``--stated-by person|agent`` (default ``person``) says who states the values given with
-``--period-start``/``--period-end`` and ``--opening-balance``/``--closing-balance``. A host
-that lets an automated agent run the command passes ``agent``. The period source is then
-``agent`` and the balance source is ``agent`` (``agent_and_file`` when the file supplies the
-other balance), instead of ``person`` and ``person_and_file``. The result repeats it as
-``stated_by``. Older records keep their stored values.
+The caller kind (``person`` by default; see ``provenance.py`` and ``docs/provenance.md``)
+says who states the values given with ``--period-start``/``--period-end`` and
+``--opening-balance``/``--closing-balance``. A host that lets an automated agent run the
+command sets ``BOOKS_CALLER_KIND=agent``. The period source is then ``agent``, the balance
+source is ``agent`` (or ``agent_and_file``), the record has ``caller_kind``, and the period is
+not confirmed: only a person confirms a period. Older records keep their stored values.
 
 ``--period-from-rows`` is an explicit choice for a file with no printed period.
 It records the first and last transaction dates as the period, with
@@ -104,6 +104,7 @@ from .connectors import bankcsv, ofx
 from .connectors.bankcsv import StatementFileError
 from . import currency as currency_mod
 from .ledger.normalize import normalize_description
+from . import provenance
 from .tieout import presentation_sign, statement_tieout
 from .source_ids import same_family, source_family, source_id_variants
 from .work import observe_import
@@ -115,7 +116,7 @@ MAPPING_PREFIX = "statement:"
 NEAR_DATE_DAYS = 3
 STATEMENTS_DIR = Path("ingestion") / "statements"
 WRITER = "books statement import"
-STATED_BY = ("person", "agent")  # who gave --period-* and --*-balance; stored as the source
+_KIND_PHRASE = {"person": "a person", "agent": "an agent", "system": "the system", "unknown": "an unknown caller"}
 _PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _OVERRIDE_FIELDS = ("date_column", "description_column", "amount_column", "debit_column",
                     "credit_column", "balance_column", "reference_column", "status_column",
@@ -463,6 +464,7 @@ def save_profile(entity_path: Path, path: Path, *, name: str, ledger_account: st
             "boundary_date": boundary_date,
             "side": side,
             "confirmed": True,
+            "caller_kind": provenance.caller_kind(),
             "source_format": spec["format"],
             "statement_profile": spec,
         }
@@ -947,6 +949,7 @@ def load_statement_records(entity_path: Path, *, include_all: bool = False) -> l
 def _store_record(entity_path: Path, record: JsonObject) -> None:
     from . import coverage
 
+    record.setdefault("caller_kind", provenance.caller_kind())
     pending = _unconfirmed_path(entity_path, record["statement_id"])
     existing = coverage.statements_dir(entity_path) / f"{record['statement_id']}.json"
     try:
@@ -1032,15 +1035,20 @@ def _parse_override_date(value: str | None, label: str) -> str | None:
 def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, label: str,
                      confirmed_period: tuple[str, str] | None,
                      balances: tuple[str | None, str | None],
-                     period_from_rows: bool = False, stated_by: str = "person") -> tuple[JsonObject, list[str]]:
+                     period_from_rows: bool = False) -> tuple[JsonObject, list[str]]:
     """Build the coverage contract record (plus importer details) for one statement.
 
     Balances in the record use the statement presentation: money held for a
-    bank account, money owed for a card or loan. ``stated_by`` says who gave the
-    caller-supplied period and balances: ``person`` or ``agent``.
+    bank account, money owed for a card or loan.
+
+    The caller kind (``provenance.caller_kind``) is stored as ``caller_kind``. A
+    period or balance that the caller states gets that kind as its source. Only a
+    person's stated period is confirmed: another kind is stored with its source
+    and ``period_confirmed: false``, and waits for a person.
     """
     meta = dict(statement["metadata"])
     warnings: list[str] = []
+    kind = provenance.caller_kind()
     dates = sorted(t["date"] for t in statement["transactions"])
     period_start, period_end = meta.get("period_start"), meta.get("period_end")
     opening = _presented(meta.get("opening_balance"), ledger_account)
@@ -1068,13 +1076,17 @@ def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, la
                                 "those balances were not recorded.")
             opening = closing = None
             meta.update(opening_balance_date=None, closing_balance_date=None, balance_source=None)
-        period_start, period_end, period_source, confirmed = start, end, stated_by, True
+        period_start, period_end, period_source = start, end, kind
+        confirmed = provenance.is_person(kind)
+        if not confirmed:
+            warnings.append(f"The period was stated by {_KIND_PHRASE[kind]}, not a person, so it is not "
+                            "confirmed. A person must confirm it.")
     if balances[0] is not None:
         opening, meta["opening_balance_date"] = balances[0], period_start
     if balances[1] is not None:
         closing, meta["closing_balance_date"] = balances[1], period_end
     if any(b is not None for b in balances):
-        meta["balance_source"] = stated_by if all(b is not None for b in balances) else f"{stated_by}_and_file"
+        meta["balance_source"] = kind if all(b is not None for b in balances) else f"{kind}_and_file"
     total = sum((Decimal(t["amount"]) for t in statement["transactions"]), Decimal("0.00"))
     tie = statement_tieout(
         {"opening_balance": opening, "closing_balance": closing, "transactions_total": format(total, "f"),
@@ -1103,6 +1115,7 @@ def _contract_record(statement: JsonObject, *, fmt: str, ledger_account: str, la
         "statement_id": statement["statement_id"],
         "account": ledger_account,
         "kind": "statement",
+        "caller_kind": kind,
         "period_start": period_start,
         "period_end": period_end,
         "opening_balance": opening,
@@ -1154,8 +1167,7 @@ def _apply_boundary(txns: list[JsonObject], profile: JsonObject) -> tuple[list[J
 
 def _tieout_blocked(path: Path, fmt: str, selected: list[JsonObject], profiles: JsonObject,
                     confirmed_period: tuple[str, str] | None,
-                    balances: tuple[str | None, str | None], period_from_rows: bool = False,
-                    stated_by: str = "person") -> JsonObject | None:
+                    balances: tuple[str | None, str | None], period_from_rows: bool = False) -> JsonObject | None:
     """Return a ``needs_review`` result when any statement fails its tie-out, else None."""
     entries = []
     for statement in selected:
@@ -1163,7 +1175,7 @@ def _tieout_blocked(path: Path, fmt: str, selected: list[JsonObject], profiles: 
         record, warnings = _contract_record(
             statement, fmt=fmt, ledger_account=prof["ledger_account"],
             label=prof.get("account_name") or statement["profile"], confirmed_period=confirmed_period,
-            balances=balances, period_from_rows=period_from_rows, stated_by=stated_by)
+            balances=balances, period_from_rows=period_from_rows)
         entries.append({"profile": statement["profile"], "statement_id": record["statement_id"],
                         "tieout": record["tieout"], "warnings": warnings})
     differing = [e for e in entries if e["tieout"]["status"] == "differs"]
@@ -1200,8 +1212,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
                 ts: str | None = None, output: Path | None = None,
                 period_start: str | None = None, period_end: str | None = None,
                 opening_balance: str | None = None, closing_balance: str | None = None,
-                require_tieout: bool = False, period_from_rows: bool = False,
-                stated_by: str = "person") -> JsonObject:
+                require_tieout: bool = False, period_from_rows: bool = False) -> JsonObject:
     """Import one statement file. Returns a JSON-ready result with ``status``.
 
     ``period_start``/``period_end`` are the statement dates a person confirmed
@@ -1214,9 +1225,9 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     With ``require_tieout`` a mismatch returns ``needs_review`` before any
     write, and a dry run reports the same.
 
-    ``stated_by`` (``person`` by default, or ``agent``) says who gave the period and
-    balances above. It is stored as the ``period_source`` and ``balance_source``
-    (``agent``, ``agent_and_file``) and returned as ``stated_by`` in the result.
+    The caller kind (``provenance``) says who gave the period and balances above.
+    It is stored as ``caller_kind``, ``period_source`` and ``balance_source``
+    (``agent``, ``agent_and_file``) and returned as ``caller_kind`` in the result.
 
     With ``period_from_rows`` a file with no printed period gets the first and last
     transaction dates as its period (``coverage_basis: "transactions"``, still
@@ -1226,8 +1237,6 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     from .ledger.importer import _entity_write_lock, import_transactions
     from . import queue as queue_module
 
-    if stated_by not in STATED_BY:
-        raise StatementImportError("invalid_stated_by", "--stated-by must be person or agent.")
     path = Path(path)
     entity = load_entity(entity_path)
     profiles = _profiles(entity.entity_config)
@@ -1294,8 +1303,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             "The period and balance options apply to one account; pass --profile for that account.")
 
     if require_tieout:
-        blocked = _tieout_blocked(path, fmt, selected, profiles, confirmed_period, balances, period_from_rows,
-                                  stated_by)
+        blocked = _tieout_blocked(path, fmt, selected, profiles, confirmed_period, balances, period_from_rows)
         if blocked is not None:
             return blocked
 
@@ -1364,7 +1372,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             record, record_warnings = _contract_record(
                 statement, fmt=fmt, ledger_account=prof["ledger_account"],
                 label=prof.get("account_name") or name, confirmed_period=confirmed_period,
-                balances=balances, period_from_rows=period_from_rows, stated_by=stated_by)
+                balances=balances, period_from_rows=period_from_rows)
             record.update(file_name=path.name, evidence_ref=_archive_relative(path, file_sha).as_posix(),
                           evidence_sha256=file_sha)
             if not record["period_confirmed"]:
@@ -1422,7 +1430,7 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
     if output is not None:
         _write_json_atomic(Path(output), {"transactions": all_txns, "count": len(all_txns)})
     return {"status": "dry_run" if dry_run else "imported", "file": path.name, "format": fmt,
-            "session_id": None if dry_run else session_id, "stated_by": stated_by,
+            "session_id": None if dry_run else session_id, "caller_kind": provenance.caller_kind(),
             "statements": results}
 
 
@@ -1488,10 +1496,6 @@ def add_parser(subparsers: Any) -> None:
                           help="Opening balance as printed (money owed is positive for a card)")
     import_p.add_argument("--closing-balance", default=None,
                           help="Closing balance as printed (money owed is positive for a card)")
-    import_p.add_argument("--stated-by", choices=STATED_BY, default="person",
-                          help="Who states the period and balances given with the options above. A host that "
-                               "lets an automated agent run this command passes agent. Stored as the "
-                               "period and balance source (default: person)")
     import_p.add_argument("--require-tieout", action="store_true",
                           help="Exit 4 and import nothing when opening balance plus the rows "
                                "does not equal the closing balance")
@@ -1556,8 +1560,7 @@ def run(args: argparse.Namespace, *, opening_disposition_basis: OpeningDispositi
                                  period_end=args.period_end, opening_balance=args.opening_balance,
                                  closing_balance=args.closing_balance,
                                  require_tieout=args.require_tieout,
-                                 period_from_rows=args.period_from_rows,
-                                 stated_by=args.stated_by)
+                                 period_from_rows=args.period_from_rows)
         elif command in {"validate", "map-extracted", "import-extracted"}:
             from . import statement_extract
             result = statement_extract.run(args)

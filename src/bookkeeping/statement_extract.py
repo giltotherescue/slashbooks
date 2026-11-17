@@ -79,6 +79,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from . import provenance
 from . import statement_import as si
 from .connectors import bankcsv
 from .ledger.normalize import normalize_description
@@ -462,6 +463,7 @@ def save_extracted_profile(entity_path: Path, *, name: str, ledger_account: str,
             "boundary_date": None,
             "side": "before",
             "confirmed": True,
+            "caller_kind": provenance.caller_kind(),
             "source_format": EXTRACTED_FORMAT,
             "statement_profile": {"format": EXTRACTED_FORMAT, "version": 1},
         }
@@ -501,6 +503,7 @@ def load_review_records(entity_path: Path | str) -> list[JsonObject]:
 
 
 def _write_review(entity_path: Path, record: JsonObject) -> None:
+    record = {**record, "caller_kind": record.get("caller_kind") or provenance.caller_kind()}
     si._write_json_atomic(review_dir(entity_path) / f"{record['statement_id']}.json", record)
 
 
@@ -613,6 +616,7 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
     confirmed_by = ext.confirmation
     record = {
         "schema_version": 1, "statement_id": statement_id, "account": ledger_account, "kind": "statement",
+        "caller_kind": provenance.caller_kind(),
         "period_start": ext.period_start.isoformat(), "period_end": ext.period_end.isoformat(),
         "opening_balance": _money(ext.opening), "closing_balance": _money(ext.closing),
         "source": prof.get("account_name") or profile, "writer": si.WRITER, "profile": profile,

@@ -19,6 +19,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from bookkeeping import provenance  # noqa: E402
 from bookkeeping import queue as queue_module  # noqa: E402
 from bookkeeping import statement_import as si  # noqa: E402
 from bookkeeping.cli import main  # noqa: E402
@@ -635,56 +636,88 @@ class ImportTests(unittest.TestCase):
                          closing_balance="900.00")["statements"][0]
         self.assertTrue(any("check for missing or extra rows" in w for w in wrong["warnings"]))
 
-    def test_stated_by_defaults_to_person_and_can_name_an_agent(self):
+    def test_default_caller_is_a_person_and_stored_values_do_not_change(self):
+        self.map("card_debit_credit.csv", "card", account=CARD)
+        result = self.imp("card_debit_credit.csv", "card", **self.STATED)
+        record = result["statements"][0]["statement"]
+        self.assertEqual(result["caller_kind"], "person")
+        self.assertEqual((record["caller_kind"], record["balance_source"], record["period_source"]),
+                         ("person", "person", "person"))
+        self.assertTrue(record["period_confirmed"])
+
+    STATED = dict(period_start="2026-01-01", period_end="2026-01-31",
+                  opening_balance="1000.00", closing_balance="769.99")
+
+    def test_an_agent_caller_is_stored_and_its_period_is_not_confirmed(self):
         from bookkeeping import coverage
 
         self.map("card_debit_credit.csv", "card", account=CARD)
-        args = dict(period_start="2026-01-01", period_end="2026-01-31",
-                    opening_balance="1000.00", closing_balance="769.99")
-        default = self.imp("card_debit_credit.csv", "card", **args)
-        self.assertEqual(default["stated_by"], "person")
-        self.assertEqual((default["statements"][0]["statement"]["balance_source"],
-                          default["statements"][0]["statement"]["period_source"]), ("person", "person"))
-        agent = self.imp("card_debit_credit.csv", "card", stated_by="agent", **args)
-        self.assertEqual(agent["stated_by"], "agent")
-        record = agent["statements"][0]["statement"]
-        self.assertEqual((record["balance_source"], record["period_source"]), ("agent", "agent"))
-        [stored], _ = coverage.load_statements(self.entity)
-        self.assertEqual(str(stored.closing_balance), "769.99")
-        with self.assertRaises(si.StatementImportError):
-            self.imp("card_debit_credit.csv", "card", stated_by="robot", **args)
+        with provenance.use_caller_kind("agent"):
+            result = self.imp("card_debit_credit.csv", "card", **self.STATED)
+        self.assertEqual(result["caller_kind"], "agent")
+        entry = result["statements"][0]
+        record = entry["statement"]
+        self.assertEqual((record["caller_kind"], record["balance_source"], record["period_source"]),
+                         ("agent", "agent", "agent"))
+        self.assertFalse(record["period_confirmed"])
+        self.assertEqual(entry["coverage"], "needs_period")
+        self.assertTrue(any("not a person" in w for w in entry["warnings"]))
+        records, _ = coverage.load_statements(self.entity)
+        self.assertEqual(records, [])  # not coverage until a person confirms it
+        pending = list((self.entity / "ingestion" / "statements" / "unconfirmed").glob("*.json"))
+        self.assertEqual(json.loads(pending[0].read_text())["caller_kind"], "agent")
 
-    def test_one_stated_balance_is_agent_and_file(self):
+    def test_a_person_confirmation_later_wins_and_a_later_read_returns_the_stored_kind(self):
+        from bookkeeping import coverage
+
+        self.map("card_debit_credit.csv", "card", account=CARD)
+        self.imp("card_debit_credit.csv", "card", **self.STATED)
+        with provenance.use_caller_kind("agent"):
+            documents = coverage.load_statement_documents(self.entity)
+            self.assertEqual(documents[0]["caller_kind"], "person")
+            self.assertEqual(documents[0]["balance_source"], "person")
+            # An agent import without dates keeps the period a person confirmed.
+            again = self.imp("card_debit_credit.csv", "card")["statements"][0]["statement"]
+        self.assertTrue(again["period_confirmed"])
+        self.assertEqual(again["period_source"], "person")
+
+    def test_one_stated_balance_from_an_agent_is_agent_and_file(self):
         self.map("chase_like_checking.csv", "chk")
-        stmt = self.imp("chase_like_checking.csv", "chk", period_start="2026-01-01", period_end="2026-01-31",
-                        opening_balance="100.00", stated_by="agent")["statements"][0]["statement"]
+        with provenance.use_caller_kind("agent"):
+            stmt = self.imp("chase_like_checking.csv", "chk", period_start="2026-01-01", period_end="2026-01-31",
+                            opening_balance="100.00")["statements"][0]["statement"]
         self.assertEqual(stmt["balance_source"], "agent_and_file")
 
-    def test_the_cli_option_stated_by_agent(self):
+    def test_the_environment_sets_the_caller_for_the_cli(self):
+        from unittest import mock
+
         self.map("card_debit_credit.csv", "card", account=CARD)
         out = io.StringIO()
-        with redirect_stdout(out):
+        with mock.patch.dict("os.environ", {"BOOKS_CALLER_KIND": "system"}), redirect_stdout(out):
             main(["statement", "import", str(fixture("card_debit_credit.csv")), "--entity", str(self.entity),
                   "--profile", "card", "--dry-run", "--period-start", "2026-01-01", "--period-end",
-                  "2026-01-31", "--opening-balance", "1000.00", "--closing-balance", "769.99",
-                  "--stated-by", "agent"])
+                  "2026-01-31", "--opening-balance", "1000.00", "--closing-balance", "769.99"])
         result = json.loads(out.getvalue())
-        self.assertEqual(result["stated_by"], "agent")
-        self.assertEqual(result["statements"][0]["statement"]["balance_source"], "agent")
+        self.assertEqual(result["caller_kind"], "system")
+        self.assertEqual(result["statements"][0]["statement"]["balance_source"], "system")
 
-    def test_a_record_saved_before_stated_by_still_reads(self):
+    def test_a_record_saved_before_caller_kind_still_reads(self):
         from bookkeeping import coverage
 
         self.map("card_debit_credit.csv", "card", account=CARD)
-        self.imp("card_debit_credit.csv", "card", period_start="2026-01-01", period_end="2026-01-31",
-                 opening_balance="1000.00", closing_balance="769.99")
-        [path] = [p for p in coverage.statements_dir(self.entity).glob("*.json")]
+        self.imp("card_debit_credit.csv", "card", **self.STATED)
+        [path] = list(coverage.statements_dir(self.entity).glob("*.json"))
         old = json.loads(path.read_text())
-        self.assertEqual(old["balance_source"], "person")
+        old.pop("caller_kind")
+        path.write_text(json.dumps(old))
         records, _ = coverage.load_statements(self.entity)
         self.assertEqual(len(records), 1)
-        again = self.imp("card_debit_credit.csv", "card")["statements"][0]["statement"]
-        self.assertEqual(again["balance_source"], "person")
+        self.assertNotIn("caller_kind", coverage.load_statement_documents(self.entity)[0])
+
+    def test_saved_profile_records_the_caller(self):
+        with provenance.use_caller_kind("agent"):
+            saved = self.map("chase_like_checking.csv", "chase-agent")
+        self.assertEqual(saved["caller_kind"], "agent")
 
     def test_pending_rows_and_boundary_are_counted(self):
         self.map("pending_rows.csv", "pending", sign="standard", boundary_date="2026-01-07", side="before")
