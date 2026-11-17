@@ -58,8 +58,8 @@ a card.
 
 The record counts as coverage only when the statement period is known: the OFX
 ``DTSTART``/``DTEND``, a printed CSV summary with dates, or
-``--period-start``/``--period-end`` from a person (or, with ``--stated-by agent``,
-from an automated agent; see below). Otherwise the record waits
+``--period-start``/``--period-end`` from a person (a period from another caller
+kind is not confirmed; see below). Otherwise the record waits
 in ``ingestion/statements/unconfirmed/`` until the same file is imported again
 with the period.
 

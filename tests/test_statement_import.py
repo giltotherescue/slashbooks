@@ -701,6 +701,19 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(result["caller_kind"], "system")
         self.assertEqual(result["statements"][0]["statement"]["balance_source"], "system")
 
+    def test_agent_balances_that_tie_out_are_marked_as_agent_in_the_record_and_result(self):
+        from unittest import mock
+
+        self.map("card_debit_credit.csv", "card", account=CARD)
+        with mock.patch.dict("os.environ", {"BOOKS_CALLER_KIND": "agent"}):
+            entry = self.imp("card_debit_credit.csv", "card", **self.STATED)["statements"][0]
+        self.assertEqual(entry["tieout"]["status"], "matches")
+        self.assertEqual((entry["statement"]["balance_source"], entry["statement"]["caller_kind"]),
+                         ("agent", "agent"))
+        [path] = list((self.entity / "ingestion" / "statements" / "unconfirmed").glob("*.json"))
+        stored = json.loads(path.read_text())
+        self.assertEqual((stored["balance_source"], stored["caller_kind"]), ("agent", "agent"))
+
     def test_a_record_saved_before_caller_kind_still_reads(self):
         from bookkeeping import coverage
 

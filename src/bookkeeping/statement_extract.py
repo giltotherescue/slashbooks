@@ -622,7 +622,7 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
         "source": prof.get("account_name") or profile, "writer": si.WRITER, "profile": profile,
         "mapping_key": mapping_key, "format": EXTRACTED_FORMAT,
         "institution_account": {"identity": None, "institution": None, "account_type": None, "account_last4": None},
-        "period_source": ext.period_source, "period_confirmed": True,
+        "period_source": ext.period_source, "period_confirmed": provenance.is_person(),
         "opening_balance_date": ext.period_start.isoformat(), "closing_balance_date": ext.period_end.isoformat(),
         "balance_source": "manual_confirmed" if confirmed_by else "extracted",
         "extraction_method": ext.source, "extraction_confidence": ext.confidence, "extractor": ext.extractor,
@@ -630,6 +630,9 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
         "first_transaction_date": dates[0] if dates else None, "last_transaction_date": dates[-1] if dates else None,
         "transactions_total": format(total, "f"), "transaction_count": len(txns), "currency": entity.currency,
     }
+    if not record["period_confirmed"]:
+        # The extraction JSON is untrusted input, so a ``confirmation`` inside it cannot confirm the period.
+        warnings.append("The period was not confirmed: the caller is not a person. A person must confirm it.")
     if confirmed_by:
         record.update(confirmed_by=confirmed_by["name"], confirmed_at=confirmed_by.get("at") or ts)
     if evidence_sha:
@@ -692,7 +695,8 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
     return {
         "status": "dry_run" if dry_run else "imported", "statement_id": statement_id,
         "session_id": None if dry_run else session_id, "recorded": not dry_run, "reasons": [],
-        "statement": record, "counts": counts, "warnings": warnings, "coverage": "recorded",
+        "statement": record, "counts": counts, "warnings": warnings,
+        "coverage": "recorded" if record["period_confirmed"] else "needs_period",
         "held": [{k: v for k, v in h.items() if k != "transaction"} for h in plan["held"]],
         "resolved_reviews": resolved, "reconciliation": reconciliation,
     }

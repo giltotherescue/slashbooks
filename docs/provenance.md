@@ -33,6 +33,10 @@ agent's own arguments cannot choose it.
 - Only a person confirms a period. A period stated by any other kind is stored with
   `period_confirmed: false`, does not count as coverage, and waits for a person. A
   period that a person confirmed earlier is kept.
+- An extracted statement follows the same rule. Its `confirmation` field comes from
+  untrusted extraction JSON, so it cannot confirm a period: only a `person` caller
+  gets `period_confirmed: true`. Another kind stores the record unconfirmed, with a
+  warning and `coverage: needs_period`.
 - Saved statement profiles, statement review records and extracted statement records
   store `caller_kind`.
 - A typed opening balance has `opening_source` set to the kind (`opening-source` in
