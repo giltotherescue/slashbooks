@@ -113,6 +113,7 @@ _RECONCILIATION_FIELDS = (
     "account", "as_of", "status", "ledger_balance", "source_balance", "discrepancy",
     "source_integrity_residual", "source_opening_balance", "source_transaction_total",
     "source_snapshot_at", "source_through", "source_evidence_refs", "source_evidence_hashes", "proof_basis",
+    "opening_evidence",
 )
 
 

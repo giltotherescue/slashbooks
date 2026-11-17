@@ -25,7 +25,7 @@ from .entity import _locked_entity_operation, load_entity
 from .ledger.projections import render_store_ledger
 from .ledger.store import LedgerStore, default_store_path
 from .ledger.validator import validate
-from .reconcile import FEED_PROOF_BASES, record_basis
+from .reconcile import record_basis, record_opening_evidence
 from .reports.statements import balance_sheet, profit_and_loss, trial_balance
 from .queue import ACTIONABLE_QUEUE_STATUSES
 
@@ -548,11 +548,12 @@ def assess_review_readiness(entity_path: Path | str, period: str,
 
     With ``disposition_context=None`` the document is the same as without the argument.
 
-    Each reconciliation in the document has ``proof_basis`` when it is known (``reconcile.record_basis``). With
-    ``require_statements=True``, a source account whose period-end balance was checked against the bank
-    connection (``feed_reading`` or ``feed_computed``) and not against a statement gets a ``statement_required``
-    blocker, and the document has ``"require_statements": true``. A bank connection record whose balance equals a
-    statement closing on the period end counts as a statement (the coverage month ``proof_basis``). The default
+    Each reconciliation in the document has ``proof_basis`` when it is known (``reconcile.record_basis``), and a
+    ``feed_computed`` one has ``opening_evidence``. With ``require_statements=True``, every source account in the
+    period whose coverage month ``proof_basis`` on the period end is not ``statement`` gets a
+    ``statement_required`` blocker: a bank connection record, a record that does not say, and a missing record.
+    ``statement`` comes only from archived statement originals (a record from them, or a bank connection record
+    equal to the closing of such a statement). The document then has ``"require_statements": true``. The default
     (False) adds no blocker: a month proven from the bank connection is ready like any other reconciled month.
     Set ``portable_actions=True`` to put the literal ``@entity`` in action instructions and keep the package
     independent of its directory. Substitute the company directory when using an action locally.
@@ -796,17 +797,23 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         if not provenance_complete:
             blockers.append({"code": "source_evidence_provenance_missing", "message": "Reconciliation figures are not bound to verified source records.", "refs": [account]})
         basis = record_basis(dict(record))
-        if require_statements and month_end_proof.get(account) != "statement" and basis in FEED_PROOF_BASES:
-            blockers.append({"code": "statement_required",
-                             "message": "The period-end balance was checked against the bank connection, and a "
-                                        "statement is required.", "refs": [account]})
         normalized = {key: record.get(key) for key in (
             "record_id", "account", "as_of", "ledger_balance", "source_balance", "discrepancy", "status",
             "source_opening_balance", "source_transaction_total", "source_integrity_residual",
             "source_snapshot_at", "source_through", "source_evidence_refs", "source_evidence_hashes")}
         if basis is not None:
             normalized["proof_basis"] = basis  # Only when known, so a package without one keeps its fingerprint.
+        if basis == "feed_computed":
+            normalized["opening_evidence"] = record_opening_evidence(dict(record))
         normalized_recs.append(normalized)
+    if require_statements:
+        # Every source account in the period needs a month end proven by a statement: the coverage month
+        # proof_basis, which comes only from archived statement originals.
+        for account in source_accounts:
+            if account not in outside and month_end_proof.get(account) != "statement":
+                blockers.append({"code": "statement_required",
+                                 "message": "The period-end balance is not proven by a statement, and a statement "
+                                            "is required.", "refs": [account]})
 
     ledger_digest = None
     reports: list[dict[str, Any]] = []
@@ -913,8 +920,8 @@ def add_parser(subparsers: Any) -> None:
     parser.add_argument("--as-of", required=True, help="Deterministic evaluation date in YYYY-MM-DD format")
     parser.add_argument("--output", type=Path, default=None, help="Write the canonical assessment JSON")
     parser.add_argument("--require-statements", action="store_true", dest="require_statements",
-                        help="Block an account whose period-end balance was checked against the bank connection "
-                             "and not against a statement (blocker statement_required)")
+                        help="Block every source account whose period-end balance is not proven by a statement "
+                             "from an archived original (blocker statement_required)")
 
 
 def run(args: Any) -> int:

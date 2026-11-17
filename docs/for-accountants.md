@@ -149,25 +149,44 @@ The month-end balance is then checked against the bank connection: a balance
 that the bank reported after the month end, less the transactions after the
 month end. Each reconciliation says what it was checked against:
 
-- `statement`: a bank or card statement.
+- `statement`: a bank or card statement, from an archived original file.
 - `feed_reading`: a balance that the bank connection reported for the month end
-  itself, with an opening that a statement or such a balance proved.
+  itself. Its opening came from a statement, from such a balance, or from a zero
+  opening (the first month of the connection, with nothing in the books before
+  it and only rows that the connection delivered).
 - `feed_computed`: a month end computed back from a later balance, or a month
   whose opening was computed that way. The first months after a connection are
-  usually `feed_computed`: their opening is the books' opening entry, checked
-  only through the connection.
+  usually `feed_computed`: their opening is the books' opening entry.
 
-What this proves: the books equal the balance the bank connection reported, the
-connection covers every day of the month through that balance, nothing waits in
-review, and the opening is proven. When the opening was computed, every row from
-the first day the connection covers came from a source, the books hold one
-opening entry at most before it, and the newest balance also agrees.
+Each `feed_computed` month also says where its opening came from
+(`opening_evidence`):
+
+- `statement`: a printed statement balance.
+- `person`: a balance that a person stated.
+- `derived`: anything else, including an opening that an agent or a system
+  stated, an opening computed to fit the current balance, or no opening entry.
+
+What this proves: the books equal what the bank connection delivered and
+reported. The connection covers every day of the month through the balance,
+nothing waits in review, every balance reading in that span equals the books,
+and every dated statement balance in that span equals the books. When the
+opening was computed, every row from the first day of the connection is a row
+that the connection delivered (its ID is a bank feed transaction ID), the books
+hold one opening entry at most, and the newest balance also equals the books.
 
 What it does not prove:
 
-- It is not third-party evidence. When the opening entry was made from the
-  connection, a transaction that the connection never delivered is inside that
-  opening, and nothing here finds it.
+- It is not third-party evidence. With a `derived` opening, a transaction that
+  the connection never delivered is not found, whether it is dated before or
+  after the first day of the connection. Example: the bank account held 40.00
+  before the connection, and the bank paid out 30.00 on September 3 that the
+  connection never delivered. Someone types the opening entry as 10.00, so the
+  books equal today's balance. Every check passes, and August closes at 510.00,
+  but the bank held 540.00. The month says `feed_computed` with
+  `opening_evidence` `derived`.
+- With a `statement` or `person` opening, the same missing transaction is found:
+  the opening is independent of the connection, so the books then differ from
+  the balance that the bank reported.
 - Two errors that cancel each other (a missing deposit and a duplicated deposit
   of the same amount) are not found. A month end between them is wrong by that
   amount, unless a statement or a balance for that month end falls between them.
@@ -177,15 +196,18 @@ What it does not prove:
 - Cards and loans always need a statement (pending charges, sign and billing
   cycles).
 
-A statement outranks the bank connection. When a statement for the month
-arrives later and agrees, it counts as the evidence. When it disagrees, the
-month shows the difference (`statement_feed_differs`, and the statement tie-out
-when the activity also differs) and is not ready.
+A statement outranks the bank connection. When a statement from an archived
+original arrives later and its closing agrees, it counts as the evidence. When a
+statement disagrees, on its closing, its opening, or any month end or mid-month
+balance date, the month shows the difference (`statement_feed_differs`, and the
+statement tie-out when the activity also differs) and is not ready.
 
 To require statements, run readiness with `books readiness --require-statements`.
-A month checked only against the bank connection then has the blocker
-`statement_required`. The basis is in the readiness document and in
-`books coverage check`.
+Every account whose month end is not proven by a statement from an archived
+original then has the blocker `statement_required`. This includes a month checked
+against the bank connection and a reconciliation that does not say what it was
+checked against. The basis and the opening evidence are in the readiness document
+and in `books coverage check`.
 
 ## Limits
 
@@ -204,7 +226,7 @@ not calculate payroll, tax, tax depreciation methods, inventory costing, or comp
 revenue contracts, and does not provide audit certification or accounting advice.
 
 A month-end balance checked against the bank connection shows that the books
-agree with the connection. It is not a bank statement and not evidence from a
+equal what the connection delivered and reported. It is not a bank statement and not evidence from a
 third party. See [month-end proof from the bank connection](#month-end-proof-from-the-bank-connection)
 for what it finds and what it does not.
 

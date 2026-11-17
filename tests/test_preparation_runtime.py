@@ -515,6 +515,12 @@ print('done', flush=True)
 
     def test_a_proof_basis_is_bound_to_the_authorized_evidence(self):
         argv, hashes = self.reconciliation_inputs()
+        # The statement basis needs an archived statement original as its evidence.
+        archive = f"ingestion/statements/files/{'c' * 64}.csv"
+        old_ref = "provider-record:statement-2026-09"
+        argv = [archive if item == old_ref else (f"{archive}={'b' * 64}" if item == f"{old_ref}={'b' * 64}" else item)
+                for item in argv]
+        hashes = {(f"evidence:{archive}" if key == f"evidence:{old_ref}" else key): value for key, value in hashes.items()}
         # A basis that the authorized evidence did not name is refused.
         with self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
             run_preparation_command(

@@ -15,9 +15,21 @@
   bank connection: the feed no longer proves a month with a statement, and
   `books coverage check` shows a month's `proof_basis` and the error
   `statement_feed_differs` when a statement disagrees with a bank connection record.
-  `books readiness --require-statements` blocks a month checked only against the
-  bank connection (`statement_required`). It is off by default. Cards and loans
-  still need a statement.
+  `books readiness --require-statements` blocks every month whose end is not proven
+  by a statement from an archived original (`statement_required`), also a record
+  without a basis. It is off by default. Cards and loans still need a statement.
+  The proof counts only rows that the bank connection delivered (a connected-feed
+  source ID), checks every reading up to the anchor and every dated statement
+  balance in the span (`statement_differs`, also a statement cycle that ends
+  mid-month), and gives each `feed_computed` month `opening_evidence` (`statement`,
+  `person` or `derived`): with a derived opening, a transaction that the connection
+  never delivered is not found. `--proof-basis statement` needs archived statement
+  originals, and a bank connection basis needs an `Assets:` account.
+- After the upgrade, the readiness `evidence_fingerprint` and `package_id` change
+  for every period with a clean reconciliation from an archived statement original
+  and for every period proven from the bank connection, because the reconciliation
+  now shows `proof_basis` (and `opening_evidence`). A host that compares them sees
+  such a period as changed and checks it again: this fails closed.
 - QuickBooks history review fixes. A copy of a matched bank row is skipped only for an exact
   duplicate that its source can hold (a statement must cover the original's date); a near-date
   pair is held (`possible_copy`). A bank row up to 45 days after the history end is held when any

@@ -213,11 +213,17 @@ never repairs incorrect recorded transactions; correct those separately. A
 reconciliation using a replaced document must be run again with the current one.
 
 A month end that was checked against the bank connection (`books balance prove`)
-is not proven from the feed again once a statement for that month is recorded.
-Reconcile the month from the statement (`books reconcile --statement-id`); the
-record then has `proof_basis` `statement` and replaces the bank connection
-record. When the statement closing differs from the bank connection record,
-readiness blocks with `statement_feed_differs`. See
+is not proven from the feed again once a statement that closes on that month end
+is recorded. Reconcile the month from the statement
+(`books reconcile --statement-id`). That record replaces the bank connection
+record, and because its evidence is the archived original file, its basis is
+`statement`. A month checked against the bank connection proves that the books
+equal what the connection delivered and reported. With an opening entry that was
+derived to fit the balance, it does not find a transaction that the connection
+never delivered; with a printed or person-stated opening it does. When any
+balance of a statement (its opening, its closing, or a cycle that ends mid-month)
+differs from the books, the feed proof refuses the month (`statement_differs`)
+and readiness blocks with `statement_feed_differs`. See
 [month-end proof from a bank feed](imports.md#month-end-proof-from-a-bank-feed).
 
 ## Reporting goals and report categories

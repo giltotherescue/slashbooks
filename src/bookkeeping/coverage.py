@@ -26,11 +26,16 @@ month-end balance was checked against, in ``proof_basis``, when a clean
 reconciliation record on the month's last day still agrees with the books.
 The order, strongest first, is ``statement``, ``feed_reading`` and
 ``feed_computed`` (``reconcile.PROOF_BASES``), then a reconciliation that does
-not say (no ``proof_basis`` key). A statement outranks the bank connection: a
-bank connection record whose balance equals a statement closing on that day is
-``statement``. When the two differ, the month has no ``proof_basis`` and a
-``statement_feed_differs`` error gives both figures, also when the statement
-tie-out matches (an opening and a closing that differ by the same amount).
+not say (no ``proof_basis`` key). A ``feed_computed`` month also has
+``opening_evidence`` (``reconcile.record_opening_evidence``). A statement
+outranks the bank connection: a bank connection record whose balance equals the
+closing of a statement from an archived original on that day is ``statement``.
+For a month with a bank connection basis, a ``statement_feed_differs`` error gives
+the figures, and the month has no ``proof_basis``, when a statement closing on
+the month end differs from the record, or when any dated statement balance from
+the day before the month through its last day differs from the books (also a
+statement whose cycle does not end on a month end, and also when the statement
+tie-out matches).
 
 Statement record contract (schema_version 1)
 --------------------------------------------
@@ -722,10 +727,13 @@ def check_coverage(
                 "tieout": _month_tieout(account_records, statement_ties, first, last),
             }
             if last == _month_bounds(last.year, last.month)[1]:
-                proof, conflict = _month_proof(account, label, reconciliations.get((account, last.isoformat())),
-                                               account_records, books_postings[account], last)
+                proof, opening, conflict = _month_proof(
+                    account, label, reconciliations.get((account, last.isoformat())), account_records,
+                    books_postings[account], last)
                 if proof is not None:
                     month_row["proof_basis"] = proof
+                if opening is not None:
+                    month_row["opening_evidence"] = opening
                 if conflict is not None:
                     findings.append(conflict)
             month_rows.append(month_row)
@@ -798,48 +806,63 @@ def _decimal(value: Any) -> Decimal | None:
 
 
 def _month_proof(account: str, label: str, record: Mapping[str, Any] | None, records: Sequence[StatementRecord],
-                 postings: "tieout_module.Series", day: date) -> tuple[str | None, dict[str, Any] | None]:
-    """What the month-end balance on ``day`` was checked against, and a finding when a statement contradicts it."""
-    from .reconcile import FEED_PROOF_BASES, record_basis
+                 postings: "tieout_module.Series", day: date) -> tuple[str | None, str | None, dict[str, Any] | None]:
+    """The ``proof_basis`` and ``opening_evidence`` of the month that ends on ``day``, and a finding.
+
+    The finding is a ``statement_feed_differs`` error for a month with a bank connection basis when a statement
+    contradicts it: a statement closing on ``day`` differs from the record's balance, or any dated statement balance
+    (an opening on the day before a statement's first day, or a closing) from the day before the month through
+    ``day`` differs from the books on its day. Such a month has no ``proof_basis``.
+    """
+    from .reconcile import FEED_PROOF_BASES, _STATEMENT_ARCHIVE_REF, record_basis, record_opening_evidence
 
     if record is None:
-        return None, None
+        return None, None, None
     basis = record_basis(dict(record))
     source = _decimal(record.get("source_balance"))
     sign = tieout_module.presentation_sign(account)
-    closings = sorted((r for r in records if r.kind == "statement" and r.period_end == day
-                       and r.closing_balance is not None), key=lambda r: r.statement_id)
+    statements = sorted((r for r in records if r.kind == "statement"), key=lambda r: r.statement_id)
+    closings = [r for r in statements if r.period_end == day and r.closing_balance is not None]
     conflict = None
-    if basis in FEED_PROOF_BASES and closings:
-        differing = [r for r in closings if source is None or r.closing_balance != source * sign]
-        if differing:
-            statement = differing[0]
-            shown = None if source is None else source * sign
+    if basis in FEED_PROOF_BASES:
+        month_start = day.replace(day=1)
+        dated = sorted(
+            [(r.period_end, r, r.closing_balance) for r in statements if r.closing_balance is not None]
+            + [(r.period_start - timedelta(days=1), r, r.opening_balance) for r in statements
+               if r.opening_balance is not None], key=lambda item: (item[0], item[1].statement_id))
+        problems = [(r, when, balance, None if source is None else source * sign)
+                    for r in closings for when, balance in [(day, r.closing_balance)]
+                    if source is None or r.closing_balance != source * sign]
+        problems += [(r, when, balance, postings.through(when) * sign) for when, r, balance in dated
+                     if month_start - timedelta(days=1) <= when <= day and balance != postings.through(when) * sign]
+        if problems:
+            statement, when, balance, other = problems[0]
             conflict = {
                 "code": "statement_feed_differs",
                 "severity": "error",
                 "account": account,
                 "refs": [statement.statement_id],
-                "from": day.isoformat(),
-                "to": day.isoformat(),
-                "statement_balance": str(statement.closing_balance),
-                "feed_balance": None if shown is None else str(shown),
-                "difference": None if shown is None else str(statement.closing_balance - shown),
+                "from": when.isoformat(),
+                "to": when.isoformat(),
+                "statement_balance": str(balance),
+                "feed_balance": None if other is None else str(other),
+                "difference": None if other is None else str(balance - other),
                 "message": (
-                    f"{label} statement {statement.statement_id} closes at {_money(statement.closing_balance)}, "
-                    f"but the month end checked against the bank connection is "
-                    + ("not readable." if shown is None else
-                       f"{_money(shown)} (difference {_money(statement.closing_balance - shown)}).")
+                    f"{label} statement {statement.statement_id} shows {_money(balance)} on {_fmt_day(when)}, "
+                    f"{when.year}, but the books checked against the bank connection have "
+                    + ("no readable balance." if other is None else
+                       f"{_money(other)} (difference {_money(balance - other)}).")
                 ),
             }
     ledger_balance = _decimal(record.get("ledger_balance"))
     current = (record.get("status") == "clean" and ledger_balance is not None
                and ledger_balance == postings.through(day))
     if not current or conflict is not None:
-        return None, conflict
-    if basis in FEED_PROOF_BASES and closings:
-        return "statement", None
-    return basis, None
+        return None, None, conflict
+    # A statement outranks the bank connection only when it comes from an archived original.
+    if basis in FEED_PROOF_BASES and any(_STATEMENT_ARCHIVE_REF.fullmatch(r.evidence_ref or "") for r in closings):
+        return "statement", None, None
+    return basis, record_opening_evidence(dict(record)), None
 
 
 def readiness_items(document: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
