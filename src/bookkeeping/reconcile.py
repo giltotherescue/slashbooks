@@ -37,6 +37,77 @@ from .reports.cache import get_account_balance, open_cache
 
 
 # ---------------------------------------------------------------------------
+# Proof basis: what a source balance was checked against
+# ---------------------------------------------------------------------------
+
+#: What the source balance of a reconciliation was checked against, strongest first.
+#:
+#: - ``statement``: a bank or card statement.
+#: - ``feed_reading``: a balance that the bank connection reported for the month end itself, with an opening that
+#:   a statement or such a reading proved (``books balance prove``).
+#: - ``feed_computed``: a month-end balance that ``books balance prove`` computed back from a later bank
+#:   connection reading, or whose opening was computed that way.
+PROOF_BASES = ("statement", "feed_reading", "feed_computed")
+FEED_PROOF_BASES = frozenset({"feed_reading", "feed_computed"})
+#: For a ``feed_computed`` proof: whether its opening is evidence from outside the bank connection. ``statement``: a
+#: statement balance backs it. ``derived``: anything else, including an opening that anyone typed. The engine derives
+#: it from the books (``feed_proof.opening_evidence``); no caller supplies it.
+OPENING_EVIDENCE = ("statement", "derived")
+#: Evidence references of a host's stored bank connection balance readings start with this text.
+FEED_EVIDENCE_PREFIX = "evidence:feed-balance-"
+_STATEMENT_ARCHIVE_REF = re.compile(r"ingestion/statements/files/[0-9a-f]{64}\.(?:csv|ofx|qfx|qbo|pdf)")
+
+
+def from_feed(record: Any) -> bool:
+    """Whether every evidence reference of a reconciliation record is a bank connection balance reading."""
+    refs = record.get("source_evidence_refs") if isinstance(record, dict) else None
+    return isinstance(refs, list) and bool(refs) and all(
+        isinstance(ref, str) and ref.startswith(FEED_EVIDENCE_PREFIX) for ref in refs)
+
+
+def _statement_archive(refs: Any) -> bool:
+    return isinstance(refs, list) and bool(refs) and all(
+        isinstance(ref, str) and _STATEMENT_ARCHIVE_REF.fullmatch(ref) for ref in refs)
+
+
+def record_basis(record: Any) -> str | None:
+    """What a reconciliation record's source balance was checked against, or None when the record does not say.
+
+    ``statement`` comes only from evidence that is all archived statement originals
+    (``ingestion/statements/files/<sha256>.<ext>``), with or without a stored ``proof_basis``. A bank connection
+    basis comes only from evidence that is all bank connection readings: the stored ``feed_reading`` or
+    ``feed_computed``, else ``feed_computed`` (the weaker one, because the record does not say that a reading fell
+    on the month end). Any other record is None, whatever it stores.
+    """
+    if not isinstance(record, dict):
+        return None
+    if from_feed(record):
+        stored = record.get("proof_basis")
+        return stored if stored in FEED_PROOF_BASES else "feed_computed"
+    if _statement_archive(record.get("source_evidence_refs")):
+        return "statement"
+    return None
+
+
+def _check_proof_basis(proof_basis: str | None, evidence_refs: list[str] | None, account: str = "") -> None:
+    if proof_basis is None:
+        return
+    if proof_basis not in PROOF_BASES:
+        raise ValueError(f"The proof basis must be one of {', '.join(PROOF_BASES)}.")
+    refs = list(evidence_refs or [])
+    if proof_basis in FEED_PROOF_BASES:
+        if not from_feed({"source_evidence_refs": refs}):
+            raise ValueError(f"A bank connection proof basis needs evidence references that start with "
+                             f"{FEED_EVIDENCE_PREFIX}.")
+        if account and not account.startswith("Assets:"):
+            raise ValueError("A bank connection proof basis applies only to an Assets: account; "
+                             "a card or a loan needs a statement.")
+    if proof_basis == "statement" and not _statement_archive(refs):
+        raise ValueError("The proof basis statement needs evidence references that are archived statement "
+                         "originals (ingestion/statements/files/<sha256>.<ext>).")
+
+
+# ---------------------------------------------------------------------------
 # ReconcileResult
 # ---------------------------------------------------------------------------
 
@@ -56,6 +127,7 @@ class ReconcileResult:
     source_integrity_residual: Decimal | None = None
     source_snapshot_at: str | None = None
     source_through: str | None = None
+    proof_basis: str | None = None
 
     @property
     def is_clean(self) -> bool:
@@ -73,6 +145,8 @@ class ReconcileResult:
         ]
         if self.source_integrity_residual is not None:
             lines.append(f"  Source integrity residual: {_fmt(self.source_integrity_residual)}")
+        if self.proof_basis is not None:
+            lines.append(f"  Proof basis:     {self.proof_basis}")
         if self.status == "source-inconsistent":
             lines.append("  The source activity does not reconcile to its reported balance, so this is not yet a books discrepancy.")
         if self.causes:
@@ -262,12 +336,17 @@ def reconcile(
     source_through: str | None = None,
     source_evidence_refs: list[str] | None = None,
     source_evidence_hashes: dict[str, str] | None = None,
+    proof_basis: str | None = None,
 ) -> ReconcileResult:
     """Reconcile ledger balance for *account* against *source_balance* as of *as_of*.
 
     Computes: discrepancy = source_balance - ledger_balance
     Persists a record to ``reports/reconciliation.json`` (open status when
     discrepancy != 0, clean otherwise).
+    ``proof_basis`` (one of ``PROOF_BASES``) says what the source balance was
+    checked against; it is stored on the record when given. A bank connection
+    basis needs bank connection evidence references and an ``Assets:`` account, and
+    ``statement`` needs archived statement originals.
     Returns a :class:`ReconcileResult`.
     """
     entity_path = Path(entity_path)
@@ -284,6 +363,7 @@ def reconcile(
             source_through=source_through,
             source_evidence_refs=source_evidence_refs,
             source_evidence_hashes=source_evidence_hashes,
+            proof_basis=proof_basis,
         )
 
 
@@ -427,9 +507,11 @@ def _reconcile_unlocked(
     source_through: str | None = None,
     source_evidence_refs: list[str] | None = None,
     source_evidence_hashes: dict[str, str] | None = None,
+    proof_basis: str | None = None,
 ) -> ReconcileResult:
     """Compute and persist a reconciliation while holding the entity lock."""
     from .statement_selection import replaced_evidence
+    _check_proof_basis(proof_basis, source_evidence_refs, account)
     if replaced_evidence(entity_path).intersection((source_evidence_hashes or {}).values()):
         raise ValueError("This statement was replaced. Reconcile with the current statement.")
 
@@ -496,6 +578,8 @@ def _reconcile_unlocked(
         "resolved_at": None,
         "resolution_note": None,
     }
+    if proof_basis is not None:
+        record["proof_basis"] = proof_basis
     if control_support:
         record["supporting_reconciliation"] = control_support
 
@@ -515,6 +599,7 @@ def _reconcile_unlocked(
             "source_through",
             "source_evidence_refs",
             "source_evidence_hashes",
+            "proof_basis",
         )
         same_evidence = all(existing.get(field) == record.get(field) for field in resolution_fields)
         if existing.get("status") == "resolved" and same_evidence and not source_inconsistent:
@@ -541,6 +626,7 @@ def _reconcile_unlocked(
         source_integrity_residual=source_residual,
         source_snapshot_at=source_snapshot_at,
         source_through=source_through,
+        proof_basis=proof_basis,
     )
 
 
@@ -632,6 +718,11 @@ def add_parser(subparsers: Any) -> None:
                    help="Stable provider record or statement reference supporting the source figures")
     p.add_argument("--source-evidence-hash", action="append", dest="source_evidence_hashes", default=[],
                    metavar="REF=SHA256", help="Verified SHA-256 attestation for a source evidence reference")
+    p.add_argument("--proof-basis", choices=list(PROOF_BASES), default=None, dest="proof_basis",
+                   help="What the source balance was checked against: statement (archived statement originals), "
+                        "feed_reading (a bank connection balance for the month end) or feed_computed (computed back "
+                        "from a later bank connection balance). books balance prove gives the value for a bank "
+                        "connection proof.")
     p.add_argument(
         "--balances-json",
         dest="balances_json",
@@ -674,7 +765,8 @@ def run(args: Any) -> int:
             if any((args.account, args.as_of, args.all_accounts, args.balances_json,
                     args.source_balance is not None, args.source_opening_balance is not None,
                     args.source_transaction_total is not None, args.source_snapshot_at,
-                    args.source_through, args.source_evidence_refs, args.source_evidence_hashes)):
+                    args.source_through, args.source_evidence_refs, args.source_evidence_hashes,
+                    args.proof_basis)):
                 print("Error: --statement-id uses saved source facts; do not combine it with manual reconciliation fields.", file=sys.stderr)
                 return 1
             try:
@@ -725,6 +817,12 @@ def run(args: Any) -> int:
             except ValueError as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 return 1
+        try:
+            for account, _ in accounts_and_balances:
+                _check_proof_basis(args.proof_basis, evidence_refs, account)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
         for account, source_bal in accounts_and_balances:
             result = reconcile(
                 entity, account, source_bal, as_of,
@@ -734,6 +832,7 @@ def run(args: Any) -> int:
                 source_through=args.source_through,
                 source_evidence_refs=evidence_refs,
                 source_evidence_hashes=evidence_hashes,
+                proof_basis=args.proof_basis,
             )
             print(result.to_text())
             print()

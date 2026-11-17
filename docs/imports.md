@@ -538,36 +538,201 @@ read, not a statement balance. A reading is used only when `partial` is `false`,
 the bank's midnight that starts the day after the month end, and `data_through`
 reaches the balance day.
 
-A month is proven only when feed windows cover every day from the month start
-through the balance day, nothing waits in review (and the review file can be
-read), the books equal the bank on that day, and the opening balance is proven.
-The opening comes from the reconciliation or statement of the month before. In
-the first month of the feed windows it is zero only when nothing in the books is
-dated earlier and every posting of the month came from a source; an
-opening-balance entry dated inside that month needs a statement. Cards, loans and
-other types are never proven. Each row has `status` (`proven` or `not_proven`)
-and `reason`, one of `proven`, `already_reconciled`, `existing_record`,
-`unmapped`, `shared_ledger_account`, `not_checking_or_savings`,
-`time_zone_required`, `unknown_time_zone`, `currency_mismatch`,
-`other_currency`, `unreadable_postings`, `waiting_unreadable`,
-`no_balance_after_month_end`, `feed_incomplete`, `waiting_in_review`,
-`books_differ`, `opening_unproven` or `opening_differs`.
+A month is proven only when all of these are true:
 
-Limits that remain:
+- The feed windows cover every day from the month start through the balance day.
+- Nothing waits in review, and the review file can be read.
+- The readings after the month end are taken in order (balance day, then read
+  time). The first one that meets these conditions is the anchor. Every reading
+  before it, and every other reading for the anchor's day, must also equal the
+  books. A reading that differs refuses the month (`books_differ`), even when a
+  later reading agrees.
+- Every dated statement balance for the account from the day before the month
+  through the anchor's day equals the books on its day: the opening balance of a
+  statement (on the day before its first day) and its closing balance. This
+  includes a statement whose cycle does not end on a month end
+  (`statement_differs`).
+- The opening balance comes from a source (see below).
 
+The month-end balance is the bank balance on the anchor's day less the books
+rows after the month end. Cards, loans and other types are never proven.
+
+A row was "delivered by the bank connection" when `books ingest` wrote it from a
+connected feed. The engine checks exactly this:
+
+- The entry has the mark `feed-provider: <provider>`. `books ingest` with a
+  connected-feed provider (`--source banksync`, `--source plaid`,
+  `--source stripe-financial-connections`, or a BankSync download) first writes
+  a `feed-intake` event in the hash-chained audit log of the ledger store: the
+  provider, the session and the digest of every row. An entry made from one of
+  those rows, at ingest or when a person confirms it later, gets the mark only
+  while the row still has that digest. The mark never comes from the staging
+  files, so an edit there cannot create it, and an edited row loses it.
+- The provider is in `source_ids.CONNECTED_FEED_PROVIDERS`, and the source ID
+  is `<that provider>:<id>`, or has no prefix with the mark `banksync`.
+- It is the only posting of its source ID on the account. A split that puts a
+  second posting on the bank account makes neither count.
+- The entry is not an opening import.
+- A correction (`correction-of`, from `books ledger correct`,
+  `reclassify-bank`, `split-equity` or a category reclassification) is judged
+  only through the row it corrects. It counts when it is the only posting of its
+  new source ID on the account and keeps the day and amount of a delivered row.
+  The new source ID that the command was given does not matter.
+
+Any other row is not delivered: a generic ingest (also one whose IDs look like
+`banksync:...`), a CSV, OFX or statement row, a manual entry, a reversal, and a
+row that was imported before the mark existed. This last case is a change for
+old books: their feed rows carry no mark, so rule 7b and the zero opening refuse
+the months that hold them.
+
+What the engine cannot close: a caller who can run `books ingest` with a
+connected-feed `--source` can write rows that count as delivered. A host must not
+give that command to a caller it does not trust.
+
+The opening comes from the month before: a month proven in the same check, a
+clean or resolved reconciliation record, or a statement that ends on the day
+before. When a record and a statement both give it, they must agree. In the
+first month of the feed windows it is zero when nothing in the books is dated
+earlier and every posting of the month was delivered by the bank connection.
+
+When none of these exist, the opening is computed back from the reading: the
+bank balance on the reading day less the books rows from the month start. This
+opening always equals the books' opening, so it is not proven by itself. It is
+allowed only when all of these are true:
+
+- The feed windows cover every day from the first feed day through the reading
+  day, with no gap.
+- The books hold one opening entry at most: an entry dated before the first
+  feed day, or one on that day that the connection did not deliver.
+- Every other posting from the first feed day through the newest reading was
+  delivered by the connection. A reversal and the row it reverses, on the same
+  day for opposite amounts, are left out when the reversed row is an opening
+  import or a correction keeps it on the same day for the same amount (a
+  category correction, a replaced opening entry). A reversal that only removes a
+  delivered row refuses the month.
+- At least one posting from the first feed day was delivered by the connection.
+- The newest reading that the feed windows cover also equals the books, and
+  nothing waits in review up to that day.
+
+A month with a statement that closes on its last day is not proven from the
+feed (`statement_available`). Reconcile it from the statement.
+
+Each proven row has `basis`, and its `reconcile` figures carry the same value
+as `proof_basis`. Pass it to `books reconcile --proof-basis`:
+
+- `feed_reading`: the reading is for the month end itself, and the opening came
+  from a statement, a `statement` or `feed_reading` record, a `feed_reading`
+  month, or the zero opening of the first feed month.
+- `feed_computed`: every other proven month. The month end was computed back
+  from a later reading, or the opening was computed.
+
+A `feed_computed` row also has `opening_evidence`. The engine derives it from
+the books and the statements only; no caller gives it, and the reconciliation
+record does not store it:
+
+- `statement`: a statement backs the books on or before the month end. An
+  opening entry has `opening-source: printed` (a printed statement balance), or
+  a statement balance (an opening or a closing) equals the books on its date.
+- `derived`: anything else. A typed opening is not independent evidence,
+  whoever typed it (a person, an agent or a system), and neither is an old entry
+  without the mark or no opening entry.
+
+Coverage and readiness show the same value, and readiness adds the note
+`opening_not_independent` (a warning, not a blocker) for a `feed_computed` month
+with a `derived` opening.
+
+Each row has `status` (`proven` or `not_proven`) and `reason`, one of `proven`,
+`already_reconciled`, `existing_record`, `statement_available`, `unmapped`,
+`shared_ledger_account`, `not_checking_or_savings`, `time_zone_required`,
+`unknown_time_zone`, `currency_mismatch`, `other_currency`,
+`unreadable_postings`, `waiting_unreadable`, `no_balance_after_month_end`,
+`feed_incomplete`, `waiting_in_review`, `books_differ`, `statement_differs`,
+`newest_reading_differs`, `opening_unproven`, `opening_differs`,
+`opening_conflict`, `opening_entry_unclear`, `unsourced_postings` or
+`no_feed_rows`. A row that is not proven has the figures for one sentence:
+
+| Reason | Fields | Sentence |
+|---|---|---|
+| `feed_incomplete` | `feed_from`, `uncovered_from`, `uncovered_to` | The bank connection does not go back to the month (when `feed_from` is after the month start), or has no data for the uncovered days. |
+| `books_differ`, `newest_reading_differs`, `opening_differs` | `difference`, `difference_on` | The bank connection and the books differ by `difference` on `difference_on`. |
+| `books_differ` | `later_reading_agrees` | A later reading equals the books. If the reading on `difference_on` is stale, the host must mark it partial or remove it; the engine does not drop it. |
+| `statement_differs` | `statement_id`, `statement_date`, `difference`, `period_confirmed` | Statement `statement_id` and the books differ by `difference` on `statement_date` (`period_confirmed` is `false` when nobody confirmed the statement period). |
+| `not_checking_or_savings` | `account_type` | This account type needs a statement. |
+| `unsourced_postings` | `unsourced_count`, `unsourced_from` | The books have entries that the bank connection did not deliver, the first on `unsourced_from`. |
+| `opening_entry_unclear` | `opening_entries` | The books before the bank connection hold more than one opening entry. |
+| `opening_conflict` | `opening_balances` | The records for the month before disagree. |
+| `statement_available` | `statement_ids` | Reconcile the month from its statement. |
+
+A month already recorded from the feed is checked again. A row that arrives
+later and is dated in that month makes the record differ from the books, and
+readiness reports `reconciliation_not_clean` until the month is proven and
+recorded again.
+
+What a proof from the feed shows: the books equal what the bank connection
+delivered and reported. It is not evidence from outside the connection. Limits
+that remain:
+
+- With a `derived` opening, a transaction that the connection never delivered is
+  not found, whether it is dated before or after the first feed day. Example:
+  the account held 40.00 before the connection, and the bank paid out 30.00 on
+  September 3 that the connection never delivered. The opening entry is typed as
+  10.00 to fit today's balance, by a person or by software. Every check passes,
+  and August closes at 510.00, but the bank held 540.00 (`feed_computed`,
+  `opening_evidence: derived`). With a statement opening (`statement`: a printed
+  40.00) the books differ from the bank by 30.00, so the month is refused.
 - A transaction that the books date on the other side of the month end than the
   bank does is not found when the two agree again on the reading day and no
-  reading falls on the month end. A statement finds it.
-- Errors that cancel each other inside one month are not found. Across a month
-  end, the opening chain finds them.
+  reading falls between them. A statement finds it.
+- Errors that cancel each other inside the checked span (for example a missing
+  deposit and a duplicated deposit of the same amount) are not found, and a
+  month end between them is wrong by that amount. A statement or a reading for a
+  month end between them finds them. A month end computed back from a later
+  reading does not.
 - The proof shows balances, not categories: a wrong category is not found.
 - Only rows waiting in review count as waiting. Rows in `staging/pending.json` and
   held duplicate candidates are not checked; a transaction that is really missing
   still shows as a difference between the books and the bank.
 - The balance used is the current balance. When the bank counts pending items in
   it, the month waits.
-- The readings, dates, time zone and feed windows are facts from the host. The
-  engine checks them against each other and against the books, not against the bank.
+- The readings, dates, time zone, feed windows and feed rows are facts from the
+  host. The engine checks them against each other and against the books, not
+  against the bank.
+
+The `basis` on every record, the `opening_evidence` and its readiness note, and
+the readiness option `--require-statements` let a company or its accountant
+decide how much this proof counts for.
+
+### What each month end was checked against
+
+`books reconcile --proof-basis statement|feed_reading|feed_computed` stores the
+basis on the reconciliation record. `statement` needs evidence references that
+are all archived statement originals (`ingestion/statements/files/<sha256>.<ext>`).
+A bank connection basis needs evidence references that all start with
+`evidence:feed-balance-` and an `Assets:` account. `--statement-id` cannot take
+the option. A record is read from its evidence: archived
+statement originals only are `statement`; bank connection readings only are the
+stored bank connection basis, else `feed_computed`; anything else has no basis.
+
+`books coverage check --format json` gives each month a `proof_basis` when a
+clean reconciliation on its last day still agrees with the books, and a
+`feed_computed` month also has `opening_evidence` (derived from the books). The order, strongest first,
+is `statement`, `feed_reading`, `feed_computed`. A statement from an archived
+original outranks the bank connection: a bank connection record whose balance
+equals its closing on that day counts as `statement`. For a month with a bank
+connection basis, the error `statement_feed_differs` gives the figures, and the
+month has no `proof_basis`, when a statement closing on the month end differs
+from the record, or when any dated statement balance from the day before the
+month through its last day differs from the books. Readiness blocks on it, also
+when the statement tie-out matches.
+
+`books readiness` shows `proof_basis` on each reconciliation when it is known,
+and `opening_evidence` on a `feed_computed` one. By default a month proven from
+the bank connection is ready like any other reconciled month. With
+`--require-statements`, every account whose coverage `proof_basis` on the period
+end is not `statement` gets the blocker `statement_required`: a bank connection
+record, a record without a basis, and a missing record. The document has
+`"require_statements": true`. To clear it, import the statement and run
+`books reconcile --statement-id`.
 
 ## PDF and image statements
 

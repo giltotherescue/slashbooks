@@ -513,6 +513,35 @@ print('done', flush=True)
                 source_hashes={source_id: source_hashes[source_id]},
             )
 
+    def test_a_proof_basis_is_bound_to_the_authorized_evidence(self):
+        argv, hashes = self.reconciliation_inputs()
+        # The statement basis needs an archived statement original as its evidence.
+        archive = f"ingestion/statements/files/{'c' * 64}.csv"
+        old_ref = "provider-record:statement-2026-09"
+        argv = [archive if item == old_ref else (f"{archive}={'b' * 64}" if item == f"{old_ref}={'b' * 64}" else item)
+                for item in argv]
+        hashes = {(f"evidence:{archive}" if key == f"evidence:{old_ref}" else key): value for key, value in hashes.items()}
+        # A basis that the authorized evidence did not name is refused.
+        with self.assertRaisesRegex(PreparationDenied, "source_evidence_changed"):
+            run_preparation_command(
+                [*argv, "--proof-basis", "statement"], self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(), source_hashes=hashes,
+            )
+        source_id = "reconciliation:Assets:Bank:Checking:2026-09-30"
+        evidence = {"account": "Assets:Bank:Checking", "as_of": "2026-09-30", "source_balance": "0.00",
+                    "source_opening_balance": "0.00", "source_transaction_total": "0.00",
+                    "source_snapshot_at": "2026-10-01T12:00:00Z", "source_through": "2026-09-30",
+                    "proof_basis": "statement"}
+        self.assertEqual(argv[argv.index("--source-balance") + 1], evidence["source_balance"])
+        bound = {**hashes, source_id: evidence_hash(evidence)}
+        with redirect_stdout(StringIO()):
+            result = run_preparation_command(
+                [*argv, "--proof-basis", "statement"], self.authority(), entity_path=self.entity.path,
+                expected_ledger_digest=self.store.content_digest(), source_hashes=bound,
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(reconcile.list_discrepancies(self.entity.path)[0]["proof_basis"], "statement")
+
     def test_reconciliation_final_authority_failure_never_publishes_report(self):
         original = preparation_runtime.authorize_batch
         calls = 0
