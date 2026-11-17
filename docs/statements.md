@@ -218,9 +218,10 @@ is recorded. Reconcile the month from the statement
 (`books reconcile --statement-id`). That record replaces the bank connection
 record, and because its evidence is the archived original file, its basis is
 `statement`. A month checked against the bank connection proves that the books
-equal what the connection delivered and reported. With an opening entry that was
-derived to fit the balance, it does not find a transaction that the connection
-never delivered; with a printed or person-stated opening it does. When any
+equal what the connection delivered and reported. With an opening that a
+statement does not back (a typed opening, whoever typed it), it does not find a
+transaction that the connection never delivered; only a statement opening is
+independent, and with one it does. When any
 balance of a statement (its opening, its closing, or a cycle that ends mid-month)
 differs from the books, the feed proof refuses the month (`statement_differs`)
 and readiness blocks with `statement_feed_differs`. See

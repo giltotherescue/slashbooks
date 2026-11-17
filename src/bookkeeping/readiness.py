@@ -25,7 +25,7 @@ from .entity import _locked_entity_operation, load_entity
 from .ledger.projections import render_store_ledger
 from .ledger.store import LedgerStore, default_store_path
 from .ledger.validator import validate
-from .reconcile import record_basis, record_opening_evidence
+from .reconcile import record_basis
 from .reports.statements import balance_sheet, profit_and_loss, trial_balance
 from .queue import ACTIONABLE_QUEUE_STATUSES
 
@@ -549,7 +549,9 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     With ``disposition_context=None`` the document is the same as without the argument.
 
     Each reconciliation in the document has ``proof_basis`` when it is known (``reconcile.record_basis``), and a
-    ``feed_computed`` one has ``opening_evidence``. With ``require_statements=True``, every source account in the
+    ``feed_computed`` one has ``opening_evidence`` from the coverage month (derived from the books, ``derived`` when
+    coverage has none). A ``feed_computed`` month with a ``derived`` opening adds the warning
+    ``opening_not_independent``, never a blocker. With ``require_statements=True``, every source account in the
     period whose coverage month ``proof_basis`` on the period end is not ``statement`` gets a
     ``statement_required`` blocker: a bank connection record, a record that does not say, and a missing record.
     ``statement`` comes only from archived statement originals (a record from them, or a bank connection record
@@ -664,6 +666,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     coverage_items: tuple[list[dict[str, Any]], list[dict[str, Any]]] = ([], [])
     verified_accounts: set[str] = set()
     month_end_proof: dict[str, str] = {}
+    month_end_opening: dict[str, str] = {}
     if coverage_accounts:
         try:
             coverage_document = check_coverage(
@@ -685,6 +688,9 @@ def assess_review_readiness(entity_path: Path | str, period: str,
             month_end_proof = {row["account"]: month["proof_basis"] for row in coverage_document["accounts"]
                                for month in row["months"]
                                if month["to"] == end.isoformat() and month.get("proof_basis")}
+            month_end_opening = {row["account"]: month["opening_evidence"] for row in coverage_document["accounts"]
+                                 for month in row["months"]
+                                 if month["to"] == end.isoformat() and month.get("opening_evidence")}
     if outside:
         from .coverage import _label
         coverage = sorted([*coverage, *({
@@ -804,7 +810,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         if basis is not None:
             normalized["proof_basis"] = basis  # Only when known, so a package without one keeps its fingerprint.
         if basis == "feed_computed":
-            normalized["opening_evidence"] = record_opening_evidence(dict(record))
+            normalized["opening_evidence"] = month_end_opening.get(account, "derived")
         normalized_recs.append(normalized)
     if require_statements:
         # Every source account in the period needs a month end proven by a statement: the coverage month

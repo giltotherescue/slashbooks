@@ -264,12 +264,11 @@ for the first feed months, computed back from the balance when every row since t
 feed started was delivered by the bank connection apart from one opening entry. Cards,
 loans and other account types stay on the statement path. The command is read-only;
 record the result with `reconcile`, the stored reading as evidence, `--proof-basis`
-set to the row's `basis` (`feed_reading` or `feed_computed`) and, for
-`feed_computed`, `--opening-evidence` set to the row's `opening_evidence`. The input
+set to the row's `basis` (`feed_reading` or `feed_computed`). The input
 must give the bank's time zone. Tell the owner what it cannot find: it shows that the
 books equal what the bank connection delivered and reported, not evidence from a
-third party; with a `derived` opening, a transaction that the connection never
-delivered; a transaction that the books date in the wrong month when the bank and the
+third party; with a `derived` opening (any typed opening), a transaction that the
+connection never delivered; a transaction that the books date in the wrong month when the bank and the
 books agree again by the reading day; errors that cancel each other; and a wrong
 category. It uses the current
 balance, and it trusts the host's readings and feed windows. When the owner or the

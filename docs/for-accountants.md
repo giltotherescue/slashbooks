@@ -158,21 +158,25 @@ month end. Each reconciliation says what it was checked against:
   whose opening was computed that way. The first months after a connection are
   usually `feed_computed`: their opening is the books' opening entry.
 
-Each `feed_computed` month also says where its opening came from
-(`opening_evidence`):
+Each `feed_computed` month also says whether a statement backs its opening
+(`opening_evidence`). The engine works this out from the books and the
+statements; nobody can set it:
 
-- `statement`: a printed statement balance.
-- `person`: a balance that a person stated.
-- `derived`: anything else, including an opening that an agent or a system
-  stated, an opening computed to fit the current balance, or no opening entry.
+- `statement`: a printed statement balance backs the opening (an opening entry
+  taken from a statement, or a statement balance that equals the books).
+- `derived`: anything else. A typed opening is not independent evidence,
+  whoever typed it: a person, an agent or software.
+
+Readiness adds the note `opening_not_independent` for such a month, so that you
+see it. It does not block the month.
 
 What this proves: the books equal what the bank connection delivered and
 reported. The connection covers every day of the month through the balance,
 nothing waits in review, every balance reading in that span equals the books,
 and every dated statement balance in that span equals the books. When the
-opening was computed, every row from the first day of the connection is a row
-that the connection delivered (its ID is a bank feed transaction ID), the books
-hold one opening entry at most, and the newest balance also equals the books.
+opening was computed, every row from the first day of the connection was
+written by the bank feed import, the books hold one opening entry at most, and
+the newest balance also equals the books.
 
 What it does not prove:
 
@@ -183,10 +187,10 @@ What it does not prove:
   connection never delivered. Someone types the opening entry as 10.00, so the
   books equal today's balance. Every check passes, and August closes at 510.00,
   but the bank held 540.00. The month says `feed_computed` with
-  `opening_evidence` `derived`.
-- With a `statement` or `person` opening, the same missing transaction is found:
-  the opening is independent of the connection, so the books then differ from
-  the balance that the bank reported.
+  `opening_evidence` `derived`. This is the same when a person typed the 10.00.
+- Only a statement opening is independent. With a printed 40.00 opening, the
+  same missing transaction is found: the books then differ from the balance that
+  the bank reported.
 - Two errors that cancel each other (a missing deposit and a duplicated deposit
   of the same amount) are not found. A month end between them is wrong by that
   amount, unless a statement or a balance for that month end falls between them.

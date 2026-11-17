@@ -74,12 +74,17 @@ proven when every condition is true:
      ``opening_entry_unclear``).
    - Every other posting from ``W`` through the later of ``D`` and ``N``'s day
      is a row that the bank connection delivered (else ``unsourced_postings``).
-     A row is delivered by the connection when its source ID is
-     ``<provider>:<id>`` with a provider in ``source_ids.CONNECTED_FEED_PROVIDERS``,
-     or a legacy BankSync ID without a prefix, and it is not an opening import;
-     or when it corrects (``correction-of``) such a row on the same day for the
-     same amount. A row with any other source ID (a CSV or statement row, a
-     generic ingest, a reclassification that changed the amount) is not.
+     A row is delivered by the connection when ``books ingest`` wrote it from a
+     connected feed: its entry has the ``feed-provider`` mark that only that
+     command sets, the mark names a provider in
+     ``source_ids.CONNECTED_FEED_PROVIDERS``, and the source ID is
+     ``<that provider>:<id>`` (or has no prefix, with the mark ``banksync``).
+     It is not an opening import. A correction (``correction-of``) is judged
+     only through what it corrects: it counts when it is the only posting of
+     its source ID on the account and keeps the day and amount of a delivered
+     row. Any other row is not delivered: a generic ingest, a CSV, statement or
+     manual row, a row written before the mark existed, or a correction that
+     adds or changes money.
    - At least one such posting from ``W`` through ``D`` exists (else
      ``no_feed_rows``).
    - Nothing waits in review on or before ``N``'s day (else
@@ -92,15 +97,12 @@ proven when every condition is true:
    correction of it keeps the row (same day, same amount). A reversal that
    removes a delivered row without such a replacement is not from the connection.
 
-   The opening that rule 7b computes always equals the books' opening. It is
-   evidence only when the opening entry is: each ``feed_computed`` row has
-   ``opening_evidence``, ``statement`` for an opening entry whose
-   ``opening-source`` is ``printed``, ``person`` when it is ``person``, else
-   ``derived`` (also an opening that an agent or a system stated, and no
-   opening entry at all). A later computed month carries the evidence of the
-   opening it chains from: ``statement`` from a statement or a ``statement``
-   record, the stored ``opening_evidence`` of a ``feed_computed`` record, else
-   ``derived``.
+   The opening that rule 7b computes always equals the books' opening. Each
+   ``feed_computed`` row has ``opening_evidence``, derived from the books only
+   (``opening_evidence``): ``statement`` when a statement backs the books on or
+   before the month end (an opening entry with ``opening-source: printed``, or a
+   statement balance that equals the books on its date), else ``derived``. A typed
+   opening is ``derived`` whoever typed it.
 
 A month end with a statement record (a closing balance on ``end``) is left to the
 statement (``statement_available``): a statement outranks the feed.
@@ -109,7 +111,9 @@ The readings after the month end are taken in order (balance day, then the time
 it was read). The first one that meets conditions 4 to 6 is the anchor, and its
 day is ``D``. Every reading before it, and every other reading for ``D``, must
 also equal the books: the first one that does not meet the conditions gives the
-reason, and a later reading that agrees does not prove the month.
+reason, and a later reading that agrees does not prove the month
+(``later_reading_agrees`` says so). A host that knows a reading is stale must
+mark it partial or remove it.
 
 Every dated balance of a statement for the account (its opening balance on the
 day before its first day, and its closing balance on its last day), from the day
@@ -136,12 +140,11 @@ Each proven row has ``basis``, and its ``reconcile`` figures have the same value
   record whose basis is ``feed_computed`` or not known).
 
 What a proof from the feed shows: the books equal what the bank connection
-delivered and reported. It is not evidence from outside the connection. Under
-rule 7b, when the opening entry was derived (typed or computed to fit the current
-balance), a transaction that the connection never delivered, before or after
-``W``, is inside that opening entry, and no check here finds it. With a printed or
-person-stated opening (``opening_evidence`` ``statement`` or ``person``) the books
-differ from the bank by that transaction, so it is found. A statement finds it.
+delivered and reported. It is not evidence from outside the connection. With a
+``derived`` opening (typed by anyone, or computed to fit the current balance), a
+transaction that the connection never delivered, before or after ``W``, is inside
+that opening entry, and no check here finds it. With a ``statement`` opening the
+books differ from the bank by that transaction, so it is found.
 
 Limits that remain (a statement finds the first three):
 
@@ -184,14 +187,16 @@ A row that is not proven has a ``reason`` code and the figures for one sentence:
   ``uncovered_from`` / ``uncovered_to`` (the first days the feed does not cover).
   When ``feed_from`` is after the month start, the feed does not go back to the month.
 - ``books_differ``, ``newest_reading_differs`` and ``opening_differs``:
-  ``difference`` (bank less books) on ``difference_on``.
+  ``difference`` (bank less books) on ``difference_on``. ``books_differ`` also
+  has ``later_reading_agrees``.
 - ``not_checking_or_savings``: ``account_type`` (the type the host gave).
 - ``unsourced_postings``: ``unsourced_count`` and the first date, ``unsourced_from``.
 - ``opening_entry_unclear``: ``opening_entries`` (how many).
 - ``opening_conflict``: ``opening_balances`` (the different figures).
 - ``statement_available``: ``statement_ids``.
 - ``statement_differs``: ``statement_id``, ``statement_date``,
-  ``statement_balance``, ``books_balance`` and ``difference``.
+  ``statement_balance``, ``books_balance``, ``difference`` and
+  ``period_confirmed`` (False for a statement whose period nobody confirmed).
 """
 
 from __future__ import annotations
@@ -205,12 +210,11 @@ import sqlite3
 from typing import Any, Mapping, Sequence
 
 from .ledger.store import LedgerStore, default_store_path
-from .reconcile import (FEED_EVIDENCE_PREFIX, from_feed as _from_feed, record_basis,
-                        record_opening_evidence)
-from .source_ids import CONNECTED_FEED_PROVIDERS
+from .reconcile import FEED_EVIDENCE_PREFIX, from_feed as _from_feed, record_basis
+from .source_ids import CONNECTED_FEED_PROVIDERS, FEED_PROVIDER_META, LEGACY_UNPREFIXED_PROVIDER
 from .tieout import Series, _dec, _fmt, load_waiting_checked
 
-__all__ = ["FEED_EVIDENCE_PREFIX", "REASONS", "SAFETY_MARGIN_HOURS", "day_closed_at", "prove"]
+__all__ = ["FEED_EVIDENCE_PREFIX", "REASONS", "SAFETY_MARGIN_HOURS", "day_closed_at", "opening_evidence", "prove"]
 
 DEPOSITORY_TYPES = frozenset({"checking", "savings"})
 MAX_MONTHS = 36
@@ -398,7 +402,8 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         text = lambda key: meta.get(key) if isinstance(meta.get(key), str) and meta.get(key) else None  # noqa: E731
         postings[str(account)].append(_Posting(
             day, amount, str(source_id) if source_id else None, text("import-source") in _OPENING_SOURCES,
-            text("opening-source"), None if source_id else text("reverses"), text("correction-of")))
+            text("opening-source"), None if source_id else text("reverses"), text("correction-of"),
+            text(FEED_PROVIDER_META)))
     for ledger, item in books.items():
         item.kinds = [(posting.day, kind, posting.opening_source) for posting, kind in _classify(postings[ledger])]
         item.series = Series(item.items)
@@ -408,34 +413,42 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
 class _Posting:
     """One posting on the checked account, with the entry facts that decide where it came from."""
 
-    __slots__ = ("day", "amount", "source_id", "opening", "opening_source", "reverses", "correction_of")
+    __slots__ = ("day", "amount", "source_id", "opening", "opening_source", "reverses", "correction_of",
+                 "feed_provider")
 
     def __init__(self, day: date, amount: Decimal, source_id: str | None, opening: bool, opening_source: str | None,
-                 reverses: str | None, correction_of: str | None) -> None:
+                 reverses: str | None, correction_of: str | None, feed_provider: str | None = None) -> None:
         self.day, self.amount, self.source_id = day, amount, source_id
         self.opening, self.opening_source = opening, opening_source
         self.reverses, self.correction_of = reverses, correction_of
+        self.feed_provider = feed_provider
 
 
-def _connection_id(source_id: str | None) -> bool:
-    """Whether a source ID names a row of a connected bank feed.
+def _ingested_from_feed(posting: "_Posting") -> bool:
+    """Whether ``books ingest`` wrote this row from a connected feed, by its ID and its ``feed-provider`` mark.
 
-    The ID is ``<provider>:<id>`` with a provider in ``CONNECTED_FEED_PROVIDERS``, or a legacy BankSync ID without a
-    prefix (``source_ids.LEGACY_UNPREFIXED_PROVIDER``; rows imported before namespacing).
+    The ID is ``<provider>:<id>`` and the mark names that provider, which is in ``CONNECTED_FEED_PROVIDERS``; or the
+    ID has no prefix and the mark is ``banksync``. Only ``books ingest`` with a connected-feed provider sets the mark
+    (``source_ids.FEED_PROVIDER_META``). A row without it (any row imported before the mark existed, a generic
+    ingest, a CSV, statement or manual row) does not count.
     """
-    if not source_id:
+    if not posting.source_id or posting.feed_provider not in CONNECTED_FEED_PROVIDERS:
         return False
-    head, separator, rest = source_id.partition(":")
-    return (head in CONNECTED_FEED_PROVIDERS and bool(rest)) if separator else True
+    head, separator, rest = posting.source_id.partition(":")
+    if separator:
+        return head == posting.feed_provider and bool(rest)
+    return posting.feed_provider == LEGACY_UNPREFIXED_PROVIDER
 
 
 def _classify(postings: Sequence[_Posting]) -> list[tuple[_Posting, str]]:
     """Each posting with its kind: ``opening``, ``source`` (delivered by the bank connection) or ``none``.
 
     - ``opening``: an entry that an opening import made (``import-source`` in ``_OPENING_SOURCES``).
-    - ``source``: a source ID of a connected bank feed (``_connection_id``), or a correction (``correction-of``)
-      of such a row on the same day for the same amount on this account, through any number of corrections.
-    - ``none``: anything else, such as a row with another source ID, a manual entry or a reversal.
+    - ``source``: a row that ``books ingest`` wrote from a connected feed (``_ingested_from_feed``). A correction
+      (``correction-of``) is judged only through what it corrects: it counts when it corrects such a row on this
+      account (through any number of corrections), it is the only posting of its source ID on this account, and it
+      has the same day and amount. Its own source ID and marks do not count.
+    - ``none``: anything else, such as a generic ingest, a CSV, statement or manual row, or a reversal.
 
     A reversal (no source ID, ``reverses`` names one) and the only posting it reverses are left out when they fall on
     one day with opposite amounts and either the reversed posting is an opening, or a correction of it on this
@@ -455,10 +468,11 @@ def _classify(postings: Sequence[_Posting]) -> list[tuple[_Posting, str]]:
         for _ in range(32):
             if posting.opening or not posting.source_id:
                 return False
-            if _connection_id(posting.source_id):
-                return True
+            if not posting.correction_of:
+                return _ingested_from_feed(posting)
             original = single(posting.correction_of)
-            if original is None or (original.day, original.amount) != (posting.day, posting.amount):
+            if (single(posting.source_id) is not posting or original is None
+                    or (original.day, original.amount) != (posting.day, posting.amount)):
                 return False
             posting = original
         return False
@@ -502,7 +516,7 @@ def prove(entity_path: Path | str, accounts: Sequence[Mapping[str, Any]], *, as_
 
     See the module documentation for the input shape and the rule.
     """
-    from .coverage import load_statements
+    from .coverage import load_statement_documents, load_statements
     from .entity import flat_bank_account_mappings, load_entity
 
     entity = load_entity(entity_path)
@@ -511,6 +525,9 @@ def prove(entity_path: Path | str, accounts: Sequence[Mapping[str, Any]], *, as_
     for feed_id, ledger in mappings.items():
         by_ledger.setdefault(ledger, []).append(feed_id)
     records, _ = load_statements(entity.path)
+    period_confirmed = {str(document.get("statement_id")): document.get("period_confirmed")
+                        if isinstance(document.get("period_confirmed"), bool) else None
+                        for document in load_statement_documents(entity.path)}
     try:
         reconciliations = json.loads((entity.path / "reports" / "reconciliation.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -572,24 +589,18 @@ def prove(entity_path: Path | str, accounts: Sequence[Mapping[str, Any]], *, as_
             rows.append(_row(account_id, ledger, None, "feed_incomplete", feed_from=None))
             continue
         statements: dict[date, list[tuple[str, Decimal]]] = {}
-        balances: list[tuple[date, str, Decimal]] = []
         for r in records:
-            if r.account != ledger or r.kind != "statement":
-                continue
-            if r.closing_balance is not None:
+            if r.account == ledger and r.kind == "statement" and r.closing_balance is not None:
                 statements.setdefault(r.period_end, []).append((r.statement_id, r.closing_balance))
-                balances.append((r.period_end, r.statement_id, r.closing_balance))
-            if r.opening_balance is not None:
-                balances.append((r.period_start - timedelta(days=1), r.statement_id, r.opening_balance))
+        balances = _statement_balances(records, ledger)
         readings = [reading for reading in _readings(item.get("readings"), zone) if reading["read_day"] <= as_of]
         context = _Context(ledger, side, waiting[ledger], windows, readings, reconciliations, statements, zone,
-                           balances)
+                           balances, period_confirmed)
         start_from = max(first_month or windows[0][0].replace(day=1), date(1900, 1, 1))
         for month, start, end in _months(start_from, as_of - timedelta(days=1)):
             row = _month(account_id, month, start, end, context)
             if row["status"] == "proven":
-                context.proven[end] = (Decimal(row["reconcile"]["source_balance"]), row["basis"],
-                                       row.pop("opening_evidence_chain"))
+                context.proven[end] = (Decimal(row["reconcile"]["source_balance"]), row["basis"])
             rows.append(row)
     rows.sort(key=lambda row: (str(row["ledger_account"] or ""), row["account_id"], str(row["month"] or "")))
     return {"status": "ok", "as_of": as_of.isoformat(), "months": rows}
@@ -601,7 +612,8 @@ class _Context:
     def __init__(self, ledger: str, side: _Books, waiting: Series, windows: list[tuple[date, date]],
                  readings: list[dict[str, Any]], reconciliations: Any,
                  statements: Mapping[date, list[tuple[str, Decimal]]], zone: tzinfo,
-                 statement_balances: Sequence[tuple[date, str, Decimal]] = ()) -> None:
+                 statement_balances: Sequence[tuple[date, str, Decimal]] = (),
+                 period_confirmed: Mapping[str, bool | None] | None = None) -> None:
         self.ledger = ledger
         self.side = side
         self.waiting = waiting
@@ -612,8 +624,10 @@ class _Context:
         self.zone = zone
         #: Every dated balance of every statement of the account: (day, statement ID, balance), earliest first.
         self.statement_balances = sorted(statement_balances)
-        #: Month ends that this check proved, with the closing balance, the basis and the opening evidence.
-        self.proven: dict[date, tuple[Decimal, str, str]] = {}
+        #: ``period_confirmed`` of each statement record that states it (True or False), else None.
+        self.period_confirmed = dict(period_confirmed or {})
+        #: Month ends that this check proved, with the closing balance and the basis.
+        self.proven: dict[date, tuple[Decimal, str]] = {}
 
 
 def _row(account_id: str, ledger: str | None, month: str | None, reason: str, **fields: Any) -> dict[str, Any]:
@@ -649,40 +663,73 @@ def _feed_incomplete(account_id: str, ledger: str, month: str, windows: list[tup
                 **_gap(windows, start, day), **fields)
 
 
-def _opening_evidence_of(source: str | None) -> str:
-    """``opening_evidence`` of an opening entry from its ``opening-source``: printed, a person, or anything else."""
-    return {"printed": "statement", "person": "person"}.get(source or "", "derived")
+def _statement_balances(records: Sequence[Any], ledger: str) -> list[tuple[date, str, Decimal]]:
+    """Every dated balance of every statement of the account, in the ledger sign: (day, statement ID, balance).
+
+    A statement's opening balance is the balance on the day before its first day; its closing balance is the
+    balance on its last day.
+    """
+    from .tieout import presentation_sign
+    sign = presentation_sign(ledger)
+    balances: list[tuple[date, str, Decimal]] = []
+    for r in records:
+        if r.account != ledger or r.kind != "statement":
+            continue
+        if r.closing_balance is not None:
+            balances.append((r.period_end, r.statement_id, r.closing_balance * sign))
+        if r.opening_balance is not None:
+            balances.append((r.period_start - timedelta(days=1), r.statement_id, r.opening_balance * sign))
+    return sorted(balances)
 
 
-def _opening(start: date, context: _Context) -> tuple[Decimal | None, str, str, str, dict[str, Any]]:
-    """The proven bank opening of a month (rule 7): figure, reason when there is none, grade, evidence and fields.
+def _evidence(side: _Books, balances: Sequence[tuple[date, str, Decimal]], day: date) -> str:
+    """``statement`` when a statement backs the books on or before ``day``, else ``derived``.
+
+    A statement backs them when an opening entry on or before ``day`` has ``opening-source: printed`` (a printed
+    statement balance), or when a statement balance dated on or before ``day`` equals the books on its date. Anything
+    else is ``derived``: a typed opening of any caller kind, an old entry without the mark, or no opening entry.
+    """
+    if any(kind == "opening" and source == "printed" and d <= day for d, kind, source in side.kinds):
+        return "statement"
+    if any(when <= day and side.series.through(when) == balance for when, _, balance in balances):
+        return "statement"
+    return "derived"
+
+
+def opening_evidence(entity_path: Path | str, account: str, day: date) -> str:
+    """The ``opening_evidence`` of the month of ``account`` that ends on ``day``, from the books and statements only."""
+    from .coverage import load_statements
+
+    side = _load_books(Path(entity_path), [account])[account]
+    records, _ = load_statements(entity_path)
+    return _evidence(side, _statement_balances(records, account), day)
+
+
+def _opening(start: date, context: _Context) -> tuple[Decimal | None, str, str, dict[str, Any]]:
+    """The proven bank opening of a month (rule 7): the figure, the reason when there is none, its grade and fields.
 
     The grade is ``reading`` when a statement or a bank reading for the day gave the figure, else ``computed``. The
-    evidence is the ``opening_evidence`` that a computed month carries (``reconcile.OPENING_EVIDENCE``). The reason
-    ``no_source`` means that rule 7 has nothing, so rule 7b may compute the opening.
+    reason ``no_source`` means that rule 7 has nothing, so rule 7b may compute the opening.
     """
     before = start - timedelta(days=1)
     if before in context.proven:
-        balance, basis, evidence = context.proven[before]
-        return balance, "", "reading" if basis == "feed_reading" else "computed", evidence, {}
-    candidates: list[tuple[Decimal, str, str]] = []
+        balance, basis = context.proven[before]
+        return balance, "", "reading" if basis == "feed_reading" else "computed", {}
+    candidates: list[tuple[Decimal, str]] = []
     prior = _existing(context.reconciliations, context.ledger, before)
     if prior is not None:
         balance = _dec(prior.get("source_balance"))
         if prior.get("status") not in ("clean", "resolved") or balance is None:
-            return None, "opening_unproven", "", "", {}
-        basis = record_basis(dict(prior))
-        evidence = "statement" if basis == "statement" else (record_opening_evidence(dict(prior)) or "derived")
-        candidates.append((balance, "reading" if basis in _READING_GRADE_BASES else "computed", evidence))
-    candidates.extend((closing, "reading", "statement") for _, closing in context.statements.get(before, []))
+            return None, "opening_unproven", "", {}
+        candidates.append((balance, "reading" if record_basis(dict(prior)) in _READING_GRADE_BASES else "computed"))
+    candidates.extend((closing, "reading") for _, closing in context.statements.get(before, []))
     if candidates:
-        figures = {balance for balance, _, _ in candidates}
+        figures = {balance for balance, _ in candidates}
         if len(figures) > 1:
             # A statement and a record (or two statements) for the month before disagree: neither proves it.
-            return None, "opening_conflict", "", "", {"opening_balances": sorted(_fmt(value) for value in figures)}
-        grade = "reading" if any(grade == "reading" for _, grade, _ in candidates) else "computed"
-        evidence = "statement" if any(item == "statement" for _, _, item in candidates) else candidates[0][2]
-        return candidates[0][0], "", grade, evidence, {}
+            return None, "opening_conflict", "", {"opening_balances": sorted(_fmt(value) for value in figures)}
+        grade = "reading" if any(grade == "reading" for _, grade in candidates) else "computed"
+        return candidates[0][0], "", grade, {}
     # The first month of the feed: the account starts at zero only when nothing in the books is dated before this
     # month, the feed starts in this month, and every posting of the month is a row the bank connection delivered.
     kinds = context.side.kinds
@@ -692,46 +739,49 @@ def _opening(start: date, context: _Context) -> tuple[Decimal | None, str, str, 
     sourced_in_month = any(start <= day <= end and kind == "source" for day, kind, _ in kinds)
     unsourced_in_month = any(start <= day <= end and kind != "source" for day, kind, _ in kinds)
     if first_feed_month and not earlier and sourced_in_month and not unsourced_in_month:
-        return _ZERO, "", "reading", "derived", {}
-    return None, "no_source", "", "", {}
+        return _ZERO, "", "reading", {}
+    return None, "no_source", "", {}
 
 
-def _computed_opening(start: date, anchor: Mapping[str, Any], context: _Context) -> tuple[Decimal | None, str, str,
+def _computed_opening(start: date, anchor: Mapping[str, Any], context: _Context) -> tuple[Decimal | None, str,
                                                                                           dict[str, Any]]:
-    """Rule 7b: the opening computed back from the anchor reading and its evidence, or None with reason and fields."""
+    """Rule 7b: the opening computed back from the anchor reading, or None with the reason and its fields."""
     side, windows, postings = context.side, context.windows, context.side.series
     first_day, day = windows[0][0], anchor["day"]
     if not _covers(windows, first_day, day):
-        return None, "feed_incomplete", "", {"feed_from": first_day.isoformat(), **_gap(windows, first_day, day)}
+        return None, "feed_incomplete", {"feed_from": first_day.isoformat(), **_gap(windows, first_day, day)}
     # The newest reading whose day the feed covers from its first day: the books must still equal the bank on it.
     newest = [reading for reading in context.readings if _covers(windows, first_day, reading["day"])][-1]
     last_day = max(day, newest["day"])
     # An opening entry: any posting before the first feed day, or one on it that the connection did not deliver.
     openings = [source for d, kind, source in side.kinds if d < first_day or (d == first_day and kind != "source")]
     if len(openings) > 1:
-        return None, "opening_entry_unclear", "", {"opening_entries": len(openings)}
+        return None, "opening_entry_unclear", {"opening_entries": len(openings)}
     unsourced = sorted(d for d, kind, _ in side.kinds if first_day < d <= last_day and kind != "source")
     if unsourced:
-        return None, "unsourced_postings", "", {"unsourced_count": len(unsourced),
-                                                "unsourced_from": unsourced[0].isoformat()}
+        return None, "unsourced_postings", {"unsourced_count": len(unsourced),
+                                            "unsourced_from": unsourced[0].isoformat()}
     if not any(first_day <= d <= day and kind == "source" for d, kind, _ in side.kinds):
-        return None, "no_feed_rows", "", {}
+        return None, "no_feed_rows", {}
     if context.waiting.count_between(None, newest["day"]):
-        return None, "waiting_in_review", "", {"reading": _shown(newest)}
+        return None, "waiting_in_review", {"reading": _shown(newest)}
     books_on_newest = postings.through(newest["day"])
     if books_on_newest != newest["balance"]:
-        return None, "newest_reading_differs", "", {
+        return None, "newest_reading_differs", {
             "reading": _shown(newest), "books_balance": _fmt(books_on_newest),
             "difference": _fmt(newest["balance"] - books_on_newest), "difference_on": newest["day"].isoformat()}
-    evidence = _opening_evidence_of(openings[0]) if openings else "derived"
-    return anchor["balance"] - postings.between(start, day), "", evidence, {}
+    return anchor["balance"] - postings.between(start, day), "", {}
 
 
-def _differs(account_id: str, ledger: str, month: str, reading: Mapping[str, Any], postings: Series) -> dict[str, Any]:
+def _differs(account_id: str, ledger: str, month: str, reading: Mapping[str, Any], postings: Series,
+             later: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """``books_differ`` for ``reading``. ``later_reading_agrees`` says whether a later reading equals the books: the
+    differing reading may be stale, and the host must mark it partial or remove it."""
     books_on_day = postings.through(reading["day"])
+    agrees = any(postings.through(other["day"]) == other["balance"] for other in later)
     return _row(account_id, ledger, month, "books_differ", reading=_shown(reading),
                 books_balance=_fmt(books_on_day), difference=_fmt(reading["balance"] - books_on_day),
-                difference_on=reading["day"].isoformat())
+                difference_on=reading["day"].isoformat(), later_reading_agrees=agrees)
 
 
 def _month(account_id: str, month: str, start: date, end: date, context: _Context) -> dict[str, Any]:
@@ -756,20 +806,21 @@ def _month(account_id: str, month: str, start: date, end: date, context: _Contex
     # Readings in order: the first one that the feed covers, with nothing waiting and equal to the books, is the anchor.
     # Every reading before it, and every other reading for its day, must also equal the books.
     chosen: dict[str, Any] | None = None
-    for reading in after_end:
+    for index, reading in enumerate(after_end):
         day = reading["day"]
+        later = [other for other in after_end[index + 1:] if _covers(windows, start, other["day"])]
         if chosen is not None:
             if day != chosen["day"]:
                 break
             if postings.through(day) != reading["balance"]:
-                return _differs(account_id, ledger, month, reading, postings)
+                return _differs(account_id, ledger, month, reading, postings, later)
             continue
         if not _covers(windows, start, day):
             return _feed_incomplete(account_id, ledger, month, windows, start, day)
         if context.waiting.count_between(None, day):
             return _row(account_id, ledger, month, "waiting_in_review")
         if postings.through(day) != reading["balance"]:
-            return _differs(account_id, ledger, month, reading, postings)
+            return _differs(account_id, ledger, month, reading, postings, later)
         chosen = reading
     reading = chosen
     day = reading["day"]
@@ -781,10 +832,11 @@ def _month(account_id: str, month: str, start: date, end: date, context: _Contex
             return _row(account_id, ledger, month, "statement_differs", reading=shown, statement_id=statement_id,
                         statement_date=when.isoformat(), statement_balance=_fmt(balance),
                         books_balance=_fmt(postings.through(when)),
-                        difference=_fmt(balance - postings.through(when)), difference_on=when.isoformat())
-    opening, reason, grade, evidence, fields = _opening(start, context)
+                        difference=_fmt(balance - postings.through(when)), difference_on=when.isoformat(),
+                        period_confirmed=context.period_confirmed.get(statement_id))
+    opening, reason, grade, fields = _opening(start, context)
     if reason == "no_source":
-        opening, reason, evidence, fields = _computed_opening(start, reading, context)
+        opening, reason, fields = _computed_opening(start, reading, context)
         grade = "computed"
     if opening is None:
         return _row(account_id, ledger, month, reason, **{"reading": shown, **fields})
@@ -799,10 +851,9 @@ def _month(account_id: str, month: str, start: date, end: date, context: _Contex
     figures = {"account": ledger, "as_of": end.isoformat(), "source_balance": _fmt(closing),
                "source_opening_balance": _fmt(opening), "source_transaction_total": _fmt(closing - opening),
                "source_snapshot_at": reading["retrieved_at"], "source_through": end.isoformat(), "proof_basis": basis}
-    extra: dict[str, Any] = {"opening_evidence_chain": evidence}
+    extra: dict[str, Any] = {}
     if basis == "feed_computed":
-        figures["opening_evidence"] = evidence
-        extra = {"opening_evidence": evidence, "opening_evidence_chain": evidence}
+        extra["opening_evidence"] = _evidence(context.side, context.statement_balances, end)
     return _row(account_id, ledger, month, "proven", reading=shown, books_balance=_fmt(postings.through(day)),
                 difference=_fmt(_ZERO), basis=basis, reconcile=figures, **extra)
 

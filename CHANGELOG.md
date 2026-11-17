@@ -4,32 +4,40 @@
 
 - A checking or savings month can now be proven against the bank connection when
   no statement exists, also in the first months after a connection.
-  `books balance prove` computes the opening back from a later balance when every
-  row since the feed started came from a source apart from one opening entry, the
-  feed has no gap, and the newest balance also equals the books. Each proven row
-  has `basis` (`feed_reading` for a balance on the month end with a proven
-  opening, else `feed_computed`), and `books reconcile --proof-basis` stores it.
-  Not-proven rows have new codes (`unsourced_postings`, `opening_entry_unclear`,
-  `no_feed_rows`, `newest_reading_differs`, `opening_conflict`,
-  `statement_available`) and the figures for one sentence. A statement outranks the
-  bank connection: the feed no longer proves a month with a statement, and
-  `books coverage check` shows a month's `proof_basis` and the error
-  `statement_feed_differs` when a statement disagrees with a bank connection record.
-  `books readiness --require-statements` blocks every month whose end is not proven
+  `books balance prove` computes the opening back from a later balance when the
+  feed has no gap from its first day, the books hold one opening entry at most,
+  every other row was delivered by the bank connection, and the newest balance also
+  equals the books. Each proven row has `basis` (`feed_reading` for a balance on the
+  month end with an opening from a statement, a reading or the zero opening, else
+  `feed_computed`), and `books reconcile --proof-basis` stores it. A `feed_computed`
+  row has `opening_evidence`, which the engine derives from the books: `statement`
+  when a statement backs the opening, else `derived` (any typed opening). With a
+  derived opening, a transaction that the connection never delivered is not found;
+  readiness adds the note `opening_not_independent` (not a blocker).
+- The feed proof checks every reading up to the anchor (`books_differ` with
+  `later_reading_agrees`) and every dated statement balance in the span, also a
+  statement cycle that ends mid-month (`statement_differs`, with
+  `period_confirmed`). A statement outranks the bank connection: the feed no
+  longer proves a month with a statement, and `books coverage check` shows each
+  month's `proof_basis` and the error `statement_feed_differs` when a statement
+  disagrees. Not-proven rows have codes and the figures for one sentence.
+- `books ingest` now marks each row from a connected-feed provider with
+  `feed-provider` (kept through review), and removes the field from other input
+  rows. Only such rows, and corrections that keep their day and amount, count as
+  delivered by the bank connection. Behaviour change for old books: rows imported
+  before this version have no mark, so rule 7b and the zero opening refuse months
+  that hold them (`unsourced_postings`), also unprefixed BankSync IDs.
+- `books readiness --require-statements` blocks every month whose end is not proven
   by a statement from an archived original (`statement_required`), also a record
-  without a basis. It is off by default. Cards and loans still need a statement.
-  The proof counts only rows that the bank connection delivered (a connected-feed
-  source ID), checks every reading up to the anchor and every dated statement
-  balance in the span (`statement_differs`, also a statement cycle that ends
-  mid-month), and gives each `feed_computed` month `opening_evidence` (`statement`,
-  `person` or `derived`): with a derived opening, a transaction that the connection
-  never delivered is not found. `--proof-basis statement` needs archived statement
-  originals, and a bank connection basis needs an `Assets:` account.
+  without a basis and a card. It is off by default. `--proof-basis statement` needs
+  archived statement originals, and a bank connection basis needs an `Assets:`
+  account. Cards and loans still need a statement.
 - After the upgrade, the readiness `evidence_fingerprint` and `package_id` change
   for every period with a clean reconciliation from an archived statement original
   and for every period proven from the bank connection, because the reconciliation
-  now shows `proof_basis` (and `opening_evidence`). A host that compares them sees
-  such a period as changed and checks it again: this fails closed.
+  now shows `proof_basis` (and `opening_evidence`), and a `feed_computed` period has
+  the new note. A host that compares them sees such a period as changed and checks
+  it again: this fails closed.
 - QuickBooks history review fixes. A copy of a matched bank row is skipped only for an exact
   duplicate that its source can hold (a statement must cover the original's date); a near-date
   pair is held (`possible_copy`). A bank row up to 45 days after the history end is held when any

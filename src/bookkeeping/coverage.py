@@ -27,7 +27,9 @@ reconciliation record on the month's last day still agrees with the books.
 The order, strongest first, is ``statement``, ``feed_reading`` and
 ``feed_computed`` (``reconcile.PROOF_BASES``), then a reconciliation that does
 not say (no ``proof_basis`` key). A ``feed_computed`` month also has
-``opening_evidence`` (``reconcile.record_opening_evidence``). A statement
+``opening_evidence`` (``statement`` or ``derived``), which the engine derives
+from the books and statements (``feed_proof.opening_evidence``); a ``derived``
+one adds the readiness note ``opening_not_independent``. A statement
 outranks the bank connection: a bank connection record whose balance equals the
 closing of a statement from an archived original on that day is ``statement``.
 For a month with a bank connection basis, a ``statement_feed_differs`` error gives
@@ -732,8 +734,10 @@ def check_coverage(
                     books_postings[account], last)
                 if proof is not None:
                     month_row["proof_basis"] = proof
-                if opening is not None:
-                    month_row["opening_evidence"] = opening
+                if proof == "feed_computed":
+                    # Derived from the books and statements, never from the record (feed_proof.opening_evidence).
+                    from .feed_proof import opening_evidence
+                    month_row["opening_evidence"] = opening_evidence(entity.path, account, last)
                 if conflict is not None:
                     findings.append(conflict)
             month_rows.append(month_row)
@@ -814,7 +818,7 @@ def _month_proof(account: str, label: str, record: Mapping[str, Any] | None, rec
     (an opening on the day before a statement's first day, or a closing) from the day before the month through
     ``day`` differs from the books on its day. Such a month has no ``proof_basis``.
     """
-    from .reconcile import FEED_PROOF_BASES, _STATEMENT_ARCHIVE_REF, record_basis, record_opening_evidence
+    from .reconcile import FEED_PROOF_BASES, _STATEMENT_ARCHIVE_REF, record_basis
 
     if record is None:
         return None, None, None
@@ -862,7 +866,7 @@ def _month_proof(account: str, label: str, record: Mapping[str, Any] | None, rec
     # A statement outranks the bank connection only when it comes from an archived original.
     if basis in FEED_PROOF_BASES and any(_STATEMENT_ARCHIVE_REF.fullmatch(r.evidence_ref or "") for r in closings):
         return "statement", None, None
-    return basis, record_opening_evidence(dict(record)), None
+    return basis, None, None
 
 
 def readiness_items(document: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -886,6 +890,16 @@ def readiness_items(document: Mapping[str, Any]) -> tuple[list[dict[str, Any]], 
                 warnings.append({
                     "code": "source_month_inferred",
                     "message": " ".join(month["notes"]),
+                    "refs": [account["account"]],
+                })
+            if month.get("proof_basis") == "feed_computed" and month.get("opening_evidence") == "derived":
+                # A note, not a blocker: the month end was checked against the bank connection from an opening that
+                # no statement backs, so a transaction that the connection never delivered would not be found.
+                warnings.append({
+                    "code": "opening_not_independent",
+                    "message": (f"{account['label']} {month['month']} was checked against the bank connection from "
+                                "an opening that no statement backs. A transaction that the connection never "
+                                "delivered would not be found."),
                     "refs": [account["account"]],
                 })
         for statement in account.get("statements", []):

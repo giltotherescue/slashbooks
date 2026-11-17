@@ -81,7 +81,7 @@ from .bank_accounts import clip_windows_to_cutover, context_only_account, contex
 from .entity import flat_bank_account_mappings, load_entity
 from . import queue as queue_module
 from .ledger.importer import import_transactions
-from .source_ids import CONNECTED_FEED_PROVIDERS, namespaced_feed_id
+from .source_ids import CONNECTED_FEED_PROVIDERS, FEED_PROVIDER_FIELD, namespaced_feed_id
 
 
 def add_parser(subparsers: Any) -> None:
@@ -360,6 +360,10 @@ def run(args: argparse.Namespace) -> int:
         # ``<provider>:<id>`` into the snapshot itself.
         if provider and prepared is None:
             txns = namespace_feed_ids(txns, provider)
+        # Only this command marks rows as delivered by a connected feed: every row gets this ingest's provider, or
+        # loses a mark that its input carried.
+        txns = [{**{key: value for key, value in txn.items() if key != FEED_PROVIDER_FIELD},
+                 **({FEED_PROVIDER_FIELD: provider} if provider else {})} for txn in txns]
         before_cutover: dict[str, dict[str, Any]] = {}
         cutover_hold_ids: frozenset[str] = frozenset()
         context_ids: dict[str, str] = {}
