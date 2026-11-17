@@ -271,6 +271,7 @@ class ImportTests(unittest.TestCase):
     def test_an_agent_caller_cannot_confirm_an_extracted_period(self):
         data = fixture("bank_verified.json")
         data["confirmation"] = {"name": "A Person"}  # untrusted input cannot confirm the period
+        data["period_source"] = "derived"
         with provenance.use_caller_kind("agent"):
             result = self.imp(data, evidence=None)
         self.assertEqual(result["coverage"], "needs_period")
@@ -281,6 +282,29 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(records, [])
         person = self.imp(fixture("bank_verified.json"), evidence=None)
         self.assertEqual(person["coverage"], "recorded")
+
+    def test_an_agent_caller_with_a_printed_period_is_confirmed_and_stamped(self):
+        data = fixture("bank_verified.json")
+        data["period_source"] = "printed"
+        with provenance.use_caller_kind("agent"):
+            result = self.imp(data, evidence=None)
+        self.assertEqual(result["coverage"], "recorded")
+        self.assertTrue(result["statement"]["period_confirmed"])
+        self.assertEqual((result["statement"]["caller_kind"], result["statement"]["period_source"]),
+                         ("agent", "printed"))
+        [record], _ = coverage.load_statements(self.entity)
+        self.assertEqual(record.statement_id, result["statement_id"])
+
+    def test_an_agent_caller_without_a_printed_period_stays_unconfirmed(self):
+        for label, change in (("missing", {}), ("derived", {"period_source": "derived"})):
+            with self.subTest(label):
+                data = fixture("bank_verified.json")
+                data.update(change)
+                with provenance.use_caller_kind("system"):
+                    result = self.imp(data, evidence=None, dry_run=True)
+                self.assertEqual(result["coverage"], "needs_period")
+                self.assertFalse(result["statement"]["period_confirmed"])
+                self.assertTrue(any("not a person" in w for w in result["warnings"]))
 
     def test_import_is_idempotent(self):
         self.imp("bank_verified.json")

@@ -14,7 +14,9 @@ Contract (``schema_version`` 1)
   liability account, such as a loan.
 - ``period_start`` and ``period_end``: ``YYYY-MM-DD`` or ``null``. Both are
   needed before the engine records the statement.
-- ``period_source``: ``printed`` (the default) or ``derived``. Use ``derived``
+- ``period_source``: ``printed`` (the default) or ``derived``. A caller that is not
+  a person (see ``provenance.py``) gets a confirmed period only when the extraction
+  writes ``"period_source": "printed"`` itself. Use ``derived``
   when the reader did not read the start date from the statement, for example
   when it is the day after the previous statement ended.
 - ``opening_balance`` and ``closing_balance``: decimal strings or ``null``,
@@ -129,6 +131,7 @@ class Extraction:
     excluded: list[str]
     confirmation: JsonObject | None
     extractor: JsonObject | None
+    period_declared: bool = False  # the extraction itself says the period is printed
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +297,8 @@ def parse_extraction(raw: Any) -> tuple[Extraction | None, list[JsonObject]]:
         source=source, account_kind=kind, period_start=values["period_start"], period_end=values["period_end"],
         period_source=period_source, opening=values["opening_balance"], closing=values["closing_balance"],
         rows=rows, confidence=confidence, row_order=row_order, excluded=excluded,
-        confirmation=confirmation, extractor=extractor), reasons
+        confirmation=confirmation, extractor=extractor,
+        period_declared=raw.get("period_source") == "printed"), reasons
 
 
 # ---------------------------------------------------------------------------
@@ -622,7 +626,7 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
         "source": prof.get("account_name") or profile, "writer": si.WRITER, "profile": profile,
         "mapping_key": mapping_key, "format": EXTRACTED_FORMAT,
         "institution_account": {"identity": None, "institution": None, "account_type": None, "account_last4": None},
-        "period_source": ext.period_source, "period_confirmed": provenance.is_person(),
+        "period_source": ext.period_source, "period_confirmed": provenance.is_person() or ext.period_declared,
         "opening_balance_date": ext.period_start.isoformat(), "closing_balance_date": ext.period_end.isoformat(),
         "balance_source": "manual_confirmed" if confirmed_by else "extracted",
         "extraction_method": ext.source, "extraction_confidence": ext.confidence, "extractor": ext.extractor,
@@ -632,7 +636,8 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
     }
     if not record["period_confirmed"]:
         # The extraction JSON is untrusted input, so a ``confirmation`` inside it cannot confirm the period.
-        warnings.append("The period was not confirmed: the caller is not a person. A person must confirm it.")
+        warnings.append("The period was not confirmed: the caller is not a person and the extraction does not "
+                        "say the period is printed on the statement. A person must confirm it.")
     if confirmed_by:
         record.update(confirmed_by=confirmed_by["name"], confirmed_at=confirmed_by.get("at") or ts)
     if evidence_sha:
