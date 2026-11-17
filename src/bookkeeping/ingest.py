@@ -398,7 +398,7 @@ def run(args: argparse.Namespace) -> int:
                 try:
                     result = import_transactions(entity, txns, **import_args)
                 except BaseException:
-                    store.discard_last_audit_event(intake_hash)
+                    store._discard_last_audit_event(FEED_INTAKE_EVENT, intake_hash)
                     raise
         else:
             result = import_transactions(entity, txns, **import_args)

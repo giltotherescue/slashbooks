@@ -1191,6 +1191,65 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual((row["reason"], row["statement_date"], row["difference"], row["period_confirmed"]),
                          ("statement_differs", "2026-01-01", "1000.00", False))
 
+    def tamper_record_hash(self, where="type = 'feed-intake'"):
+        """Change one character of a record hash in place, then restore the file time (delete journal mode)."""
+        import os
+        import sqlite3
+        path = self.company / "ledger.sqlite"
+        before = path.stat()
+        with contextlib.closing(sqlite3.connect(path)) as conn:
+            conn.execute("PRAGMA journal_mode=DELETE")
+            conn.execute("UPDATE audit_events SET record_hash = substr(record_hash, 1, length(record_hash) - 1) || "
+                         f"CASE substr(record_hash, -1) WHEN '0' THEN '1' ELSE '0' END WHERE {where}")
+            conn.commit()
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return before
+
+    def test_an_edit_with_the_same_size_and_file_time_is_not_trusted_from_an_earlier_read(self):
+        from bookkeeping.source_ids import feed_intake_index
+        self.ingest([{"id": "y2", "accountId": "feed-chk", "date": "2026-08-04", "amount": 7.0, "description": "feed"}],
+                    "--source", "banksync")
+        self.assertIn("banksync:y2", feed_intake_index(self.company))
+        before = self.tamper_record_hash()
+        after = (self.company / "ledger.sqlite").stat()
+        self.assertEqual((before.st_size, before.st_mtime_ns), (after.st_size, after.st_mtime_ns))
+        self.assertTrue(LedgerStore(self.company / "ledger.sqlite").verify_audit_chain())
+        self.assertEqual(feed_intake_index(self.company), {})
+        self.confirm("banksync:y2")
+        self.assertIsNone(self.entry_marks()["banksync:y2"])
+
+    def test_only_a_feed_intake_event_can_be_discarded(self):
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.append_audit_event("note", {"text": "x"}, conn)
+        events = store.load_audit_events()
+        newest = events[-1]
+        self.assertNotEqual(newest["type"], "feed-intake")
+        with self.assertRaises(ValueError):
+            store._discard_last_audit_event(newest["type"], newest["record_hash"])
+        self.assertEqual(len(store.load_audit_events()), len(events))
+        self.assertEqual(store.verify_audit_chain(), [])
+
+    def test_balance_prove_says_audit_chain_invalid_when_a_record_hash_is_edited(self):
+        input_path = Path(self._tmp.name) / "readings.json"
+        input_path.write_text(json.dumps({"accounts": [{"account_id": "feed-chk", "account_type": "Checking",
+                                                        "currency": "USD", "time_zone": "America/New_York",
+                                                        "readings": [reading("1250.00")]}]}))
+
+        def prove_cli():
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = main(["balance", "prove", "--entity", str(self.company), "--input", str(input_path),
+                             "--as-of", "2026-10-20"])
+            return code, [row["reason"] for row in json.loads(out.getvalue())["months"]]
+
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.append_audit_event("note", {"text": "x"}, conn)
+        self.assertEqual(prove_cli(), (0, ["proven", "proven"]))
+        self.tamper_record_hash("id = (SELECT MAX(id) FROM audit_events)")
+        self.assertEqual(prove_cli(), (0, ["audit_chain_invalid", "audit_chain_invalid"]))
+
     def test_cli_is_read_only_and_classified_as_read(self):
         input_path = Path(self._tmp.name) / "readings.json"
         input_path.write_text(json.dumps({"accounts": [{"account_id": "feed-chk", "account_type": "Checking",

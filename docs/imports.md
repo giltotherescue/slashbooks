@@ -655,8 +655,8 @@ Each row has `status` (`proven` or `not_proven`) and `reason`, one of `proven`,
 `unreadable_postings`, `waiting_unreadable`, `no_balance_after_month_end`,
 `feed_incomplete`, `waiting_in_review`, `books_differ`, `statement_differs`,
 `newest_reading_differs`, `opening_unproven`, `opening_differs`,
-`opening_conflict`, `opening_entry_unclear`, `unsourced_postings` or
-`no_feed_rows`. A row that is not proven has the figures for one sentence:
+`opening_conflict`, `opening_entry_unclear`, `unsourced_postings`,
+`audit_chain_invalid` or `no_feed_rows`. A row that is not proven has the figures for one sentence:
 
 | Reason | Fields | Sentence |
 |---|---|---|
@@ -666,6 +666,7 @@ Each row has `status` (`proven` or `not_proven`) and `reason`, one of `proven`,
 | `statement_differs` | `statement_id`, `statement_date`, `difference`, `period_confirmed` | Statement `statement_id` and the books differ by `difference` on `statement_date` (`period_confirmed` is `false` when nobody confirmed the statement period). |
 | `not_checking_or_savings` | `account_type` | This account type needs a statement. |
 | `unsourced_postings` | `unsourced_count`, `unsourced_from` | The books have entries that the bank connection did not deliver, the first on `unsourced_from`. |
+| `audit_chain_invalid` | none | The audit hash chain of the ledger store has an error, so no row counts as delivered by the bank connection. Restore the ledger from a backup, then prove again. |
 | `opening_entry_unclear` | `opening_entries` | The books before the bank connection hold more than one opening entry. |
 | `opening_conflict` | `opening_balances` | The records for the month before disagree. |
 | `statement_available` | `statement_ids` | Reconcile the month from its statement. |

@@ -230,6 +230,10 @@ def _hash_record(record_type: str, ts: str, payload_json: str, prev_hash: str) -
     return hashlib.sha256(line.encode("utf-8")).hexdigest()
 
 
+#: The one audit event type that ``_discard_last_audit_event`` may remove (``source_ids.FEED_INTAKE_EVENT``).
+_DISCARDABLE_AUDIT_TYPE = "feed-intake"
+
+
 class LedgerStore:
     """SQLite-backed canonical ledger store."""
 
@@ -746,16 +750,19 @@ class LedgerStore:
         )
         return record_hash
 
-    def discard_last_audit_event(self, record_hash: str) -> bool:
-        """Remove the newest audit event when it is the one with *record_hash*; never an event in the middle.
+    def _discard_last_audit_event(self, record_type: str, record_hash: str) -> bool:
+        """Remove the newest audit event when it has *record_type* and *record_hash*; never any other event.
 
-        A caller uses this only to undo its own event after the work that the event announced failed, so the
-        chain stays valid. If a later event exists, the work wrote something and the event stays.
+        Only ``feed-intake`` may be removed: a caller undoes its own announcement after the work that it announced
+        failed, so the chain stays valid. If a later event exists, the work wrote something and the event stays.
         """
+        if record_type != _DISCARDABLE_AUDIT_TYPE:
+            raise ValueError(f"An audit event of type {record_type!r} cannot be removed.")
         with self.transaction(immediate=True) as conn:
             cursor = conn.execute(
-                "DELETE FROM audit_events WHERE record_hash = ? AND id = (SELECT MAX(id) FROM audit_events)",
-                (record_hash,),
+                "DELETE FROM audit_events WHERE type = ? AND record_hash = ? "
+                "AND id = (SELECT MAX(id) FROM audit_events)",
+                (record_type, record_hash),
             )
             return cursor.rowcount == 1
 

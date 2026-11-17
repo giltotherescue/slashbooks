@@ -48,37 +48,14 @@ def feed_intake_payload(provider: str, session_id: str, txns: list[dict]) -> dic
             "rows": {str(txn["id"]): _row_digest(txn) for txn in txns if isinstance(txn, dict) and txn.get("id")}}
 
 
-_INDEX_CACHE: dict[str, tuple[tuple, FeedIntake]] = {}
-
-
-def _store_fingerprint(path: Any) -> tuple:
-    """The size and modification time of the ledger file and its write-ahead log; any write changes it."""
-    parts = []
-    for name in (str(path), f"{path}-wal"):
-        try:
-            info = Path(name).stat()
-            parts.append((info.st_size, info.st_mtime_ns))
-        except OSError:
-            parts.append(None)
-    return tuple(parts)
-
-
 def feed_intake_index(entity_path: Any) -> FeedIntake:
     """Source ID -> provider -> the row digests that a connected-feed ingest recorded for it.
 
-    The index is empty when the audit hash chain of the ledger store has an error. The chain is verified once for
-    each state of the ledger file, not once for each row that asks.
+    The index is empty when the audit hash chain of the ledger store has an error. Each call reads the store and
+    verifies the chain again; nothing is kept between calls. A caller that needs the index for many rows calls
+    this once and passes the result to ``feed_provider_meta``.
     """
-    from .ledger.store import default_store_path
-    path = default_store_path(Path(entity_path))
-    key = str(path.resolve())
-    fingerprint = _store_fingerprint(path)
-    cached = _INDEX_CACHE.get(key)
-    if cached is not None and cached[0] == fingerprint:
-        return cached[1]
-    index = _read_feed_intake(entity_path)
-    _INDEX_CACHE[key] = (fingerprint, index)
-    return index
+    return _read_feed_intake(entity_path)
 
 
 def _read_feed_intake(entity_path: Any) -> FeedIntake:
