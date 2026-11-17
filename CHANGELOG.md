@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The `feed-provider` mark and the feed balance proof now ignore every `feed-intake` record when the audit hash chain has an error, and a failed feed ingest no longer leaves a `feed-intake` record. `books balance prove` reports the reason `audit_chain_invalid` for each month when the chain has an error. `books ingest --intake-only` with a connected-feed source no longer makes the store integrity check report `incomplete-write`: a `feed-intake` event is not a ledger write and needs no seal, so `entity account-add` and the other commands that need valid integrity keep working. A real unfinished write is still reported. A `feed-intake` event also does not count as ledger audit history, so one feed ingest cannot hide a ledger whose entries have no audit history (`audit_history_missing` for `entity account-add`, `books from` and the hosted migration check). `docs/imports.md` states that the audit chain has no secret key and is not a defence against a caller who can run code against the ledger store.
 - A checking or savings month can now be proven against the bank connection when
   no statement exists, also in the first months after a connection.
   `books balance prove` computes the opening back from a later balance when the

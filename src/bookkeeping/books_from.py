@@ -252,7 +252,7 @@ def preview(entity_path: Path | str, books_from: Any, accounts: Sequence[str] = 
     from .accrual.intake import canonical_hash
     from .entity import load_entity
     from .ledger.importer import _source_accounts, check_integrity
-    from .ledger.store import LedgerStore, default_store_path
+    from .ledger.store import LedgerStore, default_store_path, has_ledger_audit_history
 
     day = parse_day(books_from)
     named = _check_names(accounts)
@@ -269,8 +269,7 @@ def preview(entity_path: Path | str, books_from: Any, accounts: Sequence[str] = 
     config = entity.entity_config
     cutover = _cutover(config)
     with store.connection() as conn:
-        if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
-                "SELECT 1 FROM audit_events LIMIT 1").fetchone():
+        if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not has_ledger_audit_history(conn):
             raise BooksFromError("audit_history_missing",
                                  "The account catalog cannot change on a ledger with entries and no audit history.",
                                  "Repair the audit history first.")
@@ -413,7 +412,7 @@ def apply(entity_path: Path | str, books_from: Any, plan_hash: str | None,
     """
     from .accrual.enable import _seal
     from .ledger.importer import _entity_write_lock
-    from .ledger.store import LedgerStore, default_store_path
+    from .ledger.store import LedgerStore, default_store_path, has_ledger_audit_history
 
     if not plan_hash:
         raise BooksFromError("plan_hash_required", "--apply needs the plan_hash of the preview.",

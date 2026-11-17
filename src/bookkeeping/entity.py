@@ -738,7 +738,7 @@ def add_account(
 
     from .ledger.model import Open
     import sqlite3
-    from .ledger.store import LedgerStore, SUPPORTED_SCHEMA_VERSIONS, default_store_path, validate_financial_kind
+    from .ledger.store import LedgerStore, SUPPORTED_SCHEMA_VERSIONS, has_ledger_audit_history, default_store_path, validate_financial_kind
     from .ledger.importer import _entity_write_lock, check_integrity
 
     if financial_kind is not None:
@@ -763,9 +763,7 @@ def add_account(
             integrity = check_integrity(entity)
             if integrity.status != "ok":
                 raise ValueError("Account catalog cannot change while ledger integrity is invalid.")
-            if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
-                "SELECT 1 FROM audit_events LIMIT 1"
-            ).fetchone():
+            if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not has_ledger_audit_history(conn):
                 raise ValueError("Account catalog cannot change on a populated ledger without audit history.")
             existing = conn.execute("SELECT currency,open_date FROM accounts WHERE name=?", (account,)).fetchone()
             if existing and financial_kind is not None and requested_currency is None:

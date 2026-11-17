@@ -2596,13 +2596,14 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
     from .ledger.model import Entry, Open, Posting
     pair_id = _transfer_item_id(source_ids)
     common_meta = (("transfer-pair-id", pair_id), ("import-session", session_id), ("review-workflow", "transfer-pair"))
+    feed_intake = feed_intake_index(entity.path)  # One read and one chain check for the whole command.
     if _txn_date(first) == _txn_date(second):
         entries = [Entry(
             date=_txn_date(first),
             narration="Internal transfer: " + " / ".join(str(txn.get("description") or source_id) for txn, source_id in ((first, source_ids[0]), (second, source_ids[1]))),
             flag="*",
             meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta,
-                  *feed_provider_meta(feed_intake_index(entity.path), first, second)),
+                  *feed_provider_meta(feed_intake, first, second)),
             tags=(f"import-{session_id}", "internal-transfer"),
             postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=second_account, amount=-first_amount, currency=entity.currency)),
         )]
@@ -2610,8 +2611,8 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
     else:
         clearing = "Assets:Transfers-Clearing"
         entries = [
-            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta, *feed_provider_meta(feed_intake_index(entity.path), first)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=clearing, amount=-first_amount, currency=entity.currency))),
-            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta, *feed_provider_meta(feed_intake_index(entity.path), second)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency=entity.currency), Posting(account=clearing, amount=first_amount, currency=entity.currency))),
+            Entry(date=_txn_date(first), narration=str(first.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[0]), ("paired-source-id", source_ids[1]), *common_meta, *feed_provider_meta(feed_intake, first)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=first_account, amount=first_amount, currency=entity.currency), Posting(account=clearing, amount=-first_amount, currency=entity.currency))),
+            Entry(date=_txn_date(second), narration=str(second.get("description") or "Internal transfer"), flag="*", meta=(("source-id", source_ids[1]), ("paired-source-id", source_ids[0]), *common_meta, *feed_provider_meta(feed_intake, second)), tags=(f"import-{session_id}", "internal-transfer"), postings=(Posting(account=second_account, amount=-first_amount, currency=entity.currency), Posting(account=clearing, amount=first_amount, currency=entity.currency))),
         ]
         needed_accounts = {first_account, second_account, clearing}
     existing_opens = _get_existing_opens(entity)

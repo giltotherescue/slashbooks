@@ -16,6 +16,7 @@ function, so the two spellings never disagree.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 # Providers that can be named as a connected bank feed. ``books ingest --source``
@@ -48,8 +49,16 @@ def feed_intake_payload(provider: str, session_id: str, txns: list[dict]) -> dic
 
 
 def feed_intake_index(entity_path: Any) -> FeedIntake:
-    """Source ID -> provider -> the row digests that a connected-feed ingest recorded for it."""
-    from pathlib import Path
+    """Source ID -> provider -> the row digests that a connected-feed ingest recorded for it.
+
+    The index is empty when the audit hash chain of the ledger store has an error. Each call reads the store and
+    verifies the chain again; nothing is kept between calls. A caller that needs the index for many rows calls
+    this once and passes the result to ``feed_provider_meta``.
+    """
+    return _read_feed_intake(entity_path)
+
+
+def _read_feed_intake(entity_path: Any) -> FeedIntake:
     import json
     import sqlite3
     from .ledger.store import LedgerStore, default_store_path
@@ -59,7 +68,11 @@ def feed_intake_index(entity_path: Any) -> FeedIntake:
     if not path.is_file():
         return index
     try:
-        with LedgerStore(path).connection() as conn:
+        store = LedgerStore(path)
+        # An edited or inserted audit record breaks the chain. Then no record can be trusted, so no row has a mark.
+        if store.verify_audit_chain():
+            return index
+        with store.connection() as conn:
             rows = conn.execute("SELECT payload_json FROM audit_events WHERE type = ? ORDER BY id",
                                 (FEED_INTAKE_EVENT,)).fetchall()
     except sqlite3.DatabaseError:

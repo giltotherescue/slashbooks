@@ -374,18 +374,8 @@ def run(args: argparse.Namespace) -> int:
         session_id = args.session_id or (
             f"{args.source}-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
         )
-        if provider:
-            # The durable record that these rows came from a connected feed (source_ids.FEED_INTAKE_EVENT). An entry
-            # made from one of them carries the provider mark only while the row is unchanged.
-            from .ledger.importer import _ensure_ledger_store, _entity_write_lock
-            with _entity_write_lock(entity.path):
-                store = _ensure_ledger_store(entity)
-                with store.transaction() as conn:
-                    store.append_audit_event(FEED_INTAKE_EVENT, feed_intake_payload(provider, session_id, txns), conn)
         categorizer = queue_module.make_categorizer(entity)
-        result = import_transactions(
-            entity,
-            txns,
+        import_args = dict(
             session_id=session_id,
             categorizer=categorizer,
             ts=None,
@@ -394,6 +384,24 @@ def run(args: argparse.Namespace) -> int:
             cutover_hold_ids=cutover_hold_ids,
             context_only_cutovers=context_ids,
         )
+        if provider:
+            # The durable record that these rows came from a connected feed (source_ids.FEED_INTAKE_EVENT). An entry
+            # made from one of them carries the provider mark only while the row is unchanged. The write lock is held
+            # from the record to the end of the import. If the import fails, the record is removed again, so a failed
+            # ingest leaves no record that a later ingest of the same row could use.
+            from .ledger.importer import _ensure_ledger_store, _entity_write_lock
+            with _entity_write_lock(entity.path):
+                store = _ensure_ledger_store(entity)
+                with store.transaction() as conn:
+                    intake_hash = store.append_audit_event(
+                        FEED_INTAKE_EVENT, feed_intake_payload(provider, session_id, txns), conn)
+                try:
+                    result = import_transactions(entity, txns, **import_args)
+                except BaseException:
+                    store._discard_last_audit_event(FEED_INTAKE_EVENT, intake_hash)
+                    raise
+        else:
+            result = import_transactions(entity, txns, **import_args)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

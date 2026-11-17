@@ -1114,6 +1114,54 @@ class FeedProofTests(unittest.TestCase):
                   if event["type"] == "feed-intake"]
         self.assertEqual([sorted(event["payload"]["rows"]) for event in events], [["banksync:y2", "banksync:y3"]])
 
+    def test_feed_intake_record_with_a_broken_audit_chain_gives_no_mark_and_no_proof(self):
+        import sqlite3
+        from bookkeeping.source_ids import _row_digest
+        staging = self.company / "staging" / "pending-categorization.json"
+        self.ingest([{"id": "x2", "accountId": "feed-chk", "date": "2026-08-02", "amount": 5.0, "description": "row"}])
+        digest = _row_digest(json.loads(staging.read_text())[0])
+        forged = json.dumps({"provider": "banksync", "rows": {"x2": digest}})
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("INSERT INTO audit_events (type, ts, payload_json, prev_hash, record_hash) "
+                         "VALUES ('feed-intake', '2026-08-02T00:00:00Z', ?, 'bogus', 'bogus')", (forged,))
+            conn.commit()
+        self.confirm("x2")
+        self.assertIsNone(self.entry_marks()["x2"])
+        # An intact feed ingest still gets the mark when the chain is whole, and loses it when the chain breaks.
+        self.reset_books()
+        self.ingest([{"id": "y2", "accountId": "feed-chk", "date": "2026-08-04", "amount": 7.0, "description": "feed"}],
+                    "--source", "banksync")
+        self.confirm("banksync:y2")
+        self.assertEqual(self.entry_marks()["banksync:y2"], "banksync")
+        from bookkeeping.feed_proof import _load_books
+        delivered = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds].count("source")
+        self.assertGreaterEqual(delivered, 1)
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("UPDATE audit_events SET record_hash = 'bogus' WHERE type = 'feed-intake'")
+            conn.commit()
+        after = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds].count("source")
+        self.assertEqual(after, 0)
+
+    def test_failed_feed_ingest_leaves_no_intake_record(self):
+        row = {"id": "banksync:v1", "accountId": "feed-chk", "date": "2026-08-03", "amount": 6.0, "description": "row"}
+        path = Path(self._tmp.name) / "rows.json"
+        path.write_text(json.dumps([{**row, "id": "v1"}]))
+        # The import refuses a damaged review file after the feed record would exist.
+        staging = self.company / "staging" / "pending-categorization.json"
+        staging.parent.mkdir(exist_ok=True)
+        staging.write_text('{"not": "a list"}')
+        code, text = self.run_cli("ingest", str(path), "--entity", str(self.company), "--no-feed-window",
+                                  "--source", "banksync")
+        self.assertEqual(code, 1, text)
+        store = LedgerStore(self.company / "ledger.sqlite")
+        self.assertEqual([e for e in store.load_audit_events() if e["type"] == "feed-intake"], [])
+        self.assertEqual(store.verify_audit_chain(), [])
+        # A generic ingest of the same row, with the same ID and digest, gets no mark.
+        staging.unlink()
+        self.ingest([row])
+        self.confirm("banksync:v1")
+        self.assertIsNone(self.entry_marks()["banksync:v1"])
+
     def test_round3_a_split_that_puts_a_second_posting_on_the_bank_account_does_not_count(self):
         self.only_checking()
         post(self.company, CHECKING, "2026-07-31", "40.00", source=False)
@@ -1143,6 +1191,65 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual((row["reason"], row["statement_date"], row["difference"], row["period_confirmed"]),
                          ("statement_differs", "2026-01-01", "1000.00", False))
 
+    def tamper_record_hash(self, where="type = 'feed-intake'"):
+        """Change one character of a record hash in place, then restore the file time (delete journal mode)."""
+        import os
+        import sqlite3
+        path = self.company / "ledger.sqlite"
+        before = path.stat()
+        with contextlib.closing(sqlite3.connect(path)) as conn:
+            conn.execute("PRAGMA journal_mode=DELETE")
+            conn.execute("UPDATE audit_events SET record_hash = substr(record_hash, 1, length(record_hash) - 1) || "
+                         f"CASE substr(record_hash, -1) WHEN '0' THEN '1' ELSE '0' END WHERE {where}")
+            conn.commit()
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        return before
+
+    def test_an_edit_with_the_same_size_and_file_time_is_not_trusted_from_an_earlier_read(self):
+        from bookkeeping.source_ids import feed_intake_index
+        self.ingest([{"id": "y2", "accountId": "feed-chk", "date": "2026-08-04", "amount": 7.0, "description": "feed"}],
+                    "--source", "banksync")
+        self.assertIn("banksync:y2", feed_intake_index(self.company))
+        before = self.tamper_record_hash()
+        after = (self.company / "ledger.sqlite").stat()
+        self.assertEqual((before.st_size, before.st_mtime_ns), (after.st_size, after.st_mtime_ns))
+        self.assertTrue(LedgerStore(self.company / "ledger.sqlite").verify_audit_chain())
+        self.assertEqual(feed_intake_index(self.company), {})
+        self.confirm("banksync:y2")
+        self.assertIsNone(self.entry_marks()["banksync:y2"])
+
+    def test_only_a_feed_intake_event_can_be_discarded(self):
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.append_audit_event("note", {"text": "x"}, conn)
+        events = store.load_audit_events()
+        newest = events[-1]
+        self.assertNotEqual(newest["type"], "feed-intake")
+        with self.assertRaises(ValueError):
+            store._discard_last_audit_event(newest["type"], newest["record_hash"])
+        self.assertEqual(len(store.load_audit_events()), len(events))
+        self.assertEqual(store.verify_audit_chain(), [])
+
+    def test_balance_prove_says_audit_chain_invalid_when_a_record_hash_is_edited(self):
+        input_path = Path(self._tmp.name) / "readings.json"
+        input_path.write_text(json.dumps({"accounts": [{"account_id": "feed-chk", "account_type": "Checking",
+                                                        "currency": "USD", "time_zone": "America/New_York",
+                                                        "readings": [reading("1250.00")]}]}))
+
+        def prove_cli():
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = main(["balance", "prove", "--entity", str(self.company), "--input", str(input_path),
+                             "--as-of", "2026-10-20"])
+            return code, [row["reason"] for row in json.loads(out.getvalue())["months"]]
+
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.append_audit_event("note", {"text": "x"}, conn)
+        self.assertEqual(prove_cli(), (0, ["proven", "proven"]))
+        self.tamper_record_hash("id = (SELECT MAX(id) FROM audit_events)")
+        self.assertEqual(prove_cli(), (0, ["audit_chain_invalid", "audit_chain_invalid"]))
+
     def test_cli_is_read_only_and_classified_as_read(self):
         input_path = Path(self._tmp.name) / "readings.json"
         input_path.write_text(json.dumps({"accounts": [{"account_id": "feed-chk", "account_type": "Checking",
@@ -1161,6 +1268,121 @@ class FeedProofTests(unittest.TestCase):
         self.assertFalse(spec["mutates"])
         self.assertEqual((spec["entity_fields"], spec["input_fields"]), (["entity"], ["input"]))
 
+
+
+class IntakeOnlyFeedIngestTests(unittest.TestCase):
+    """A feed ingest with ``--intake-only`` writes a ``feed-intake`` event and no seal; the books stay valid."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.company = Path(self._tmp.name) / "books"
+        self.cli("entity", "init", str(self.company), "--name", "Synthetic Co", "--business-type", "consulting",
+                 "--cutover-date", "2026-01-01", expect=0)
+        self.cli("entity", "bank-account-map", str(self.company), "--feed-account-id", "acct_1",
+                 "--account", CHECKING, "--provider", "plaid", expect=0)
+
+    def cli(self, *argv, expect=None):
+        with redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            code = main(list(argv))
+        text = out.getvalue() + err.getvalue()
+        if expect is not None:
+            self.assertEqual(code, expect, text)
+        return code, text
+
+    def row(self, row_id="r1", day="2026-08-03", amount=6.0):
+        return {"id": row_id, "accountId": "acct_1", "date": day, "amount": amount, "description": "feed row"}
+
+    def ingest(self, rows, *extra, expect=0):
+        path = Path(self._tmp.name) / "rows.json"
+        path.write_text(json.dumps(rows))
+        return self.cli("ingest", str(path), "--entity", str(self.company), "--no-feed-window", *extra, expect=expect)
+
+    def integrity(self):
+        from bookkeeping.ledger.importer import check_store_integrity
+        return check_store_integrity(LedgerStore(self.company / "ledger.sqlite")).status
+
+    def add_account(self, name):
+        return self.cli("entity", "account-add", str(self.company), "--account", name)
+
+    def test_intake_only_feed_ingest_then_account_add_works(self):
+        self.ingest([self.row()], "--source", "plaid", "--intake-only")
+        events = LedgerStore(self.company / "ledger.sqlite").load_audit_events()
+        self.assertIn("feed-intake", [event["type"] for event in events])
+        self.assertEqual(LedgerStore(self.company / "ledger.sqlite").verify_audit_chain(), [])
+        self.assertEqual(self.integrity(), "ok")
+        code, text = self.add_account("Expenses:SyntheticTools")
+        self.assertEqual(code, 0, text)
+
+    def test_intake_only_feed_ingest_on_new_books_then_confirm_and_prove(self):
+        self.ingest([self.row("r1", "2026-08-03", 6.0)], "--source", "plaid", "--intake-only")
+        self.cli("queue", "propose", "--entity", str(self.company), "--source-id", "plaid:r1",
+                 "--category", "Income:Consulting", "--reasoning", "test", expect=0)
+        self.cli("queue", "confirm", "--entity", str(self.company), "--item", "plaid_r1", expect=0)
+        with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
+            marks = {sid: dict(json.loads(meta)).get("feed-provider")
+                     for sid, meta in conn.execute("SELECT source_id, metadata_json FROM entries")}
+        self.assertEqual(marks, {"plaid:r1": "plaid"})
+        self.assertEqual(self.integrity(), "ok")
+        from bookkeeping.feed_proof import _load_books
+        side = _load_books(self.company, [CHECKING])[CHECKING]
+        self.assertEqual([kind for day, kind, _ in side.kinds if day == date(2026, 8, 3)], ["source"])
+        self.assertFalse(side.chain_invalid)
+        # The feed proof through the CLI: the row counts as delivered, so August is proven.
+        record_feed_window(self.company, account=CHECKING, start=date(2026, 8, 1), end=date(2026, 10, 5),
+                           source="acct_1")
+        input_path = Path(self._tmp.name) / "readings.json"
+        input_path.write_text(json.dumps({"accounts": [{"account_id": "acct_1", "account_type": "checking",
+                                                        "currency": "USD", "time_zone": "UTC",
+                                                        "readings": [reading("6.00")]}]}))
+        code, text = self.cli("balance", "prove", "--entity", str(self.company), "--input", str(input_path),
+                              "--as-of", "2026-10-20")
+        self.assertEqual(code, 0, text)
+        months = {row["month"]: row["reason"] for row in json.loads(text)["months"]}
+        self.assertEqual(months["2026-08"], "proven", text)
+
+    def test_a_real_unfinished_ledger_write_is_still_incomplete_after_an_intake_only_ingest(self):
+        self.ingest([self.row()], "--source", "plaid", "--intake-only")
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.append_audit_event("intent", {"session_id": "half-done"}, conn)
+        self.assertEqual(self.integrity(), "incomplete-write")
+        code, text = self.add_account("Expenses:SyntheticTools")
+        self.assertEqual(code, 1, text)
+        self.assertIn("integrity is invalid", text)
+
+    def test_integrity_stays_ok_after_a_normal_and_a_generic_ingest_that_follow_an_intake_only_one(self):
+        self.ingest([self.row("r1")], "--source", "plaid", "--intake-only")
+        self.assertEqual(self.integrity(), "ok")
+        self.ingest([self.row("r2", "2026-08-04", 7.0)], "--source", "plaid")
+        self.assertEqual(self.integrity(), "ok")
+        self.ingest([self.row("g3", "2026-08-05", 8.0)])
+        self.assertEqual(self.integrity(), "ok")
+        code, text = self.add_account("Expenses:SyntheticTools")
+        self.assertEqual(code, 0, text)
+
+    def test_a_feed_intake_record_is_not_audit_history_for_a_ledger_with_entries(self):
+        import sqlite3
+        # New books, an intake-only feed ingest, then account-add: the normal hosted flow still works.
+        self.ingest([self.row()], "--source", "plaid", "--intake-only")
+        self.assertEqual(self.add_account("Expenses:A")[0], 0)
+        # An entry that no ledger audit event covers: the guard refuses, with or without an intake record.
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("DELETE FROM audit_events")
+            conn.commit()
+        post(self.company, CHECKING, "2026-08-03", "5.00", other="Expenses:A", source=False)
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("DELETE FROM audit_events")
+            conn.commit()
+        code, text = self.add_account("Expenses:B")
+        self.assertEqual(code, 1, text)
+        self.assertIn("audit history", text)
+        self.ingest([self.row("r9", "2026-08-09", 9.0)], "--source", "plaid", "--intake-only")
+        code, text = self.add_account("Expenses:B")
+        self.assertEqual(code, 1, text)
+        self.assertIn("audit history", text)
+        with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
+            self.assertIsNone(conn.execute("SELECT 1 FROM audit_events WHERE type = 'ledger-store-sealed'").fetchone())
 
 if __name__ == "__main__":
     unittest.main()

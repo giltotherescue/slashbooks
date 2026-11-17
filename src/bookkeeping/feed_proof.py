@@ -193,6 +193,8 @@ A row that is not proven has a ``reason`` code and the figures for one sentence:
   has ``later_reading_agrees``.
 - ``not_checking_or_savings``: ``account_type`` (the type the host gave).
 - ``unsourced_postings``: ``unsourced_count`` and the first date, ``unsourced_from``.
+- ``audit_chain_invalid``: no field. The audit hash chain of the ledger store has an error, so no row counts as
+  delivered by the bank connection and no month is proven from the feed.
 - ``opening_entry_unclear``: ``opening_entries`` (how many).
 - ``opening_conflict``: ``opening_balances`` (the different figures).
 - ``statement_available``: ``statement_ids``.
@@ -226,6 +228,7 @@ REASONS = (
     "unreadable_postings", "waiting_unreadable", "no_balance_after_month_end", "feed_incomplete", "waiting_in_review",
     "books_differ", "opening_unproven", "opening_differs", "opening_conflict", "statement_available",
     "opening_entry_unclear", "unsourced_postings", "no_feed_rows", "newest_reading_differs", "statement_differs",
+    "audit_chain_invalid",
 )
 #: Opening sources whose figure a bank or a statement gave for the day, rather than one computed back.
 _READING_GRADE_BASES = frozenset({"statement", "feed_reading"})
@@ -361,6 +364,8 @@ class _Books:
         #: (anything else), with the entry's ``opening-source``. Reversal pairs that ``_classify`` cancels are left out.
         self.kinds: list[tuple[date, str, str | None]] = []
         self.unreadable = False
+        #: The audit hash chain of the ledger store has an error (see ``_load_books``).
+        self.chain_invalid = False
         self.other_currency = False
         self.currency: str | None = None
         self.series = Series()
@@ -373,7 +378,13 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         return books
     marks = ",".join("?" for _ in ledgers)
     try:
-        with LedgerStore(store_path).connection() as conn:
+        store = LedgerStore(store_path)
+        # The mark comes from the audit record of the feed ingest. If the audit chain has an error, no record can be
+        # trusted, so no row counts as delivered by the bank connection. One check for each proof.
+        chain_valid = not store.verify_audit_chain()
+        for item in books.values():
+            item.chain_invalid = not chain_valid
+        with store.connection() as conn:
             for name, currency in conn.execute(f"SELECT name, currency FROM accounts WHERE name IN ({marks})", list(ledgers)):
                 books[str(name)].currency = str(currency or "") or None
             rows = conn.execute(
@@ -405,7 +416,7 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         postings[str(account)].append(_Posting(
             day, amount, str(source_id) if source_id else None, text("import-source") in _OPENING_SOURCES,
             text("opening-source"), None if source_id else text("reverses"), text("correction-of"),
-            text(FEED_PROVIDER_META)))
+            text(FEED_PROVIDER_META) if chain_valid else None))
     for ledger, item in books.items():
         item.kinds = [(posting.day, kind, posting.opening_source) for posting, kind in _classify(postings[ledger])]
         item.series = Series(item.items)
@@ -801,6 +812,8 @@ def _month(account_id: str, month: str, start: date, end: date, context: _Contex
         # A statement outranks the feed: reconcile the month from the statement.
         return _row(account_id, ledger, month, "statement_available",
                     statement_ids=sorted(statement_id for statement_id, _ in context.statements[end]))
+    if context.side.chain_invalid:
+        return _row(account_id, ledger, month, "audit_chain_invalid")
     # The bank day of the month end must be over, with a margin: read at least SAFETY_MARGIN_HOURS after the bank's
     # midnight that starts the next day.
     closed = day_closed_at(end, context.zone)
