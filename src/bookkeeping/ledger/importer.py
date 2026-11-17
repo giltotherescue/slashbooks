@@ -1366,6 +1366,10 @@ def check_store_integrity(store: LedgerStore) -> IntegrityResult:
         events = store.load_audit_events()
     except Exception as exc:
         return IntegrityResult(status="halt", message=f"Could not verify ledger store: {exc}")
+    # A ``feed-intake`` event records which provider sent which rows (``source_ids.FEED_INTAKE_EVENT``). It changes
+    # no ledger table and has no seal. It is in the chain checked above, but it is not a ledger write: it never
+    # makes a store an unfinished write, and it needs no seal.
+    events = [event for event in events if event.get("type") != "feed-intake"]
 
     if not events:
         return IntegrityResult(status="ok", message="Ledger store integrity confirmed.")
