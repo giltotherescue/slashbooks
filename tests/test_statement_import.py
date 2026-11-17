@@ -106,18 +106,76 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(with_kind["status"], "ready_to_confirm")
         self.assertEqual(with_kind["evidence"]["sign_votes"], {"running_balance": "standard"})
 
+    def test_payroll_outflows_do_not_invert_a_bank_deposit_file(self):
+        text = ("Date,Description,Amount\n"
+                "01/02/2026,ACH CLIENT ALPHA,12000.00\n"
+                "01/03/2026,STRIPE TRANSFER,4200.00\n"
+                "01/05/2026,GUSTO PAYROLL,-6500.00\n"
+                "01/19/2026,GUSTO PAYROLL,-6500.00\n"
+                "01/20/2026,RENT,-2400.00\n")
+        result = bankcsv.detect_layout(text, kind="asset")
+        self.assertNotEqual(result["layout"]["sign"], "inverted")
+        self.assertNotIn("descriptions", result["evidence"].get("sign_votes", {}))
+
+    def test_descriptions_alone_leave_the_sign_undecided(self):
+        text = ("Date,Description,Amount\n"
+                "01/02/2026,MOBILE DEPOSIT,500.00\n"
+                "01/03/2026,DEPOSIT CHECK,400.00\n"
+                "01/05/2026,RENT,-2400.00\n")
+        result = bankcsv.detect_layout(text, kind="asset")
+        self.assertIsNone(result["layout"]["sign"])
+        self.assertIn("sign", result["uncertain"])
+        self.assertEqual(result["evidence"]["sign_votes"], {"descriptions": "standard"})
+        self.assertIn("not enough to decide", result["evidence"]["sign"])
+        inverted = text.replace("500.00", "-500.00").replace("400.00", "-400.00")
+        again = bankcsv.detect_layout(inverted, kind="asset")
+        self.assertIsNone(again["layout"]["sign"])
+        self.assertIn("sign", again["uncertain"])
+
+    def test_refund_is_not_an_inflow_word_for_a_bank_account(self):
+        text = ("Date,Description,Amount\n"
+                "01/02/2026,CUSTOMER REFUND,-50.00\n"
+                "01/03/2026,CUSTOMER REFUND,-70.00\n"
+                "01/05/2026,CLIENT PAYMENT,900.00\n")
+        result = bankcsv.detect_layout(text, kind="asset")
+        self.assertNotIn("descriptions", result["evidence"].get("sign_votes", {}))
+
+    def test_a_balance_column_still_decides_with_descriptions(self):
+        text = ("Date,Description,Amount,Balance\n"
+                "01/02/2026,ACH CLIENT ALPHA,1000.00,6000.00\n"
+                "01/03/2026,STRIPE TRANSFER,500.00,6500.00\n"
+                "01/05/2026,GUSTO PAYROLL,-650.00,5850.00\n"
+                "01/19/2026,GUSTO PAYROLL,-650.00,5200.00\n"
+                "01/20/2026,RENT,-240.00,4960.00\n")
+        result = bankcsv.detect_layout(text, kind="asset")
+        self.assertEqual(result["layout"]["sign"], "standard")
+        self.assertEqual(result["evidence"]["sign_votes"], {"running_balance": "standard"})
+
+    def test_a_file_with_strong_inverted_evidence_is_still_inverted(self):
+        text = ("Date,Description,Amount,Balance\n"
+                "01/02/2026,ACH CLIENT ALPHA,-1000.00,6000.00\n"
+                "01/03/2026,STRIPE TRANSFER,-500.00,6500.00\n"
+                "01/05/2026,GUSTO PAYROLL,650.00,5850.00\n"
+                "01/19/2026,GUSTO PAYROLL,650.00,5200.00\n"
+                "01/20/2026,RENT,240.00,4960.00\n")
+        result = bankcsv.detect_layout(text, kind="asset")
+        self.assertEqual(result["layout"]["sign"], "inverted")
+        self.assertEqual(result["evidence"]["sign_votes"], {"running_balance": "inverted"})
+
     def test_wells_like_headerless_columns_are_inferred_with_warning(self):
         result = self.inspect("wells_like_headerless.csv")
-        self.assertEqual(result["status"], "ready_to_confirm")
+        # Descriptions alone do not decide the sign, so the file waits for a choice.
+        self.assertEqual(result["status"], "needs_mapping")
+        self.assertEqual(result["uncertain"], ["sign"])
         self.assertEqual(result["layout"]["columns"], {"date": 0, "amount": 1, "description": 4})
         self.assertTrue(any("no header row" in w for w in result["warnings"]))
 
     def test_amex_like_card_sign_is_inverted_for_a_card(self):
         self.assertEqual(self.inspect("amex_like_card.csv")["uncertain"], ["sign"])
+        # The payment words are only a supporting vote: a host must still ask.
         result = self.inspect("amex_like_card.csv", ledger_account=CARD)
-        self.assertEqual(result["layout"]["sign"], "inverted")
-        self.assertEqual(result["preview"][0]["amount"], "-49.99")
-        self.assertEqual(result["preview"][1]["amount"], "500.00")
+        self.assertEqual(result["uncertain"], ["sign"])
+        self.assertEqual(result["evidence"]["sign_votes"], {"descriptions": "inverted"})
 
     def test_card_with_separate_debit_and_credit_columns(self):
         result = self.inspect("card_debit_credit.csv")
@@ -577,8 +635,59 @@ class ImportTests(unittest.TestCase):
                          closing_balance="900.00")["statements"][0]
         self.assertTrue(any("check for missing or extra rows" in w for w in wrong["warnings"]))
 
+    def test_stated_by_defaults_to_person_and_can_name_an_agent(self):
+        from bookkeeping import coverage
+
+        self.map("card_debit_credit.csv", "card", account=CARD)
+        args = dict(period_start="2026-01-01", period_end="2026-01-31",
+                    opening_balance="1000.00", closing_balance="769.99")
+        default = self.imp("card_debit_credit.csv", "card", **args)
+        self.assertEqual(default["stated_by"], "person")
+        self.assertEqual((default["statements"][0]["statement"]["balance_source"],
+                          default["statements"][0]["statement"]["period_source"]), ("person", "person"))
+        agent = self.imp("card_debit_credit.csv", "card", stated_by="agent", **args)
+        self.assertEqual(agent["stated_by"], "agent")
+        record = agent["statements"][0]["statement"]
+        self.assertEqual((record["balance_source"], record["period_source"]), ("agent", "agent"))
+        [stored], _ = coverage.load_statements(self.entity)
+        self.assertEqual(str(stored.closing_balance), "769.99")
+        with self.assertRaises(si.StatementImportError):
+            self.imp("card_debit_credit.csv", "card", stated_by="robot", **args)
+
+    def test_one_stated_balance_is_agent_and_file(self):
+        self.map("chase_like_checking.csv", "chk")
+        stmt = self.imp("chase_like_checking.csv", "chk", period_start="2026-01-01", period_end="2026-01-31",
+                        opening_balance="100.00", stated_by="agent")["statements"][0]["statement"]
+        self.assertEqual(stmt["balance_source"], "agent_and_file")
+
+    def test_the_cli_option_stated_by_agent(self):
+        self.map("card_debit_credit.csv", "card", account=CARD)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            main(["statement", "import", str(fixture("card_debit_credit.csv")), "--entity", str(self.entity),
+                  "--profile", "card", "--dry-run", "--period-start", "2026-01-01", "--period-end",
+                  "2026-01-31", "--opening-balance", "1000.00", "--closing-balance", "769.99",
+                  "--stated-by", "agent"])
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["stated_by"], "agent")
+        self.assertEqual(result["statements"][0]["statement"]["balance_source"], "agent")
+
+    def test_a_record_saved_before_stated_by_still_reads(self):
+        from bookkeeping import coverage
+
+        self.map("card_debit_credit.csv", "card", account=CARD)
+        self.imp("card_debit_credit.csv", "card", period_start="2026-01-01", period_end="2026-01-31",
+                 opening_balance="1000.00", closing_balance="769.99")
+        [path] = [p for p in coverage.statements_dir(self.entity).glob("*.json")]
+        old = json.loads(path.read_text())
+        self.assertEqual(old["balance_source"], "person")
+        records, _ = coverage.load_statements(self.entity)
+        self.assertEqual(len(records), 1)
+        again = self.imp("card_debit_credit.csv", "card")["statements"][0]["statement"]
+        self.assertEqual(again["balance_source"], "person")
+
     def test_pending_rows_and_boundary_are_counted(self):
-        self.map("pending_rows.csv", "pending", boundary_date="2026-01-07", side="before")
+        self.map("pending_rows.csv", "pending", sign="standard", boundary_date="2026-01-07", side="before")
         counts = self.imp("pending_rows.csv", "pending")["statements"][0]["counts"]
         self.assertEqual(counts["pending_rows_skipped"], 1)
         self.assertEqual(counts["outside_boundary"], 1)
@@ -651,7 +760,7 @@ class ImportTests(unittest.TestCase):
         code, result = run("statement", "inspect", path)
         self.assertEqual((code, result["status"]), (0, "needs_mapping"))
         code, result = run("statement", "map", path, "--entity", str(self.entity), "--profile", "amex",
-                           "--ledger-account", "Liabilities:CreditCard:Amex")
+                           "--ledger-account", "Liabilities:CreditCard:Amex", "--sign", "inverted")
         self.assertEqual((code, result["status"]), (0, "saved"))
         self.assertEqual(result["statement_profile"]["sign"], "inverted")
         code, result = run("statement", "import", path, "--entity", str(self.entity))

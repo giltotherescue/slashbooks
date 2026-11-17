@@ -120,10 +120,14 @@ _PERIOD_LINE = re.compile(
     re.IGNORECASE,
 )
 
+# Words that usually mark money coming in. A word belongs here only when it is rarely an outflow. "payroll" is
+# left out: a business pays its payroll out of the same account that receives its deposits. "refund" is left out
+# of the bank-account lists because it goes both ways for a business (a customer refund is money out, a vendor
+# refund is money in). On a card, a refund is a credit, so the card list keeps it. A description is only a
+# supporting vote: see ``_detect_sign``.
 _INFLOW_WORDS = {
-    "any": re.compile(r"\b(deposit|refund|payroll|direct dep|interest paid)\b", re.IGNORECASE),
-    "asset": re.compile(r"\b(deposit|refund|payroll|direct dep|interest paid|transfer from)\b",
-                        re.IGNORECASE),
+    "any": re.compile(r"\b(deposit|direct dep|interest paid)\b", re.IGNORECASE),
+    "asset": re.compile(r"\b(deposit|direct dep|interest paid|transfer from)\b", re.IGNORECASE),
     "liability": re.compile(r"\b(payment thank you|autopay payment|payment received|"
                             r"online payment, thank you|refund|return)\b", re.IGNORECASE),
 }
@@ -752,6 +756,13 @@ def _detect_sign(body: list[list[str]], columns: dict[str, int], date_format: st
     if votes:
         evidence["sign_votes"] = votes
     choices = set(votes.values())
+    if set(votes) == {"descriptions"}:
+        # Words in descriptions never decide the money direction alone. The host must ask.
+        evidence["sign"] = ("Only the descriptions suggest " + (
+            "that positive amounts are money in" if choices == {"standard"}
+            else "that positive amounts are money out") +
+            ". Words in descriptions are not enough to decide the sign: ask which direction is right.")
+        return None, evidence, True
     if len(choices) == 1:
         choice = choices.pop()
         evidence["sign"] = "Decided by: " + ", ".join(sorted(votes)) + "."
