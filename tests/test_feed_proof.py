@@ -1361,5 +1361,28 @@ class IntakeOnlyFeedIngestTests(unittest.TestCase):
         code, text = self.add_account("Expenses:SyntheticTools")
         self.assertEqual(code, 0, text)
 
+    def test_a_feed_intake_record_is_not_audit_history_for_a_ledger_with_entries(self):
+        import sqlite3
+        # New books, an intake-only feed ingest, then account-add: the normal hosted flow still works.
+        self.ingest([self.row()], "--source", "plaid", "--intake-only")
+        self.assertEqual(self.add_account("Expenses:A")[0], 0)
+        # An entry that no ledger audit event covers: the guard refuses, with or without an intake record.
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("DELETE FROM audit_events")
+            conn.commit()
+        post(self.company, CHECKING, "2026-08-03", "5.00", other="Expenses:A", source=False)
+        with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            conn.execute("DELETE FROM audit_events")
+            conn.commit()
+        code, text = self.add_account("Expenses:B")
+        self.assertEqual(code, 1, text)
+        self.assertIn("audit history", text)
+        self.ingest([self.row("r9", "2026-08-09", 9.0)], "--source", "plaid", "--intake-only")
+        code, text = self.add_account("Expenses:B")
+        self.assertEqual(code, 1, text)
+        self.assertIn("audit history", text)
+        with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
+            self.assertIsNone(conn.execute("SELECT 1 FROM audit_events WHERE type = 'ledger-store-sealed'").fetchone())
+
 if __name__ == "__main__":
     unittest.main()

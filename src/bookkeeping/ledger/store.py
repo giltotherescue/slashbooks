@@ -234,6 +234,16 @@ def _hash_record(record_type: str, ts: str, payload_json: str, prev_hash: str) -
 _DISCARDABLE_AUDIT_TYPE = "feed-intake"
 
 
+
+def has_ledger_audit_history(conn: sqlite3.Connection) -> bool:
+    """Whether the store has an audit event of a ledger write or change.
+
+    A ``feed-intake`` event only records which provider sent which rows. It is not ledger history, so it does not
+    make a ledger with entries look as if its entries have a history.
+    """
+    return conn.execute("SELECT 1 FROM audit_events WHERE type != ? LIMIT 1", (_DISCARDABLE_AUDIT_TYPE,)).fetchone() is not None
+
+
 class LedgerStore:
     """SQLite-backed canonical ledger store."""
 
@@ -336,9 +346,7 @@ class LedgerStore:
             integrity = check_store_integrity(self)
             if integrity.status != "ok":
                 raise ValueError(f"Cannot repair legacy ledger: {integrity.message}")
-            if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
-                "SELECT 1 FROM audit_events LIMIT 1"
-            ).fetchone():
+            if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not has_ledger_audit_history(conn):
                 raise ValueError("Cannot repair populated legacy ledger without sealed audit history.")
             old_digest = self.content_digest(conn)
             backup = self._backup("legacy-v1")
@@ -372,9 +380,7 @@ class LedgerStore:
                 integrity = check_store_integrity(self)
                 if integrity.status != "ok":
                     raise ValueError(f"Cannot upgrade ledger: {integrity.message}")
-                if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
-                    "SELECT 1 FROM audit_events LIMIT 1"
-                ).fetchone():
+                if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not has_ledger_audit_history(conn):
                     raise ValueError("Cannot upgrade populated ledger without sealed audit history.")
                 old_digest = self.content_digest(conn)
                 backup = self._backup("schema-v1")

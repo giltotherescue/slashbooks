@@ -17,7 +17,7 @@ import time
 
 from .ledger.projections import render_store_ledger
 from .ledger import importer
-from .ledger.store import (LedgerStore, SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, FINANCIAL_KIND_COLUMN,
+from .ledger.store import (LedgerStore, has_ledger_audit_history, SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, FINANCIAL_KIND_COLUMN,
                            _DDL, parse_catalog_schema)
 from .entity import resolve_basis
 from .ledger.validator import validate
@@ -389,7 +389,7 @@ def _ledger(files, report, references, blockers):
             report["checks"]["canonical_schema"] = True
             require(not store.verify_audit_chain(), "audit_chain_invalid")
             require(not sql.execute("SELECT 1 FROM entries LIMIT 1").fetchone() or
-                    sql.execute("SELECT 1 FROM audit_events LIMIT 1").fetchone(), "audit_history_missing")
+                    has_ledger_audit_history(sql), "audit_history_missing")
             report["checks"]["audit_chain"] = True
             integrity = importer.check_store_integrity(store)
             require(integrity.status != "incomplete-write", "ledger_write_incomplete")

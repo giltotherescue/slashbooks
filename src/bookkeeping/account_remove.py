@@ -288,7 +288,7 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
     from .accrual.intake import canonical_hash
     from .engine_accounts import engine_owned_accounts
     from .ledger.importer import check_store_integrity
-    from .ledger.store import LedgerStore, default_store_path
+    from .ledger.store import LedgerStore, default_store_path, has_ledger_audit_history
     account = _check_name(account)
     root = Path(entity_path).resolve()
     loan = is_loan_account(account)
@@ -366,8 +366,8 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
 
 def _require_audit_history(conn: Any) -> None:
     """The guard of account-add: a ledger with entries must have audit history before its catalog changes."""
-    if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not conn.execute(
-            "SELECT 1 FROM audit_events LIMIT 1").fetchone():
+    from .ledger.store import has_ledger_audit_history
+    if conn.execute("SELECT 1 FROM entries LIMIT 1").fetchone() and not has_ledger_audit_history(conn):
         raise AccountRemoveError("audit_history_missing",
                                  "The account catalog cannot change on a ledger with entries and no audit history.",
                                  "Repair the audit history first.")
@@ -378,7 +378,7 @@ def apply(entity_path: Path | str, account: str, plan_hash: str | None = None,
     """Remove the account. An account that is not in the catalog returns already_applied."""
     from .accrual.enable import _seal
     from .ledger.importer import _entity_write_lock
-    from .ledger.store import LedgerStore, default_store_path
+    from .ledger.store import LedgerStore, default_store_path, has_ledger_audit_history
     root = Path(entity_path).resolve()
     account = _check_name(account)
     with _entity_write_lock(root, repair=False):
