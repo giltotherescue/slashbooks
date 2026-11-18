@@ -55,7 +55,17 @@ def post(company: Path, account: str, day: str, amount: str, *, other: str = "In
         # A bank feed row as ``books ingest --source banksync`` writes it: a namespaced ID and the provider mark.
         source_id, meta = f"banksync:t{next(_ids)}", (("feed-provider", "banksync"),) + meta
     meta = ((("source-id", source_id),) if source_id else ()) + meta
+    provider = dict(meta).get("feed-provider")
+    intake = None
+    if provider and source_id:
+        # As ``books ingest`` writes it: the digest on the entry and the same digest in a ``feed-intake`` record.
+        from bookkeeping.source_ids import _row_digest
+        digest = _row_digest({"id": source_id, "date": day, "amount": amount})
+        meta += (("feed-row-digest", digest),)
+        intake = {"provider": provider, "session": "synthetic", "rows": {source_id: digest}}
     with store.transaction() as conn:
+        if intake:
+            store.append_audit_event("feed-intake", intake, conn)
         store.insert_opens([Open(date(2026, 1, 1), name, (currency,)) for name in (account, other)], conn)
         store.insert_entries([Entry(
             date=date.fromisoformat(day), narration="Synthetic", meta=meta,
@@ -1111,7 +1121,7 @@ class FeedProofTests(unittest.TestCase):
         self.assertEqual((marks["banksync:y2"], marks["banksync:y3"]), ("banksync", None))
         # The record is in the hash-chained audit log of the ledger store.
         events = [event for event in LedgerStore(self.company / "ledger.sqlite").load_audit_events()
-                  if event["type"] == "feed-intake"]
+                  if event["type"] == "feed-intake" and event["payload"].get("session") != "synthetic"]
         self.assertEqual([sorted(event["payload"]["rows"]) for event in events], [["banksync:y2", "banksync:y3"]])
 
     def test_feed_intake_record_with_a_broken_audit_chain_gives_no_mark_and_no_proof(self):
@@ -1154,7 +1164,8 @@ class FeedProofTests(unittest.TestCase):
                                   "--source", "banksync")
         self.assertEqual(code, 1, text)
         store = LedgerStore(self.company / "ledger.sqlite")
-        self.assertEqual([e for e in store.load_audit_events() if e["type"] == "feed-intake"], [])
+        self.assertEqual([e for e in store.load_audit_events() if e["type"] == "feed-intake"
+                          and e["payload"].get("session") != "synthetic"], [])
         self.assertEqual(store.verify_audit_chain(), [])
         # A generic ingest of the same row, with the same ID and digest, gets no mark.
         staging.unlink()
@@ -1479,9 +1490,9 @@ class MigrationBoundaryTests(unittest.TestCase):
         post(b, CHECKING, "2026-08-04", "50.00", other="Income:Consulting", source_id="plaid:forged",
              meta=(("feed-provider", "plaid"),))
         store = LedgerStore(b / "ledger.sqlite")
-        with store.transaction() as conn:
-            store.append_audit_event("feed-intake", {"provider": "plaid", "session": "x",
-                                                     "rows": {"plaid:forged": "0" * 64}}, conn)
+        with store.transaction() as conn:  # Seal the forged content too, so the store is whole and valid.
+            store.append_audit_event("ledger-store-sealed", {"session_id": "forged", "entries": 1,
+                                                             "store_sha256": store.content_digest(conn)}, conn)
         self.assertEqual(store.verify_audit_chain(), [])
         self.cli("ledger", "mark-migrated", "--entity", str(b), expect=0)
         months = self.prove(b, "56.00")
@@ -1509,6 +1520,177 @@ class MigrationBoundaryTests(unittest.TestCase):
                      for (meta,) in conn.execute("SELECT metadata_json FROM entries WHERE source_id IS NOT NULL")]
         self.assertEqual(marks, ["plaid"])
         self.assertEqual(self.prove(d, "6.00")["2026-08"], "before_intake_boundary")
+
+
+class ProofRequiresIntakeTests(unittest.TestCase):
+    """A row counts as delivered only when the intake record backs its provider, source ID and digest."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.company = self.root / "books"
+        self.cli("entity", "init", str(self.company), "--name", "Synthetic Co", "--business-type", "consulting",
+                 "--cutover-date", "2026-01-01", expect=0)
+        for feed_id, account in (("acct_1", CHECKING), ("acct_2", "Liabilities:CreditCard")):
+            self.cli("entity", "bank-account-map", str(self.company), "--feed-account-id", feed_id,
+                     "--account", account, "--provider", "plaid", expect=0)
+
+    def cli(self, *argv, expect=None):
+        with redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            code = main(list(argv))
+        text = out.getvalue() + err.getvalue()
+        if expect is not None:
+            self.assertEqual(code, expect, text)
+        return code, text
+
+    def row(self, row_id, day="2026-08-03", amount=6.0, account="acct_1"):
+        return {"id": row_id, "accountId": account, "date": day, "amount": amount, "description": "feed row"}
+
+    def ingest(self, rows, *extra, expect=0):
+        path = self.root / "rows.json"
+        path.write_text(json.dumps(rows))
+        return self.cli("ingest", str(path), "--entity", str(self.company), "--no-feed-window", "--source", "plaid",
+                        *extra, expect=expect)
+
+    def confirm(self, source_id):
+        self.cli("queue", "propose", "--entity", str(self.company), "--source-id", source_id,
+                 "--category", "Income:Consulting", "--reasoning", "test", expect=0)
+        self.cli("queue", "confirm", "--entity", str(self.company), "--item", source_id.replace(":", "_"), expect=0)
+
+    def metas(self):
+        with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
+            return {sid: dict(json.loads(meta)) for sid, meta in
+                    conn.execute("SELECT source_id, metadata_json FROM entries WHERE source_id IS NOT NULL")}
+
+    def prove(self, balance):
+        record_feed_window(self.company, account=CHECKING, start=date(2026, 8, 1), end=date(2026, 10, 5), source="acct_1")
+        path = self.root / "readings.json"
+        path.write_text(json.dumps({"accounts": [{"account_id": "acct_1", "account_type": "checking",
+                                                  "currency": "USD", "time_zone": "UTC",
+                                                  "readings": [reading(balance)]}]}))
+        code, text = self.cli("balance", "prove", "--entity", str(self.company), "--input", str(path),
+                              "--as-of", "2026-10-20")
+        self.assertEqual(code, 0, text)
+        return {row["month"]: row["reason"] for row in json.loads(text)["months"]}
+
+    def forge(self, meta, *, seal):
+        """Insert an entry that no feed ingest wrote, with the given metadata; ``seal`` makes the store whole."""
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.insert_entries([Entry(
+                date=date(2026, 8, 4), narration="forged", meta=(("source-id", "plaid:forged"),) + meta,
+                postings=(Posting(CHECKING, Decimal("50.00")), Posting("Income:Consulting", Decimal("-50.00"))))], conn)
+            if seal:
+                store.append_audit_event("ledger-store-sealed", {"session_id": "forged", "entries": 1,
+                                                                 "store_sha256": store.content_digest(conn)}, conn)
+
+    def test_an_entry_with_a_mark_and_no_intake_record_gives_no_proof(self):
+        self.ingest([self.row("r1")])
+        self.confirm("plaid:r1")
+        self.assertEqual(self.prove("6.00")["2026-08"], "proven")
+        # The reviewer's reproduction: a direct insert with the mark. The store no longer matches its seal.
+        self.forge((("feed-provider", "plaid"),), seal=False)
+        self.assertEqual(self.prove("56.00")["2026-08"], "ledger_seal_invalid")
+
+    def test_a_sealed_forged_entry_needs_an_intake_record_and_a_digest(self):
+        self.ingest([self.row("r1")])
+        self.confirm("plaid:r1")
+        # With the store sealed, a mark with no digest, and a digest that no intake record holds, do not count.
+        self.forge((("feed-provider", "plaid"), ("feed-row-digest", "0" * 64)), seal=True)
+        self.assertEqual(self.prove("56.00")["2026-08"], "unsourced_postings")
+
+    def test_the_hosted_flow_proves(self):
+        self.ingest([self.row("r1")], "--intake-only")
+        self.cli("entity", "account-add", str(self.company), "--account", "Expenses:SyntheticTools", expect=0)
+        self.confirm("plaid:r1")
+        meta = self.metas()["plaid:r1"]
+        self.assertEqual(meta["feed-provider"], "plaid")
+        self.assertRegex(meta["feed-row-digest"], "^[0-9a-f]{64}$")
+        self.assertEqual(self.prove("6.00")["2026-08"], "proven")
+
+    def test_a_split_and_a_transfer_pair_carry_their_digests_and_still_count(self):
+        self.ingest([self.row("s1", "2026-08-03", -100.0),
+                     self.row("t1", "2026-08-05", -50.0), self.row("t2", "2026-08-05", 50.0, account="acct_2")])
+        self.cli("queue", "propose-split", "--entity", str(self.company), "--source-id", "plaid:s1",
+                 "--posting", "Expenses:Software=60.00", "--posting", "Expenses:Meals=40.00", "--reasoning", "test",
+                 expect=0)
+        self.cli("queue", "confirm", "--entity", str(self.company), "--item", "plaid_s1", expect=0)
+        code, text = self.cli("queue", "propose-transfer", "--entity", str(self.company), "--source-id", "plaid:t1",
+                              "--source-id", "plaid:t2", "--reasoning", "test", "--json")
+        self.assertEqual(code, 0, text)
+        item = json.loads(text)
+        self.cli("queue", "confirm-transfer", "--entity", str(self.company), "--item", item["source_id"],
+                 expect=0)
+        metas = self.metas()
+        self.assertEqual(len(metas["plaid:t1"]["feed-row-digest"].split(",")), 2)  # Both rows of the pair.
+        from bookkeeping.feed_proof import _load_books
+        kinds = sorted((day.isoformat(), kind) for day, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds)
+        self.assertEqual([kind for _, kind in kinds].count("source"), len(kinds), kinds)
+
+    def test_a_transfer_pair_on_two_days_counts_on_both_accounts_and_a_forged_pair_does_not(self):
+        self.ingest([self.row("u1", "2026-08-06", -20.0), self.row("u2", "2026-08-08", 20.0, account="acct_2")])
+        code, text = self.cli("queue", "propose-transfer", "--entity", str(self.company), "--source-id", "plaid:u1",
+                              "--source-id", "plaid:u2", "--reasoning", "test", "--json")
+        self.assertEqual(code, 0, text)
+        self.cli("queue", "confirm-transfer", "--entity", str(self.company), "--item", json.loads(text)["source_id"],
+                 expect=0)
+        metas = self.metas()
+        self.assertEqual([len(metas[sid]["feed-row-digest"].split(",")) for sid in ("plaid:u1", "plaid:u2")], [1, 1])
+        from bookkeeping.feed_proof import _load_books
+        books = _load_books(self.company, [CHECKING, "Liabilities:CreditCard"])
+        self.assertEqual([kind for _, kind, _ in books[CHECKING].kinds], ["source"])
+        self.assertEqual([kind for _, kind, _ in books["Liabilities:CreditCard"].kinds], ["source"])
+        # A forged entry that names a real row as its pair, with its own digest that no record holds, does not count.
+        self.forge((("feed-provider", "plaid"), ("feed-row-digest", "0" * 64), ("paired-source-id", "plaid:u1")),
+                   seal=True)
+        kinds = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds]
+        self.assertEqual(sorted(kinds), ["none", "source"])
+
+    def test_a_re_ingest_after_a_failed_ingest_gets_its_mark_from_the_new_record(self):
+        row = self.row("r1")
+        staging = self.company / "staging" / "pending-categorization.json"
+        staging.parent.mkdir(exist_ok=True)
+        staging.write_text('{"not": "a list"}')
+        self.ingest([row], expect=1)
+        staging.unlink()
+        self.ingest([row])
+        self.confirm("plaid:r1")
+        self.assertEqual(self.prove("6.00")["2026-08"], "proven")
+
+    def test_an_edited_row_after_the_ingest_loses_the_mark_and_the_proof(self):
+        self.ingest([self.row("r1")])
+        self.confirm("plaid:r1")
+        import sqlite3
+        # A different digest on the entry than the intake record holds (the row was not what the feed sent).
+        with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
+            pass
+        store = LedgerStore(self.company / "ledger.sqlite")
+        with contextlib.closing(sqlite3.connect(store.path)) as conn:
+            raw, = conn.execute("SELECT metadata_json FROM entries WHERE source_id = 'plaid:r1'").fetchone()
+            meta = [[k, ("0" * 64 if k == "feed-row-digest" else v)] for k, v in json.loads(raw)]
+            conn.execute("UPDATE entries SET metadata_json = ? WHERE source_id = 'plaid:r1'", (json.dumps(meta),))
+            conn.commit()
+        with store.transaction() as conn:  # Seal the edit, so only the digest check can refuse it.
+            store.append_audit_event("ledger-store-sealed", {"session_id": "edit", "entries": 0,
+                                                             "store_sha256": store.content_digest(conn)}, conn)
+        self.assertEqual(self.prove("6.00")["2026-08"], "unsourced_postings")
+
+    def test_rows_before_a_migration_boundary_still_do_not_count_and_new_rows_do(self):
+        import shutil
+        self.ingest([self.row("r1")])
+        self.confirm("plaid:r1")
+        b = self.root / "b"
+        shutil.copytree(self.company, b)
+        self.cli("ledger", "mark-migrated", "--entity", str(b), expect=0)
+        from bookkeeping.feed_proof import _load_books
+        self.assertEqual([kind for _, kind, _ in _load_books(b, [CHECKING])[CHECKING].kinds], ["none"])
+        self.company = b
+        self.ingest([self.row("r2", "2026-09-05", 4.0)])
+        self.confirm("plaid:r2")
+        side = _load_books(b, [CHECKING])[CHECKING]
+        self.assertEqual(sorted((d.isoformat(), kind) for d, kind, _ in side.kinds),
+                         [("2026-08-03", "none"), ("2026-09-05", "source")])
 
 if __name__ == "__main__":
     unittest.main()

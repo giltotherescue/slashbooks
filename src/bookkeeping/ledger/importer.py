@@ -1342,7 +1342,7 @@ def check_integrity(entity: Entity) -> IntegrityResult:
     return check_store_integrity(LedgerStore(store_path))
 
 
-def check_store_integrity(store: LedgerStore) -> IntegrityResult:
+def check_store_integrity(store: LedgerStore, *, chain_errors: list[str] | None = None) -> IntegrityResult:
     """Verify audit history and the latest seal using the supplied store.
 
     The caller controls connection policy, including read-only access. This
@@ -1351,10 +1351,12 @@ def check_store_integrity(store: LedgerStore) -> IntegrityResult:
 
     Returns ``ok`` for a matching seal without pending writes,
     ``incomplete-write`` for a missing seal or subsequent write events, and
-    ``halt`` for a broken chain, unreadable history, or invalid seal digest.
+    ``halt`` for a broken chain, unreadable history, or invalid seal digest. A caller that just verified the
+    chain passes its errors as ``chain_errors`` so the chain is not verified twice.
     """
     try:
-        chain_errors = store.verify_audit_chain()
+        if chain_errors is None:
+            chain_errors = store.verify_audit_chain()
         if chain_errors:
             return IntegrityResult(
                 status="halt",
