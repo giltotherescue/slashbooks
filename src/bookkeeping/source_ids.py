@@ -56,18 +56,28 @@ class RowIds:
 
     A new row ID hashes the catalog row id of the account (``account-id:<id>``), which a rename keeps and a new
     account with the same name does not get. Rows imported before this rule have IDs that hash an account name.
-    ``pick`` gives such an earlier ID only when the row positively belongs to this catalog account. The owner comes
-    only from records written when the row arrived, which the rename keeps on the same catalog row: the postings of
-    the row's entry, the statement import record of its ``statementId``, and the ``account`` of a held record. Each
-    record that exists must name this account; a mapping or another setting never counts. An earlier ID with no
-    such record, or with records that disagree, is not used: the row gets a new ID and goes to review, never to
-    ``already_imported``. Without a ledger store, or for a name outside the catalog, the ID hashes the name.
+    ``pick`` uses such an earlier ID in two cases:
+
+    * The name was never renamed and no other account used it (no ``account-renamed`` event names it): the earlier
+      ID matches whenever the company holds it, exactly as before row ids.
+    * Otherwise the row must positively belong to this catalog account. The owner comes only from records written
+      when the row arrived, which the rename keeps on the same catalog row: the postings of the row's entry, the
+      statement import record of its ``statementId``, the ``account`` of a held record, and the staged rows that an
+      ``account-renamed`` event of this account lists (``pending_source_ids``). Each record that exists must name
+      this account; a mapping or another setting never counts.
+
+    An earlier ID with no such record, or with records that disagree, is not used: the row gets a new ID and goes
+    to review, never to ``already_imported``. Without a ledger store, or for a name outside the catalog, the ID
+    hashes the name.
     """
 
     def __init__(self, entity_path: Any, ledger_account: str) -> None:
         from .ledger.store import LedgerStore, default_store_path
         self.entity_path = Path(entity_path)
         self.basis, self.legacy, self.catalog_id = ledger_account, (), None
+        self._renamed_names: set[str] = set()
+        self._renamed_rows: dict[str, list[bool]] = {}
+        self._known: set[str] = set()
         self._facts: dict[str, list[tuple[str, frozenset[int]]]] | None = None
         self._store = None
         path = default_store_path(self.entity_path)
@@ -83,16 +93,41 @@ class RowIds:
         self._store = store
         self.catalog_id = int(row[0])
         self.basis = f"account-id:{self.catalog_id}"
-        self.legacy = tuple(name for name, _ in rename_lineage(store.load_audit_events(), ledger_account))
+        events = store.load_audit_events()
+        lineage = rename_lineage(events, ledger_account)
+        own = {until for _, until in lineage if until is not None}
+        self.legacy = tuple(name for name, _ in lineage)
+        for event in events:
+            if event.get("type") != "account-renamed":
+                continue
+            payload = event.get("payload") or {}
+            for pair in payload.get("accounts") or []:
+                if isinstance(pair, list):
+                    self._renamed_names.update(part for part in pair if isinstance(part, str))
+            for source_id in payload.get("pending_source_ids") or []:
+                if isinstance(source_id, str):
+                    for spelling in source_id_variants(source_id):
+                        self._renamed_rows.setdefault(spelling, []).append(event["id"] in own)
 
     def pick(self, make: Any) -> str:
         """``make(account_part)`` builds an ID. The earlier ID of a row that belongs to this account, else the new one."""
         new = make(self.basis)
         for name in self.legacy:
             old = make(name)
-            if old != new and self.owned(old):
+            if old == new:
+                continue
+            if name not in self._renamed_names:
+                if self.known(old):  # A name only this account ever had: as before row ids.
+                    return old
+            elif self.owned(old):
                 return old
         return new
+
+    def known(self, source_id: str) -> bool:
+        """True when the company holds the row: in the ledger or in a staging file."""
+        self._load()
+        spellings = source_id_variants(source_id)
+        return bool(spellings & self._known) or any(self._store.source_exists(s) for s in spellings)
 
     def owned(self, source_id: str) -> bool:
         """True when at least one arrival record names the row's account, and every one names this account."""
@@ -107,6 +142,9 @@ class RowIds:
         facts: list[tuple[str, frozenset[int]]] = []
         for spelling in spellings:
             facts += self._facts.get(spelling, [])
+            # A staged row that a rename listed belongs to the account that the event renamed.
+            facts += [("rename", frozenset({self.catalog_id}) if mine else frozenset({-1}))
+                      for mine in self._renamed_rows.get(spelling, [])]
         marks = ",".join("?" for _ in spellings)
         with self._store.connection() as conn:
             posted = frozenset(int(ident) for (ident,) in conn.execute(
@@ -152,6 +190,13 @@ class RowIds:
                 self._imports.setdefault(record["statement_id"], set()).add(str(record.get("account") or ""))
         self._facts = {}
         staging = self.entity_path / "staging"
+        try:
+            seen = json.loads((staging / "seen-ids.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            seen = []
+        for value in seen if isinstance(seen, list) else []:
+            if isinstance(value, str) and value:
+                self._known |= source_id_variants(value)
         for name, field, held in (("pending.json", "id", False), ("pending-categorization.json", "id", False),
                                   ("duplicate-candidates.json", "source_id", True),
                                   ("context-history.json", "source_id", True)):
@@ -165,6 +210,7 @@ class RowIds:
                 value = item.get(field) if isinstance(item, dict) else None
                 if not isinstance(value, str) or not value:
                     continue
+                self._known |= source_id_variants(value)
                 facts = self._row_facts(item.get("transaction") if held else item)
                 if held and "account" in item:
                     facts.append(("held", self._owner(item.get("account"))))

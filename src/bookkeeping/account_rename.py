@@ -263,6 +263,31 @@ def _staged_refs(documents: dict[str, Any], old: str) -> list[str]:
     return refs
 
 
+def _pending_rows(documents: dict[str, Any], events: list[dict[str, Any]], old: str) -> list[str]:
+    """Source IDs of the staged rows that this account holds: CSV and statement rows whose ``accountId`` is the
+    account (or a child). A row that an earlier rename already listed, or whose statement import record names
+    another account, belongs to another account that had this name, and is left out."""
+    claimed = {source_id for event in events if event.get("type") == EVENT
+               for source_id in (event.get("payload") or {}).get("pending_source_ids") or []}
+    imports: dict[str, set[Any]] = {}
+    for name, document in documents.items():
+        if name.startswith("ingestion/statements/") and isinstance(document, dict) \
+                and isinstance(document.get("statement_id"), str):
+            imports.setdefault(document["statement_id"], set()).add(document.get("account"))
+    found = set()
+    for name in ("staging/pending.json", "staging/pending-categorization.json"):
+        rows = documents.get(name)
+        for row in rows if isinstance(rows, list) else []:
+            if not (isinstance(row, dict) and renamed(row.get("accountId"), old, old) is not None
+                    and isinstance(row.get("id"), str) and row["id"]) or row["id"] in claimed:
+                continue
+            recorded = imports.get(row.get("statementId"), set())
+            if any(renamed(account, old, old) is None for account in recorded):
+                continue
+            found.add(row["id"])
+    return sorted(found)
+
+
 def rename_lineage(events: list[dict[str, Any]], account: str) -> list[tuple[str, int | None]]:
     """The names of *account* through ``account-renamed`` events: ``(name, last event id with that name)``.
 
@@ -575,7 +600,8 @@ def _context(root: Path, old: str, new: str) -> dict[str, Any]:
             "entries_changed": 0, "amounts_changed": 0,
             "files": sorted(plans), "ledger_records": sorted({c.split(":", 1)[0] for c in meta_changes}),
             "display_name_cleared": cleared, "locked_months_with_postings": locked,
-            "tax_line_changes": _tax_line_changes(documents, pairs)}
+            "tax_line_changes": _tax_line_changes(documents, pairs),
+            "pending_source_ids": _pending_rows(documents, events, old)}
     body["request_hash"] = canonical_hash({"kind": KIND, "request": request})
     body["plan_hash"] = canonical_hash(body)
     return {"body": body, "plans": plans, "pairs": pairs, "done": done, "pending": pending is not None,
@@ -688,6 +714,9 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
                 "from": old, "to": new, "accounts": [list(pair) for pair in pairs],
                 "postings": effects["postings_relabelled"], "balance_assertions": effects["balance_assertions_relabelled"],
                 "files": effects["files"], "display_name_cleared": effects["display_name_cleared"],
+                # Staged rows that this account holds now. Their IDs can hash the old name, so the event keeps a
+                # durable owner for them (``source_ids.RowIds``).
+                "pending_source_ids": effects["pending_source_ids"],
                 "request_hash": body["request_hash"], "plan_hash": body["plan_hash"]}, conn)
             # The pending record blocks every ledger writer from the old names until the files name the new one.
             store.set_meta(RENAME_PENDING_KEY, json.dumps({"from": old, "to": new, "accounts": [list(p) for p in pairs],

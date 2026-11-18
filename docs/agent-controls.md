@@ -186,11 +186,15 @@ mapped account (`account-id:<id>`), not its name. A rename keeps the row id, so 
 import of the same file after a rename gives the same IDs. A new account that
 takes an earlier name gets a new row id, so its rows never match the rows of the
 renamed account. A row imported before this rule has an ID that hashes an account
-name. The import finds such a row by the names of the same account (its current
-name and its earlier names in the `account-renamed` events) and keeps its ID, but
-only when records written at arrival show that the row belongs to this account:
-the postings of its entry, the statement import record of its `statementId`, or
-a held record. The rename keeps these records on the same catalog account. A
+name. When no `account-renamed` event names the account's name (it was never
+renamed and no other account used it), such a row matches exactly as before.
+Otherwise the import finds the row by the names of the same account (its current
+name and its earlier names) and keeps its ID only when records written at arrival
+show that the row belongs to this account: the postings of its entry, the
+statement import record of its `statementId`, a held record, or the
+`pending_source_ids` of an `account-renamed` event of this account. The rename
+writes that list: the staged CSV and statement rows that the account holds when
+it is renamed. The rename keeps the other records on the same catalog account. A
 mapping or another setting never decides the owner. When no such record exists,
 or the records disagree, the row gets a new ID and goes to review; it is never
 skipped as already imported.

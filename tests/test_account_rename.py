@@ -552,25 +552,53 @@ class AccountRenameTests(unittest.TestCase):
         # The mapping now names Second; a mapping is a setting, so it never makes Main's rows Second's.
         self.assertEqual(self.amex("Liabilities:CreditCard:Second"), 9, "Second queues all 9 rows and skips none")
 
+    def test_a_never_renamed_account_reimports_its_pending_legacy_rows_as_before(self):
+        card = "Liabilities:CreditCard:Ops"
+        add_account(self.root, card, open_date="2020-01-01", financial_kind="credit_card")
+        self.assertEqual(self.amex(card, old_rule=True), 9)
+        self.assertEqual(self.amex(card), 0, "the 9 pending rows are found; none is queued again")
+
+    def test_a_rename_keeps_the_owner_of_pending_legacy_rows(self):
+        card = "Liabilities:CreditCard:Ops"
+        add_account(self.root, card, open_date="2020-01-01", financial_kind="credit_card")
+        self.assertEqual(self.amex(card, old_rule=True), 9)
+        _, done = self.rename_applied(card, "Liabilities:CreditCard:Main")
+        [event] = [e for e in self.store.load_audit_events() if e["type"] == "account-renamed"]
+        self.assertEqual(len(event["payload"]["pending_source_ids"]), 9)
+        self.assertEqual(self.amex("Liabilities:CreditCard:Main"), 0, "the 9 pending rows are found; none is queued again")
+
     def test_an_earlier_id_whose_records_disagree_goes_to_review(self):
         from bookkeeping import statement_import as si
         add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
         add_account(self.root, "Assets:Bank:Other", open_date="2020-01-01", financial_kind="bank")
         with mock.patch.object(si, "RowIds", self.name_ids()):
             self.assertEqual(self.statement("op", OPERATING)["queued_for_review"], 6)
+        main = "Assets:Bank:Main"
+        self.rename_applied(OPERATING, main)
         pending = read_json(self.root / "staging" / "pending-categorization.json")
         # A held record names another account for one row: the owner of that row is ambiguous.
         write_json(self.root / "staging" / "duplicate-candidates.json",
                    [{"source_id": pending[0]["id"], "status": "kept", "account": "Assets:Bank:Other",
                      "transaction": pending[0]}])
-        counts = self.statement("op", OPERATING, 2)
+        counts = self.statement("op", main, 2)
         self.assertEqual(counts["already_imported"], 5, counts)
         self.assertEqual(counts.get("queued_for_review", 0) + counts.get("held_for_review", 0), 1, counts)
-        # No arrival record at all (the import records are gone): every earlier ID goes to review.
+
+    def test_an_earlier_id_of_a_renamed_name_with_no_owner_record_goes_to_review(self):
+        from bookkeeping import statement_import as si
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        with mock.patch.object(si, "RowIds", self.name_ids()):
+            self.assertEqual(self.statement("op", OPERATING)["queued_for_review"], 6)
+        # Only seen-ids.json still knows the rows: no posting, no staged row, no import record.
+        pending = read_json(self.root / "staging" / "pending-categorization.json")
+        write_json(self.root / "staging" / "seen-ids.json", [row["id"] for row in pending])
+        write_json(self.root / "staging" / "pending-categorization.json", [])
         for path in (self.root / "ingestion" / "statements").rglob("*.json"):
             path.unlink()
-        counts = self.statement("op", OPERATING, 3)
-        self.assertEqual(counts.get("already_imported", 0), 0, counts)
+        main = "Assets:Bank:Main"
+        self.rename_applied(OPERATING, main)
+        counts = self.statement("op", main, 2)
+        self.assertEqual((counts.get("already_imported", 0), counts["queued_for_review"]), (0, 6), counts)
 
     def test_reconciliation_waits_for_an_unfinished_rename(self):
         from bookkeeping.reconcile import reconcile
