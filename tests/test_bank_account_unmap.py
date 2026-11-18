@@ -164,8 +164,9 @@ class BankAccountUnmapTests(Base):
     def unmap(self, feed_id="acct_1"):
         return run_cli(["entity", "bank-account-unmap", str(self.root), "--feed-account-id", feed_id])
 
-    def row(self, row_id, day="2026-08-03", amount=6.0, **extra):
-        return {"id": row_id, "accountId": "acct_1", "date": day, "amount": amount, "description": "feed row", **extra}
+    def row(self, row_id, day="2026-08-03", amount=6.0, account=None, **extra):
+        return {"id": row_id, "accountId": account or extra.pop("accountId", "acct_1"), "date": day, "amount": amount,
+                "description": "feed row", **extra}
 
     def ingest(self, rows):
         path = Path(self.tmp.name) / "rows.json"
@@ -315,6 +316,71 @@ class BankAccountUnmapTests(Base):
         add_account(self.root, "Assets:Bank:Idle", open_date="2026-01-01", financial_kind="bank")
         code, out, err = run_cli(["readiness", "--entity", str(self.root), "--period", "2026-08", "--as-of", "2026-10-20"])
         self.assertNotIn("Assets:Bank:Idle", out)
+
+    def readiness_codes(self, account, period="2026-08"):
+        code, out, err = run_cli(["readiness", "--entity", str(self.root), "--period", period, "--as-of", "2026-10-20"])
+        document = json.loads(out)
+        return sorted({item["code"] for item in document["blockers"] if account in (item.get("refs") or [])})
+
+    def test_an_unmapped_account_without_a_kind_or_with_only_a_balance_is_still_required(self):
+        add_account(self.root, "Assets:Bank:NoKind", open_date="2026-01-01")  # No financial kind.
+        self.mapping("acct_3", "Assets:Bank:NoKind")
+        self.assertEqual(self.ingest([{**self.row("k1", "2026-08-03", 9.0), "accountId": "acct_3"}])[0], 0)
+        self.confirm("plaid:k1")
+        before = self.readiness_codes("Assets:Bank:NoKind")
+        self.assertTrue(before)
+        self.assertEqual(run_cli(["entity", "bank-account-unmap", str(self.root), "--feed-account-id", "acct_3"])[0], 0)
+        self.assertLessEqual(set(before), set(self.readiness_codes("Assets:Bank:NoKind")))
+        # September: no posting, but the account still holds 9.00, so it is still required.
+        self.assertTrue(self.readiness_codes("Assets:Bank:NoKind", "2026-09"))
+        # An account with no posting and a zero balance is not required.
+        add_account(self.root, "Assets:Bank:Idle", open_date="2026-01-01", financial_kind="bank")
+        code, out, err = run_cli(["readiness", "--entity", str(self.root), "--period", "2026-09", "--as-of", "2026-10-20"])
+        self.assertNotIn("Assets:Bank:Idle", out)
+
+    def test_a_relink_of_the_same_books_account_under_a_new_feed_id_needs_the_cutover_decision(self):
+        history = [self.row("h1", "2026-07-10", 100.0), self.row("p1", "2026-08-10", 5.0)]
+        self.assertEqual(self.ingest(history)[0], 0)
+        self.confirm("plaid:p1")
+        self.assertEqual(self.unmap()[0], 0)
+        code, out, err = run_cli(["entity", "bank-account-map", str(self.root), "--feed-account-id", "acct_1b",
+                                  "--account", CHECKING, "--provider", "plaid"])
+        self.assertEqual(code, 1, (out, err))
+        self.assertIn("cutover date 2026-08-01", err)
+        self.mapping("acct_1b", CHECKING, "--restore-cutover")
+        relinked = [self.row("h1b", "2026-07-10", 100.0, accountId="acct_1b"),
+                    self.row("p1b", "2026-08-10", 5.0, accountId="acct_1b")]
+        self.assertEqual(self.ingest(relinked)[0], 0)
+        staged = self.root / "staging" / "pending-categorization.json"
+        waiting = [row["id"] for row in json.loads(staged.read_text())] if staged.exists() else []
+        self.assertNotIn("plaid:h1b", waiting)       # The history row before the cutover is not queued or posted.
+        self.assertNotIn("plaid:h1b", self.entry_ids())
+        # A second feed account for a books account that is mapped with a cutover needs the decision too.
+        code, out, err = run_cli(["entity", "bank-account-map", str(self.root), "--feed-account-id", "acct_1c",
+                                  "--account", CHECKING, "--provider", "plaid"])
+        self.assertEqual(code, 1, (out, err))
+
+    def test_a_host_prepared_snapshot_skips_the_rows_of_an_unmapped_account_too(self):
+        from unittest import mock
+        add_account(self.root, SAVINGS, open_date="2026-01-01", financial_kind="bank")
+        self.mapping("acct_2", SAVINGS)
+        self.assertEqual(self.unmap()[0], 0)
+        rows = [self.row("a", "2026-08-03", 1.0, accountId="acct_1"), self.row("b", "2026-08-03", 2.0, accountId="acct_2")]
+        path = Path(self.tmp.name) / "feed.json"
+        path.write_text(json.dumps({"transactions": rows}))
+        from bookkeeping.cli import main
+        import contextlib
+        import io
+        out = io.StringIO()
+        prepared = [{**row, "id": "plaid:" + row["id"]} for row in rows]
+        with mock.patch("bookkeeping.preparation_runtime.prepared_ingest_transactions", return_value=(prepared, False)):
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+                code = main(["ingest", str(path), "--entity", str(self.root), "--source", "plaid", "--no-feed-window"])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertIn("skipped, feed account unmapped: acct_1: 1 row(s)", out.getvalue())
+        self.assertEqual(self.entry_ids(), [])
+        staged = json.loads((self.root / "staging" / "pending-categorization.json").read_text())
+        self.assertEqual([row["id"] for row in staged], ["plaid:b"])
 
 
 if __name__ == "__main__":

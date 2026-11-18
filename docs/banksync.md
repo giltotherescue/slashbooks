@@ -209,20 +209,25 @@ unmap, because confirming it later would have no mapping to post to. Confirm, re
 or remove those rows first. The command writes the audit event `bank-account-unmapped`
 with the whole mapping (ledger account, provider, institution, last four digits, type,
 currency, cutover date and history setting) and seals the store. The feed windows and
-source coverage of the feed account stay. A bank account that has postings in the
-review period still needs its source coverage after the unmap: readiness asks for it
-whether or not a mapping names the account.
+source coverage of the feed account stay. A bank account still needs its source coverage
+after the unmap in each period where it has a posting or a non-zero balance: readiness asks
+for it whether or not a mapping names the account, also for an account with no financial
+kind that an unmap event names.
+A host-prepared snapshot skips the rows of an unmapped feed account in the same way.
 
 Map the feed account again with `bank-account-map`, to the same or another account: a
 row that was imported before is skipped as a duplicate, because source IDs still
-deduplicate. When the unmap record has a cutover date, `bank-account-map` refuses
-unless you decide about it: give `--cutover-date`, `--clear-cutover-date`, or
+deduplicate. When the unmap record, or a live mapping, of the same feed account or of the
+same books account has a cutover date (a provider re-link gives the same books account a
+new feed account ID), `bank-account-map` refuses unless you decide about it: give `--cutover-date`, `--clear-cutover-date`, or
 `--restore-cutover` (the cutover date and the history setting of the unmap record).
 A mapping without the cutover would import the history rows again as new rows. Rows
 stored as context only are skipped on a later sync only while the mapping keeps the
 cutover date and `context_only`; moving or clearing the cutover date releases them to
 the normal import path, as described above. An account that nothing uses can then go
-with `books entity account-remove`.
+with `books entity account-remove`. The engine does not yet match history rows of a re-linked
+account to the new feed rows as duplicate candidates; `--restore-cutover` keeps the new
+feed's history rows before the cutover out of the books instead.
 
 **Keep earlier rows as history only.** When the books already hold the account's
 history through the cutover date from an earlier source, a person can set

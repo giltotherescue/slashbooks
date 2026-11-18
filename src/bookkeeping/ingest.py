@@ -355,7 +355,7 @@ def run(args: argparse.Namespace) -> int:
             is_banksync = args.source == "banksync" or verified_banksync
         provider = feed_provider(args.source, getattr(args, "feed_provider", None), is_banksync)
         skipped_unmapped: dict[str, int] = {}
-        if provider and prepared is None:
+        if provider:
             # A feed account that a person unmapped on purpose (bank-account-unmap) is skipped and reported. A feed
             # account that was never mapped still refuses the whole ingest below.
             from .entity import unmapped_feed_account_ids

@@ -631,14 +631,23 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     first_posting: dict[str, date] = {}
     account_catalog: set[str] = set()
     bank_activity: set[str] = set()
+    bank_accounts_held: set[str] = set()
     if store_path.is_file():
         store = LedgerStore(store_path)
         account_catalog = store.load_account_names()
-        # A bank account (financial kind ``bank``) with a posting in the period needs its coverage, whether or not a
-        # mapping names it now. An unmapped feed account must not drop its months from the review.
+        # An account that holds bank money needs its coverage in a period where it has a posting or a balance, whether
+        # or not a mapping names it now. These accounts: every one with a bank, card or cash kind (the starter names
+        # count when the store has no kinds), and every one that a ``bank-account-unmapped`` event names, also an
+        # account with no kind. An unmapped feed account must not drop its months from the review.
+        from .account_remove import BANK_KINDS
         from .entity import _STARTER_FINANCIAL_KINDS
         kinds = store.load_financial_kinds()
-        bank_accounts = {name for name in account_catalog if (kinds.get(name) or _STARTER_FINANCIAL_KINDS.get(name)) == "bank"}
+        bank_accounts = {name for name in account_catalog if (kinds.get(name) or _STARTER_FINANCIAL_KINDS.get(name)) in BANK_KINDS}
+        for event in store.load_audit_events():
+            payload = event.get("payload")
+            if event["type"] == "bank-account-unmapped" and isinstance(payload, dict) and payload.get("ledger_account") in account_catalog:
+                bank_accounts.add(str(payload["ledger_account"]))
+        bank_accounts_held = bank_accounts
         for entry in store.load_entries(to_date=end):
             if entry.date >= start:
                 bank_activity.update(posting.account for posting in entry.postings if posting.account in bank_accounts)
@@ -650,6 +659,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
                 if partial_opening and entry.date < start:
                     opening_balances[posting.account] = opening_balances.get(posting.account, Decimal("0")) + posting.amount
 
+    bank_activity.update(account for account in bank_accounts_held if ledger_balances.get(account))
     if accrual_in_use:
         card_activity.update(account for account, balance in ledger_balances.items() if balance and is_credit_card_account(account))
     # A cash company with a trusted enforced policy needs each authorized account's evidence from its books

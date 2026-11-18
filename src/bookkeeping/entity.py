@@ -1052,8 +1052,7 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     previous = mappings.get(stable_id)
     previous_fields = bank_mapping_details(previous)
     if previous is None:
-        unmapped = _newest_unmap_record(store, stable_id)
-        was = bank_mapping_details(unmapped.get("mapping")) if unmapped else {}
+        was = _earlier_cutover_mapping(store, entity.entity_config, stable_id, account)
         if was.get("cutover_date"):
             if restore_cutover:
                 for name in ("cutover_date", "history_before_cutover"):
@@ -1061,7 +1060,7 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
                         fields[name] = was[name]
             elif "cutover_date" not in fields and "cutover_date" not in clear:
                 raise ValueError(
-                    f"Feed account '{stable_id}' was unmapped with the cutover date {was['cutover_date']}"
+                    f"The books account {account} was linked before with the cutover date {was['cutover_date']}"
                     + (f" and the history setting {was['history_before_cutover']}" if was.get("history_before_cutover") else "")
                     + ". Give --cutover-date, --clear-cutover-date, or --restore-cutover to keep the earlier one.")
     elif restore_cutover:
@@ -1146,6 +1145,31 @@ def unmap_bank_account(entity_path: Path, feed_account_id: str) -> dict[str, Any
         tmp.unlink(missing_ok=True)
         raise
     return {"feed_account_id": stable_id, "account": record["ledger_account"], "status": "unmapped"}
+
+
+def _earlier_cutover_mapping(store: Any, config: dict[str, Any], feed_account_id: str, account: str) -> dict[str, Any]:
+    """The identity of an earlier link that a new link of *feed_account_id* to *account* must decide about.
+
+    In this order: the newest unmap record of the same feed account ID, a live mapping of another feed account to
+    the same books account, the newest unmap record of any feed account for the same books account. A provider
+    re-link gives the same books account a new feed account ID, so the books account counts as well as the ID.
+    Only a link with a cutover date matters; the result is empty when there is none.
+    """
+    own = _newest_unmap_record(store, feed_account_id)
+    if own and bank_mapping_details(own.get("mapping")).get("cutover_date"):
+        return bank_mapping_details(own["mapping"])
+    for key, value in (config.get("bank_account_mappings") or {}).items():
+        if key != feed_account_id and bank_mapping_account(value) == account and bank_mapping_details(value).get("cutover_date"):
+            return bank_mapping_details(value)
+    found: dict[str, Any] = {}
+    if store.path.exists():
+        for event in store.load_audit_events():
+            payload = event.get("payload")
+            if event["type"] == "bank-account-unmapped" and isinstance(payload, dict) \
+                    and payload.get("ledger_account") == account \
+                    and bank_mapping_details(payload.get("mapping")).get("cutover_date"):
+                found = bank_mapping_details(payload["mapping"])
+    return found
 
 
 def _newest_unmap_record(store: Any, feed_account_id: str) -> dict[str, Any] | None:
