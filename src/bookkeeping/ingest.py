@@ -354,6 +354,18 @@ def run(args: argparse.Namespace) -> int:
             txns, verified_banksync = prepared
             is_banksync = args.source == "banksync" or verified_banksync
         provider = feed_provider(args.source, getattr(args, "feed_provider", None), is_banksync)
+        skipped_unmapped: dict[str, int] = {}
+        if provider:
+            # A feed account that a person unmapped on purpose (bank-account-unmap) is skipped and reported. A feed
+            # account that was never mapped still refuses the whole ingest below.
+            from .entity import unmapped_feed_account_ids
+            gone = unmapped_feed_account_ids(entity)
+            if gone:
+                for txn in txns:
+                    account_id = str(txn.get("accountId") or "")
+                    if account_id in gone:
+                        skipped_unmapped[account_id] = skipped_unmapped.get(account_id, 0) + 1
+                txns = [txn for txn in txns if str(txn.get("accountId") or "") not in gone]
         _require_feed_mappings(entity, txns, provider)
         # A host-prepared snapshot is verified row by row against the host's own
         # fingerprints, so the engine must not change its IDs. The host writes
@@ -413,6 +425,8 @@ def run(args: argparse.Namespace) -> int:
     print(f"  posted to ledger:    {result.new_entries}")
     print(f"  queued for review:   {result.pending_categorization}")
     print(f"  duplicates skipped:  {result.skipped_duplicate}")
+    for account_id, count in sorted(skipped_unmapped.items()):
+        print(f"  skipped, feed account unmapped: {account_id}: {count} row(s) (map it again with books entity bank-account-map)")
     context_rows: dict[str, int] = {}
     for txn in txns:
         if str(txn.get("id") or "") in context_ids:

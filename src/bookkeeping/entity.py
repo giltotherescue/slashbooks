@@ -1015,7 +1015,7 @@ def _clean_identity(fields: dict[str, Any]) -> dict[str, Any]:
 
 @_locked_entity_operation
 def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
-                     clear: tuple[str, ...] = (), **identity: Any) -> dict[str, str]:
+                     clear: tuple[str, ...] = (), restore_cutover: bool = False, **identity: Any) -> dict[str, str]:
     """Persist a provider-account-ID to an existing ledger account mapping.
 
     With no identity fields the mapping is written in the flat form, exactly as
@@ -1024,6 +1024,11 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     type, currency, cutover date). Re-mapping a rich entry without new fields
     keeps its identity and changes only the ledger account. ``clear`` names
     identity fields to remove, for example ``("cutover_date",)``.
+
+    A feed account that was unmapped with a cutover date (``bank-account-unmap``) is not mapped again without a
+    decision about it: the caller gives ``cutover_date``, clears it (``clear``), or sets ``restore_cutover`` to take
+    the cutover date and the history setting of the newest unmap record. There is no silent default, because a
+    mapping without the cutover would import the history rows again.
     """
     entity = load_entity(entity_path)
     stable_id = str(feed_account_id).strip()
@@ -1046,6 +1051,20 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     mappings = dict(entity.entity_config.get("bank_account_mappings") or {})
     previous = mappings.get(stable_id)
     previous_fields = bank_mapping_details(previous)
+    if previous is None:
+        was = _earlier_cutover_mapping(store, entity.entity_config, stable_id, account)
+        if was.get("cutover_date"):
+            if restore_cutover:
+                for name in ("cutover_date", "history_before_cutover"):
+                    if was.get(name) and name not in fields and name not in clear:
+                        fields[name] = was[name]
+            elif "cutover_date" not in fields and "cutover_date" not in clear:
+                raise ValueError(
+                    f"The books account {account} was linked before with the cutover date {was['cutover_date']}"
+                    + (f" and the history setting {was['history_before_cutover']}" if was.get("history_before_cutover") else "")
+                    + ". Give --cutover-date, --clear-cutover-date, or --restore-cutover to keep the earlier one.")
+    elif restore_cutover:
+        raise ValueError("--restore-cutover applies only to a feed account that was unmapped.")
     for name in clear:
         if name not in BANK_IDENTITY_FIELDS or name in {"provider_account_id"}:
             raise ValueError(f"Cannot clear '{name}'.")
@@ -1065,6 +1084,141 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, destination)
     return {"feed_account_id": stable_id, "account": account, "status": "updated" if previous else "created"}
+
+
+@_locked_entity_operation
+def unmap_bank_account(entity_path: Path, feed_account_id: str) -> dict[str, Any]:
+    """Remove the mapping of a feed account ID, so that no new row of that feed account is imported.
+
+    Rows that are already in the books stay as they are. The mapping, with its identity, cutover date and history
+    setting, is kept in the audit event ``bank-account-unmapped`` so a later ``bank-account-map`` can be reasoned
+    about. A row of the feed account that still waits in staging (a staged, pending or duplicate-candidate row) is
+    refused (``rows_waiting``): confirming it after the unmap would have no mapping to post to. The person
+    confirms, releases or removes those rows first. Context-only rows are history and stay.
+
+    The event is sealed like the other catalog changes. The write of ``entity.json`` is the last step before
+    the commit, so a failed write leaves no event. A re-map of the same feed account does not import a row again,
+    because source IDs still deduplicate.
+    """
+    from .account_remove import AccountRemoveError, _require_audit_history
+    from .accrual.enable import _seal
+    from .ledger.importer import check_integrity
+    from .ledger.store import LedgerStore, default_store_path
+
+    entity = load_entity(entity_path)
+    stable_id = str(feed_account_id).strip()
+    if not stable_id:
+        raise ValueError("Feed account ID is required.")
+    mappings = dict(entity.entity_config.get("bank_account_mappings") or {})
+    if stable_id not in mappings:
+        raise ValueError(f"Feed account '{stable_id}' has no bank account mapping.")
+    previous = mappings[stable_id]
+    store = LedgerStore(default_store_path(entity.path))
+    if not store.path.exists():
+        raise ValueError("The company has no ledger.")
+    if check_integrity(entity).status != "ok":
+        raise ValueError("Cannot change a bank account mapping while ledger integrity is invalid.")
+    waiting = _waiting_feed_rows(entity.staging_dir, stable_id)
+    if waiting:
+        shown = ", ".join(waiting[:5]) + (f" and {len(waiting) - 5} more" if len(waiting) > 5 else "")
+        raise ValueError(
+            f"Feed account '{stable_id}' has {len(waiting)} row(s) waiting in staging ({shown}). "
+            "Confirm, release or remove them first, then unmap.")
+    details = bank_mapping_details(previous)
+    record = {"feed_account_id": stable_id, "ledger_account": bank_mapping_account(previous),
+              "mapping": {"ledger_account": bank_mapping_account(previous), **details}}
+    del mappings[stable_id]
+    entity.entity_config["bank_account_mappings"] = mappings
+    destination = entity.path / "entity.json"
+    tmp = destination.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(entity.entity_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    try:
+        with store.transaction(immediate=True) as conn:
+            _require_audit_history(conn)
+            store.append_audit_event("bank-account-unmapped", record, conn)
+            _seal(store, conn, "entity-bank-account-unmap")
+            os.replace(tmp, destination)  # Last step before the commit: a failure here rolls the event back.
+    except AccountRemoveError as exc:
+        tmp.unlink(missing_ok=True)
+        raise ValueError(str(exc)) from None
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return {"feed_account_id": stable_id, "account": record["ledger_account"], "status": "unmapped"}
+
+
+def _earlier_cutover_mapping(store: Any, config: dict[str, Any], feed_account_id: str, account: str) -> dict[str, Any]:
+    """The identity of an earlier link that a new link of *feed_account_id* to *account* must decide about.
+
+    In this order: the newest unmap record of the same feed account ID, a live mapping of another feed account to
+    the same books account, the newest unmap record of any feed account for the same books account. A provider
+    re-link gives the same books account a new feed account ID, so the books account counts as well as the ID.
+    Only a link with a cutover date matters; the result is empty when there is none.
+    """
+    own = _newest_unmap_record(store, feed_account_id)
+    if own and bank_mapping_details(own.get("mapping")).get("cutover_date"):
+        return bank_mapping_details(own["mapping"])
+    for key, value in (config.get("bank_account_mappings") or {}).items():
+        if key != feed_account_id and bank_mapping_account(value) == account and bank_mapping_details(value).get("cutover_date"):
+            return bank_mapping_details(value)
+    found: dict[str, Any] = {}
+    if store.path.exists():
+        for event in store.load_audit_events():
+            payload = event.get("payload")
+            if event["type"] == "bank-account-unmapped" and isinstance(payload, dict) \
+                    and payload.get("ledger_account") == account \
+                    and bank_mapping_details(payload.get("mapping")).get("cutover_date"):
+                found = bank_mapping_details(payload["mapping"])
+    return found
+
+
+def _newest_unmap_record(store: Any, feed_account_id: str) -> dict[str, Any] | None:
+    """The payload of the newest ``bank-account-unmapped`` audit event of the feed account, or ``None``."""
+    if not store.path.exists():
+        return None
+    found = None
+    for event in store.load_audit_events():
+        payload = event.get("payload")
+        if event["type"] == "bank-account-unmapped" and isinstance(payload, dict) \
+                and payload.get("feed_account_id") == feed_account_id:
+            found = payload
+    return found
+
+
+def unmapped_feed_account_ids(entity: Any) -> set[str]:
+    """Feed account IDs that ``bank-account-unmap`` removed and no later ``bank-account-map`` restored."""
+    from .ledger.store import LedgerStore, default_store_path
+    store = LedgerStore(default_store_path(entity.path))
+    if not store.path.exists():
+        return set()
+    mapped = set(flat_bank_account_mappings(entity.entity_config))
+    return {str(event["payload"].get("feed_account_id")) for event in store.load_audit_events()
+            if event["type"] == "bank-account-unmapped" and isinstance(event.get("payload"), dict)} - mapped
+
+
+def _waiting_feed_rows(staging_dir: Path, feed_account_id: str) -> list[str]:
+    """Source IDs of the rows of *feed_account_id* in the staging files that a review still reads."""
+    found: list[str] = []
+    for name in ("pending-categorization.json", "pending.json", "duplicate-candidates.json"):
+        path = staging_dir / name
+        if not path.exists():
+            continue
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise ValueError(f"Cannot read {name}; repair it before unmapping a bank account.") from None
+        if not isinstance(document, list):
+            raise ValueError(f"Cannot read {name}; repair it before unmapping a bank account.")
+        for item in document:
+            if not isinstance(item, dict):
+                continue
+            if name == "duplicate-candidates.json" and item.get("status") != "duplicate-candidate":
+                continue  # A decided candidate no longer waits.
+            # A duplicate candidate holds the row under ``transaction``.
+            row = item.get("transaction") if isinstance(item.get("transaction"), dict) else item
+            if str(row.get("accountId") or "") == feed_account_id:
+                found.append(str(row.get("id") or item.get("source_id") or "?"))
+    return found
 
 
 def coverage_ranges(bounds: Any) -> list[tuple[date, date]]:
@@ -1665,8 +1819,20 @@ def add_parser(subparsers: Any) -> None:
                             help="How a feed import treats rows on or before the cutover date. review (default): hold "
                                  "each row for review. context_only: keep each row as audit context, with no review "
                                  "item and no posting. Needs --cutover-date")
+    map_parser.add_argument("--restore-cutover", action="store_true",
+                            help="After bank-account-unmap: map the feed account again with the cutover date and history "
+                                 "setting of the unmap record (without it, a feed account that was unmapped with a "
+                                 "cutover date needs --cutover-date or --clear-cutover-date)")
     map_parser.add_argument("--cutover-date", default=None,
                             help="YYYY-MM-DD. A feed import sends rows on or before this day to review, not the books, unless --backfill")
+
+    unmap_parser = entity_sub.add_parser(
+        "bank-account-unmap",
+        help="Remove the mapping of a connected-bank account ID. No new row of that feed account is imported; "
+             "rows already in the books stay",
+    )
+    unmap_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    unmap_parser.add_argument("--feed-account-id", required=True, help="Stable provider account ID to unmap")
 
     coverage_parser = entity_sub.add_parser(
         "source-coverage",
@@ -1960,12 +2126,23 @@ def run(args: Any) -> int:
                 account_type=args.account_type, currency=args.currency,
                 cutover_date=args.cutover_date,
                 history_before_cutover=args.history_before_cutover,
-                clear=("cutover_date",) if args.clear_cutover_date else ())
+                clear=("cutover_date",) if args.clear_cutover_date else (),
+                restore_cutover=args.restore_cutover)
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
         verb = "Updated" if report["status"] == "updated" else "Mapped"
         print(f"{verb}: {report['feed_account_id']} → {report['account']}")
+        return 0
+
+    if args.entity_command == "bank-account-unmap":
+        target = _resolve_target(args.path)
+        try:
+            report = unmap_bank_account(target, args.feed_account_id)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        print(f"Unmapped: {report['feed_account_id']} (was {report['account']})")
         return 0
 
     if args.entity_command == "source-coverage":

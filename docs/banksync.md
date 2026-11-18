@@ -198,6 +198,37 @@ seen by a person and not lost. Pass `--backfill` to import these rows in the
 normal way. Coverage windows start the day after the cutover date. Remove a
 cutover date with `books entity bank-account-map ... --clear-cutover-date`.
 
+**Undo a link.** `books entity bank-account-unmap <company-dir> --feed-account-id ID`
+removes the mapping of a feed account. No new row of that feed account is imported
+after that: `books ingest` skips its rows and reports them in the summary (`skipped,
+feed account unmapped: ID: N row(s)`). A feed account that was never mapped still
+refuses the whole ingest. Rows already in the books stay untouched, and so do the
+context-only rows in `staging/context-history.json`. A row of that feed account that
+still waits in `staging/` (a staged, pending or duplicate-candidate row) refuses the
+unmap, because confirming it later would have no mapping to post to. Confirm, release
+or remove those rows first. The command writes the audit event `bank-account-unmapped`
+with the whole mapping (ledger account, provider, institution, last four digits, type,
+currency, cutover date and history setting) and seals the store. The feed windows and
+source coverage of the feed account stay. A bank account still needs its source coverage
+after the unmap in each period where it has a posting or a non-zero balance: readiness asks
+for it whether or not a mapping names the account, also for an account with no financial
+kind that an unmap event names.
+A host-prepared snapshot skips the rows of an unmapped feed account in the same way.
+
+Map the feed account again with `bank-account-map`, to the same or another account: a
+row that was imported before is skipped as a duplicate, because source IDs still
+deduplicate. When the unmap record, or a live mapping, of the same feed account or of the
+same books account has a cutover date (a provider re-link gives the same books account a
+new feed account ID), `bank-account-map` refuses unless you decide about it: give `--cutover-date`, `--clear-cutover-date`, or
+`--restore-cutover` (the cutover date and the history setting of the unmap record).
+A mapping without the cutover would import the history rows again as new rows. Rows
+stored as context only are skipped on a later sync only while the mapping keeps the
+cutover date and `context_only`; moving or clearing the cutover date releases them to
+the normal import path, as described above. An account that nothing uses can then go
+with `books entity account-remove`. The engine does not yet match history rows of a re-linked
+account to the new feed rows as duplicate candidates; `--restore-cutover` keeps the new
+feed's history rows before the cutover out of the books instead.
+
 **Keep earlier rows as history only.** When the books already hold the account's
 history through the cutover date from an earlier source, a person can set
 `books entity bank-account-map ... --cutover-date YYYY-MM-DD --history-before-cutover context_only`.

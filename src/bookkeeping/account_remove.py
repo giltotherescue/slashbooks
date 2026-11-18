@@ -8,12 +8,20 @@ The command is narrow on purpose. It removes an account only when all of these a
 * it is an income or expense account, or a loan account under ``Liabilities:Loans:``, and not an
   account that the engine creates or names itself (``engine_accounts.engine_owned_accounts``). A starter
   account in ``SELF_ADDED_STARTERS`` that account-add created is the company's own account, not the engine's;
+  or it is a bank, card or cash account (financial kind ``bank``, ``credit_card`` or ``cash``), such as the
+  generic starter "Checking" that a host replaces with the real bank accounts. A bank, card or cash account
+  needs no account-add event, and the starter accounts are removable; it is removed only when nothing uses it
+  (see below), and none of the reference checks for a loan account is skipped for it;
 * for a loan account, the open-date provenance record is reliable for it (not stale, a marker for its
   current open date, a source other than ``opening`` or ``legacy``);
 * a loan account has no card financial kind (a card is never a loan here);
 * no posting (in any period, reversals and corrections included) and no balance assertion uses it,
   and, for a loan account, no opening operation set its open date (``open_date_provenance``);
-* no company setting or record names it (``entity.json``, ``trust-policy.json``, learned context,
+* for a bank, card or cash account, no bank-account or CSV mapping names it (``account_mapped``: remove the
+  mapping first with ``books entity bank-account-unmap``), and, as for a loan account, no saved statement,
+  reconciliation record or opening operation uses it, and no commercial tracking record names it;
+* no company setting or record names it, in JSON or in a text file of the settings folders (for example
+  ``learned-context/rules.md`` or ``procedures/close.md``; the name must match exactly) (``entity.json``, ``trust-policy.json``, learned context,
   open review items, staged rows, accrual records; for a loan account also saved statements and
   reconciliation records), and no saved accrual rule selects it through a parent account that would
   then select nothing.
@@ -37,10 +45,12 @@ KIND = "account_remove"
 # Starter accounts that joined the starter charts after companies could add them with account-add.
 SELF_ADDED_STARTERS = frozenset({"Income:Interest-Income"})
 REMOVABLE_ROOTS = ("Income", "Expenses")
+# A bank, card or cash account can go when nothing uses it. These are the explicit financial kinds of such accounts.
+BANK_KINDS = frozenset({"bank", "credit_card", "cash"})
 # A loan account that a person adds by mistake can also go. Bank, card and other liabilities stay.
 LOAN_PREFIX = "Liabilities:Loans:"
 SETTINGS_FILES = ("entity.json", "trust-policy.json")
-SETTINGS_FOLDERS = ("learned-context", "review-queue", "staging")
+SETTINGS_FOLDERS = ("learned-context", "review-queue", "staging", "procedures")
 # Balance sheet records that can name a loan account and never name a category. Only the JSON files are read.
 LOAN_RECORD_FILES = ("reports/reconciliation.json",)
 LOAN_RECORD_FOLDERS = ("ingestion/statements",)
@@ -214,7 +224,16 @@ def parse_settings(files: dict[str, bytes]) -> dict[str, Any]:
     return documents
 
 
-def references(documents: dict[str, Any], store: Any, account: str, catalog: set[str]) -> list[str]:
+def _text_mentions(files: dict[str, bytes], account: str) -> list[str]:
+    """Settings files that are not JSON (for example ``learned-context/rules.md`` or ``procedures/close.md``) and
+    name *account* exactly. A longer name (``Income:Installs`` for ``Income:Install``) or a child account does not match."""
+    pattern = re.compile(r"(?<![A-Za-z0-9:-])" + re.escape(account) + r"(?![A-Za-z0-9-])(?!:[A-Za-z0-9])")
+    return [f"{name}: text" for name, data in files.items()
+            if not name.endswith(".json") and pattern.search(data.decode("utf-8", errors="replace"))]
+
+
+def references(documents: dict[str, Any], store: Any, account: str, catalog: set[str],
+               files: dict[str, bytes] | None = None) -> list[str]:
     """Where company settings and records name *account*.
 
     Not scanned on purpose: the audit log (historical provenance, including earlier account-add and
@@ -222,7 +241,7 @@ def references(documents: dict[str, Any], store: Any, account: str, catalog: set
     by account), and files outside the settings folders (reports, ingestion, business-profile.md).
     """
     from .accrual.store import TABLES, list_records
-    found: list[str] = []
+    found: list[str] = _text_mentions(files, account) if files else []
     for name, document in documents.items():
         if name.startswith("review-queue/") and isinstance(document, dict) \
                 and document.get("status") in _CLOSED_QUEUE_STATUSES:
@@ -292,7 +311,8 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
     account = _check_name(account)
     root = Path(entity_path).resolve()
     loan = is_loan_account(account)
-    files = _company_files(root, loan)
+    balance_sheet = account.split(":")[0] in ("Assets", "Liabilities")
+    files = _company_files(root, balance_sheet)
     if "entity.json" not in files:
         raise AccountRemoveError("no_company", f"No entity.json found at '{root}'.", "Run books entity init first.")
     documents = parse_settings(files)
@@ -309,6 +329,7 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
         assertions = conn.execute("SELECT COUNT(*) FROM balance_assertions WHERE account=?", (account,)).fetchone()[0]
         catalog = {name for (name,) in conn.execute("SELECT name FROM accounts")}
         kind = store.load_financial_kinds(conn).get(account) if row is not None else None
+        business_records = _business_records(conn) if balance_sheet and not loan else []
         record = store.load_open_date_provenance(conn) if row is not None else None
     events = store.load_audit_events()
     request = {"account": account}
@@ -317,40 +338,57 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
         "ledger_digest": store.content_digest(), "audit_head": events[-1]["record_hash"] if events else "none",
         "file_fingerprints": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}
     added = None
+    # The generic starter accounts have no explicit kind in a store that has none; their exact names are known.
+    from .entity import _STARTER_FINANCIAL_KINDS
+    bank_kind = (kind or _STARTER_FINANCIAL_KINDS.get(account)) if row is not None else None
+    bank = (bank_kind in BANK_KINDS and balance_sheet and not loan)
     if row is not None:
         # A starter account that joined the starter charts later (``SELF_ADDED_STARTERS``) can be one that the
         # company created itself with account-add before. With that account-add record, it is the company's own
         # category, and the usual checks apply. Without it, the starter chart created it, and it stays.
         owned = account in engine_owned_accounts() and not (
             account in SELF_ADDED_STARTERS and _latest_added_event(events, account) is not None)
-        if not _removable_type(account) or owned:
+        if bank:
+            owned = False  # A bank, card or cash account is the company's own, also a starter one.
+        if not (_removable_type(account) or bank) or owned:
             raise AccountRemoveError("protected_account",
                                      f"{account} is a system account. Only an income or expense category, or a loan "
-                                     f"account under {LOAN_PREFIX}, that books entity account-add created can be removed.")
+                                     f"account under {LOAN_PREFIX}, that books entity account-add created, or an "
+                                     "unused bank, card or cash account, can be removed.")
         if loan and kind not in (None, "other"):
             raise AccountRemoveError("protected_account",
                                      f"{account} has the financial kind {kind}. A bank or card account is not a loan, "
                                      "so it stays in the catalog.")
-        added = _added_event(events, account, added_event)
+        added = None if bank else _added_event(events, account, added_event)
         if postings or assertions:
             raise AccountRemoveError("account_in_use",
                                      f"{account} has {postings} postings and {assertions} balance assertions. "
                                      "An account in use stays in the catalog.",
                                      "Leave the account in the catalog. Move the entries first if they belong elsewhere.")
         marker = (record or {}).get("accounts", {}).get(account) or {}
-        if loan and marker.get("source") == "opening" and marker.get("open_date") == str(row["open_date"])[:10]:
+        checked = loan or bank  # An opening can use the account without a posting; the open-date record tells.
+        if checked and marker.get("source") == "opening" and marker.get("open_date") == str(row["open_date"])[:10]:
             raise AccountRemoveError("account_in_use",
                                      f"An opening operation set the open date of {account}, so the opening uses "
                                      "the account. An account in use stays in the catalog.",
                                      "Leave the account in the catalog.")
-        if loan and (record is None or record.get("stale") or marker.get("source") not in _LOAN_CLEAR_SOURCES
+        if checked and (record is None or record.get("stale") or marker.get("source") not in _LOAN_CLEAR_SOURCES
                      or marker.get("open_date") != str(row["open_date"])[:10]):
             raise AccountRemoveError("account_in_use",
                                      f"The open-date record of {account} is not reliable "
                                      f"(source: {marker.get('source') or 'none'}), so an opening can use the account. "
                                      "An account in use stays in the catalog.",
                                      "Leave the account in the catalog.")
-        found = references(documents, store, account, catalog)
+        if bank:
+            mapped = _mapping_refs(documents.get("entity.json"), account)
+            if mapped:
+                raise AccountRemoveError("account_mapped",
+                                         f"{account} is the books account of {len(mapped)} bank or CSV account mapping(s).",
+                                         "Remove the mapping first (books entity bank-account-unmap), then run the "
+                                         "preview again.", mapped[:_MAX_REFS])
+        found = references(documents, store, account, catalog, files)
+        for table, record_id, payload in business_records:
+            found += [f"business {table} {record_id}:{where}" for where in _matches(payload, account, "")]
         if found:
             raise AccountRemoveError("account_referenced",
                                      f"{account} is named in {len(found)} company settings or records.",
@@ -359,9 +397,39 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
     body["effects"] = {"account": account, "open_date": row["open_date"] if row else None,
                        "currency": row["currency"] if row else None, "added_event": added["id"] if added else None,
                        "entries_changed": 0, "accounts_removed": 1 if row else 0}
+    if bank:
+        body["effects"]["financial_kind"] = bank_kind
     body["request_hash"] = canonical_hash({"kind": KIND, "request": request})
     body["plan_hash"] = canonical_hash(body)
     return body
+
+
+def _mapping_refs(entity_config: Any, account: str) -> list[str]:
+    """Bank-account and CSV mappings of ``entity.json`` whose books account is *account*."""
+    found: list[str] = []
+    if not isinstance(entity_config, dict):
+        return found
+    for section in ("bank_account_mappings", "csv_account_mappings"):
+        mappings = entity_config.get(section)
+        for key, value in (mappings.items() if isinstance(mappings, dict) else ()):
+            target = value.get("ledger_account") if isinstance(value, dict) else value
+            if target == account:
+                found.append(f"entity.json:{section}.{key}")
+    return found
+
+
+def _business_records(conn: Any) -> list[tuple[str, str, Any]]:
+    """Every record of the commercial tracking tables (``business_*``), parsed. A row that cannot be read fails closed."""
+    found: list[tuple[str, str, Any]] = []
+    tables = [name for (name,) in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'business\\_%' ESCAPE '\\' ORDER BY name")]
+    for table in tables:
+        for record_id, raw in conn.execute(f"SELECT id, payload_json FROM {table} ORDER BY id"):
+            try:
+                found.append((table, str(record_id), json.loads(raw or "null")))
+            except (ValueError, RecursionError):
+                raise _unreadable(f"{table} {record_id}") from None
+    return found
 
 
 def _require_audit_history(conn: Any) -> None:
@@ -400,7 +468,8 @@ def apply(entity_path: Path | str, account: str, plan_hash: str | None = None,
                             "LIMIT 1", (account, account)).fetchone():
                 raise AccountRemoveError("account_in_use", f"{account} is in use.", "Leave the account in the catalog.")
             store.delete_accounts([account], conn)
-            store.append_audit_event("account-removed", {"account": account, "open_date": effects["open_date"],
+            extra = {"financial_kind": effects["financial_kind"]} if "financial_kind" in effects else {}
+            store.append_audit_event("account-removed", {**extra, "account": account, "open_date": effects["open_date"],
                                                          "currency": effects["currency"], "added_event": effects["added_event"],
                                                          "plan_hash": fresh["plan_hash"]}, conn)
             _seal(store, conn, "entity-account-remove")

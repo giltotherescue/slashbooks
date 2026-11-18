@@ -52,15 +52,19 @@ because the goals change no amounts. Standing posting authority does not cover
 approves each move. The command refuses an entry in a locked month
 (`period_locked`).
 
-## Remove an unused category or loan account
+## Remove an unused category, loan, bank or card account
 
 `books entity account-remove PATH --account ACCOUNT [--added-event ID]` removes an
 income or expense account, or a loan account under `Liabilities:Loans:` (for
 example `Liabilities:Loans:Equipment-Loan`), from the account catalog. It does not
 change the books: no entry changes, and the account has no postings. A host can
 use it to undo a category or a loan account that it added by mistake, while
-nothing uses the account. Other balance sheet accounts (bank, card, sales tax and
-other liabilities) stay.
+nothing uses the account. It also removes a bank, card or cash account (financial
+kind `bank`, `credit_card` or `cash`) that nothing uses, such as the generic
+starter `Assets:Bank:Checking` or `Liabilities:CreditCard` that a host replaces
+with the real bank accounts. A bank, card or cash account needs no `account-add`
+event. Sales tax, other liabilities and an account without a bank, card or cash
+kind stay.
 
 The command is narrow. It removes an account only when `books entity account-add`
 created it: the audit log has the event that `account-add` writes when it creates
@@ -86,11 +90,12 @@ The command refuses before any write:
 | Code | Reason |
 |---|---|
 | `invalid_account` | The name is not a valid account name, for example it has a control character such as a final newline. |
-| `protected_account` | The account is not an income or expense account or a loan account under `Liabilities:Loans:`, or the engine creates or names it: the starter catalogs (for example the `Liabilities:Loans:Mortgage` starter of a real estate company), the accrual starters, the Stripe accounts and the report accounts (one list, `engine_accounts.engine_owned_accounts()`). A loan account with the financial kind `credit_card` is a card account, so it also stays. One exception: `Income:Interest-Income` joined the starter charts after companies could add it themselves. When the audit log has the account-add event that created it (the same evidence as for `not_added_by_command`), it is the company's own category and the usual checks apply. When the starter chart created it, it stays. |
-| `not_added_by_command` | No account-add event shows that `account-add` created the account. |
+| `protected_account` | The account is not an income or expense account, a loan account under `Liabilities:Loans:` or a bank, card or cash account, or the engine creates or names it (a bank, card or cash account is never refused for being a starter account): the starter catalogs (for example the `Liabilities:Loans:Mortgage` starter of a real estate company), the accrual starters, the Stripe accounts and the report accounts (one list, `engine_accounts.engine_owned_accounts()`). A loan account with the financial kind `credit_card` is a card account, so it also stays. One exception: `Income:Interest-Income` joined the starter charts after companies could add it themselves. When the audit log has the account-add event that created it (the same evidence as for `not_added_by_command`), it is the company's own category and the usual checks apply. When the starter chart created it, it stays. |
+| `account_mapped` | A bank account is the books account of a bank account mapping or a CSV account mapping in `entity.json`. `refs` names each mapping. Run `books entity bank-account-unmap` first. |
+| `not_added_by_command` | No account-add event shows that `account-add` created the account (an income, expense or loan account; a bank, card or cash account needs none). |
 | `added_event_mismatch` | `--added-event` does not name the latest account-add event of the account. |
-| `account_in_use` | A posting in any period (reversals and corrected entries too, including an opening balance entry) or a balance assertion uses the account. For a loan account, also when the open-date record does not show that no opening uses it: an opening operation set its open date (the `opening` source in `open_date_provenance`), or the record is not reliable for the account (no record, a stale record after a catalog change by an earlier engine, a `legacy` marker, no marker, or a marker for another date). |
-| `account_referenced` | Company settings or records name the account: `entity.json` (bank mappings, related entities, tax lines and other settings), `trust-policy.json`, learned context (payee rules, accrual rules), an open review item or proposal, a staged row, an accrual record (a schedule, for example), a saved source row (`source_transactions`) or an import session (`import_sessions`). For a loan account, the check also reads the JSON files of the saved statements (`ingestion/statements/`) and the reconciliation records (`reports/reconciliation.json`). `refs` names the file or the table and record id. The check parses the JSON and compares decoded names, so a name written with JSON escapes is found too. A saved accrual rule that selects the account through a parent account also counts, when the parent would then select no account. `refs` lists up to 20 places. |
+| `account_in_use` | A posting in any period (reversals and corrected entries too, including an opening balance entry) or a balance assertion uses the account. For a loan, bank, card or cash account, also when the open-date record does not show that no opening uses it: an opening operation set its open date (the `opening` source in `open_date_provenance`), or the record is not reliable for the account (no record, a stale record after a catalog change by an earlier engine, a `legacy` marker, no marker, or a marker for another date). |
+| `account_referenced` | Company settings or records name the account: `entity.json` (bank mappings, related entities, tax lines and other settings), `trust-policy.json`, learned context (payee rules, accrual rules), a text file of the settings folders that names the account exactly (`learned-context/rules.md`, `procedures/close.md`; a longer name or a child account does not match), an open review item or proposal, a staged row, an accrual record (a schedule, for example), a saved source row (`source_transactions`) an import session (`import_sessions`) or, for a bank, card or cash account, a commercial tracking record (`business_*` tables). For a loan, bank, card or cash account, the check also reads the JSON files of the saved statements (`ingestion/statements/`) and the reconciliation records (`reports/reconciliation.json`). `refs` names the file or the table and record id. The check parses the JSON and compares decoded names, so a name written with JSON escapes is found too. A saved accrual rule that selects the account through a parent account also counts, when the parent would then select no account. `refs` lists up to 20 places. |
 | `reference_check_failed` | A settings file or folder is a symbolic link, cannot be read, is not valid JSON, or does not have the expected shape (for example a `trust-policy.json` that is not an object, or an accrual rule whose `match` is not an object), so the references cannot be checked. |
 | `audit_history_missing` | The ledger has entries and no audit history. |
 
