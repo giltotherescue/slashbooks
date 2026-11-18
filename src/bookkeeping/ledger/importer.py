@@ -1272,9 +1272,14 @@ def _ledger_account_for_txn(
         else:
             candidates = list((csv_mappings or {}).values())
         for candidate in candidates:
+            # A CSV row carries the ledger account of its mapping at parse time. After ``books entity
+            # account-rename``, the confirmed mapping lists the earlier names in ``former_ledger_accounts``, so a
+            # row parsed before the rename still matches it and posts to the current name.
+            former = candidate.get("former_ledger_accounts") if isinstance(candidate, dict) else None
             if (isinstance(candidate, dict) and candidate.get("confirmed") is True
                     and not candidate.get("proposed") and account_id
-                    and candidate.get("ledger_account") == account_id):
+                    and (candidate.get("ledger_account") == account_id
+                         or (isinstance(former, list) and account_id in former))):
                 csv_account = candidate["ledger_account"]
                 break
         if csv_account is None and mapping_key is not None:
@@ -1342,7 +1347,8 @@ def check_integrity(entity: Entity) -> IntegrityResult:
     return check_store_integrity(LedgerStore(store_path))
 
 
-def check_store_integrity(store: LedgerStore, *, chain_errors: list[str] | None = None) -> IntegrityResult:
+def check_store_integrity(store: LedgerStore, *, chain_errors: list[str] | None = None,
+                          allow_rename_pending: bool = False) -> IntegrityResult:
     """Verify audit history and the latest seal using the supplied store.
 
     The caller controls connection policy, including read-only access. This
@@ -1353,6 +1359,10 @@ def check_store_integrity(store: LedgerStore, *, chain_errors: list[str] | None 
     ``incomplete-write`` for a missing seal or subsequent write events, and
     ``halt`` for a broken chain, unreadable history, or invalid seal digest. A caller that just verified the
     chain passes its errors as ``chain_errors`` so the chain is not verified twice.
+
+    An account rename that is not finished (``RENAME_PENDING_KEY`` in the ledger meta) is also
+    ``incomplete-write``: company files can still name the old account. Only ``books entity account-rename``,
+    which finishes the rename, passes ``allow_rename_pending``.
     """
     try:
         if chain_errors is None:
@@ -1417,6 +1427,24 @@ def check_store_integrity(store: LedgerStore, *, chain_errors: list[str] | None 
             status="halt",
             message="Ledger store content does not match the latest sealed digest.",
         )
+    if not allow_rename_pending:
+        from .store import RENAME_PENDING_KEY
+        try:
+            with store.connection() as conn:
+                pending = conn.execute("SELECT value FROM meta WHERE key = ?", (RENAME_PENDING_KEY,)).fetchone()
+        except Exception as exc:
+            return IntegrityResult(status="halt", message=f"Could not verify ledger store: {exc}")
+        if pending is not None:
+            try:
+                record = json.loads(str(pending[0]))
+                old, new = record["from"], record["to"]
+            except (ValueError, KeyError, TypeError):
+                old, new = "OLD", "NEW"
+            return IntegrityResult(
+                status="incomplete-write",
+                message=(f"The rename of {old} to {new} is not finished. Finish it with: books entity account-rename "
+                         f"PATH --account {old} --to {new} --apply."),
+            )
     return IntegrityResult(status="ok", message="Ledger store integrity confirmed.")
 
 

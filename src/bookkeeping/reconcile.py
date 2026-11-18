@@ -454,7 +454,8 @@ def _verify_statement_original(root: Path, archived: Path, document: dict) -> No
             raise ValueError("The original must identify exactly one mapped statement account.")
         parsed = si._ofx_statement(matches[0], document["evidence_sha256"], name, profile, entity.currency)
     elif fmt == "csv":
-        parsed = si._csv_statement(archived, text, document["evidence_sha256"], name, profile, entity.currency)
+        parsed = si._csv_statement(archived, text, document["evidence_sha256"], name, profile, entity.currency,
+                                   row_ids=si.RowIds(entity.path, profile["ledger_account"]))
     else:
         raise ValueError("Extracted statement figures need owner-attested source facts for unattended reconciliation.")
     original, _ = si._contract_record(parsed, fmt=fmt, ledger_account=profile["ledger_account"],
@@ -510,7 +511,9 @@ def _reconcile_unlocked(
     proof_basis: str | None = None,
 ) -> ReconcileResult:
     """Compute and persist a reconciliation while holding the entity lock."""
+    from .ledger.store import refuse_rename_pending
     from .statement_selection import replaced_evidence
+    refuse_rename_pending(entity_path, [account])
     _check_proof_basis(proof_basis, source_evidence_refs, account)
     if replaced_evidence(entity_path).intersection((source_evidence_hashes or {}).values()):
         raise ValueError("This statement was replaced. Reconcile with the current statement.")
@@ -656,6 +659,8 @@ def _resolve_unlocked(
     note: str = "",
 ) -> None:
     """Resolve one reconciliation while holding the entity write lock."""
+    from .ledger.store import refuse_rename_pending
+    refuse_rename_pending(entity_path, [account])
     as_of_str = as_of.isoformat() if isinstance(as_of, date) else as_of
     rec_id = _record_id(account, as_of_str)
 

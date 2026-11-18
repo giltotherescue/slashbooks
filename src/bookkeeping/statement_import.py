@@ -106,7 +106,7 @@ from . import currency as currency_mod
 from .ledger.normalize import normalize_description
 from . import provenance
 from .tieout import presentation_sign, statement_tieout
-from .source_ids import same_family, source_family, source_id_variants
+from .source_ids import RowIds, keep_former_accounts, same_family, source_family, source_id_variants
 from .work import observe_import
 from .brand import product_name
 
@@ -416,6 +416,8 @@ def save_profile(entity_path: Path, path: Path, *, name: str, ledger_account: st
     """Save a confirmed statement profile for one account."""
     from .entity import load_entity
     from .ledger.importer import _entity_write_lock
+    from .ledger.store import refuse_rename_pending
+    refuse_rename_pending(entity_path, [ledger_account])
 
     overrides = {k: v for k, v in (overrides or {}).items() if v not in (None, "")}
     if not _PROFILE_NAME.match(name or ""):
@@ -467,6 +469,7 @@ def save_profile(entity_path: Path, path: Path, *, name: str, ledger_account: st
             "caller_kind": provenance.caller_kind(),
             "source_format": spec["format"],
             "statement_profile": spec,
+            **keep_former_accounts(existing, ledger_account),
         }
         config = json.loads((entity.path / "entity.json").read_text(encoding="utf-8"))
         config.setdefault("csv_account_mappings", {})[MAPPING_PREFIX + name] = record
@@ -553,7 +556,7 @@ def _statement_id(mapping_key: str, file_sha: str, identity: str = "") -> str:
 
 
 def _csv_statement(path: Path, text: str, file_sha: str, name: str, profile: JsonObject,
-                   company: str = "USD") -> JsonObject:
+                   company: str = "USD", row_ids: RowIds | None = None) -> JsonObject:
     layout = profile["statement_profile"]
     kind = _kind(profile["ledger_account"])
     rows, _ = bankcsv.read_rows(text)
@@ -570,8 +573,13 @@ def _csv_statement(path: Path, text: str, file_sha: str, name: str, profile: Jso
         occurrences[key] += 1
         if occurrences[key] == 2:
             identical_groups += 1
-        txn_id = "stmt:" + _hash(profile["ledger_account"], row.date, format(row.amount, "f"),
-                                 norm, row.reference, str(occurrences[key]))
+        # The ID hashes the catalog row id of the account (``RowIds``), so a rename keeps it and another
+        # account with an earlier name of this one does not share it.
+        parts = (row.date, format(row.amount, "f"), norm, row.reference, str(occurrences[key]))
+        # A caller that reads the IDs of rows in the books (import, import check, statement reconciliation) passes
+        # ``row_ids``; without it the ID hashes the account name, as before.
+        txn_id = (row_ids.pick(lambda account: "stmt:" + _hash(account, *parts)) if row_ids is not None
+                  else "stmt:" + _hash(profile["ledger_account"], *parts))
         original = " ".join(part for part in (row.description, row.memo) if part)
         txns.append(_txn(txn_id=txn_id, day=row.date, description=row.description, original=original,
                          amount=row.amount, reference=row.reference, profile_name=name,
@@ -1285,7 +1293,8 @@ def import_file(entity_path: Path, path: Path, *, profile: str | None = None, dr
             if profiles[profile]["statement_profile"].get("format") != "csv":
                 raise StatementImportError("profile_format_mismatch",
                                            f"Profile '{profile}' is for OFX files, and this file is a CSV.")
-            selected = [_csv_statement(path, text, file_sha, profile, profiles[profile], company)]
+            selected = [_csv_statement(path, text, file_sha, profile, profiles[profile], company,
+                                       RowIds(entity.path, profiles[profile]["ledger_account"]))]
         # One company, one currency: the file's currency must be the company currency, or a company with
         # no entries adopts it. This only checks; the importer adopts inside its write lock, before any posting.
         named = {code for statement in selected for code in statement["named_currencies"]}

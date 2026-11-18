@@ -1026,6 +1026,8 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     identity fields to remove, for example ``("cutover_date",)``.
     """
     entity = load_entity(entity_path)
+    from .ledger.store import refuse_rename_pending
+    refuse_rename_pending(entity.path, [account])
     stable_id = str(feed_account_id).strip()
     if not stable_id:
         raise ValueError("Feed account ID is required.")
@@ -1559,6 +1561,19 @@ def add_parser(subparsers: Any) -> None:
     remove_account_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
     remove_account_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
 
+    rename_account_parser = entity_sub.add_parser(
+        "account-rename",
+        help="Give an account a new name. Its entries, child accounts, mappings and rules move to the new name; "
+             "amounts do not change. Previews unless --apply is given",
+    )
+    rename_account_parser.add_argument("path", type=Path, help="Path to the entity directory")
+    rename_account_parser.add_argument("--account", required=True, help="Account to rename, such as Expenses:Office")
+    rename_account_parser.add_argument("--to", required=True,
+                                       help="New name with the same root and parent, such as Expenses:Office-Costs")
+    rename_account_parser.add_argument("--apply", action="store_true", help="Make the change. Without it the command only previews")
+    rename_account_parser.add_argument("--plan-hash", default=None, help="With --apply: the plan_hash from the preview, to refuse a changed company")
+    rename_account_parser.add_argument("--json", action="store_true", help="Print the result as JSON")
+
     set_view_parser = entity_sub.add_parser(
         "set-view",
         help="Choose the default report view, cash or accrual (person-only). Previews unless --apply is given",
@@ -1832,6 +1847,11 @@ def run(args: Any) -> int:
             return 1
         print(json.dumps(result, sort_keys=True, indent=2))
         return 0
+
+    if args.entity_command == "account-rename":
+        # Like account-remove, the command reads the company files itself, so a refusal writes nothing.
+        from . import account_rename
+        return account_rename.run(args, _resolve_target)
 
     if args.entity_command == "set-view":
         target = _resolve_target(args.path)
