@@ -455,15 +455,19 @@ class AccountRenameTests(unittest.TestCase):
         counts = self.statement("reserve-2", "Assets:Bank:Reserve", 4)
         self.assertEqual(counts["queued_for_review"], 6, counts)
 
-    def test_rows_imported_under_name_based_ids_are_found_in_the_same_lineage(self):
-        from bookkeeping import statement_import as si
-
+    @staticmethod
+    def name_ids():
         class NameIds:  # The ID rule before catalog row ids: the current account name.
             def __init__(self, entity_path, ledger_account):
                 self.account = ledger_account
 
             def pick(self, make):
                 return make(self.account)
+        return NameIds
+
+    def test_rows_imported_under_name_based_ids_are_found_in_the_same_lineage(self):
+        from bookkeeping import statement_import as si
+        NameIds = self.name_ids()
 
         add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
         with mock.patch.object(si, "RowIds", NameIds):
@@ -486,6 +490,42 @@ class AccountRenameTests(unittest.TestCase):
         self.rename_applied("Assets:Bank:Spare", newer)
         counts = self.statement("spare", newer, 5)
         self.assertEqual((counts["already_imported"], counts["queued_for_review"]), (6, 0), counts)
+
+    def test_a_name_that_two_accounts_used_still_finds_the_rows_of_the_account_that_holds_them(self):
+        from bookkeeping import statement_import as si
+        names = self.name_ids()
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        with mock.patch.object(si, "RowIds", names):
+            self.assertEqual(self.statement("op", OPERATING)["queued_for_review"], 6)
+        main = "Assets:Bank:Main"
+        self.rename_applied(OPERATING, main)
+        # A second account takes the name "Operating" and is renamed too: the name is now history of two accounts.
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        self.rename_applied(OPERATING, "Assets:Bank:Second")
+        counts = self.statement("op", main, 2)
+        self.assertEqual((counts["already_imported"], counts["queued_for_review"]), (6, 0), counts)
+        candidates = self.root / "staging" / "duplicate-candidates.json"
+        self.assertFalse(candidates.exists() and read_json(candidates), "no row is held for duplicate review")
+
+    def test_rows_of_another_account_with_the_same_earlier_name_never_match(self):
+        from bookkeeping import statement_import as si
+        names = self.name_ids()
+        other_file = self.STATEMENT.with_name("checking_three_months.csv")
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        main = "Assets:Bank:Main"
+        self.rename_applied(OPERATING, main)
+        # The second "Operating" imports a file under name-based IDs, then is renamed.
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        with mock.patch.object(si, "RowIds", names):
+            si.save_profile(self.root, other_file, name="op2", ledger_account=OPERATING)
+            second = si.import_file(self.root, other_file, profile="op2", ts="2026-03-01T00:00:00Z")
+        held = second["statements"][0]["counts"]["queued_for_review"]
+        self.assertGreater(held, 0)
+        self.rename_applied(OPERATING, "Assets:Bank:Second")
+        # Main imports the same file: the rows are Main's own, not Second's.
+        si.save_profile(self.root, other_file, name="main", ledger_account=main)
+        counts = si.import_file(self.root, other_file, profile="main", ts="2026-03-02T00:00:00Z")["statements"][0]["counts"]
+        self.assertEqual((counts["queued_for_review"], counts.get("already_imported", 0)), (held, 0), counts)
 
     def test_reconciliation_waits_for_an_unfinished_rename(self):
         from bookkeeping.reconcile import reconcile

@@ -282,10 +282,11 @@ def rename_lineage(events: list[dict[str, Any]], account: str) -> list[tuple[str
 
 
 def legacy_names(events: list[dict[str, Any]], account: str) -> list[str]:
-    """The names of *account*'s lineage that only this account used, for source IDs that hash a name.
+    """The names of *account*'s lineage that only this account used.
 
-    A name that a rename event outside the lineage names (another account had it, before or after) is left out, so
-    a new account with an earlier name of a renamed account never matches the renamed account's rows.
+    A name that a rename event outside the lineage names (another account had it, before or after) is left out.
+    ``source_ids.RowIds`` uses this list only for a row with no owner on record; a row whose mapping, entry or held
+    record names its account matches that account alone.
     """
     lineage = rename_lineage(events, account)
     own = {until for _, until in lineage if until is not None}

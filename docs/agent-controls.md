@@ -187,8 +187,11 @@ import of the same file after a rename gives the same IDs. A new account that
 takes an earlier name gets a new row id, so its rows never match the rows of the
 renamed account. A row imported before this rule has an ID that hashes an account
 name. The import finds such a row by the names of the same account (its current
-name and its earlier names in the `account-renamed` events) and keeps its ID. A
-name that another account also had is not used for this match.
+name and its earlier names in the `account-renamed` events) and keeps its ID, but
+only when the row belongs to this account: the account of its CSV or statement
+mapping, else the accounts that its posted entry or held record names. When two
+accounts used the same name, each one finds only its own rows. A row with no
+owner on record matches only a name that no other account used.
 
 While a rename is pending, a reconciliation, a statement record, a bank or CSV
 mapping, a statement profile and a tax setting that name an old account are
