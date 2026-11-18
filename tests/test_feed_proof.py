@@ -1384,5 +1384,131 @@ class IntakeOnlyFeedIngestTests(unittest.TestCase):
         with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
             self.assertIsNone(conn.execute("SELECT 1 FROM audit_events WHERE type = 'ledger-store-sealed'").fetchone())
 
+
+class MigrationBoundaryTests(unittest.TestCase):
+    """Books that come from another store never count as delivered by the bank connection in this store."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.a = self.root / "a"
+        self.cli("entity", "init", str(self.a), "--name", "Synthetic Co", "--business-type", "consulting",
+                 "--cutover-date", "2026-01-01", expect=0)
+        self.cli("entity", "bank-account-map", str(self.a), "--feed-account-id", "acct_1",
+                 "--account", CHECKING, "--provider", "plaid", expect=0)
+        self.ingest(self.a, [self.row("r1", "2026-08-03", 6.0)])
+        self.confirm(self.a, "plaid:r1")
+
+    def cli(self, *argv, expect=None):
+        with redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            code = main(list(argv))
+        text = out.getvalue() + err.getvalue()
+        if expect is not None:
+            self.assertEqual(code, expect, text)
+        return code, text
+
+    def row(self, row_id, day, amount):
+        return {"id": row_id, "accountId": "acct_1", "date": day, "amount": amount, "description": "feed row"}
+
+    def ingest(self, company, rows, *extra):
+        path = self.root / "rows.json"
+        path.write_text(json.dumps(rows))
+        self.cli("ingest", str(path), "--entity", str(company), "--no-feed-window", "--source", "plaid", *extra,
+                 expect=0)
+
+    def confirm(self, company, source_id):
+        self.cli("queue", "propose", "--entity", str(company), "--source-id", source_id,
+                 "--category", "Income:Consulting", "--reasoning", "test", expect=0)
+        self.cli("queue", "confirm", "--entity", str(company), "--item", source_id.replace(":", "_"), expect=0)
+
+    def prove(self, company, balance, start="2026-08-01"):
+        record_feed_window(company, account=CHECKING, start=date.fromisoformat(start), end=date(2026, 10, 5),
+                           source="acct_1")
+        path = self.root / "readings.json"
+        path.write_text(json.dumps({"accounts": [{"account_id": "acct_1", "account_type": "checking",
+                                                  "currency": "USD", "time_zone": "UTC",
+                                                  "readings": [reading(balance)]}]}))
+        code, text = self.cli("balance", "prove", "--entity", str(company), "--input", str(path),
+                              "--as-of", "2026-10-20")
+        self.assertEqual(code, 0, text)
+        return {row["month"]: row["reason"] for row in json.loads(text)["months"]}
+
+    def restore(self, name):
+        """A host restores a snapshot into a new store: the files arrive as they are, then the host marks the move."""
+        import shutil
+        target = self.root / name
+        shutil.copytree(self.a, target)
+        return target
+
+    def test_a_restored_store_does_not_count_the_rows_it_brought(self):
+        self.assertEqual(self.prove(self.a, "6.00")["2026-08"], "proven")
+        b = self.restore("b")
+        self.cli("ledger", "mark-migrated", "--entity", str(b), expect=0)
+        months = self.prove(b, "6.00")
+        self.assertEqual(months["2026-08"], "before_intake_boundary")
+        self.assertEqual(months["2026-09"], "before_intake_boundary")
+        store = LedgerStore(b / "ledger.sqlite")
+        self.assertEqual(store.verify_audit_chain(), [])
+        from bookkeeping.ledger.importer import check_store_integrity
+        self.assertEqual(check_store_integrity(store).status, "ok")
+
+    def test_after_a_restore_a_statement_can_prove_the_month_and_a_new_feed_ingest_counts(self):
+        b = self.restore("b")
+        self.cli("ledger", "mark-migrated", "--entity", str(b), expect=0)
+        # A statement for the month is offered in place of the connection.
+        record_statement(b, {"statement_id": "s-aug", "account": CHECKING, "kind": "statement",
+                             "period_start": "2026-08-01", "period_end": "2026-08-31",
+                             "opening_balance": "0.00", "closing_balance": "6.00"})
+        self.assertEqual(self.prove(b, "6.00")["2026-08"], "statement_available")
+        # A new feed ingest after the restore is counted; the earlier row is not.
+        c = self.restore("c")
+        self.cli("ledger", "mark-migrated", "--entity", str(c), expect=0)
+        self.ingest(c, [self.row("r2", "2026-09-05", 4.0)])
+        self.confirm(c, "plaid:r2")
+        from bookkeeping.feed_proof import _load_books
+        side = _load_books(c, [CHECKING])[CHECKING]
+        self.assertEqual(sorted((day.isoformat(), kind) for day, kind, _ in side.kinds),
+                         [("2026-08-03", "none"), ("2026-09-05", "source")])
+        self.assertEqual(self.prove(c, "10.00", start="2026-09-01")["2026-09"], "proven")
+
+    def test_a_forged_snapshot_with_marks_and_a_valid_chain_gets_no_proof(self):
+        import sqlite3
+        b = self.restore("b")
+        # Forge more delivered rows: a posted entry with the mark, and a matching intake record with a valid chain.
+        post(b, CHECKING, "2026-08-04", "50.00", other="Income:Consulting", source_id="plaid:forged",
+             meta=(("feed-provider", "plaid"),))
+        store = LedgerStore(b / "ledger.sqlite")
+        with store.transaction() as conn:
+            store.append_audit_event("feed-intake", {"provider": "plaid", "session": "x",
+                                                     "rows": {"plaid:forged": "0" * 64}}, conn)
+        self.assertEqual(store.verify_audit_chain(), [])
+        self.cli("ledger", "mark-migrated", "--entity", str(b), expect=0)
+        months = self.prove(b, "56.00")
+        self.assertEqual(months["2026-08"], "before_intake_boundary")
+        from bookkeeping.source_ids import feed_intake_index
+        self.assertEqual(feed_intake_index(b), {})
+        with contextlib.closing(sqlite3.connect(b / "ledger.sqlite")) as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM audit_events WHERE type = 'store-migrated'").fetchone()[0], 1)
+
+    def test_a_beancount_migration_does_not_count_a_mark_that_the_text_carries(self):
+        self.cli("ledger", "snapshot", "--entity", str(self.a), "--output", str(self.root / "snap.beancount"), expect=0)
+        text = (self.root / "snap.beancount").read_text()
+        self.assertIn("feed-provider", text)
+        d = self.root / "d"
+        self.cli("entity", "init", str(d), "--name", "Synthetic Co", "--business-type", "consulting",
+                 "--cutover-date", "2026-01-01", expect=0)
+        self.cli("entity", "bank-account-map", str(d), "--feed-account-id", "acct_1",
+                 "--account", CHECKING, "--provider", "plaid", expect=0)
+        for name in ("ledger.sqlite", "ledger.sqlite-wal", "ledger.sqlite-shm"):
+            (d / name).unlink(missing_ok=True)
+        (d / "books.beancount").write_text(text)
+        self.cli("ledger", "migrate", "--entity", str(d), expect=0)
+        with LedgerStore(d / "ledger.sqlite").connection() as conn:
+            marks = [dict(json.loads(meta)).get("feed-provider")
+                     for (meta,) in conn.execute("SELECT metadata_json FROM entries WHERE source_id IS NOT NULL")]
+        self.assertEqual(marks, ["plaid"])
+        self.assertEqual(self.prove(d, "6.00")["2026-08"], "before_intake_boundary")
+
 if __name__ == "__main__":
     unittest.main()

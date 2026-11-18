@@ -34,6 +34,34 @@ LEGACY_UNPREFIXED_PROVIDER = "banksync"
 FEED_PROVIDER_META = "feed-provider"
 FEED_INTAKE_EVENT = "feed-intake"
 
+# The trust boundary for a connection proof. Books that came from another store (a restored snapshot, a Beancount
+# migration) carry entries, marks and ``feed-intake`` events that this store never saw arrive. Such a source is
+# untrusted for the proof. ``books ledger mark-migrated`` writes ``MIGRATED_EVENT`` with ``max_entry_id``, the newest
+# entry at that point; the older ``migration`` event of ``books ledger migrate`` counts too (its ``entries`` is the
+# count of a new store). The newest boundary decides: a ``feed-intake`` event before it is ignored, and an entry
+# with an ID up to its ``max_entry_id`` never counts as delivered by the bank connection.
+MIGRATED_EVENT = "store-migrated"
+BOUNDARY_EVENTS = (MIGRATED_EVENT, "migration")
+
+
+def intake_boundary(conn: Any) -> tuple[int, int]:
+    """``(event ID, max entry ID)`` of the newest trust boundary in the audit log, or ``(0, 0)`` if there is none."""
+    import json
+    marks = ",".join("?" for _ in BOUNDARY_EVENTS)
+    event_id, max_entry_id = 0, 0
+    for row_id, kind, raw in conn.execute(
+            f"SELECT id, type, payload_json FROM audit_events WHERE type IN ({marks}) ORDER BY id", BOUNDARY_EVENTS):
+        try:
+            payload = json.loads(raw or "{}")
+        except ValueError:
+            payload = {}
+        key = "max_entry_id" if kind == MIGRATED_EVENT else "entries"
+        value = payload.get(key) if isinstance(payload, dict) else None
+        event_id = int(row_id)
+        # A boundary that cannot be read covers every entry, the safe side.
+        max_entry_id = value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 2 ** 62
+    return event_id, max_entry_id
+
 FeedIntake = dict[str, dict[str, set[str]]]
 
 
@@ -73,8 +101,9 @@ def _read_feed_intake(entity_path: Any) -> FeedIntake:
         if store.verify_audit_chain():
             return index
         with store.connection() as conn:
-            rows = conn.execute("SELECT payload_json FROM audit_events WHERE type = ? ORDER BY id",
-                                (FEED_INTAKE_EVENT,)).fetchall()
+            boundary_event, _ = intake_boundary(conn)
+            rows = conn.execute("SELECT payload_json FROM audit_events WHERE type = ? AND id > ? ORDER BY id",
+                                (FEED_INTAKE_EVENT, boundary_event)).fetchall()
     except sqlite3.DatabaseError:
         return index
     for (raw,) in rows:

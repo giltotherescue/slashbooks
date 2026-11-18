@@ -195,6 +195,9 @@ A row that is not proven has a ``reason`` code and the figures for one sentence:
 - ``unsourced_postings``: ``unsourced_count`` and the first date, ``unsourced_from``.
 - ``audit_chain_invalid``: no field. The audit hash chain of the ledger store has an error, so no row counts as
   delivered by the bank connection and no month is proven from the feed.
+- ``before_intake_boundary``: ``unsourced_count`` and ``unsourced_from``, as for ``unsourced_postings``. Some of those
+  rows are entries from before the newest trust boundary (books that came from another store, see
+  ``source_ids.intake_boundary``). The connection did not deliver them to this store, so ask for a statement.
 - ``opening_entry_unclear``: ``opening_entries`` (how many).
 - ``opening_conflict``: ``opening_balances`` (the different figures).
 - ``statement_available``: ``statement_ids``.
@@ -215,7 +218,7 @@ from typing import Any, Mapping, Sequence
 
 from .ledger.store import LedgerStore, default_store_path
 from .reconcile import FEED_EVIDENCE_PREFIX, from_feed as _from_feed, record_basis
-from .source_ids import CONNECTED_FEED_PROVIDERS, FEED_PROVIDER_META, LEGACY_UNPREFIXED_PROVIDER
+from .source_ids import CONNECTED_FEED_PROVIDERS, FEED_PROVIDER_META, LEGACY_UNPREFIXED_PROVIDER, intake_boundary
 from .tieout import Series, _dec, _fmt, load_waiting_checked
 
 __all__ = ["FEED_EVIDENCE_PREFIX", "REASONS", "SAFETY_MARGIN_HOURS", "day_closed_at", "opening_evidence", "prove"]
@@ -228,7 +231,7 @@ REASONS = (
     "unreadable_postings", "waiting_unreadable", "no_balance_after_month_end", "feed_incomplete", "waiting_in_review",
     "books_differ", "opening_unproven", "opening_differs", "opening_conflict", "statement_available",
     "opening_entry_unclear", "unsourced_postings", "no_feed_rows", "newest_reading_differs", "statement_differs",
-    "audit_chain_invalid",
+    "audit_chain_invalid", "before_intake_boundary",
 )
 #: Opening sources whose figure a bank or a statement gave for the day, rather than one computed back.
 _READING_GRADE_BASES = frozenset({"statement", "feed_reading"})
@@ -366,6 +369,8 @@ class _Books:
         self.unreadable = False
         #: The audit hash chain of the ledger store has an error (see ``_load_books``).
         self.chain_invalid = False
+        #: Days of postings from entries up to the newest trust boundary (``source_ids.intake_boundary``).
+        self.pre_boundary_days: set[date] = set()
         self.other_currency = False
         self.currency: str | None = None
         self.series = Series()
@@ -385,17 +390,19 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         for item in books.values():
             item.chain_invalid = not chain_valid
         with store.connection() as conn:
+            # Entries up to the newest trust boundary came from another store: none counts as delivered.
+            _, boundary_entry = intake_boundary(conn)
             for name, currency in conn.execute(f"SELECT name, currency FROM accounts WHERE name IN ({marks})", list(ledgers)):
                 books[str(name)].currency = str(currency or "") or None
             rows = conn.execute(
-                f"SELECT p.account, e.date, p.amount, p.currency, e.source_id, e.metadata_json FROM postings p "
+                f"SELECT p.account, e.date, p.amount, p.currency, e.source_id, e.metadata_json, e.id FROM postings p "
                 f"JOIN entries e ON e.id = p.entry_id WHERE p.account IN ({marks})", list(ledgers)).fetchall()
     except sqlite3.DatabaseError:
         for item in books.values():
             item.unreadable = True
         return books
     postings: dict[str, list[_Posting]] = {ledger: [] for ledger in ledgers}
-    for account, raw_day, raw_amount, currency, source_id, raw_meta in rows:
+    for account, raw_day, raw_amount, currency, source_id, raw_meta, entry_id in rows:
         item = books[str(account)]
         if str(currency or "") != (item.currency or "USD"):
             item.other_currency = True
@@ -416,7 +423,9 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         postings[str(account)].append(_Posting(
             day, amount, str(source_id) if source_id else None, text("import-source") in _OPENING_SOURCES,
             text("opening-source"), None if source_id else text("reverses"), text("correction-of"),
-            text(FEED_PROVIDER_META) if chain_valid else None))
+            text(FEED_PROVIDER_META) if chain_valid and entry_id > boundary_entry else None))
+        if entry_id <= boundary_entry:
+            item.pre_boundary_days.add(day)
     for ledger, item in books.items():
         item.kinds = [(posting.day, kind, posting.opening_source) for posting, kind in _classify(postings[ledger])]
         item.series = Series(item.items)
@@ -773,6 +782,10 @@ def _computed_opening(start: date, anchor: Mapping[str, Any], context: _Context)
     if len(openings) > 1:
         return None, "opening_entry_unclear", {"opening_entries": len(openings)}
     unsourced = sorted(d for d, kind, _ in side.kinds if first_day < d <= last_day and kind != "source")
+    if unsourced and side.pre_boundary_days.intersection(unsourced):
+        # The books hold rows from before the trust boundary. The connection never delivered them to this store.
+        return None, "before_intake_boundary", {"unsourced_count": len(unsourced),
+                                                "unsourced_from": unsourced[0].isoformat()}
     if unsourced:
         return None, "unsourced_postings", {"unsourced_count": len(unsourced),
                                             "unsourced_from": unsourced[0].isoformat()}
