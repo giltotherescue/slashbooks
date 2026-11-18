@@ -197,7 +197,8 @@ writes that list: the staged CSV and statement rows that the account holds when
 it is renamed. The rename keeps the other records on the same catalog account. A
 mapping or another setting never decides the owner. When no such record exists,
 or the records disagree, the row gets a new ID and goes to review; it is never
-skipped as already imported.
+skipped as already imported. Rename records from unreleased development builds
+are not migrated.
 
 While a rename is pending, a reconciliation, a statement record, a bank or CSV
 mapping, a statement profile and a tax setting that name an old account are
