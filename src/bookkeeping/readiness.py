@@ -636,13 +636,15 @@ def assess_review_readiness(entity_path: Path | str, period: str,
         store = LedgerStore(store_path)
         account_catalog = store.load_account_names()
         # An account that holds bank money needs its coverage in a period where it has a posting or a balance, whether
-        # or not a mapping names it now. These accounts: every one with a bank, card or cash kind (the starter names
+        # or not a mapping names it now. These accounts: every one with a bank or card kind (the starter names
         # count when the store has no kinds), and every one that a ``bank-account-unmapped`` event names, also an
         # account with no kind. An unmapped feed account must not drop its months from the review.
-        from .account_remove import BANK_KINDS
+        # A cash account (petty cash, a drawer) is required only when it was mapped to a feed or an unmap event
+        # names it, as before.
+        required_kinds = {"bank", "credit_card"}
         from .entity import _STARTER_FINANCIAL_KINDS
         kinds = store.load_financial_kinds()
-        bank_accounts = {name for name in account_catalog if (kinds.get(name) or _STARTER_FINANCIAL_KINDS.get(name)) in BANK_KINDS}
+        bank_accounts = {name for name in account_catalog if (kinds.get(name) or _STARTER_FINANCIAL_KINDS.get(name)) in required_kinds}
         for event in store.load_audit_events():
             payload = event.get("payload")
             if event["type"] == "bank-account-unmapped" and isinstance(payload, dict) and payload.get("ledger_account") in account_catalog:

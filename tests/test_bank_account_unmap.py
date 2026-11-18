@@ -382,6 +382,16 @@ class BankAccountUnmapTests(Base):
         staged = json.loads((self.root / "staging" / "pending-categorization.json").read_text())
         self.assertEqual([row["id"] for row in staged], ["plaid:b"])
 
+    def test_a_never_mapped_cash_account_is_not_required_by_readiness(self):
+        add_account(self.root, "Assets:Cash:Petty", open_date="2026-01-01", financial_kind="cash")
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        _atomic_ledger_write(load_entity(self.root), [], [Entry(
+            date=date(2026, 7, 15), narration="Petty cash", meta=(("source-id", "petty1"),),
+            postings=(Posting("Assets:Cash:Petty", Decimal("40.00")), Posting("Income:Consulting", Decimal("-40.00"))))],
+            "test-seed", None, "seed")
+        code, out, err = run_cli(["readiness", "--entity", str(self.root), "--period", "2026-09", "--as-of", "2026-10-20"])
+        self.assertNotIn("Assets:Cash:Petty", out)
+
 
 if __name__ == "__main__":
     unittest.main()
