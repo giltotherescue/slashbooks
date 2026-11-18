@@ -397,10 +397,16 @@ def _policy_bounds(context: ReadinessDispositionContext | None,
     """
     if context is None:
         return {}, {}
-    from .ledger.books_policy import AUTHORIZED, parse_policy
+    from .ledger.books_policy import parse_policy
 
-    policy = parse_policy(context.policy)
-    if not policy.enforced:
+    return _policy_starts(parse_policy(context.policy))
+
+
+def _policy_starts(policy: Any) -> tuple[dict[str, date], dict[str, str]]:
+    """``_policy_bounds`` for a parsed ``ledger.books_policy.BooksPolicy`` (or ``None``)."""
+    from .ledger.books_policy import AUTHORIZED
+
+    if policy is None or not policy.enforced:
         return {}, {}
     starts: dict[str, date] = {}
     unstarted: dict[str, str] = {}
@@ -440,6 +446,32 @@ def _start_scope(starts: Mapping[str, date], first_posting: Mapping[str, date], 
         elif start_day > end:
             outside[account] = start_day
     return account_from, outside, contradicted
+
+
+def _first_postings(store_path: Path) -> dict[str, date]:
+    """The first canonical posting of each account at any date, also after a period."""
+    first_posting: dict[str, date] = {}
+    if store_path.is_file():
+        for entry in LedgerStore(store_path).load_entries():
+            for posting in entry.postings:
+                if entry.date < first_posting.get(posting.account, date.max):
+                    first_posting[posting.account] = entry.date
+    return first_posting
+
+
+def books_start_scope(entity_path: Path | str, policy: Any, start: date, end: date,
+                      ) -> tuple[dict[str, date], dict[str, date], dict[str, tuple[date, date]]]:
+    """``(account_from, outside, contradicted)`` for ``start..end`` from a books start policy.
+
+    This is the rule that readiness uses (``_policy_starts`` and ``_start_scope``), for a caller that has a
+    parsed ``ledger.books_policy.BooksPolicy``, such as ``books coverage check``. Without an ``enforced``
+    policy, or for an accrual company, no account start changes the period.
+    """
+    entity = load_entity(entity_path)
+    starts, _ = ({}, {}) if _accrual_in_use(entity) else _policy_starts(policy)
+    if not starts:
+        return {}, {}, {}
+    return _start_scope(starts, _first_postings(default_store_path(entity.path)), start, end)
 
 
 def _question_blockers(entity_path: Path, start: date, end: date) -> tuple[list[dict[str, Any]], list[Any]]:
@@ -648,12 +680,8 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     # start. An accrual company keeps the verified cutover above.
     # Accrual stays outside this cash check: a prior-day accrual opening has its own native rules.
     policy_starts, unstarted = ({}, {}) if accrual_in_use else _policy_bounds(disposition_context)
-    if policy_starts and store_path.is_file():
-        # The first canonical posting of each account at any date, also after the period.
-        for entry in LedgerStore(store_path).load_entries():
-            for posting in entry.postings:
-                if entry.date < first_posting.get(posting.account, date.max):
-                    first_posting[posting.account] = entry.date
+    if policy_starts:
+        first_posting = _first_postings(store_path)
     account_from, outside, contradicted = _start_scope(policy_starts, first_posting, start, end)
     sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)), account_from, outside)
 

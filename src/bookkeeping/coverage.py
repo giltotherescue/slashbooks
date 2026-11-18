@@ -622,14 +622,18 @@ def check_coverage(
     max_quiet_days: int = DEFAULT_MAX_QUIET_DAYS,
     account_from: Mapping[str, date] | None = None,
     exclude_waiting: Callable[[Mapping[str, Any]], bool] | None = None,
+    outside: Mapping[str, date] | None = None,
 ) -> dict[str, Any]:
     """Return the coverage document for each expected account and month.
 
     ``account_from`` gives a later first day for an account (for example its authorized books start). That
     account needs evidence from that day, and its statements and continuity are checked from that day, the
     same as a later ``from_date``. Each day must be from ``from_date`` through ``to_date``. Other accounts use
-    ``from_date``. ``exclude_waiting`` is an exact predicate for a readable staged row that the statement
-    tie-out must not count as waiting (``tieout.load_waiting_checked``). It never changes a balance.
+    ``from_date``. The row of such an account has ``books_start``. ``outside`` names an account whose books
+    start after ``to_date``: its row has the status ``outside_period``, ``books_start`` and no months, and it
+    needs no evidence. ``readiness.books_start_scope`` gives both from a books start policy.
+    ``exclude_waiting`` is an exact predicate for a readable staged row that the statement tie-out must not
+    count as waiting (``tieout.load_waiting_checked``). It never changes a balance.
     """
     if from_date > to_date:
         raise ValueError("The period start must not be after its end.")
@@ -638,6 +642,9 @@ def check_coverage(
     account_from = dict(account_from or {})
     if any(not isinstance(day, date) or not from_date <= day <= to_date for day in account_from.values()):
         raise ValueError("An account start must be a date from the period start through its end.")
+    outside = dict(outside or {})
+    if any(not isinstance(day, date) or day <= to_date for day in outside.values()):
+        raise ValueError("An account outside the period must start after the period end.")
     entity = load_entity(entity_path)
     declared = _declared(entity.entity_config)
     records, findings = load_statements(entity.path)
@@ -667,6 +674,19 @@ def check_coverage(
     account_rows = []
     totals = {"complete": 0, "partial": 0, "missing": 0}
     for account in expected:
+        if account in outside:
+            account_rows.append({
+                "account": account,
+                "label": _label(entity.entity_config, account, [r for r in records if r.account == account]),
+                "sources": sorted({str(row["source"]) for row in declared
+                                   if row.get("account") == account and row.get("source")}),
+                "status": "outside_period",
+                "verified": False,
+                "books_start": outside[account].isoformat(),
+                "statements": [],
+                "months": [],
+            })
+            continue
         first_day = account_from.get(account, from_date)
         months = _months(first_day, to_date)
         sources = sorted({str(row["source"]) for row in declared if row.get("account") == account and row.get("source")})
@@ -753,6 +773,7 @@ def check_coverage(
             "sources": sources,
             "status": account_status,
             "verified": all(row["verified"] for row in month_rows),
+            **({"books_start": first_day.isoformat()} if account in account_from else {}),
             "statements": sorted(
                 ({"statement_id": r.statement_id, "kind": r.kind, "from": r.period_start.isoformat(),
                   "to": r.period_end.isoformat(),
@@ -952,7 +973,13 @@ def render_text(document: Mapping[str, Any]) -> str:
     )
     for account in document["accounts"]:
         lines.append("")
-        lines.append(f"{account['label']} ({_account_label(account['account'])}): {account['status']}")
+        status = account["status"].replace("_", " ")
+        lines.append(f"{account['label']} ({_account_label(account['account'])}): {status}")
+        if account.get("books_start"):
+            start = date.fromisoformat(account["books_start"])
+            lines.append(f"  Books start {_fmt_day(start)}, {start.year}, after this period. No evidence is needed."
+                         if account["status"] == "outside_period" else
+                         f"  Books start {_fmt_day(start)}, {start.year}. Earlier months need no evidence.")
         for month in account["months"]:
             mark = month["status"] if month["verified"] or month["status"] != "complete" else "complete (inferred)"
             basis = ", ".join(month["basis"]) or "none"
@@ -1012,12 +1039,22 @@ def run(args: Any) -> int:
     command = args.coverage_command
     try:
         if command == "check":
+            from .ledger.books_policy import active_policy
+            from .readiness import books_start_scope
+
+            from_date, to_date = date.fromisoformat(args.from_date), date.fromisoformat(args.to_date)
+            if from_date > to_date:
+                raise ValueError("The period start must not be after its end.")
+            # The same account starts as readiness: the books start policy of this run (SLASHBOOKS_BOOKS_POLICY).
+            account_from, outside, _ = books_start_scope(args.entity, active_policy(), from_date, to_date)
             document = check_coverage(
                 args.entity,
-                date.fromisoformat(args.from_date),
-                date.fromisoformat(args.to_date),
+                from_date,
+                to_date,
                 accounts=args.account or None,
                 max_quiet_days=args.max_quiet_days,
+                account_from=account_from,
+                outside=outside,
             )
             rendered = (json.dumps(document, indent=2, sort_keys=True) + "\n"
                         if args.fmt == "json" else render_text(document))
