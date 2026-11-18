@@ -186,6 +186,12 @@ def add_parser(subparsers: Any) -> None:
     migrate.add_argument("--dry-run", action="store_true")
     migrate.add_argument("--force", action="store_true")
 
+    marked = ledger_sub.add_parser(
+        "mark-migrated",
+        help="Record that the books in this store came from another store (the bank connection proof trusts "
+             "only rows that arrive after this point)")
+    marked.add_argument("--entity", required=True, type=Path)
+
     snapshot = ledger_sub.add_parser("snapshot", help="Render a Beancount snapshot from ledger.sqlite")
     snapshot.add_argument("--entity", required=True, type=Path)
     snapshot.add_argument("--store", type=Path, default=None)
@@ -225,6 +231,9 @@ def run(args: argparse.Namespace) -> int:
         print(f"  balances: {result.counts.balances}")
         return 0
 
+    if args.ledger_command == "mark-migrated":
+        return _run_mark_migrated(args)
+
     if args.ledger_command == "snapshot":
         from .projections import render_store_ledger
 
@@ -247,3 +256,35 @@ def run(args: argparse.Namespace) -> int:
 
     print(f"Unknown ledger command: {args.ledger_command}")
     return 2
+
+
+def mark_store_migrated(entity_path: Path | str) -> int:
+    """Append a ``store-migrated`` audit event and return its ``max_entry_id``, the newest entry now in the store.
+
+    A host runs this once on every store that it filled from another store (a restored snapshot or bundle). Nothing
+    in a snapshot proves where its rows came from, so the proof from the bank connection (``books balance prove``)
+    trusts a row only when it arrived after the newest boundary. The event changes no ledger table and needs no seal.
+    """
+    from .importer import _entity_write_lock
+    from ..source_ids import MIGRATED_EVENT
+
+    path = default_store_path(Path(entity_path))
+    if not path.is_file():
+        raise ValueError(f"No ledger store at {path}.")
+    store = LedgerStore(path)
+    with _entity_write_lock(Path(entity_path)):
+        with store.transaction(immediate=True) as conn:
+            newest = int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM entries").fetchone()[0])
+            store.append_audit_event(MIGRATED_EVENT, {"max_entry_id": newest}, conn)
+    return newest
+
+
+def _run_mark_migrated(args: argparse.Namespace) -> int:
+    try:
+        entity = load_entity(args.entity)
+        newest = mark_store_migrated(entity.path)
+    except Exception as exc:
+        print(f"Could not record the migration: {exc}", file=sys.stderr)
+        return 1
+    print(f"Recorded: entries up to ID {newest} came from another store; none counts as delivered by the bank connection.")
+    return 0

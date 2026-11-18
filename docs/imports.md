@@ -575,6 +575,22 @@ connected feed. The engine checks exactly this:
   recompute the hashes. It is not a defence against a caller who can run code
   against the ledger store, because that caller can write a whole new chain.
   The trust boundary is the same as for the ledger file.
+- Books that came from another store are not trusted for this proof. A snapshot
+  or a bundle that a host restores carries entries, marks and `feed-intake`
+  events that this store never saw arrive, and nothing in it proves where its
+  rows came from. After it fills a store from another store, a host runs
+  `books ledger mark-migrated --entity PATH`. It appends a `store-migrated`
+  audit event with `max_entry_id`, the newest entry at that point. The newest
+  such boundary decides: a `feed-intake` event before it is ignored, and an
+  entry up to its `max_entry_id` never counts as delivered, whatever mark it
+  has. `books ledger migrate` (a Beancount file into a new store) writes its
+  `migration` event, which is a boundary of the same kind. Rows that arrive
+  after the boundary through `books ingest` count as before. The event is not a
+  ledger write: it needs no seal and it is not ledger audit history. A month
+  that holds rows from before the boundary has the reason
+  `before_intake_boundary`; the host asks for a statement. The engine cannot
+  tell a restored store from a store that was never moved, so a host that
+  skips `mark-migrated` gets no boundary.
 - The provider is in `source_ids.CONNECTED_FEED_PROVIDERS`, and the source ID
   is `<that provider>:<id>`, or has no prefix with the mark `banksync`.
 - It is the only posting of its source ID on the account. A split that puts a
@@ -656,7 +672,7 @@ Each row has `status` (`proven` or `not_proven`) and `reason`, one of `proven`,
 `feed_incomplete`, `waiting_in_review`, `books_differ`, `statement_differs`,
 `newest_reading_differs`, `opening_unproven`, `opening_differs`,
 `opening_conflict`, `opening_entry_unclear`, `unsourced_postings`,
-`audit_chain_invalid` or `no_feed_rows`. A row that is not proven has the figures for one sentence:
+`audit_chain_invalid`, `before_intake_boundary` or `no_feed_rows`. A row that is not proven has the figures for one sentence:
 
 | Reason | Fields | Sentence |
 |---|---|---|
@@ -667,6 +683,7 @@ Each row has `status` (`proven` or `not_proven`) and `reason`, one of `proven`,
 | `not_checking_or_savings` | `account_type` | This account type needs a statement. |
 | `unsourced_postings` | `unsourced_count`, `unsourced_from` | The books have entries that the bank connection did not deliver, the first on `unsourced_from`. |
 | `audit_chain_invalid` | none | The audit hash chain of the ledger store has an error, so no row counts as delivered by the bank connection. Restore the ledger from a backup, then prove again. |
+| `before_intake_boundary` | `unsourced_count`, `unsourced_from` | Some of those rows are from before the newest trust boundary: books that came from another store. The connection did not deliver them to this store. Ask for a statement. |
 | `opening_entry_unclear` | `opening_entries` | The books before the bank connection hold more than one opening entry. |
 | `opening_conflict` | `opening_balances` | The records for the month before disagree. |
 | `statement_available` | `statement_ids` | Reconcile the month from its statement. |
