@@ -509,6 +509,13 @@ The exact reversal of an entry in the books is not refused (the same rule as
 above). Entry metadata such as `import-source`, a source ID or `reverses` never
 makes an entry exempt.
 
+`books coverage check` reads the same variable and uses the same rule as
+readiness. An `authorized` account needs evidence only from its `start_day`,
+and its row has `books_start`. An account whose `start_day` is after the
+period has the status `outside_period` and no months. If the books have a
+posting before `start_day`, the start does not limit the check for that
+account. A company that uses accrual ignores the policy in this check.
+
 This check inside a command gives early feedback. It is not the fence, because
 the session that runs the command controls the variable and the file. The
 opening operations (`books qb sync-opening --apply`, `books qb import-opening`,

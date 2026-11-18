@@ -4,11 +4,13 @@ from datetime import date
 from decimal import Decimal
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -256,6 +258,54 @@ class CoverageCliTests(unittest.TestCase):
         self.assertEqual(json.loads(output)["status"], "complete")
         code, output = self.run_cli("coverage", "statement-list", "--entity", str(self.company))
         self.assertEqual(json.loads(output)["statements"][0]["statement_id"], "c1")
+
+    def check_with_policy(self, start: str, end: str, policy: dict | None) -> dict:
+        argv = ["coverage", "check", "--entity", str(self.company), "--from", start, "--to", end,
+                "--account", CHECKING, "--format", "json"]
+        if policy is None:
+            with mock.patch.dict(os.environ):
+                os.environ.pop("SLASHBOOKS_BOOKS_POLICY", None)
+                code, output = self.run_cli(*argv)
+        else:
+            path = Path(self.temp.name) / "policy.json"
+            path.write_text(json.dumps(policy))
+            with mock.patch.dict(os.environ, {"SLASHBOOKS_BOOKS_POLICY": str(path)}):
+                code, output = self.run_cli(*argv)
+        self.assertEqual(code, 0, output)
+        return json.loads(output)
+
+    @staticmethod
+    def policy(start_day: str) -> dict:
+        return {"schema_version": 1, "mode": "enforced", "epoch": 1,
+                "accounts": {CHECKING: {"state": "authorized", "start_day": start_day, "version": 1}}}
+
+    def test_check_starts_each_account_at_its_authorized_books_start(self):
+        # The books start on Jan 1; the checking account starts on Sep 1 and has one statement for Sep and Oct.
+        statement(self.company, "chk-sep-oct", "2026-09-01", "2026-10-31")
+        without = self.check_with_policy("2026-01-01", "2026-10-31", None)
+        self.assertEqual(without["summary"]["months_missing"], 8)
+
+        document = self.check_with_policy("2026-01-01", "2026-10-31", self.policy("2026-09-01"))
+        row = document["accounts"][0]
+        self.assertEqual(document["status"], "complete")
+        self.assertEqual([m["month"] for m in row["months"]], ["2026-09", "2026-10"])
+        self.assertEqual(document["summary"]["months_missing"], 0)
+        self.assertEqual(row["books_start"], "2026-09-01")
+
+    def test_check_reports_an_account_that_starts_after_the_period(self):
+        document = self.check_with_policy("2026-01-01", "2026-08-31", self.policy("2026-09-01"))
+        row = document["accounts"][0]
+        self.assertEqual((row["status"], row["months"], row["books_start"]), ("outside_period", [], "2026-09-01"))
+        self.assertEqual(document["status"], "complete")
+
+    def test_check_ignores_a_start_that_an_earlier_posting_contradicts(self):
+        post(self.company, CHECKING, ["2026-03-02"])
+        statement(self.company, "chk-sep-oct", "2026-09-01", "2026-10-31")
+        document = self.check_with_policy("2026-01-01", "2026-10-31", self.policy("2026-09-01"))
+        row = document["accounts"][0]
+        self.assertEqual(row["months"][0]["month"], "2026-01")
+        self.assertNotIn("books_start", row)
+        self.assertEqual(document["status"], "incomplete")
 
     def test_remote_contract_classifies_commands(self):
         read = command_spec(["coverage", "check", "--entity", "@entity", "--from", "2026-01-01", "--to", "2026-01-31"])
