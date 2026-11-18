@@ -147,7 +147,8 @@ class AccountRemoveTests(unittest.TestCase):
         self.assert_refused("reference_check_failed")
 
     def test_system_accounts_are_refused(self):
-        for account in ("Income:Consulting", "Expenses:Software", BANK, "Equity:Owner-Draws", "Liabilities:CreditCard"):
+        # An unused starter bank or card account is removable now (see test_bank_account_unmap.py).
+        for account in ("Income:Consulting", "Expenses:Software", "Equity:Owner-Draws"):
             with self.subTest(account):
                 self.assert_refused("protected_account", account)
         add_account(self.root, "Liabilities:Sales-Tax-Payable", open_date="2026-01-01")
