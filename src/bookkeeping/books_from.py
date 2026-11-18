@@ -218,12 +218,20 @@ def _closed_days(entity: Any, store: Any, start: date, end: date) -> list[str]:
 
 
 def _account_history(store: Any) -> dict[str, list[dict[str, Any]]]:
-    """For each account, the audit events that name it: account-add and account-remove. Facts for a review."""
+    """For each account, the audit events that name it: account-add, account-remove and account-rename. Facts for a review."""
     from .account_remove import ACCOUNT_ADD_SESSION
+    from .account_rename import EVENT as RENAME_EVENT
     found: dict[str, list[dict[str, Any]]] = {}
     for event in store.load_audit_events():
         payload = event.get("payload") or {}
         name = None
+        if event["type"] == RENAME_EVENT:
+            for pair in payload.get("accounts") or []:
+                if isinstance(pair, list) and len(pair) == 2 and all(isinstance(part, str) for part in pair):
+                    for account in pair:
+                        found.setdefault(account, []).append({"id": event["id"], "type": event["type"], "ts": event["ts"],
+                                                              "description": f"account renamed from {pair[0]} to {pair[1]}"})
+            continue
         if event["type"] == "intent" and payload.get("session_id") == ACCOUNT_ADD_SESSION:
             description = str(payload.get("description", ""))
             for verb in ("Add account ", "Update account "):

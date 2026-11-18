@@ -115,6 +115,94 @@ own stack; JSON that the parser cannot read at any depth gives
 Standing posting authority does not cover the command, and the trusted
 preparation runtime refuses it.
 
+## Rename a category or an account
+
+`books entity account-rename PATH --account OLD --to NEW [--apply --plan-hash H] [--json]`
+gives an account a new name. A rename changes a label, not an amount. Past
+entries show under the new name, and every report keeps its totals.
+
+- Only the last part of the name changes. `Expenses:Office` can become
+  `Expenses:Office-Costs`; it cannot become `Expenses:Admin:Office`.
+- A child account moves with its parent: `Expenses:Office:Supplies` becomes
+  `Expenses:Office-Costs:Supplies`.
+- Without `--apply` the command shows a preview and writes nothing.
+  `--apply --plan-hash H` makes the change. The plan hash covers the ledger, the
+  audit chain head and every company file that the checks read, so a change after
+  the preview gives `stale_preview`.
+
+In one ledger transaction the command renames the catalog row (it keeps its id,
+open date, currency and financial kind), every posting and balance assertion, the
+open-date marker and the chart records in the ledger meta. It writes the audit
+event `account-renamed` with each old and new name and the plan hash, then a new
+seal. Before the commit it checks that each balance is the same under the new
+name. If a balance differs, nothing is written.
+
+After the commit it updates the company files that name the account, one atomic
+replace for each file:
+
+- `entity.json`: bank and CSV mapping targets, tax line overrides, account
+  numbers and other settings. The keys of `bank_account_mappings` and
+  `compare.qbo_account_crosswalk` are provider or QuickBooks identifiers, so they
+  do not change.
+- `trust-policy.json`, the JSON files in `learned-context/` (payee memory and
+  accrual rules; a rule that selects the parent moves with it), open review items,
+  and the staging files that are not source rows (split templates, context
+  history, duplicate candidates).
+- `reports/reconciliation.json` and the statement and feed-window records in
+  `ingestion/statements/`.
+
+A CSV or statement row carries the ledger account of its mapping when it is
+parsed. The rename adds the old name to `former_ledger_accounts` of each
+confirmed CSV mapping that named it, so a row parsed before the rename still
+matches the mapping and posts to the new name.
+
+These do not change: the audit log, entry narration and metadata, decided review
+items, staged source rows, saved source rows (`source_transactions`), import
+sessions and raw files. They record what happened, and digests bind them. The
+`account-renamed` event connects the old name to the new one. An adopted display
+name of the renamed account is cleared, so the new name shows; its number stays.
+
+Closed and locked months do not block a rename. Amounts, dates and the number of
+entries stay the same, so a closed report keeps its totals. The preview lists the
+locked months that have postings on the account
+(`locked_months_with_postings`), and the audit event records the change. The
+preview also lists `tax_line_changes`: an account whose suggested tax line (a name
+rule, not a saved override) changes with the new name.
+
+A retry of a finished rename gives `already_applied` and writes nothing. If the
+command stopped after the ledger commit, the retry finishes the file updates
+(`files_completed`).
+
+The command refuses before any write:
+
+| Code | Reason |
+|---|---|
+| `invalid_account`, `invalid_name` | The old or the new name is not a valid account name. |
+| `parent_change` | The new name has another root or parent. |
+| `same_name` | The new name is the old name. |
+| `unknown_account` | The account is not in the catalog. |
+| `renamed_elsewhere` | The account was renamed to another name before. |
+| `name_exists` | The new name, or the new name of a child, exists already, also with other letter case. |
+| `name_in_use` | A settings file has a key for both names, so they would become one setting. |
+| `protected_account` | The account or a child is a system account (`engine_accounts.rename_protected_accounts()`): every engine account except a starter income or expense category. |
+| `reserved_name` | The new name is the name of a system account. |
+| `has_children` | A balance sheet or equity account has child accounts. Engine code reads those group names. |
+| `classification_change` | The new name moves an account into or out of cost of sales. |
+| `records_use_account` | Accrual or business records name the account. They bind their facts with digests. |
+| `staged_rows_name_account` | A staged source row names the account in a field other than `accountId`. Post or clear the row first. |
+| `operation_pending` | A queue or reconciliation operation is unfinished. |
+| `ledger_integrity`, `audit_history_missing`, `no_ledger`, `unsupported_schema` | The ledger cannot take a catalog change now. |
+| `reference_check_failed` | A company file is a symbolic link, cannot be read or is not valid JSON. |
+| `stale_preview` | The company changed after the preview. |
+
+A host that keeps a books start policy (`SLASHBOOKS_BOOKS_POLICY`) or that runs
+`ledger.books_policy_check` names accounts by their ledger names. The host must
+move its policy entry to the new name. The fence compares base entries exactly,
+so it reports the relabelled postings as a history change.
+
+Standing posting authority does not cover the command, and the trusted
+preparation runtime refuses it.
+
 ## Record that onboarding is complete
 
 `books entity onboarding-complete PATH --via agent|meeting|staff [--on YYYY-MM-DD]`

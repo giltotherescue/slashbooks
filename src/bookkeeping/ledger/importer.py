@@ -1272,9 +1272,14 @@ def _ledger_account_for_txn(
         else:
             candidates = list((csv_mappings or {}).values())
         for candidate in candidates:
+            # A CSV row carries the ledger account of its mapping at parse time. After ``books entity
+            # account-rename``, the confirmed mapping lists the earlier names in ``former_ledger_accounts``, so a
+            # row parsed before the rename still matches it and posts to the current name.
+            former = candidate.get("former_ledger_accounts") if isinstance(candidate, dict) else None
             if (isinstance(candidate, dict) and candidate.get("confirmed") is True
                     and not candidate.get("proposed") and account_id
-                    and candidate.get("ledger_account") == account_id):
+                    and (candidate.get("ledger_account") == account_id
+                         or (isinstance(former, list) and account_id in former))):
                 csv_account = candidate["ledger_account"]
                 break
         if csv_account is None and mapping_key is not None:

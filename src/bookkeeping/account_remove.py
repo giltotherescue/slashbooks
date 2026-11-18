@@ -263,9 +263,20 @@ def is_account_added_event(event: dict[str, Any], account: str) -> bool:
 
 
 def _latest_added_event(events: list[dict[str, Any]], account: str) -> dict[str, Any] | None:
-    """The account-add event that created the account now in the catalog, or ``None``."""
-    added = [e for e in events if is_account_added_event(e, account)]
-    removed = [e for e in events if e["type"] == "account-removed" and e["payload"].get("account") == account]
+    """The account-add event that created the account now in the catalog, or ``None``.
+
+    An account that ``books entity account-rename`` renamed keeps its account-add event: the event of an earlier
+    name counts when it is older than the rename away from that name (``account_rename.rename_lineage``).
+    """
+    from .account_rename import rename_lineage
+    lineage = rename_lineage(events, account)
+
+    def names(event: dict[str, Any], match: Any) -> bool:
+        return any(match(event, name) and (until is None or event["id"] < until) for name, until in lineage)
+
+    added = [e for e in events if names(e, is_account_added_event)]
+    removed = [e for e in events if names(e, lambda event, name: event["type"] == "account-removed"
+                                          and event["payload"].get("account") == name)]
     return added[-1] if added and (not removed or added[-1]["id"] > removed[-1]["id"]) else None
 
 
