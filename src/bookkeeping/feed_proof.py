@@ -195,6 +195,9 @@ A row that is not proven has a ``reason`` code and the figures for one sentence:
 - ``unsourced_postings``: ``unsourced_count`` and the first date, ``unsourced_from``.
 - ``audit_chain_invalid``: no field. The audit hash chain of the ledger store has an error, so no row counts as
   delivered by the bank connection and no month is proven from the feed.
+- ``ledger_seal_invalid``: no field. The audit chain is whole, but the ledger store fails its integrity check
+  (``check_store_integrity`` gives ``halt``: the content no longer matches the last seal). No month is proven.
+  ``audit_chain_invalid`` has priority.
 - ``before_intake_boundary``: ``unsourced_count`` and ``unsourced_from``, as for ``unsourced_postings``. Some of those
   rows are entries from before the newest trust boundary (books that came from another store, see
   ``source_ids.intake_boundary``). The connection did not deliver them to this store, so ask for a statement.
@@ -218,7 +221,8 @@ from typing import Any, Mapping, Sequence
 
 from .ledger.store import LedgerStore, default_store_path
 from .reconcile import FEED_EVIDENCE_PREFIX, from_feed as _from_feed, record_basis
-from .source_ids import CONNECTED_FEED_PROVIDERS, FEED_PROVIDER_META, LEGACY_UNPREFIXED_PROVIDER, intake_boundary
+from .source_ids import (CONNECTED_FEED_PROVIDERS, FEED_PROVIDER_META, LEGACY_UNPREFIXED_PROVIDER, feed_intake_index,
+                         intake_boundary, verified_feed_provider)
 from .tieout import Series, _dec, _fmt, load_waiting_checked
 
 __all__ = ["FEED_EVIDENCE_PREFIX", "REASONS", "SAFETY_MARGIN_HOURS", "day_closed_at", "opening_evidence", "prove"]
@@ -231,7 +235,7 @@ REASONS = (
     "unreadable_postings", "waiting_unreadable", "no_balance_after_month_end", "feed_incomplete", "waiting_in_review",
     "books_differ", "opening_unproven", "opening_differs", "opening_conflict", "statement_available",
     "opening_entry_unclear", "unsourced_postings", "no_feed_rows", "newest_reading_differs", "statement_differs",
-    "audit_chain_invalid", "before_intake_boundary",
+    "audit_chain_invalid", "ledger_seal_invalid", "before_intake_boundary",
 )
 #: Opening sources whose figure a bank or a statement gave for the day, rather than one computed back.
 _READING_GRADE_BASES = frozenset({"statement", "feed_reading"})
@@ -369,6 +373,8 @@ class _Books:
         self.unreadable = False
         #: The audit hash chain of the ledger store has an error (see ``_load_books``).
         self.chain_invalid = False
+        #: The store failed ``check_store_integrity`` with ``halt`` while its audit chain is whole.
+        self.store_halted = False
         #: Days of postings from entries up to the newest trust boundary (``source_ids.intake_boundary``).
         self.pre_boundary_days: set[date] = set()
         self.other_currency = False
@@ -386,9 +392,17 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         store = LedgerStore(store_path)
         # The mark comes from the audit record of the feed ingest. If the audit chain has an error, no record can be
         # trusted, so no row counts as delivered by the bank connection. One check for each proof.
-        chain_valid = not store.verify_audit_chain()
+        chain_errors = store.verify_audit_chain()
+        chain_valid = not chain_errors
         for item in books.values():
             item.chain_invalid = not chain_valid
+        # A halted store (an edited ledger that the seal no longer covers) is refused, like a broken chain.
+        from .ledger.importer import check_store_integrity
+        halted = chain_valid and check_store_integrity(store, chain_errors=chain_errors).status == "halt"
+        for item in books.values():
+            item.store_halted = halted
+        # One read of the intake records for the whole proof (empty when the chain has an error).
+        intake = feed_intake_index(entity_path, chain_verified=True) if chain_valid else {}
         with store.connection() as conn:
             # Entries up to the newest trust boundary came from another store: none counts as delivered.
             _, boundary_entry = intake_boundary(conn)
@@ -423,7 +437,8 @@ def _load_books(entity_path: Path, ledgers: Sequence[str]) -> dict[str, _Books]:
         postings[str(account)].append(_Posting(
             day, amount, str(source_id) if source_id else None, text("import-source") in _OPENING_SOURCES,
             text("opening-source"), None if source_id else text("reverses"), text("correction-of"),
-            text(FEED_PROVIDER_META) if chain_valid and entry_id > boundary_entry else None))
+            verified_feed_provider(intake, meta, str(source_id) if source_id else None)
+            if chain_valid and entry_id > boundary_entry else None))
         if entry_id <= boundary_entry:
             item.pre_boundary_days.add(day)
     for ledger, item in books.items():
@@ -827,6 +842,8 @@ def _month(account_id: str, month: str, start: date, end: date, context: _Contex
                     statement_ids=sorted(statement_id for statement_id, _ in context.statements[end]))
     if context.side.chain_invalid:
         return _row(account_id, ledger, month, "audit_chain_invalid")
+    if context.side.store_halted:
+        return _row(account_id, ledger, month, "ledger_seal_invalid")
     # The bank day of the month end must be over, with a margin: read at least SAFETY_MARGIN_HOURS after the bank's
     # midnight that starts the next day.
     closed = day_closed_at(end, context.zone)

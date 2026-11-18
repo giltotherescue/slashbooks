@@ -33,6 +33,11 @@ LEGACY_UNPREFIXED_PROVIDER = "banksync"
 # cannot create it, and an edited row loses it.
 FEED_PROVIDER_META = "feed-provider"
 FEED_INTAKE_EVENT = "feed-intake"
+# The digest of the source row, as the ``feed-intake`` record holds it. An entry made from a connected-feed row has
+# ``feed-provider`` and ``feed-row-digest`` (the digests of its rows, in the order of ``source-id`` and
+# ``paired-source-id``, joined by a comma). The proof counts the row only when the intake record, after the newest
+# trust boundary and in a valid chain, still holds that provider, source ID and digest. A row with no digest never counts.
+FEED_ROW_DIGEST_META = "feed-row-digest"
 
 # The trust boundary for a connection proof. Books that came from another store (a restored snapshot, a Beancount
 # migration) carry entries, marks and ``feed-intake`` events that this store never saw arrive. Such a source is
@@ -76,17 +81,18 @@ def feed_intake_payload(provider: str, session_id: str, txns: list[dict]) -> dic
             "rows": {str(txn["id"]): _row_digest(txn) for txn in txns if isinstance(txn, dict) and txn.get("id")}}
 
 
-def feed_intake_index(entity_path: Any) -> FeedIntake:
+def feed_intake_index(entity_path: Any, *, chain_verified: bool = False) -> FeedIntake:
     """Source ID -> provider -> the row digests that a connected-feed ingest recorded for it.
 
     The index is empty when the audit hash chain of the ledger store has an error. Each call reads the store and
     verifies the chain again; nothing is kept between calls. A caller that needs the index for many rows calls
-    this once and passes the result to ``feed_provider_meta``.
+    this once and passes the result to ``feed_provider_meta``. ``chain_verified`` says that the caller verified the
+    chain just before and found no error, so the index is not verified again.
     """
-    return _read_feed_intake(entity_path)
+    return _read_feed_intake(entity_path, chain_verified)
 
 
-def _read_feed_intake(entity_path: Any) -> FeedIntake:
+def _read_feed_intake(entity_path: Any, chain_verified: bool = False) -> FeedIntake:
     import json
     import sqlite3
     from .ledger.store import LedgerStore, default_store_path
@@ -98,7 +104,7 @@ def _read_feed_intake(entity_path: Any) -> FeedIntake:
     try:
         store = LedgerStore(path)
         # An edited or inserted audit record breaks the chain. Then no record can be trusted, so no row has a mark.
-        if store.verify_audit_chain():
+        if not chain_verified and store.verify_audit_chain():
             return index
         with store.connection() as conn:
             boundary_event, _ = intake_boundary(conn)
@@ -121,22 +127,48 @@ def _read_feed_intake(entity_path: Any) -> FeedIntake:
 
 
 def feed_provider_meta(index: FeedIntake, *txns: Any) -> tuple[tuple[str, str], ...]:
-    """The ``feed-provider`` entry metadata for an entry made from *txns*.
+    """The ``feed-provider`` and ``feed-row-digest`` entry metadata for an entry made from *txns*.
 
     Each row must be in a connected-feed ingest's audit record with its current digest, under exactly one provider,
     and every row must name the same provider. Otherwise the entry gets no mark.
     """
     providers: set[str] = set()
+    digests: list[str] = []
     for txn in txns:
         if not isinstance(txn, dict):
             return ()
         recorded = index.get(str(txn.get("id") or ""), {})
         digest = _row_digest(txn)
-        matching = {provider for provider, digests in recorded.items() if digest in digests}
+        matching = {provider for provider, held in recorded.items() if digest in held}
         if len(matching) != 1:
             return ()
         providers |= matching
-    return ((FEED_PROVIDER_META, providers.pop()),) if len(providers) == 1 else ()
+        digests.append(digest)
+    if len(providers) != 1:
+        return ()
+    return ((FEED_PROVIDER_META, providers.pop()), (FEED_ROW_DIGEST_META, ",".join(digests)))
+
+
+def verified_feed_provider(index: FeedIntake, meta: dict[str, Any], source_id: str | None) -> str | None:
+    """The provider of an entry whose mark the intake record still backs, else ``None``.
+
+    The entry needs ``feed-provider`` and ``feed-row-digest``. The digests (one for ``source-id`` and one for
+    ``paired-source-id`` when the entry has it) must each be in the record of that source ID under that provider.
+    """
+    provider, recorded = meta.get(FEED_PROVIDER_META), meta.get(FEED_ROW_DIGEST_META)
+    if not (isinstance(provider, str) and provider and isinstance(recorded, str) and recorded and source_id):
+        return None
+    ids = [source_id]
+    paired = meta.get("paired-source-id")
+    if isinstance(paired, str) and paired:
+        ids.append(paired)
+    digests = recorded.split(",")
+    if len(digests) != len(ids):
+        return None
+    for row_id, digest in zip(ids, digests):
+        if digest not in index.get(row_id, {}).get(provider, ()):
+            return None
+    return provider
 
 
 def namespaced_feed_id(provider: str, raw_id: Any) -> str:

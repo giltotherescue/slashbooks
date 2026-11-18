@@ -560,7 +560,8 @@ rows after the month end. Cards, loans and other types are never proven.
 A row was "delivered by the bank connection" when `books ingest` wrote it from a
 connected feed. The engine checks exactly this:
 
-- The entry has the mark `feed-provider: <provider>`. `books ingest` with a
+- The entry has the mark `feed-provider: <provider>` and the digest `feed-row-digest` of its row (for an entry that pairs two rows, both digests, in the order of `source-id` and `paired-source-id`, joined by a comma). The proof counts the row only when a `feed-intake` record of this store still holds that provider, source ID and digest, the record is after the newest trust boundary, and the audit chain is valid. An entry with the mark and no digest never counts, so a row from before this rule (it has no digest) does not count either, and neither does an entry that was written outside `books ingest`. The proof reads the intake records once. `books balance prove` also refuses every month with `ledger_seal_invalid` when the store fails its integrity check.
+  How the mark is set: `books ingest` with a
   connected-feed provider (`--source banksync`, `--source plaid`,
   `--source stripe-financial-connections`, or a BankSync download) first writes
   a `feed-intake` event in the hash-chained audit log of the ledger store: the
@@ -672,7 +673,7 @@ Each row has `status` (`proven` or `not_proven`) and `reason`, one of `proven`,
 `feed_incomplete`, `waiting_in_review`, `books_differ`, `statement_differs`,
 `newest_reading_differs`, `opening_unproven`, `opening_differs`,
 `opening_conflict`, `opening_entry_unclear`, `unsourced_postings`,
-`audit_chain_invalid`, `before_intake_boundary` or `no_feed_rows`. A row that is not proven has the figures for one sentence:
+`audit_chain_invalid`, `ledger_seal_invalid`, `before_intake_boundary` or `no_feed_rows`. A row that is not proven has the figures for one sentence:
 
 | Reason | Fields | Sentence |
 |---|---|---|
@@ -683,6 +684,7 @@ Each row has `status` (`proven` or `not_proven`) and `reason`, one of `proven`,
 | `not_checking_or_savings` | `account_type` | This account type needs a statement. |
 | `unsourced_postings` | `unsourced_count`, `unsourced_from` | The books have entries that the bank connection did not deliver, the first on `unsourced_from`. |
 | `audit_chain_invalid` | none | The audit hash chain of the ledger store has an error, so no row counts as delivered by the bank connection. Restore the ledger from a backup, then prove again. |
+| `ledger_seal_invalid` | none | The audit chain is whole, but the ledger store fails its integrity check (`halt`): the content no longer matches the last seal, for example an entry that was inserted outside the engine. No month is proven. `audit_chain_invalid` has priority. |
 | `before_intake_boundary` | `unsourced_count`, `unsourced_from` | Some of those rows are from before the newest trust boundary: books that came from another store. The connection did not deliver them to this store. Ask for a statement. |
 | `opening_entry_unclear` | `opening_entries` | The books before the bank connection hold more than one opening entry. |
 | `opening_conflict` | `opening_balances` | The records for the month before disagree. |
