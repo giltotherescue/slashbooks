@@ -73,7 +73,8 @@ A retry of a finished rename (the old name is absent, the new name is present, a
 after the ledger commit, the retry finishes the file updates and removes the pending-rename record.
 
 Source IDs of new CSV and statement rows hash the catalog row id of the account (``source_ids.RowIds``), which the
-rename keeps. Rows with older, name-based IDs are found by the names of the same lineage (``legacy_names``). The
+rename keeps. Rows with older, name-based IDs are found by the names of the same lineage, only when an arrival record shows
+that the row belongs to the account. The
 reconciliation ``record_id`` (``<account>@<as_of>``) follows the account.
 """
 from __future__ import annotations
@@ -279,25 +280,6 @@ def rename_lineage(events: list[dict[str, Any]], account: str) -> list[tuple[str
                 lineage.append((current, before))
                 break
     return lineage
-
-
-def legacy_names(events: list[dict[str, Any]], account: str) -> list[str]:
-    """The names of *account*'s lineage that only this account used.
-
-    A name that a rename event outside the lineage names (another account had it, before or after) is left out.
-    ``source_ids.RowIds`` uses this list only for a row with no owner on record; a row whose mapping, entry or held
-    record names its account matches that account alone.
-    """
-    lineage = rename_lineage(events, account)
-    own = {until for _, until in lineage if until is not None}
-    names = []
-    for name, _ in lineage:
-        shared = any(event.get("type") == EVENT and event["id"] not in own and any(
-            isinstance(pair, list) and name in pair for pair in (event.get("payload") or {}).get("accounts") or [])
-            for event in events)
-        if not shared:
-            names.append(name)
-    return names
 
 
 def _latest_rename(events: list[dict[str, Any]], old: str) -> dict[str, Any] | None:

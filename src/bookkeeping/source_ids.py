@@ -56,21 +56,19 @@ class RowIds:
 
     A new row ID hashes the catalog row id of the account (``account-id:<id>``), which a rename keeps and a new
     account with the same name does not get. Rows imported before this rule have IDs that hash an account name.
-    ``pick`` gives such an earlier ID when the company already holds it for this account: the ID hashes a name of
-    this account's lineage (``account_rename.rename_lineage``), and the row belongs to this account. The owner of a
-    row is the account of its CSV or statement mapping (``csvMappingKey``; a rename moves the mapping with the
-    account), else the accounts that its posted entry or its held record names. A row with no owner on record (only
-    in ``seen-ids.json``) counts only for a name that no other account used (``account_rename.legacy_names``).
-    Without a ledger store, or for a name outside the catalog, the ID hashes the name, as before.
+    ``pick`` gives such an earlier ID only when the row positively belongs to this catalog account. The owner comes
+    only from records written when the row arrived, which the rename keeps on the same catalog row: the postings of
+    the row's entry, the statement import record of its ``statementId``, and the ``account`` of a held record. Each
+    record that exists must name this account; a mapping or another setting never counts. An earlier ID with no
+    such record, or with records that disagree, is not used: the row gets a new ID and goes to review, never to
+    ``already_imported``. Without a ledger store, or for a name outside the catalog, the ID hashes the name.
     """
 
     def __init__(self, entity_path: Any, ledger_account: str) -> None:
         from .ledger.store import LedgerStore, default_store_path
         self.entity_path = Path(entity_path)
-        self.account = ledger_account
-        self.basis, self.legacy, self.exclusive = ledger_account, (), frozenset()
-        self._known: set[str] | None = None
-        self._owners: dict[str, set[str]] = {}
+        self.basis, self.legacy, self.catalog_id = ledger_account, (), None
+        self._facts: dict[str, list[tuple[str, frozenset[int]]]] | None = None
         self._store = None
         path = default_store_path(self.entity_path)
         if not path.is_file():
@@ -78,85 +76,85 @@ class RowIds:
         store = LedgerStore(path)
         with store.connection() as conn:
             row = conn.execute("SELECT id FROM accounts WHERE name = ?", (ledger_account,)).fetchone()
-        if row is None:
-            return
-        from .account_rename import legacy_names, rename_lineage
-        events = store.load_audit_events()
+            if row is None:
+                return
+            self._catalog = {str(name): int(ident) for ident, name in conn.execute("SELECT id, name FROM accounts")}
+        from .account_rename import rename_lineage
         self._store = store
-        self.basis = f"account-id:{int(row[0])}"
-        self.legacy = tuple(name for name, _ in rename_lineage(events, ledger_account))
-        self.exclusive = frozenset(legacy_names(events, ledger_account))
+        self.catalog_id = int(row[0])
+        self.basis = f"account-id:{self.catalog_id}"
+        self.legacy = tuple(name for name, _ in rename_lineage(store.load_audit_events(), ledger_account))
 
     def pick(self, make: Any) -> str:
-        """``make(account_part)`` builds an ID. The ID that the company already holds for this account, else the new one."""
+        """``make(account_part)`` builds an ID. The earlier ID of a row that belongs to this account, else the new one."""
         new = make(self.basis)
         for name in self.legacy:
             old = make(name)
-            if old != new and self._owned(old, name in self.exclusive):
+            if old != new and self.owned(old):
                 return old
         return new
 
-    def _owned(self, source_id: str, exclusive: bool) -> bool:
-        owners = self._owner(source_id)
-        if owners is None:
-            return exclusive and self.known(source_id)
-        return self.account in owners
+    def owned(self, source_id: str) -> bool:
+        """True when at least one arrival record names the row's account, and every one names this account."""
+        facts = self._owner_facts(source_id)
+        return bool(facts) and all(
+            self.catalog_id in owners if kind == "postings" else owners == {self.catalog_id} for kind, owners in facts)
 
-    def known(self, source_id: str) -> bool:
-        self._load()
-        spellings = source_id_variants(source_id)
-        return bool(spellings & self._known) or (
-            self._store is not None and any(self._store.source_exists(s) for s in spellings))
-
-    def _owner(self, source_id: str) -> set[str] | None:
-        """The current names of the accounts that hold the row, or ``None`` when no record says."""
+    def _owner_facts(self, source_id: str) -> list[tuple[str, frozenset[int]]]:
         import json
         self._load()
-        spellings = source_id_variants(source_id)
-        if self._store is not None:
-            marks = ",".join("?" for _ in spellings)
-            with self._store.connection() as conn:
-                for (raw,) in conn.execute(f"SELECT payload_json FROM source_transactions WHERE id IN ({marks})",
-                                           sorted(spellings)):
-                    try:
-                        owner = self._mapped(json.loads(raw or "null"))
-                    except ValueError:
-                        owner = None
-                    if owner:
-                        return {owner}
-                posted = {str(account) for (account,) in conn.execute(
-                    f"SELECT p.account FROM postings p JOIN entries e ON e.id = p.entry_id WHERE e.source_id IN ({marks})",
-                    sorted(spellings))}
-            if posted:
-                return posted
-        found: set[str] = set()
+        spellings = sorted(source_id_variants(source_id))
+        facts: list[tuple[str, frozenset[int]]] = []
         for spelling in spellings:
-            found |= self._owners.get(spelling, set())
-        return found or None
+            facts += self._facts.get(spelling, [])
+        marks = ",".join("?" for _ in spellings)
+        with self._store.connection() as conn:
+            posted = frozenset(int(ident) for (ident,) in conn.execute(
+                f"SELECT DISTINCT a.id FROM postings p JOIN entries e ON e.id = p.entry_id "
+                f"JOIN accounts a ON a.name = p.account WHERE e.source_id IN ({marks})", spellings))
+            if posted:
+                facts.append(("postings", posted))
+            for (raw,) in conn.execute(f"SELECT payload_json FROM source_transactions WHERE id IN ({marks})", spellings):
+                try:
+                    facts += self._row_facts(json.loads(raw or "null"))
+                except ValueError:
+                    facts.append(("unreadable", frozenset()))
+        return facts
 
-    def _mapped(self, row: Any) -> str | None:
-        """The current ledger account of the row's CSV or statement mapping."""
-        if not isinstance(row, dict) or not isinstance(row.get("csvMappingKey"), str):
-            return None
-        mapping = self._mappings.get(row["csvMappingKey"])
-        account = mapping.get("ledger_account") if isinstance(mapping, dict) else None
-        return account if isinstance(account, str) and account else None
+    def _owner(self, name: Any) -> frozenset[int]:
+        """The catalog row of an account name in an arrival record; empty when the name is not in the catalog."""
+        ident = self._catalog.get(name) if isinstance(name, str) else None
+        return frozenset() if ident is None else frozenset({ident})
+
+    def _row_facts(self, row: Any) -> list[tuple[str, frozenset[int]]]:
+        if not isinstance(row, dict) or not isinstance(row.get("statementId"), str):
+            return []
+        accounts = self._imports.get(row["statementId"])
+        if accounts is None:
+            return []
+        owners = frozenset(ident for account in accounts for ident in self._owner(account))
+        # Import records of one statement that name two accounts disagree: no account owns the row.
+        return [("import", owners if len(accounts) == 1 else owners | {-1})]
 
     def _load(self) -> None:
-        """Read the staging files once: the IDs they hold, and the owner of each row that says one."""
-        if self._known is not None:
+        """Read the statement import records and the staging files once."""
+        if self._facts is not None:
             return
         import json
+        self._imports: dict[str, set[str]] = {}
         try:
-            config = json.loads((self.entity_path / "entity.json").read_text(encoding="utf-8"))
+            from .statement_import import load_statement_records
+            records = load_statement_records(self.entity_path, include_all=True)
         except (OSError, ValueError):
-            config = {}
-        mappings = config.get("csv_account_mappings") if isinstance(config, dict) else None
-        self._mappings = mappings if isinstance(mappings, dict) else {}
-        known: set[str] = set()
+            records = []
+        for record in records:
+            if isinstance(record, dict) and isinstance(record.get("statement_id"), str):
+                self._imports.setdefault(record["statement_id"], set()).add(str(record.get("account") or ""))
+        self._facts = {}
         staging = self.entity_path / "staging"
-        for name, field in (("seen-ids.json", None), ("pending.json", "id"), ("pending-categorization.json", "id"),
-                            ("duplicate-candidates.json", "source_id"), ("context-history.json", "source_id")):
+        for name, field, held in (("pending.json", "id", False), ("pending-categorization.json", "id", False),
+                                  ("duplicate-candidates.json", "source_id", True),
+                                  ("context-history.json", "source_id", True)):
             try:
                 data = json.loads((staging / name).read_text(encoding="utf-8"))
             except (OSError, ValueError):
@@ -164,20 +162,14 @@ class RowIds:
             if isinstance(data, dict):
                 data = data.get("rows", [])
             for item in data if isinstance(data, list) else []:
-                value = item if field is None else (item.get(field) if isinstance(item, dict) else None)
+                value = item.get(field) if isinstance(item, dict) else None
                 if not isinstance(value, str) or not value:
                     continue
-                spellings = source_id_variants(value)
-                known |= spellings
-                if not isinstance(item, dict):
-                    continue
-                owner = self._mapped(item) or self._mapped(item.get("transaction"))
-                if owner is None and isinstance(item.get("account"), str):
-                    owner = item["account"]  # A held record names its account; a rename keeps it current.
-                if owner:
-                    for spelling in spellings:
-                        self._owners.setdefault(spelling, set()).add(owner)
-        self._known = known
+                facts = self._row_facts(item.get("transaction") if held else item)
+                if held and "account" in item:
+                    facts.append(("held", self._owner(item.get("account"))))
+                for spelling in source_id_variants(value):
+                    self._facts.setdefault(spelling, []).extend(facts)
 
 
 def keep_former_accounts(existing: Any, ledger_account: str) -> dict[str, Any]:
