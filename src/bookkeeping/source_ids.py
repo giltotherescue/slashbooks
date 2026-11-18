@@ -152,19 +152,25 @@ def feed_provider_meta(index: FeedIntake, *txns: Any) -> tuple[tuple[str, str], 
 def verified_feed_provider(index: FeedIntake, meta: dict[str, Any], source_id: str | None) -> str | None:
     """The provider of an entry whose mark the intake record still backs, else ``None``.
 
-    The entry needs ``feed-provider`` and ``feed-row-digest``. The digests (one for ``source-id`` and one for
-    ``paired-source-id`` when the entry has it) must each be in the record of that source ID under that provider.
+    The entry needs ``feed-provider`` and ``feed-row-digest``. Each digest (one for ``source-id``, and a second for
+    ``paired-source-id`` only when the entry holds two rows) must be in the record of that source ID under that
+    provider.
     """
     provider, recorded = meta.get(FEED_PROVIDER_META), meta.get(FEED_ROW_DIGEST_META)
     if not (isinstance(provider, str) and provider and isinstance(recorded, str) and recorded and source_id):
         return None
-    ids = [source_id]
-    paired = meta.get("paired-source-id")
-    if isinstance(paired, str) and paired:
-        ids.append(paired)
     digests = recorded.split(",")
-    if len(digests) != len(ids):
+    ids = [source_id]
+    if len(digests) == 2:
+        # One entry that holds two rows (a same-day transfer pair): ``source-id`` and ``paired-source-id``.
+        paired = meta.get("paired-source-id")
+        if not (isinstance(paired, str) and paired):
+            return None
+        ids.append(paired)
+    elif len(digests) != 1:
         return None
+    # An entry with one digest is judged by its own source ID, also when it names a ``paired-source-id`` (a
+    # transfer pair on two days is two entries).
     for row_id, digest in zip(ids, digests):
         if digest not in index.get(row_id, {}).get(provider, ()):
             return None

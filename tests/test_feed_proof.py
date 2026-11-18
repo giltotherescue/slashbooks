@@ -1628,6 +1628,25 @@ class ProofRequiresIntakeTests(unittest.TestCase):
         kinds = sorted((day.isoformat(), kind) for day, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds)
         self.assertEqual([kind for _, kind in kinds].count("source"), len(kinds), kinds)
 
+    def test_a_transfer_pair_on_two_days_counts_on_both_accounts_and_a_forged_pair_does_not(self):
+        self.ingest([self.row("u1", "2026-08-06", -20.0), self.row("u2", "2026-08-08", 20.0, account="acct_2")])
+        code, text = self.cli("queue", "propose-transfer", "--entity", str(self.company), "--source-id", "plaid:u1",
+                              "--source-id", "plaid:u2", "--reasoning", "test", "--json")
+        self.assertEqual(code, 0, text)
+        self.cli("queue", "confirm-transfer", "--entity", str(self.company), "--item", json.loads(text)["source_id"],
+                 expect=0)
+        metas = self.metas()
+        self.assertEqual([len(metas[sid]["feed-row-digest"].split(",")) for sid in ("plaid:u1", "plaid:u2")], [1, 1])
+        from bookkeeping.feed_proof import _load_books
+        books = _load_books(self.company, [CHECKING, "Liabilities:CreditCard"])
+        self.assertEqual([kind for _, kind, _ in books[CHECKING].kinds], ["source"])
+        self.assertEqual([kind for _, kind, _ in books["Liabilities:CreditCard"].kinds], ["source"])
+        # A forged entry that names a real row as its pair, with its own digest that no record holds, does not count.
+        self.forge((("feed-provider", "plaid"), ("feed-row-digest", "0" * 64), ("paired-source-id", "plaid:u1")),
+                   seal=True)
+        kinds = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds]
+        self.assertEqual(sorted(kinds), ["none", "source"])
+
     def test_a_re_ingest_after_a_failed_ingest_gets_its_mark_from_the_new_record(self):
         row = self.row("r1")
         staging = self.company / "staging" / "pending-categorization.json"
