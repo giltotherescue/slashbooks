@@ -1026,6 +1026,8 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     identity fields to remove, for example ``("cutover_date",)``.
     """
     entity = load_entity(entity_path)
+    from .ledger.store import refuse_rename_pending
+    refuse_rename_pending(entity.path, [account])
     stable_id = str(feed_account_id).strip()
     if not stable_id:
         raise ValueError("Feed account ID is required.")

@@ -51,17 +51,69 @@ MIGRATED_EVENT = "store-migrated"
 FORMER_LEDGER_ACCOUNTS = "former_ledger_accounts"
 
 
-def identity_account(mapping: Any) -> str:
-    """The ledger account that the source IDs of a CSV or statement mapping hash: its first name.
+class RowIds:
+    """The account part of the source IDs of CSV and statement rows for one ledger account.
 
-    A row ID of a CSV or statement row includes the ledger account of the mapping. After a rename the mapping
-    names the new account, but the IDs keep the first name, so an import of the same file again gives the same
-    IDs and finds the rows that the books already hold.
+    A new row ID hashes the catalog row id of the account (``account-id:<id>``), which a rename keeps and a new
+    account with the same name does not get. Rows imported before this rule have IDs that hash an account name.
+    ``pick`` gives such an earlier ID when the company already holds it, but only for a name of the same account
+    lineage (``account_rename.legacy_names``): never for a name that another account used. Without a ledger store,
+    or for a name outside the catalog, the ID hashes the name, as before.
     """
-    former = mapping.get(FORMER_LEDGER_ACCOUNTS) if isinstance(mapping, dict) else None
-    if isinstance(former, list) and former and isinstance(former[0], str) and former[0]:
-        return former[0]
-    return str(mapping["ledger_account"])
+
+    def __init__(self, entity_path: Any, ledger_account: str) -> None:
+        from .ledger.store import LedgerStore, default_store_path
+        self.entity_path = Path(entity_path)
+        self.basis, self.legacy = ledger_account, ()
+        self._known: set[str] | None = None
+        self._store = None
+        path = default_store_path(self.entity_path)
+        if not path.is_file():
+            return
+        store = LedgerStore(path)
+        with store.connection() as conn:
+            row = conn.execute("SELECT id FROM accounts WHERE name = ?", (ledger_account,)).fetchone()
+        if row is None:
+            return
+        from .account_rename import legacy_names
+        self._store = store
+        self.basis = f"account-id:{int(row[0])}"
+        self.legacy = tuple(legacy_names(store.load_audit_events(), ledger_account))
+
+    def pick(self, make: Any) -> str:
+        """``make(account_part)`` builds an ID. The ID that the company already holds, else the new one."""
+        new = make(self.basis)
+        for name in self.legacy:
+            old = make(name)
+            if old != new and self.known(old):
+                return old
+        return new
+
+    def known(self, source_id: str) -> bool:
+        if self._known is None:
+            self._known = self._load_known()
+        spellings = source_id_variants(source_id)
+        return bool(spellings & self._known) or (
+            self._store is not None and any(self._store.source_exists(s) for s in spellings))
+
+    def _load_known(self) -> set[str]:
+        """Source IDs in the staging files: seen, staged, queued for review, held as duplicates, context only."""
+        import json
+        known: set[str] = set()
+        staging = self.entity_path / "staging"
+        for name, field in (("seen-ids.json", None), ("pending.json", "id"), ("pending-categorization.json", "id"),
+                            ("duplicate-candidates.json", "source_id"), ("context-history.json", "source_id")):
+            try:
+                data = json.loads((staging / name).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(data, dict):
+                data = data.get("rows", [])
+            for item in data if isinstance(data, list) else []:
+                value = item if field is None else (item.get(field) if isinstance(item, dict) else None)
+                if isinstance(value, str) and value:
+                    known |= source_id_variants(value)
+        return known
 
 
 def keep_former_accounts(existing: Any, ledger_account: str) -> dict[str, Any]:

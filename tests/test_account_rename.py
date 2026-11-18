@@ -212,7 +212,8 @@ class AccountRenameTests(unittest.TestCase):
                                      "period_start": "2026-02-01", "period_end": "2026-02-28",
                                      "opening_balance": "0.00", "closing_balance": "-75.00"})
         record_feed_window(self.root, account=OPERATING, start=date(2026, 2, 1), end=date(2026, 2, 28), source="feed-op")
-        write_json(self.root / "reports" / "reconciliation.json", [{"account": OPERATING, "as_of": "2026-02-28"}])
+        write_json(self.root / "reports" / "reconciliation.json",
+                   [{"record_id": f"{OPERATING}@2026-02-28", "account": OPERATING, "as_of": "2026-02-28"}])
         new = "Assets:Bank:Main-Operating"
         _, done = self.rename_applied(OPERATING, new)
         self.assertEqual(done["balance_assertions_relabelled"], 1)
@@ -223,7 +224,8 @@ class AccountRenameTests(unittest.TestCase):
                          {"ledger_account": new, "confirmed": True, "former_ledger_accounts": [OPERATING]})
         records, findings = load_statements(self.root)
         self.assertEqual((findings, {r.account for r in records}), ([], {new}))
-        self.assertEqual(read_json(self.root / "reports" / "reconciliation.json")[0]["account"], new)
+        record = read_json(self.root / "reports" / "reconciliation.json")[0]
+        self.assertEqual((record["account"], record["record_id"]), (new, f"{new}@2026-02-28"))
         self.assertEqual(self.store.load_financial_kinds().get(new), "bank")
         self.assertEqual([b.account for b in self.store.load_balances()], [new])
         # A CSV row parsed before the rename still matches its mapping and posts to the new name.
@@ -422,6 +424,86 @@ class AccountRenameTests(unittest.TestCase):
         self.assertEqual(profile["former_ledger_accounts"], [OPERATING])
         third = si.import_file(self.root, fixture, profile="op", ts="2026-02-03T00:00:00Z")["statements"][0]["counts"]
         self.assertEqual((third["already_imported"], third["queued_for_review"]), (6, 0), third)
+
+    STATEMENT = Path(__file__).resolve().parent / "fixtures" / "statements" / "chase_like_checking.csv"
+
+    def statement(self, profile: str, account: str, day: int = 1):
+        from bookkeeping import statement_import as si
+        if profile not in si._profiles(load_entity(self.root).entity_config):
+            si.save_profile(self.root, self.STATEMENT, name=profile, ledger_account=account)
+        return si.import_file(self.root, self.STATEMENT, profile=profile,
+                              ts=f"2026-03-{day:02d}T00:00:00Z")["statements"][0]["counts"]
+
+    def test_a_new_account_with_an_earlier_name_gets_its_own_statement_rows(self):
+        from bookkeeping import statement_import as si
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        si.save_profile(self.root, self.STATEMENT, name="main", ledger_account=OPERATING)  # Mapped before the rename.
+        new = "Assets:Bank:Main-Operating"
+        self.rename_applied(OPERATING, new)
+        self.assertEqual(self.statement("main", new)["queued_for_review"], 6)
+        # A second, separate account takes the earlier name and imports the same file.
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        counts = self.statement("other", OPERATING, 2)
+        self.assertEqual((counts["queued_for_review"], counts.get("already_imported", 0)), (6, 0), counts)
+        pending = read_json(self.root / "staging" / "pending-categorization.json")
+        self.assertEqual(len({row["id"] for row in pending}), 12)
+        # The same case when the first account imported before its rename.
+        add_account(self.root, "Assets:Bank:Reserve", open_date="2020-01-01", financial_kind="bank")
+        self.assertEqual(self.statement("reserve", "Assets:Bank:Reserve", 3)["queued_for_review"], 6)
+        self.rename_applied("Assets:Bank:Reserve", "Assets:Bank:Main-Reserve")
+        add_account(self.root, "Assets:Bank:Reserve", open_date="2020-01-01", financial_kind="bank")
+        counts = self.statement("reserve-2", "Assets:Bank:Reserve", 4)
+        self.assertEqual(counts["queued_for_review"], 6, counts)
+
+    def test_rows_imported_under_name_based_ids_are_found_in_the_same_lineage(self):
+        from bookkeeping import statement_import as si
+
+        class NameIds:  # The ID rule before catalog row ids: the current account name.
+            def __init__(self, entity_path, ledger_account):
+                self.account = ledger_account
+
+            def pick(self, make):
+                return make(self.account)
+
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        with mock.patch.object(si, "RowIds", NameIds):
+            self.assertEqual(self.statement("op", OPERATING)["queued_for_review"], 6)
+        # An unchanged reimport with the new rule finds the rows by the current name.
+        counts = self.statement("op", OPERATING, 2)
+        self.assertEqual((counts["already_imported"], counts["queued_for_review"]), (6, 0), counts)
+        # After a rename it finds them by the earlier name of the same account.
+        new = "Assets:Bank:Main-Operating"
+        self.rename_applied(OPERATING, new)
+        counts = self.statement("op", new, 3)
+        self.assertEqual((counts["already_imported"], counts["queued_for_review"]), (6, 0), counts)
+        candidates = self.root / "staging" / "duplicate-candidates.json"
+        self.assertFalse(candidates.exists() and read_json(candidates), "no row is held for duplicate review")
+        # Rows that an earlier rename stored under the current name are found too.
+        newer = "Assets:Bank:Primary"
+        with mock.patch.object(si, "RowIds", NameIds):
+            add_account(self.root, "Assets:Bank:Spare", open_date="2020-01-01", financial_kind="bank")
+            self.assertEqual(self.statement("spare", "Assets:Bank:Spare", 4)["queued_for_review"], 6)
+        self.rename_applied("Assets:Bank:Spare", newer)
+        counts = self.statement("spare", newer, 5)
+        self.assertEqual((counts["already_imported"], counts["queued_for_review"]), (6, 0), counts)
+
+    def test_reconciliation_waits_for_an_unfinished_rename(self):
+        from bookkeeping.reconcile import reconcile
+        add_account(self.root, OPERATING, open_date="2026-01-01", financial_kind="bank")
+        self.post(OFFICE, "75.00", "s1", other=OPERATING)
+        new = "Assets:Bank:Main-Operating"
+        self.interrupt(OPERATING, new)
+        with self.assertRaises(ValueError) as caught:
+            reconcile(self.root, OPERATING, Decimal("0.00"), date(2026, 2, 28))
+        self.assertIn("is not finished", str(caught.exception))
+        self.assertFalse((self.root / "reports" / "reconciliation.json").exists())
+        with self.assertRaises(ValueError):
+            record_statement(self.root, {"statement_id": "st-9", "account": OPERATING, "kind": "statement",
+                                         "period_start": "2026-02-01", "period_end": "2026-02-28"}, check_catalog=False)
+        self.assertEqual(self.rename(OPERATING, new, "--apply")[1]["status"], "already_applied")
+        self.assert_valid()
+        result = reconcile(self.root, new, Decimal("-75.00"), date(2026, 2, 28))
+        self.assertEqual(result.status if hasattr(result, "status") else result["status"], "clean")
 
     def test_stale_plan_hash_is_refused(self):
         code, plan, _ = self.rename()

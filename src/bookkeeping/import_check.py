@@ -493,7 +493,8 @@ def check_import(entity_path: Path | str, import_id: str, *, ts: str | None = No
     if fmt == "ofx":
         statements = [si._ofx_statement(s, sha, name, profiles[name]) for s in ofx.parse_ofx(text)]
     else:
-        statements = [si._csv_statement(path, text, sha, name, profiles[name])]
+        statements = [si._csv_statement(path, text, sha, name, profiles[name],
+                                        row_ids=si.RowIds(entity.path, profiles[name]["ledger_account"]))]
     statement = next((s for s in statements if s["statement_id"] == import_id), None)
     if statement is None:
         raise ImportCheckError("file_changed", "The archived file no longer matches this import.")

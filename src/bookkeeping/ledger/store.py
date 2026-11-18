@@ -76,6 +76,18 @@ OPEN_DATE_SOURCES = frozenset({"default", "scope", "cutover", "user", "import", 
 RENAME_PENDING_KEY = "account_rename_pending"
 
 
+def refuse_rename_pending(entity_path: Path | str, accounts: Any) -> None:
+    """``check_rename_pending`` for a writer of company files (a reconciliation, a mapping, a statement record)."""
+    path = default_store_path(entity_path)
+    if not path.is_file():
+        return
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+        try:
+            check_rename_pending(conn, list(accounts))
+        except sqlite3.OperationalError:
+            return  # No meta table: no rename.
+
+
 def check_rename_pending(conn: sqlite3.Connection, accounts: Any) -> None:
     """Refuse a write that names an account of an unfinished rename. ``accounts`` is an iterable of names."""
     row = conn.execute("SELECT value FROM meta WHERE key = ?", (RENAME_PENDING_KEY,)).fetchone()

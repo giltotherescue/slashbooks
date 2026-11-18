@@ -477,6 +477,9 @@ def update_settings(
 ) -> dict[str, Any]:
     """Record the return form and per-account overrides in ``entity.json``."""
     entity = load_entity(entity_path)
+    if account:
+        from .ledger.store import refuse_rename_pending
+        refuse_rename_pending(entity.path, [account])
     settings = _settings(entity.entity_config)
     changes: dict[str, Any] = {}
     if return_form:

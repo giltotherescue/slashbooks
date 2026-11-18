@@ -379,6 +379,8 @@ def record_statement(entity_path: Path | str, record: Mapping[str, Any], *, repl
     """
     entity = load_entity(entity_path)
     parsed = parse_statement(dict(record))
+    from .ledger.store import refuse_rename_pending
+    refuse_rename_pending(entity.path, [parsed.account])
     store_path = default_store_path(entity.path)
     if (check_catalog and store_path.is_file()
             and parsed.account not in LedgerStore(store_path).load_account_names()):

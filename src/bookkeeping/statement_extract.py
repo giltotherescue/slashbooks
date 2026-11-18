@@ -85,7 +85,7 @@ from . import provenance
 from . import statement_import as si
 from .connectors import bankcsv
 from .ledger.normalize import normalize_description
-from .source_ids import identity_account, keep_former_accounts
+from .source_ids import RowIds, keep_former_accounts
 
 JsonObject = dict[str, Any]
 
@@ -447,6 +447,8 @@ def _differences(a: Extraction, b: Extraction) -> list[str]:
 
 def save_extracted_profile(entity_path: Path, *, name: str, ledger_account: str, account_name: str = "") -> JsonObject:
     """Save a confirmed profile so extracted statements can import into one account."""
+    from .ledger.store import refuse_rename_pending
+    refuse_rename_pending(entity_path, [ledger_account])
     from .entity import load_entity
     from .ledger.importer import _entity_write_lock
 
@@ -601,13 +603,14 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
     session_id = session_id or f"statement-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
     occurrences: Counter[tuple] = Counter()
     txns = []
+    row_ids = RowIds(entity.path, ledger_account)
     for row in ext.rows:
         ledger_amount = sign * row.amount  # The one place where presentation becomes ledger sign.
         norm = normalize_description(row.description)
         key = (row.day.isoformat(), format(ledger_amount, "f"), norm)
         occurrences[key] += 1
-        txn_id = "stmt:" + si._hash(identity_account(prof), row.day.isoformat(), format(ledger_amount, "f"), norm, "",
-                                    str(occurrences[key]))
+        parts = (row.day.isoformat(), format(ledger_amount, "f"), norm, "", str(occurrences[key]))
+        txn_id = row_ids.pick(lambda account: "stmt:" + si._hash(account, *parts))
         txns.append(si._txn(txn_id=txn_id, day=row.day.isoformat(), description=row.description,
                             original=row.description, amount=ledger_amount, reference="", profile_name=profile,
                             profile=prof, last4=None, statement_id=statement_id, bank_id="statement-extracted",

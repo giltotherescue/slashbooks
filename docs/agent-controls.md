@@ -181,10 +181,18 @@ A retry of a finished rename gives `already_applied` and writes nothing. If the
 command stopped after the ledger commit, the retry finishes the file updates
 (`files_completed`) and removes the pending-rename record (`finished_event`).
 
-The source ID of a CSV or statement row hashes the first name of the mapping
-account (the first entry of `former_ledger_accounts`, else `ledger_account`). An
-import of the same file after a rename gives the same IDs, so the rows are found
-as already imported. Saving the profile again keeps `former_ledger_accounts`.
+The source ID of a new CSV or statement row hashes the catalog row id of the
+mapped account (`account-id:<id>`), not its name. A rename keeps the row id, so an
+import of the same file after a rename gives the same IDs. A new account that
+takes an earlier name gets a new row id, so its rows never match the rows of the
+renamed account. A row imported before this rule has an ID that hashes an account
+name. The import finds such a row by the names of the same account (its current
+name and its earlier names in the `account-renamed` events) and keeps its ID. A
+name that another account also had is not used for this match.
+
+While a rename is pending, a reconciliation, a statement record, a bank or CSV
+mapping, a statement profile and a tax setting that name an old account are
+refused with the same message.
 
 The command refuses before any write:
 

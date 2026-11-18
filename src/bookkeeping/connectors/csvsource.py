@@ -194,6 +194,7 @@ def parse_amex_csv(
     currency: str = "USD",
     boundary_date: str | None = None,
     side: str = "before",
+    row_ids: Any = None,
 ) -> tuple[list[JsonObject], int]:
     """Parse an Amex activity CSV into the normalized transaction contract.
 
@@ -276,7 +277,10 @@ def parse_amex_csv(
                 debit_amount = None
                 credit_amount = format(abs(amount), "f")
 
-            txn_id = _fingerprint(fp_account, iso_date, feed_amount, description, stripped_ref)
+            # ``row_ids`` (``source_ids.RowIds``) hashes the catalog row id of the account, so an account rename
+            # keeps the IDs; without it the ID hashes the account name, as before.
+            txn_id = (row_ids.pick(lambda account: _fingerprint(account, iso_date, feed_amount, description, stripped_ref))
+                      if row_ids is not None else _fingerprint(fp_account, iso_date, feed_amount, description, stripped_ref))
 
             txn: JsonObject = {
                 "id": txn_id,
@@ -412,6 +416,8 @@ def write_confirmed_mapping(
         )
 
     entity_config: dict[str, Any] = json.loads(entity_json_path.read_text(encoding="utf-8"))
+    from ..ledger.store import refuse_rename_pending
+    refuse_rename_pending(entity_path, [ledger_account])
 
     if "csv_account_mappings" not in entity_config:
         entity_config["csv_account_mappings"] = {}
@@ -444,13 +450,23 @@ def write_confirmed_mapping(
 # High-level import orchestration (used by CLI parse subcommand)
 # ---------------------------------------------------------------------------
 
+def _row_ids(entity_path: str | Path | None, ledger_account: str) -> Any:
+    if entity_path is None:
+        return None
+    from ..source_ids import RowIds
+    return RowIds(entity_path, ledger_account)
+
+
 def import_csv(
     entity_config: dict[str, Any],
     csv_path: str | Path,
     *,
     currency: str | None = None,
+    entity_path: str | Path | None = None,
 ) -> JsonObject:
     """Parse a CSV file using the confirmed entity mapping.
+
+    With ``entity_path`` the row IDs hash the catalog row id of the mapped account (``source_ids.RowIds``).
 
     Rows carry *currency*, default the company currency in *entity_config* (USD unless set).
 
@@ -479,15 +495,15 @@ def import_csv(
             "proposal": mapping,
         }
 
-    from ..source_ids import identity_account as _identity_account
     transactions, excluded = parse_amex_csv(
         csv_path,
         account_id=mapping["ledger_account"],
         account_name=mapping["account_name"],
-        ledger_account=_identity_account(mapping),  # The first name: IDs stay the same after a rename.
+        ledger_account=mapping["ledger_account"],
         currency=currency,
         boundary_date=mapping.get("boundary_date"),
         side=mapping.get("side", "before"),
+        row_ids=_row_ids(entity_path, mapping["ledger_account"]),
     )
     for txn in transactions:
         txn["csvMappingKey"] = _mapping_key(csv_path)
@@ -753,7 +769,7 @@ def _run_parse(args: Any) -> int:
         return 1
 
     try:
-        result = import_csv(entity.entity_config, path)
+        result = import_csv(entity.entity_config, path, entity_path=entity.path)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
