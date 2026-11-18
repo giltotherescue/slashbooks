@@ -85,6 +85,7 @@ from . import provenance
 from . import statement_import as si
 from .connectors import bankcsv
 from .ledger.normalize import normalize_description
+from .source_ids import identity_account, keep_former_accounts
 
 JsonObject = dict[str, Any]
 
@@ -470,6 +471,7 @@ def save_extracted_profile(entity_path: Path, *, name: str, ledger_account: str,
             "caller_kind": provenance.caller_kind(),
             "source_format": EXTRACTED_FORMAT,
             "statement_profile": {"format": EXTRACTED_FORMAT, "version": 1},
+            **keep_former_accounts(existing, ledger_account),
         }
         config = json.loads((entity.path / "entity.json").read_text(encoding="utf-8"))
         config.setdefault("csv_account_mappings", {})[si.MAPPING_PREFIX + name] = record
@@ -604,7 +606,7 @@ def import_extracted(entity_path: Path, raw: Any, *, profile: str, evidence: Pat
         norm = normalize_description(row.description)
         key = (row.day.isoformat(), format(ledger_amount, "f"), norm)
         occurrences[key] += 1
-        txn_id = "stmt:" + si._hash(ledger_account, row.day.isoformat(), format(ledger_amount, "f"), norm, "",
+        txn_id = "stmt:" + si._hash(identity_account(prof), row.day.isoformat(), format(ledger_amount, "f"), norm, "",
                                     str(occurrences[key]))
         txns.append(si._txn(txn_id=txn_id, day=row.day.isoformat(), description=row.description,
                             original=row.description, amount=ledger_amount, reference="", profile_name=profile,

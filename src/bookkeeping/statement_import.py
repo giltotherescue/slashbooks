@@ -106,7 +106,7 @@ from . import currency as currency_mod
 from .ledger.normalize import normalize_description
 from . import provenance
 from .tieout import presentation_sign, statement_tieout
-from .source_ids import same_family, source_family, source_id_variants
+from .source_ids import identity_account, keep_former_accounts, same_family, source_family, source_id_variants
 from .work import observe_import
 from .brand import product_name
 
@@ -467,6 +467,7 @@ def save_profile(entity_path: Path, path: Path, *, name: str, ledger_account: st
             "caller_kind": provenance.caller_kind(),
             "source_format": spec["format"],
             "statement_profile": spec,
+            **keep_former_accounts(existing, ledger_account),
         }
         config = json.loads((entity.path / "entity.json").read_text(encoding="utf-8"))
         config.setdefault("csv_account_mappings", {})[MAPPING_PREFIX + name] = record
@@ -570,7 +571,8 @@ def _csv_statement(path: Path, text: str, file_sha: str, name: str, profile: Jso
         occurrences[key] += 1
         if occurrences[key] == 2:
             identical_groups += 1
-        txn_id = "stmt:" + _hash(profile["ledger_account"], row.date, format(row.amount, "f"),
+        # The ID hashes the first name of the account, so it stays the same after an account rename.
+        txn_id = "stmt:" + _hash(identity_account(profile), row.date, format(row.amount, "f"),
                                  norm, row.reference, str(occurrences[key]))
         original = " ".join(part for part in (row.description, row.memo) if part)
         txns.append(_txn(txn_id=txn_id, day=row.date, description=row.description, original=original,

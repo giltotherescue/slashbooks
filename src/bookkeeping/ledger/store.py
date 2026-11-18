@@ -69,6 +69,29 @@ STORE_FILENAME = "ledger.sqlite"
 OPEN_DATE_PROVENANCE_KEY = "open_date_provenance"
 OPEN_DATE_SOURCES = frozenset({"default", "scope", "cutover", "user", "import", "opening", "legacy"})
 
+# The meta key of an unfinished account rename (``bookkeeping.account_rename``). The rename writes it in the same
+# transaction as the ledger change and removes it, with a sealed event, after every company file names the new
+# account. While it exists, no writer may name an old account: company files can still name it, and a write would
+# create the old account again and split its balance.
+RENAME_PENDING_KEY = "account_rename_pending"
+
+
+def check_rename_pending(conn: sqlite3.Connection, accounts: Any) -> None:
+    """Refuse a write that names an account of an unfinished rename. ``accounts`` is an iterable of names."""
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (RENAME_PENDING_KEY,)).fetchone()
+    if row is None:
+        return
+    try:
+        record = json.loads(str(row[0]))
+        old, new = str(record["from"]), str(record["to"])
+    except (ValueError, KeyError, TypeError):
+        raise ValueError("The record of an unfinished account rename is not valid; nothing was written.") from None
+    for account in accounts:
+        if isinstance(account, str) and (account == old or account.startswith(old + ":")):
+            raise ValueError(
+                f"The rename of {old} to {new} is not finished, so nothing can be written to {account}. Finish it "
+                f"with: books entity account-rename PATH --account {old} --to {new} --apply. Then use {new}.")
+
 
 def _iso_day(value: Any) -> bool:
     try:
@@ -505,6 +528,7 @@ class LedgerStore:
         accounts already in the catalog get ``legacy``. So from this engine version on, every stated date has
         a marker.
         """
+        check_rename_pending(conn, (item.account for item in opens))
         record = self.load_open_date_provenance(conn)
         if record is None and provenance is not None and opens:
             record = {"version": 1, "books_from": None, "books_from_source": None, "catalog_sha256": "",
@@ -556,6 +580,7 @@ class LedgerStore:
         """Assign previously unclassified accounts in a caller's audited transaction."""
         if not kinds:
             return
+        check_rename_pending(conn, kinds)
         current = self.load_financial_kinds(conn)
         for account, kind in kinds.items():
             validate_financial_kind(account, kind)
@@ -588,6 +613,7 @@ class LedgerStore:
         return {str(row["name"]) for row in rows}
 
     def insert_balances(self, balances: Sequence[Balance], conn: sqlite3.Connection) -> None:
+        check_rename_pending(conn, (item.account for item in balances))
         for item in balances:
             conn.execute(
                 """INSERT INTO balance_assertions (date, account, amount, currency)
@@ -596,6 +622,7 @@ class LedgerStore:
             )
 
     def insert_entries(self, entries: Sequence[Entry], conn: sqlite3.Connection) -> None:
+        check_rename_pending(conn, (posting.account for entry in entries for posting in entry.postings))
         for entry in entries:
             metadata = dict(entry.meta)
             cur = conn.execute(

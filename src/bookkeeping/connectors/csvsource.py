@@ -417,12 +417,14 @@ def write_confirmed_mapping(
         entity_config["csv_account_mappings"] = {}
 
     key = _mapping_key(csv_path)
+    from ..source_ids import keep_former_accounts
     entity_config["csv_account_mappings"][key] = {
         "account_name": account_name,
         "ledger_account": ledger_account,
         "boundary_date": boundary_date,
         "side": side,
         "confirmed": True,
+        **keep_former_accounts(entity_config["csv_account_mappings"].get(key), ledger_account),
     }
 
     tmp_path = entity_json_path.with_suffix(".json.tmp")
@@ -477,11 +479,12 @@ def import_csv(
             "proposal": mapping,
         }
 
+    from ..source_ids import identity_account as _identity_account
     transactions, excluded = parse_amex_csv(
         csv_path,
         account_id=mapping["ledger_account"],
         account_name=mapping["account_name"],
-        ledger_account=mapping["ledger_account"],
+        ledger_account=_identity_account(mapping),  # The first name: IDs stay the same after a rename.
         currency=currency,
         boundary_date=mapping.get("boundary_date"),
         side=mapping.get("side", "before"),

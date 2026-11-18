@@ -315,6 +315,114 @@ class AccountRenameTests(unittest.TestCase):
         self.assertEqual(read_json(self.root / "learned-context" / "counterparties.json")["OAK CO"]["canonical_category"], COSTS)
         self.assert_valid()
 
+    def interrupt(self, old: str = OFFICE, new: str = COSTS):
+        """Apply the rename and stop it after the ledger commit, before any company file changes."""
+        code, plan, _ = self.rename(old, new)
+        with mock.patch.object(account_rename, "_write_files", side_effect=OSError("stopped")):
+            with self.assertRaises(OSError):
+                account_rename.apply(self.root, old, new, plan["plan_hash"])
+
+    def test_an_unfinished_rename_blocks_every_writer_of_the_old_name(self):
+        # The review repro: a custom bank account, 75 posted, a stop at the file updates, then a 5 expense
+        # through the stale bank mapping.
+        add_account(self.root, OPERATING, open_date="2026-01-01", financial_kind="bank")
+        config = read_json(self.root / "entity.json")
+        config["bank_account_mappings"] = {"feed-op": OPERATING}
+        write_json(self.root / "entity.json", config)
+        write_json(self.root / "trust-policy.json", {"auto_post_threshold": 1, "queue_all_until_confirmed": False})
+        write_json(self.root / "learned-context" / "counterparties.json",
+                   {"PAPER CO": {"canonical_category": OFFICE, "confirmed_count": 5, "reset": False}})
+        self.post(OFFICE, "75.00", "s1", other=OPERATING)
+        new = "Assets:Bank:Main-Operating"
+        self.interrupt(OPERATING, new)
+        self.assertEqual(read_json(self.root / "entity.json")["bank_account_mappings"], {"feed-op": OPERATING},
+                         "the stop left the mapping on the old name")
+        before = self.balances()
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        integrity = check_integrity(load_entity(self.root))
+        self.assertEqual(integrity.status, "incomplete-write")
+        self.assertIn("account-rename", integrity.message)
+        # Intake through the stale mapping is refused; it creates no old account and splits no balance.
+        rows = Path(self.tmp.name) / "rows.json"
+        rows.write_text(json.dumps([{"id": "r-5", "date": "2026-02-10", "description": "PAPER CO", "amount": "-5.00",
+                                     "accountId": "feed-op"}]), encoding="utf-8")
+        code, out, err = run_cli(["ingest", str(rows), "--entity", str(self.root), "--source", "test"])
+        self.assertNotEqual(code, 0, (out, err))
+        # Writers that check integrity refuse; the ledger store itself refuses a writer that does not.
+        for writer in (lambda: self.post(OFFICE, "5.00", "s2", other=OPERATING),
+                       lambda: add_account(self.root, OPERATING, open_date="2026-01-01"),
+                       lambda: add_account(self.root, f"{OPERATING}:Sub", open_date="2026-01-01")):
+            with self.assertRaises(ValueError):
+                writer()
+        for write in (lambda conn: self.store.insert_opens([Open(date(2026, 1, 1), OPERATING)], conn),
+                      lambda conn: self.store.insert_balances([Balance(date(2026, 2, 1), OPERATING, Decimal("1"))], conn),
+                      lambda conn: self.store.insert_entries([Entry(date=date(2026, 2, 1), narration="x", postings=(
+                          Posting(f"{OPERATING}:Sub", Decimal("1")), Posting(OFFICE, Decimal("-1"))))], conn)):
+            with self.assertRaises(ValueError) as caught, self.store.transaction() as conn:
+                write(conn)
+            self.assertIn(f"account-rename PATH --account {OPERATING} --to {new} --apply", str(caught.exception))
+        self.assertNotIn(OPERATING, self.catalog())
+        self.assertEqual(self.balances(), before)
+        self.assertEqual({a: b for a, b in self.balances().items() if "Operating" in a}, {new: Decimal("-75.00")})
+        # A second rename waits for the first one.
+        for extra in ((), ("--apply",)):
+            code, second, _ = self.rename(OFFICE, COSTS, *extra)
+            self.assertEqual((code, second["errors"][0]["code"]), (1, "operation_pending"), second)
+        self.assertIn(OFFICE, self.catalog())
+        # The retry finishes the files, clears the record and seals.
+        code, retry, _ = self.rename(OPERATING, new, "--apply")
+        self.assertEqual((code, retry["status"], retry["files_completed"]), (0, "already_applied", ["entity.json"]), retry)
+        self.assertIsNotNone(retry["finished_event"])
+        self.assertEqual(read_json(self.root / "entity.json")["bank_account_mappings"], {"feed-op": new})
+        self.assert_valid()
+        code, out, err = run_cli(["ingest", str(rows), "--entity", str(self.root), "--source", "test"])
+        self.assertEqual(code, 0, (out, err))
+        self.assertNotIn(OPERATING, self.catalog())
+        self.assertEqual(self.balances()[new], Decimal("-80.00"), "the new row posts under the new name")
+        self.assert_valid()
+        # After recovery the other rename runs.
+        self.rename_applied()
+        self.assert_valid()
+
+    def test_balance_prove_and_seal_stay_valid_through_an_interrupted_rename(self):
+        add_account(self.root, "Expenses:Paper", open_date="2026-01-01")
+        self.post("Expenses:Paper", "12.00", "s1")
+        self.interrupt("Expenses:Paper", "Expenses:Stationery")
+        self.assertEqual(self.store.verify_audit_chain(), [])
+        last = self.store.load_audit_events()[-1]
+        self.assertEqual((last["type"], last["payload"]["store_sha256"]), ("ledger-store-sealed", self.store.content_digest()))
+        code, pending, _ = self.rename("Expenses:Paper", "Expenses:Stationery")
+        self.assertEqual((pending["status"], pending["finish_pending"]), ("already_applied", True))
+        code, retry, _ = self.rename("Expenses:Paper", "Expenses:Stationery", "--apply")
+        self.assertEqual(retry["files_completed"], [])
+        self.assert_valid()
+        code, again, _ = self.rename("Expenses:Paper", "Expenses:Stationery", "--apply")
+        self.assertEqual((again["status"], again["finished_event"]), ("already_applied", None))
+
+    def test_an_exact_reimport_after_a_rename_finds_the_same_statement_rows(self):
+        fixture = Path(__file__).resolve().parent / "fixtures" / "statements" / "chase_like_checking.csv"
+        from bookkeeping import statement_import as si
+        add_account(self.root, OPERATING, open_date="2020-01-01", financial_kind="bank")
+        si.save_profile(self.root, fixture, name="op", ledger_account=OPERATING)
+        first = si.import_file(self.root, fixture, profile="op", ts="2026-02-01T00:00:00Z")["statements"][0]["counts"]
+        self.assertEqual(first["queued_for_review"], 6)
+        pending = read_json(self.root / "staging" / "pending-categorization.json")
+        new = "Assets:Bank:Main-Operating"
+        self.rename_applied(OPERATING, new)
+        profile = read_json(self.root / "entity.json")["csv_account_mappings"]["statement:op"]
+        self.assertEqual((profile["ledger_account"], profile["former_ledger_accounts"]), (new, [OPERATING]))
+        again = si.import_file(self.root, fixture, profile="op", ts="2026-02-02T00:00:00Z")["statements"][0]["counts"]
+        self.assertEqual((again["already_imported"], again["queued_for_review"]), (6, 0), again)
+        self.assertEqual(read_json(self.root / "staging" / "pending-categorization.json"), pending)
+        candidates = self.root / "staging" / "duplicate-candidates.json"
+        self.assertFalse(candidates.exists() and read_json(candidates), "no row is held for duplicate review")
+        # Saving the profile again keeps the earlier name, so the IDs stay the same.
+        si.save_profile(self.root, fixture, name="op", ledger_account=new)
+        profile = read_json(self.root / "entity.json")["csv_account_mappings"]["statement:op"]
+        self.assertEqual(profile["former_ledger_accounts"], [OPERATING])
+        third = si.import_file(self.root, fixture, profile="op", ts="2026-02-03T00:00:00Z")["statements"][0]["counts"]
+        self.assertEqual((third["already_imported"], third["queued_for_review"]), (6, 0), third)
+
     def test_stale_plan_hash_is_refused(self):
         code, plan, _ = self.rename()
         add_account(self.root, "Expenses:Other-Line", open_date="2026-01-01")

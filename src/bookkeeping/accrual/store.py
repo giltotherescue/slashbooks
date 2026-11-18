@@ -54,6 +54,22 @@ class SupportingMutation:
     version: int = RECORD_VERSION
 
 
+def _strings(value: Any) -> list[str]:
+    """Every string value and object key in a JSON payload."""
+    found: list[str] = []
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            found.append(item)
+        elif isinstance(item, dict):
+            found.extend(key for key in item if isinstance(key, str))
+            stack.extend(item.values())
+        elif isinstance(item, list):
+            stack.extend(item)
+    return found
+
+
 def projected_reads(store: LedgerStore, pending: Sequence[SupportingMutation]):
     """Read a compiler's uncommitted records without writing company state.
 
@@ -146,6 +162,9 @@ def apply_mutations(store: LedgerStore, mutations: Sequence[SupportingMutation],
         raise ValueError("Supporting mutations require an active ledger transaction.")
     if len(mutations) > MAX_MUTATIONS:
         raise ValueError("Too many supporting mutations in one operation.")
+    from ..ledger.store import check_rename_pending
+    check_rename_pending(conn, (text for mutation in mutations if isinstance(mutation, SupportingMutation)
+                                for text in _strings(mutation.payload)))
     seen: set[tuple[str, str]] = set()
     prepared: list[tuple[SupportingMutation, str]] = []
     for mutation in mutations:

@@ -169,9 +169,22 @@ locked months that have postings on the account
 preview also lists `tax_line_changes`: an account whose suggested tax line (a name
 rule, not a saved override) changes with the new name.
 
+The ledger transaction also writes a pending-rename record. While it exists, the
+ledger store refuses every write that names an old account (an open, an entry, a
+balance assertion, a financial kind, an accrual or business record), the
+integrity check reports `incomplete-write`, and another rename gives
+`operation_pending`. A stale mapping therefore cannot create the old account again
+and split its balance. After the file updates, a second transaction removes the
+record with the event `account-rename-finished` and a new seal.
+
 A retry of a finished rename gives `already_applied` and writes nothing. If the
 command stopped after the ledger commit, the retry finishes the file updates
-(`files_completed`).
+(`files_completed`) and removes the pending-rename record (`finished_event`).
+
+The source ID of a CSV or statement row hashes the first name of the mapping
+account (the first entry of `former_ledger_accounts`, else `ledger_account`). An
+import of the same file after a rename gives the same IDs, so the rows are found
+as already imported. Saving the profile again keeps `former_ledger_accounts`.
 
 The command refuses before any write:
 
@@ -190,7 +203,7 @@ The command refuses before any write:
 | `classification_change` | The new name moves an account into or out of cost of sales. |
 | `records_use_account` | Accrual or business records name the account. They bind their facts with digests. |
 | `staged_rows_name_account` | A staged source row names the account in a field other than `accountId`. Post or clear the row first. |
-| `operation_pending` | A queue or reconciliation operation is unfinished. |
+| `operation_pending` | A queue or reconciliation operation, or another rename, is unfinished. |
 | `ledger_integrity`, `audit_history_missing`, `no_ledger`, `unsupported_schema` | The ledger cannot take a catalog change now. |
 | `reference_check_failed` | A company file is a symbolic link, cannot be read or is not valid JSON. |
 | `stale_preview` | The company changed after the preview. |

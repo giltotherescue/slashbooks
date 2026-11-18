@@ -46,6 +46,31 @@ FEED_ROW_DIGEST_META = "feed-row-digest"
 # count of a new store). The newest boundary decides: a ``feed-intake`` event before it is ignored, and an entry
 # with an ID up to its ``max_entry_id`` never counts as delivered by the bank connection.
 MIGRATED_EVENT = "store-migrated"
+
+#: Earlier ledger names of a CSV or statement mapping, oldest first. ``books entity account-rename`` adds them.
+FORMER_LEDGER_ACCOUNTS = "former_ledger_accounts"
+
+
+def identity_account(mapping: Any) -> str:
+    """The ledger account that the source IDs of a CSV or statement mapping hash: its first name.
+
+    A row ID of a CSV or statement row includes the ledger account of the mapping. After a rename the mapping
+    names the new account, but the IDs keep the first name, so an import of the same file again gives the same
+    IDs and finds the rows that the books already hold.
+    """
+    former = mapping.get(FORMER_LEDGER_ACCOUNTS) if isinstance(mapping, dict) else None
+    if isinstance(former, list) and former and isinstance(former[0], str) and former[0]:
+        return former[0]
+    return str(mapping["ledger_account"])
+
+
+def keep_former_accounts(existing: Any, ledger_account: str) -> dict[str, Any]:
+    """The ``former_ledger_accounts`` field to keep when a mapping of the same account is saved again."""
+    if isinstance(existing, dict) and existing.get("ledger_account") == ledger_account:
+        former = existing.get(FORMER_LEDGER_ACCOUNTS)
+        if isinstance(former, list) and former:
+            return {FORMER_LEDGER_ACCOUNTS: list(former)}
+    return {}
 BOUNDARY_EVENTS = (MIGRATED_EVENT, "migration")
 
 

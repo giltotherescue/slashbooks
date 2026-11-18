@@ -61,9 +61,19 @@ the request, the ledger digest, the audit chain head and a fingerprint of every 
 read, so a changed company refuses with ``stale_preview``. Inside the ledger transaction the command checks that
 every balance is the same under the new name; if not, the transaction rolls back.
 
+The ledger transaction also writes the pending-rename record (``ledger.store.RENAME_PENDING_KEY``). While it exists,
+the ledger store refuses every write that names an old account (an open, an entry, a balance assertion, a financial
+kind, an accrual or business record), the integrity check reports ``incomplete-write``, and another rename is
+refused (``operation_pending``). So a stale mapping cannot create the old account again and split its balance.
+After the file updates, a second transaction removes the record with the event ``account-rename-finished`` and a
+new seal.
+
 A retry of a finished rename (the old name is absent, the new name is present, and the newest
 ``account-renamed`` event of the old name names the new one) returns ``already_applied``. When the command stopped
-after the ledger commit and before every file was replaced, the retry finishes the file updates.
+after the ledger commit, the retry finishes the file updates and removes the pending-rename record.
+
+Source IDs of CSV and statement rows hash the first name of the mapping account
+(``source_ids.identity_account``), so an import of the same file after a rename finds the rows again.
 """
 from __future__ import annotations
 
@@ -78,6 +88,7 @@ from .account_remove import AccountRemoveError, _company_files, parse_settings
 
 KIND = "account_rename"
 EVENT = "account-renamed"
+FINISHED_EVENT = "account-rename-finished"
 SESSION = "entity-account-rename"
 ROOTS = ("Assets", "Liabilities", "Equity", "Income", "Expenses")
 GROUP_ROOTS = ("Income", "Expenses")
@@ -349,12 +360,12 @@ def _ledger_names(conn: Any, old: str) -> list[str]:
 def _meta_updates(conn: Any, old: str, new: str) -> tuple[dict[str, str], list[str], Any]:
     """New values of the JSON meta records that name the account, the changed paths, and a cleared display name."""
     from . import chart_presentation
-    from .ledger.store import OPEN_DATE_PROVENANCE_KEY
+    from .ledger.store import OPEN_DATE_PROVENANCE_KEY, RENAME_PENDING_KEY
     updates: dict[str, str] = {}
     changes: list[str] = []
     cleared = None
     for key, raw in conn.execute("SELECT key, value FROM meta ORDER BY key").fetchall():
-        if key == OPEN_DATE_PROVENANCE_KEY:
+        if key in (OPEN_DATE_PROVENANCE_KEY, RENAME_PENDING_KEY):
             continue  # The store API rekeys the markers.
         try:
             value = json.loads(raw)
@@ -415,7 +426,7 @@ def _open_store(root: Path, files: dict[str, bytes]) -> Any:
     if store.schema_version() not in SUPPORTED_SCHEMA_VERSIONS:
         raise AccountRenameError("unsupported_schema", "The ledger schema is not supported by this engine.",
                                  "Use a compatible engine.")
-    if check_store_integrity(store).status != "ok":
+    if check_store_integrity(store, allow_rename_pending=True).status != "ok":
         raise AccountRenameError("ledger_integrity", "Cannot rename an account while ledger integrity is invalid.",
                                  "Run the integrity check and fix the reported problem first.")
     return store
@@ -507,6 +518,12 @@ def _context(root: Path, old: str, new: str) -> dict[str, Any]:
                       if conn.execute("SELECT 1 FROM accounts WHERE name=?", (name,)).fetchone()}
         names = _ledger_names(conn, old)
         done = None
+        pending = _pending(conn)
+        if pending is not None and (pending.get("from"), pending.get("to")) != (old, new):
+            raise AccountRenameError("operation_pending",
+                                     f"The rename of {pending.get('from')} to {pending.get('to')} is not finished.",
+                                     f"Finish it first: books entity account-rename PATH --account {pending.get('from')} "
+                                     f"--to {pending.get('to')} --apply.")
         if old not in in_catalog:
             latest = _latest_rename(events, old)
             target = (latest or {}).get("payload", {}).get("to")
@@ -552,7 +569,7 @@ def _context(root: Path, old: str, new: str) -> dict[str, Any]:
             "tax_line_changes": _tax_line_changes(documents, pairs)}
     body["request_hash"] = canonical_hash({"kind": KIND, "request": request})
     body["plan_hash"] = canonical_hash(body)
-    return {"body": body, "plans": plans, "pairs": pairs, "done": done,
+    return {"body": body, "plans": plans, "pairs": pairs, "done": done, "pending": pending is not None,
             "meta": meta if done is None else {}, "store": store}
 
 
@@ -564,8 +581,38 @@ def preview(entity_path: Path | str, old: str, new: str) -> dict[str, Any]:
     if context["done"] is not None:
         return {"status": "already_applied", "kind": KIND, "from": old, "to": new,
                 "event": context["done"]["id"], "files_pending": sorted(context["plans"]),
+                "finish_pending": context["pending"],
                 "request_hash": body["request_hash"]}
     return {"status": "preview", **body}
+
+
+def _pending(conn: Any) -> dict[str, Any] | None:
+    from .ledger.store import RENAME_PENDING_KEY
+    row = conn.execute("SELECT value FROM meta WHERE key=?", (RENAME_PENDING_KEY,)).fetchone()
+    if row is None:
+        return None
+    try:
+        record = json.loads(row[0])
+    except ValueError:
+        record = None
+    if not isinstance(record, dict):
+        raise AccountRenameError("ledger_integrity", "The record of an unfinished rename is not valid.",
+                                 "Run the integrity check and fix the reported problem first.")
+    return record
+
+
+def _finish(store: Any, old: str, new: str, written: list[str]) -> int | None:
+    """Remove the pending record after the file updates, with a sealed ``account-rename-finished`` event."""
+    from .accrual.enable import _seal
+    from .ledger.store import RENAME_PENDING_KEY
+    with store.transaction(immediate=True) as conn:
+        pending = _pending(conn)
+        if pending is None or (pending.get("from"), pending.get("to")) != (old, new):
+            return None
+        conn.execute("DELETE FROM meta WHERE key=?", (RENAME_PENDING_KEY,))
+        store.append_audit_event(FINISHED_EVENT, {"from": old, "to": new, "files": written}, conn)
+        _seal(store, conn, SESSION)
+        return int(conn.execute("SELECT MAX(id) FROM audit_events WHERE type=?", (FINISHED_EVENT,)).fetchone()[0])
 
 
 def _write_files(root: Path, plans: dict[str, tuple[bytes, list[str]]]) -> list[str]:
@@ -588,6 +635,7 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
     """Rename the account. A finished rename returns ``already_applied`` and finishes any file left behind."""
     from .accrual.enable import _seal
     from .ledger.importer import _entity_write_lock
+    from .ledger.store import RENAME_PENDING_KEY
     root = Path(entity_path).resolve()
     old, new = _check_names(old, new)
     with _entity_write_lock(root, repair=False):
@@ -597,8 +645,9 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
             # An exact retry, or a rename that stopped after the ledger commit: finish the files. The plan hash
             # guards new writes only.
             written = _write_files(root, context["plans"])
+            finished = _finish(store, old, new, written) if context["pending"] else None
             return {"status": "already_applied", "kind": KIND, "from": old, "to": new, "event": context["done"]["id"],
-                    "files_completed": written, "request_hash": body["request_hash"]}
+                    "files_completed": written, "finished_event": finished, "request_hash": body["request_hash"]}
         if plan_hash is not None and plan_hash != body["plan_hash"]:
             raise AccountRenameError("stale_preview", "The company changed after the preview.", "Run the preview again.")
         pairs, effects = context["pairs"], body["effects"]
@@ -631,8 +680,12 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
                 "postings": effects["postings_relabelled"], "balance_assertions": effects["balance_assertions_relabelled"],
                 "files": effects["files"], "display_name_cleared": effects["display_name_cleared"],
                 "request_hash": body["request_hash"], "plan_hash": body["plan_hash"]}, conn)
+            # The pending record blocks every ledger writer from the old names until the files name the new one.
+            store.set_meta(RENAME_PENDING_KEY, json.dumps({"from": old, "to": new, "accounts": [list(p) for p in pairs],
+                                                           "files": effects["files"]}, sort_keys=True), conn)
             _seal(store, conn, SESSION)
         written = _write_files(root, context["plans"])
+        _finish(store, old, new, written)
         return {"status": "applied", "kind": KIND, "from": old, "to": new, "accounts": effects["accounts"],
                 "postings_relabelled": effects["postings_relabelled"],
                 "balance_assertions_relabelled": effects["balance_assertions_relabelled"],
