@@ -235,13 +235,21 @@ _DISCARDABLE_AUDIT_TYPE = "feed-intake"
 
 
 
+#: Audit event types that are in the hash chain but are not ledger writes: no ledger table changes, and no seal
+#: follows. ``feed-intake`` records which provider sent which rows (``source_ids.FEED_INTAKE_EVENT``).
+#: ``store-migrated`` marks the point where books came from another store (``source_ids.MIGRATED_EVENT``).
+NON_LEDGER_EVENT_TYPES = frozenset({"feed-intake", "store-migrated"})
+
+
 def has_ledger_audit_history(conn: sqlite3.Connection) -> bool:
     """Whether the store has an audit event of a ledger write or change.
 
-    A ``feed-intake`` event only records which provider sent which rows. It is not ledger history, so it does not
-    make a ledger with entries look as if its entries have a history.
+    A ``feed-intake`` or ``store-migrated`` event is not ledger history, so it does not make a ledger with entries
+    look as if its entries have a history.
     """
-    return conn.execute("SELECT 1 FROM audit_events WHERE type != ? LIMIT 1", (_DISCARDABLE_AUDIT_TYPE,)).fetchone() is not None
+    marks = ",".join("?" for _ in NON_LEDGER_EVENT_TYPES)
+    return conn.execute(f"SELECT 1 FROM audit_events WHERE type NOT IN ({marks}) LIMIT 1",
+                        tuple(sorted(NON_LEDGER_EVENT_TYPES))).fetchone() is not None
 
 
 class LedgerStore:
