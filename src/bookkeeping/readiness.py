@@ -630,10 +630,18 @@ def assess_review_readiness(entity_path: Path | str, period: str,
     card_activity: set[str] = set()
     first_posting: dict[str, date] = {}
     account_catalog: set[str] = set()
+    bank_activity: set[str] = set()
     if store_path.is_file():
         store = LedgerStore(store_path)
         account_catalog = store.load_account_names()
+        # A bank account (financial kind ``bank``) with a posting in the period needs its coverage, whether or not a
+        # mapping names it now. An unmapped feed account must not drop its months from the review.
+        from .entity import _STARTER_FINANCIAL_KINDS
+        kinds = store.load_financial_kinds()
+        bank_accounts = {name for name in account_catalog if (kinds.get(name) or _STARTER_FINANCIAL_KINDS.get(name)) == "bank"}
         for entry in store.load_entries(to_date=end):
+            if entry.date >= start:
+                bank_activity.update(posting.account for posting in entry.postings if posting.account in bank_accounts)
             for posting in entry.postings:
                 ledger_balances[posting.account] = ledger_balances.get(posting.account, Decimal("0")) + posting.amount
                 if accrual_in_use and entry.date >= start:
@@ -655,7 +663,7 @@ def assess_review_readiness(entity_path: Path | str, period: str,
                 if entry.date < first_posting.get(posting.account, date.max):
                     first_posting[posting.account] = entry.date
     account_from, outside, contradicted = _start_scope(policy_starts, first_posting, start, end)
-    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity)), account_from, outside)
+    sources = _source_rows(entity.entity_config, start, end, tuple(sorted(card_activity | bank_activity)), account_from, outside)
 
     # Source coverage per account and day of the month (statements, feed
     # windows, declared coverage, then transaction dates).

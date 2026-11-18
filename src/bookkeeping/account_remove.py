@@ -20,7 +20,8 @@ The command is narrow on purpose. It removes an account only when all of these a
 * for a bank, card or cash account, no bank-account or CSV mapping names it (``account_mapped``: remove the
   mapping first with ``books entity bank-account-unmap``), and, as for a loan account, no saved statement,
   reconciliation record or opening operation uses it, and no commercial tracking record names it;
-* no company setting or record names it (``entity.json``, ``trust-policy.json``, learned context,
+* no company setting or record names it, in JSON or in a text file of the settings folders (for example
+  ``learned-context/rules.md`` or ``procedures/close.md``; the name must match exactly) (``entity.json``, ``trust-policy.json``, learned context,
   open review items, staged rows, accrual records; for a loan account also saved statements and
   reconciliation records), and no saved accrual rule selects it through a parent account that would
   then select nothing.
@@ -49,7 +50,7 @@ BANK_KINDS = frozenset({"bank", "credit_card", "cash"})
 # A loan account that a person adds by mistake can also go. Bank, card and other liabilities stay.
 LOAN_PREFIX = "Liabilities:Loans:"
 SETTINGS_FILES = ("entity.json", "trust-policy.json")
-SETTINGS_FOLDERS = ("learned-context", "review-queue", "staging")
+SETTINGS_FOLDERS = ("learned-context", "review-queue", "staging", "procedures")
 # Balance sheet records that can name a loan account and never name a category. Only the JSON files are read.
 LOAN_RECORD_FILES = ("reports/reconciliation.json",)
 LOAN_RECORD_FOLDERS = ("ingestion/statements",)
@@ -223,7 +224,16 @@ def parse_settings(files: dict[str, bytes]) -> dict[str, Any]:
     return documents
 
 
-def references(documents: dict[str, Any], store: Any, account: str, catalog: set[str]) -> list[str]:
+def _text_mentions(files: dict[str, bytes], account: str) -> list[str]:
+    """Settings files that are not JSON (for example ``learned-context/rules.md`` or ``procedures/close.md``) and
+    name *account* exactly. A longer name (``Income:Installs`` for ``Income:Install``) or a child account does not match."""
+    pattern = re.compile(r"(?<![A-Za-z0-9:-])" + re.escape(account) + r"(?![A-Za-z0-9-])(?!:[A-Za-z0-9])")
+    return [f"{name}: text" for name, data in files.items()
+            if not name.endswith(".json") and pattern.search(data.decode("utf-8", errors="replace"))]
+
+
+def references(documents: dict[str, Any], store: Any, account: str, catalog: set[str],
+               files: dict[str, bytes] | None = None) -> list[str]:
     """Where company settings and records name *account*.
 
     Not scanned on purpose: the audit log (historical provenance, including earlier account-add and
@@ -231,7 +241,7 @@ def references(documents: dict[str, Any], store: Any, account: str, catalog: set
     by account), and files outside the settings folders (reports, ingestion, business-profile.md).
     """
     from .accrual.store import TABLES, list_records
-    found: list[str] = []
+    found: list[str] = _text_mentions(files, account) if files else []
     for name, document in documents.items():
         if name.startswith("review-queue/") and isinstance(document, dict) \
                 and document.get("status") in _CLOSED_QUEUE_STATUSES:
@@ -376,7 +386,7 @@ def preview(entity_path: Path | str, account: str, added_event: int | None = Non
                                          f"{account} is the books account of {len(mapped)} bank or CSV account mapping(s).",
                                          "Remove the mapping first (books entity bank-account-unmap), then run the "
                                          "preview again.", mapped[:_MAX_REFS])
-        found = references(documents, store, account, catalog)
+        found = references(documents, store, account, catalog, files)
         for table, record_id, payload in business_records:
             found += [f"business {table} {record_id}:{where}" for where in _matches(payload, account, "")]
         if found:

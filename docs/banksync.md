@@ -200,18 +200,29 @@ cutover date with `books entity bank-account-map ... --clear-cutover-date`.
 
 **Undo a link.** `books entity bank-account-unmap <company-dir> --feed-account-id ID`
 removes the mapping of a feed account. No new row of that feed account is imported
-after that: `books ingest` refuses its rows with the account mapping message. Rows
-already in the books stay untouched, and so do the context-only rows in
-`staging/context-history.json`. A row of that feed account that still waits in
-`staging/` (a staged, pending or duplicate-candidate row) refuses the unmap, because
-confirming it later would have no mapping to post to. Confirm, release or remove those
-rows first. The command writes the audit event `bank-account-unmapped` with the whole
-mapping (ledger account, provider, institution, last four digits, type, currency,
-cutover date and history setting) and seals the store. The feed windows and source
-coverage of the feed account stay. Map the feed account again with
-`bank-account-map`, to the same or another account: a row that was imported before
-is skipped as a duplicate, because source IDs still deduplicate. An account that
-nothing uses can then go with `books entity account-remove`.
+after that: `books ingest` skips its rows and reports them in the summary (`skipped,
+feed account unmapped: ID: N row(s)`). A feed account that was never mapped still
+refuses the whole ingest. Rows already in the books stay untouched, and so do the
+context-only rows in `staging/context-history.json`. A row of that feed account that
+still waits in `staging/` (a staged, pending or duplicate-candidate row) refuses the
+unmap, because confirming it later would have no mapping to post to. Confirm, release
+or remove those rows first. The command writes the audit event `bank-account-unmapped`
+with the whole mapping (ledger account, provider, institution, last four digits, type,
+currency, cutover date and history setting) and seals the store. The feed windows and
+source coverage of the feed account stay. A bank account that has postings in the
+review period still needs its source coverage after the unmap: readiness asks for it
+whether or not a mapping names the account.
+
+Map the feed account again with `bank-account-map`, to the same or another account: a
+row that was imported before is skipped as a duplicate, because source IDs still
+deduplicate. When the unmap record has a cutover date, `bank-account-map` refuses
+unless you decide about it: give `--cutover-date`, `--clear-cutover-date`, or
+`--restore-cutover` (the cutover date and the history setting of the unmap record).
+A mapping without the cutover would import the history rows again as new rows. Rows
+stored as context only are skipped on a later sync only while the mapping keeps the
+cutover date and `context_only`; moving or clearing the cutover date releases them to
+the normal import path, as described above. An account that nothing uses can then go
+with `books entity account-remove`.
 
 **Keep earlier rows as history only.** When the books already hold the account's
 history through the cutover date from an earlier source, a person can set

@@ -140,6 +140,20 @@ class BankAccountRemoveTests(Base):
             with self.subTest(account):
                 self.refused("protected_account", account)
 
+    def test_text_files_that_name_an_account_refuse_its_removal_for_every_account_type(self):
+        add_account(self.root, "Income:Installs", open_date="2026-01-01")
+        for folder, name, account in (("learned-context", "rules.md", CHECKING), ("procedures", "close.md", CARD),
+                                      ("learned-context", "notes.txt", "Income:Installs")):
+            (self.root / folder).mkdir(exist_ok=True)
+            (self.root / folder / name).write_text(f"Reconcile {account} monthly.\n")
+            result = self.refused("account_referenced", account)
+            self.assertTrue(any(f"{folder}/{name}" in ref for ref in result["errors"][0]["refs"]), result)
+        # A longer account name or a child account is not a mention.
+        (self.root / "learned-context" / "rules.md").write_text(
+            "Use Assets:Bank:Checking-Old and Assets:Bank:Checking:Sub.\n")
+        code, result, _ = self.remove(CHECKING)
+        self.assertEqual((code, result["changes"]), (0, True), result)
+
 
 class BankAccountUnmapTests(Base):
     def setUp(self) -> None:
@@ -177,10 +191,12 @@ class BankAccountUnmapTests(Base):
         self.assertIn("acct_1", out)
         self.assertNotIn("acct_1", self.config().get("bank_account_mappings", {}))
         self.assertEqual(self.entry_ids(), ["plaid:a1"])  # The imported row stays.
-        code, _, err = self.ingest([self.row("a2")])        # No new row of the feed account is imported.
-        self.assertEqual(code, 1)
-        self.assertIn("mapping required", err)
+        code, out, err = self.ingest([self.row("a2")])      # No new row of the feed account is imported.
+        self.assertEqual(code, 0, (out, err))
+        self.assertIn("skipped, feed account unmapped: acct_1: 1 row(s)", out)
         self.assertEqual(self.entry_ids(), ["plaid:a1"])
+        self.assertEqual(json.loads((self.root / "staging" / "pending-categorization.json").read_text())
+                         if (self.root / "staging" / "pending-categorization.json").exists() else [], [])
         event = self.events("bank-account-unmapped")[-1]["payload"]
         self.assertEqual(event["feed_account_id"], "acct_1")
         self.assertEqual(event["mapping"], {"ledger_account": CHECKING, "provider": "plaid", "last4": "0021",
@@ -225,14 +241,14 @@ class BankAccountUnmapTests(Base):
         self.confirm("plaid:a1")
         self.assertEqual(self.unmap()[0], 0)
         for account in (CHECKING, SAVINGS):
-            self.mapping("acct_1", account)
+            self.mapping("acct_1", account, "--restore-cutover")
             code, out, err = self.ingest([self.row("a1")])
             self.assertEqual(code, 0, (out, err))
             self.assertIn("duplicates skipped:  1", out)
             self.assertEqual(self.entry_ids(), ["plaid:a1"])
             self.assertEqual(self.unmap()[0], 0)
         # A new row after the re-map is imported to the new account.
-        self.mapping("acct_1", SAVINGS)
+        self.mapping("acct_1", SAVINGS, "--restore-cutover")
         self.assertEqual(self.ingest([self.row("a3", "2026-08-09")])[0], 0)
         self.confirm("plaid:a3")
         self.assertEqual(self.entry_ids(), ["plaid:a1", "plaid:a3"])
@@ -241,6 +257,64 @@ class BankAccountUnmapTests(Base):
         self.assertEqual(self.unmap()[0], 0)
         code, done, _ = books("entity", "account-remove", str(self.root), "--account", CHECKING, "--apply")
         self.assertEqual((code, done["status"]), (0, "applied"), done)
+
+
+    def test_a_never_mapped_feed_account_still_refuses_the_whole_ingest_and_an_unmapped_one_is_skipped(self):
+        self.assertEqual(self.unmap()[0], 0)
+        stranger = {**self.row("z1"), "accountId": "acct_never"}
+        code, out, err = self.ingest([self.row("a2"), stranger])
+        self.assertEqual(code, 1, (out, err))
+        self.assertIn("acct_never", err)
+        self.assertEqual(self.entry_ids(), [])
+        code, out, err = self.ingest([self.row("a2"), self.row("a3")])  # Only the unmapped account: skipped, reported.
+        self.assertEqual(code, 0, (out, err))
+        self.assertIn("acct_1: 2 row(s)", out)
+
+    def test_a_remap_after_an_unmap_with_a_cutover_needs_an_explicit_decision(self):
+        # Rows before the cutover are history only; after the unmap they must not come back as new rows.
+        history = [self.row("h1", "2026-07-10", 100.0), self.row("p1", "2026-08-10", 5.0)]
+        self.assertEqual(self.ingest(history)[0], 0)
+        self.confirm("plaid:p1")
+        self.assertEqual(self.unmap()[0], 0)
+        code, out, err = run_cli(["entity", "bank-account-map", str(self.root), "--feed-account-id", "acct_1",
+                                  "--account", CHECKING, "--provider", "plaid"])
+        self.assertEqual(code, 1, (out, err))
+        self.assertIn("cutover date 2026-08-01", err)
+        self.assertNotIn("acct_1", self.config().get("bank_account_mappings", {}))
+        # An explicit restore keeps the cutover and the history setting; the history rows post nothing.
+        self.mapping("acct_1", CHECKING, "--restore-cutover")
+        mapping = self.config()["bank_account_mappings"]["acct_1"]
+        self.assertEqual((mapping["cutover_date"], mapping["history_before_cutover"]), ("2026-08-01", "context_only"))
+        code, out, err = self.ingest(history)
+        self.assertEqual(code, 0, (out, err))
+        self.assertEqual(self.entry_ids(), ["plaid:p1"])
+        self.assertFalse((self.root / "staging" / "pending-categorization.json").exists()
+                         and json.loads((self.root / "staging" / "pending-categorization.json").read_text()))
+        # Clearing the cutover is an explicit decision too.
+        self.assertEqual(self.unmap()[0], 0)
+        self.mapping("acct_1", CHECKING, "--clear-cutover-date")
+        self.assertNotIn("cutover_date", self.config()["bank_account_mappings"]["acct_1"])
+
+    def test_an_unmapped_bank_account_with_postings_in_the_period_is_still_required_by_readiness(self):
+        add_account(self.root, SAVINGS, open_date="2026-01-01", financial_kind="bank")
+        self.mapping("acct_2", SAVINGS)
+        self.assertEqual(self.ingest([{**self.row("r1", "2026-08-03", 6.0), "accountId": "acct_2"}])[0], 0)
+        self.confirm("plaid:r1")
+
+        def blockers():
+            code, out, err = run_cli(["readiness", "--entity", str(self.root), "--period", "2026-08",
+                                      "--as-of", "2026-10-20"])
+            document = json.loads(out)
+            return [item for item in document["blockers"] if SAVINGS in json.dumps(item) or "acct_2" in json.dumps(item)]
+
+        before = blockers()
+        self.assertTrue(before, "the mapped account needs coverage")
+        self.assertEqual(run_cli(["entity", "bank-account-unmap", str(self.root), "--feed-account-id", "acct_2"])[0], 0)
+        self.assertEqual(sorted(item["code"] for item in blockers()), sorted(item["code"] for item in before))
+        # A bank account with no postings in the period and no mapping is not required.
+        add_account(self.root, "Assets:Bank:Idle", open_date="2026-01-01", financial_kind="bank")
+        code, out, err = run_cli(["readiness", "--entity", str(self.root), "--period", "2026-08", "--as-of", "2026-10-20"])
+        self.assertNotIn("Assets:Bank:Idle", out)
 
 
 if __name__ == "__main__":

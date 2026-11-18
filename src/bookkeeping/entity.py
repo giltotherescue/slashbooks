@@ -1015,7 +1015,7 @@ def _clean_identity(fields: dict[str, Any]) -> dict[str, Any]:
 
 @_locked_entity_operation
 def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
-                     clear: tuple[str, ...] = (), **identity: Any) -> dict[str, str]:
+                     clear: tuple[str, ...] = (), restore_cutover: bool = False, **identity: Any) -> dict[str, str]:
     """Persist a provider-account-ID to an existing ledger account mapping.
 
     With no identity fields the mapping is written in the flat form, exactly as
@@ -1024,6 +1024,11 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     type, currency, cutover date). Re-mapping a rich entry without new fields
     keeps its identity and changes only the ledger account. ``clear`` names
     identity fields to remove, for example ``("cutover_date",)``.
+
+    A feed account that was unmapped with a cutover date (``bank-account-unmap``) is not mapped again without a
+    decision about it: the caller gives ``cutover_date``, clears it (``clear``), or sets ``restore_cutover`` to take
+    the cutover date and the history setting of the newest unmap record. There is no silent default, because a
+    mapping without the cutover would import the history rows again.
     """
     entity = load_entity(entity_path)
     stable_id = str(feed_account_id).strip()
@@ -1046,6 +1051,21 @@ def map_bank_account(entity_path: Path, feed_account_id: str, account: str,
     mappings = dict(entity.entity_config.get("bank_account_mappings") or {})
     previous = mappings.get(stable_id)
     previous_fields = bank_mapping_details(previous)
+    if previous is None:
+        unmapped = _newest_unmap_record(store, stable_id)
+        was = bank_mapping_details(unmapped.get("mapping")) if unmapped else {}
+        if was.get("cutover_date"):
+            if restore_cutover:
+                for name in ("cutover_date", "history_before_cutover"):
+                    if was.get(name) and name not in fields and name not in clear:
+                        fields[name] = was[name]
+            elif "cutover_date" not in fields and "cutover_date" not in clear:
+                raise ValueError(
+                    f"Feed account '{stable_id}' was unmapped with the cutover date {was['cutover_date']}"
+                    + (f" and the history setting {was['history_before_cutover']}" if was.get("history_before_cutover") else "")
+                    + ". Give --cutover-date, --clear-cutover-date, or --restore-cutover to keep the earlier one.")
+    elif restore_cutover:
+        raise ValueError("--restore-cutover applies only to a feed account that was unmapped.")
     for name in clear:
         if name not in BANK_IDENTITY_FIELDS or name in {"provider_account_id"}:
             raise ValueError(f"Cannot clear '{name}'.")
@@ -1126,6 +1146,30 @@ def unmap_bank_account(entity_path: Path, feed_account_id: str) -> dict[str, Any
         tmp.unlink(missing_ok=True)
         raise
     return {"feed_account_id": stable_id, "account": record["ledger_account"], "status": "unmapped"}
+
+
+def _newest_unmap_record(store: Any, feed_account_id: str) -> dict[str, Any] | None:
+    """The payload of the newest ``bank-account-unmapped`` audit event of the feed account, or ``None``."""
+    if not store.path.exists():
+        return None
+    found = None
+    for event in store.load_audit_events():
+        payload = event.get("payload")
+        if event["type"] == "bank-account-unmapped" and isinstance(payload, dict) \
+                and payload.get("feed_account_id") == feed_account_id:
+            found = payload
+    return found
+
+
+def unmapped_feed_account_ids(entity: Any) -> set[str]:
+    """Feed account IDs that ``bank-account-unmap`` removed and no later ``bank-account-map`` restored."""
+    from .ledger.store import LedgerStore, default_store_path
+    store = LedgerStore(default_store_path(entity.path))
+    if not store.path.exists():
+        return set()
+    mapped = set(flat_bank_account_mappings(entity.entity_config))
+    return {str(event["payload"].get("feed_account_id")) for event in store.load_audit_events()
+            if event["type"] == "bank-account-unmapped" and isinstance(event.get("payload"), dict)} - mapped
 
 
 def _waiting_feed_rows(staging_dir: Path, feed_account_id: str) -> list[str]:
@@ -1751,6 +1795,10 @@ def add_parser(subparsers: Any) -> None:
                             help="How a feed import treats rows on or before the cutover date. review (default): hold "
                                  "each row for review. context_only: keep each row as audit context, with no review "
                                  "item and no posting. Needs --cutover-date")
+    map_parser.add_argument("--restore-cutover", action="store_true",
+                            help="After bank-account-unmap: map the feed account again with the cutover date and history "
+                                 "setting of the unmap record (without it, a feed account that was unmapped with a "
+                                 "cutover date needs --cutover-date or --clear-cutover-date)")
     map_parser.add_argument("--cutover-date", default=None,
                             help="YYYY-MM-DD. A feed import sends rows on or before this day to review, not the books, unless --backfill")
 
@@ -2054,7 +2102,8 @@ def run(args: Any) -> int:
                 account_type=args.account_type, currency=args.currency,
                 cutover_date=args.cutover_date,
                 history_before_cutover=args.history_before_cutover,
-                clear=("cutover_date",) if args.clear_cutover_date else ())
+                clear=("cutover_date",) if args.clear_cutover_date else (),
+                restore_cutover=args.restore_cutover)
         except (FileNotFoundError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
