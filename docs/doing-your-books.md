@@ -85,7 +85,7 @@ That folder is also where Slashbooks keeps what it learns:
 - `trust-policy.json` controls when repeat transactions can be trusted.
 - `ledger.sqlite` stores the books, account catalog, and audit history.
 - `learned-context/` records usual categories learned from review decisions.
-- `review-queue/` holds transactions waiting for owner judgment.
+- `review-queue/` holds transactions waiting for owner judgment. Decided items move into one archive file for each month, `review-queue/archive/YYYY-MM.json`; do not edit those files by hand.
 
 When you need a plain ledger file for inspection or another tool, generate a
 Beancount snapshot from the ledger store. The Beancount file is an export, not
