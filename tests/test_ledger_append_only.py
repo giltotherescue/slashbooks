@@ -22,6 +22,7 @@ from bookkeeping.ledger.importer import check_integrity, reverse_entry  # noqa: 
 from bookkeeping.ledger.model import Entry, Open, Posting  # noqa: E402
 from bookkeeping.ledger.store import (  # noqa: E402
     LedgerStore,
+    PostingMark,
     append_only_guard_problems,
     install_append_only_guard,
 )
@@ -163,6 +164,42 @@ class AppendOnlyTriggerTests(StoreCase):
         self.rename_event(("Expenses:Other", "Expenses:Third"))
         self.refused("UPDATE postings SET account = 'Expenses:Software' WHERE account = 'Expenses:Other'")
 
+    def test_the_unlock_needs_exactly_an_array_of_two_text_pairs(self) -> None:
+        for accounts in ({"x": ["Expenses:Software", "Expenses:Other"]},
+                         [["Expenses:Software", "Expenses:Other", "extra"]],
+                         [["Expenses:Software"]],
+                         [["Expenses:Software", 5]],
+                         "Expenses:Software",
+                         [{"0": "Expenses:Software", "1": "Expenses:Other"}]):
+            with self.store.transaction() as conn:
+                self.store.append_audit_event("account-renamed", {"accounts": accounts}, conn)
+            self.refused("UPDATE postings SET account = 'Expenses:Other' WHERE account = 'Expenses:Software'")
+        self.rename_event(("Expenses:Software", "Expenses:Other"))
+        with self.store.transaction() as conn:
+            conn.execute("UPDATE postings SET account = 'Expenses:Other' WHERE account = 'Expenses:Software'")
+
+    def test_a_store_with_the_old_meta_keyed_triggers_gets_the_current_rule(self) -> None:
+        from bookkeeping.ledger.store import RENAME_PENDING_KEY
+        old_rule = (f"CREATE TRIGGER postings_append_only_update BEFORE UPDATE ON postings WHEN OLD.id IS NOT NEW.id "
+                    "OR OLD.entry_id IS NOT NEW.entry_id OR OLD.amount IS NOT NEW.amount "
+                    "OR OLD.currency IS NOT NEW.currency OR OLD.metadata_json IS NOT NEW.metadata_json "
+                    f"OR (OLD.account IS NOT NEW.account AND NOT EXISTS (SELECT 1 FROM meta WHERE key = '{RENAME_PENDING_KEY}')) "
+                    "BEGIN SELECT RAISE(ABORT, 'posted postings are append-only'); END")
+        with self.store.connection() as conn:
+            conn.execute("DROP TRIGGER postings_append_only_update")
+            conn.execute(old_rule)
+            conn.commit()
+            self.assertTrue(append_only_guard_problems(conn))
+            self.store.set_meta(RENAME_PENDING_KEY, "{}", conn)
+            conn.commit()
+            conn.execute("UPDATE postings SET account = 'Expenses:Other'")  # The old rule is weak.
+            conn.rollback()
+        self.store.initialize()
+        with self.store.connection() as conn:
+            self.assertEqual(append_only_guard_problems(conn), [])
+            with self.assertRaises(sqlite3.IntegrityError):
+                conn.execute("UPDATE postings SET account = 'Expenses:Other'")
+
     def test_an_incremental_check_that_sees_a_rename_event_requires_the_full_check(self) -> None:
         head = self.store.verify_audit_chain_since(None).head
         self.rename_event(("Expenses:Software", "Expenses:Other"))
@@ -291,7 +328,7 @@ class CheckpointTests(StoreCase):
 
     def test_the_posting_watermark_comes_from_the_rows_that_the_check_read(self) -> None:
         self.write("a")
-        result = self.store.check_new_postings(0)
+        result = self.store.check_new_postings(PostingMark(0, ""))
         self.assertEqual((result.errors, result.watermark), ([], self.store.posting_watermark()))
         self.assertEqual(self.store.check_new_postings(result.watermark).watermark, result.watermark)
         with self.store.connection() as conn:
@@ -308,9 +345,10 @@ class WatermarkAnchorTests(StoreCase):
             self.write(name)  # Six postings.
         self.assertEqual(self.store.posting_watermark().position, 6)
         for bad in (10000, 7, -1):
-            result = self.store.check_new_postings(bad)
+            result = self.store.check_new_postings(PostingMark(bad, "x"))
             self.assertEqual((len(result.errors), result.watermark), (1, None), bad)
-        self.assertEqual(self.store.check_new_postings(6).errors, [])  # An integer is accepted, unanchored.
+        with self.assertRaises(TypeError):
+            self.store.check_new_postings(6)  # A plain id is not anchored to a file.
         self.assertEqual(self.store.check_new_postings(self.store.posting_watermark()).errors, [])
 
     def test_a_restore_to_an_older_file_with_new_postings_and_an_orphan_fails_the_check(self) -> None:
@@ -336,7 +374,7 @@ class WatermarkAnchorTests(StoreCase):
         result = older.check_new_postings(saved)
         self.assertTrue(result.errors, result)
         self.assertIsNone(result.watermark)
-        self.assertTrue(older.check_new_postings(0).errors)  # The orphan is also found from the start.
+        self.assertTrue(older.check_new_postings(PostingMark(0, "")).errors)  # The orphan is also found from the start.
 
     def test_a_restore_with_the_same_posting_ids_but_other_content_fails_the_anchor(self) -> None:
         self.write("a")
