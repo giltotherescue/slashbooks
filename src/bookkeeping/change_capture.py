@@ -39,6 +39,7 @@ cannot take the triggers all give the document that a full comparison gives.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import secrets
@@ -113,6 +114,16 @@ def _trigger_sql() -> dict[str, str]:
             "log_u", "UPDATE", LOG_TABLE, "SELECT RAISE(ABORT, 'the capture log is append-only');", "BEFORE"),
         f"{TRIGGER_PREFIX}log_d": trigger(
             "log_d", "DELETE", LOG_TABLE, "SELECT RAISE(ABORT, 'the capture log is append-only');", "BEFORE"),
+        # INSERT OR REPLACE deletes the row that it replaces without a DELETE trigger: refuse an insert that names an
+        # existing number, and one that does not take a number above every other.
+        f"{TRIGGER_PREFIX}log_bi": (
+            f"CREATE TRIGGER {TRIGGER_PREFIX}log_bi BEFORE INSERT ON main.{LOG_TABLE} "
+            f"WHEN NEW.seq IS NOT NULL AND EXISTS (SELECT 1 FROM {LOG_TABLE} WHERE seq = NEW.seq) "
+            "BEGIN SELECT RAISE(ABORT, 'the capture log is append-only: no replace'); END"),
+        f"{TRIGGER_PREFIX}log_ai": (
+            f"CREATE TRIGGER {TRIGGER_PREFIX}log_ai AFTER INSERT ON main.{LOG_TABLE} "
+            f"WHEN EXISTS (SELECT 1 FROM {LOG_TABLE} WHERE seq > NEW.seq) "
+            "BEGIN SELECT RAISE(ABORT, 'the capture log is append-only: numbers must rise'); END"),
     }
 
 
@@ -201,11 +212,20 @@ def remove_triggers(ledger: Path) -> bool:
         conn.close()
 
 
+def schema_fingerprint(conn: sqlite3.Connection) -> tuple[int, str]:
+    """The schema version of the store and a hash of every schema row (tables, indexes, triggers and their text)."""
+    version = int(conn.execute("PRAGMA schema_version").fetchone()[0])
+    rows = conn.execute("SELECT type, name, tbl_name, rootpage, sql FROM sqlite_master ORDER BY type, name").fetchall()
+    digest = hashlib.sha256(json.dumps([list(row) for row in rows]).encode("utf-8")).hexdigest()
+    return version, digest
+
+
 class LogUntrusted(Exception):
     """The capture log cannot be trusted. The reason is the text of the exception."""
 
 
-def _logged_keys(conn: sqlite3.Connection, token: str | None) -> tuple[list[int], list[str]]:
+def _logged_keys(conn: sqlite3.Connection, token: str | None,
+                 fingerprint: tuple[int, str] | None = None) -> tuple[list[int], list[str]]:
     """The keys that the triggers logged. Raises ``LogUntrusted`` when the log is not the intact log of this run.
 
     The log is intact when it is the log table that this run made (token and root page), every capture trigger is
@@ -214,6 +234,8 @@ def _logged_keys(conn: sqlite3.Connection, token: str | None) -> tuple[list[int]
     """
     if token is None:
         raise LogUntrusted("no log was installed")
+    if fingerprint is not None and schema_fingerprint(conn) != fingerprint:
+        raise LogUntrusted("the schema of the store changed during the command")
     try:
         row = conn.execute(f"SELECT token, log_rootpage FROM {CTL_TABLE}").fetchall()
         if len(row) != 1 or row[0][0] != token:
@@ -426,6 +448,18 @@ def _signatures(root: Path) -> dict[str, Any]:
     return result
 
 
+def _archive_signatures(root: Path) -> dict[str, list[int] | None]:
+    """The signature of each archive file now. The journal takes them as the baseline of the archives."""
+    found: dict[str, list[int] | None] = {}
+    try:
+        for entry in os.scandir(root / changeset._ARCHIVE_DIR):
+            if entry.name.endswith(".json"):
+                found[f"{changeset._ARCHIVE_DIR}/{entry.name}"] = capture_log.signature(entry.path)
+    except OSError:
+        pass
+    return found
+
+
 def _wait_for_tick(signatures: Mapping[str, Any], newest: int = 0) -> None:
     """Make sure that no tracked file has a modification time inside the clock tick of now.
 
@@ -606,17 +640,22 @@ def _queue_in_full(index: Index, root: Path, sweep: Mapping[str, str],
     return old_rows, _queue_by_source(files)
 
 
-def saved_archive_names(conn: sqlite3.Connection) -> set[str]:
-    return {str(n) for (n,) in conn.execute("SELECT name FROM archive_files")}
+def _sig_text(signature: Sequence[int] | None) -> str | None:
+    return None if signature is None else ":".join(str(part) for part in signature)
 
 
-def _archive_delta(journal: "capture_log.Session | None", root: Path, archive: str) -> tuple[dict[str, Any], set[str]] | None:
+def _archive_delta(journal: "capture_log.Session | None", root: Path, archive: str,
+                   saved_sig: str | None = None) -> tuple[dict[str, Any], set[str]] | None:
     """The names that a helper wrote to or removed from an archive, if it journaled them and nothing else wrote the file."""
     if journal is None:
         return None
     relative = f"{changeset._ARCHIVE_DIR}/{archive}"
     log = journal.files.get(relative)
     if log is None or not log.chain_ok or not log.exact or log.last_after != capture_log.signature(root / relative):
+        return None
+    # The archive must have been, before the first journaled write, the archive that the index saved. An edit before
+    # that write (not journaled) shows here, and the capture reads the archive in full.
+    if _sig_text(log.first_before) != saved_sig:
         return None
     return dict(log.upsert), set(log.remove)
 
@@ -629,6 +668,7 @@ def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: 
     if archives and reader is None:
         raise _Slow()
     conn = index.conn
+    saved_archive = {str(n): str(sig) for n, sig in conn.execute("SELECT name, sig FROM archive_files")}
 
     def rows(sql: str, values: Sequence[Any]) -> list[tuple[Any, ...]]:
         found: list[tuple[Any, ...]] = []
@@ -643,7 +683,8 @@ def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: 
     inserts: list[tuple[str, str, str, str]] = []
     archive_names: set[str] = set()
     for archive in archives:
-        delta = _archive_delta(journal, root, archive) if archive in archive_sweep or archive in saved_archive_names(conn) else None
+        delta = _archive_delta(journal, root, archive, saved_archive.get(archive)) \
+            if archive in archive_sweep or archive in saved_archive else None
         current: dict[str, tuple[str, str]] = {}
         if delta is not None:
             # A helper journaled the names that it changed: cost grows with them, not with the archive.
@@ -829,6 +870,7 @@ class Run:
         self.position, self.digest, self.counts = position, digest, counts
         self.guard_problems_before = guard_problems
         self.token: str | None = None
+        self.schema: tuple[int, str] | None = None
         self.journal: capture_log.Session | None = None
         self.cleaned = False
         self.ledger_full_read = False
@@ -841,7 +883,17 @@ class Run:
         status = os.stat(self.index.path)
         self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation)
         self.token = install_triggers(self.root / "ledger.sqlite")
-        self.journal = capture_log.begin(self.root, self.start_signatures)
+        self.schema = None
+        if self.token is not None:
+            conn = changeset._connect_read_only(self.root / "ledger.sqlite")
+            try:
+                self.schema = schema_fingerprint(conn) if conn is not None else None
+            except sqlite3.Error:
+                self.token = None
+            finally:
+                if conn is not None:
+                    conn.close()
+        self.journal = capture_log.begin(self.root, {**self.start_signatures, **_archive_signatures(self.root)})
 
     def note(self, reason: str) -> None:
         self.report["fallbacks"].append(reason)
@@ -976,7 +1028,7 @@ class Run:
                 self.note("sql:store removed")
                 return self._sql_full(before, after, conn)
             try:
-                account_ids, bank_ids = _logged_keys(conn, self.token)
+                account_ids, bank_ids = _logged_keys(conn, self.token, self.schema)
             except LogUntrusted as exc:
                 self.note(f"sql:{exc}")
                 return self._sql_full(before, after, conn)
