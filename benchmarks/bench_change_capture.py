@@ -53,10 +53,19 @@ def run(argv: list[str]) -> int:
     return code
 
 
+def payee_name(i: int) -> str:
+    """A payee name without digits: the engine drops digit runs when it matches a payee to its learned context."""
+    letters = ""
+    for _ in range(4):
+        letters += chr(ord("A") + i % 26)
+        i //= 26
+    return f"VENDOR {letters}"
+
+
 def build(root: Path, size: int) -> Path:
     entity = root / "co"
     run(["entity", "init", str(entity), "--name", "Bench Studio"])
-    payees = [f"VENDOR {i:05d}" for i in range(ARGS.payees)]
+    payees = [payee_name(i) for i in range(ARGS.payees)]
     context = {name: {"canonical_category": "Expenses:Software", "confirmed_count": 9, "last_confirmed_date": "2026-01-01",
                       "last_operation_hash": "0" * 64, "notes": "", "reset": False} for name in payees}
     (entity / "learned-context").mkdir(exist_ok=True)
@@ -69,6 +78,10 @@ def build(root: Path, size: int) -> Path:
     source = root / "in.json"
     source.write_text(json.dumps(rows), encoding="utf-8")
     run(["ingest", str(source), "--entity", str(entity), "--session-id", "bench"])
+    import sqlite3
+    posted = sqlite3.connect(entity / "ledger.sqlite").execute("SELECT COUNT(*) FROM source_transactions").fetchone()[0]
+    if posted < size:
+        raise SystemExit(f"only {posted} of {size} transactions were posted: the learned context did not match")
     # Decided items in month archives, written in the engine's own archive format. The last month is the month of
     # the items that the benchmark decides, so its archive is as large as the others.
     archived = int(size * ARGS.archived_share)
