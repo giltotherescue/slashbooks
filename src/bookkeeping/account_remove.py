@@ -224,6 +224,8 @@ def references(documents: dict[str, Any], store: Any, account: str, catalog: set
     from .accrual.store import TABLES, list_records
     found: list[str] = []
     for name, document in documents.items():
+        if name.startswith("review-queue/archive/"):
+            continue  # An archive holds decided items only (queue.compact_closed_items); see the next case.
         if name.startswith("review-queue/") and isinstance(document, dict) \
                 and document.get("status") in _CLOSED_QUEUE_STATUSES:
             continue  # A decided item; a posted decision shows in the postings.
