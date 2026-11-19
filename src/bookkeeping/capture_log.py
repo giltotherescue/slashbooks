@@ -16,6 +16,7 @@ every caller using a helper.
 
 from __future__ import annotations
 
+import copy
 import os
 import threading
 from contextlib import contextmanager
@@ -63,7 +64,8 @@ class FileLog:
             self.remove.add(str(key))
         for key, row in (delta.get("upsert") or {}).items():
             self.remove.discard(str(key))
-            self.upsert[str(key)] = row
+            # A copy: a caller that changes the object that it gave (or got back) must not change the receipt.
+            self.upsert[str(key)] = copy.deepcopy(row)
 
 
 class Session:
@@ -140,5 +142,3 @@ def writing(path: Path | str, *, delta: Mapping[str, Any] | None = None) -> Iter
         after = signature(resolved)
         for session in sessions:
             session.record(resolved, before, after, delta)
-
-

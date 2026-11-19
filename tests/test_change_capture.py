@@ -375,6 +375,52 @@ class TamperTests(Fixture):
         document = self.both(action)
         self.assertTrue(document["bank_rows"])
 
+    def test_the_log_refuses_a_replace_and_a_number_that_does_not_rise(self) -> None:
+        with changeset.capture(self.entity):
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+                for sql in (f"INSERT OR REPLACE INTO {change_capture.LOG_TABLE} (seq, tbl, key) VALUES (1, 's', 'elsewhere')",
+                            f"REPLACE INTO {change_capture.LOG_TABLE} (seq, tbl, key) VALUES (1, 's', 'elsewhere')",
+                            f"INSERT INTO {change_capture.LOG_TABLE} (seq, tbl, key) VALUES (0, 's', 'low')"):
+                    with self.subTest(sql=sql), self.assertRaises(sqlite3.DatabaseError):
+                        conn.execute(sql)
+                        conn.commit()
+                    conn.rollback()
+                self.assertEqual(conn.execute(
+                    f"SELECT key FROM {change_capture.LOG_TABLE} WHERE seq = 1").fetchone()[0], "cs-001")
+
+    def test_a_log_row_that_is_replaced_after_the_triggers_are_dropped_is_found(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+                self.drop_capture_triggers(conn, ("log_bi", "log_ai"))
+                conn.execute(f"INSERT OR REPLACE INTO {change_capture.LOG_TABLE} (seq, tbl, key) VALUES (1, 's', 'elsewhere')")
+                conn.commit()
+
+        document = self.both(action)
+        self.assertTrue(document["bank_rows"])
+
+    def test_a_trigger_that_is_dropped_and_made_again_in_the_middle_is_a_schema_change(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                sql = dict(conn.execute("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'").fetchall())
+                name = f"{change_capture.TRIGGER_PREFIX}st_u"
+                conn.execute(f'DROP TRIGGER "{name}"')
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")  # Not logged.
+                conn.execute(sql[name])  # The same text again: the log check alone would pass.
+                conn.commit()
+
+        revision = self.seq.view["revision"]
+        args = {"books_revision": revision + 1, "base_revision": revision}
+        with changeset.capture(self.entity, incremental=False, **args) as full:
+            with changeset.capture(self.entity, **args) as fast:
+                action()
+        self.assertEqual(fast.change_set, full.change_set)
+        self.assertEqual([row["source_id"] for row in fast.change_set["bank_rows"]], ["cs-001"])
+        self.assertTrue(any("schema" in note for note in fast.path_report["fallbacks"]), fast.path_report)
+
     def test_a_log_that_is_dropped_and_made_again_is_not_trusted(self) -> None:
         def action() -> None:
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
@@ -504,6 +550,37 @@ class ArchiveTests(Fixture):
         raw["items"][name] = {**raw["items"][name], "reasoning": "Edited by hand."}
         document = self.both(lambda: archive.write_text(json.dumps(raw), encoding="utf-8"))
         self.assertEqual([row["id"] for row in document["review_queue"]], [raw["items"][name]["source_id"]])
+
+
+class JournalTests(Fixture):
+    def test_an_archive_edit_before_its_first_journaled_write_is_found(self) -> None:
+        folder = self.entity / "review-queue" / "archive"
+        archive = sorted(folder.glob("*.json"))[0]
+        raw = json.loads(archive.read_text(encoding="utf-8"))
+        name = next(iter(raw["items"]))
+        edited = {**raw["items"][name], "reasoning": "Edited before the helper wrote."}
+        self.seq.cli("propose", "queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002",
+                     "--category", "Income:Consulting", "--reasoning", "Payout.")
+        self.both(lambda: None)
+
+        def action() -> None:
+            raw["items"][name] = edited
+            archive.write_text(json.dumps(raw), encoding="utf-8")  # Not journaled.
+            run_cli(["queue", "confirm", "--entity", str(self.entity), "--item", "cs-002"])  # Journaled archive write.
+
+        document = self.both(action)
+        self.assertIn(edited["source_id"], [row["id"] for row in document["review_queue"]])
+
+    def test_changing_the_object_that_set_taught_returns_does_not_change_the_receipt(self) -> None:
+        company = load_entity(self.entity)
+        revision = self.seq.view["revision"]
+        with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision) as receipt:
+            taught = queue.set_taught(company, "HARBOR CAFE", "Expenses:Meals", by="u1", by_name="Pat",
+                                      ts="2026-10-16T10:00:00Z")
+            taught["category"] = "Expenses:Wrong"  # Not written to disk.
+        entry = receipt.change_set["learned_context"][0]["entry"]
+        self.assertEqual(entry["taught"]["category"], "Expenses:Meals")
+        self.seq._apply("teach", receipt.change_set)  # The reducer checks the digest against the disk.
 
 
 class CostTests(Fixture):
