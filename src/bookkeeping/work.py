@@ -804,7 +804,7 @@ def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iter
                     holder.path = "full"
             except Exception as exc:  # noqa: BLE001 - any error after the command, in any path
                 holder.events, holder.path, holder.complete = [], "failed", False
-                holder.reason = "state_unreadable" if isinstance(exc, (OSError, ValueError)) else "finalize_failed"
+                holder.reason = "state_unreadable" if isinstance(exc, (OSError, ValueError, sqlite3.Error)) else "finalize_failed"
                 raise  # A host also sees the error; the receipt (and ``--work-out``) say that it is incomplete.
         finally:
             if run is not None:

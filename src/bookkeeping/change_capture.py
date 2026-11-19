@@ -272,31 +272,48 @@ def _logged_keys(conn: sqlite3.Connection, token: str | None,
 class Index:
     """``.change-capture.sqlite``: the rows of the small tables as the last capture saw them, and their totals."""
 
-    def __init__(self, root: Path, distrust: bool = False) -> None:
+    def __init__(self, root: Path, exclusive: bool = False) -> None:
+        """Open the index. With ``exclusive`` the open takes an exclusive lock first and keeps it (the caller commits or
+        rolls back): the check of the saved signature, the removal of stray side files and the build of missing tables
+        then happen while no other SQLite connection can write the file. ``trusted`` tells whether the file is the file
+        that the last capture sealed."""
         self.path = root / INDEX_NAME
+        self.trusted = False
+        self.sealed_identity: tuple[Any, ...] | None = None
         self.conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
         # Never WAL: in WAL mode a committed write can leave the main file as it was, and the file signature below would
         # not show it. In this mode every committed write changes the main file and its change counter.
         self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.execute("PRAGMA synchronous = NORMAL")
+        self.begin_write = False
+        if exclusive:
+            self.conn.execute("BEGIN EXCLUSIVE")
+            self.begin_write = True
+            self.trusted = stamp_matches(root)
+            # With the exclusive lock in the delete-journal mode no live connection can own a side file: a stray one
+            # (a file that a WAL connection left) is removed, so that the next capture can trust the index again.
+            for suffix in ("-wal", "-shm"):
+                try:
+                    os.unlink(str(self.path) + suffix)
+                except OSError:
+                    pass
         names = {str(row[0]) for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         # An index that has its other tables but not the source ids lost them (a dropped table must not be created
         # again empty and then be trusted): the tokens are wiped below, so every part is read in full.
         dropped = "meta" in names and "ledger_sources" not in names
-        self.conn.executescript(
-            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;"
-            "CREATE TABLE IF NOT EXISTS rows (section TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,"
-            " PRIMARY KEY (section, key)) WITHOUT ROWID;"
-            "CREATE TABLE IF NOT EXISTS item_files (name TEXT PRIMARY KEY, source_id TEXT NOT NULL, sig TEXT NOT NULL)"
-            " WITHOUT ROWID;"
-            "CREATE INDEX IF NOT EXISTS item_files_source ON item_files (source_id);"
-            "CREATE TABLE IF NOT EXISTS archive_files (name TEXT PRIMARY KEY, sig TEXT NOT NULL) WITHOUT ROWID;"
-            "CREATE TABLE IF NOT EXISTS archive_items (name TEXT PRIMARY KEY, archive TEXT NOT NULL,"
-            " source_id TEXT NOT NULL, value TEXT NOT NULL) WITHOUT ROWID;"
-            "CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive);"
-            "CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id);"
-            "CREATE TABLE IF NOT EXISTS ledger_sources (source_id TEXT PRIMARY KEY) WITHOUT ROWID;")
-        if dropped or distrust or self.meta("version") != str(INDEX_VERSION):
+        for statement in (
+            'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE TABLE IF NOT EXISTS rows (section TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (section, key)) WITHOUT ROWID',
+            'CREATE TABLE IF NOT EXISTS item_files (name TEXT PRIMARY KEY, source_id TEXT NOT NULL, sig TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE INDEX IF NOT EXISTS item_files_source ON item_files (source_id)',
+            'CREATE TABLE IF NOT EXISTS archive_files (name TEXT PRIMARY KEY, sig TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE TABLE IF NOT EXISTS archive_items (name TEXT PRIMARY KEY, archive TEXT NOT NULL, source_id TEXT NOT NULL, value TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive)',
+            'CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id)',
+            'CREATE TABLE IF NOT EXISTS ledger_sources (source_id TEXT PRIMARY KEY) WITHOUT ROWID',
+        ):
+            self.conn.execute(statement)
+        if dropped or (exclusive and not self.trusted) or self.meta("version") != str(INDEX_VERSION):
             self.wipe()
         self.totals: dict[str, list[int]] = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
         saved = self.meta("totals")
@@ -307,7 +324,6 @@ class Index:
                                for name in changeset.DIGEST_SECTIONS}
             except (ValueError, KeyError, TypeError, IndexError):
                 self.wipe()
-        self.begin_write = False
         self.sealed = False
         # A random id that changes with every commit. A capture checks that the index that it opened at the end is the
         # index that it left at the start: a deleted, restored or replaced index has another id.
@@ -346,7 +362,8 @@ class Index:
         return tuple(json.loads(raw)) if raw else None  # type: ignore[return-value]
 
     def wipe(self) -> None:
-        self.conn.executescript("DELETE FROM meta; DELETE FROM rows; DELETE FROM item_files; DELETE FROM archive_files; DELETE FROM archive_items; DELETE FROM ledger_sources;")
+        for table in ("meta", "rows", "item_files", "archive_files", "archive_items", "ledger_sources"):
+            self.conn.execute(f"DELETE FROM {table}")
         self.conn.execute("INSERT INTO meta (key, value) VALUES ('version', ?)", (str(INDEX_VERSION),))
         self.totals = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
 
@@ -363,7 +380,7 @@ class Index:
         self.set_meta_totals()
         self.generation = secrets.token_hex(8)
         self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('generation', ?)", (self.generation,))
-        before = _header_counter(self.path)
+        before = _header_counter(self.path) or 0  # A new file has no header yet: its first commit makes counter 1.
         self.conn.execute("COMMIT")
         self.begin_write = False
         self.sealed = False
@@ -372,8 +389,10 @@ class Index:
         try:
             self.conn.execute("BEGIN EXCLUSIVE")
             try:
-                if before is not None and _header_counter(self.path) == (before + 1) % (1 << 32):
+                if _header_counter(self.path) == (before + 1) % (1 << 32):
                     stamp = _index_stamp(root)
+                    status = os.stat(self.path)  # The identity that the finish compares with, taken under the same lock.
+                    self.sealed_identity = (status.st_ino, status.st_ctime_ns, self.generation)
                 _write_stamp(root, stamp)
                 self.sealed = stamp is not None
             finally:
@@ -978,11 +997,11 @@ def start(root: Path) -> "Handle | None":
         active = _ACTIVE.get(_active_key(root))
     if active is not None and not active.closed:
         return active.join()
-    trusted = stamp_matches(root)  # Before the index is opened: an open can change the file.
     try:
-        index = Index(root, distrust=not trusted)
+        index = Index(root, exclusive=True)  # The signature check below happens under the exclusive lock.
     except (sqlite3.Error, OSError):
         return None  # The folder cannot hold the index: the caller compares two full reads.
+    trusted = index.trusted
     try:
         signatures = _signatures(root)
         _wait_for_tick(signatures, _newest(_sweep(root)))
@@ -1127,8 +1146,9 @@ class Run:
 
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.
-        status = os.stat(self.index.path)
-        self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation)
+        if self.index.sealed_identity is None:
+            raise ChangeSetError("The index was not sealed.")
+        self.identity = self.index.sealed_identity
         self.token = install_triggers(self.root / "ledger.sqlite")
         self.schema = None
         if self.token is not None:
@@ -1198,9 +1218,15 @@ class Run:
         if (status.st_ino, status.st_ctime_ns) != self.identity[:2]:
             raise ChangeSetError("The index was changed during the command.")
         self.index = Index(root)
+        self.index.start_write()  # From here no other connection can write the index: check it under this lock.
+        try:
+            status = os.stat(root / INDEX_NAME)
+        except OSError:
+            raise ChangeSetError("The index was removed during the command.") from None
+        if (status.st_ino, status.st_ctime_ns) != self.identity[:2]:
+            raise ChangeSetError("The index was changed during the command.")
         if self.index.generation != self.identity[2]:
             raise ChangeSetError("The index was replaced during the command.")
-        self.index.start_write()
         index = self.index
         before = changeset._Side(self.position, self.counts, {}, {}, {}, {}, {}, {}, {}, {}, [], {}, self.digest)
         after = changeset._Side({}, None, {}, {}, {}, {}, {}, {}, {}, {}, [], {}, "")

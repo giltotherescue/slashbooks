@@ -464,7 +464,7 @@ class FailureTests(Fixture):
             with self.assertRaises(sqlite3.Error), work.capture(self.entity) as receipt:
                 self.propose()
         self.assertEqual((receipt.complete, receipt.path, receipt.events), (False, "failed", []))
-        self.assertEqual(receipt.reason, "finalize_failed")
+        self.assertEqual(receipt.reason, "state_unreadable")  # A locked ledger is an unreadable state.
         with closing(sqlite3.connect(self.entity / change_capture.INDEX_NAME)) as conn:
             saved = conn.execute("SELECT COUNT(*) FROM rows WHERE section = 'queue' AND key = 'syn-004'").fetchone()[0]
         self.assertEqual(saved, 0)  # The new state of the command was not saved.
@@ -687,6 +687,83 @@ class IndexSealTests(SourceTableTests):
         self.assertEqual(receipt.path, "full")  # The seal failed: the capture did not trust the index.
         self.assertFalse(change_capture.stamp_matches(self.entity))
         self.wrong_id_check()
+
+
+class IndexLockTests(IndexSealTests):
+    """The index is checked, sealed and snapshotted under one exclusive hold."""
+
+    test_a_table_with_one_id_removed = test_a_dropped_table = test_an_emptied_table = None
+    test_a_same_count_edit_of_one_id = test_a_same_count_edit_that_adds_a_wrong_id_for_a_removed_one = None
+    test_a_missing_signature_file_builds_the_index_again = test_an_untouched_index_is_trusted_without_a_scan = None
+    test_the_stored_count_follows_the_table = None
+
+    def other_write(self) -> str:
+        path = self.entity / change_capture.INDEX_NAME
+        try:
+            with closing(sqlite3.connect(path, timeout=0.05)) as other:
+                other.execute("UPDATE ledger_sources SET source_id = 'invented-1' WHERE source_id = 'syn-001'")
+                other.commit()
+        except sqlite3.OperationalError as exc:
+            return str(exc)
+        return "written"
+
+    def test_no_connection_can_write_the_index_between_the_signature_check_and_the_seal(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        seen: list[str] = []
+        real_check = change_capture.stamp_matches
+        real_commit = change_capture.Index.commit
+
+        def check(root):
+            seen.append(("check", self.other_write()))
+            return real_check(root)
+
+        def commit(index):
+            seen.append(("before commit", self.other_write()))
+            return real_commit(index)
+
+        with mock.patch.object(change_capture, "stamp_matches", check), \
+                mock.patch.object(change_capture.Index, "commit", commit):
+            with work.capture(self.entity) as receipt:
+                pass
+        self.assertTrue(seen)
+        self.assertEqual({what for _, what in seen[:2]}, {"database is locked"})
+        self.assertEqual(receipt.path, "incremental")
+
+    def test_a_write_to_the_index_after_the_seal_and_before_the_command_is_found(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        done: list[str] = []
+        real = change_capture.Run.begin
+
+        def begin(run) -> None:
+            real(run)
+            done.append(self.other_write())  # The start-side hold ended: this write goes through.
+
+        with mock.patch.object(change_capture.Run, "begin", begin):
+            with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+                pass
+        self.assertEqual(done, ["written"])
+        self.assertEqual((receipt.complete, receipt.events), (False, []))  # Never a sealed, trusted wrong index.
+        self.wrong_id_check()
+
+    def test_a_write_to_the_index_during_the_command_is_found(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+            self.assertEqual(self.other_write(), "written")
+        self.assertEqual((receipt.complete, receipt.events), (False, []))
+        self.wrong_id_check()
+
+    def test_stray_side_files_are_removed_and_the_next_capture_is_warm(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        path = self.entity / change_capture.INDEX_NAME
+        for suffix in ("-wal", "-shm"):
+            Path(str(path) + suffix).write_bytes(b"stray")
+        self.both(lambda: run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                                   "--category", "Expenses:Software", "--reasoning", "x."]))  # Rebuilds.
+        for suffix in ("-wal", "-shm"):
+            self.assertFalse(Path(str(path) + suffix).exists())
+        with mock.patch.object(change_capture, "_rebuild", side_effect=AssertionError("rebuilt")):
+            self.both(lambda: run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-005",
+                                       "--category", "Expenses:Software", "--reasoning", "x."]))
 
 
 class FullFallbackLockTests(Fixture):
