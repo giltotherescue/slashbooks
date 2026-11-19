@@ -450,12 +450,8 @@ def _read_file_section(root: Path, relative: str) -> dict[str, Any]:
     if relative == changeset._CONTEXT_FILE:
         return changeset._load_context(root)
     if relative in changeset.DOCUMENT_FILES:
-        value = changeset._read_strict(path)
-        if value is None:
-            return {}
-        if not isinstance(value, changeset._DOCUMENT_TYPES[relative]):
-            raise ChangeSetError(f"{relative} has an unexpected shape.")
-        return {relative: value}
+        value = changeset._load_document(root, relative)
+        return {} if value is None else {relative: value}
     return changeset._load_learned(root)
 
 

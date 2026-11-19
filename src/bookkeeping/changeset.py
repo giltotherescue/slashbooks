@@ -354,22 +354,29 @@ def _load_context(root: Path) -> dict[str, dict[str, Any]]:
     return {row["source_id"]: row for row in rows}
 
 
+def _load_document(root: Path, name: str) -> Any:
+    """One whole-file document. A missing file is ``None``. A file of the wrong shape raises ``ChangeSetError``."""
+    value = _read_strict(root / name)
+    if value is None:
+        return None
+    if not isinstance(value, _DOCUMENT_TYPES[name]):
+        raise ChangeSetError(f"{name} has an unexpected shape.")
+    if name == "learned-context/accrual-rules.json" and (
+            not isinstance(value.get("rules"), list) or not isinstance(value.get("receipts", []), list)):
+        raise ChangeSetError(f"{name} has an unexpected shape.")
+    members = value.values() if isinstance(value, dict) else value
+    if not all(isinstance(member, _DOCUMENT_MEMBERS[name]) for member in members):
+        raise ChangeSetError(f"{name} has a member of the wrong type.")
+    return value
+
+
 def _load_documents(root: Path) -> dict[str, Any]:
     """Each small whole-file document by path. A missing file is left out."""
     found = {}
     for name in DOCUMENT_FILES:
-        value = _read_strict(root / name)
-        if value is None:
-            continue
-        if not isinstance(value, _DOCUMENT_TYPES[name]):
-            raise ChangeSetError(f"{name} has an unexpected shape.")
-        if name == "learned-context/accrual-rules.json" and (
-                not isinstance(value.get("rules"), list) or not isinstance(value.get("receipts", []), list)):
-            raise ChangeSetError(f"{name} has an unexpected shape.")
-        members = value.values() if isinstance(value, dict) else value
-        if not all(isinstance(member, _DOCUMENT_MEMBERS[name]) for member in members):
-            raise ChangeSetError(f"{name} has a member of the wrong type.")
-        found[name] = value
+        value = _load_document(root, name)
+        if value is not None:
+            found[name] = value
     return found
 
 

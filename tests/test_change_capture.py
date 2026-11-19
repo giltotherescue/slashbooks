@@ -204,6 +204,18 @@ class FallbackTests(Fixture):
                          [("cs-001", "status-changed"), ("cs-001x", "added")])
         self.assertEqual([row["name"] for row in document["accounts"]["opened"]], ["Expenses:Direct"])
 
+    def test_null_and_non_object_payloads_hash_like_a_full_read(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                for key, text in (("p-null", "null"), ("p-text", "not json"), ("p-list", "[1]")):
+                    conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) "
+                                 "VALUES (?, ?, 'posted', '2026-10-01T00:00:00Z')", (key, text))
+                conn.commit()
+
+        document = self.both(action)
+        rows = {row["source_id"]: row for row in document["bank_rows"]}
+        self.assertEqual(rows["p-text"]["row"], {"unreadable_payload_text": "not json"})
+
     def test_an_account_replaced_by_its_unique_name_is_found(self) -> None:
         def action() -> None:
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
