@@ -216,8 +216,8 @@ time in proportion to the rows that the write added. Run the full checks on a sc
 | Guarantee | Per write | Scheduled |
 | --- | --- | --- |
 | No posted row was rewritten or deleted | The append-only triggers refuse it in the database. `append_only_guard_problems(conn)` reads a fixed number of catalog rows to confirm that the triggers are in place. | `content_digest` against the seal (`check_store_integrity`) |
-| The audit chain is whole | `audit_head()` before the write, then `verify_audit_chain_since(head)` after it. | `verify_audit_chain()` from the first event |
-| New postings name an existing entry | `posting_watermark()` before the write, then `new_posting_foreign_key_errors(mark)` after it. | `PRAGMA foreign_key_check` |
+| The audit chain is whole | `verify_audit_chain_since(None)` once, then `verify_audit_chain_since(head)` after each write; keep the returned `head` only when `errors` is empty. | `verify_audit_chain()` from the first event |
+| New postings name an existing entry | `posting_watermark()` before the first write, then `check_new_postings(mark)` after each write; keep its `watermark` for the next write. | `PRAGMA foreign_key_check` |
 | The file is not corrupt | No cheap check exists. | `PRAGMA integrity_check` |
 
 The incremental chain check does not read events at or before the head that the host passes. A change
@@ -225,3 +225,8 @@ below that head is stopped by the triggers. A person with direct access to the d
 trigger, so a scheduled run still needs the full checks. The seal digest also needs a read of the whole ledger,
 so the per-write check cannot replace it. `PRAGMA integrity_check` and `PRAGMA quick_check` read every page, so
 they have no incremental form.
+
+The triggers also refuse a replace (`REPLACE INTO`, `INSERT OR REPLACE`, an upsert) and any new row with an id that is
+not above every earlier id. So a saved head or watermark cannot skip a new row. Each check takes its new
+checkpoint from the rows that it read in one read transaction. A row that another writer adds later is
+checked by the next call.

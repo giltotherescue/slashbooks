@@ -218,6 +218,35 @@ CREATE INDEX IF NOT EXISTS audit_events_type_idx
 _GENESIS_PREV = "0" * 64
 
 
+def _key_guards() -> dict[str, str]:
+    """Triggers that keep the row id of each posted table above every earlier id.
+
+    ``INSERT OR REPLACE`` and ``REPLACE INTO`` delete the row that they replace without firing a DELETE trigger
+    (``recursive_triggers`` is off by default and is a setting of each connection). So a BEFORE INSERT trigger
+    refuses an insert whose id, or whose ``source_id`` for an entry, is already in the table. An AFTER INSERT
+    trigger refuses an id below 1 and an id that is not above every other id. SQLite gives an unset id the value
+    -1 in a BEFORE trigger, so the first rule cannot tell an unset id from a real one: the second rule covers it.
+    With both rules, a row that is added always has a higher id than every row that exists, and the incremental
+    checks, which read the ids above a saved position, cannot skip it.
+    """
+    guards = {}
+    for table in ("entries", "postings", "balance_assertions", "audit_events"):
+        duplicate = f"EXISTS (SELECT 1 FROM {table} WHERE id = NEW.id)"
+        if table == "entries":
+            duplicate += (" OR (NEW.source_id IS NOT NULL AND NEW.source_id != '' "
+                          "AND EXISTS (SELECT 1 FROM entries WHERE source_id = NEW.source_id))")
+        guards[f"{table}_append_only_no_overwrite"] = (
+            f"CREATE TRIGGER IF NOT EXISTS {table}_append_only_no_overwrite BEFORE INSERT ON {table} "
+            f"WHEN {duplicate} BEGIN SELECT RAISE(ABORT, '{table} rows are append-only: no replace'); END"
+        )
+        guards[f"{table}_append_only_ascending"] = (
+            f"CREATE TRIGGER IF NOT EXISTS {table}_append_only_ascending AFTER INSERT ON {table} "
+            f"WHEN NEW.id < 1 OR EXISTS (SELECT 1 FROM {table} WHERE id > NEW.id) "
+            f"BEGIN SELECT RAISE(ABORT, '{table} rows are append-only: ids must rise'); END"
+        )
+    return guards
+
+
 def _append_only_guard_ddl() -> dict[str, str]:
     """Return the engine's append-only triggers, keyed by trigger name.
 
@@ -274,6 +303,7 @@ def _append_only_guard_ddl() -> dict[str, str]:
             f"WHEN NOT (OLD.type = '{_DISCARDABLE_AUDIT_TYPE}' AND OLD.id = (SELECT MAX(id) FROM audit_events)) "
             "BEGIN " + refuse.format("audit events are append-only") + " END"
         ),
+        **_key_guards(),
         "audit_events_chain_head": (
             "CREATE TRIGGER IF NOT EXISTS audit_events_chain_head BEFORE INSERT ON audit_events "
             "WHEN NEW.prev_hash IS NOT COALESCE("
@@ -388,6 +418,14 @@ class AuditChainCheck:
 
     errors: list[str]
     head: AuditHead | None
+
+
+@dataclass(frozen=True)
+class PostingCheck:
+    """Result of ``check_new_postings``. ``watermark`` is the next checkpoint, or ``None`` after an error."""
+
+    errors: list[str]
+    watermark: int | None
 
 
 def _verify_links(rows: Any, prev: str) -> list[str]:
@@ -954,55 +992,80 @@ class LedgerStore:
     def verify_audit_chain_since(self, verified: AuditHead | None) -> AuditChainCheck:
         """Verify only the links after a head that an earlier check already verified.
 
-        The caller passes the head from its last good check (``AuditChainCheck.head`` or ``audit_head``). The
-        check proves that this head is still in the chain with the same hash. Then it checks each later event:
-        its ``prev_hash``, and its ``record_hash``. Cost: one index read, plus the number of new events. With
-        ``verified=None`` it verifies the whole chain.
+        The caller passes the head from its last good check (``AuditChainCheck.head``). The check proves that
+        this head is still in the chain with the same hash. Then it checks each later event: its ``prev_hash``
+        and its ``record_hash``. Cost: one index read, plus the number of new events. With ``verified=None`` it
+        verifies the whole chain.
 
-        This check does not read events at or before ``verified``. A change to those events is the job of the
-        append-only triggers (``append_only_guard_problems``) and of the scheduled ``verify_audit_chain``.
-        If the verified head is gone or has another hash, the result has an error and the caller must run the
-        full check.
+        The new head is the last event that this check read, in the same read transaction. An event that a
+        concurrent writer adds after the read is not in the head, so the next check verifies it. After any
+        error the result has no head, and the caller must run the full check.
+
+        The check does not read events at or before ``verified``. The append-only triggers stop a change to
+        them (``append_only_guard_problems`` confirms the triggers), and the scheduled ``verify_audit_chain``
+        covers the rest.
         """
-        if verified is None:
-            errors = self.verify_audit_chain()
-            return AuditChainCheck(errors, self.audit_head())
         with self.connection() as conn:
-            row = conn.execute("SELECT record_hash FROM audit_events WHERE id = ?", (verified.position,)).fetchone()
-            if row is None or str(row[0]) != verified.record_hash:
-                return AuditChainCheck(
-                    [f"Audit event {verified.position}: the verified head is not in the chain; run the full check"],
-                    None,
-                )
-            errors = _verify_links(conn.execute(
-                "SELECT id, type, ts, payload_json, prev_hash, record_hash FROM audit_events "
-                "WHERE id > ? ORDER BY id", (verified.position,)
-            ), verified.record_hash)
-            return AuditChainCheck(errors, self.audit_head(conn) if not errors else None)
+            conn.execute("BEGIN")
+            try:
+                position, prev = 0, _GENESIS_PREV
+                if verified is not None:
+                    row = conn.execute("SELECT record_hash FROM audit_events WHERE id = ?",
+                                       (verified.position,)).fetchone()
+                    if row is None or str(row[0]) != verified.record_hash:
+                        return AuditChainCheck([f"Audit event {verified.position}: the verified head is not in the "
+                                                "chain; run the full check"], None)
+                    position, prev = verified.position, verified.record_hash
+                errors: list[str] = []
+                head = AuditHead(position, prev) if verified is not None else None
+                for row in conn.execute(
+                    "SELECT id, type, ts, payload_json, prev_hash, record_hash FROM audit_events "
+                    "WHERE id > ? ORDER BY id", (position,)
+                ):
+                    errors.extend(_verify_links([row], prev))
+                    prev = row["record_hash"]
+                    head = AuditHead(int(row["id"]), str(row["record_hash"]))
+                return AuditChainCheck(errors, None if errors else head)
+            finally:
+                conn.rollback()
 
     def posting_watermark(self, conn: sqlite3.Connection | None = None) -> int:
-        """Return the newest posting id (0 if none). A host saves it before a write. Cost: one index read."""
+        """Return the newest posting id (0 if none). Cost: one index read.
+
+        Prefer ``check_new_postings``, which returns the next watermark from the rows that it read.
+        """
         if conn is None:
             with self.connection() as tx:
                 return self.posting_watermark(tx)
         return int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM postings").fetchone()[0])
 
-    def new_posting_foreign_key_errors(self, after_posting_id: int, conn: sqlite3.Connection | None = None) -> list[str]:
-        """Return the postings added after ``after_posting_id`` that name an entry that does not exist.
+    def check_new_postings(self, after_posting_id: int) -> PostingCheck:
+        """Check the postings added after ``after_posting_id``; return the errors and the next watermark.
 
-        This is the only foreign key that the ledger tables have. Its parent rows cannot be deleted while the
-        append-only triggers are in place, so an existing posting cannot become an orphan. Only a new posting
-        can be one. Cost: the number of new postings, each with one primary key read. The full
+        The only foreign key of the ledger tables is ``postings.entry_id``. The append-only triggers refuse a
+        delete of an entry, so an existing posting cannot become an orphan; only a new posting can be one. The
+        triggers also keep each new posting id above every earlier id, so a saved watermark cannot skip a new
+        posting. The watermark is the highest posting id in the same read transaction as the check, so a posting
+        that a concurrent writer adds later is checked next time. After an error the watermark is ``None``.
+        Cost: the number of new postings, each with one primary key read. The full
         ``PRAGMA foreign_key_check`` stays the check for a scheduled run.
         """
-        if conn is None:
-            with self.connection() as tx:
-                return self.new_posting_foreign_key_errors(after_posting_id, tx)
-        rows = conn.execute(
-            "SELECT p.id, p.entry_id FROM postings p LEFT JOIN entries e ON e.id = p.entry_id "
-            "WHERE p.id > ? AND e.id IS NULL ORDER BY p.id", (after_posting_id,)
-        ).fetchall()
-        return [f"Posting {row[0]}: entry {row[1]} does not exist" for row in rows]
+        with self.connection() as conn:
+            conn.execute("BEGIN")
+            try:
+                rows = conn.execute(
+                    "SELECT p.id, p.entry_id, e.id IS NULL FROM postings p LEFT JOIN entries e ON e.id = p.entry_id "
+                    "WHERE p.id > ? ORDER BY p.id", (after_posting_id,)
+                ).fetchall()
+            finally:
+                conn.rollback()
+        errors = [f"Posting {row[0]}: entry {row[1]} does not exist" for row in rows if row[2]]
+        mark = int(rows[-1][0]) if rows else after_posting_id
+        return PostingCheck(errors, None if errors else mark)
+
+    def new_posting_foreign_key_errors(self, after_posting_id: int) -> list[str]:
+        """Return only the errors of ``check_new_postings``."""
+        return self.check_new_postings(after_posting_id).errors
 
     def load_opens(self, conn: sqlite3.Connection | None = None) -> list[Open]:
         if conn is None:
