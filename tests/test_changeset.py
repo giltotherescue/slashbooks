@@ -975,6 +975,187 @@ class OtherBehaviorTests(unittest.TestCase):
         self.assertEqual(independent_view(a)["entries"], independent_view(b)["entries"])
 
 
+def _leaf_commands(parser, prefix=()):
+    """Every leaf command of the parser, as (path, parser)."""
+    import argparse
+    selectors = [action for action in parser._actions if isinstance(action, argparse._SubParsersAction)]
+    if not selectors:
+        yield prefix, parser
+        return
+    for name, child in selectors[0].choices.items():
+        yield from _leaf_commands(child, (*prefix, name))
+
+
+def _placeholder_argv(path, parser, company: Path, scratch: Path, apply: bool) -> list[str]:
+    """The command with each required argument set to a placeholder. Most commands then stop with an error."""
+    import argparse
+
+    def value(action) -> str:
+        if action.dest in ("entity", "entity_path", "path"):
+            return str(company)
+        if action.choices:
+            return str(next(iter(action.choices)))
+        if action.type is Path:
+            return str(scratch / f"{action.dest}.json")
+        for candidate in ("x", "2026-01-01", "1"):
+            try:
+                if action.type is not None:
+                    action.type(candidate)
+                return candidate
+            except (TypeError, ValueError, argparse.ArgumentTypeError):
+                continue
+        return "x"
+
+    argv = list(path)
+    for action in parser._actions:
+        if isinstance(action, (argparse._HelpAction, argparse._SubParsersAction)):
+            continue
+        if not action.option_strings:
+            if action.nargs not in ("?", "*"):
+                argv.append(value(action))
+        elif apply and action.dest == "apply":
+            argv.append(action.option_strings[-1])
+        elif (action.required or action.dest in ("entity", "entity_path")) and not isinstance(
+                action, (argparse._StoreTrueAction, argparse._StoreFalseAction, argparse._StoreConstAction)):
+            argv += [action.option_strings[-1], value(action)]
+    return argv
+
+
+def mutating_commands(company: Path, scratch: Path) -> list[list[str]]:
+    """Each local command that the command contract marks as a change of the books, with placeholder arguments."""
+    from bookkeeping.remote_contract import ContractError
+    found = []
+    for path, parser in _leaf_commands(cli.build_parser()):
+        for apply in ((False, True) if any(action.dest == "apply" for action in parser._actions) else (False,)):
+            argv = _placeholder_argv(path, parser, company, scratch, apply)
+            try:
+                spec = command_spec(argv)
+            except ContractError:
+                continue  # Transport commands, and commands that need one of a group of options (network only).
+            if spec["mutates"] and not spec["network"]:
+                found.append(argv)
+    return found
+
+
+class EveryMutatingCommandTests(unittest.TestCase):
+    """Every command that changes the books writes a change set, also when it changes nothing or stops with an error.
+
+    The audit runs each mutating command of the command contract on a synthetic company with placeholder arguments.
+    A complete document must give a full read when it is applied, and a document with ``changed: false`` must leave the
+    ledger file byte for byte the same.
+    """
+
+    def test_every_mutating_command_writes_a_valid_change_set(self) -> None:
+        import shutil
+        import socket
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            base = root / "base"
+            code, _, err = run_cli(["demo", "init", str(base)])
+            self.assertEqual(code, 0, err)
+            run_cli(["--change-set-out", str(root / "warm.json"), "queue", "list", "--entity", str(base)])
+            company, scratch, out = root / "co", root / "scratch", root / "change.json"
+            commands = mutating_commands(company, scratch)
+            self.assertGreater(len(commands), 90)  # 98 when this test was written.
+            for argv in commands:
+                label = " ".join(part for part in argv if not part.startswith(str(root)))
+                with self.subTest(label):
+                    shutil.rmtree(company, ignore_errors=True)
+                    shutil.copytree(base, company)
+                    shutil.rmtree(scratch, ignore_errors=True)
+                    scratch.mkdir()
+                    before = changeset.read_view(company, revision=1)
+                    ledger = (company / "ledger.sqlite").read_bytes()
+                    blocked = OSError("no network in this test")
+                    with mock.patch.object(socket.socket, "connect", side_effect=blocked), \
+                            mock.patch("sys.stdin", io.StringIO("")):
+                        try:
+                            run_cli(["--change-set-out", str(out), "--change-set-base-revision", "1",
+                                     "--change-set-revision", "2", *argv])
+                        except Exception:  # noqa: BLE001 - a command that raises still writes its document
+                            pass
+                    self.assertTrue(out.exists(), "no change set file")
+                    document = json.loads(out.read_text(encoding="utf-8"))
+                    out.unlink()
+                    self.assertEqual(changeset.validate(document), [])
+                    if document["complete"]:
+                        self.assertEqual(changeset.apply_change_set(before, document),
+                                         changeset.read_view(company, revision=2))
+                        if not document["changed"]:
+                            self.assertEqual((company / "ledger.sqlite").read_bytes(), ledger)
+
+    def test_a_command_that_rejects_change_set_out_still_writes_an_incomplete_document(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            entity = root / "co"
+            run_cli(["entity", "init", str(entity), "--name", "Synthetic Studio"])
+            (entity / ".slashbooks-remote.json").write_text("{}", encoding="utf-8")
+            out = root / "change.json"
+            code, _, err = run_cli(["--change-set-out", str(out), "queue", "list", "--entity", str(entity)])
+            self.assertEqual(code, 1)
+            self.assertIn("WORK_OUTPUT_LOCAL_ONLY", err)
+            document = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(changeset.validate(document), [])
+            self.assertEqual((document["complete"], document["reason"]), (False, "command_failed"))
+
+
+class ReplayTests(unittest.TestCase):
+    """A replay of an accrual operation that is already applied writes a change set that says that nothing changed."""
+
+    def test_a_replayed_offset_and_item_apply_write_a_change_set_that_changed_nothing(self) -> None:
+        from tests.test_accrual_schedules import AccrualFixture, AR, BANK, INCOME
+        from bookkeeping.accrual.items import apply_item, apply_settlement, preview_item, preview_settlement
+        from bookkeeping.entity import add_account
+
+        fixture = AccrualFixture()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        deposits = "Liabilities:CustomerDeposits"
+        add_account(fixture.root, deposits, open_date="2000-01-01")
+        entity = load_entity(fixture.root)
+        apply_settlement(entity, preview_settlement(entity, {
+            "operation_id": "deposit", "date": "2026-02-03", "evidence_ids": [fixture.evidence("deposit")],
+            "source": {"mode": "new", "source_id": "deposit-bank", "bank_account": BANK, "amount": "500.00"},
+            "allocations": [], "excess": {"id": "deposit-credit", "account": deposits, "counterparty": "Orbit"}}))
+        work_dir = fixture.root.parent
+        invoice = {"operation_id": "invoice-1-create", "id": "invoice-1", "kind": "receivable", "account": AR,
+                   "currency": "USD", "original_amount": "2000.00", "as_of": "2026-03-01", "due_date": "2026-03-01",
+                   "counterparty": "Orbit", "origin": {"mode": "new", "source_id": "invoice-1-src", "counter_account": INCOME},
+                   "evidence_ids": [fixture.evidence("invoice-1")]}
+        offset = {"operation_id": "apply-deposit", "date": "2026-03-15", "credit_item_id": "deposit-credit",
+                  "target_item_id": "invoice-1", "amount": "500.00", "reason": "Apply deposit"}
+        revision = 0
+        view = changeset.read_view(fixture.root, revision=revision)
+        for verb, request in (("apply", invoice), ("offset-apply", offset)):
+            preview_verb = "preview" if verb == "apply" else "offset-preview"
+            request_path = work_dir / f"{verb}-request.json"
+            request_path.write_text(json.dumps(request), encoding="utf-8")
+            code, plan, err = run_cli(["accrual", "item", preview_verb, "--entity", str(fixture.root),
+                                       "--input", str(request_path)])
+            self.assertEqual(code, 0, err)
+            plan_path = work_dir / f"{verb}-plan.json"
+            plan_path.write_text(plan, encoding="utf-8")
+            for run in range(3):  # The first run applies. The next two are replays.
+                with self.subTest(verb=verb, run=run):
+                    out = work_dir / "change.json"
+                    ledger = (fixture.root / "ledger.sqlite").read_bytes()
+                    code, _, err = run_cli([
+                        "--change-set-out", str(out), "--change-set-base-revision", str(revision),
+                        "--change-set-revision", str(revision + 1), "accrual", "item", verb,
+                        "--entity", str(fixture.root), "--input", str(plan_path)])
+                    self.assertEqual(code, 0, err)
+                    self.assertTrue(out.exists())
+                    document = json.loads(out.read_text(encoding="utf-8"))
+                    out.unlink()
+                    self.assertTrue(document["complete"])
+                    self.assertEqual(document["changed"], run == 0)
+                    view = changeset.apply_change_set(view, document)
+                    revision += 1
+                    self.assertEqual(view, changeset.read_view(fixture.root, revision=revision))
+                    if run:
+                        self.assertEqual((fixture.root / "ledger.sqlite").read_bytes(), ledger)
+
+
 class ContractTests(unittest.TestCase):
     def test_change_set_out_is_an_output_file_that_a_host_can_rewrite(self) -> None:
         argv = ["--change-set-out", "@output/change.json", "--change-set-revision", "41", "queue", "confirm",

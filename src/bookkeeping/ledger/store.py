@@ -629,7 +629,8 @@ class LedgerStore:
 
     def connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(self.path))
+        from ..capture_log import ledger_connection_factory  # A change set capture watches for the first row change.
+        conn = sqlite3.connect(str(self.path), factory=ledger_connection_factory(self.path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         try:

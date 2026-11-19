@@ -6,11 +6,14 @@ and the learned context in full before and after each command. This module keeps
 
 How each part is found
     SQLite tables (``source_transactions``, ``accounts``)
-        Before the command, the capture adds a log table and triggers to ``ledger.sqlite`` in one short transaction.
-        The triggers only insert the key of each written row into the log. They fire for every connection, so a write
-        that does not use ``LedgerStore`` is logged too. After the command, the capture reads the logged keys, reads
-        only those rows, and removes the triggers and the log in one transaction. The triggers write no ledger row and
-        change no ledger trigger, so they cannot open a way around the append-only triggers of the ledger
+        The capture adds a log table and triggers to ``ledger.sqlite`` when the command first changes a row of the
+        store, in the transaction of that change (``capture_log.WatchedConnection``). A command that changes no row
+        never gets them, so its ledger file stays byte for byte the same. The triggers only insert the key of each
+        written row into the log. Once they exist they fire for every connection, so a later write that does not use
+        ``LedgerStore`` is logged too. A write before them that does not use ``LedgerStore`` moves the file change
+        counter: the capture then reads both tables in full. After the command, the capture reads the logged keys,
+        reads only those rows, and removes the triggers and the log in one transaction. The triggers write no ledger
+        row and change no ledger trigger, so they cannot open a way around the append-only triggers of the ledger
         (``append_only_guard_problems`` ignores them, and the check at the end of a capture refuses a store where
         the capture triggers or the log changed).
     Review queue item files
@@ -211,6 +214,29 @@ def install_atomic(ledger: Path) -> tuple[str | None, tuple[int, str] | None, An
         return None, None, _db_token(ledger)
     finally:
         conn.close()
+
+
+def install_in(conn: sqlite3.Connection) -> tuple[str, tuple[int, str]] | None:
+    """Add the log and the triggers in the open transaction of ``conn``, which holds the write lock of the store.
+
+    They commit with the transaction. A write after them in the same transaction is logged. Returns the run token and
+    the schema fingerprint with the triggers, or ``None`` when the store has no account or bank table. Raises
+    ``sqlite3.Error`` when the store cannot take them.
+    """
+    execute = sqlite3.Connection.execute  # The statements of the capture itself are not watched.
+    present = {str(row[0]) for row in execute(
+        conn, "SELECT name FROM main.sqlite_master WHERE type = 'table' AND name IN ('source_transactions', 'accounts')")}
+    if present != {"source_transactions", "accounts"}:
+        return None
+    _drop_capture_objects(conn)  # What a command that was killed left.
+    token = secrets.token_hex(16)
+    execute(conn, f"CREATE TABLE {LOG_TABLE} (seq INTEGER PRIMARY KEY AUTOINCREMENT, tbl TEXT NOT NULL, key TEXT NOT NULL)")
+    rootpage = execute(conn, "SELECT rootpage FROM main.sqlite_master WHERE name = ?", (LOG_TABLE,)).fetchone()[0]
+    execute(conn, f"CREATE TABLE {CTL_TABLE} (token TEXT NOT NULL, log_rootpage INTEGER NOT NULL)")
+    execute(conn, f"INSERT INTO {CTL_TABLE} (token, log_rootpage) VALUES (?, ?)", (token, int(rootpage)))
+    for sql in _trigger_sql().values():
+        execute(conn, sql)
+    return token, schema_fingerprint(conn)
 
 
 def remove_triggers(ledger: Path) -> bool:
@@ -1039,19 +1065,14 @@ def start(root: Path) -> "Handle | None":
         return None  # The folder cannot hold the index: the caller compares two full reads.
     trusted = index.trusted
     ledger = root / "ledger.sqlite"
-    token = fingerprint = None
     try:
+        if _has_capture_objects(ledger):
+            remove_triggers(ledger)  # A command that was killed left its log. Removed before the state is read.
         signatures = _signatures(root)
         _wait_for_tick(signatures, _newest(_sweep(root)))
+        # The log and the triggers are added only when the command first changes a row (``Run.install``). The token of
+        # the store is the token now: a write that the log does not hold changes it.
         signatures = _signatures(root)
-        token, fingerprint, signatures["sql"] = install_atomic(ledger)
-        counter_start = None
-        if token is not None:
-            after_install = _db_token(ledger)
-            counter_start = after_install[0] if isinstance(after_install, list) and isinstance(after_install[0], int) else None
-            expected = signatures["sql"][0] + 1 if isinstance(signatures["sql"], list) and isinstance(signatures["sql"][0], int) else None
-            if counter_start is not None and expected is not None and counter_start != expected:
-                token = None  # The install was not the only write: the log cannot be trusted.
         rebuilt: list[str] = []
         if not trusted and not index.sources_intact():
             index.set_token("sql", "sources-invalid")  # The saved source ids do not match their count: build them again.
@@ -1065,8 +1086,6 @@ def start(root: Path) -> "Handle | None":
         index.commit()
         if not index.sealed:
             index.close()
-            if token is not None:
-                remove_triggers(ledger)
             return None  # Another process wrote the index at the moment of the commit: compare two full reads.
         conn = changeset._connect_read_only(ledger)
         try:
@@ -1079,22 +1098,30 @@ def start(root: Path) -> "Handle | None":
                 conn.close()
     except ChangeSetError:
         index.close()
-        if token is not None:
-            remove_triggers(ledger)
         raise  # An unreadable part is the same failure as in a full read: the caller reports ``state_unreadable``.
     except (sqlite3.Error, OSError):
         index.close()
-        if token is not None:
-            remove_triggers(ledger)
         return None
     run = Run(root, index, signatures, position, index.digest(), index.counts() or (0, 0, 0), bool(problems))
     run.report["rebuilt"] = rebuilt
-    run.token, run.schema, run.counter_start = token, fingerprint, counter_start
     run.begin()
     handle = run.new_handle()
     with _ACTIVE_LOCK:
         _ACTIVE[_active_key(root)] = run
     return handle
+
+
+def _has_capture_objects(ledger: Path) -> bool:
+    """True when the store holds a log or a trigger of a capture (read only: the file does not change)."""
+    conn = changeset._connect_read_only(ledger)
+    if conn is None:
+        return False
+    try:
+        return bool(_capture_objects(conn))
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
 
 
 def _real_counts(root: Path) -> tuple[int, int, int]:
@@ -1137,6 +1164,64 @@ class Run:
         self.report: dict[str, Any] = {"mode": "incremental", "fallbacks": [], "rebuilt": []}
         self.closed = False
         self.handles: list["Handle"] = []
+        #: True when the log and the triggers are in the store (or in the open transaction that added them).
+        self.installed = False
+        #: Why the log cannot show every changed row of the store (the capture then reads both tables in full).
+        self.untrusted: str | None = None
+        self.watch_key: str | None = None
+
+    # -- the watch for the first row change (``capture_log.WatchedConnection``) ----------------------------------
+
+    def _watch(self) -> None:
+        self.watch_key = capture_log.watch_ledger(self.root / "ledger.sqlite", self)
+
+    def _unwatch(self) -> None:
+        capture_log.unwatch_ledger(self.watch_key, self)
+
+    def unwatched(self, reason: str) -> None:
+        """The log cannot hold every row change of this command: read the tables in full at the end."""
+        self.untrusted = self.untrusted or reason
+        self._unwatch()
+
+    def schema_write(self, text: str) -> None:
+        self.unwatched("sql:the schema of the store changed during the command")
+
+    def locked(self, conn: sqlite3.Connection) -> bool:
+        """Called with the write lock held, before the first row change. False: no log for this command."""
+        if self.closed or self.untrusted or self.installed:
+            return False
+        if _db_token(self.root / "ledger.sqlite") != self.start_signatures["sql"]:
+            # A write committed after the start of the capture and before this one, on a connection that is not
+            # watched. The log would not hold its rows.
+            self.unwatched("sql:a write before the log was added")
+            return False
+        return True
+
+    def install(self, conn: sqlite3.Connection) -> bool:
+        """Add the log in the transaction of ``conn``, before its first row change. True when the log was added."""
+        self._unwatch()  # One log for each run. ``rolled_back`` watches again if the transaction does not commit.
+        try:
+            added = install_in(conn)
+        except sqlite3.Error as exc:
+            self.unwatched(f"sql:the store could not take the log ({exc})")
+            return False
+        if added is None:
+            self.unwatched("sql:the store has no account or bank table")
+            return False
+        start = self.start_signatures["sql"]
+        self.token, self.schema = added
+        # The log commits with the first change: the file change counter moves from the counter at the start.
+        self.counter_start = start[0] if isinstance(start, list) and isinstance(start[0], int) else None
+        self.installed = True
+        return True
+
+    def rolled_back(self) -> None:
+        """The transaction that added the log ended without a commit: the log is gone, so watch again."""
+        if self.closed or not self.installed:
+            return
+        self.installed, self.token, self.schema, self.counter_start = False, None, None, None
+        if not self.untrusted:
+            self._watch()
 
     def new_handle(self) -> "Handle":
         handle = Handle(self)
@@ -1145,11 +1230,15 @@ class Run:
 
     def join(self) -> "Handle | None":
         """A handle for a second capture, or ``None`` when the run cannot show what it changed from now on."""
-        if self.closed or self.token is None or self.journal is None or all(h.done for h in self.handles):
+        if self.closed or self.untrusted or self.journal is None or all(h.done for h in self.handles):
+            return None
+        if self.installed and self.token is None:
             return None
         try:
             current = _signatures(self.root)
-            if any(current[group] != value for group, value in self.start_signatures.items() if group != "sql"):
+            # Before the log exists the store must be the file of the start. After, the log shows any row change.
+            if any(current[group] != value for group, value in self.start_signatures.items()
+                   if group != "sql" or not self.installed):
                 return None
             if any(log.writes for log in self.journal.files.values()):
                 return None
@@ -1159,7 +1248,7 @@ class Run:
             try:
                 if conn is None or changeset._position(conn) != self.position:
                     return None
-                if _logged_keys(conn, self.token) != ([], []):
+                if self.installed and _logged_keys(conn, self.token) != ([], []):
                     return None
             finally:
                 if conn is not None:
@@ -1213,6 +1302,7 @@ class Run:
             raise ChangeSetError("The index was not sealed.")
         self.identity = self.index.sealed_identity
         self.journal = capture_log.begin(self.root, {**self.start_signatures, **_archive_signatures(self.root)})
+        self._watch()
 
     def close_wconn(self) -> None:
         if self.wconn is not None:
@@ -1229,13 +1319,14 @@ class Run:
         if self.closed:
             return
         self.closed = True
+        self._unwatch()
         with _ACTIVE_LOCK:
             if _ACTIVE.get(_active_key(self.root)) is self:
                 del _ACTIVE[_active_key(self.root)]
         if self.journal is not None:
             capture_log.end(self.journal)
         self.close_wconn()
-        if not self.cleaned:
+        if not self.cleaned and _has_capture_objects(self.root / "ledger.sqlite"):
             remove_triggers(self.root / "ledger.sqlite")
         try:
             self.index.close()
@@ -1258,6 +1349,7 @@ class Run:
         assert journal is not None
         if last:
             capture_log.end(journal)  # Later writes (the cleanup below) are not part of the command.
+            self._unwatch()  # No log is added after the command.
         try:
             return self._finish(handle, last, journal, failed, books_revision, base_revision, probe, reason)
         except BaseException:
@@ -1281,6 +1373,12 @@ class Run:
                 self.identity[0], self.identity[1], self.identity[3]):
             raise ChangeSetError("The index was changed during the command.")
         self.index = Index(root)
+        if not last:
+            # This finish rolls its changes back, so a capture that finishes later still finds the index that it
+            # sealed. A large change must not spill pages into the file in the middle of the transaction: the rollback
+            # would restore the bytes, but not the change time, and the later capture would refuse the index. The
+            # pages stay in memory instead (the memory grows with the change, not with the books).
+            self.index.conn.execute("PRAGMA cache_spill = OFF")
         self.index.start_write()  # From here no other connection can write the index: check it under this lock.
         self.index.generation = self.index.meta("generation")  # Read again under the lock.
         try:
@@ -1362,14 +1460,16 @@ class Run:
         self.journal = None
         sql_token: Any = ["unsafe", secrets.token_hex(8)]  # A token that never matches: the next capture reads the tables.
         if self.wconn is not None:
+            dropped = bool(_capture_objects(self.wconn))
             _drop_capture_objects(self.wconn)
-            self.wconn.execute("COMMIT")
+            self.wconn.execute("COMMIT")  # Without a log to drop, the commit writes nothing: the file stays the same.
             self.close_wconn()
             self.cleaned = True
             token_after = _db_token(ledger)
-            # Our own commit moves the change counter by one. Any other move is a write that we did not read.
+            # Our own commit moves the change counter by one when it dropped the log, and not at all when there was
+            # none. Any other move is a write that we did not read.
             if (isinstance(token_after, list) and isinstance(self.counter_in_txn, int)
-                    and token_after[0] == self.counter_in_txn + 1):
+                    and token_after[0] == self.counter_in_txn + int(dropped)):
                 sql_token = token_after
         else:
             self.cleaned = remove_triggers(ledger)
@@ -1431,6 +1531,17 @@ class Run:
                 if self.start_signatures["sql"] is None:
                     return False  # No store before, none after.
                 self.note("sql:store removed")
+                return self._sql_full(before, after, conn)
+            if self.untrusted:
+                self.note(self.untrusted)
+                return self._sql_full(before, after, conn)
+            if not self.installed:
+                # No watched connection changed a row, so the log was never added. The store must then be the file
+                # of the start: any write (on a connection that is not watched) moves its change counter.
+                if _db_token(ledger) == self.start_signatures["sql"]:
+                    self._sides_sql(before, after, {}, {}, {}, {})
+                    return False
+                self.note("sql:a write that no log holds")
                 return self._sql_full(before, after, conn)
             try:
                 account_ids, bank_ids = _logged_keys(conn, self.token, self.schema)
