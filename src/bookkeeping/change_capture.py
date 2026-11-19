@@ -253,6 +253,9 @@ class Index:
     def __init__(self, root: Path, distrust: bool = False) -> None:
         self.path = root / INDEX_NAME
         self.conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+        # Never WAL: in WAL mode a committed write can leave the main file as it was, and the file signature below would
+        # not show it. In this mode every committed write changes the main file and its change counter.
+        self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.execute("PRAGMA synchronous = NORMAL")
         names = {str(row[0]) for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         # An index that has its other tables but not the source ids lost them (a dropped table must not be created
@@ -283,6 +286,7 @@ class Index:
             except (ValueError, KeyError, TypeError, IndexError):
                 self.wipe()
         self.begin_write = False
+        self.sealed = False
         # A random id that changes with every commit. A capture checks that the index that it opened at the end is the
         # index that it left at the start: a deleted, restored or replaced index has another id.
         if self.meta("generation") is None:
@@ -330,12 +334,30 @@ class Index:
             self.begin_write = True
 
     def commit(self) -> None:
+        """Save the changes and seal the index: the signature that the next capture trusts is taken under an exclusive
+        lock, and only when the file holds exactly this commit (the change counter is one above the counter that the
+        transaction saw). A write by another process between the commit and the seal therefore leaves no signature."""
+        self.start_write()
         self.set_meta_totals()
         self.generation = secrets.token_hex(8)
         self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('generation', ?)", (self.generation,))
-        if self.begin_write:
-            self.conn.execute("COMMIT")
-            self.begin_write = False
+        before = _header_counter(self.path)
+        self.conn.execute("COMMIT")
+        self.begin_write = False
+        self.sealed = False
+        root = self.path.parent
+        stamp = None
+        try:
+            self.conn.execute("BEGIN EXCLUSIVE")
+            try:
+                if before is not None and _header_counter(self.path) == (before + 1) % (1 << 32):
+                    stamp = _index_stamp(root)
+                _write_stamp(root, stamp)
+                self.sealed = stamp is not None
+            finally:
+                self.conn.execute("ROLLBACK")
+        except sqlite3.Error:
+            _write_stamp(root, None)
 
     def set_meta_totals(self) -> None:
         body = {name: [count, format(total % changeset._MODULUS, "x")] for name, (count, total) in self.totals.items()}
@@ -845,36 +867,55 @@ _ACTIVE: dict[tuple[int, str], "Run"] = {}
 _ACTIVE_LOCK = threading.Lock()
 
 
-def _index_stamp(root: Path) -> list[Any] | None:
+def _header_counter(path: Path) -> int | None:
+    """The file change counter in the header of a SQLite file (it grows by one with every committed write)."""
     try:
-        status = os.stat(root / INDEX_NAME)
+        with open(path, "rb") as handle:
+            head = handle.read(100)
     except OSError:
         return None
-    return [status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns]
+    return int.from_bytes(head[24:28], "big") if len(head) >= 28 else None
 
 
-def record_stamp(root: Path) -> None:
-    """Save the stat signature of the index after a capture closed it (one ``stat`` and one small file)."""
-    stamp = _index_stamp(root)
+def _index_stamp(root: Path) -> list[Any] | None:
+    """The identity of the index file and of its side files, as one value that a later capture compares."""
+    path = root / INDEX_NAME
     try:
-        path = root / SIGNATURE_NAME
+        status = os.stat(path)
+    except OSError:
+        return None
+    side = [os.path.exists(str(path) + suffix) for suffix in ("-wal", "-shm", "-journal")]
+    return [status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns, _header_counter(path), side]
+
+
+def _write_stamp(root: Path, stamp: list[Any] | None) -> None:
+    path = root / SIGNATURE_NAME
+    try:
         if stamp is None:
             path.unlink(missing_ok=True)
             return
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(stamp), encoding="utf-8")
-        tmp.replace(path)
+        with open(tmp, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(stamp))
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp.replace(path)  # Atomic: a reader sees the old signature or the new one.
     except OSError:
-        pass  # Without a signature the next capture reads every part in full: safe.
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass  # Without a signature the next capture reads every part in full: safe.
 
 
 def stamp_matches(root: Path) -> bool:
-    """True when the index file is the file that the last capture left (same inode, size and times)."""
+    """True when the index file is the file that the last capture left: same inode, size, times, change counter, and
+    no ``-wal``, ``-shm`` or ``-journal`` file."""
     try:
         saved = json.loads((root / SIGNATURE_NAME).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    return saved == _index_stamp(root)
+    current = _index_stamp(root)
+    return current is not None and saved == current and not any(current[5])
 
 
 def _active_key(root: Path) -> tuple[int, str]:
@@ -916,6 +957,9 @@ def start(root: Path) -> "Handle | None":
         index.start_write()
         _sync_queue(index, root, None, lambda reason: rebuilt.append(reason))
         index.commit()
+        if not index.sealed:
+            index.close()
+            return None  # Another process wrote the index at the moment of the commit: compare two full reads.
     except ChangeSetError:
         index.close()
         raise  # An unreadable part is the same failure as in a full read: the caller reports ``state_unreadable``.
@@ -1041,7 +1085,6 @@ class Run:
 
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.
-        record_stamp(self.root)
         status = os.stat(self.index.path)
         self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation)
         self.token = install_triggers(self.root / "ledger.sqlite")
@@ -1169,7 +1212,6 @@ class Run:
         index.commit()
         handle.committed = True
         index.close()
-        record_stamp(root)
         return document
 
     # -- ledger totals --------------------------------------------------------------

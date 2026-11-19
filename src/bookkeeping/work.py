@@ -174,7 +174,10 @@ def _connect_read_only(path: Path) -> sqlite3.Connection | None:
     return conn
 
 
-def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[str], tuple[EntryRow, ...]]:
+def _load_ledger(path: Path, entries_after: int | None,
+                 strict: bool = False) -> tuple[int, frozenset[str], tuple[EntryRow, ...]]:
+    """Read the ledger. A store without the tables is empty. With ``strict`` any other database error (a locked store, a
+    disk error) is raised, so that a capture never takes an unreadable ledger for one without entries."""
     conn = _connect_read_only(path)
     if conn is None:
         return 0, frozenset(), ()
@@ -186,7 +189,9 @@ def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[
                     "SELECT source_id FROM entries WHERE source_id IS NOT NULL AND source_id != ''"
                 )
             )
-        except sqlite3.DatabaseError:
+        except sqlite3.DatabaseError as exc:
+            if strict and "no such table" not in str(exc):
+                raise
             return 0, frozenset(), ()
         if entries_after is None:
             return max_id, source_ids, ()
@@ -339,8 +344,11 @@ def take_snapshot(
     *,
     entries_after: int | None = None,
     window: tuple[str, str] | None = None,
+    strict: bool = False,
 ) -> Snapshot:
     """Read the company state without writing or creating any file.
+
+    With ``strict`` a ledger that cannot be read raises (see ``_load_ledger``).
 
     ``entries_after`` selects the entry rows to load (``None`` loads none).
     ``window`` limits every part to rows dated inside ``(from, to)``; it exists
@@ -351,7 +359,7 @@ def take_snapshot(
         return EMPTY_SNAPSHOT
     config = _read_json(root / "entity.json")
     config = config if isinstance(config, dict) else {}
-    max_id, source_ids, entries = _load_ledger(root / "ledger.sqlite", entries_after)
+    max_id, source_ids, entries = _load_ledger(root / "ledger.sqlite", entries_after, strict)
     pending = {
         str(txn.get("id")): txn
         for txn in _load_list(root / "staging" / "pending-categorization.json")
@@ -771,8 +779,12 @@ def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iter
             run = change_capture.start(root)
         except Exception:  # noqa: BLE001 - a part that the strict reader refuses is read in full below
             run = None
+    before_error: Exception | None = None
     if run is None:
-        before = take_snapshot(root)
+        try:
+            before = take_snapshot(root, strict=True)
+        except Exception as exc:  # noqa: BLE001 - the command still runs; the receipt says that it is incomplete
+            before_error = exc
     observations: dict[str, int] = {}
     token = _observations.set((*_observations.get(), observations))
     try:
@@ -784,8 +796,10 @@ def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iter
                 if run is not None:
                     holder.events, holder.path = _finish_incremental(run, root, observations)
                 else:
+                    if before_error is not None:
+                        raise before_error
                     assert before is not None
-                    after = take_snapshot(root, entries_after=before.max_entry_id)
+                    after = take_snapshot(root, entries_after=before.max_entry_id, strict=True)
                     holder.events = work_events(before, after, observations=observations)
                     holder.path = "full"
             except Exception as exc:  # noqa: BLE001 - any error after the command, in any path
@@ -882,7 +896,7 @@ def _events_from_saved(run: Any, root: Path, observations: Mapping[str, int]) ->
     finally:
         index.close()
     # The new entries are read strictly: the lenient snapshot reader would turn a locked ledger into "no entries".
-    after = dataclasses.replace(take_snapshot(root), entries=_load_new_entries(root / "ledger.sqlite", saved.max_entry_id))
+    after = dataclasses.replace(take_snapshot(root, strict=True), entries=_load_new_entries(root / "ledger.sqlite", saved.max_entry_id))
     return work_events(saved, after, observations=observations)
 
 

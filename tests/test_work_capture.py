@@ -619,5 +619,129 @@ class SourceTableTests(Fixture):
             index.close()
 
 
+class IndexSealTests(SourceTableTests):
+    """The signature of the index cannot certify an edit that it did not see."""
+
+    test_a_table_with_one_id_removed = test_a_dropped_table = test_an_emptied_table = None
+    test_a_same_count_edit_of_one_id = test_a_same_count_edit_that_adds_a_wrong_id_for_a_removed_one = None
+    test_a_missing_signature_file_builds_the_index_again = test_an_untouched_index_is_trusted_without_a_scan = None
+    test_the_stored_count_follows_the_table = None
+
+    def wrong_id_check(self, path: str = "incremental") -> None:
+        rows = self.known_pending_row()
+        events = self.both(lambda: self.pending_path.write_text(json.dumps(rows), encoding="utf-8"),
+                           path=path, nonempty=False)
+        self.assertEqual(events, [])  # syn-001 is in the ledger: it is no new source.
+
+    def test_the_index_is_never_in_wal_mode(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        with closing(sqlite3.connect(self.entity / change_capture.INDEX_NAME)) as conn:
+            self.assertEqual(conn.execute("PRAGMA journal_mode").fetchone()[0], "delete")
+
+    def test_a_write_in_wal_mode_after_the_signature_is_not_trusted(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        path = self.entity / change_capture.INDEX_NAME
+        conn = sqlite3.connect(path, isolation_level=None)
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA wal_autocheckpoint = 0")
+            change_capture._write_stamp(self.entity, change_capture._index_stamp(self.entity))  # The old attack: seal first.
+            conn.execute("UPDATE ledger_sources SET source_id = 'invented-1' WHERE source_id = 'syn-001'")
+            self.assertTrue(Path(str(path) + "-wal").exists())
+            self.assertFalse(change_capture.stamp_matches(self.entity))  # The side file alone makes it untrusted.
+            self.wrong_id_check("full")  # The index cannot be opened for a write while the other connection holds it.
+        finally:
+            conn.close()
+
+    def test_a_write_between_the_last_commit_and_the_seal_leaves_no_signature(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        path = self.entity / change_capture.INDEX_NAME
+        done: list[int] = []
+
+        class Spy:
+            def __init__(self, conn) -> None:
+                self.conn = conn
+
+            def execute(self, sql, *args):
+                result = self.conn.execute(sql, *args)
+                if sql == "COMMIT" and not done:
+                    done.append(1)  # Another process writes after the commit and before the seal.
+                    with closing(sqlite3.connect(path, timeout=5)) as other:
+                        other.execute("UPDATE ledger_sources SET source_id = 'invented-1' WHERE source_id = 'syn-001'")
+                        other.commit()
+                return result
+
+            def __getattr__(self, name):
+                return getattr(self.conn, name)
+
+        real_init = change_capture.Index.__init__
+
+        def init(index, *args, **kwargs):
+            real_init(index, *args, **kwargs)
+            index.conn = Spy(index.conn)
+
+        with mock.patch.object(change_capture.Index, "__init__", init):
+            with work.capture(self.entity) as receipt:
+                pass
+        self.assertTrue(done)
+        self.assertEqual(receipt.path, "full")  # The seal failed: the capture did not trust the index.
+        self.assertFalse(change_capture.stamp_matches(self.entity))
+        self.wrong_id_check()
+
+
+class FullFallbackLockTests(Fixture):
+    def lock(self):
+        """A second connection that holds the ledger exclusively."""
+        conn = sqlite3.connect(self.entity / "ledger.sqlite", timeout=0.05, isolation_level=None)
+        conn.execute("BEGIN EXCLUSIVE")
+        return conn
+
+    def test_a_locked_ledger_before_the_command_gives_an_incomplete_receipt(self) -> None:
+        locker = self.lock()
+        try:
+            with mock.patch.object(work, "_connect_read_only", lambda path: _short(path)):
+                with self.assertRaises(sqlite3.Error), work.capture(self.entity, incremental=False) as receipt:
+                    pass
+        finally:
+            locker.close()
+        self.assertEqual((receipt.complete, receipt.path, receipt.events), (False, "failed", []))
+
+    def test_a_locked_ledger_after_the_command_gives_an_incomplete_receipt(self) -> None:
+        locker = None
+        try:
+            with mock.patch.object(work, "_connect_read_only", lambda path: _short(path)):
+                with self.assertRaises(sqlite3.Error), work.capture(self.entity, incremental=False) as receipt:
+                    locker = self.lock()
+        finally:
+            if locker is not None:
+                locker.close()
+        self.assertEqual((receipt.complete, receipt.events), (False, []))
+
+    def test_the_cli_document_is_incomplete_for_a_locked_ledger_in_the_full_path(self) -> None:
+        out = self.root / "locked.json"
+        real = work.capture
+
+        def full(path, **kwargs):
+            return real(path, incremental=False)
+
+        locker = self.lock()
+        try:
+            with mock.patch.object(work, "capture", full), \
+                    mock.patch.object(work, "_connect_read_only", lambda path: _short(path)):
+                with self.assertRaises(sqlite3.Error):
+                    run_cli(["--work-out", str(out), "queue", "propose", "--entity", str(self.entity),
+                             "--source-id", "syn-004", "--category", "Expenses:Software", "--reasoning", "x."])
+        finally:
+            locker.close()
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual((document["complete"], document["work"]), (False, []))
+
+
+def _short(path):
+    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.05)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 if __name__ == "__main__":
     unittest.main()
