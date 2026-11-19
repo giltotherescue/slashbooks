@@ -136,9 +136,12 @@ def writing(path: Path | str, *, delta: Mapping[str, Any] | None = None) -> Iter
         yield
         return
     before = signature(resolved)
+    completed = False
     try:
         yield
+        completed = True
     finally:
         after = signature(resolved)
         for session in sessions:
-            session.record(resolved, before, after, delta)
+            # A write that raised may have changed the file in a way that its delta does not describe: no delta.
+            session.record(resolved, before, after, delta if completed else None)

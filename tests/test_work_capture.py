@@ -464,7 +464,7 @@ class FailureTests(Fixture):
             with self.assertRaises(sqlite3.Error), work.capture(self.entity) as receipt:
                 self.propose()
         self.assertEqual((receipt.complete, receipt.path, receipt.events), (False, "failed", []))
-        self.assertEqual(receipt.reason, "finalize_failed")
+        self.assertEqual(receipt.reason, "state_unreadable")  # A locked ledger is an unreadable state.
         with closing(sqlite3.connect(self.entity / change_capture.INDEX_NAME)) as conn:
             saved = conn.execute("SELECT COUNT(*) FROM rows WHERE section = 'queue' AND key = 'syn-004'").fetchone()[0]
         self.assertEqual(saved, 0)  # The new state of the command was not saved.
@@ -687,6 +687,199 @@ class IndexSealTests(SourceTableTests):
         self.assertEqual(receipt.path, "full")  # The seal failed: the capture did not trust the index.
         self.assertFalse(change_capture.stamp_matches(self.entity))
         self.wrong_id_check()
+
+
+class IndexLockTests(IndexSealTests):
+    """The index is checked, sealed and snapshotted under one exclusive hold."""
+
+    test_a_table_with_one_id_removed = test_a_dropped_table = test_an_emptied_table = None
+    test_a_same_count_edit_of_one_id = test_a_same_count_edit_that_adds_a_wrong_id_for_a_removed_one = None
+    test_a_missing_signature_file_builds_the_index_again = test_an_untouched_index_is_trusted_without_a_scan = None
+    test_the_stored_count_follows_the_table = None
+
+    def other_write(self) -> str:
+        path = self.entity / change_capture.INDEX_NAME
+        try:
+            with closing(sqlite3.connect(path, timeout=0.05)) as other:
+                other.execute("UPDATE ledger_sources SET source_id = 'invented-1' WHERE source_id = 'syn-001'")
+                other.commit()
+        except sqlite3.OperationalError as exc:
+            return str(exc)
+        return "written"
+
+    def test_no_connection_can_write_the_index_between_the_signature_check_and_the_seal(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        seen: list[str] = []
+        real_check = change_capture.stamp_matches
+        real_commit = change_capture.Index.commit
+
+        def check(root):
+            seen.append(("check", self.other_write()))
+            return real_check(root)
+
+        def commit(index):
+            seen.append(("before commit", self.other_write()))
+            return real_commit(index)
+
+        with mock.patch.object(change_capture, "stamp_matches", check), \
+                mock.patch.object(change_capture.Index, "commit", commit):
+            with work.capture(self.entity) as receipt:
+                pass
+        self.assertTrue(seen)
+        self.assertEqual({what for _, what in seen[:2]}, {"database is locked"})
+        self.assertEqual(receipt.path, "incremental")
+
+    def test_a_write_to_the_index_after_the_seal_and_before_the_command_is_found(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        done: list[str] = []
+        real = change_capture.Run.begin
+
+        def begin(run) -> None:
+            real(run)
+            done.append(self.other_write())  # The start-side hold ended: this write goes through.
+
+        with mock.patch.object(change_capture.Run, "begin", begin):
+            with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+                pass
+        self.assertEqual(done, ["written"])
+        self.assertEqual((receipt.complete, receipt.events), (False, []))  # Never a sealed, trusted wrong index.
+        self.wrong_id_check()
+
+    def test_a_write_to_the_index_during_the_command_is_found(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+            self.assertEqual(self.other_write(), "written")
+        self.assertEqual((receipt.complete, receipt.events), (False, []))
+        self.wrong_id_check()
+
+    def test_a_write_in_the_same_clock_tick_is_found_by_the_change_counter(self) -> None:
+        """Simulate a file system whose change time has not moved: inode, ctime and generation stay equal."""
+        import os
+        import types
+        self.both(lambda: None, nonempty=False)
+        real_stat = os.stat
+        frozen: list[int] = []
+
+        def stat(path, *args, **kwargs):
+            status = real_stat(path, *args, **kwargs)
+            if not str(path).endswith(change_capture.INDEX_NAME):
+                return status
+            if not frozen:
+                frozen.append(status.st_ctime_ns)
+            return types.SimpleNamespace(st_ino=status.st_ino, st_size=status.st_size, st_mtime_ns=status.st_mtime_ns,
+                                         st_ctime_ns=frozen[0], st_mode=status.st_mode)
+
+        with mock.patch.object(change_capture.os, "stat", stat):
+            with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+                self.assertEqual(self.other_write(), "written")
+        self.assertTrue(frozen)
+        self.assertEqual((receipt.complete, receipt.events), (False, []))
+        self.wrong_id_check()
+
+    def test_the_saved_read_also_checks_the_change_counter(self) -> None:
+        import os
+        import types
+        self.both(lambda: None, nonempty=False)
+        real_stat = os.stat
+        frozen: list[int] = []
+
+        def stat(path, *args, **kwargs):
+            status = real_stat(path, *args, **kwargs)
+            if not str(path).endswith(change_capture.INDEX_NAME):
+                return status
+            if not frozen:
+                frozen.append(status.st_ctime_ns)
+            return types.SimpleNamespace(st_ino=status.st_ino, st_size=status.st_size, st_mtime_ns=status.st_mtime_ns,
+                                         st_ctime_ns=frozen[0], st_mode=status.st_mode)
+
+        with mock.patch.object(change_capture.os, "stat", stat), \
+                mock.patch.object(work, "_events_from_probe", side_effect=RuntimeError("boom")):
+            with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+                self.assertEqual(self.other_write(), "written")
+        self.assertEqual((receipt.complete, receipt.path), (False, "failed"))
+
+    def test_an_index_that_cannot_be_opened_leaks_no_connection(self) -> None:
+        opened: list[sqlite3.Connection] = []
+        real = sqlite3.connect
+
+        def connect(*args, **kwargs):
+            conn = real(*args, **kwargs)
+            opened.append(conn)
+            return conn
+
+        with mock.patch.object(change_capture.sqlite3, "connect", connect), \
+                mock.patch.object(change_capture, "stamp_matches", side_effect=sqlite3.OperationalError("locked")):
+            with self.assertRaises(sqlite3.OperationalError):
+                change_capture.Index(self.entity, exclusive=True)
+        self.assertTrue(opened)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            opened[0].execute("SELECT 1")  # Closed.
+
+    def test_the_saved_read_holds_the_index_lock_from_the_identity_check_to_the_end(self) -> None:
+        results: list[str] = []
+        real = change_capture.Index.all_sources
+
+        def all_sources(index):
+            results.append(self.other_write())  # A write while the saved copy is read must be refused.
+            return real(index)
+
+        with mock.patch.object(work, "_events_from_probe", side_effect=RuntimeError("boom")), \
+                mock.patch.object(change_capture.Index, "all_sources", all_sources):
+            with work.capture(self.entity) as receipt:
+                run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                         "--category", "Expenses:Software", "--reasoning", "x."])
+        self.assertEqual(results, ["database is locked"])
+        self.assertEqual((receipt.complete, receipt.path), (True, "saved"))
+
+    def test_stray_side_files_are_removed_and_the_next_capture_is_warm(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        path = self.entity / change_capture.INDEX_NAME
+        for suffix in ("-wal", "-shm"):
+            Path(str(path) + suffix).write_bytes(b"stray")
+        self.both(lambda: run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                                   "--category", "Expenses:Software", "--reasoning", "x."]))  # Rebuilds.
+        for suffix in ("-wal", "-shm"):
+            self.assertFalse(Path(str(path) + suffix).exists())
+        with mock.patch.object(change_capture, "_rebuild", side_effect=AssertionError("rebuilt")):
+            self.both(lambda: run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-005",
+                                       "--category", "Expenses:Software", "--reasoning", "x."]))
+
+
+class CompanyLockTests(Fixture):
+    def test_the_company_write_lock_is_held_for_the_whole_capture(self) -> None:
+        order: list[str] = []
+        real = changeset.company_write_lock
+        real_start = change_capture.start
+
+        @contextmanager
+        def spy(path):
+            order.append("lock")
+            with real(path) as held:
+                yield held
+            order.append("unlock")
+
+        def start(root):
+            order.append("start")
+            return real_start(root)
+
+        with mock.patch.object(changeset, "company_write_lock", spy), mock.patch.object(change_capture, "start", start):
+            with work.capture(self.entity) as receipt:
+                order.append("command")
+                run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                         "--category", "Expenses:Software", "--reasoning", "x."])  # Takes the lock again: re-entrant.
+                order.append("command end")
+        self.assertEqual(order, ["lock", "start", "command", "command end", "unlock"])
+        self.assertEqual((receipt.complete, receipt.path), (True, "incremental"))
+
+    def test_a_folder_that_cannot_be_locked_gives_the_full_comparison(self) -> None:
+        @contextmanager
+        def unlocked(path):
+            yield False
+
+        with mock.patch.object(changeset, "company_write_lock", unlocked):
+            with work.capture(self.entity) as receipt:
+                pass
+        self.assertEqual(receipt.path, "full")
 
 
 class FullFallbackLockTests(Fixture):
