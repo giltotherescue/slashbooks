@@ -431,8 +431,12 @@ class _Side:
     documents: dict[str, Any]
     seen: list[str]
     learned: dict[str, Any]
-    digest: str = ""
+    digest_value: str = ""
     ledger: tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None = None  # entries, balances, audit by id (full read)
+
+    def digest(self) -> str:
+        """The digest that the caller saved, or the digest of the rows that the side holds (a full read)."""
+        return self.digest_value or self.full_digest()
 
     def full_digest(self) -> str:
         entries, balances, events = self.ledger or ({}, {}, {})
@@ -469,7 +473,7 @@ def _take(root: Path) -> _Side:
         seen=_load_ids(root / _SEEN_FILE),
         learned=_load_learned(root),
     )
-    side.digest = side.full_digest()
+    side.digest_value = side.full_digest()
     side.ledger = None  # The rows are not needed after the digest.
     return side
 
@@ -613,10 +617,10 @@ def _build(before: _Side, after: _Side, root: Path, books_revision: int | None, 
     """
     conn = _connect_read_only(root / "ledger.sqlite") if root.is_dir() else None
     try:
-        document = _empty(books_revision, before.position, before.digest, complete=not failed,
+        document = _empty(books_revision, before.position, before.digest(), complete=not failed,
                           reason="command_failed" if failed else None, base_revision=base_revision)
         document["ledger"]["after"] = dict(after.position)
-        document["state"]["after"] = after.digest
+        document["state"]["after"] = after.digest()
         entry_floor = before.position["max_entry_id"]
         balance_floor = before.position["max_balance_assertion_id"]
         audit_floor = before.position["audit_event_id"] or 0

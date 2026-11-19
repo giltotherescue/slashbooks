@@ -70,7 +70,12 @@ document = receipt.change_set
 ```
 
 `capture` also wraps a Python call that is not a command, such as
-`queue.set_taught`. It writes no file. It opens `ledger.sqlite` read-only.
+`queue.set_taught`. It writes no output file.
+
+While the command runs, the capture keeps a log of the rows that it writes (see
+Cost). It adds a log table and triggers to `ledger.sqlite` before the command and
+removes them after. They write no ledger row. Pass `incremental=False` to compare
+two full reads of the books instead. The two ways give the same document.
 
 ## Document shape
 
@@ -142,7 +147,7 @@ document = receipt.change_set
 | `kind` | Always `books-change-set`. |
 | `base_revision`, `books_revision` | The integers from `--change-set-base-revision` and `--change-set-revision`, or `null`. |
 | `complete` | `false` when a host must not apply the change set: the command failed after it changed something, or the engine could not read the state in full. `reason` is then `command_failed`, `state_unreadable` (a file or an archive that cannot be read, or a state that cannot be read), `finalize_failed` (a step after the command body failed) or `write_failed`. A host does a full read. |
-| `state.before`, `state.after` | SHA-256 of the whole authoritative content before and after the command: a running hash over every ledger entry with its postings, balance assertion and audit event, and the hash of the canonical JSON of the accounts, the bank rows (status, time and the hash of the payload, computed from the payload), the review queue, the staging lists, the documents and the learned context. |
+| `state.before`, `state.after` | Digest of the whole authoritative content before and after the command. For each section (ledger entries with their postings, balance assertions, audit events, accounts, bank rows with the hash of the payload computed from the payload, review queue, the staging lists, context history, documents, seen ids, learned context) the digest takes the number of rows and the sum of the row hashes (SHA-512 of the canonical JSON of the section name, the row key and the row, modulo 2^512). It does not depend on the order of the rows, so the engine updates it from the changed rows. `changeset.view_digest(view)` computes the same digest from a host view, and the reducer checks it exactly. The digest holds a version number, so a digest of another version never equals this one. |
 | `changed` | `false` when nothing in the document changed. All lists are then empty and `ledger.before` equals `ledger.after`. |
 | `reset` | `true` when the ledger store is not an extension of the earlier store (for example a restore or a migration replaced it). The host clears its entries and balance assertions, then applies the lists. In that case `entries_added` and `balance_assertions_added` hold every row. |
 | `ledger.before`, `ledger.after` | The position of the books. `audit_event_id` and `record_hash` are the newest audit event (`null` when none). The three `max_*_id` values are the newest row ids. |
@@ -225,23 +230,54 @@ set does not cover.
 
 ## Cost
 
-- The rows in a change set (entries, postings, balance assertions, audit
-  events) come from row ids above the saved position. Their size is the size of
-  the change.
-- The state digest covers the whole content, so the engine reads the whole
-  state before and after the command. Its cost grows with the size of the books.
-  A later change can keep the hash incrementally. The digest is the check of
-  correctness, and it comes first.
-- The review queue is read with the queue module (`queue.load_all_items`): the
-  item files and the month archives in `review-queue/archive/`. The change set
-  code has no archive reader of its own. The reader refuses a corrupt archive or
-  an archive version that it does not know, and it reads item files before
-  archives, so a compaction that runs during the read does not hide an item.
-  If the queue module has no such reader and an archive folder exists, or if an
-  item file cannot be read, the change set is incomplete (`state_unreadable`).
-  The engine never reads a bad archive as empty and never reads an unreadable
-  item as a deletion. Moving a decided item into an archive is not a change.
-  This part needs the queue archive of pull request #164.
+The cost of a capture grows with the rows that the command changed. It does not
+grow with the number of transactions. The capture finds the changed rows with
+logs and checks the logs with cheap tests. It falls back to a full read of the
+part that it cannot prove.
+
+| Part | How the capture finds the changed rows | Fallback |
+|---|---|---|
+| Ledger entries, postings, balance assertions, audit events | Row ids above the saved position. The digest adds the hash of each new row to the saved total. | A broken audit chain gives `reset`. A reset, an account rename (it relabels posted rows), an audit chain that moved back, and a store without the append-only triggers make the capture read the whole ledger for the digest. |
+| Accounts and source transactions (`bank_rows`) | A log table and triggers in `ledger.sqlite`, added before the command and removed after. They fire for every connection and write only the key of each written row to the log. The capture reads only those rows. | The capture reads both tables in full when the log is not the log of this run (the store was replaced, the triggers were changed or dropped, the store could not take them). |
+| Review queue items and month archives | One `stat` for each item file and each archive file. The capture reads the files that differ from the saved copy. A decided item that moves into an archive is not a change. | Two names with one source id, an unfinished group journal, or a file name that does not follow its source id: the capture reads the whole queue. |
+| `seen-ids.json`, `pending-categorization.json` | The engine's write helpers journal the ids that they add or remove (`capture_log.writing`). The capture does not read the file. | A write that is not in the journal, or that left another file signature than the last journaled write: the capture reads the file. |
+| `pending.json`, `duplicate-candidates.json`, `context-history.json`, the documents, learned context | The signature of the file. A changed file is read and compared with the saved copy. | None needed. |
+| `state.before`, `state.after` | Totals that the saved copy keeps for each section (count and sum of row hashes). | A part whose signature is not the signature at the end of the last capture is read in full once. |
+
+The saved copy is the file `.change-capture.sqlite` in the company folder. It
+holds the rows of the small tables and the totals of every section as the last
+capture left them. A host that runs each command in a new copy of the company
+folder must keep this file with the folder. Without it, the first capture of each
+command reads the books in full. A command that runs without `--change-set-out`
+does not update the file. The next capture then notices the changed signatures
+and reads the changed parts in full once. The file has no authority: a person can
+delete it. It holds copies of company rows, so it is as private as the folder.
+
+The log table and the triggers exist only while the command runs. They change no
+ledger row and no ledger trigger, and `append_only_guard_problems` does not see
+them. The next capture removes the log and the triggers of a command that was
+killed. A store that holds them (for example a copy that was made during a
+command) is refused by `hosted_migration`, which allows only the engine's own
+triggers.
+
+- The review queue is read with the queue module (`queue.load_all_items`) when
+  the capture reads it in full: the item files and the month archives in
+  `review-queue/archive/`. The change set code has no archive reader of its own.
+  The reader refuses a corrupt archive or an archive version that it does not
+  know, and it reads item files before archives, so a compaction that runs during
+  the read does not hide an item. If the queue module has no such reader and an
+  archive folder exists, or if an item file cannot be read, the change set is
+  incomplete (`state_unreadable`). The engine never reads a bad archive as empty
+  and never reads an unreadable item as a deletion.
+- The check of the review queue costs one `stat` for each file in `review-queue/`
+  (open items; a decided item is archived) and in its archive folder (one file
+  for each month). The file signatures use the modification time of the file
+  system. A write within the clock tick of an earlier write can get the same
+  time, so the capture waits (at most 12 milliseconds) before it starts when a
+  tracked file is that new.
+- After the first capture of a company, the capture never reads the ledger rows
+  or the source transaction payloads again, except for the rows that the command
+  changed.
 
 ## Scope
 

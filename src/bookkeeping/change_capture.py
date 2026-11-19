@@ -229,7 +229,12 @@ class Index:
             " PRIMARY KEY (section, key)) WITHOUT ROWID;"
             "CREATE TABLE IF NOT EXISTS item_files (name TEXT PRIMARY KEY, source_id TEXT NOT NULL, sig TEXT NOT NULL)"
             " WITHOUT ROWID;"
-            "CREATE INDEX IF NOT EXISTS item_files_source ON item_files (source_id);")
+            "CREATE INDEX IF NOT EXISTS item_files_source ON item_files (source_id);"
+            "CREATE TABLE IF NOT EXISTS archive_files (name TEXT PRIMARY KEY, sig TEXT NOT NULL) WITHOUT ROWID;"
+            "CREATE TABLE IF NOT EXISTS archive_items (name TEXT PRIMARY KEY, archive TEXT NOT NULL,"
+            " source_id TEXT NOT NULL, value TEXT NOT NULL) WITHOUT ROWID;"
+            "CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive);"
+            "CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id);")
         if self.meta("version") != str(INDEX_VERSION):
             self.wipe()
         self.totals: dict[str, list[int]] = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
@@ -269,7 +274,7 @@ class Index:
         return tuple(json.loads(raw)) if raw else None  # type: ignore[return-value]
 
     def wipe(self) -> None:
-        self.conn.executescript("DELETE FROM meta; DELETE FROM rows; DELETE FROM item_files;")
+        self.conn.executescript("DELETE FROM meta; DELETE FROM rows; DELETE FROM item_files; DELETE FROM archive_files; DELETE FROM archive_items;")
         self.conn.execute("INSERT INTO meta (key, value) VALUES ('version', ?)", (str(INDEX_VERSION),))
         self.totals = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
 
@@ -469,11 +474,11 @@ def _queue_by_source(files: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[s
     return items
 
 
-def _sweep(root: Path) -> dict[str, str]:
-    """The signature of each ``*.json`` file in the review queue folder, by file name: one ``stat`` for each file."""
+def _sweep(root: Path, folder: str = _QUEUE_FOLDER) -> dict[str, str]:
+    """The signature of each ``*.json`` file in a folder, by file name: one ``stat`` for each file."""
     found: dict[str, str] = {}
     try:
-        entries = os.scandir(root / _QUEUE_FOLDER)
+        entries = os.scandir(root / folder)
     except OSError:
         return found
     with entries:
@@ -491,49 +496,127 @@ def _newest(sweep: Mapping[str, str]) -> int:
     return max((int(sig.split(":", 1)[0]) for sig in sweep.values()), default=0)
 
 
-def _store_queue(index: Index, files: Mapping[str, Mapping[str, Any]], sweep: Mapping[str, str]) -> None:
+def _archive_reader() -> Any:
+    from . import queue as queue_module
+    return getattr(queue_module, "_read_archive_file", None)
+
+
+def _store_queue(index: Index, files: Mapping[str, Mapping[str, Any]], sweep: Mapping[str, str],
+                 archive_sweep: Mapping[str, str], root: Path) -> None:
+    """Save the whole queue (``files`` by file name) and the signatures of its item files and archive files."""
     index.replace_section("queue", _queue_by_source(files))
     index.conn.execute("DELETE FROM item_files")
+    index.conn.execute("DELETE FROM archive_files")
+    index.conn.execute("DELETE FROM archive_items")
+    top = {name for name in sweep}
     index.conn.executemany("INSERT OR REPLACE INTO item_files (name, source_id, sig) VALUES (?, ?, ?)",
-                           ((name, str(item["source_id"]), sweep.get(name, "")) for name, item in files.items()))
+                           ((name, str(item["source_id"]), sweep[name]) for name, item in files.items()
+                            if name in top))
+    index.conn.executemany("INSERT OR REPLACE INTO archive_files (name, sig) VALUES (?, ?)", archive_sweep.items())
+    reader = _archive_reader()
+    if reader is not None:
+        for archive in sorted(archive_sweep):
+            items = reader(root / changeset._ARCHIVE_DIR / archive)
+            index.conn.executemany(
+                "INSERT OR REPLACE INTO archive_items (name, archive, source_id, value) VALUES (?, ?, ?, ?)",
+                ((name, archive, str(item["source_id"]), _canon(item)) for name, item in items.items()
+                 if isinstance(item, dict) and "source_id" in item))
 
 
 class _Slow(Exception):
     """The queue cannot be updated from the changed files alone: read the whole queue."""
 
 
-def _sync_queue(index: Index, root: Path) -> tuple[dict[str, Any], dict[str, Any], bool]:
-    """Make the index hold the review queue as it is on disk. Returns the old rows, the new rows and a full-read flag.
+def _sync_queue(index: Index, root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Make the index hold the review queue as it is on disk. Returns the old and the new rows of the changed ids.
 
-    The rows are those of the source ids that changed. After a full read they are every row.
+    After a full read the rows are every row.
     """
     sweep = _sweep(root)
-    archive = _has_archive(root)
+    archive_sweep = _sweep(root, changeset._ARCHIVE_DIR)
     saved = {str(name): str(sig) for name, sig in index.conn.execute("SELECT name, sig FROM item_files")}
+    saved_archive = {str(name): str(sig) for name, sig in index.conn.execute("SELECT name, sig FROM archive_files")}
     names = sorted(name for name in set(sweep) | set(saved) if sweep.get(name) != saved.get(name))
-    if not names and not archive:
-        return {}, {}, False
-    if not archive:
-        try:
-            return (*_sync_queue_names(index, root, names, sweep), False)
-        except _Slow:
-            pass
+    archives = sorted(name for name in set(archive_sweep) | set(saved_archive)
+                      if archive_sweep.get(name) != saved_archive.get(name))
+    if not names and not archives:
+        return {}, {}
+    if _has_group_journal(root):
+        return _queue_in_full(index, root, sweep, archive_sweep)
+    try:
+        return _sync_queue_names(index, root, names, archives, sweep, archive_sweep)
+    except _Slow:
+        return _queue_in_full(index, root, sweep, archive_sweep)
+
+
+def _has_group_journal(root: Path) -> bool:
+    try:
+        return any(os.scandir(root / queue_transaction_dir()))
+    except OSError:
+        return False
+
+
+def queue_transaction_dir() -> str:
+    from . import queue as queue_module
+    return getattr(queue_module, "_QUEUE_TRANSACTION_DIR", "review-queue/.transactions")
+
+
+def _queue_in_full(index: Index, root: Path, sweep: Mapping[str, str],
+                   archive_sweep: Mapping[str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
     old_rows = index.section("queue")
     files = changeset.load_queue_files(root) if root.is_dir() else {}
-    _store_queue(index, files, sweep)
-    return old_rows, _queue_by_source(files), True
+    _store_queue(index, files, sweep, archive_sweep, root)
+    return old_rows, _queue_by_source(files)
 
 
-def _sync_queue_names(index: Index, root: Path, names: Sequence[str],
-                      sweep: Mapping[str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: Sequence[str],
+                      sweep: Mapping[str, str], archive_sweep: Mapping[str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
     from .queue import _sanitize_filename
-    old_files: dict[str, str] = {}
-    for start in range(0, len(names), _CHUNK):
-        chunk = list(names[start:start + _CHUNK])
-        marks = ",".join("?" for _ in chunk)
-        old_files.update({str(n): str(s) for n, s in index.conn.execute(
-            f"SELECT name, source_id FROM item_files WHERE name IN ({marks})", chunk)})
-    new_items: dict[str, tuple[str, dict[str, Any]]] = {}
+    reader = _archive_reader()
+    if archives and reader is None:
+        raise _Slow()
+    conn = index.conn
+
+    def rows(sql: str, values: Sequence[Any]) -> list[tuple[Any, ...]]:
+        found: list[tuple[Any, ...]] = []
+        for start in range(0, max(len(values), 1), _CHUNK):
+            chunk = list(values[start:start + _CHUNK])
+            found.extend(conn.execute(sql.format(",".join("?" for _ in chunk)), chunk).fetchall())
+        return found
+
+    # The archives that changed: read them (a bad archive raises), and find every name that they touch.
+    new_archive_rows: list[tuple[str, str, str, str]] = []
+    for archive in archives:
+        if archive not in archive_sweep:
+            continue
+        try:
+            items = reader(root / changeset._ARCHIVE_DIR / archive)
+        except (ValueError, OSError) as exc:
+            raise ChangeSetError(f"The review queue cannot be read: {exc}") from exc
+        for name, item in items.items():
+            if isinstance(item, dict) and "source_id" in item:
+                new_archive_rows.append((str(name), archive, str(item["source_id"]), _canon(item)))
+    old_archive_names = [str(r[0]) for r in rows("SELECT name FROM archive_items WHERE archive IN ({})", archives)] \
+        if archives else []
+    affected = sorted(set(names) | set(old_archive_names) | {row[0] for row in new_archive_rows})
+    # The effective source id of each affected name before: its item file, else its archive entry.
+    old_top = {str(n): str(sid) for n, sid in rows("SELECT name, source_id FROM item_files WHERE name IN ({})", affected)}
+    old_arch = {str(n): str(sid) for n, sid in rows("SELECT name, source_id FROM archive_items WHERE name IN ({})", affected)}
+    old_ids = {name: old_top.get(name, old_arch.get(name)) for name in affected}
+    # Apply the archive changes to the saved archive rows.
+    for archive in archives:
+        conn.execute("DELETE FROM archive_items WHERE archive = ?", (archive,))
+        conn.execute("DELETE FROM archive_files WHERE name = ?", (archive,))
+    for name, archive, sid, value in new_archive_rows:
+        other = conn.execute("SELECT archive FROM archive_items WHERE name = ?", (name,)).fetchone()
+        if other is not None:
+            raise _Slow()  # Two archives hold one file name: the later one wins in a full read.
+        conn.execute("INSERT INTO archive_items (name, archive, source_id, value) VALUES (?, ?, ?, ?)",
+                     (name, archive, sid, value))
+    conn.executemany("INSERT OR REPLACE INTO archive_files (name, sig) VALUES (?, ?)",
+                     [(a, archive_sweep[a]) for a in archives if a in archive_sweep])
+    # The item files that changed.
+    new_top: dict[str, tuple[str, dict[str, Any]]] = {}
     for name in names:
         if name not in sweep:
             continue
@@ -543,19 +626,36 @@ def _sync_queue_names(index: Index, root: Path, names: Sequence[str],
         source_id = str(item["source_id"])
         if name != _sanitize_filename(source_id) + ".json":
             raise _Slow()  # The name does not follow the source id: another file could hold the same id.
-        new_items[name] = (source_id, dict(item))
-    touched = set(old_files.values()) | {sid for sid, _ in new_items.values()}
-    changed = set(names)
-    for sid in touched:  # Another unchanged file with the same source id makes the result depend on the file order.
-        for (other,) in index.conn.execute("SELECT name FROM item_files WHERE source_id = ?", (sid,)):
-            if other not in changed:
+        new_top[name] = (source_id, dict(item))
+    conn.executemany("DELETE FROM item_files WHERE name = ?", [(name,) for name in names])
+    conn.executemany("INSERT OR REPLACE INTO item_files (name, source_id, sig) VALUES (?, ?, ?)",
+                     [(name, sid, sweep[name]) for name, (sid, _) in new_top.items()])
+    # The effective item of each affected name after: its item file (changed or not), else its archive entry.
+    new_rows: dict[str, Any] = {}
+    new_ids: dict[str, str | None] = {}
+    for name in affected:
+        if name in new_top:
+            new_ids[name], new_rows[new_top[name][0]] = new_top[name][0], new_top[name][1]
+            continue
+        top = conn.execute("SELECT source_id FROM item_files WHERE name = ?", (name,)).fetchone()
+        if top is not None:
+            new_ids[name] = str(top[0])
+            new_rows[str(top[0])] = index.lookup("queue", [str(top[0])]).get(str(top[0]), _MISSING)
+            if new_rows[str(top[0])] is _MISSING:
                 raise _Slow()
+            continue
+        arch = conn.execute("SELECT source_id, value FROM archive_items WHERE name = ?", (name,)).fetchone()
+        new_ids[name] = str(arch[0]) if arch is not None else None
+        if arch is not None:
+            new_rows[str(arch[0])] = json.loads(arch[1])
+    touched = {sid for sid in (*old_ids.values(), *new_ids.values()) if sid is not None}
+    for sid in touched:  # Another unchanged name with the same source id makes the result depend on the file order.
+        holders = {str(r[0]) for r in conn.execute("SELECT name FROM item_files WHERE source_id = ?", (sid,))}
+        holders |= {str(r[0]) for r in conn.execute("SELECT name FROM archive_items WHERE source_id = ?", (sid,))}
+        if holders - set(affected):
+            raise _Slow()
     old_rows = index.lookup("queue", sorted(touched))
-    new_rows = {sid: item for sid, item in new_items.values()}
     index.apply("queue", old_rows, new_rows)
-    index.conn.executemany("DELETE FROM item_files WHERE name = ?", [(name,) for name in names])
-    index.conn.executemany("INSERT OR REPLACE INTO item_files (name, source_id, sig) VALUES (?, ?, ?)",
-                           [(name, sid, sweep[name]) for name, (sid, _) in new_items.items()])
     return old_rows, new_rows
 
 
@@ -702,7 +802,7 @@ class Run:
         if conn is None:
             for name in LEDGER_SECTIONS:
                 index.set_total(name, [0, 0])
-        after.digest = index.digest()
+        after.digest_value = index.digest()
 
         def after_digest(document: dict[str, Any]) -> str:
             self._ledger_totals(document, before, after, ledger_full)
@@ -822,7 +922,7 @@ class Run:
     # -- review queue -----------------------------------------------------------
 
     def _queue(self, before: "changeset._Side", after: "changeset._Side") -> None:
-        old_rows, new_rows, _ = _sync_queue(self.index, self.root)
+        old_rows, new_rows = _sync_queue(self.index, self.root)
         before.queue, after.queue = old_rows, new_rows
 
     # -- staging files and learned context ----------------------------------------

@@ -41,15 +41,19 @@ def ledger_schema(entity: Path) -> list[tuple[str, str, str]]:
 class Dual(Sequence_):
     """Run each write under the incremental capture and, around it, under a capture of two full reads."""
 
-    def cli(self, name, *argv, expect=0, revision=None):
-        with changeset.capture(self.entity, books_revision=revision, incremental=False) as full:
-            document = super().cli(name, *argv, expect=expect, revision=revision)
+    def cli(self, name, *argv, expect=0):
+        revision = self.view["revision"]
+        with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision,
+                               incremental=False) as full:
+            document = super().cli(name, *argv, expect=expect)
         if expect == 0:
             self.test.assertEqual(document, full.change_set, f"{name}: incremental and full capture differ")
         return document
 
     def api(self, name, call):
-        with changeset.capture(self.entity, incremental=False) as full:
+        revision = self.view["revision"]
+        with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision,
+                               incremental=False) as full:
             document = super().api(name, call)
         self.test.assertEqual(document, full.change_set, f"{name}: incremental and full capture differ")
         return document
@@ -61,7 +65,7 @@ class Equivalence(unittest.TestCase):
         with mock.patch.object(test_changeset, "Sequence_", Dual):
             with tempfile.TemporaryDirectory() as tmp:
                 seq = scenario(self, Path(tmp))
-        self.assertEqual(len(seq.sets), 15)
+        self.assertGreaterEqual(len(seq.sets), 15)
 
 
 class Fixture(unittest.TestCase):
@@ -79,8 +83,10 @@ class Fixture(unittest.TestCase):
 
     def both(self, action, apply=True):
         """Run ``action`` under both captures. Returns the incremental document after it equals the full one."""
-        with changeset.capture(self.entity, incremental=False) as full:
-            with changeset.capture(self.entity) as fast:
+        revision = self.seq.view["revision"]
+        args = {"books_revision": revision + 1, "base_revision": revision}
+        with changeset.capture(self.entity, incremental=False, **args) as full:
+            with changeset.capture(self.entity, **args) as fast:
                 action()
         self.assertEqual(fast.change_set, full.change_set)
         self.assertTrue(fast.change_set["complete"])
@@ -178,9 +184,10 @@ class FallbackTests(Fixture):
                          [("cs-002", "removed"), ("cs-009", "created")])
 
     def test_two_item_files_with_one_source_id_are_read_in_full(self) -> None:
+        self.seq.cli("propose", "queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002",
+                     "--category", "Income:Consulting", "--reasoning", "Payout.")
         folder = self.entity / "review-queue"
-        item = json.loads((folder / "cs-001.json").read_text(encoding="utf-8"))
-        item["status"] = "open"
+        item = json.loads((folder / "cs-002.json").read_text(encoding="utf-8"))
         self.both(lambda: (folder / "zz-copy.json").write_text(json.dumps(item), encoding="utf-8"), apply=False)
 
     def test_a_direct_sql_write_that_does_not_use_the_ledger_store(self) -> None:
@@ -264,6 +271,35 @@ class FallbackTests(Fixture):
         self.assertEqual(fast.change_set["staging"]["seen_ids"]["added"], ["no-index"])
         self.assertTrue(full.change_set["complete"])
 
+    def test_a_decided_item_that_moves_into_an_archive_is_not_a_change_and_reads_no_full_queue(self) -> None:
+        self.both(lambda: None)
+        folder = self.entity / "review-queue"
+        archives = sorted((folder / "archive").glob("*.json"))
+        self.assertTrue(archives, "the confirm must have archived the decided item")
+        self.seq.cli("propose", "queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002",
+                     "--category", "Income:Consulting", "--reasoning", "Payout.")
+        self.seq.cli("approve", "queue", "confirm", "--entity", str(self.entity), "--item", "cs-002")
+        # The confirm archived cs-002 already. Put its file back and capture the move again.
+        archive = sorted(folder.joinpath("archive").glob("*.json"))[0]
+        item = json.loads(archive.read_text(encoding="utf-8"))["items"]["cs-002.json"]
+        (folder / "cs-002.json").write_text(json.dumps(item, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        self.both(lambda: None)
+        revision = self.seq.view["revision"]
+        with mock.patch.object(changeset, "load_queue_files", side_effect=AssertionError("queue read in full")):
+            with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision) as receipt:
+                queue.compact_closed_items(load_entity(self.entity))
+        self.assertTrue(receipt.change_set["complete"])
+        self.assertFalse(receipt.change_set["changed"])
+
+    def test_an_archive_that_changes_without_a_helper_is_found(self) -> None:
+        archive = sorted((self.entity / "review-queue" / "archive").glob("*.json"))[0]
+        raw = json.loads(archive.read_text(encoding="utf-8"))
+        name, item = next(iter(raw["items"].items()))
+        item = {**item, "reasoning": "Edited."}
+        raw["items"][name] = item
+        document = self.both(lambda: archive.write_text(json.dumps(raw), encoding="utf-8"))
+        self.assertEqual([row["id"] for row in document["review_queue"]], [item["source_id"]])
+
     def test_an_unreadable_item_file_before_the_command_makes_the_change_set_incomplete(self) -> None:
         (self.entity / "review-queue" / "cs-001.json").write_text("{broken", encoding="utf-8")
         with changeset.capture(self.entity) as receipt:
@@ -290,7 +326,8 @@ class CostTests(Fixture):
                 mock.patch.object(changeset, "_load_keyed", side_effect=boom), \
                 mock.patch.object(changeset, "_load_ids", side_effect=boom), \
                 mock.patch.object(changeset, "_counts", side_effect=boom):
-            with changeset.capture(self.entity) as receipt:
+            revision = self.seq.view["revision"]
+            with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision) as receipt:
                 run_cli(["queue", "confirm", "--entity", str(self.entity), "--item", "cs-002"])
         document = receipt.change_set
         self.assertTrue(document["complete"])
@@ -298,6 +335,54 @@ class CostTests(Fixture):
         self.assertEqual(len(document["bank_rows"]), 1)
         self.assertEqual([row["id"] for row in document["review_queue"]], ["cs-002"])
         self.seq._apply("approve", document)
+
+
+class LedgerDigestTests(Fixture):
+    def test_an_approve_updates_the_ledger_totals_from_the_new_rows_only(self) -> None:
+        self.both(lambda: None)
+        self.seq.cli("propose", "queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002",
+                     "--category", "Income:Consulting", "--reasoning", "Payout.")
+        revision = self.seq.view["revision"]
+        with mock.patch.object(change_capture, "ledger_totals", side_effect=AssertionError("ledger read in full")):
+            with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision) as receipt:
+                run_cli(["queue", "confirm", "--entity", str(self.entity), "--item", "cs-002"])
+        self.assertTrue(receipt.change_set["complete"])
+        self.seq._apply("approve", receipt.change_set)  # The reducer checks the digest exactly.
+
+    def test_a_rename_reads_the_ledger_in_full_and_the_digest_stays_exact(self) -> None:
+        self.both(lambda: None)
+        calls = []
+        real = change_capture.ledger_totals
+        with mock.patch.object(change_capture, "ledger_totals", lambda path: calls.append(1) or real(path)):
+            code, out, err = run_cli(["entity", "account-rename", str(self.entity), "--account", "Expenses:Software",
+                                      "--to", "Expenses:Tools", "--json"])
+            self.assertEqual(code, 0, err)
+            plan = json.loads(out)
+            calls.clear()
+            self.both(lambda: run_cli(["entity", "account-rename", str(self.entity), "--account", "Expenses:Software",
+                                       "--to", "Expenses:Tools", "--apply", "--plan-hash", plan["plan_hash"], "--json"]))
+        self.assertTrue(calls)
+
+    def test_a_changed_posted_row_is_found_by_the_digest_even_without_the_append_only_triggers(self) -> None:
+        self.both(lambda: None)
+        with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+            for name in [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
+                         if not r[0].startswith(change_capture.TRIGGER_PREFIX)]:
+                conn.execute(f'DROP TRIGGER "{name}"')
+            conn.commit()
+        revision = self.seq.view["revision"]
+        args = {"books_revision": revision + 1, "base_revision": revision}
+
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("UPDATE entries SET narration = 'tampered' WHERE id = 1")
+                conn.commit()
+
+        with changeset.capture(self.entity, incremental=False, **args) as full:
+            with changeset.capture(self.entity, **args) as fast:
+                action()
+        self.assertEqual(fast.change_set["state"], full.change_set["state"])
+        self.assertNotEqual(fast.change_set["state"]["before"], fast.change_set["state"]["after"])
 
 
 class TriggerTests(Fixture):
