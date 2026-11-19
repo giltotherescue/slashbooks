@@ -1,0 +1,432 @@
+"""Decided review items in one archive file for each month (queue.compact_closed_items).
+
+A company that reviews every bank row kept one small file for each row, and a file never left the folder. These tests prove
+that the archive changes only where the items are kept: every read, the ledger and the audit log are the same, a decided item
+can still be shown and corrected, an interrupted move loses nothing, and the file count grows by one for each month.
+All data is synthetic."""
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "tests"))
+
+from bookkeeping import queue, work  # noqa: E402
+from bookkeeping.ledger.store import LedgerStore  # noqa: E402
+from test_queue import SESSION, TS, _add_pending_categorization, _make_entity  # noqa: E402
+
+ROWS = 12
+
+
+def decided_files(entity):
+    return sorted(p.name for p in (entity.path / "review-queue").glob("*.json"))
+
+
+def archives(entity):
+    return sorted(p.name for p in (entity.path / "review-queue" / "archive").glob("*.json"))
+
+
+class ArchiveTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.entity = _make_entity(Path(self.tmp.name))
+        for number in range(ROWS + 2):
+            _add_pending_categorization(self.entity, f"row-{number}", f"Synthetic vendor {number}", amount=f"{10 + number}.00",
+                                        txn_date=f"2026-{1 + number % 3:02d}-{10 + number}")
+        for number in range(ROWS):
+            queue.propose(self.entity, f"row-{number}", "Expenses:Software", "Synthetic service")
+            queue.confirm(self.entity, f"row-{number}", SESSION, ts=TS)
+        queue.propose(self.entity, f"row-{ROWS}", "Expenses:Software", "Synthetic service")  # stays open
+        queue.withdraw(self.entity, f"row-{ROWS}", "Synthetic")
+        queue.propose(self.entity, f"row-{ROWS + 1}", "Expenses:Office", "Synthetic service")  # stays open
+
+    def everything(self):
+        return json.dumps(queue.list_queue_items(self.entity), sort_keys=True)
+
+    def test_compaction_moves_only_decided_items_and_keeps_every_read(self):
+        before_list = self.everything()
+        before_open = json.dumps(queue.list_queue_items(self.entity, status="open"), sort_keys=True)
+        before_confirmed = json.dumps(queue.list_queue_items(self.entity, status="confirmed"), sort_keys=True)
+        before_files = {name: (self.entity.path / "review-queue" / name).read_bytes() for name in decided_files(self.entity)}
+        before_summary = json.dumps(queue.summarize_queue_items(self.entity, status=None), sort_keys=True)
+        before_ledger = (self.entity.path / "ledger.sqlite").read_bytes()
+        result = queue.compact_closed_items(self.entity)
+        self.assertEqual(result["archived"], ROWS)
+        self.assertEqual(archives(self.entity), ["2026-01.json", "2026-02.json", "2026-03.json"])
+        # The open item and the withdrawn item keep their files.
+        self.assertEqual(decided_files(self.entity), [f"row-{ROWS}.json", f"row-{ROWS + 1}.json"])
+        self.assertEqual(self.everything(), before_list)
+        self.assertEqual(json.dumps(queue.list_queue_items(self.entity, status="open"), sort_keys=True), before_open)
+        self.assertEqual(json.dumps(queue.list_queue_items(self.entity, status="confirmed"), sort_keys=True), before_confirmed)
+        self.assertEqual(json.dumps(queue.summarize_queue_items(self.entity, status=None), sort_keys=True), before_summary)
+        # A moved item is the same document, byte for byte, when it is written again as a file.
+        for name in before_files:
+            if name in queue._archived_items(self.entity)[0]:
+                again = (json.dumps(queue._archived_items(self.entity)[0][name], indent=2, sort_keys=True) + "\n").encode()
+                self.assertEqual(again, before_files[name], name)
+        self.assertEqual((self.entity.path / "ledger.sqlite").read_bytes(), before_ledger, "the ledger is not touched")
+
+    def test_the_file_count_does_not_grow_with_the_number_of_decided_items(self):
+        queue.compact_closed_items(self.entity)
+        count = len(list((self.entity.path / "review-queue").rglob("*.json")))
+        self.assertEqual(count, 2 + 3)
+        # More rows in the same months: still one archive for each month.
+        for number in range(ROWS + 2, ROWS + 10):
+            _add_pending_categorization(self.entity, f"row-{number}", f"Synthetic vendor {number}", txn_date=f"2026-0{1 + number % 3}-20")
+            queue.propose(self.entity, f"row-{number}", "Expenses:Software", "Synthetic service")
+            queue.confirm(self.entity, f"row-{number}", SESSION, ts=TS)
+        queue.compact_closed_items(self.entity)
+        self.assertEqual(len(list((self.entity.path / "review-queue").rglob("*.json"))), 2 + 3)
+        self.assertEqual(len([i for i in queue.list_queue_items(self.entity, status="confirmed")]), ROWS + 8)
+
+    def test_the_archive_is_the_same_bytes_each_time_and_a_second_run_changes_nothing(self):
+        queue.compact_closed_items(self.entity)
+        first = {name: (self.entity.path / "review-queue" / "archive" / name).read_bytes() for name in archives(self.entity)}
+        self.assertEqual(queue.compact_closed_items(self.entity), {"archived": 0, "files_removed": 0, "archives_written": 0})
+        self.assertEqual({name: (self.entity.path / "review-queue" / "archive" / name).read_bytes() for name in archives(self.entity)}, first)
+
+    def test_a_decided_item_can_be_shown_and_a_confirmed_source_cannot_be_proposed_again(self):
+        queue.compact_closed_items(self.entity)
+        shown = queue.read_queue_item(self.entity, "row-3")
+        self.assertEqual((shown["status"], shown["confirmed_category"]), ("confirmed", "Expenses:Software"))
+        self.assertEqual(queue._load_item(self.entity, "row-3")["status"], "confirmed")
+        with self.assertRaises(FileNotFoundError):
+            queue.read_queue_item(self.entity, "no-such-row")
+        with self.assertRaises(ValueError):
+            queue.propose(self.entity, "row-3", "Expenses:Office", "Synthetic again")
+
+    def test_an_item_file_wins_over_its_archive_entry_and_the_next_move_folds_it_in(self):
+        queue.compact_closed_items(self.entity)
+        # A file for an archived name is a newer write (for example an item that is open again).
+        reopened = {**queue.read_queue_item(self.entity, "row-3"), "status": "reopened"}
+        queue._save_item(self.entity, reopened)
+        self.assertEqual(queue.read_queue_item(self.entity, "row-3")["status"], "reopened", "the file is newer than the archive entry")
+        self.assertEqual([item["status"] for item in queue.list_queue_items(self.entity) if item["source_id"] == "row-3"], ["reopened"])
+        self.assertEqual(len(work.take_snapshot(self.entity.path).queue), ROWS + 2)
+        self.assertEqual(work.take_snapshot(self.entity.path).queue["row-3"]["status"], "reopened")
+        # The move drops the stale archive entry and keeps the open item in its file.
+        queue.compact_closed_items(self.entity)
+        self.assertIn("row-3.json", decided_files(self.entity))
+        self.assertNotIn("row-3.json", queue._archived_items(self.entity)[0])
+        self.assertEqual(queue.read_queue_item(self.entity, "row-3")["status"], "reopened")
+        # When it is decided again, it goes back into its archive.
+        queue._save_item(self.entity, {**reopened, "status": "confirmed"})
+        queue.compact_closed_items(self.entity)
+        self.assertNotIn("row-3.json", decided_files(self.entity))
+        self.assertEqual(queue.read_queue_item(self.entity, "row-3")["status"], "confirmed")
+        self.assertEqual(sum(1 for item in queue.list_queue_items(self.entity) if item["source_id"] == "row-3"), 1)
+
+    def test_an_interrupted_move_loses_nothing_and_the_next_run_finishes(self):
+        expected = self.everything()
+        real = queue._replace_group_destination
+        calls = []
+
+        def stop_after_one(path, payload):
+            real(path, payload)
+            calls.append(path.name)
+            if len(calls) == 1:
+                raise OSError("synthetic stop after the first archive")
+
+        with patch.object(queue, "_replace_group_destination", stop_after_one):
+            with self.assertRaises(OSError):
+                queue.compact_closed_items(self.entity)
+        # An archive is on disk and every item file is still there: a read sees each item one time.
+        self.assertEqual(len(archives(self.entity)), 1)
+        self.assertEqual(len(decided_files(self.entity)), ROWS + 2)
+        self.assertEqual(self.everything(), expected)
+        queue.compact_closed_items(self.entity)
+        self.assertEqual(self.everything(), expected)
+        self.assertEqual(decided_files(self.entity), [f"row-{ROWS}.json", f"row-{ROWS + 1}.json"])
+
+    def test_an_archive_that_is_not_valid_is_shown_as_corrupt_and_is_never_rewritten(self):
+        queue.compact_closed_items(self.entity)
+        bad = self.entity.path / "review-queue" / "archive" / "2026-02.json"
+        bad.write_text("{not json", encoding="utf-8")
+        listed = queue.list_queue_items(self.entity)
+        corrupt = [item for item in listed if item.get("status") == "corrupt"]
+        self.assertEqual([item["diagnostic"]["file"] for item in corrupt], ["2026-02.json"])
+        with self.assertRaises(ValueError):
+            queue.compact_closed_items(self.entity)
+        self.assertEqual(bad.read_text(encoding="utf-8"), "{not json")
+
+    def test_the_cli_moves_decided_items_and_work_events_count_them_the_same(self):
+        before = work.take_snapshot(self.entity.path)
+        queue.compact_closed_items(self.entity)
+        after = work.take_snapshot(self.entity.path)
+        self.assertEqual(before.queue, after.queue)
+
+    def test_the_queue_command_that_decides_an_item_moves_it(self):
+        from bookkeeping import cli
+        _add_pending_categorization(self.entity, "cli-row", "Synthetic cli", txn_date="2026-02-02")
+        queue.propose(self.entity, "cli-row", "Expenses:Software", "Synthetic")
+        out, err = StringIO(), StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(["queue", "confirm", "--entity", str(self.entity.path), "--item", "cli-row", "--session", SESSION])
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertNotIn("cli-row.json", decided_files(self.entity))
+        self.assertEqual(queue.read_queue_item(self.entity, "cli-row")["status"], "confirmed")
+        out = StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(cli.main(["queue", "compact", "--entity", str(self.entity.path)]), 0)
+        self.assertIn("Archived", out.getvalue())
+
+    def test_an_item_file_with_other_bytes_is_not_moved(self):
+        path = self.entity.path / "review-queue" / "row-2.json"
+        item = json.loads(path.read_text())
+        path.write_text(json.dumps(item), encoding="utf-8")  # not the bytes that the engine writes
+        queue.compact_closed_items(self.entity)
+        self.assertEqual(json.loads(path.read_text()), item)
+        self.assertIn("row-2.json", decided_files(self.entity))
+        self.assertNotIn("row-2.json", queue._archived_items(self.entity)[0])
+
+    def test_a_caller_that_changes_a_returned_item_does_not_change_the_next_read(self):
+        queue.compact_closed_items(self.entity)
+        first = queue.read_queue_item(self.entity, "row-3")
+        first["status"] = "open"
+        first["confirmed_category"] = "Expenses:Changed"
+        loaded = queue._load_item(self.entity, "row-3")
+        loaded["status"] = "withdrawn"
+        listed = [i for i in queue.list_queue_items(self.entity) if i["source_id"] == "row-3"][0]
+        listed["status"] = "open"
+        everything = queue.load_all_items(self.entity)
+        everything["row-3.json"]["status"] = "open"
+        again = queue.read_queue_item(self.entity, "row-3")
+        self.assertEqual((again["status"], again["confirmed_category"]), ("confirmed", "Expenses:Software"))
+        self.assertEqual(queue.list_queue_items(self.entity, status="confirmed").__len__(), ROWS)
+        # A saved edit survives: confirmed items that a caller loaded and wrote again as a file keep the new content.
+        edit = queue._load_item(self.entity, "row-4")
+        edit["reasoning"] = "Edited by a person"
+        queue._save_item(self.entity, edit)
+        queue.compact_closed_items(self.entity)
+        self.assertEqual(queue.read_queue_item(self.entity, "row-4")["reasoning"], "Edited by a person")
+        self.assertEqual(queue.read_queue_item(self.entity, "row-5")["reasoning"], "Synthetic service")
+
+    def test_a_lookup_in_an_archive_that_cannot_be_read_fails_and_is_never_not_found(self):
+        queue.compact_closed_items(self.entity)
+        (self.entity.path / "review-queue" / "archive" / "2026-02.json").write_text("{not json", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            queue.read_queue_item(self.entity, "row-1")
+        with self.assertRaises(ValueError):
+            queue._load_item(self.entity, "row-1")
+        with self.assertRaises(ValueError):
+            queue.load_all_items(self.entity)
+
+    def test_an_archive_that_changes_while_it_is_read_is_read_again_and_one_that_keeps_changing_is_refused(self):
+        queue.compact_closed_items(self.entity)
+        path = self.entity.path / "review-queue" / "archive" / "2026-01.json"
+        real = queue.os.fstat
+        calls = []
+
+        class Changed:
+            def __init__(self, base):
+                self.st_mtime_ns, self.st_size, self.st_ino = base.st_mtime_ns + 1, base.st_size, base.st_ino
+
+        def flaky(descriptor, every=False):
+            base = real(descriptor)
+            calls.append(1)
+            return Changed(base) if (every or len(calls) == 2) else base
+
+        queue._ARCHIVE_CACHE.clear()
+        with patch.object(queue.os, "fstat", flaky):
+            self.assertTrue(queue._read_archive_file(path))   # the second check differs once, so it reads again
+        self.assertGreaterEqual(len(calls), 4)
+        queue._ARCHIVE_CACHE.clear()
+        with patch.object(queue.os, "fstat", lambda d: flaky(d, every=True)):
+            with self.assertRaisesRegex(ValueError, "changed while it was read"):
+                queue._read_archive_file(path)
+
+    def test_an_item_that_moves_into_an_archive_during_a_listing_is_listed_one_time(self):
+        real = queue._load_item_from_path
+        moved = []
+
+        def race(entity, path, **kwargs):
+            if path.name == "row-1.json" and not moved:
+                moved.append(queue.compact_closed_items(entity))   # a writer moves the files, then this read finds row-1 gone
+                raise FileNotFoundError(path)
+            return real(entity, path, **kwargs)
+
+        with patch.object(queue, "_load_item_from_path", race):
+            listed = queue.list_queue_items(self.entity)
+        self.assertEqual(moved[0]["archived"], ROWS)
+        self.assertEqual(sorted(i["source_id"] for i in listed), sorted(f"row-{n}" for n in range(ROWS + 2)))
+        self.assertEqual(len([i for i in listed if i["source_id"] == "row-1"]), 1)
+
+    def test_the_archive_and_its_folders_are_synced_before_any_item_file_is_removed(self):
+        events = []
+        real_sync, real_unlink = queue._fsync_directory, Path.unlink
+
+        def sync(path):
+            events.append(("sync", path.name))
+            return real_sync(path)
+
+        def unlink(self_path, *args, **kwargs):
+            events.append(("unlink", self_path.name))
+            return real_unlink(self_path, *args, **kwargs)
+
+        with patch.object(queue, "_fsync_directory", sync), patch.object(Path, "unlink", unlink):
+            queue.compact_closed_items(self.entity)
+        first_unlink = next(i for i, e in enumerate(events) if e[0] == "unlink")
+        before = [name for kind, name in events[:first_unlink] if kind == "sync"]
+        self.assertIn("archive", before, "the archive folder")
+        self.assertIn("review-queue", before, "the queue folder that holds the entry of a new archive folder")
+
+    def test_load_all_items_returns_files_and_archives_with_files_first(self):
+        queue.compact_closed_items(self.entity)
+        every = queue.load_all_items(self.entity)
+        self.assertEqual(sorted(every), sorted(f"row-{n}.json" for n in range(ROWS + 2)))
+
+    def test_load_all_items_hides_a_stale_archive_entry_behind_a_corrupt_file_and_skips_a_partial_group(self):
+        queue.compact_closed_items(self.entity)
+        q_dir = self.entity.path / "review-queue"
+        (q_dir / "row-1.json").write_text("{not json", encoding="utf-8")   # newer than the archive entry, but unreadable
+        every = queue.load_all_items(self.entity)
+        self.assertNotIn("row-1.json", every, "a stale archived copy must not stand in for a corrupt newer file")
+        self.assertIn("row-2.json", every)
+        (q_dir / "row-1.json").unlink()
+        # An unfinished group commit: its files are not a whole state, so the preload leaves them out, as a listing does.
+        real = queue._replace_group_destination
+        calls = []
+
+        def stop_after_one(*args, **kwargs):
+            if calls:
+                raise KeyboardInterrupt
+            calls.append(1)
+            return real(*args, **kwargs)
+
+        items = [queue._load_item(self.entity, "row-2"), queue._load_item(self.entity, "row-3")]
+        with patch.object(queue, "_replace_group_destination", stop_after_one):
+            with self.assertRaises(KeyboardInterrupt):
+                queue._save_item_group(self.entity, items)
+        _, recovery_files, recovery = queue._group_recovery_view(self.entity)
+        self.assertIsNotNone(recovery)
+        every = queue.load_all_items(self.entity)
+        for name in recovery_files:
+            self.assertNotIn(name, every)
+        self.assertIn("row-4.json", every)
+
+    def test_a_retry_after_an_interrupt_syncs_the_folders_before_it_removes_files(self):
+        real_unlink = Path.unlink
+
+        def stop(self_path, *args, **kwargs):
+            if self_path.parent.name == "review-queue":
+                raise KeyboardInterrupt   # after every archive is written, before any file is removed
+            return real_unlink(self_path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", stop):
+            with self.assertRaises(KeyboardInterrupt):
+                queue.compact_closed_items(self.entity)
+        events = []
+        real_sync = queue._fsync_directory
+
+        def sync(path):
+            events.append(("sync", path.name))
+            return real_sync(path)
+
+        def unlink(self_path, *args, **kwargs):
+            events.append(("unlink", self_path.name))
+            return real_unlink(self_path, *args, **kwargs)
+
+        with patch.object(queue, "_fsync_directory", sync), patch.object(Path, "unlink", unlink):
+            result = queue.compact_closed_items(self.entity)
+        self.assertEqual(result["archives_written"], 0)
+        self.assertEqual(result["files_removed"], ROWS)
+        first_unlink = next(i for i, e in enumerate(events) if e[0] == "unlink")
+        before = [name for kind, name in events[:first_unlink] if kind == "sync"]
+        self.assertIn("archive", before)
+        self.assertIn("review-queue", before)
+
+    def test_an_in_place_change_of_equal_size_with_the_same_mtime_is_not_read_from_the_cache(self):
+        import os
+        queue.compact_closed_items(self.entity)
+        path = self.entity.path / "review-queue" / "archive" / "2026-01.json"
+        before = path.stat()
+        first = queue._read_archive_file(path)
+        raw = path.read_bytes()
+        self.assertIn(b"Synthetic service", raw)
+        path.write_bytes(raw.replace(b"Synthetic service", b"Synthetic sorvice", 1))   # same size, same inode
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = path.stat()
+        self.assertEqual((before.st_size, before.st_mtime_ns, before.st_ino), (after.st_size, after.st_mtime_ns, after.st_ino))
+        second = queue._read_archive_file(path)
+        self.assertIn("Synthetic sorvice", json.dumps(second))
+        self.assertNotIn("Synthetic sorvice", json.dumps(first))
+
+    def test_queue_show_of_a_corrupt_archive_prints_an_error_and_exits_non_zero(self):
+        from bookkeeping import cli
+        queue.compact_closed_items(self.entity)
+        (self.entity.path / "review-queue" / "archive" / "2026-02.json").write_text("{not json", encoding="utf-8")
+        out, err = StringIO(), StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(["queue", "show", "--entity", str(self.entity.path), "--item", "row-1"])
+        self.assertEqual(code, 1)
+        self.assertIn("2026-02.json", err.getvalue() + out.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
+    def test_the_audit_chain_is_whole_after_the_move(self):
+        queue.compact_closed_items(self.entity)
+        self.assertEqual(LedgerStore(self.entity.path / "ledger.sqlite").verify_audit_chain(), [])
+
+
+class MigrationTests(unittest.TestCase):
+    def test_a_company_with_archives_exports_and_validates_as_a_bundle(self):
+        from datetime import date
+        from bookkeeping import hosted_migration as capture, migration_bundle as bundle
+        from bookkeeping.entity import init_entity, load_entity
+        from bookkeeping.ledger.importer import import_transactions
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve() / "company"
+            init_entity(root, name="Synthetic", business_type="consulting")
+            entity = load_entity(root)
+            rows = [{"id": f"mig-{n}", "date": f"2026-0{1 + n % 2}-1{n}", "description": f"Synthetic {n}", "amount": f"-{10 + n}.00",
+                     "accountName": "Checking", "pending": False} for n in range(4)]
+            import_transactions(entity, rows, "s", categorizer=lambda _: (None, None), session_date=date(2026, 1, 15), ts="2026-01-15T00:00:00Z")
+            for row in rows:
+                queue.propose(entity, row["id"], "Expenses:Software", "Synthetic")
+                queue.confirm(entity, row["id"], SESSION, ts=TS)
+            queue.compact_closed_items(entity)
+            self.assertEqual(sorted(p.name for p in (root / "review-queue").rglob("*.json")), ["2026-01.json", "2026-02.json"])
+            destination = Path(tmp).resolve() / "company.zip"
+            result = bundle.build_bundle(root, destination)
+            self.assertEqual(result["status"], "exported", result)
+            loaded = bundle.load_bundle(destination)
+            self.assertEqual(sorted(n for n in loaded["files"] if n.startswith("review-queue/")),
+                             ["review-queue/archive/2026-01.json", "review-queue/archive/2026-02.json"])
+            bundle.validate_files(loaded["manifest"], loaded["files"])
+            restored = Path(tmp).resolve() / "restored"
+            for name, data in loaded["files"].items():
+                (restored / name).parent.mkdir(parents=True, exist_ok=True)
+                (restored / name).write_bytes(data)
+            self.assertEqual([i["source_id"] for i in queue.list_queue_items(load_entity(restored))],
+                             [i["source_id"] for i in queue.list_queue_items(entity)])
+
+
+class AccountCheckTests(unittest.TestCase):
+    def test_account_removal_does_not_scan_decided_items_in_an_archive(self):
+        from bookkeeping import account_remove
+        with tempfile.TemporaryDirectory() as tmp:
+            entity = _make_entity(Path(tmp))
+            store = LedgerStore(entity.path / "ledger.sqlite")
+            item = {"source_id": "a", "status": "confirmed", "confirmed_category": "Expenses:Software"}
+            loose = {"review-queue/a.json": item}
+            archived = {"review-queue/archive/2026-01.json": {"version": 1, "items": {"a.json": item}}}
+            catalog = {"Expenses:Software", "Expenses:Office"}
+            # A decided item was never scanned as a file, and is not scanned in an archive.
+            self.assertEqual(account_remove.references(loose, store, "Expenses:Software", catalog), [])
+            self.assertEqual(account_remove.references(archived, store, "Expenses:Software", catalog), [])
+            # An open item still counts.
+            opened = {"review-queue/b.json": {**item, "source_id": "b", "status": "open", "proposed_category": "Expenses:Software"}}
+            self.assertTrue(account_remove.references(opened, store, "Expenses:Software", catalog))
+
+
+if __name__ == "__main__":
+    unittest.main()

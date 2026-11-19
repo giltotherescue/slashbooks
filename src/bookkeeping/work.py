@@ -264,8 +264,20 @@ def _load_queue(directory: Path) -> dict[str, dict]:
     items: dict[str, dict] = {}
     if not directory.is_dir():
         return items
+    # Files first, archives second: a move writes the archive before it removes a file, so an item that leaves its file
+    # during this read is found in the archive. An item file is newer than an archive entry of the same name.
+    named: dict[str, Any] = {}
     for path in sorted(directory.glob("*.json")):
-        item = _queue_item(_read_json(path))
+        raw = _read_json(path)
+        if raw is not None or path.exists():
+            named[path.name] = raw
+    for path in sorted((directory / "archive").glob("*.json")):
+        document = _read_json(path)
+        entries = document.get("items") if isinstance(document, dict) else None
+        for name, raw in (entries.items() if isinstance(entries, dict) else ()):
+            named.setdefault(name, raw)
+    for _, raw in sorted(named.items()):  # the order of the file names, as for item files alone
+        item = _queue_item(raw)
         if item is not None:
             items[item["id"]] = item
     return items

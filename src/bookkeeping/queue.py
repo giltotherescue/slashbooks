@@ -80,6 +80,7 @@ Learned-context schema (learned-context/counterparties.json)
 }
 """
 
+import copy
 import hashlib
 import json
 import os
@@ -110,6 +111,10 @@ from .brand import product_name
 _QUEUE_DIR = "review-queue"
 _QUARANTINE_DIR = "review-queue/quarantine"
 _QUEUE_TRANSACTION_DIR = "review-queue/.transactions"
+_ARCHIVE_DIR = "review-queue/archive"
+# A decided item never changes again unless a person corrects it. The archive holds only these.
+CLOSED_QUEUE_STATUSES = frozenset({"confirmed", "corrected"})
+_ARCHIVE_VERSION = 1
 _LEARNED_CONTEXT_FILE = "learned-context/counterparties.json"
 _PENDING_CATEGORIZATION_FILE = "staging/pending-categorization.json"
 STRIPE_CLEANUP_HOLD_REASON = "cleanup_needs_review"
@@ -730,6 +735,114 @@ def _quarantine_dir(entity: Entity) -> Path:
     return entity.path / _QUARANTINE_DIR
 
 
+def _archive_dir(entity: Entity) -> Path:
+    return entity.path / _ARCHIVE_DIR
+
+
+def _archive_name(month: str) -> str:
+    return f"{month}.json"
+
+
+def _item_month(item: dict) -> str:
+    """The archive a decided item belongs to: the month of its date, or ``undated``."""
+    value = item.get("date")
+    month = value[:7] if isinstance(value, str) else ""
+    return month if re.fullmatch(r"\d{4}-\d{2}", month) else "undated"
+
+
+def _archive_bytes(items: dict[str, dict]) -> bytes:
+    """The bytes of one archive. The same items always give the same bytes."""
+    document = {"version": _ARCHIVE_VERSION, "items": items}
+    return (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+
+
+_ARCHIVE_ITEM_NAME = re.compile(r"[^/\x00-\x1f\\.][^/\x00-\x1f\\]*\.json")
+# One parse for each archive content, kept for the life of the process. The key is the path and the SHA-256 of the bytes that were
+# read, so a change of equal size with a preserved modification time can never return stale content.
+_ARCHIVE_CACHE: dict[tuple[str, str], dict[str, dict]] = {}
+
+
+def _read_archive_file(path: Path) -> dict[str, dict]:
+    """The items of one archive file. Raises ValueError when the file is not a valid archive.
+
+    The returned dictionary is shared through the cache: a caller never changes it and never returns it to a caller of its own
+    (use ``_archived_items`` and ``_archived_item``, which return copies). The bytes are read between two checks of the file
+    signature. A file that changes while it is read (a writer replaced it) is read again, and a file that keeps changing is
+    refused, so a read never uses a half-written or mixed state.
+    """
+    for _ in range(3):
+        try:
+            with path.open("rb") as handle:
+                before = os.fstat(handle.fileno())
+                data = handle.read()
+                after = os.fstat(handle.fileno())
+            current = path.stat()
+        except OSError as exc:
+            raise ValueError(f"Queue archive {path.name} is unreadable: {exc}") from exc
+        signature = (before.st_mtime_ns, before.st_size, before.st_ino)
+        if signature != (after.st_mtime_ns, after.st_size, after.st_ino) or len(data) != before.st_size \
+                or signature != (current.st_mtime_ns, current.st_size, current.st_ino):
+            continue
+        key = (str(path), hashlib.sha256(data).hexdigest())
+        cached = _ARCHIVE_CACHE.get(key)
+        if cached is not None:
+            return cached
+        try:
+            document = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError(f"Queue archive {path.name} is unreadable: {exc}") from exc
+        items = document.get("items") if isinstance(document, dict) else None
+        if (not isinstance(document, dict) or set(document) != {"version", "items"} or document["version"] != _ARCHIVE_VERSION
+                or not isinstance(items, dict)
+                or not all(isinstance(name, str) and _ARCHIVE_ITEM_NAME.fullmatch(name) and isinstance(value, dict)
+                           and "source_id" in value and "status" in value for name, value in items.items())):
+            raise ValueError(f"Queue archive {path.name} is not valid.")
+        if len(_ARCHIVE_CACHE) > 256:
+            _ARCHIVE_CACHE.clear()
+        _ARCHIVE_CACHE[key] = items
+        return items
+    raise ValueError(f"Queue archive {path.name} changed while it was read.")
+
+
+def _archive_files(entity: Entity) -> list[Path]:
+    directory = _archive_dir(entity)
+    return sorted(directory.glob("*.json")) if directory.is_dir() else []
+
+
+def _archived_items(entity: Entity, *, strict: bool = False) -> tuple[dict[str, dict], list[tuple[Path, Exception]]]:
+    """Every decided item that sits in an archive, by file name, and the archives that could not be read.
+
+    With ``strict`` an unreadable archive raises. A read that lists the queue reports it instead (see list_queue_items).
+    """
+    found: dict[str, dict] = {}
+    broken: list[tuple[Path, Exception]] = []
+    for path in _archive_files(entity):
+        try:
+            found.update(copy.deepcopy(_read_archive_file(path)))
+        except (ValueError, OSError) as exc:
+            if strict:
+                raise ValueError(str(exc)) from exc
+            broken.append((path, exc))
+    return found, broken
+
+
+def _archived_item(entity: Entity, item_id: str) -> Optional[dict]:
+    """A copy of the decided item of this id from an archive, or None.
+
+    An archive that cannot be read raises ValueError: a lookup never treats a broken archive as "not there".
+    """
+    name = _item_path(entity, item_id).name
+    for path in _archive_files(entity):
+        items = _read_archive_file(path)
+        if name in items:
+            return copy.deepcopy(items[name])
+    return None
+
+
+def _item_exists(entity: Entity, item_id: str) -> bool:
+    return _item_path(entity, item_id).exists() or _archived_item(entity, item_id) is not None
+
+
 def _item_path(entity: Entity, item_id: str) -> Path:
     return _queue_dir(entity) / f"{_sanitize_filename(item_id)}.json"
 
@@ -742,6 +855,9 @@ def _load_item(entity: Entity, item_id: str) -> dict:
     """
     path = _item_path(entity, item_id)
     if not path.exists():
+        archived = _archived_item(entity, item_id)
+        if archived is not None:
+            return archived
         raise FileNotFoundError(f"Queue item '{item_id}' not found at {path}")
     return _load_item_from_path(entity, path)
 
@@ -788,6 +904,9 @@ def read_queue_item(entity: Entity, item_id: str) -> dict:
     if recovery is not None and (recovery_ids is None or path.name in recovery_files):
         return {**recovery, "source_id": item_id}
     if not path.exists():
+        archived = _archived_item(entity, item_id)
+        if archived is not None:
+            return archived
         raise FileNotFoundError(f"Queue item '{item_id}' not found at {path}")
     try:
         return _load_item_from_path(entity, path, quarantine_on_error=False)
@@ -1010,6 +1129,107 @@ def _save_item_group(entity: Entity, items: list[dict]) -> None:
         _remove_group_transaction(transaction)
 
 
+def compact_closed_items(entity: Entity) -> dict[str, int]:
+    """Move every decided item (confirmed or corrected) from its own file into the archive of its month.
+
+    A company that reviews every bank row keeps one small file for each row, and a file never leaves the folder. This
+    keeps the folder short: one archive file for each month, ``review-queue/archive/YYYY-MM.json``. Open items keep their
+    own files. Reads find a decided item in its archive, so nothing else changes: the ledger, the audit log and the reports
+    are the same, and a decided item can still be shown, corrected or checked.
+
+    An item file is always newer than an archive entry of the same name (a correction writes a file). This function
+    folds that file into the archive again, or drops the stale entry when the item is open again. Every archive is
+    written before any item file is removed, so an interrupted run loses nothing and the next run finishes the work.
+    A file that is not valid JSON, and the quarantine folder, are left as they are.
+
+    Returns the counts ``archived`` (files moved), ``files_removed`` and ``archives_written``.
+    """
+    with _queue_mutation(entity):
+        _archived_items(entity, strict=True)  # an archive that cannot be read stops the move before anything is written
+        directory = _archive_dir(entity)
+        q_dir = _queue_dir(entity)
+        loose: dict[str, dict] = {}
+        uncanonical: set[str] = set()
+        if q_dir.is_dir():
+            for path in sorted(q_dir.glob("*.json")):
+                try:
+                    raw = path.read_bytes()
+                    item = json.loads(raw)
+                except (OSError, ValueError):
+                    continue
+                if isinstance(item, dict) and "source_id" in item and "status" in item:
+                    # Only the exact bytes that _save_item writes move, so an archived item written as a file again is the same file.
+                    canonical = (json.dumps(item, indent=2, sort_keys=True) + "\n").encode() == raw
+                    loose[path.name] = item
+                    if not canonical:
+                        uncanonical.add(path.name)
+        closed = {name: item for name, item in loose.items()
+                  if item.get("status") in CLOSED_QUEUE_STATUSES and name not in uncanonical}
+        # What each archive holds now, and what it should hold.
+        current: dict[str, dict[str, dict]] = {}
+        for path in _archive_files(entity):
+            current[path.stem] = dict(_read_archive_file(path))
+        wanted = {month: {name: item for name, item in items.items() if name not in loose} for month, items in current.items()}
+        for name, item in closed.items():
+            wanted.setdefault(_item_month(item), {})[name] = item
+        written = 0
+        for month, items in sorted(wanted.items()):
+            target = directory / _archive_name(month)
+            if not items:
+                if month in current:
+                    target.unlink()
+                    written += 1
+                continue
+            if month in current and items == current[month]:
+                continue  # nothing changed in this month: no bytes are built and no file is written
+            _replace_group_destination(target, _archive_bytes(dict(sorted(items.items()))))
+            written += 1
+        # The archives are on disk (each file and its folder were synced when it was written). Sync the archive folder and
+        # the queue folder too, which holds the entry of a new archive folder, before any item file is removed.
+        # A retry after an interrupt finds the archives already written (written == 0) and still has files to remove: it syncs
+        # too, because the interrupted run may not have reached its syncs.
+        if written or closed:
+            if directory.is_dir():
+                _fsync_directory(directory)
+            _fsync_directory(q_dir)
+        for name in closed:
+            (q_dir / name).unlink()
+        if closed or written:
+            _fsync_directory(q_dir)
+        return {"archived": len(closed), "files_removed": len(closed), "archives_written": written}
+
+
+def load_all_items(entity: Entity) -> dict[str, dict]:
+    """Every readable queue item by file name: the files and the archives, a file winning over an archive entry.
+
+    One read for a caller that needs the whole queue more than once. Unreadable files are left out and never moved.
+    The quarantine folder is not part of the queue. An archive that cannot be read raises ValueError (never an empty queue).
+    Files are read first and archives second, so an item that moves into an archive during the read is not missed.
+    """
+    found: dict[str, dict] = {}
+    q_dir = _queue_dir(entity)
+    recovery_ids, recovery_files, recovery = _group_recovery_view(entity)
+    if recovery is not None and recovery_ids is None:
+        raise ValueError("Queue group recovery is required before the queue can be read as a whole.")
+    seen: set[str] = set()  # every file name in the queue folder, readable or not: a file is newer than an archive entry
+    if q_dir.is_dir():
+        for path in sorted(q_dir.glob("*.json")):
+            seen.add(path.name)
+            if path.name in recovery_files:
+                continue  # part of an unfinished group commit: not a whole state
+            try:
+                found[path.name] = _load_item_from_path(entity, path, quarantine_on_error=False)
+            except FileNotFoundError:
+                seen.discard(path.name)  # moved into an archive after it was listed
+            except (OSError, ValueError):
+                continue  # unreadable: left out, and its stale archive entry stays hidden
+    archived, _ = _archived_items(entity, strict=True)
+    for name, item in archived.items():
+        if name not in seen and name not in recovery_files:
+            found[name] = item
+    return dict(sorted(found.items()))
+
+
 def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]:
     """Return all (or filtered by status) queue items.
 
@@ -1021,19 +1241,37 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     recovery_ids, recovery_files, recovery = _group_recovery_view(entity)
     if recovery is not None and recovery_ids is None:
         return [recovery]
+    named: list[tuple[str, dict]] = []
+    loose: set[str] = set()  # the files seen in this read, whatever their status: a file is newer than an archive entry
     if q_dir.exists():
+        # Files first, archives second. A move writes the archive before it removes a file, so an item that leaves its file
+        # during this read is found in the archive that is read after it, and is never missed.
         for p in sorted(q_dir.glob("*.json")):
             if p.name in recovery_files:
                 continue
+            loose.add(p.name)
             try:
                 item = _load_item_from_path(entity, p, quarantine_on_error=False)
                 if (status is None or item.get("status") == status
                         or status == "actionable" and item.get("status") in ACTIONABLE_QUEUE_STATUSES):
-                    items.append(item)
-            except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError) as exc:
+                    named.append((p.name, item))
+            except FileNotFoundError:
+                loose.discard(p.name)  # moved into an archive after it was listed
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
                 # Corruption is always visible, even through an open-status
                 # filter, so a review read cannot report a falsely empty queue.
-                items.append(_corruption_diagnostic(p, exc))
+                named.append((p.name, _corruption_diagnostic(p, exc)))
+    # Decided items that were moved into month archives (compact_closed_items). A file is newer than an archive entry.
+    archived, broken = _archived_items(entity)
+    for name, item in archived.items():
+        if name in loose or name in recovery_files:
+            continue
+        if (status is None or item.get("status") == status
+                or status == "actionable" and item.get("status") in ACTIONABLE_QUEUE_STATUSES):
+            named.append((name, item))
+    for path, exc in broken:
+        named.append((path.name, _corruption_diagnostic(path, exc)))
+    items.extend(item for _, item in sorted(named, key=lambda pair: pair[0]))
 
     # Pending categorization is actionable review work even before an agent has
     # produced a proposal.  Surface it alongside queue files so `queue list
@@ -1715,6 +1953,8 @@ def _category_proposal_item(entity: Entity, txn: dict, category: str,
             existing_item = _load_item_from_path(entity, existing_path)
         except (ValueError, OSError):
             existing_item = {}
+    else:
+        existing_item = _archived_item(entity, source_id) or {}
     return {
         "source_id": source_id,
         "source_hashes": _proposal_source_hashes([txn]),
@@ -1880,7 +2120,7 @@ def _propose_split_unlocked(
     now = _now_iso()
     existing_path = _item_path(entity, source_id)
     existing_item: dict = {}
-    if existing_path.exists():
+    if _item_exists(entity, source_id):
         existing_item = _load_item(entity, source_id)
         if existing_item.get("status") not in ACTIONABLE_QUEUE_STATUSES | {"withdrawn"}:
             # A withdrawn suggestion may be replaced, as propose() already allows.
@@ -2526,7 +2766,7 @@ def _propose_transfer_unlocked(entity: Entity, source_ids: list[str], reasoning:
     item_id = _transfer_item_id(source_ids)
     existing_path = _item_path(entity, item_id)
     existing_item: dict[str, Any] = {}
-    if existing_path.exists():
+    if _item_exists(entity, item_id):
         existing_item = _load_item(entity, item_id)
         if existing_item.get("status") not in ACTIONABLE_QUEUE_STATUSES:
             raise ValueError("This transfer pair was already confirmed.")
@@ -3573,6 +3813,9 @@ def add_parser(subparsers: Any) -> None:
     corr_p.add_argument("--session", default="queue-session", dest="session_id", help="Session ID")
     corr_p.add_argument("--accrual-treatment", choices=["new_cash_event"], default=None,
                         help="Explicitly classify this accrual bank movement as a new current-period event")
+    compact_p = queue_sub.add_parser(
+        "compact", help="Move decided review items into one archive file for each month (review-queue/archive)")
+    compact_p.add_argument("--entity", required=True, help="Path to entity directory")
     withdraw_p = queue_sub.add_parser("withdraw", help="Withdraw an open proposal without posting it")
     withdraw_p.add_argument("--entity", required=True, help="Path to entity directory")
     withdraw_p.add_argument("--item", required=True, dest="item_id", help="Queue item ID")
@@ -3704,8 +3947,23 @@ def _collection_page(items: list[dict], args: Any, field: str, kind: str) -> dic
             "offset": offset, "total_count": len(items), "next_offset": end if end < len(items) else None}
 
 
+# A queue command after which the decided items move into their month archives (compact_closed_items).
+_COMPACTS_AFTER = frozenset({"confirm", "confirm-group", "confirm-split", "confirm-transfer", "correct"})
+
+
 def run(args: Any) -> int:
     """Dispatch queue or quarterly-review command."""
+    code = _run(args)
+    if code == 0 and getattr(args, "command", None) == "queue" and getattr(args, "queue_command", None) in _COMPACTS_AFTER:
+        # The command is done and committed. A failed move leaves the item files where they are, so it never fails the command.
+        try:
+            compact_closed_items(load_entity(args.entity))
+        except (OSError, ValueError) as exc:
+            print(f"Warning: decided review items were not archived: {exc}", file=sys.stderr)
+    return code
+
+
+def _run(args: Any) -> int:
     cmd = getattr(args, "command", None)
 
     if cmd == "quarterly-review":
@@ -3894,6 +4152,15 @@ def run(args: Any) -> int:
                 _print_error(exc)
                 return 1
 
+        elif qcmd == "compact":
+            try:
+                result = compact_closed_items(entity)
+            except (OSError, ValueError) as exc:
+                _print_error(exc)
+                return 1
+            print(f"Archived {result['archived']} decided review item(s) in {result['archives_written']} archive file(s).")
+            return 0
+
         elif qcmd == "withdraw":
             try:
                 item = withdraw(entity, args.item_id, args.note)
@@ -4049,7 +4316,7 @@ def run(args: Any) -> int:
                 item = read_queue_item(entity, args.item_id)
                 print(json.dumps(item, indent=2, sort_keys=True))
                 return 0
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, ValueError) as exc:
                 _print_error(exc)
                 return 1
 
