@@ -437,3 +437,319 @@ class CorrectionPathTests(CompanyFixture):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# The two texts of ``entries_append_only_no_overwrite``, frozen here on purpose. SCAN is the text that released
+# engines install: its source_id lookup does not repeat the partial index condition, so it reads every entry. INDEXED
+# repeats it. The tests below prove that both refuse exactly the same writes.
+SCAN_NO_OVERWRITE = (
+    "CREATE TRIGGER entries_append_only_no_overwrite BEFORE INSERT ON entries "
+    "WHEN EXISTS (SELECT 1 FROM entries WHERE id = NEW.id) OR (NEW.source_id IS NOT NULL AND NEW.source_id != '' "
+    "AND EXISTS (SELECT 1 FROM entries WHERE source_id = NEW.source_id)) "
+    "BEGIN SELECT RAISE(ABORT, 'entries rows are append-only: no replace'); END"
+)
+INDEXED_NO_OVERWRITE = SCAN_NO_OVERWRITE.replace(
+    "WHERE source_id = NEW.source_id)", "WHERE source_id = NEW.source_id AND source_id IS NOT NULL AND source_id != '')")
+WEAK_NO_OVERWRITE = SCAN_NO_OVERWRITE.replace("WHERE id = NEW.id", "WHERE id = NEW.id AND 0")
+
+
+def _use_trigger(conn: sqlite3.Connection, sql: str) -> None:
+    conn.execute("DROP TRIGGER entries_append_only_no_overwrite")
+    conn.execute(sql)
+    conn.commit()
+
+
+def _trigger_sql(conn: sqlite3.Connection, name: str = "entries_append_only_no_overwrite") -> str:
+    return " ".join(conn.execute("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?", (name,)).fetchone()[0].split())
+
+
+class _CountingStore(LedgerStore):
+    """A store whose connections count the SQLite virtual machine steps, triggers included."""
+
+    steps = 0
+
+    def connect(self) -> sqlite3.Connection:
+        conn = super().connect()
+
+        def tick() -> int:
+            _CountingStore.steps += 1
+            return 0
+        conn.set_progress_handler(tick, 1)
+        return conn
+
+
+DATE = "2026-01-15"
+# Each insert that ``entries_append_only_no_overwrite`` refused before this change. Entry 1 has source_id 'a'.
+REFUSED_INSERTS = (
+    f"INSERT INTO entries (id, date, narration) VALUES (1, '{DATE}', 'x')",
+    f"INSERT OR IGNORE INTO entries (id, date, narration) VALUES (1, '{DATE}', 'x')",
+    f"INSERT OR REPLACE INTO entries (id, date, narration, source_id) VALUES (1, '{DATE}', 'x', 'new')",
+    f"REPLACE INTO entries (id, date, narration) VALUES (1, '{DATE}', 'x')",
+    f"INSERT INTO entries (id, date, narration) VALUES (1, '{DATE}', 'x') ON CONFLICT(id) DO UPDATE SET narration = 'y'",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'a')",
+    f"INSERT OR IGNORE INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'a')",
+    f"INSERT OR REPLACE INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'a')",
+    f"REPLACE INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'b')",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'a') "
+    "ON CONFLICT(source_id) WHERE source_id IS NOT NULL AND source_id != '' DO UPDATE SET narration = 'y'",
+    "INSERT INTO entries (date, narration, source_id) SELECT date, narration, source_id FROM entries WHERE source_id = 'b'",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'n5')",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'c'), ('{DATE}', 'y', 'c')",
+)
+# Inserts that both triggers allow: new ids, repeated NULL and empty ids, and ids that differ only in case or spaces.
+ALLOWED_INSERTS = (
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'c')",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', NULL)",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', '')",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'A')",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'a ')",
+    f"INSERT INTO entries (date, narration) VALUES ('{DATE}', 'x')",
+    f"INSERT INTO entries (id, date, narration, source_id) VALUES (100, '{DATE}', 'x', 'd')",
+    f"INSERT OR REPLACE INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'e')",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 'f'), ('{DATE}', 'y', 'g')",
+)
+# Values whose type differs from the stored text. The outcome is whatever the earlier trigger gave; both must agree.
+EDGE_INSERTS = (
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 5)",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 5.0)",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', X'61')",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', X'')",
+    f"INSERT OR REPLACE INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', 5)",
+    f"INSERT INTO entries (date, narration, source_id) VALUES ('{DATE}', 'x', ' ')",
+)
+
+
+class NoOverwriteTriggerUsesTheIndexTests(unittest.TestCase):
+    """The index form finds a source_id by the index, and it refuses exactly the writes that the scan form refuses."""
+
+    def make_store(self, trigger: str) -> LedgerStore:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        store = LedgerStore(Path(tmp.name) / "ledger.sqlite")
+        store.initialize()
+        with store.connection() as conn:
+            _use_trigger(conn, trigger)
+            for source_id in ("a", "b", None, "", None, "", "5", "n5"):
+                conn.execute("INSERT INTO entries (date, narration, source_id) VALUES (?, 'seed', ?)", (DATE, source_id))
+            conn.commit()
+        return store
+
+    def outcome(self, store: LedgerStore, sql: str) -> tuple:
+        with store.connection() as conn:
+            try:
+                conn.execute(sql)
+            except sqlite3.Error as exc:
+                result: tuple = (type(exc).__name__, str(exc))
+            else:
+                result = ("ok", [tuple(row) for row in conn.execute(
+                    "SELECT id, narration, source_id, typeof(source_id) FROM entries ORDER BY id")])
+            conn.rollback()
+        return result
+
+    def test_the_frozen_texts_are_the_engine_texts_and_share_the_index_condition(self) -> None:
+        from bookkeeping.ledger.store import _DDL, _SOURCE_ID_INDEX_WHERE, _entries_no_overwrite, _normal_sql
+        index = " ".join(_DDL.split("CREATE UNIQUE INDEX IF NOT EXISTS entries_source_id_unique", 1)[1].split(";")[0].split())
+        self.assertTrue(index.endswith("WHERE " + _SOURCE_ID_INDEX_WHERE), index)
+        self.assertEqual(_normal_sql(_entries_no_overwrite(indexed=False)), SCAN_NO_OVERWRITE)
+        self.assertEqual(_normal_sql(_entries_no_overwrite(indexed=True)), INDEXED_NO_OVERWRITE)
+        self.assertIn(f"source_id = NEW.source_id AND {_SOURCE_ID_INDEX_WHERE}", INDEXED_NO_OVERWRITE)
+
+    def test_every_insert_has_the_same_outcome_with_the_scan_and_the_index_form(self) -> None:
+        scan, indexed = self.make_store(SCAN_NO_OVERWRITE), self.make_store(INDEXED_NO_OVERWRITE)
+        with scan.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+        with indexed.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), INDEXED_NO_OVERWRITE)
+        for sql in REFUSED_INSERTS + ALLOWED_INSERTS + EDGE_INSERTS:
+            with self.subTest(sql=sql):
+                self.assertEqual(self.outcome(indexed, sql), self.outcome(scan, sql))
+
+    def test_both_forms_refuse_each_overwrite_and_allow_each_new_row(self) -> None:
+        for trigger in (SCAN_NO_OVERWRITE, INDEXED_NO_OVERWRITE):
+            store = self.make_store(trigger)
+            for sql in REFUSED_INSERTS:
+                with self.subTest(trigger=trigger[-60:], sql=sql):
+                    self.assertEqual(self.outcome(store, sql),
+                                     ("IntegrityError", "entries rows are append-only: no replace"))
+            for sql in ALLOWED_INSERTS:
+                with self.subTest(trigger=trigger[-60:], sql=sql):
+                    self.assertEqual(self.outcome(store, sql)[0], "ok")
+
+    def steps(self, rows: int, trigger: str) -> tuple[int, int]:
+        """The VM steps of one entry insert and of one ``source_exists`` that finds nothing, at *rows* entries."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        store = _CountingStore(Path(tmp.name) / "ledger.sqlite")
+        store.initialize()
+        with store.connection() as conn:
+            _use_trigger(conn, INDEXED_NO_OVERWRITE)  # A fast seed, whatever the trigger under test.
+        with store.transaction() as conn:
+            conn.executemany("INSERT INTO entries (date, narration, source_id) VALUES (?, 'seed', ?)",
+                             [(DATE, f"seed-{i}") for i in range(rows)])
+        with store.connection() as conn:
+            _use_trigger(conn, trigger)
+            _CountingStore.steps = 0
+            conn.execute("INSERT INTO entries (date, narration, source_id) VALUES (?, 'x', 'new')", (DATE,))
+            insert = _CountingStore.steps
+            conn.rollback()
+        _CountingStore.steps = 0
+        self.assertFalse(store.source_exists("missing"))
+        return insert, _CountingStore.steps
+
+    def test_the_index_form_and_source_exists_do_not_grow_with_the_number_of_entries(self) -> None:
+        small_insert, small_lookup = self.steps(500, INDEXED_NO_OVERWRITE)
+        large_insert, large_lookup = self.steps(8000, INDEXED_NO_OVERWRITE)
+        # A read of every entry costs several steps for each row: thousands of steps at 8,000 entries.
+        self.assertLess(large_insert - small_insert, 100, (small_insert, large_insert))
+        self.assertLess(large_lookup - small_lookup, 100, (small_lookup, large_lookup))
+        scan_small, _ = self.steps(500, SCAN_NO_OVERWRITE)
+        scan_large, _ = self.steps(2500, SCAN_NO_OVERWRITE)
+        self.assertGreater(scan_large - scan_small, 2000)  # The scan form reads every entry: the count does grow.
+
+    def test_source_exists_gives_the_same_answers(self) -> None:
+        store = self.make_store(SCAN_NO_OVERWRITE)
+        with store.transaction() as conn:
+            store.insert_source_transactions([{"id": "bank-1"}], conn)
+        for source_id, expected in (("a", True), ("b", True), ("5", True), ("bank-1", True), ("A", False),
+                                    ("missing", False), ("", True)):
+            with self.subTest(source_id=source_id):
+                self.assertIs(store.source_exists(source_id), expected)
+        empty = self.make_store(SCAN_NO_OVERWRITE)
+        with empty.connection() as conn:
+            conn.execute("DROP TRIGGER entries_append_only_delete")
+            conn.execute("DELETE FROM entries WHERE source_id = ''")
+            conn.commit()
+        self.assertFalse(empty.source_exists(""))
+
+
+class SealedStoreCase(StoreCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.write("a")
+        with self.store.transaction() as conn:
+            self.store.append_audit_event("ledger-store-sealed", {
+                "session_id": "test", "entries": 1, "store_sha256": self.store.content_digest(conn)}, conn)
+
+    def state(self) -> tuple:
+        from bookkeeping.ledger.importer import check_store_integrity
+        with self.store.connection() as conn:
+            events = conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
+        return (self.store.content_digest(), self.store.audit_head(), events,
+                self.store.verify_audit_chain(), check_store_integrity(self.store).status)
+
+    def schema(self) -> tuple:
+        with self.store.connection() as conn:
+            return (conn.execute("PRAGMA schema_version").fetchone()[0],
+                    sorted(tuple(row) for row in conn.execute("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")))
+
+    def installs(self, action) -> int:
+        from unittest import mock
+        from bookkeeping.ledger import store as store_module
+        real, calls = store_module.install_append_only_guard, []
+
+        def spy(conn: sqlite3.Connection) -> None:
+            calls.append(1)
+            real(conn)
+        with mock.patch.object(store_module, "install_append_only_guard", spy):
+            action()
+        return len(calls)
+
+
+class AcceptedTriggerTextTests(SealedStoreCase):
+    """Reader step: both texts are valid. A store moves between engines that install either one with no change."""
+
+    def test_a_new_store_gets_the_scan_form_that_released_engines_install(self) -> None:
+        with self.store.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+
+    def test_a_store_with_either_text_opens_with_no_reinstall_and_no_schema_change(self) -> None:
+        from bookkeeping.hosted_migration import _schema
+        from bookkeeping.ledger.store import append_only_guard_outdated
+        for trigger in (INDEXED_NO_OVERWRITE, SCAN_NO_OVERWRITE):
+            with self.subTest(trigger=trigger[-60:]):
+                with self.store.connection() as conn:
+                    _use_trigger(conn, trigger)
+                before, schema = self.state(), self.schema()
+                self.assertEqual(before[3:], ([], "ok"))
+                with self.store.connection() as conn:
+                    self.assertEqual(append_only_guard_problems(conn), [])
+                    self.assertFalse(append_only_guard_outdated(conn))
+                    _schema(conn)  # The hosted migration check accepts it.
+                self.assertEqual(self.installs(lambda: [self.store.initialize() for _ in range(3)]), 0)
+                self.assertEqual(self.schema(), schema)  # Same text, same PRAGMA schema_version.
+                self.assertEqual(self.state(), before)
+                with self.store.connection() as conn:
+                    self.assertEqual(_trigger_sql(conn), trigger)
+
+    def test_a_changed_trigger_is_replaced_once_under_the_entity_write_lock(self) -> None:
+        from unittest import mock
+        from bookkeeping.ledger import importer, store as store_module
+        with self.store.connection() as conn:
+            _use_trigger(conn, WEAK_NO_OVERWRITE)
+            self.assertEqual(append_only_guard_problems(conn),
+                             ["Append-only trigger entries_append_only_no_overwrite was changed."])
+        before = self.state()
+        real, held = store_module.install_append_only_guard, []
+
+        def spy(conn: sqlite3.Connection) -> None:
+            held.append(Path(self.tmp.name).resolve() in importer._held_entity_locks.get())
+            real(conn)
+        with mock.patch.object(store_module, "install_append_only_guard", spy):
+            for _ in range(3):
+                self.store.initialize()
+        self.assertEqual(held, [True])
+        self.assertFalse((Path(self.tmp.name) / "entity.json").exists())  # The lock repairs no company file.
+        with self.store.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+            self.assertEqual(append_only_guard_problems(conn), [])
+        self.assertEqual(self.state(), before)  # No row, no audit event and no seal changed.
+
+    def test_a_failed_install_keeps_the_trigger_that_was_there(self) -> None:
+        class Failing(sqlite3.Connection):
+            def execute(self, sql, *args):  # type: ignore[override]
+                if sql.startswith("CREATE TRIGGER IF NOT EXISTS entries_append_only_no_overwrite"):
+                    raise sqlite3.OperationalError("disk I/O error")
+                return super().execute(sql, *args)
+        with self.store.connection() as conn:
+            _use_trigger(conn, WEAK_NO_OVERWRITE)
+        conn = sqlite3.connect(self.store.path, factory=Failing)
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                install_append_only_guard(conn)
+            self.assertFalse(conn.in_transaction)
+        finally:
+            conn.close()
+        with self.store.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), WEAK_NO_OVERWRITE)
+
+    def test_inside_a_caller_transaction_the_install_commits_nothing(self) -> None:
+        with self.store.connection() as conn:
+            _use_trigger(conn, WEAK_NO_OVERWRITE)
+            conn.execute("BEGIN IMMEDIATE")
+            install_append_only_guard(conn)
+            self.assertTrue(conn.in_transaction)
+            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+            conn.rollback()
+            self.assertEqual(_trigger_sql(conn), WEAK_NO_OVERWRITE)
+
+    def test_a_read_only_store_keeps_its_trigger_and_still_opens(self) -> None:
+        import os
+        import stat
+        with self.store.connection() as conn:
+            _use_trigger(conn, WEAK_NO_OVERWRITE)
+        path = self.store.path
+        mode = path.stat().st_mode
+        os.chmod(path, stat.S_IRUSR)
+        self.addCleanup(os.chmod, path, mode)
+        if os.access(path, os.W_OK):
+            self.skipTest("this user can write a read-only file")
+        self.store.initialize()
+        with self.store.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), WEAK_NO_OVERWRITE)
+
+    def test_the_hosted_migration_check_refuses_a_trigger_with_other_rules(self) -> None:
+        from bookkeeping.hosted_migration import Rejected, _schema
+        with self.store.connection() as conn:
+            _use_trigger(conn, WEAK_NO_OVERWRITE)
+            with self.assertRaises(Rejected):
+                _schema(conn)

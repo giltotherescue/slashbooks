@@ -302,11 +302,12 @@ def _schema(sql):
         require({row[0] for row in sql.execute("SELECT name FROM sqlite_master WHERE type='table'")} == tables,
                 "unsupported_schema")
         require(not sql.execute("SELECT 1 FROM sqlite_master WHERE type='view'").fetchone(), "unsupported_schema")
-        # Only the engine's own append-only triggers are allowed, with the exact SQL that the engine installs.
-        from .ledger.store import _append_only_guard_ddl
-        allowed = {name: " ".join(ddl.replace(" IF NOT EXISTS", "", 1).split()) for name, ddl in _append_only_guard_ddl().items()}
+        # Only the engine's own append-only triggers are allowed, with the exact SQL that the engine installs or an
+        # equivalent SQL that refuses the same writes (``accepted_guard_sql``).
+        from .ledger.store import accepted_guard_sql
+        allowed = accepted_guard_sql()
         for name, ddl in sql.execute("SELECT name, sql FROM sqlite_master WHERE type='trigger'"):
-            require(name in allowed and " ".join(str(ddl).split()) == allowed[name], "unsupported_schema")
+            require(name in allowed and " ".join(str(ddl).split()) in allowed[name], "unsupported_schema")
         for table in sorted(tables):
             require([tuple(row) for row in sql.execute(f'PRAGMA table_info("{table}")')] ==
                     list(expected.execute(f'PRAGMA table_info("{table}")')), "unsupported_schema")

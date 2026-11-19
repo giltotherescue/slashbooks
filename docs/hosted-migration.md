@@ -239,6 +239,12 @@ checked by the next call.
   watermark holds the posting id and a hash of that row and of its entry. Even so, reset both checkpoints with the
   full checks after any restore.
 - The append-only triggers must be present the whole time. Run `append_only_guard_problems` with each check.
+- A trigger can have more than one valid text when the texts refuse exactly the same writes (for example, a text
+  that lets SQLite use an index). `append_only_guard_problems`, the migration check and the engine accept each
+  valid text and never replace one valid text with another. Any other text is a problem. The engine installs a
+  missing or changed trigger the first time that it opens a store for writing, in one transaction under the
+  company write lock, and it writes no row, no audit event and no seal (the triggers are not part of
+  `content_digest`).
 - `meta`, `accounts` and `source_transactions` have no triggers. `books entity account-rename` relabels posted
   rows. The relabel is allowed only while its hash-chained `account-renamed` event is the newest audit event,
   and that event names the exact old and new account. When a new `account-renamed` event is in the links that
