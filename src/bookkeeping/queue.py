@@ -453,14 +453,20 @@ def load_learned_context(entity: Entity) -> dict[str, dict]:
         return {}
 
 
-def _save_learned_context(entity: Entity, ctx: dict[str, dict]) -> None:
-    """Atomically write the learned context (sorted keys for readability)."""
+def _save_learned_context(entity: Entity, ctx: dict[str, dict], key: str | None = None) -> None:
+    """Atomically write the learned context (sorted keys for readability).
+
+    ``key`` names the one counterparty that the caller changed after it loaded the file under the same lock. A change
+    set capture then needs no read of the file.
+    """
     with _queue_mutation(entity):
         p = _learned_context_path(entity)
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(ctx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(str(tmp), str(p))
+        delta = {"upsert": {str(key): ctx[key]}} if key is not None and key in ctx else None
+        with capture_log.writing(p, delta=delta):
+            tmp.write_text(json.dumps(ctx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(str(tmp), str(p))
 
 
 def _counterparty_key(description: str, counterparty: str) -> str:
@@ -592,7 +598,7 @@ def set_taught(entity: Entity, key: str, category: str, *, by: str, by_name: str
             taught["previous"] = {k: current[k] for k in _TAUGHT_KEYS[:-1] if k in current}
         entry["taught"] = taught
         ctx[key] = entry
-        _save_learned_context(entity, ctx)
+        _save_learned_context(entity, ctx, key)
         return taught
 
 
@@ -614,7 +620,7 @@ def clear_taught(entity: Entity, key: str, instruction_id: str) -> Optional[dict
         else:
             entry.pop("taught", None)
         ctx[key] = entry
-        _save_learned_context(entity, ctx)
+        _save_learned_context(entity, ctx, key)
         return entry.get("taught")
 
 
@@ -1178,12 +1184,19 @@ def compact_closed_items(entity: Entity) -> dict[str, int]:
             target = directory / _archive_name(month)
             if not items:
                 if month in current:
-                    target.unlink()
+                    with capture_log.writing(target, delta={"remove": list(current[month])}):
+                        target.unlink()
                     written += 1
                 continue
             if month in current and items == current[month]:
                 continue  # nothing changed in this month: no bytes are built and no file is written
-            _replace_group_destination(target, _archive_bytes(dict(sorted(items.items()))))
+            delta = None
+            if capture_log.active():  # The names that change, for a change set capture: its cost follows them.
+                before = current.get(month, {})
+                delta = {"upsert": {name: item for name, item in items.items() if before.get(name) != item},
+                         "remove": [name for name in before if name not in items]}
+            with capture_log.writing(target, delta=delta):
+                _replace_group_destination(target, _archive_bytes(dict(sorted(items.items()))))
             written += 1
         # The archives are on disk (each file and its folder were synced when it was written). Sync the archive folder and
         # the queue folder too, which holds the entry of a new archive folder, before any item file is removed.
@@ -3143,7 +3156,7 @@ def _update_learned_context(
     ctx[counterparty_key] = entry
     if operation_hash:
         ctx[counterparty_key]["last_operation_hash"] = operation_hash
-    _save_learned_context(entity, ctx)
+    _save_learned_context(entity, ctx, counterparty_key)
 
 
 # ---------------------------------------------------------------------------

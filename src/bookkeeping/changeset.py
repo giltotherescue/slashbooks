@@ -751,6 +751,9 @@ class ChangeSetCapture:
     base_revision: int | None = None
     change_set: dict[str, Any] = field(default_factory=dict)
     failed: bool = False
+    #: Which path the capture took: ``mode`` (``incremental`` or ``full-comparison``) and the parts that it read in
+    #: full, with the reason. It is not part of the document.
+    path_report: dict[str, Any] = field(default_factory=dict)
 
 
 @contextmanager
@@ -797,6 +800,7 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
         raise
     finally:
         holder.change_set = _finish(before, holder, run)
+        holder.path_report = run.report if run is not None else {"mode": "full-comparison", "fallbacks": [], "rebuilt": []}
 
 
 def _finish(before: "_Side | None", holder: ChangeSetCapture, run: Any = None) -> dict[str, Any]:

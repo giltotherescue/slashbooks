@@ -27,12 +27,16 @@ _SESSIONS: list["Session"] = []
 
 
 def signature(path: Path | str) -> list[int] | None:
-    """Modification time (ns), size and inode of a file, or ``None`` when it does not exist."""
+    """Modification time (ns), size, inode and change time (ns) of a file, or ``None`` when it does not exist.
+
+    The change time moves with every write and cannot be set back, so an edit of the same length with the old
+    modification time restored (``os.utime``) still gives another signature.
+    """
     try:
         status = os.stat(path)
     except OSError:
         return None
-    return [status.st_mtime_ns, status.st_size, status.st_ino]
+    return [status.st_mtime_ns, status.st_size, status.st_ino, status.st_ctime_ns]
 
 
 class FileLog:

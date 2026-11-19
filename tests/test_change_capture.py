@@ -246,8 +246,7 @@ class FallbackTests(Fixture):
     def test_a_replaced_log_table_is_not_trusted(self) -> None:
         def action() -> None:
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
-                conn.execute(f"DELETE FROM {change_capture.CTL_TABLE}")
-                conn.execute(f"INSERT INTO {change_capture.CTL_TABLE} (token) VALUES ('forged')")
+                conn.execute(f"UPDATE {change_capture.CTL_TABLE} SET token = 'forged'")
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                 conn.commit()
 
@@ -319,6 +318,184 @@ class FallbackTests(Fixture):
         self.assertFalse(receipt.change_set["complete"])
         self.assertEqual(receipt.change_set["reason"], "state_unreadable")
         self.assertEqual(capture_objects(self.entity), [])
+
+
+class TamperTests(Fixture):
+    """Edits that try to hide a change from the capture. Every one must give the document of a full comparison."""
+
+    def drop_capture_triggers(self, conn: sqlite3.Connection, suffixes: tuple[str, ...]) -> None:
+        for _, name in capture_objects(self.entity):
+            if name.endswith(suffixes):
+                conn.execute(f'DROP TRIGGER IF EXISTS "{name}"')
+
+    def test_the_log_refuses_an_edit_and_a_delete(self) -> None:
+        with changeset.capture(self.entity):
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+                for sql in (f"DELETE FROM {change_capture.LOG_TABLE}", f"UPDATE {change_capture.LOG_TABLE} SET key = 'x'"):
+                    with self.subTest(sql=sql), self.assertRaises(sqlite3.DatabaseError):
+                        conn.execute(sql)
+                    conn.rollback()
+                self.assertGreater(conn.execute(f"SELECT COUNT(*) FROM {change_capture.LOG_TABLE}").fetchone()[0], 0)
+
+    def test_a_log_row_that_is_removed_after_the_triggers_are_dropped_is_a_gap(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+                self.drop_capture_triggers(conn, ("log_d", "log_u"))
+                conn.execute(f"DELETE FROM {change_capture.LOG_TABLE}")
+                conn.commit()
+
+        document = self.both(action)
+        self.assertEqual([(row["source_id"], row["change"]) for row in document["bank_rows"]],
+                         [("cs-001", "status-changed")])
+
+    def test_a_log_row_that_is_edited_after_the_triggers_are_dropped_is_found(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+                self.drop_capture_triggers(conn, ("log_d", "log_u"))
+                conn.execute(f"UPDATE {change_capture.LOG_TABLE} SET key = 'elsewhere'")
+                conn.commit()
+
+        document = self.both(action)
+        self.assertTrue(document["bank_rows"])
+
+    def test_a_log_that_is_dropped_and_made_again_is_not_trusted(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+                self.drop_capture_triggers(conn, ("log_d", "log_u"))
+                conn.execute(f"DROP TABLE {change_capture.LOG_TABLE}")
+                conn.execute(f"CREATE TABLE {change_capture.LOG_TABLE} (seq INTEGER PRIMARY KEY AUTOINCREMENT, "
+                             "tbl TEXT NOT NULL, key TEXT NOT NULL)")
+                conn.commit()
+
+        self.both(action)
+
+    def test_an_edit_of_the_same_length_with_the_old_modification_time_is_found(self) -> None:
+        import os
+        self.seq.cli("propose", "queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002",
+                     "--category", "Income:Consulting", "--reasoning", "Payout.")
+        targets = {
+            "seen": self.entity / "staging" / "seen-ids.json",
+            "item": self.entity / "review-queue" / "cs-002.json",
+            "pending": self.entity / "staging" / "pending-categorization.json",
+        }
+        self.both(lambda: None)
+        for label, path in targets.items():
+            with self.subTest(label):
+                original = path.read_bytes()
+                status = path.stat()
+                if label == "seen":
+                    edited = original.replace(b"cs-001", b"cs-00x", 1)
+                elif label == "item":
+                    edited = original.replace(b"Payout.", b"Payoff.", 1)
+                else:
+                    edited = original.replace(b"cs-003", b"cs-00y", 1)
+                self.assertEqual(len(edited), len(original))
+                self.assertNotEqual(edited, original)
+
+                def action() -> None:
+                    path.write_bytes(edited)
+                    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns))  # The old modification time is back.
+
+                with changeset.capture(self.entity, incremental=False) as full:
+                    with changeset.capture(self.entity) as fast:
+                        action()
+                self.assertTrue(fast.change_set["changed"], label)
+                self.assertEqual(fast.change_set, full.change_set)
+                path.write_bytes(original)
+                os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns))
+                self.both(lambda: None)
+
+    def test_an_index_that_is_deleted_or_restored_during_the_command_gives_an_incomplete_change_set(self) -> None:
+        import shutil
+        index = self.entity / change_capture.INDEX_NAME
+        self.both(lambda: None)
+        old = self.root / "old-index.sqlite"
+        with changeset.capture(self.entity) as receipt:
+            pass
+        shutil.copyfile(index, old)
+        cases = {
+            "deleted": lambda: [p.unlink() for p in self.entity.glob(change_capture.INDEX_NAME + "*")],
+            "restored": lambda: shutil.copyfile(old, index),
+            "replaced": lambda: (index.unlink(), index.write_bytes(old.read_bytes())),
+        }
+        for label, action in cases.items():
+            with self.subTest(label):
+                with changeset.capture(self.entity) as receipt:
+                    StagingStore(self.entity / "staging").mark_seen("while-index-changes-" + label)
+                    action()
+                self.assertFalse(receipt.change_set["complete"], label)
+                self.assertEqual(receipt.change_set["reason"], "state_unreadable")
+                with self.assertRaises(changeset.ChangeSetRefused):
+                    changeset.apply_change_set(self.seq.view, receipt.change_set)
+                self.seq.view = changeset.read_view(self.entity, revision=self.seq.view["revision"])
+                self.both(lambda: None)  # The next capture builds the index again and is complete.
+
+    def test_a_strict_file_with_a_bad_member_gives_an_incomplete_change_set(self) -> None:
+        path = self.entity / "staging" / "seen-ids.json"
+        path.write_text(json.dumps(["cs-001", None]), encoding="utf-8")
+        with changeset.capture(self.entity) as receipt:
+            pass
+        self.assertFalse(receipt.change_set["complete"])
+        self.assertEqual(receipt.change_set["reason"], "state_unreadable")
+        self.assertEqual(capture_objects(self.entity), [])
+
+    def test_a_null_payload_hashes_as_it_is_and_matches_the_reducer(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) "
+                             "VALUES ('p-null', 'null', 'posted', '2026-10-01T00:00:00Z')")
+                conn.commit()
+
+        document = self.both(action)  # ``both`` applies it: the reducer checks the payload hash and the digest.
+        row = next(row for row in document["bank_rows"] if row["source_id"] == "p-null")
+        self.assertEqual(row["payload_sha256"], changeset.payload_digest(row["row"]))
+
+
+class ArchiveTests(Fixture):
+    def setUp(self) -> None:
+        super().setUp()
+        folder = self.entity / "review-queue" / "archive"
+        self.assertTrue(list(folder.glob("*.json")))
+        # Many archived months.
+        for month in range(24):
+            name = f"2020-{1 + month % 12:02d}" if month < 12 else f"2021-{1 + month % 12:02d}"
+            items = {f"old-{name}-{n}.json": {"source_id": f"old-{name}-{n}", "status": "confirmed",
+                                               "date": f"{name}-10"} for n in range(30)}
+            (folder / f"{name}.json").write_bytes(queue._archive_bytes(dict(sorted(items.items()))))
+        self.seq.view = changeset.read_view(self.entity, revision=self.seq.view["revision"])
+        self.both(lambda: None)
+
+    def test_an_approve_reads_only_the_journaled_names_of_its_archive(self) -> None:
+        self.seq.cli("propose", "queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002",
+                     "--category", "Income:Consulting", "--reasoning", "Payout.")
+        revision = self.seq.view["revision"]
+        boom = mock.Mock(side_effect=AssertionError("an archive was read by the capture"))
+        with mock.patch.object(change_capture, "_archive_reader", return_value=boom), \
+                mock.patch.object(changeset, "load_queue_files", side_effect=AssertionError("queue read in full")):
+            with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision) as receipt:
+                run_cli(["queue", "confirm", "--entity", str(self.entity), "--item", "cs-002"])
+        self.assertTrue(receipt.change_set["complete"])
+        self.assertEqual(receipt.change_set["staging"]["pending"]["removed"], ["cs-002"])
+        self.assertEqual([row["id"] for row in receipt.change_set["review_queue"]], ["cs-002"])
+        self.assertEqual(receipt.path_report["mode"], "incremental")
+        self.assertEqual(receipt.path_report["fallbacks"], [])
+        self.seq._apply("approve", receipt.change_set)
+
+    def test_a_change_to_one_archive_does_not_touch_the_rows_of_another(self) -> None:
+        archive = self.entity / "review-queue" / "archive" / "2020-03.json"
+        raw = json.loads(archive.read_text(encoding="utf-8"))
+        name = sorted(raw["items"])[0]
+        raw["items"][name] = {**raw["items"][name], "reasoning": "Edited by hand."}
+        document = self.both(lambda: archive.write_text(json.dumps(raw), encoding="utf-8"))
+        self.assertEqual([row["id"] for row in document["review_queue"]], [raw["items"][name]["source_id"]])
 
 
 class CostTests(Fixture):

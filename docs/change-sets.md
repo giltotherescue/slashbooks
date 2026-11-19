@@ -246,9 +246,9 @@ part that it cannot prove.
 |---|---|---|
 | Ledger entries, postings, balance assertions, audit events | Row ids above the saved position. The digest adds the hash of each new row to the saved total. | A broken audit chain gives `reset`. A reset, an account rename (it relabels posted rows), an audit chain that moved back, and a store without the append-only triggers make the capture read the whole ledger for the digest. |
 | Accounts and source transactions (`bank_rows`) | A log table and triggers in `ledger.sqlite`, added before the command and removed after. They fire for every connection and write only the key of each written row to the log. The capture reads only those rows. | The capture reads both tables in full when the log is not the log of this run (the store was replaced, the triggers were changed or dropped, the store could not take them). |
-| Review queue items and month archives | One `stat` for each item file and each archive file. The capture reads the files that differ from the saved copy. A decided item that moves into an archive is not a change. | Two names with one source id, an unfinished group journal, or a file name that does not follow its source id: the capture reads the whole queue. |
-| `seen-ids.json`, `pending-categorization.json` | The engine's write helpers journal the ids that they add or remove (`capture_log.writing`). The capture does not read the file. | A write that is not in the journal, or that left another file signature than the last journaled write: the capture reads the file. |
-| `pending.json`, `duplicate-candidates.json`, `context-history.json`, the documents, learned context | The signature of the file. A changed file is read and compared with the saved copy. | None needed. |
+| Review queue items and month archives | One `stat` for each item file and each archive file. The capture reads the item files that differ from the saved copy. The helper that writes an archive journals the names that it changed, so the capture does not read the archive. A decided item that moves into an archive is not a change. | Two names with one source id, an unfinished group journal, or a file name that does not follow its source id: the capture reads the whole queue. |
+| `seen-ids.json`, `pending-categorization.json`, learned context | The engine's write helpers journal the ids that they add or remove (`capture_log.writing`). The capture does not read the file. | A write that is not in the journal, or that left another file signature than the last journaled write: the capture reads the file. |
+| `pending.json`, `duplicate-candidates.json`, `context-history.json`, the documents | The signature of the file. A changed file is read and compared with the saved copy. | None needed. |
 | `state.before`, `state.after` | Totals that the saved copy keeps for each section (count and sum of row hashes). | A part whose signature is not the signature at the end of the last capture is read in full once. |
 
 The saved copy is the file `.change-capture.sqlite` in the company folder. It
@@ -259,6 +259,21 @@ command reads the books in full. A command that runs without `--change-set-out`
 does not update the file. The next capture then notices the changed signatures
 and reads the changed parts in full once. The file has no authority: a person can
 delete it. It holds copies of company rows, so it is as private as the folder.
+
+The log is append-only for the capture. Its rows have numbers (`AUTOINCREMENT`),
+and triggers refuse an edit or a delete. At the end the capture checks that the
+log table is the table that it made (token and root page), that every capture
+trigger is present with its exact text, and that the numbers run from 1 to the
+number in `sqlite_sequence` without a gap. Any fault gives a full read of the
+accounts and the source transactions.
+
+A file signature is the modification time, the size, the inode and the change
+time. The change time cannot be set back, so an edit of the same length with the
+old modification time restored still shows. The index holds a random generation
+id that changes at each capture, and the capture checks the inode, the change
+time and the generation of the index file at the start and the end. If the index
+was deleted, restored or replaced during the command, the capture has no safe
+copy of the state before, so the change set is incomplete (`state_unreadable`).
 
 The log table and the triggers exist only while the command runs. They change no
 ledger row and no ledger trigger, and `append_only_guard_problems` does not see
@@ -319,3 +334,11 @@ never reads it as empty.
 The host runs one writer for each company at a time. The engine does not
 separate its own writes from a write by another process during the same
 command.
+
+## Benchmark
+
+`python3 benchmarks/bench_change_capture.py --sizes 1000,10000,50000` builds
+companies with decided items in many month archives, times the capture of one
+approve and one categorize, prints the path of each capture (`incremental`, or
+each part that it read in full and why), and exits with 1 when a capture fell
+back or when the time grows with the size of the books.
