@@ -7,6 +7,7 @@ tests run the same writes under both and compare the whole documents, then break
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import sys
@@ -20,10 +21,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from bookkeeping import capture_log, change_capture, changeset, queue  # noqa: E402
+from bookkeeping import capture_log, change_capture, changeset, queue, work  # noqa: E402
 from bookkeeping.entity import load_entity  # noqa: E402
 from bookkeeping.ledger.staging import StagingStore  # noqa: E402
-from bookkeeping.ledger.store import append_only_guard_problems  # noqa: E402
+from bookkeeping.ledger.store import LedgerStore, append_only_guard_problems  # noqa: E402
 from test_changeset import IMPORT, Sequence_, run_cli, scenario  # noqa: E402
 
 
@@ -80,6 +81,18 @@ class Fixture(unittest.TestCase):
         self.seq.cli("propose", "queue", "propose", "--entity", str(self.entity), "--source-id", "cs-001",
                      "--category", "Expenses:Software", "--reasoning", "Tool.")
         self.seq.cli("approve", "queue", "confirm", "--entity", str(self.entity), "--item", "cs-001")
+
+    def add_log(self) -> None:
+        """A row change through the engine's store, so that the capture adds its log in that transaction.
+
+        The capture adds the log only when the command first changes a row of the store. The tests of the log itself
+        call this first. The row keeps its content, so the change set does not change.
+        """
+        with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+            conn.execute("UPDATE source_transactions SET status = status "
+                         "WHERE rowid = (SELECT MIN(rowid) FROM source_transactions)")
+            conn.commit()
+        self.assertIn(change_capture.LOG_TABLE, {name for _, name in capture_objects(self.entity)})
 
     def both(self, action, apply=True):
         """Run ``action`` under both captures. Returns the incremental document after it equals the full one."""
@@ -243,6 +256,7 @@ class FallbackTests(Fixture):
 
     def test_a_command_that_drops_the_capture_log_gives_the_full_comparison(self) -> None:
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 for _, name in capture_objects(self.entity):
                     if name.endswith("_i") or name.endswith("_u"):
@@ -256,6 +270,7 @@ class FallbackTests(Fixture):
 
     def test_a_replaced_log_table_is_not_trusted(self) -> None:
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute(f"UPDATE {change_capture.CTL_TABLE} SET token = 'forged'")
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
@@ -341,6 +356,7 @@ class TamperTests(Fixture):
 
     def test_the_log_refuses_an_edit_and_a_delete(self) -> None:
         with changeset.capture(self.entity):
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                 conn.commit()
@@ -352,6 +368,7 @@ class TamperTests(Fixture):
 
     def test_a_log_row_that_is_removed_after_the_triggers_are_dropped_is_a_gap(self) -> None:
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                 conn.commit()
@@ -365,6 +382,7 @@ class TamperTests(Fixture):
 
     def test_a_log_row_that_is_edited_after_the_triggers_are_dropped_is_found(self) -> None:
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                 conn.commit()
@@ -377,6 +395,7 @@ class TamperTests(Fixture):
 
     def test_the_log_refuses_a_replace_and_a_number_that_does_not_rise(self) -> None:
         with changeset.capture(self.entity):
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                 conn.commit()
@@ -392,6 +411,7 @@ class TamperTests(Fixture):
 
     def test_a_log_row_that_is_replaced_after_the_triggers_are_dropped_is_found(self) -> None:
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                 conn.commit()
@@ -404,6 +424,7 @@ class TamperTests(Fixture):
 
     def test_a_trigger_that_is_dropped_and_made_again_in_the_middle_is_a_schema_change(self) -> None:
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 sql = dict(conn.execute("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'").fetchall())
                 name = f"{change_capture.TRIGGER_PREFIX}st_u"
@@ -423,6 +444,7 @@ class TamperTests(Fixture):
 
     def test_a_log_that_is_dropped_and_made_again_is_not_trusted(self) -> None:
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                 conn.commit()
@@ -687,6 +709,7 @@ class RaceTests(Fixture):
                 with changeset.capture(self.entity, incremental=False, **args) as full:
                     with mock.patch.object(change_capture.Run, "_sql", sql_with_counter):
                         with changeset.capture(self.entity, **args) as fast:
+                            self.add_log()
                             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                                 conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
                                 conn.commit()
@@ -794,10 +817,16 @@ class LedgerDigestTests(Fixture):
 
 
 class TriggerTests(Fixture):
-    def test_the_log_and_triggers_exist_only_while_the_command_runs(self) -> None:
+    def test_the_log_and_triggers_exist_only_from_the_first_row_change_to_the_end_of_the_command(self) -> None:
         before = ledger_schema(self.entity)
         self.assertEqual(capture_objects(self.entity), [])
         with changeset.capture(self.entity):
+            self.assertEqual(capture_objects(self.entity), [])  # Not before the command changes a row.
+            with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+                conn.execute("DELETE FROM source_transactions WHERE id = 'no-such-row'")  # Changes no row.
+                conn.commit()
+            self.assertEqual(capture_objects(self.entity), [])
+            self.add_log()
             names = {name for _, name in capture_objects(self.entity)}
             self.assertIn(change_capture.LOG_TABLE, names)
             self.assertTrue(any(name.startswith(change_capture.TRIGGER_PREFIX + "st_") for name in names))
@@ -832,6 +861,7 @@ class TriggerTests(Fixture):
 
     def test_the_append_only_triggers_still_refuse_a_rewrite_while_the_log_is_on(self) -> None:
         with changeset.capture(self.entity):
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 self.assertEqual(append_only_guard_problems(conn), [])
                 for sql in ("UPDATE entries SET narration = 'x'", "DELETE FROM entries",
@@ -859,6 +889,7 @@ class TriggerTests(Fixture):
         changed = {}
 
         def action() -> None:
+            self.add_log()
             with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
                 conn.execute(f"INSERT INTO {change_capture.LOG_TABLE} (tbl, key) VALUES ('s', 'cs-002')")
                 conn.commit()
@@ -866,6 +897,209 @@ class TriggerTests(Fixture):
         document = self.both(action)
         self.assertFalse(document["changed"])
         changed.update(document)
+
+
+def file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+class NoOpTests(Fixture):
+    """A command that changes nothing leaves the ledger file byte for byte the same, with or without a capture."""
+
+    def ledger(self) -> str:
+        return file_digest(self.entity / "ledger.sqlite")
+
+    def test_two_identical_no_op_runs_leave_the_same_ledger_bytes(self) -> None:
+        path = self.root / "replay.json"
+        path.write_text(json.dumps(IMPORT), encoding="utf-8")
+        argv = ["ingest", str(path), "--entity", str(self.entity), "--session-id", "cs-session"]
+        before = self.ledger()
+        for n in range(2):
+            document = self.seq.cli(f"replay_{n}", *argv)  # The same import again: every row is known.
+            self.assertTrue(document["complete"])
+            self.assertFalse(document["changed"])
+            self.assertEqual(self.ledger(), before, f"run {n} changed the ledger file")
+
+    def test_a_read_only_and_a_failed_command_leave_the_same_ledger_bytes(self) -> None:
+        before = self.ledger()
+        for name, argv, code in (("list", ["queue", "list"], 0), ("missing", ["queue", "confirm", "--item", "missing"], 1)):
+            with self.subTest(name):
+                out = self.root / f"{name}.json"
+                result, _, err = run_cli(["--change-set-out", str(out), *argv, "--entity", str(self.entity)])
+                self.assertEqual(result, code, err)
+                self.assertFalse(json.loads(out.read_text(encoding="utf-8"))["changed"])
+                self.assertEqual(self.ledger(), before)
+
+    def test_a_no_op_keeps_the_saved_copy_valid_for_the_next_capture(self) -> None:
+        self.both(lambda: None)
+        with changeset.capture(self.entity) as receipt:
+            pass
+        self.assertEqual((receipt.path_report["rebuilt"], receipt.path_report["fallbacks"]), ([], []))
+
+    def test_a_statement_that_changes_no_row_adds_no_log(self) -> None:
+        before = self.ledger()
+        with changeset.capture(self.entity) as receipt:
+            with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+                conn.execute("INSERT OR IGNORE INTO source_transactions (id, payload_json, status, imported_at) "
+                             "SELECT id, payload_json, status, imported_at FROM source_transactions")
+                conn.executemany("DELETE FROM accounts WHERE name = ?", iter([("no-such-account",)]))
+                conn.execute("CREATE INDEX IF NOT EXISTS audit_events_type_idx ON audit_events(type, id)")
+                conn.commit()
+            self.assertEqual(capture_objects(self.entity), [])
+        self.assertFalse(receipt.change_set["changed"])
+        self.assertEqual(self.ledger(), before)
+
+
+class WatchTests(Fixture):
+    """The log is added in the transaction of the first row change. Every other path reads the tables in full."""
+
+    def captures(self, action):
+        revision = self.seq.view["revision"]
+        args = {"books_revision": revision + 1, "base_revision": revision}
+        with changeset.capture(self.entity, incremental=False, **args) as full:
+            with changeset.capture(self.entity, **args) as fast:
+                action()
+        self.assertEqual(fast.change_set, full.change_set)
+        self.assertTrue(fast.change_set["complete"])
+        self.seq._apply("watch", fast.change_set)
+        return fast
+
+    def test_a_first_row_change_that_is_rolled_back_takes_its_log_with_it(self) -> None:
+        def action() -> None:
+            with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.rollback()
+            self.assertEqual(capture_objects(self.entity), [])
+            with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+            self.assertTrue(capture_objects(self.entity))
+
+        fast = self.captures(action)
+        self.assertEqual(fast.path_report["fallbacks"], [])
+        self.assertEqual([(row["source_id"], row["change"]) for row in fast.change_set["bank_rows"]],
+                         [("cs-001", "status-changed")])
+
+    def test_a_write_on_another_connection_before_the_log_is_read_in_full(self) -> None:
+        def action() -> None:
+            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:  # Not watched: no log.
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+            with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+                conn.execute("INSERT INTO accounts (name, currency, open_date) VALUES ('Expenses:Watched', 'USD', '2000-01-01')")
+                conn.commit()
+
+        fast = self.captures(action)
+        self.assertTrue(any("before the log" in note for note in fast.path_report["fallbacks"]), fast.path_report)
+        self.assertEqual([(row["source_id"], row["change"]) for row in fast.change_set["bank_rows"]],
+                         [("cs-001", "status-changed")])
+
+    def test_a_schema_change_before_the_log_is_read_in_full(self) -> None:
+        def action() -> None:
+            with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+                conn.execute("CREATE INDEX books_test_idx ON accounts(currency)")
+                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                conn.commit()
+
+        fast = self.captures(action)
+        self.assertTrue(any("schema" in note for note in fast.path_report["fallbacks"]), fast.path_report)
+
+    def comment_first_then_normal_write(self) -> None:
+        """A row write that starts with comments voids a bank row; a normal write follows in the same transaction."""
+        with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+            conn.execute("-- a note\n/* another note */ UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+            conn.execute("INSERT INTO accounts (name, currency, open_date) VALUES ('Expenses:After', 'USD', '2000-01-01')")
+            conn.commit()
+
+    def test_a_row_write_that_starts_with_a_comment_is_logged(self) -> None:
+        fast = self.captures(self.comment_first_then_normal_write)
+        self.assertTrue(fast.change_set["changed"])
+        self.assertEqual([(row["source_id"], row["change"]) for row in fast.change_set["bank_rows"]],
+                         [("cs-001", "status-changed")])
+        self.assertEqual([row["name"] for row in fast.change_set["accounts"]["opened"]], ["Expenses:After"])
+
+    def test_a_row_write_that_the_watch_does_not_recognize_is_read_in_full(self) -> None:
+        real = capture_log.statement_kind
+
+        def blind(sql: str) -> str:  # A row write whose kind the watch gets wrong.
+            return "other" if "voided" in sql else real(sql)
+
+        with mock.patch.object(capture_log, "statement_kind", blind):
+            fast = self.captures(self.comment_first_then_normal_write)
+        self.assertTrue(any("did not see" in note for note in fast.path_report["fallbacks"]), fast.path_report)
+        self.assertTrue(fast.change_set["changed"])
+        self.assertEqual([(row["source_id"], row["change"]) for row in fast.change_set["bank_rows"]],
+                         [("cs-001", "status-changed")])
+
+
+class NestedCaptureTests(unittest.TestCase):
+    """A work capture and a change set capture of one command share one run. A large change gives one valid change set.
+
+    The first capture to finish rolls its changes of the saved copy back. Before the fix, a change this large spilled
+    pages into the saved copy during that transaction, and the other capture refused the copy.
+    """
+
+    COUNT = 256
+    TEXT = "Synthetic note for a large change. " * 120  # About 4 KB for each row.
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def company(self, name: str, text: str) -> tuple[Path, Path]:
+        entity = self.root / name
+        code, _, err = run_cli(["entity", "init", str(entity), "--name", "Synthetic Studio"])
+        self.assertEqual(code, 0, err)
+        rows = [{"id": f"big-{n:04d}", "date": "2026-10-01", "amount": "-10.00",
+                 "description": f"VENDOR {n} {text}", "accountName": "Operating Checking", "accountType": "checking"}
+                for n in range(self.COUNT)]
+        path = self.root / f"{name}.json"
+        path.write_text(json.dumps(rows), encoding="utf-8")
+        return entity, path
+
+    def nested(self, entity: Path, argv: list[str], order: str) -> dict:
+        """Run one command under both captures, in the order of a host or of the CLI."""
+        out = self.root / "change.json"
+        before = changeset.read_view(entity, revision=1)
+        flags = ["--change-set-base-revision", "1", "--change-set-revision", "2"]
+        if order == "work outside":
+            with work.capture(entity) as receipt:
+                code, _, err = run_cli(["--change-set-out", str(out), *flags, *argv])
+            self.assertTrue(receipt.complete)
+        else:
+            code, _, err = run_cli(["--work-out", str(self.root / "work.json"), "--change-set-out", str(out),
+                                    *flags, *argv])
+            self.assertNotIn("complete", json.loads((self.root / "work.json").read_text(encoding="utf-8")))
+        self.assertEqual(code, 0, err)
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(changeset.validate(document), [])
+        self.assertTrue(document["complete"], document["reason"])
+        self.assertEqual(changeset.apply_change_set(before, document), changeset.read_view(entity, revision=2))
+        return document
+
+    def test_a_256_item_confirm_inside_a_work_capture_gives_one_valid_change_set(self) -> None:
+        for order in ("work outside", "both options"):
+            with self.subTest(order):
+                entity, path = self.company(order.replace(" ", "-"), "")
+                run_cli(["ingest", str(path), "--entity", str(entity), "--session-id", "big"])
+                ids = [part for n in range(self.COUNT) for part in ("--source-id", f"big-{n:04d}")]
+                code, _, err = run_cli(["--change-set-out", str(self.root / "propose.json"), "queue", "propose-group",
+                                        "--entity", str(entity), *ids, "--category", "Expenses:Software",
+                                        "--reasoning", self.TEXT])
+                self.assertEqual(code, 0, err)
+                document = self.nested(entity, ["queue", "confirm-group", "--entity", str(entity),
+                                                "--category", "Expenses:Software"], order)
+                self.assertEqual(len(document["entries_added"]), self.COUNT)
+
+    def test_a_256_row_ingest_inside_a_work_capture_gives_one_valid_change_set(self) -> None:
+        for order in ("work outside", "both options"):
+            with self.subTest(order):
+                entity, path = self.company("ingest-" + order.replace(" ", "-"), self.TEXT * 3)
+                run_cli(["--change-set-out", str(self.root / "warm.json"), "queue", "list", "--entity", str(entity)])
+                document = self.nested(entity, ["ingest", str(path), "--entity", str(entity), "--session-id", "big"],
+                                       order)
+                self.assertEqual(len(document["staging"]["pending"]["added"]), self.COUNT)
 
 
 class CaptureLogTests(unittest.TestCase):

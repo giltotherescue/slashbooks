@@ -42,8 +42,22 @@ books --change-set-out change.json queue confirm --entity . --item src-123
 - A read-only command gives a change set with `"changed": false` and empty
   lists. A command that has no company directory also gives that empty change
   set.
+- Every command that gets `--change-set-out` writes a document, also a replay
+  (an accrual operation that is already applied, an import of rows that the
+  books already hold) and a command that stops with an error. The test
+  `EveryMutatingCommandTests` runs each command that the command contract marks
+  as a change of the books and checks this.
+- A command that changes no row of `ledger.sqlite` leaves that file byte for
+  byte the same. The capture adds nothing to the file in that case (see Cost).
+  So two identical runs of a command that changes nothing leave the same bytes.
+  The rule for a host: when a complete change set has `"changed": false`, the
+  books did not change, and `ledger.sqlite` has the bytes that it had before the
+  command. The capture's own files, `.change-capture.sqlite` and
+  `.change-capture.sqlite.sig`, change at each capture. A host that compares
+  bytes leaves them out. The change set stays the authority for the content.
 - A command for a remote company binding, and the `cloud` and `hosted`
-  commands, reject `--change-set-out`.
+  commands, reject `--change-set-out`. They do not run, and the engine writes an
+  incomplete change set (`command_failed`).
 - `--change-set-base-revision M` and `--change-set-revision N` are the revisions
   of the host. The host owns the numbers: `M` is the revision of the host view
   before the command, and `N` is the revision that the host gives to the result
@@ -82,9 +96,16 @@ document = receipt.change_set
 `queue.set_taught`. It writes no output file.
 
 While the command runs, the capture keeps a log of the rows that it writes (see
-Cost). It adds a log table and triggers to `ledger.sqlite` before the command and
-removes them after. They write no ledger row. Pass `incremental=False` to compare
-two full reads of the books instead. The two ways give the same document.
+Cost). It adds a log table and triggers to `ledger.sqlite` when the command first
+changes a row of the store, and removes them after the command. They write no
+ledger row. A command that changes no row never gets them. Pass
+`incremental=False` to compare two full reads of the books instead. The two ways
+give the same document.
+
+A host can wrap one command in a change set capture and a work capture
+(`work.capture`), in either order, or pass both `--change-set-out` and
+`--work-out`. The two captures share one run, and the command gives one change
+set, for any number of changed rows.
 
 ## Document shape
 
@@ -252,7 +273,7 @@ part that it cannot prove.
 | Part | How the capture finds the changed rows | Fallback |
 |---|---|---|
 | Ledger entries, postings, balance assertions, audit events | Row ids above the saved position. The digest adds the hash of each new row to the saved total. | A broken audit chain gives `reset`. A reset, an account rename (it relabels posted rows), an audit chain that moved back, and a store without the append-only triggers make the capture read the whole ledger for the digest. |
-| Accounts and source transactions (`bank_rows`) | A log table and triggers in `ledger.sqlite`, added before the command and removed after. They fire for every connection and write only the key of each written row to the log. The capture reads only those rows. | The capture reads both tables in full when the log is not the log of this run (the store was replaced, the triggers were changed or dropped, the store could not take them). |
+| Accounts and source transactions (`bank_rows`) | A log table and triggers in `ledger.sqlite`, added in the transaction of the first row change of the command and removed after the command. Once added, they fire for every connection and write only the key of each written row to the log. The capture reads only those rows. A command that changes no row adds no log and reads no row. | The capture reads both tables in full when the log is not the log of this run (the store was replaced, the triggers were changed or dropped, the store could not take them), when a connection that the engine did not open wrote the store before the log existed, and when the schema changed during the command. |
 | Review queue items and month archives | One `stat` for each item file and each archive file. The capture reads the item files that differ from the saved copy. The helper that writes an archive journals the names that it changed, so the capture does not read the archive. A decided item that moves into an archive is not a change. | Two names with one source id, an unfinished group journal, or a file name that does not follow its source id: the capture reads the whole queue. |
 | `seen-ids.json`, `pending-categorization.json`, learned context | The engine's write helpers journal the ids that they add or remove (`capture_log.writing`). The capture does not read the file. | A write that is not in the journal, or that left another file signature than the last journaled write: the capture reads the file. |
 | `pending.json`, `duplicate-candidates.json`, `context-history.json`, the documents | The signature of the file. A changed file is read and compared with the saved copy. | None needed. |
@@ -284,13 +305,28 @@ copy of the state before, so the change set is incomplete (`state_unreadable`).
 
 The capture holds the company write lock (the engine's own, re-entrant lock) from
 before its first read to after its last one, so no other engine writer runs
-during a capture. The triggers, the schema fingerprint and the file token are
-taken in one IMMEDIATE transaction before any read of the state. At the end the
-capture opens an IMMEDIATE transaction, reads the log and the changed rows, and
-drops the triggers in that transaction. The signatures that the next capture
-trusts are those taken when the files were read, and the token of the store file
-is the one after that transaction (its own commit moves the file change counter
-by one). A file that changes after it was read, or a store whose change counter
+during a capture. The capture takes the file token of the store before any read
+of the state. The engine opens its ledger connections with `LedgerStore.connect`.
+During a capture such a connection watches for the first statement that changes a
+row. It takes the write lock of the store, and the capture checks that the file
+token is still the token of the start (else a write that no log holds happened,
+and the capture reads both tables in full). The connection runs the statement in
+a savepoint. If the statement changed no row, nothing more happens. If it changed
+a row, the connection undoes the statement, the capture adds the log and the
+triggers in the same transaction and takes the schema fingerprint, and the
+statement runs again, now logged. The log commits with the first change. If that
+transaction rolls back, the log goes with it, and the capture watches again. The
+connection finds a row statement by its first word, after any leading comments.
+It also compares its row change counter before and after every other statement,
+so a row change that the first word does not show makes the capture read both
+tables in full. At
+the end the capture opens an IMMEDIATE transaction, reads the log and the changed
+rows, and drops the triggers in that transaction. Without a log, the capture
+checks that the file token is the token of the start, and that transaction
+writes nothing. The signatures that the next capture trusts are those taken when
+the files were read, and the token of the store file is the one after that
+transaction (its own commit moves the file change counter by one when it drops a
+log, and not at all when there was none). A file that changes after it was read, or a store whose change counter
 does not follow, therefore shows in the next capture and in no receipt. The
 capture also checks that the file change counter did not go back and that it
 moved when the log has rows. A write helper that raises records no row delta,
@@ -301,7 +337,8 @@ rewrites the header of the store file (the schema cookie or the change counter),
 for example one that drops a trigger, writes, recreates the identical trigger
 and sets the cookie back. The engine writers all take the lock.
 
-The log table and the triggers exist only while the command runs. They change no
+The log table and the triggers exist only from the first row change to the end
+of the command. They change no
 ledger row and no ledger trigger, and `append_only_guard_problems` does not see
 them. The next capture removes the log and the triggers of a command that was
 killed. A store that holds them (for example a copy that was made during a

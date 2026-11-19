@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import copy
 import os
+import re
+import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 _LOCK = threading.RLock()
 _SESSIONS: list["Session"] = []
@@ -145,3 +147,256 @@ def writing(path: Path | str, *, delta: Mapping[str, Any] | None = None) -> Iter
         for session in sessions:
             # A write that raised may have changed the file in a way that its delta does not describe: no delta.
             session.record(resolved, before, after, delta if completed else None)
+
+
+# ---------------------------------------------------------------------------
+# Ledger writes
+# ---------------------------------------------------------------------------
+#
+# A change set capture logs the keys of the account rows and the bank rows that a command writes, with a log table
+# and triggers in ``ledger.sqlite`` (``bookkeeping.change_capture``). It adds them only when the command changes a
+# row, so a command that changes nothing leaves the ledger file byte for byte as it was. The engine opens its ledger
+# connections with ``LedgerStore.connect``, which asks ``ledger_connection_factory`` for the connection class. While a
+# capture watches the ledger, the class is ``WatchedConnection``. Before the first statement that changes a row, the
+# connection takes the write lock, lets the capture check the file change counter, and runs the statement inside a
+# savepoint. If the statement changed a row, it undoes the statement, lets the capture add the log in the same
+# transaction, and runs the statement again, so that the log holds the row. A statement that changes no row
+# (``INSERT OR IGNORE`` of a known id, a ``DELETE`` that matches nothing) adds nothing.
+#
+# The watch is a hint, never the proof. A write on another connection before the log exists moves the file change
+# counter, and the capture then reads the tables in full. After the log exists its triggers fire for every
+# connection.
+
+_WATCHES: dict[str, Any] = {}
+_PROBE = "books_capture_probe"
+_WORD = re.compile(r"\s*([A-Za-z]+)")
+_ROW_WORDS = frozenset({"INSERT", "UPDATE", "DELETE", "REPLACE"})
+_SCHEMA_WORDS = frozenset({"CREATE", "DROP", "ALTER", "REINDEX", "VACUUM"})
+_WRITE_IN_WITH = re.compile(r"\b(INSERT|UPDATE|DELETE|REPLACE)\b", re.IGNORECASE)
+_ROLLBACK_TO = re.compile(r"\s*ROLLBACK\s+(?:TRANSACTION\s+)?TO\b", re.IGNORECASE)
+_TEMP = re.compile(r"\s*CREATE\s+TEMP(?:ORARY)?\b", re.IGNORECASE)
+_NAME = r"(?:main\s*\.\s*)?[\"`\[]?([A-Za-z0-9_]+)"
+_CREATE_IF = re.compile(r"\s*CREATE\s+(?:UNIQUE\s+)?(TABLE|INDEX|TRIGGER|VIEW)\s+IF\s+NOT\s+EXISTS\s+" + _NAME,
+                        re.IGNORECASE)
+_DROP_IF = re.compile(r"\s*DROP\s+(TABLE|INDEX|TRIGGER|VIEW)\s+IF\s+EXISTS\s+" + _NAME, re.IGNORECASE)
+
+
+def watch_ledger(path: Path | str, watch: Any) -> str:
+    """Watch the ledger at ``path`` for its first row change. Returns the key for ``unwatch_ledger``.
+
+    ``watch`` has the methods ``locked(conn)``, ``install(conn)``, ``schema_write(text)``, ``unwatched(reason)`` and
+    ``rolled_back()`` (see ``change_capture.Run``).
+    """
+    key = os.path.realpath(path)
+    with _LOCK:
+        _WATCHES[key] = watch
+    return key
+
+
+def unwatch_ledger(key: str | None, watch: Any) -> None:
+    if key is None:
+        return
+    with _LOCK:
+        if _WATCHES.get(key) is watch:
+            del _WATCHES[key]
+
+
+def ledger_connection_factory(path: Path | str) -> type[sqlite3.Connection]:
+    """The connection class for a ledger file: ``WatchedConnection`` while a capture watches it, else the plain class."""
+    if not _WATCHES:
+        return sqlite3.Connection
+    return WatchedConnection if os.path.realpath(path) in _WATCHES else sqlite3.Connection
+
+
+_LEADING = re.compile(r"(?:\s+|--[^\n]*(?:\n|$)|/\*.*?(?:\*/|$))*", re.DOTALL)
+
+
+def strip_leading_comments(sql: str) -> str:
+    """The statement without the white space and the ``--`` and ``/* */`` comments before its first word."""
+    return sql[_LEADING.match(sql).end():]
+
+
+def statement_kind(sql: str) -> str:
+    """``row`` (a statement that can change rows), ``schema``, ``commit``, ``rollback`` or ``other``.
+
+    The kind is a hint. A connection that watches compares its row change counter before and after a statement of
+    another kind, so a row change that the hint misses still makes the capture read the tables in full.
+    """
+    sql = strip_leading_comments(sql)
+    match = _WORD.match(sql)
+    word = match.group(1).upper() if match else ""
+    if word in _ROW_WORDS:
+        return "row"
+    if word == "WITH":
+        return "row" if _WRITE_IN_WITH.search(sql) else "other"
+    if word in _SCHEMA_WORDS:
+        return "other" if _TEMP.match(sql) else "schema"
+    if word in ("COMMIT", "END"):
+        return "commit"
+    if word == "ROLLBACK":
+        return "other" if _ROLLBACK_TO.match(sql) else "rollback"
+    return "other"  # SELECT, PRAGMA, BEGIN, SAVEPOINT, RELEASE, ATTACH, ...
+
+
+class WatchedConnection(sqlite3.Connection):
+    """A ledger connection that lets a capture add its log before the first row change (see above).
+
+    Statements that cannot change a row run as on a plain connection. A statement through a cursor of
+    ``Connection.cursor()`` is not watched; the capture sees its change with the row change counter of the connection
+    or with the file change counter, and then reads the tables in full.
+    """
+
+    def __init__(self, database: Any, *args: Any, **kwargs: Any) -> None:
+        super().__init__(database, *args, **kwargs)
+        self._books_key = os.path.realpath(database)
+        self._books_holds: Any = None  # The watch whose log the open transaction of this connection added.
+        self._books_seen = self.total_changes
+
+    def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:  # type: ignore[override]
+        return self._books_run(sql, lambda: sqlite3.Connection.execute(self, sql, parameters))
+
+    def executemany(self, sql: str, parameters: Any, /) -> sqlite3.Cursor:  # type: ignore[override]
+        if self._books_watch() is not None:
+            parameters = list(parameters)  # The watch can run the statement twice: an iterator must not run dry.
+        return self._books_run(sql, lambda: sqlite3.Connection.executemany(self, sql, parameters))
+
+    def executescript(self, script: str, /) -> sqlite3.Cursor:  # type: ignore[override]
+        watch = self._books_watch()
+        if watch is not None:
+            watch.schema_write("a script")  # A script runs its statements outside the watch.
+        try:
+            return sqlite3.Connection.executescript(self, script)
+        finally:
+            self._books_holds = None  # A script commits the open transaction first.
+            self._books_seen = self.total_changes
+
+    def commit(self) -> None:
+        sqlite3.Connection.commit(self)
+        self._books_holds = None
+
+    def rollback(self) -> None:
+        was_open = self._books_open()
+        try:
+            sqlite3.Connection.rollback(self)
+        finally:
+            self._books_ended(was_open)
+
+    def close(self) -> None:
+        was_open = self._books_open()
+        try:
+            sqlite3.Connection.close(self)  # An open transaction is rolled back.
+        finally:
+            self._books_ended(was_open)
+
+    def __exit__(self, kind: Any, value: Any, traceback: Any) -> Any:
+        was_open = self._books_open()
+        try:
+            return sqlite3.Connection.__exit__(self, kind, value, traceback)
+        finally:
+            if not self._books_open():
+                if kind is None:
+                    self._books_holds = None  # Committed.
+                else:
+                    self._books_ended(was_open)
+
+    def _books_open(self) -> bool:
+        try:
+            return self.in_transaction
+        except sqlite3.ProgrammingError:  # A closed connection has no transaction.
+            return False
+
+    def _books_ended(self, was_open: bool = True) -> None:
+        """The open transaction ended without a commit (when ``was_open``): the log of the capture went with it."""
+        holds, self._books_holds = self._books_holds, None
+        if holds is not None and was_open:
+            holds.rolled_back()  # The capture watches again for the next row change.
+
+    def _books_watch(self) -> Any:
+        return _WATCHES.get(self._books_key) if _WATCHES else None
+
+    def _books_run(self, sql: str, run: Callable[[], sqlite3.Cursor]) -> sqlite3.Cursor:
+        watch = self._books_watch()
+        try:
+            if watch is None and self._books_holds is None:
+                return run()
+            kind = statement_kind(sql) if isinstance(sql, str) else "other"
+            if kind == "commit":
+                cursor = run()
+                if not self.in_transaction:
+                    self._books_holds = None
+                return cursor
+            if kind == "rollback":
+                try:
+                    return run()
+                finally:
+                    if not self.in_transaction:
+                        self._books_ended()
+            if watch is None:
+                return run()
+            if self.total_changes != self._books_seen:
+                watch.unwatched("sql:a row change on the connection outside the watch")
+                return run()
+            if kind == "row":
+                return self._books_probe(watch, run)
+            if kind == "schema" and not self._books_no_op_schema(sql):
+                watch.schema_write(sql)
+            before = self.total_changes
+            try:
+                return run()
+            finally:
+                if self.total_changes != before:
+                    # A statement of another kind changed a row before the log existed: the log cannot hold it.
+                    watch.unwatched("sql:a row change that the watch did not see")
+        finally:
+            self._books_seen = self.total_changes
+
+    def _books_no_op_schema(self, sql: str) -> bool:
+        """True for ``CREATE ... IF NOT EXISTS`` of an object that exists and ``DROP ... IF EXISTS`` of one that does not."""
+        sql = strip_leading_comments(sql)
+        for pattern, exists in ((_CREATE_IF, True), (_DROP_IF, False)):
+            match = pattern.match(sql)
+            if match:
+                found = sqlite3.Connection.execute(
+                    self, "SELECT 1 FROM main.sqlite_master WHERE type = ? AND lower(name) = lower(?)",
+                    (match.group(1).lower(), match.group(2))).fetchone()
+                return (found is not None) == exists
+        return False
+
+    def _books_probe(self, watch: Any, run: Callable[[], sqlite3.Cursor]) -> sqlite3.Cursor:
+        if self.isolation_level is None and not self.in_transaction:
+            watch.unwatched("sql:a row change in autocommit mode")
+            return run()
+        # Take the write lock first. No other connection can commit from here to the end of this transaction, so the
+        # file change counter that the watch reads now is the counter that the log starts from. Python would open a
+        # deferred transaction for this statement; an immediate one only takes the same lock a moment earlier.
+        try:
+            if self.in_transaction:
+                sqlite3.Connection.execute(self, "DELETE FROM main.accounts WHERE 0")
+            else:
+                sqlite3.Connection.execute(self, "BEGIN IMMEDIATE")
+        except sqlite3.Error as exc:
+            watch.unwatched(f"sql:the write lock was not available to the watch ({exc})")
+            return run()
+        if not watch.locked(self):
+            return run()
+        before = self.total_changes
+        sqlite3.Connection.execute(self, f"SAVEPOINT {_PROBE}")
+        try:
+            cursor = run()
+        except BaseException:
+            self._books_unwind()
+            raise
+        if self.total_changes == before:
+            sqlite3.Connection.execute(self, f"RELEASE {_PROBE}")  # No row changed: nothing to log.
+            return cursor
+        self._books_unwind()
+        if watch.install(self):
+            self._books_holds = watch
+        return run()
+
+    def _books_unwind(self) -> None:
+        for statement in (f"ROLLBACK TO {_PROBE}", f"RELEASE {_PROBE}"):
+            try:
+                sqlite3.Connection.execute(self, statement)
+            except sqlite3.Error:
+                pass  # The statement ended the transaction itself (for example ON CONFLICT ROLLBACK).

@@ -229,9 +229,9 @@ _REVERSES_INDEX_SQL = ("CREATE INDEX IF NOT EXISTS entries_reverses_idx ON entri
 def ensure_write_indexes(conn: sqlite3.Connection) -> None:
     """Create the indexes that a writer adds to an older store. An index changes no row, no seal and no digest.
 
-    ``LedgerStore.initialize`` runs this when a store is opened for writing. The change set capture runs it too, in
-    the transaction that installs its log and before it takes the schema fingerprint (``change_capture.install_atomic``),
-    so the first command of a newer engine on an older store does not change the schema during a capture. Raises
+    ``LedgerStore.initialize`` runs this when a store is opened for writing. The change set capture runs it too, before
+    it reads the state, when an index is missing (``change_capture.start``), so the first command of a newer engine on
+    an older store does not change the schema during a capture. Raises
     ``sqlite3.OperationalError`` for a store that cannot be written.
     """
     conn.execute("CREATE INDEX IF NOT EXISTS audit_events_type_idx ON audit_events(type, id)")
@@ -629,7 +629,8 @@ class LedgerStore:
 
     def connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(self.path))
+        from ..capture_log import ledger_connection_factory  # A change set capture watches for the first row change.
+        conn = sqlite3.connect(str(self.path), factory=ledger_connection_factory(self.path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         try:

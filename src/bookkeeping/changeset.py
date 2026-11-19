@@ -834,7 +834,8 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
 
     By default the capture reads only the rows that the command changed (``bookkeeping.change_capture``). It keeps a
     saved copy of the small tables in ``.change-capture.sqlite`` in the company folder, and it lists the changed rows
-    with a log that it adds to ``ledger.sqlite`` while the command runs and removes after. When it cannot do that (the
+    with a log that it adds to ``ledger.sqlite`` at the first row change of the command and removes after. A command
+    that changes no row leaves ``ledger.sqlite`` byte for byte the same. When it cannot do that (the
     folder cannot be written) it reads the books in full before and after the command. ``incremental=False`` forces
     that full comparison. Both ways give the same document.
     """

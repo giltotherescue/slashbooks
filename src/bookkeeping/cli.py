@@ -138,6 +138,10 @@ def _main(argv: list[str]) -> int:
                 "code": "WORK_OUTPUT_LOCAL_ONLY",
                 "message": f"{option} applies to commands that change local books.",
             }}), file=sys.stderr)
+            if work_args.change_set_out is not None:
+                # Every command that gets --change-set-out writes a document. This one did not run: incomplete.
+                changeset_module.write_document(work_args.change_set_out, changeset_module.incomplete(
+                    work_args.change_set_revision, "command_failed", work_args.change_set_base_revision))
             return 1
         entity_path = work_module.entity_path_from_args(args)
         work_receipt = change_receipt = None
