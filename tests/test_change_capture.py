@@ -1004,6 +1004,33 @@ class WatchTests(Fixture):
         fast = self.captures(action)
         self.assertTrue(any("schema" in note for note in fast.path_report["fallbacks"]), fast.path_report)
 
+    def comment_first_then_normal_write(self) -> None:
+        """A row write that starts with comments voids a bank row; a normal write follows in the same transaction."""
+        with closing(LedgerStore(self.entity / "ledger.sqlite").connect()) as conn:
+            conn.execute("-- a note\n/* another note */ UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+            conn.execute("INSERT INTO accounts (name, currency, open_date) VALUES ('Expenses:After', 'USD', '2000-01-01')")
+            conn.commit()
+
+    def test_a_row_write_that_starts_with_a_comment_is_logged(self) -> None:
+        fast = self.captures(self.comment_first_then_normal_write)
+        self.assertTrue(fast.change_set["changed"])
+        self.assertEqual([(row["source_id"], row["change"]) for row in fast.change_set["bank_rows"]],
+                         [("cs-001", "status-changed")])
+        self.assertEqual([row["name"] for row in fast.change_set["accounts"]["opened"]], ["Expenses:After"])
+
+    def test_a_row_write_that_the_watch_does_not_recognize_is_read_in_full(self) -> None:
+        real = capture_log.statement_kind
+
+        def blind(sql: str) -> str:  # A row write whose kind the watch gets wrong.
+            return "other" if "voided" in sql else real(sql)
+
+        with mock.patch.object(capture_log, "statement_kind", blind):
+            fast = self.captures(self.comment_first_then_normal_write)
+        self.assertTrue(any("did not see" in note for note in fast.path_report["fallbacks"]), fast.path_report)
+        self.assertTrue(fast.change_set["changed"])
+        self.assertEqual([(row["source_id"], row["change"]) for row in fast.change_set["bank_rows"]],
+                         [("cs-001", "status-changed")])
+
 
 class NestedCaptureTests(unittest.TestCase):
     """A work capture and a change set capture of one command share one run. A large change gives one valid change set.

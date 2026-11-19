@@ -208,8 +208,21 @@ def ledger_connection_factory(path: Path | str) -> type[sqlite3.Connection]:
     return WatchedConnection if os.path.realpath(path) in _WATCHES else sqlite3.Connection
 
 
+_LEADING = re.compile(r"(?:\s+|--[^\n]*(?:\n|$)|/\*.*?(?:\*/|$))*", re.DOTALL)
+
+
+def strip_leading_comments(sql: str) -> str:
+    """The statement without the white space and the ``--`` and ``/* */`` comments before its first word."""
+    return sql[_LEADING.match(sql).end():]
+
+
 def statement_kind(sql: str) -> str:
-    """``row`` (a statement that can change rows), ``schema``, ``commit``, ``rollback`` or ``other``."""
+    """``row`` (a statement that can change rows), ``schema``, ``commit``, ``rollback`` or ``other``.
+
+    The kind is a hint. A connection that watches compares its row change counter before and after a statement of
+    another kind, so a row change that the hint misses still makes the capture read the tables in full.
+    """
+    sql = strip_leading_comments(sql)
     match = _WORD.match(sql)
     word = match.group(1).upper() if match else ""
     if word in _ROW_WORDS:
@@ -323,18 +336,23 @@ class WatchedConnection(sqlite3.Connection):
             if self.total_changes != self._books_seen:
                 watch.unwatched("sql:a row change on the connection outside the watch")
                 return run()
-            if kind == "schema":
-                if not self._books_no_op_schema(sql):
-                    watch.schema_write(sql)
+            if kind == "row":
+                return self._books_probe(watch, run)
+            if kind == "schema" and not self._books_no_op_schema(sql):
+                watch.schema_write(sql)
+            before = self.total_changes
+            try:
                 return run()
-            if kind != "row":
-                return run()
-            return self._books_probe(watch, run)
+            finally:
+                if self.total_changes != before:
+                    # A statement of another kind changed a row before the log existed: the log cannot hold it.
+                    watch.unwatched("sql:a row change that the watch did not see")
         finally:
             self._books_seen = self.total_changes
 
     def _books_no_op_schema(self, sql: str) -> bool:
         """True for ``CREATE ... IF NOT EXISTS`` of an object that exists and ``DROP ... IF EXISTS`` of one that does not."""
+        sql = strip_leading_comments(sql)
         for pattern, exists in ((_CREATE_IF, True), (_DROP_IF, False)):
             match = pattern.match(sql)
             if match:

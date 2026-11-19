@@ -1068,6 +1068,7 @@ def start(root: Path) -> "Handle | None":
     try:
         if _has_capture_objects(ledger):
             remove_triggers(ledger)  # A command that was killed left its log. Removed before the state is read.
+        _ensure_write_indexes(ledger)  # Before the state is read, so the command does not change the schema.
         signatures = _signatures(root)
         _wait_for_tick(signatures, _newest(_sweep(root)))
         # The log and the triggers are added only when the command first changes a row (``Run.install``). The token of
@@ -1109,6 +1110,53 @@ def start(root: Path) -> "Handle | None":
     with _ACTIVE_LOCK:
         _ACTIVE[_active_key(root)] = run
     return handle
+
+
+#: The indexes that ``ledger.store.ensure_write_indexes`` adds to an older store.
+WRITE_INDEXES = frozenset({"audit_events_type_idx", "entries_reverses_idx"})
+
+
+def _ensure_write_indexes(ledger: Path) -> None:
+    """Add the indexes that a writer adds to an older store (``ledger.store.ensure_write_indexes``), before the capture.
+
+    The command would add them when it opens the store for writing. A schema change during the command makes the
+    capture read the account and bank tables in full, so the capture adds them first, outside the watch. An index
+    changes no row and no digest. The check is a read: a store that has them is not written, so a command that changes
+    nothing still leaves the file byte for byte the same. A store that cannot be written keeps working without them.
+    """
+    conn = changeset._connect_read_only(ledger)
+    if conn is None:
+        return
+    try:
+        names = {str(row[0]) for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE name IN ('entries', 'audit_events', "
+            + ", ".join(f"'{name}'" for name in sorted(WRITE_INDEXES)) + ")")}
+    except sqlite3.Error:
+        return
+    finally:
+        conn.close()
+    if not {"entries", "audit_events"} <= names or WRITE_INDEXES <= names:
+        return
+    from .ledger.store import ensure_write_indexes
+    try:
+        writer = sqlite3.connect(ledger, timeout=2.0, isolation_level=None)
+    except sqlite3.Error:
+        return
+    try:
+        writer.execute("BEGIN IMMEDIATE")
+        try:
+            ensure_write_indexes(writer)
+            writer.execute("COMMIT")
+        except BaseException:
+            try:
+                writer.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+            raise
+    except sqlite3.Error:
+        pass  # A store that cannot be written: the command reads the tables in full if it changes the schema.
+    finally:
+        writer.close()
 
 
 def _has_capture_objects(ledger: Path) -> bool:

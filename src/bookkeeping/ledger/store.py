@@ -229,9 +229,9 @@ _REVERSES_INDEX_SQL = ("CREATE INDEX IF NOT EXISTS entries_reverses_idx ON entri
 def ensure_write_indexes(conn: sqlite3.Connection) -> None:
     """Create the indexes that a writer adds to an older store. An index changes no row, no seal and no digest.
 
-    ``LedgerStore.initialize`` runs this when a store is opened for writing. The change set capture runs it too, in
-    the transaction that installs its log and before it takes the schema fingerprint (``change_capture.install_atomic``),
-    so the first command of a newer engine on an older store does not change the schema during a capture. Raises
+    ``LedgerStore.initialize`` runs this when a store is opened for writing. The change set capture runs it too, before
+    it reads the state, when an index is missing (``change_capture.start``), so the first command of a newer engine on
+    an older store does not change the schema during a capture. Raises
     ``sqlite3.OperationalError`` for a store that cannot be written.
     """
     conn.execute("CREATE INDEX IF NOT EXISTS audit_events_type_idx ON audit_events(type, id)")

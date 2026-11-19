@@ -315,7 +315,11 @@ a savepoint. If the statement changed no row, nothing more happens. If it change
 a row, the connection undoes the statement, the capture adds the log and the
 triggers in the same transaction and takes the schema fingerprint, and the
 statement runs again, now logged. The log commits with the first change. If that
-transaction rolls back, the log goes with it, and the capture watches again. At
+transaction rolls back, the log goes with it, and the capture watches again. The
+connection finds a row statement by its first word, after any leading comments.
+It also compares its row change counter before and after every other statement,
+so a row change that the first word does not show makes the capture read both
+tables in full. At
 the end the capture opens an IMMEDIATE transaction, reads the log and the changed
 rows, and drops the triggers in that transaction. Without a log, the capture
 checks that the file token is the token of the start, and that transaction
