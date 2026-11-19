@@ -438,11 +438,19 @@ class AuditChainCheck:
 
 
 @dataclass(frozen=True)
+class PostingMark:
+    """A position in the postings: the posting id and a hash of that row and of its entry."""
+
+    position: int
+    row_hash: str
+
+
+@dataclass(frozen=True)
 class PostingCheck:
     """Result of ``check_new_postings``. ``watermark`` is the next checkpoint, or ``None`` after an error."""
 
     errors: list[str]
-    watermark: int | None
+    watermark: PostingMark | None
 
 
 def _verify_links(rows: Any, prev: str) -> list[str]:
@@ -1053,52 +1061,77 @@ class LedgerStore:
             finally:
                 conn.rollback()
 
-    def posting_watermark(self, conn: sqlite3.Connection | None = None) -> int:
-        """Return the newest posting id (0 if none). Cost: one index read.
+    def posting_watermark(self, conn: sqlite3.Connection | None = None) -> PostingMark:
+        """Return the newest posting as an anchored watermark (``PostingMark(0, "")`` if none). Cost: two reads.
 
         Prefer ``check_new_postings``, which returns the next watermark from the rows that it read.
         """
         if conn is None:
             with self.connection() as tx:
                 return self.posting_watermark(tx)
-        return int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM postings").fetchone()[0])
+        row = conn.execute("SELECT MAX(id) FROM postings").fetchone()
+        return self._posting_mark(conn, int(row[0])) if row and row[0] is not None else PostingMark(0, "")
 
-    def check_new_postings(self, after_posting_id: int) -> PostingCheck:
-        """Check the postings added after ``after_posting_id``; return the errors and the next watermark.
+    @staticmethod
+    def _posting_mark(conn: sqlite3.Connection, posting_id: int) -> PostingMark | None:
+        """Anchor a posting id: a hash of the posting row and of the entry that it links to."""
+        row = conn.execute(
+            "SELECT p.id, p.entry_id, p.account, p.amount, p.currency, p.metadata_json, "
+            "e.id, e.date, e.source_id, e.narration, e.metadata_json "
+            "FROM postings p LEFT JOIN entries e ON e.id = p.entry_id WHERE p.id = ?", (posting_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return PostingMark(int(row[0]), hashlib.sha256(_json(list(tuple(row))).encode("utf-8")).hexdigest())
+
+    def check_new_postings(self, after: PostingMark | int) -> PostingCheck:
+        """Check the postings added after a saved watermark; return the errors and the next watermark.
 
         The only foreign key of the ledger tables is ``postings.entry_id``. The append-only triggers refuse a
         delete of an entry, so an existing posting cannot become an orphan; only a new posting can be one. The
         triggers also keep each new posting id above every earlier id, so a saved watermark cannot skip a new
-        posting. The watermark is the highest posting id in the same read transaction as the check, so a posting
-        that a concurrent writer adds later is checked next time. After an error the watermark is ``None``.
-        A watermark above the newest posting id is an error, because it cannot come from this file (a restore
-        from an older backup, or a made-up value). A saved watermark that is below the newest id is not provably
-        from this file: use only a watermark from an error-free check of the same file, and reset it (run the full
-        ``PRAGMA foreign_key_check``, then ``posting_watermark()``) when the audit check fails or after a restore.
-        Cost: the number of new postings, each with one primary key read. The full
-        ``PRAGMA foreign_key_check`` stays the check for a scheduled run.
+        posting.
+
+        ``after`` is the ``PostingMark`` of an earlier error-free check (or of ``posting_watermark()``). The
+        mark holds a posting id and a hash of that posting row and its entry. The check gives an error and no
+        watermark when that posting is missing or its hash differs, so a restore to another file, or a relabel of
+        old rows, forces the full check. A plain integer is accepted only for old callers: it is not anchored,
+        and the check only refuses an id above the newest posting id.
+
+        The next watermark is built from the last row that the check read, in the same read transaction, so a
+        posting that a concurrent writer adds later is checked next time. Cost: the number of new postings, each
+        with one primary key read. The full ``PRAGMA foreign_key_check`` stays the check for a scheduled run.
         """
+        mark = after if isinstance(after, PostingMark) else PostingMark(int(after), "")
+        anchored = isinstance(after, PostingMark)
         with self.connection() as conn:
             conn.execute("BEGIN")
             try:
                 newest = int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM postings").fetchone()[0])
-                if after_posting_id > newest or after_posting_id < 0:
-                    return PostingCheck([f"Posting watermark {after_posting_id} is above the newest posting "
+                if mark.position > newest or mark.position < 0:
+                    return PostingCheck([f"Posting watermark {mark.position} is above the newest posting "
                                          f"({newest}); the file is not the one that the watermark came from. "
                                          "Run the full check"], None)
+                if anchored and mark.position > 0:
+                    current = self._posting_mark(conn, mark.position)
+                    if current is None or current.row_hash != mark.row_hash:
+                        return PostingCheck([f"Posting {mark.position}: the watermark row is missing or changed; "
+                                             "the file is not the one that the watermark came from. "
+                                             "Run the full check"], None)
                 rows = conn.execute(
                     "SELECT p.id, p.entry_id, e.id IS NULL FROM postings p LEFT JOIN entries e ON e.id = p.entry_id "
-                    "WHERE p.id > ? ORDER BY p.id", (after_posting_id,)
+                    "WHERE p.id > ? ORDER BY p.id", (mark.position,)
                 ).fetchall()
+                errors = [f"Posting {row[0]}: entry {row[1]} does not exist" for row in rows if row[2]]
+                last = self._posting_mark(conn, int(rows[-1][0])) if rows else (
+                    self._posting_mark(conn, mark.position) if mark.position > 0 else PostingMark(0, ""))
             finally:
                 conn.rollback()
-        errors = [f"Posting {row[0]}: entry {row[1]} does not exist" for row in rows if row[2]]
-        mark = int(rows[-1][0]) if rows else after_posting_id
-        return PostingCheck(errors, None if errors else mark)
+        return PostingCheck(errors, None if errors else last)
 
-    def new_posting_foreign_key_errors(self, after_posting_id: int) -> list[str]:
+    def new_posting_foreign_key_errors(self, after: PostingMark | int) -> list[str]:
         """Return only the errors of ``check_new_postings``."""
-        return self.check_new_postings(after_posting_id).errors
+        return self.check_new_postings(after).errors
 
     def load_opens(self, conn: sqlite3.Connection | None = None) -> list[Open]:
         if conn is None:

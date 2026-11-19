@@ -234,9 +234,10 @@ checked by the next call.
 ### When an incremental check can stand in for the full check
 
 - Use a head or a watermark only if an error-free check on the same file returned it. Never make one up and
-  never reuse one after a restore, a copy or a migration. `check_new_postings` gives an error for a watermark
-  above the newest posting id. A restored file with more postings than the saved watermark cannot be caught this
-  way: reset both checkpoints with the full checks after any restore.
+  never reuse one after a restore, a copy or a migration. `check_new_postings` gives an error, and no watermark, when
+  the watermark is above the newest posting id, or when the posting row that it names is missing or changed. The
+  watermark holds the posting id and a hash of that row and of its entry. Even so, reset both checkpoints with the
+  full checks after any restore.
 - The append-only triggers must be present the whole time. Run `append_only_guard_problems` with each check.
 - `meta`, `accounts` and `source_transactions` have no triggers. `books entity account-rename` relabels posted
   rows. The relabel is allowed only while its hash-chained `account-renamed` event is the newest audit event,

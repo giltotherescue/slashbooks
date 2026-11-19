@@ -306,23 +306,55 @@ class WatermarkAnchorTests(StoreCase):
     def test_a_watermark_above_the_newest_posting_is_an_error(self) -> None:
         for name in "abc":
             self.write(name)  # Six postings.
-        self.assertEqual(self.store.posting_watermark(), 6)
+        self.assertEqual(self.store.posting_watermark().position, 6)
         for bad in (10000, 7, -1):
             result = self.store.check_new_postings(bad)
             self.assertEqual((len(result.errors), result.watermark), (1, None), bad)
-        self.assertEqual(self.store.check_new_postings(6).errors, [])
+        self.assertEqual(self.store.check_new_postings(6).errors, [])  # An integer is accepted, unanchored.
+        self.assertEqual(self.store.check_new_postings(self.store.posting_watermark()).errors, [])
 
-    def test_a_restore_from_an_older_backup_is_caught_by_the_saved_watermark(self) -> None:
-        for name in "abcdefg":
-            self.write(name)
-        saved = self.store.check_new_postings(0).watermark  # 14
+    def test_a_restore_to_an_older_file_with_new_postings_and_an_orphan_fails_the_check(self) -> None:
+        for name in "abcdef":
+            self.write(name)  # 12 postings
+        saved = self.store.check_new_postings(self.store.posting_watermark()).watermark
+        self.assertEqual(saved.position, 12)
         older = LedgerStore(Path(self.tmp.name) / "older.sqlite")
         older.initialize()
         with older.transaction() as conn:
             older.insert_opens([Open(date(2000, 1, 1), "Assets:Bank:Checking", ("USD",)),
                                 Open(date(2000, 1, 1), "Expenses:Software", ("USD",))], conn)
-            older.insert_entries([_entry("a")], conn)
-        self.assertTrue(older.check_new_postings(saved).errors)
+            for name in "abc":
+                older.insert_entries([_entry(name)], conn)
+        self.assertEqual(older.posting_watermark().position, 6)
+        with older.connection() as conn:
+            conn.execute("PRAGMA foreign_keys=OFF")
+            for n in range(7, 15):
+                conn.execute("INSERT INTO postings (entry_id, account, amount) VALUES (?, 'Other', ?)",
+                             (999 if n == 10 else 1, str(n)))
+            conn.commit()
+        self.assertEqual(older.posting_watermark().position, 14)
+        result = older.check_new_postings(saved)
+        self.assertTrue(result.errors, result)
+        self.assertIsNone(result.watermark)
+        self.assertTrue(older.check_new_postings(0).errors)  # The orphan is also found from the start.
+
+    def test_a_restore_with_the_same_posting_ids_but_other_content_fails_the_anchor(self) -> None:
+        self.write("a")
+        saved = self.store.posting_watermark()
+        other = LedgerStore(Path(self.tmp.name) / "other.sqlite")
+        other.initialize()
+        with other.transaction() as conn:
+            other.insert_opens([Open(date(2000, 1, 1), "Assets:Bank:Checking", ("USD",)),
+                                Open(date(2000, 1, 1), "Expenses:Software", ("USD",))], conn)
+            other.insert_entries([_entry("a", "11.00")], conn)
+        result = other.check_new_postings(saved)
+        self.assertEqual((len(result.errors), result.watermark), (1, None))
+
+    def test_a_relabel_of_the_anchor_row_forces_the_full_check(self) -> None:
+        self.write("a")
+        saved = self.store.posting_watermark()
+        self.raw("UPDATE postings SET account = 'Expenses:Other' WHERE id = 2")
+        self.assertIsNone(self.store.check_new_postings(saved).watermark)
 
 
 class NewPostingForeignKeyTests(StoreCase):
