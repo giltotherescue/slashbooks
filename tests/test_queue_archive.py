@@ -285,6 +285,93 @@ class ArchiveTests(unittest.TestCase):
         every = queue.load_all_items(self.entity)
         self.assertEqual(sorted(every), sorted(f"row-{n}.json" for n in range(ROWS + 2)))
 
+    def test_load_all_items_hides_a_stale_archive_entry_behind_a_corrupt_file_and_skips_a_partial_group(self):
+        queue.compact_closed_items(self.entity)
+        q_dir = self.entity.path / "review-queue"
+        (q_dir / "row-1.json").write_text("{not json", encoding="utf-8")   # newer than the archive entry, but unreadable
+        every = queue.load_all_items(self.entity)
+        self.assertNotIn("row-1.json", every, "a stale archived copy must not stand in for a corrupt newer file")
+        self.assertIn("row-2.json", every)
+        (q_dir / "row-1.json").unlink()
+        # An unfinished group commit: its files are not a whole state, so the preload leaves them out, as a listing does.
+        real = queue._replace_group_destination
+        calls = []
+
+        def stop_after_one(*args, **kwargs):
+            if calls:
+                raise KeyboardInterrupt
+            calls.append(1)
+            return real(*args, **kwargs)
+
+        items = [queue._load_item(self.entity, "row-2"), queue._load_item(self.entity, "row-3")]
+        with patch.object(queue, "_replace_group_destination", stop_after_one):
+            with self.assertRaises(KeyboardInterrupt):
+                queue._save_item_group(self.entity, items)
+        _, recovery_files, recovery = queue._group_recovery_view(self.entity)
+        self.assertIsNotNone(recovery)
+        every = queue.load_all_items(self.entity)
+        for name in recovery_files:
+            self.assertNotIn(name, every)
+        self.assertIn("row-4.json", every)
+
+    def test_a_retry_after_an_interrupt_syncs_the_folders_before_it_removes_files(self):
+        real_unlink = Path.unlink
+
+        def stop(self_path, *args, **kwargs):
+            if self_path.parent.name == "review-queue":
+                raise KeyboardInterrupt   # after every archive is written, before any file is removed
+            return real_unlink(self_path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", stop):
+            with self.assertRaises(KeyboardInterrupt):
+                queue.compact_closed_items(self.entity)
+        events = []
+        real_sync = queue._fsync_directory
+
+        def sync(path):
+            events.append(("sync", path.name))
+            return real_sync(path)
+
+        def unlink(self_path, *args, **kwargs):
+            events.append(("unlink", self_path.name))
+            return real_unlink(self_path, *args, **kwargs)
+
+        with patch.object(queue, "_fsync_directory", sync), patch.object(Path, "unlink", unlink):
+            result = queue.compact_closed_items(self.entity)
+        self.assertEqual(result["archives_written"], 0)
+        self.assertEqual(result["files_removed"], ROWS)
+        first_unlink = next(i for i, e in enumerate(events) if e[0] == "unlink")
+        before = [name for kind, name in events[:first_unlink] if kind == "sync"]
+        self.assertIn("archive", before)
+        self.assertIn("review-queue", before)
+
+    def test_an_in_place_change_of_equal_size_with_the_same_mtime_is_not_read_from_the_cache(self):
+        import os
+        queue.compact_closed_items(self.entity)
+        path = self.entity.path / "review-queue" / "archive" / "2026-01.json"
+        before = path.stat()
+        first = queue._read_archive_file(path)
+        raw = path.read_bytes()
+        self.assertIn(b"Synthetic service", raw)
+        path.write_bytes(raw.replace(b"Synthetic service", b"Synthetic sorvice", 1))   # same size, same inode
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        after = path.stat()
+        self.assertEqual((before.st_size, before.st_mtime_ns, before.st_ino), (after.st_size, after.st_mtime_ns, after.st_ino))
+        second = queue._read_archive_file(path)
+        self.assertIn("Synthetic sorvice", json.dumps(second))
+        self.assertNotIn("Synthetic sorvice", json.dumps(first))
+
+    def test_queue_show_of_a_corrupt_archive_prints_an_error_and_exits_non_zero(self):
+        from bookkeeping import cli
+        queue.compact_closed_items(self.entity)
+        (self.entity.path / "review-queue" / "archive" / "2026-02.json").write_text("{not json", encoding="utf-8")
+        out, err = StringIO(), StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(["queue", "show", "--entity", str(self.entity.path), "--item", "row-1"])
+        self.assertEqual(code, 1)
+        self.assertIn("2026-02.json", err.getvalue() + out.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
     def test_the_audit_chain_is_whole_after_the_move(self):
         queue.compact_closed_items(self.entity)
         self.assertEqual(LedgerStore(self.entity.path / "ledger.sqlite").verify_audit_chain(), [])

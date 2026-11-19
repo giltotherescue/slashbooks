@@ -757,8 +757,9 @@ def _archive_bytes(items: dict[str, dict]) -> bytes:
 
 
 _ARCHIVE_ITEM_NAME = re.compile(r"[^/\x00-\x1f\\.][^/\x00-\x1f\\]*\.json")
-# One parse for each unchanged archive file, kept for the life of the process. The key is the path and the file signature.
-_ARCHIVE_CACHE: dict[tuple[str, int, int, int], dict[str, dict]] = {}
+# One parse for each archive content, kept for the life of the process. The key is the path and the SHA-256 of the bytes that were
+# read, so a change of equal size with a preserved modification time can never return stale content.
+_ARCHIVE_CACHE: dict[tuple[str, str], dict[str, dict]] = {}
 
 
 def _read_archive_file(path: Path) -> dict[str, dict]:
@@ -782,7 +783,7 @@ def _read_archive_file(path: Path) -> dict[str, dict]:
         if signature != (after.st_mtime_ns, after.st_size, after.st_ino) or len(data) != before.st_size \
                 or signature != (current.st_mtime_ns, current.st_size, current.st_ino):
             continue
-        key = (str(path), *signature)
+        key = (str(path), hashlib.sha256(data).hexdigest())
         cached = _ARCHIVE_CACHE.get(key)
         if cached is not None:
             return cached
@@ -1185,8 +1186,11 @@ def compact_closed_items(entity: Entity) -> dict[str, int]:
             written += 1
         # The archives are on disk (each file and its folder were synced when it was written). Sync the archive folder and
         # the queue folder too, which holds the entry of a new archive folder, before any item file is removed.
-        if written:
-            _fsync_directory(directory)
+        # A retry after an interrupt finds the archives already written (written == 0) and still has files to remove: it syncs
+        # too, because the interrupted run may not have reached its syncs.
+        if written or closed:
+            if directory.is_dir():
+                _fsync_directory(directory)
             _fsync_directory(q_dir)
         for name in closed:
             (q_dir / name).unlink()
@@ -1204,15 +1208,25 @@ def load_all_items(entity: Entity) -> dict[str, dict]:
     """
     found: dict[str, dict] = {}
     q_dir = _queue_dir(entity)
+    recovery_ids, recovery_files, recovery = _group_recovery_view(entity)
+    if recovery is not None and recovery_ids is None:
+        raise ValueError("Queue group recovery is required before the queue can be read as a whole.")
+    seen: set[str] = set()  # every file name in the queue folder, readable or not: a file is newer than an archive entry
     if q_dir.is_dir():
         for path in sorted(q_dir.glob("*.json")):
+            seen.add(path.name)
+            if path.name in recovery_files:
+                continue  # part of an unfinished group commit: not a whole state
             try:
                 found[path.name] = _load_item_from_path(entity, path, quarantine_on_error=False)
+            except FileNotFoundError:
+                seen.discard(path.name)  # moved into an archive after it was listed
             except (OSError, ValueError):
-                continue
+                continue  # unreadable: left out, and its stale archive entry stays hidden
     archived, _ = _archived_items(entity, strict=True)
     for name, item in archived.items():
-        found.setdefault(name, item)
+        if name not in seen and name not in recovery_files:
+            found[name] = item
     return dict(sorted(found.items()))
 
 
@@ -4302,7 +4316,7 @@ def _run(args: Any) -> int:
                 item = read_queue_item(entity, args.item_id)
                 print(json.dumps(item, indent=2, sort_keys=True))
                 return 0
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, ValueError) as exc:
                 _print_error(exc)
                 return 1
 
