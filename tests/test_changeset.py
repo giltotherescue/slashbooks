@@ -630,6 +630,100 @@ class OtherBehaviorTests(unittest.TestCase):
                          [("staging/source-id-aliases.json", "removed")])
         self.seq._apply("files_removed", receipt.change_set)
 
+    def test_a_null_or_missing_bank_payload_never_matches_a_stored_hash(self) -> None:
+        with self.seq.cap() as receipt:
+            conn = sqlite3.connect(self.seq.entity / "ledger.sqlite")
+            try:
+                with conn:
+                    conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) VALUES "
+                                 "('cs-n', '{\"a\": 1}', 'posted', '2026-10-01T00:00:00Z')")
+            finally:
+                conn.close()
+        for row_value in (None, [], "text", {}):
+            document = copy.deepcopy(receipt.change_set)
+            document["bank_rows"][0]["row"] = row_value  # The stored hash stays the hash of the real payload.
+            document["fingerprint"] = changeset._fingerprint(document)
+            with self.subTest(row=row_value):
+                with self.assertRaises(changeset.ChangeSetRefused):
+                    changeset.apply_change_set(self.seq.view, document)
+        # A damaged replica: the row is null in the view but the stored hash is kept.
+        self.seq._apply("good", receipt.change_set)
+        damaged = copy.deepcopy(self.seq.view)
+        damaged["bank_rows"]["cs-n"]["row"] = None
+        self.assertNotEqual(changeset.view_digest(damaged), changeset.view_digest(self.seq.view))
+        # A payload that is JSON null or not an object is stored as an object, so a full read and the engine agree.
+        with self.seq.cap() as receipt:
+            conn = sqlite3.connect(self.seq.entity / "ledger.sqlite")
+            try:
+                with conn:
+                    conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) VALUES "
+                                 "('cs-null', 'null', 'posted', '2026-10-01T00:00:00Z')")
+            finally:
+                conn.close()
+        self.assertEqual(receipt.change_set["bank_rows"][0]["row"], {"unreadable_payload_text": "null"})
+        self.seq._apply("null_payload", receipt.change_set)
+
+    def test_an_ingest_that_fails_to_finalize_never_leaves_a_complete_receipt(self) -> None:
+        path = self.root / "second.json"
+        path.write_text(json.dumps([_txn("cs-new", "2026-10-09", "-5.00", "NEW VENDOR")]), encoding="utf-8")
+        for label, argv_extra, patch in (
+                ("work events", ["--work-out", str(self.root / "work.json")],
+                 mock.patch("bookkeeping.work.work_events", side_effect=RuntimeError("finalize"))),
+                ("work document write", ["--work-out", str(self.root / "work2.json")],
+                 mock.patch("bookkeeping.work.write_document", side_effect=OSError("disk"))),
+                ("after the ledger write", [],
+                 mock.patch("bookkeeping.ingest.print", side_effect=RuntimeError("late"), create=True))):
+            out = self.root / "ingest.json"
+            sid = f"cs-new-{len(label)}"
+            path.write_text(json.dumps([_txn(sid, "2026-10-09", "-5.00", "NEW VENDOR " + label)]), encoding="utf-8")
+            with self.subTest(label), patch:
+                with self.assertRaises((RuntimeError, OSError)):
+                    run_cli([*argv_extra, "--change-set-out", str(out), "ingest", str(path), "--entity",
+                             str(self.seq.entity), "--session-id", "s2"])
+            document = json.loads(out.read_text(encoding="utf-8"))
+            self.assertFalse(document["complete"])
+            self.assertTrue(document["changed"])  # The ingest wrote its rows before the failure.
+
+    def test_an_invalid_command_never_leaves_an_earlier_receipt(self) -> None:
+        out = self.root / "old.json"
+        out.write_text(json.dumps({"complete": True}), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            run_cli(["--change-set-out", str(out), "queue", "no-such-command"])
+        self.assertFalse(out.exists())
+
+    def test_null_and_malformed_members_of_a_strict_file_are_not_read(self) -> None:
+        entity = self.seq.entity
+        cases = {
+            "staging/pending-categorization.json": ["[null]", "[1]", '[{"no_id": 1}]', '[{"id": null}]'],
+            "staging/duplicate-candidates.json": ["[null]", '[{"id": "x"}]'],
+            "staging/pending.json": ["[[]]", '[{"id": ""}]'],
+            "staging/seen-ids.json": ["[null]", "[1]", '[""]'],
+            "staging/context-history.json": ['{"schema_version": 1, "rows": [null]}',
+                                             '{"schema_version": 1, "rows": [{"status": "x"}]}', "null"],
+            "staging/split-templates.json": ['{"a": null}', '{"a": {}}', "null"],
+            "staging/source-id-aliases.json": ["[null]", "[1]"],
+            "learned-context/counterparties.json": ['{"k": null}', '{"k": []}'],
+            "learned-context/accrual-rules.json": ['{"rules": null}', '{"rules": [], "receipts": 1}'],
+        }
+        for name, bads in cases.items():
+            path = entity / name
+            original = path.read_text(encoding="utf-8") if path.exists() else None
+            for bad in bads:
+                with self.subTest(name=name, bad=bad):
+                    if bad == "null":
+                        # JSON null is the same as no file for a list. A document that must be an object is refused.
+                        if name not in ("staging/context-history.json",):
+                            continue
+                    with self.seq.cap() as receipt:
+                        path.parent.mkdir(exist_ok=True)
+                        path.write_text(bad, encoding="utf-8")
+                    self.assertFalse(receipt.change_set["complete"], (name, bad))
+                    self.assertEqual(receipt.change_set["reason"], "state_unreadable")
+            if original is None:
+                path.unlink()
+            else:
+                path.write_text(original, encoding="utf-8")
+
     def test_duplicate_candidates_are_listed(self) -> None:
         entity = self.seq.entity
         path = entity / "staging" / "duplicate-candidates.json"

@@ -55,6 +55,8 @@ COVERED_FILES = frozenset({
 DOCUMENT_FILES = ("staging/split-templates.json", "staging/source-id-aliases.json",
                   "learned-context/accrual-rules.json")
 _CONTEXT_FILE = "staging/context-history.json"
+_DOCUMENT_MEMBERS = {"staging/split-templates.json": list, "staging/source-id-aliases.json": dict,
+                     "learned-context/accrual-rules.json": (int, str, list, dict)}
 _DOCUMENT_TYPES = {"staging/split-templates.json": dict, "staging/source-id-aliases.json": list,
                    "learned-context/accrual-rules.json": dict}
 COVERED_FOLDERS = ("staging", "learned-context")
@@ -187,11 +189,17 @@ def _load_bank_index(conn: sqlite3.Connection) -> dict[str, tuple[str, str, str]
             for row in conn.execute("SELECT id, status, imported_at, payload_json FROM source_transactions")}
 
 
-def _payload_hash(text: Any) -> str:
+def _payload_doc(text: Any) -> dict[str, Any]:
+    """A stored payload as an object. Text that is not a JSON object is wrapped, never dropped or read as null."""
     try:
-        return payload_digest(json.loads(text))
+        value = json.loads(text)
     except (ValueError, TypeError):
-        return "unreadable:" + hashlib.sha256(str(text).encode("utf-8")).hexdigest()
+        value = None
+    return value if isinstance(value, dict) else {"unreadable_payload_text": str(text)}
+
+
+def _payload_hash(text: Any) -> str:
+    return payload_digest(_payload_doc(text))
 
 
 def _bank_rows(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, dict[str, Any]]:
@@ -201,13 +209,10 @@ def _bank_rows(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, dict[s
         marks = ",".join("?" for _ in chunk)
         for row in conn.execute(
                 f"SELECT id, payload_json, status, imported_at FROM source_transactions WHERE id IN ({marks})", chunk):
-            try:
-                payload = json.loads(row["payload_json"])
-            except (ValueError, TypeError):
-                payload = None
+            payload = _payload_doc(row["payload_json"])
             found[str(row["id"])] = {
                 "status": str(row["status"]), "imported_at": str(row["imported_at"]),
-                "payload_sha256": _payload_hash(row["payload_json"]), "row": payload}
+                "payload_sha256": payload_digest(payload), "row": payload}
     return found
 
 
@@ -308,7 +313,10 @@ def _load_keyed(path: Path, key: str) -> dict[str, dict[str, Any]]:
         return {}
     if not isinstance(data, list):
         raise ChangeSetError(f"{path.name} is not a JSON list.")
-    return {str(row[key]): row for row in data if isinstance(row, dict) and row.get(key)}
+    for row in data:
+        if not isinstance(row, dict) or not isinstance(row.get(key), (str, int)) or row.get(key) in ("", None):
+            raise ChangeSetError(f"{path.name} has a row that is not an object with a {key}.")
+    return {str(row[key]): row for row in data}
 
 
 def _load_ids(path: Path) -> list[str]:
@@ -317,7 +325,9 @@ def _load_ids(path: Path) -> list[str]:
         return []
     if not isinstance(data, list):
         raise ChangeSetError(f"{path.name} is not a JSON list.")
-    return sorted({str(value) for value in data})
+    if not all(isinstance(value, str) and value for value in data):
+        raise ChangeSetError(f"{path.name} has a member that is not a non-empty string.")
+    return sorted(set(data))
 
 
 def _load_learned(root: Path) -> dict[str, Any]:
@@ -326,7 +336,9 @@ def _load_learned(root: Path) -> dict[str, Any]:
         return {}
     if not isinstance(data, dict):
         raise ChangeSetError(f"{_LEARNED_FILE} is not a JSON object.")
-    return {str(key): value for key, value in data.items()}
+    if not all(isinstance(value, dict) for value in data.values()):
+        raise ChangeSetError(f"{_LEARNED_FILE} has a member that is not an object.")
+    return dict(data)
 
 
 def _load_context(root: Path) -> dict[str, dict[str, Any]]:
@@ -337,7 +349,9 @@ def _load_context(root: Path) -> dict[str, dict[str, Any]]:
     rows = data.get("rows") if isinstance(data, dict) else None
     if not isinstance(rows, list):
         raise ChangeSetError(f"{_CONTEXT_FILE} has an unknown format.")
-    return {str(row["source_id"]): row for row in rows if isinstance(row, dict) and row.get("source_id")}
+    if not all(isinstance(row, dict) and isinstance(row.get("source_id"), str) and row["source_id"] for row in rows):
+        raise ChangeSetError(f"{_CONTEXT_FILE} has a row that is not an object with a source_id.")
+    return {row["source_id"]: row for row in rows}
 
 
 def _load_documents(root: Path) -> dict[str, Any]:
@@ -349,6 +363,12 @@ def _load_documents(root: Path) -> dict[str, Any]:
             continue
         if not isinstance(value, _DOCUMENT_TYPES[name]):
             raise ChangeSetError(f"{name} has an unexpected shape.")
+        if name == "learned-context/accrual-rules.json" and (
+                not isinstance(value.get("rules"), list) or not isinstance(value.get("receipts", []), list)):
+            raise ChangeSetError(f"{name} has an unexpected shape.")
+        members = value.values() if isinstance(value, dict) else value
+        if not all(isinstance(member, _DOCUMENT_MEMBERS[name]) for member in members):
+            raise ChangeSetError(f"{name} has a member of the wrong type.")
         found[name] = value
     return found
 
@@ -747,7 +767,7 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
     that full comparison. Both ways give the same document.
     """
     holder = ChangeSetCapture(Path(entity_path) if entity_path is not None else None, books_revision, base_revision)
-    holder.change_set = _incomplete(books_revision, "not_finished", base_revision)  # A reader never sees a complete receipt early
+    holder.change_set = incomplete(books_revision, "not_finished", base_revision)  # A reader never sees a complete receipt early
     if holder.entity_path is None:
         holder.change_set = _empty(books_revision, base_revision=base_revision)
         yield holder
@@ -779,19 +799,19 @@ def _finish(before: "_Side | None", holder: ChangeSetCapture, run: Any = None) -
         if run is not None:
             return run.finish(holder.failed, revision, base)
         if before is None:
-            return _incomplete(revision, "state_unreadable", base)
+            return incomplete(revision, "state_unreadable", base)
         return _build(before, _take(holder.entity_path), holder.entity_path,  # type: ignore[arg-type]
                       revision, holder.failed, base)
     except ChangeSetError:
-        return _incomplete(revision, "state_unreadable", base)
+        return incomplete(revision, "state_unreadable", base)
     except Exception:  # noqa: BLE001
-        return _incomplete(revision, "finalize_failed", base)
+        return incomplete(revision, "finalize_failed", base)
     finally:
         if run is not None:
             run.close()
 
 
-def _incomplete(books_revision: int | None, reason: str, base_revision: int | None = None) -> dict[str, Any]:
+def incomplete(books_revision: int | None, reason: str, base_revision: int | None = None) -> dict[str, Any]:
     document = _empty(books_revision, complete=False, reason=reason, base_revision=base_revision)
     document["changed"] = True  # The host cannot tell: it must do a full read.
     document["fingerprint"] = _fingerprint(document)
@@ -815,7 +835,7 @@ def write_document(path: Path, document: Mapping[str, Any]) -> None:
         _atomic_write(path, json.dumps(document, indent=2, sort_keys=True) + "\n")
     except Exception as first:
         try:
-            fallback = _incomplete(document.get("books_revision"), "write_failed", document.get("base_revision"))
+            fallback = incomplete(document.get("books_revision"), "write_failed", document.get("base_revision"))
             _atomic_write(path, json.dumps(fallback, indent=2, sort_keys=True) + "\n")
         except Exception:
             path.unlink(missing_ok=True)
@@ -866,8 +886,13 @@ def apply_change_set(view: dict[str, Any], change_set: Mapping[str, Any]) -> dic
     if change_set["state"]["before"] != view_digest(view):
         raise ChangeSetRefused("The change set does not start at the content of the view: do a full read.")
     for row in change_set["bank_rows"]:
-        if row["row"] is not None and row["payload_sha256"] != payload_digest(row["row"]):
-            raise ChangeSetRefused(f"The payload hash of bank row {row['source_id']} is wrong: do a full read.")
+        if row["change"] == "removed":
+            if row["row"] is not None or row["payload_sha256"] is not None:
+                raise ChangeSetRefused(f"Removed bank row {row['source_id']} must not carry a payload: do a full read.")
+        elif not isinstance(row["row"], dict) or row["payload_sha256"] != payload_digest(row["row"]):
+            # A missing or null payload is never accepted, and no stored hash stands in for a payload.
+            raise ChangeSetRefused(f"The payload of bank row {row['source_id']} is missing or does not match its "
+                                   "hash: do a full read.")
     new = _apply(view, change_set)
     new["revision"] = new_revision
     if new["position"] != change_set["ledger"]["after"] or view_digest(new) != change_set["state"]["after"]:
@@ -888,7 +913,7 @@ def view_digest(view: Mapping[str, Any]) -> str:
         audit={str(key): row for key, row in view["audit_events"].items()},
         accounts=view["accounts"],
         bank={key: [row["status"], row["imported_at"],
-                    payload_digest(row["row"]) if row["row"] is not None else row["payload_sha256"]]
+                    payload_digest(row["row"]) if isinstance(row["row"], dict) else "missing-payload"]
               for key, row in view["bank_rows"].items()},
         queue=view["review_queue"], pending=staging["pending"], duplicates=staging["duplicates"],
         store_pending=staging["store_pending"], context=staging["context_history"], documents=view["documents"],

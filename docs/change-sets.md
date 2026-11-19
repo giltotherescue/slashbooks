@@ -48,6 +48,10 @@ books --change-set-out change.json queue confirm --entity . --item src-123
   `books_revision`. A change set without them cannot be applied by the reducer.
   The engine has no revision counter of its own. Its position is the audit chain
   head, and `ledger.before` and `ledger.after` give it.
+- The engine removes an old file at `PATH` before it checks the command, so an
+  invalid command never leaves the receipt of an earlier run. With `--work-out`
+  also set, an error in the work events or in their file (after an ingest, for
+  example) makes the change set incomplete.
 - The engine removes an old file at `PATH` before the command, so a document of
   an earlier run is never read as the document of this run. If any step after
   the command body fails (the read of the state after the command, the digest),
@@ -199,7 +203,10 @@ the change set with `ChangeSetRefused` in these cases:
   rows of the view, the ledger and audit rows included, and from the bank
   payloads. It does not trust a stored hash. Two replicas whose rows differ do
   not match.
-- The `payload_sha256` of a bank row is not the hash of its `row`.
+- The `payload_sha256` of a bank row is not the hash of its `row`, or the `row`
+  of a bank row that was not removed is null or not an object. A stored hash never
+  stands in for a payload. The engine stores a payload that is not a JSON object
+  as `{"unreadable_payload_text": TEXT}`, so every bank row has an object.
 - After the apply, the position or the digest of the new view is not
   `ledger.after` or `state.after`.
 
@@ -306,7 +313,7 @@ host that needs it must keep reading it directly:
 - A command that has no company directory gives an empty change set.
 
 A file that is in scope and cannot be read (not valid JSON, a wrong shape, a
-corrupt archive) gives an incomplete change set (`state_unreadable`). The engine
+member that is null or of the wrong type or has no key, a corrupt archive) gives an incomplete change set (`state_unreadable`). The engine
 never reads it as empty.
 
 The host runs one writer for each company at a time. The engine does not
