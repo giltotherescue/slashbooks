@@ -204,17 +204,28 @@ class FallbackTests(Fixture):
                          [("cs-001", "status-changed"), ("cs-001x", "added")])
         self.assertEqual([row["name"] for row in document["accounts"]["opened"]], ["Expenses:Direct"])
 
-    def test_null_and_non_object_payloads_hash_like_a_full_read(self) -> None:
-        def action() -> None:
-            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
-                for key, text in (("p-null", "null"), ("p-text", "not json"), ("p-list", "[1]")):
-                    conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) "
-                                 "VALUES (?, ?, 'posted', '2026-10-01T00:00:00Z')", (key, text))
-                conn.commit()
+    def test_a_payload_that_is_not_an_object_is_unreadable_in_both_captures(self) -> None:
+        for text in ("null", "not json", "[1]"):
+            with self.subTest(text=text):
+                def action() -> None:
+                    with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                        conn.execute("INSERT OR REPLACE INTO source_transactions (id, payload_json, status, imported_at) "
+                                     "VALUES ('p-bad', ?, 'posted', '2026-10-01T00:00:00Z')", (text,))
+                        conn.commit()
 
-        document = self.both(action)
-        rows = {row["source_id"]: row for row in document["bank_rows"]}
-        self.assertEqual(rows["p-text"]["row"], {"unreadable_payload_text": "not json"})
+                revision = self.seq.view["revision"]
+                args = {"books_revision": revision + 1, "base_revision": revision}
+                with changeset.capture(self.entity, incremental=False, **args) as full:
+                    with changeset.capture(self.entity, **args) as fast:
+                        action()
+                self.assertEqual(fast.change_set, full.change_set)
+                self.assertFalse(fast.change_set["complete"])
+                self.assertEqual(fast.change_set["reason"], "state_unreadable")
+                self.assertEqual(capture_objects(self.entity), [])
+                with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                    conn.execute("DELETE FROM source_transactions WHERE id = 'p-bad'")
+                    conn.commit()
+                self.seq.view = changeset.read_view(self.entity, revision=self.seq.view["revision"])
 
     def test_an_account_replaced_by_its_unique_name_is_found(self) -> None:
         def action() -> None:
@@ -447,16 +458,13 @@ class TamperTests(Fixture):
         self.assertEqual(receipt.change_set["reason"], "state_unreadable")
         self.assertEqual(capture_objects(self.entity), [])
 
-    def test_a_null_payload_hashes_as_it_is_and_matches_the_reducer(self) -> None:
-        def action() -> None:
-            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
-                conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) "
-                             "VALUES ('p-null', 'null', 'posted', '2026-10-01T00:00:00Z')")
-                conn.commit()
-
-        document = self.both(action)  # ``both`` applies it: the reducer checks the payload hash and the digest.
-        row = next(row for row in document["bank_rows"] if row["source_id"] == "p-null")
-        self.assertEqual(row["payload_sha256"], changeset.payload_digest(row["row"]))
+    def test_a_row_whose_key_is_not_its_id_in_the_view_is_refused(self) -> None:
+        document = self.both(lambda: None)
+        view = changeset.read_view(self.entity, revision=self.seq.view["revision"])
+        key = next(iter(view["review_queue"]))
+        view["review_queue"]["other-key"] = view["review_queue"].pop(key)
+        with self.assertRaises(changeset.ChangeSetRefused):
+            changeset.view_digest(view)
 
 
 class ArchiveTests(Fixture):

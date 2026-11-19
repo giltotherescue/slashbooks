@@ -64,8 +64,30 @@ from bookkeeping import taxmap as taxmap_module
 from bookkeeping import brand as brand_module
 
 
+def _invalidate_change_set_file(argv: list[str]) -> None:
+    """Remove the file of ``--change-set-out`` before any option is converted or checked.
+
+    This is a plain scan of the arguments, with no conversion that can fail, so a command with an invalid option never
+    leaves the receipt of an earlier run.
+    """
+    for index, value in enumerate(argv):
+        if value == "--":
+            return
+        path = None
+        if value == "--change-set-out" and index + 1 < len(argv):
+            path = argv[index + 1]
+        elif value.startswith("--change-set-out="):
+            path = value.split("=", 1)[1]
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     command_argv = list(sys.argv[1:] if argv is None else argv)
+    _invalidate_change_set_file(command_argv)
     name_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
     name_parser.add_argument("--product-name")
     name_args, command_argv = name_parser.parse_known_args(command_argv)
@@ -107,9 +129,6 @@ def _main(argv: list[str]) -> int:
     work_parser.add_argument("--change-set-revision", type=int)
     work_parser.add_argument("--change-set-base-revision", type=int)
     work_args, command_argv = work_parser.parse_known_args(command_argv)
-    if work_args.change_set_out is not None:
-        # Before any check of the command: an invalid command never leaves the receipt of an earlier run.
-        work_args.change_set_out.unlink(missing_ok=True)
     args = parser.parse_args(command_argv)
 
     if work_args.work_out is not None or work_args.change_set_out is not None:
@@ -134,8 +153,11 @@ def _main(argv: list[str]) -> int:
                 if work_args.work_out is not None:
                     work_receipt = stack.enter_context(work_module.capture(entity_path))
                 code = _dispatch(args, command_argv, parser, answer_application)
-                if code != 0 and change_receipt is not None:
-                    change_receipt.failed = True  # A failed command can leave some writes: the change set is incomplete.
+                if change_receipt is not None:
+                    if code != 0:
+                        change_receipt.failed = True  # A failed command can leave some writes: the change set is incomplete.
+                    else:
+                        change_receipt.body_done = True  # An error after this point is a failure of a later step.
         finally:
             # Also when the command raises: a failed command can leave writes, and the host needs the document.
             try:

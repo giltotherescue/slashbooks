@@ -488,7 +488,7 @@ def _read_file_section(root: Path, relative: str) -> dict[str, Any]:
         return changeset._load_context(root)
     if relative in changeset.DOCUMENT_FILES:
         value = changeset._load_document(root, relative)
-        return {} if value is None else {relative: value}
+        return {} if value is changeset._MISSING else {relative: value}
     return changeset._load_learned(root)
 
 
@@ -860,7 +860,8 @@ class Run:
 
     # -- finish ---------------------------------------------------------------
 
-    def finish(self, failed: bool, books_revision: int | None, base_revision: int | None = None) -> dict[str, Any]:
+    def finish(self, failed: bool, books_revision: int | None, base_revision: int | None = None,
+               reason: str = "command_failed") -> dict[str, Any]:
         root, journal = self.root, self.journal
         assert journal is not None
         capture_log.end(journal)  # Later writes (the cleanup below) are not part of the command.
@@ -903,7 +904,7 @@ class Run:
             self._ledger_totals(document, before, after, ledger_full)
             return index.digest()
 
-        document = changeset._build(before, after, root, books_revision, failed, base_revision, after_digest)
+        document = changeset._build(before, after, root, books_revision, failed, base_revision, after_digest, reason)
         # Save the counts for the next capture.
         if real_counts is not None:
             counts = real_counts
