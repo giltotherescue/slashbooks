@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 from datetime import date
 import json
 import os
@@ -50,6 +51,7 @@ from bookkeeping.accrual import cli as accrual_module
 from bookkeeping import business as business_module
 from bookkeeping import statement_import as statement_import_module
 from bookkeeping import work as work_module
+from bookkeeping import changeset as changeset_module
 from bookkeeping.connectors import csvsource as csvsource_module
 from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
@@ -101,19 +103,37 @@ def _main(argv: list[str]) -> int:
         }
     work_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
     work_parser.add_argument("--work-out", type=Path)
+    work_parser.add_argument("--change-set-out", type=Path)
+    work_parser.add_argument("--change-set-revision", type=int)
     work_args, command_argv = work_parser.parse_known_args(command_argv)
     args = parser.parse_args(command_argv)
 
-    if work_args.work_out is not None:
+    if work_args.work_out is not None or work_args.change_set_out is not None:
         if args.command in {"cloud", "hosted"} or remote_module.is_bound(args):
+            option = "--work-out" if work_args.work_out is not None else "--change-set-out"
             print(json.dumps({"error": {
                 "code": "WORK_OUTPUT_LOCAL_ONLY",
-                "message": "--work-out applies to commands that change local books.",
+                "message": f"{option} applies to commands that change local books.",
             }}), file=sys.stderr)
             return 1
-        with work_module.capture(work_module.entity_path_from_args(args)) as receipt:
-            code = _dispatch(args, command_argv, parser, answer_application)
-        work_module.write_document(work_args.work_out, receipt.events)
+        entity_path = work_module.entity_path_from_args(args)
+        work_receipt = change_receipt = None
+        try:
+            with contextlib.ExitStack() as stack:
+                if work_args.work_out is not None:
+                    work_receipt = stack.enter_context(work_module.capture(entity_path))
+                if work_args.change_set_out is not None:
+                    change_receipt = stack.enter_context(changeset_module.capture(
+                        entity_path, books_revision=work_args.change_set_revision))
+                code = _dispatch(args, command_argv, parser, answer_application)
+                if code != 0 and change_receipt is not None:
+                    change_receipt.failed = True  # A failed command can leave some writes: the change set is incomplete.
+        finally:
+            # Also when the command raises: a failed command can leave writes, and the host needs the document.
+            if work_receipt is not None:
+                work_module.write_document(work_args.work_out, work_receipt.events)
+            if change_receipt is not None:
+                changeset_module.write_document(work_args.change_set_out, change_receipt.change_set)
         return code
     return _dispatch(args, command_argv, parser, answer_application)
 
