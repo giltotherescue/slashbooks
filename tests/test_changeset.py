@@ -817,6 +817,39 @@ class OtherBehaviorTests(unittest.TestCase):
         with self.assertRaises(changeset.ChangeSetRefused):
             changeset.view_digest(damaged)
 
+    def test_a_missing_ledger_is_not_a_complete_receipt(self) -> None:
+        entity = self.seq.entity
+        with self.seq.cap() as receipt:
+            (entity / "ledger.sqlite").unlink()
+        self.assertFalse(receipt.change_set["complete"])
+        self.assertEqual(receipt.change_set["reason"], "state_unreadable")
+        with self.assertRaises(changeset.ChangeSetRefused):
+            changeset.apply_change_set(self.seq.view, receipt.change_set)
+
+    def test_a_ledger_that_is_absent_before_and_after_is_an_empty_state(self) -> None:
+        empty = self.root / "none"
+        empty.mkdir()
+        with changeset.capture(empty, books_revision=1, base_revision=0) as receipt:
+            pass
+        self.assertTrue(receipt.change_set["complete"])
+        self.assertFalse(receipt.change_set["changed"])
+
+    def test_a_failed_command_with_no_company_directory_is_incomplete(self) -> None:
+        out = self.root / "nocompany.json"
+        code, _, _ = run_cli(["--change-set-out", str(out), "procedures", "show", "no-such-procedure"])
+        self.assertNotEqual(code, 0)
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(changeset.validate(document), [])
+        self.assertFalse(document["complete"])
+        self.assertEqual(document["reason"], "command_failed")
+        with self.assertRaises(RuntimeError):
+            with changeset.capture(None) as receipt:
+                raise RuntimeError("x")
+        self.assertFalse(receipt.change_set["complete"])
+        with changeset.capture(None) as receipt:
+            pass
+        self.assertTrue(receipt.change_set["complete"])
+
     def test_duplicate_candidates_are_listed(self) -> None:
         entity = self.seq.entity
         path = entity / "staging" / "duplicate-candidates.json"

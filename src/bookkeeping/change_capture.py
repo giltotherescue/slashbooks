@@ -893,6 +893,8 @@ class Run:
             if conn is not None:
                 conn.close()
         after.counts = real_counts
+        before.ledger_present = self.start_signatures["sql"] is not None
+        after.ledger_present = (root / "ledger.sqlite").is_file()
         before.counts = self.counts if real_counts is not None else None
         ledger_full = bool(slow_sql or problems or self.guard_problems_before)
         if conn is None:
