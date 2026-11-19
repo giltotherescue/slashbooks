@@ -829,6 +829,43 @@ class IndexLockTests(IndexSealTests):
                                        "--category", "Expenses:Software", "--reasoning", "x."]))
 
 
+class CompanyLockTests(Fixture):
+    def test_the_company_write_lock_is_held_for_the_whole_capture(self) -> None:
+        order: list[str] = []
+        real = changeset.company_write_lock
+        real_start = change_capture.start
+
+        @contextmanager
+        def spy(path):
+            order.append("lock")
+            with real(path) as held:
+                yield held
+            order.append("unlock")
+
+        def start(root):
+            order.append("start")
+            return real_start(root)
+
+        with mock.patch.object(changeset, "company_write_lock", spy), mock.patch.object(change_capture, "start", start):
+            with work.capture(self.entity) as receipt:
+                order.append("command")
+                run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                         "--category", "Expenses:Software", "--reasoning", "x."])  # Takes the lock again: re-entrant.
+                order.append("command end")
+        self.assertEqual(order, ["lock", "start", "command", "command end", "unlock"])
+        self.assertEqual((receipt.complete, receipt.path), (True, "incremental"))
+
+    def test_a_folder_that_cannot_be_locked_gives_the_full_comparison(self) -> None:
+        @contextmanager
+        def unlocked(path):
+            yield False
+
+        with mock.patch.object(changeset, "company_write_lock", unlocked):
+            with work.capture(self.entity) as receipt:
+                pass
+        self.assertEqual(receipt.path, "full")
+
+
 class FullFallbackLockTests(Fixture):
     def lock(self):
         """A second connection that holds the ledger exclusively."""

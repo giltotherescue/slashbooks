@@ -20,6 +20,7 @@ It is additive and is not part of the fingerprint.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -773,6 +774,13 @@ def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iter
     root = holder.entity_path
     run = None
     before: Snapshot | None = None
+    # One writer at a time: the capture holds the company write lock from before its first read to after its last one.
+    # The lock is re-entrant, so the command inside takes it again, and a change set capture inside or outside shares it.
+    lock = contextlib.ExitStack()
+    if incremental and root.is_dir():
+        from .changeset import company_write_lock
+        if not lock.enter_context(company_write_lock(root)):
+            incremental = False  # The folder cannot be locked (read only): read in full.
     if incremental and root.is_dir():
         try:
             from . import change_capture
@@ -807,8 +815,11 @@ def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iter
                 holder.reason = "state_unreadable" if isinstance(exc, (OSError, ValueError, sqlite3.Error)) else "finalize_failed"
                 raise  # A host also sees the error; the receipt (and ``--work-out``) say that it is incomplete.
         finally:
-            if run is not None:
-                run.close()
+            try:
+                if run is not None:
+                    run.close()
+            finally:
+                lock.close()
 
 
 def _work_queue(rows: Mapping[str, Any]) -> dict[str, dict]:
