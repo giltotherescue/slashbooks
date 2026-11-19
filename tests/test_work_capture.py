@@ -529,6 +529,38 @@ class FailureTests(Fixture):
         self.assertEqual(self.kinds(receipt.events), ["categorized"])
 
 
+class FinalizeFailureTests(Fixture):
+    def test_a_failure_in_the_full_path_gives_an_incomplete_receipt(self) -> None:
+        with mock.patch.object(work, "work_events", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError), work.capture(self.entity, incremental=False) as receipt:
+                pass
+        self.assertEqual((receipt.complete, receipt.path, receipt.events), (False, "failed", []))
+
+    def test_the_cli_document_of_a_failed_full_path_is_incomplete(self) -> None:
+        (self.entity / "staging" / "duplicate-candidates.json").write_text("{not json", encoding="utf-8")  # Full path.
+        out = self.root / "full-failed.json"
+        with mock.patch.object(work, "work_events", side_effect=RuntimeError("boom")), self.assertRaises(RuntimeError):
+            run_cli(["--work-out", str(out), "queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                     "--category", "Expenses:Software", "--reasoning", "x."])
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual((document["complete"], document["work"]), (False, []))
+
+    def test_a_failure_in_the_full_snapshot_after_the_command(self) -> None:
+        real = work.take_snapshot
+        calls = []
+
+        def second_fails(*args, **kwargs):
+            calls.append(1)
+            if len(calls) == 2:
+                raise OSError("disk")
+            return real(*args, **kwargs)
+
+        with mock.patch.object(work, "take_snapshot", second_fails):
+            with self.assertRaises(OSError), work.capture(self.entity, incremental=False) as receipt:
+                pass
+        self.assertEqual((receipt.complete, receipt.reason), (False, "state_unreadable"))
+
+
 class SourceTableTests(Fixture):
     """A ledger source table that was dropped, emptied or changed is built again, never trusted."""
 
@@ -554,6 +586,24 @@ class SourceTableTests(Fixture):
 
     def test_an_emptied_table(self) -> None:
         self.check("DELETE FROM ledger_sources")
+
+    def test_a_same_count_edit_of_one_id(self) -> None:
+        self.check("UPDATE ledger_sources SET source_id = 'syn-001-other' WHERE source_id = 'syn-001'")
+
+    def test_a_same_count_edit_that_adds_a_wrong_id_for_a_removed_one(self) -> None:
+        self.check("UPDATE ledger_sources SET source_id = 'invented-1' WHERE source_id = 'syn-001'")
+
+    def test_a_missing_signature_file_builds_the_index_again(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        (self.entity / change_capture.SIGNATURE_NAME).unlink()
+        rows = self.known_pending_row()
+        self.both(lambda: self.pending_path.write_text(json.dumps(rows), encoding="utf-8"), nonempty=False)
+
+    def test_an_untouched_index_is_trusted_without_a_scan(self) -> None:
+        self.both(lambda: None, nonempty=False)
+        with mock.patch.object(change_capture.Index, "all_sources", side_effect=AssertionError("scan")), \
+                mock.patch.object(change_capture, "_rebuild", side_effect=AssertionError("rebuilt")):
+            self.both(lambda: None, nonempty=False)
 
     def test_a_table_with_one_id_removed(self) -> None:
         self.check("DELETE FROM ledger_sources WHERE source_id = 'syn-001'")

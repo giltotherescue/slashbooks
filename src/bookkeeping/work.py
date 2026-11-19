@@ -780,18 +780,18 @@ def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iter
     finally:
         _observations.reset(token)
         try:
-            if run is not None:
-                try:
+            try:
+                if run is not None:
                     holder.events, holder.path = _finish_incremental(run, root, observations)
-                except Exception as exc:  # noqa: BLE001
-                    holder.events, holder.path, holder.complete = [], "failed", False
-                    holder.reason = "state_unreadable" if isinstance(exc, (OSError, ValueError)) else "finalize_failed"
-                    raise  # A host also sees the error; the receipt (and ``--work-out``) say that it is incomplete.
-            else:
-                assert before is not None
-                after = take_snapshot(root, entries_after=before.max_entry_id)
-                holder.events = work_events(before, after, observations=observations)
-                holder.path = "full"
+                else:
+                    assert before is not None
+                    after = take_snapshot(root, entries_after=before.max_entry_id)
+                    holder.events = work_events(before, after, observations=observations)
+                    holder.path = "full"
+            except Exception as exc:  # noqa: BLE001 - any error after the command, in any path
+                holder.events, holder.path, holder.complete = [], "failed", False
+                holder.reason = "state_unreadable" if isinstance(exc, (OSError, ValueError)) else "finalize_failed"
+                raise  # A host also sees the error; the receipt (and ``--work-out``) say that it is incomplete.
         finally:
             if run is not None:
                 run.close()

@@ -54,6 +54,8 @@ from .changeset import ChangeSetError
 from .ledger.store import REWRITE_EVENT_TYPES
 
 INDEX_NAME = ".change-capture.sqlite"
+#: The signature of the index file after the last capture. An edit of the index between two captures changes it.
+SIGNATURE_NAME = ".change-capture.sqlite.sig"
 INDEX_VERSION = 4
 LOG_TABLE = "_books_capture_log"
 CTL_TABLE = "_books_capture_ctl"
@@ -248,7 +250,7 @@ def _logged_keys(conn: sqlite3.Connection, token: str | None) -> tuple[list[int]
 class Index:
     """``.change-capture.sqlite``: the rows of the small tables as the last capture saw them, and their totals."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, distrust: bool = False) -> None:
         self.path = root / INDEX_NAME
         self.conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
         self.conn.execute("PRAGMA synchronous = NORMAL")
@@ -269,7 +271,7 @@ class Index:
             "CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive);"
             "CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id);"
             "CREATE TABLE IF NOT EXISTS ledger_sources (source_id TEXT PRIMARY KEY) WITHOUT ROWID;")
-        if dropped or self.meta("version") != str(INDEX_VERSION):
+        if dropped or distrust or self.meta("version") != str(INDEX_VERSION):
             self.wipe()
         self.totals: dict[str, list[int]] = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
         saved = self.meta("totals")
@@ -843,6 +845,38 @@ _ACTIVE: dict[tuple[int, str], "Run"] = {}
 _ACTIVE_LOCK = threading.Lock()
 
 
+def _index_stamp(root: Path) -> list[Any] | None:
+    try:
+        status = os.stat(root / INDEX_NAME)
+    except OSError:
+        return None
+    return [status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns]
+
+
+def record_stamp(root: Path) -> None:
+    """Save the stat signature of the index after a capture closed it (one ``stat`` and one small file)."""
+    stamp = _index_stamp(root)
+    try:
+        path = root / SIGNATURE_NAME
+        if stamp is None:
+            path.unlink(missing_ok=True)
+            return
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(stamp), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass  # Without a signature the next capture reads every part in full: safe.
+
+
+def stamp_matches(root: Path) -> bool:
+    """True when the index file is the file that the last capture left (same inode, size and times)."""
+    try:
+        saved = json.loads((root / SIGNATURE_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return saved == _index_stamp(root)
+
+
 def _active_key(root: Path) -> tuple[int, str]:
     return threading.get_ident(), os.path.realpath(root)
 
@@ -862,8 +896,9 @@ def start(root: Path) -> "Handle | None":
         active = _ACTIVE.get(_active_key(root))
     if active is not None and not active.closed:
         return active.join()
+    trusted = stamp_matches(root)  # Before the index is opened: an open can change the file.
     try:
-        index = Index(root)
+        index = Index(root, distrust=not trusted)
     except (sqlite3.Error, OSError):
         return None  # The folder cannot hold the index: the caller compares two full reads.
     try:
@@ -871,7 +906,7 @@ def start(root: Path) -> "Handle | None":
         _wait_for_tick(signatures, _newest(_sweep(root)))
         signatures = _signatures(root)
         rebuilt: list[str] = []
-        if not index.sources_intact():
+        if not trusted and not index.sources_intact():
             index.set_token("sql", "sources-invalid")  # The saved source ids do not match their count: build them again.
         for group, current in signatures.items():
             if index.token(group) != current:
@@ -1006,6 +1041,7 @@ class Run:
 
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.
+        record_stamp(self.root)
         status = os.stat(self.index.path)
         self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation)
         self.token = install_triggers(self.root / "ledger.sqlite")
@@ -1133,6 +1169,7 @@ class Run:
         index.commit()
         handle.committed = True
         index.close()
+        record_stamp(root)
         return document
 
     # -- ledger totals --------------------------------------------------------------

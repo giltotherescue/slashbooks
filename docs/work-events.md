@@ -73,7 +73,7 @@ records), a log of the rows that the command writes, and file signatures. A capt
 command share one run. The first capture of a company, and the first capture after a command that ran without a capture,
 read the books in full once to build the index. `work.capture(company_dir, incremental=False)` takes two full snapshots
 instead and gives the same events. The receipt field `path` tells which way was used: `incremental`, `saved` (the new
-state was read in full and compared with the saved copy after the incremental read failed) or `full`. If no way can read the books (a ledger that stays locked, an index that the command removed or replaced), the receipt has `complete` false, `path` `failed` and no events, `--work-out` writes `"complete": false` and a `reason`, and the error is raised: a host must not take that as "no work". The script
+state was read in full and compared with the saved copy after the incremental read failed) or `full`. The index is trusted without a scan only when its file is the file that the last capture left (the capture saves its inode, size and times in `.change-capture.sqlite.sig`); otherwise the index is built again. If no way can read the books (a ledger that stays locked, an index that the command removed or replaced), the receipt has `complete` false, `path` `failed` and no events, `--work-out` writes `"complete": false` and a `reason`, and the error is raised: a host must not take that as "no work". The script
 `benchmarks/bench_work_capture.py` times the capture at three sizes.
 
 ## Event shape
