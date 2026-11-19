@@ -441,7 +441,7 @@ if __name__ == "__main__":
 
 # The two texts of ``entries_append_only_no_overwrite``, frozen here on purpose. SCAN is the text that released
 # engines install: its source_id lookup does not repeat the partial index condition, so it reads every entry. INDEXED
-# repeats it. The tests below prove that both refuse exactly the same writes.
+# repeats it, and this engine installs it. The tests below prove that both refuse exactly the same writes.
 SCAN_NO_OVERWRITE = (
     "CREATE TRIGGER entries_append_only_no_overwrite BEFORE INSERT ON entries "
     "WHEN EXISTS (SELECT 1 FROM entries WHERE id = NEW.id) OR (NEW.source_id IS NOT NULL AND NEW.source_id != '' "
@@ -656,30 +656,97 @@ class SealedStoreCase(StoreCase):
 
 
 class AcceptedTriggerTextTests(SealedStoreCase):
-    """Reader step: both texts are valid. A store moves between engines that install either one with no change."""
+    """Both texts are valid. This engine installs the index form and replaces the scan form one time."""
 
-    def test_a_new_store_gets_the_scan_form_that_released_engines_install(self) -> None:
+    def test_a_new_store_gets_the_index_form(self) -> None:
         with self.store.connection() as conn:
-            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+            self.assertEqual(_trigger_sql(conn), INDEXED_NO_OVERWRITE)
 
-    def test_a_store_with_either_text_opens_with_no_reinstall_and_no_schema_change(self) -> None:
+    def test_a_store_with_the_index_form_opens_with_no_reinstall_and_no_schema_change(self) -> None:
         from bookkeeping.hosted_migration import _schema
         from bookkeeping.ledger.store import append_only_guard_outdated
-        for trigger in (INDEXED_NO_OVERWRITE, SCAN_NO_OVERWRITE):
-            with self.subTest(trigger=trigger[-60:]):
-                with self.store.connection() as conn:
-                    _use_trigger(conn, trigger)
-                before, schema = self.state(), self.schema()
-                self.assertEqual(before[3:], ([], "ok"))
-                with self.store.connection() as conn:
-                    self.assertEqual(append_only_guard_problems(conn), [])
-                    self.assertFalse(append_only_guard_outdated(conn))
-                    _schema(conn)  # The hosted migration check accepts it.
-                self.assertEqual(self.installs(lambda: [self.store.initialize() for _ in range(3)]), 0)
-                self.assertEqual(self.schema(), schema)  # Same text, same PRAGMA schema_version.
-                self.assertEqual(self.state(), before)
-                with self.store.connection() as conn:
-                    self.assertEqual(_trigger_sql(conn), trigger)
+        before, schema = self.state(), self.schema()
+        self.assertEqual(before[3:], ([], "ok"))
+        with self.store.connection() as conn:
+            self.assertEqual(append_only_guard_problems(conn), [])
+            self.assertFalse(append_only_guard_outdated(conn))
+            _schema(conn)
+        self.assertEqual(self.installs(lambda: [self.store.initialize() for _ in range(3)]), 0)
+        self.assertEqual(self.schema(), schema)
+        self.assertEqual(self.state(), before)
+
+    def test_a_store_with_the_scan_form_is_valid_and_gets_the_index_form_once_at_its_next_write(self) -> None:
+        from bookkeeping.hosted_migration import _schema
+        from bookkeeping.ledger.store import append_only_guard_outdated
+        with self.store.connection() as conn:
+            _use_trigger(conn, SCAN_NO_OVERWRITE)
+        before, schema = self.state(), self.schema()
+        self.assertEqual(before[3:], ([], "ok"))
+        with self.store.connection() as conn:
+            self.assertEqual(append_only_guard_problems(conn), [])  # Same rules: the fast checks stay on.
+            self.assertTrue(append_only_guard_outdated(conn))
+            _schema(conn)
+        self.assertEqual(self.installs(self.store.initialize), 1)
+        upgraded = self.schema()
+        self.assertGreater(upgraded[0], schema[0])
+        with self.store.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), INDEXED_NO_OVERWRITE)
+            self.assertFalse(append_only_guard_outdated(conn))
+        self.assertEqual(self.installs(lambda: [self.store.initialize() for _ in range(3)]), 0)
+        self.assertEqual(self.schema(), upgraded)  # One upgrade, then no further change.
+        self.assertEqual(self.state(), before)  # No row, no audit event and no seal changed.
+        self.write("b")
+        self.assertEqual(self.state()[3:], ([], "incomplete-write"))  # An unsealed write is still seen.
+
+    def test_the_upgrade_runs_once_under_the_entity_write_lock(self) -> None:
+        from unittest import mock
+        from bookkeeping.ledger import importer, store as store_module
+        with self.store.connection() as conn:
+            _use_trigger(conn, SCAN_NO_OVERWRITE)
+        real, held = store_module.install_append_only_guard, []
+
+        def spy(conn: sqlite3.Connection) -> None:
+            held.append(Path(self.tmp.name).resolve() in importer._held_entity_locks.get())
+            real(conn)
+        with mock.patch.object(store_module, "install_append_only_guard", spy):
+            for _ in range(3):
+                self.store.initialize()
+        self.assertEqual(held, [True])
+        self.assertFalse((Path(self.tmp.name) / "entity.json").exists())  # The lock repairs no company file.
+
+    def test_a_failed_upgrade_keeps_the_scan_form(self) -> None:
+        class Failing(sqlite3.Connection):
+            def execute(self, sql, *args):  # type: ignore[override]
+                if sql.startswith("CREATE TRIGGER IF NOT EXISTS entries_append_only_no_overwrite"):
+                    raise sqlite3.OperationalError("disk I/O error")
+                return super().execute(sql, *args)
+        with self.store.connection() as conn:
+            _use_trigger(conn, SCAN_NO_OVERWRITE)
+        conn = sqlite3.connect(self.store.path, factory=Failing)
+        try:
+            with self.assertRaises(sqlite3.OperationalError):
+                install_append_only_guard(conn)
+            self.assertFalse(conn.in_transaction)
+        finally:
+            conn.close()
+        with self.store.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+            self.assertEqual(append_only_guard_problems(conn), [])
+
+    def test_a_read_only_store_keeps_the_scan_form_and_still_opens(self) -> None:
+        import os
+        import stat
+        with self.store.connection() as conn:
+            _use_trigger(conn, SCAN_NO_OVERWRITE)
+        path = self.store.path
+        mode = path.stat().st_mode
+        os.chmod(path, stat.S_IRUSR)
+        self.addCleanup(os.chmod, path, mode)
+        if os.access(path, os.W_OK):
+            self.skipTest("this user can write a read-only file")
+        self.store.initialize()
+        with self.store.connection() as conn:
+            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
 
     def test_a_changed_trigger_is_replaced_once_under_the_entity_write_lock(self) -> None:
         from unittest import mock
@@ -700,7 +767,7 @@ class AcceptedTriggerTextTests(SealedStoreCase):
         self.assertEqual(held, [True])
         self.assertFalse((Path(self.tmp.name) / "entity.json").exists())  # The lock repairs no company file.
         with self.store.connection() as conn:
-            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+            self.assertEqual(_trigger_sql(conn), INDEXED_NO_OVERWRITE)
             self.assertEqual(append_only_guard_problems(conn), [])
         self.assertEqual(self.state(), before)  # No row, no audit event and no seal changed.
 
@@ -728,7 +795,7 @@ class AcceptedTriggerTextTests(SealedStoreCase):
             conn.execute("BEGIN IMMEDIATE")
             install_append_only_guard(conn)
             self.assertTrue(conn.in_transaction)
-            self.assertEqual(_trigger_sql(conn), SCAN_NO_OVERWRITE)
+            self.assertEqual(_trigger_sql(conn), INDEXED_NO_OVERWRITE)
             conn.rollback()
             self.assertEqual(_trigger_sql(conn), WEAK_NO_OVERWRITE)
 
