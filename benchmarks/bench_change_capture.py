@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Time the change set capture of one approve and one categorize, for companies of growing size.
+"""Time the change set capture and the command itself of one approve, categorize, decline and undo, for companies of growing size.
 
 Run it from a checkout of the engine::
 
@@ -36,6 +36,10 @@ PARSER.add_argument("--payees", type=int, default=200,
 PARSER.add_argument("--repeat", type=int, default=3, help="warm captures to time for each command (default 3)")
 PARSER.add_argument("--factor", type=float, default=3.0)
 PARSER.add_argument("--slack-ms", type=float, default=15.0)
+PARSER.add_argument("--check-commands", action="store_true", help="also fail when a command time grows with the size")
+PARSER.add_argument("--command-factor", type=float, default=3.0)
+PARSER.add_argument("--command-slack-ms", type=float, default=60.0,
+                    help="slack for the command check; the argument parser alone takes about 50 ms")
 PARSER.add_argument("--src", default=str(Path(__file__).resolve().parents[1] / "src"),
                     help="the src folder of the engine to measure (default: this checkout)")
 ARGS = PARSER.parse_args()
@@ -74,7 +78,7 @@ def build(root: Path, size: int) -> Path:
              "description": payees[i % len(payees)], "accountName": "Operating Checking", "accountType": "checking"}
             for i in range(size)]
     rows += [{"id": f"new-{i}", "date": "2026-10-05", "amount": "-12.00", "description": "NEW PAYEE",
-              "accountName": "Operating Checking", "accountType": "checking"} for i in range(2 * ARGS.repeat + 2)]
+              "accountName": "Operating Checking", "accountType": "checking"} for i in range(4 * ARGS.repeat + 2)]
     source = root / "in.json"
     source.write_text(json.dumps(rows), encoding="utf-8")
     run(["ingest", str(source), "--entity", str(entity), "--session-id", "bench"])
@@ -124,6 +128,18 @@ def describe(report: dict) -> str:
     return text
 
 
+KINDS = ("approve", "categorize", "decline", "undo")
+
+
+def command_for(kind: str, entity: Path, item: str) -> list[str]:
+    return {
+        "approve": ["queue", "confirm", "--entity", str(entity), "--item", item],
+        "categorize": ["queue", "correct", "--entity", str(entity), "--item", item, "--category", "Expenses:Fees"],
+        "decline": ["queue", "withdraw", "--entity", str(entity), "--item", item],
+        "undo": ["ledger", "reverse", "--entity", str(entity), "--source-id", item],
+    }[kind]
+
+
 def main() -> int:
     sizes = [int(part) for part in ARGS.sizes.split(",")]
     failed = False
@@ -134,37 +150,51 @@ def main() -> int:
             revision = 0
             cold, _, report = timed(entity, ["queue", "list", "--entity", str(entity)], revision)
             print(f"[{size}] cold capture {cold * 1000:.1f} ms: {describe(report)}")
-            approve, categorize, commands = [], [], []
+            captures: dict[str, list[float]] = {kind: [] for kind in KINDS}
+            commands: dict[str, list[float]] = {kind: [] for kind in KINDS}
             for i in range(ARGS.repeat):
-                for kind, bucket in (("approve", approve), ("categorize", categorize)):
-                    item = f"new-{2 * i + (0 if kind == 'approve' else 1)}"
+                for number, kind in enumerate(KINDS):
+                    item = f"new-{len(KINDS) * i + number}"
                     run(["queue", "propose", "--entity", str(entity), "--source-id", item, "--category",
                          "Expenses:Software", "--reasoning", "Benchmark."])
-                    argv = (["queue", "confirm", "--entity", str(entity), "--item", item] if kind == "approve" else
-                            ["queue", "correct", "--entity", str(entity), "--item", item, "--category", "Expenses:Fees"])
-                    capture_time, command_time, report = timed(entity, argv, revision)
+                    if kind == "undo":  # Post the entry first, in a capture of its own that is not reported.
+                        timed(entity, command_for("approve", entity, item), revision)
+                        revision += 1
+                    capture_time, command_time, report = timed(entity, command_for(kind, entity, item), revision)
                     revision += 1
-                    bucket.append(capture_time * 1000)
-                    commands.append(command_time * 1000)
+                    captures[kind].append(capture_time * 1000)
+                    commands[kind].append(command_time * 1000)
                     print(f"[{size}] {kind} capture {capture_time * 1000:.1f} ms "
                           f"(the command took {command_time * 1000:.0f} ms): {describe(report)}")
                     if report.get("mode") == "incremental" and report.get("fallbacks"):
                         failed = True
                     elif report.get("mode") not in ("incremental", "unknown"):
                         failed = True
-            table.append((size, int(size * ARGS.archived_share), cold * 1000, statistics.median(approve),
-                          statistics.median(categorize), statistics.median(commands)))
+            table.append((size, int(size * ARGS.archived_share), cold * 1000,
+                          {kind: statistics.median(captures[kind]) for kind in KINDS},
+                          {kind: statistics.median(commands[kind]) for kind in KINDS}))
     print()
-    print("| Transactions | Archived items | Cold capture (ms) | Approve capture (ms) | Categorize capture (ms) | Command (ms) |")
-    print("|---|---|---|---|---|---|")
-    for size, archived, cold, approve, categorize, command in table:
-        print(f"| {size:,} | {archived:,} | {cold:.1f} | {approve:.1f} | {categorize:.1f} | {command:.0f} |")
-    base = max(table[0][3], table[0][4])
+    print("| Transactions | Archived items | Cold capture (ms) | Approve capture (ms) | Categorize capture (ms) | "
+          "Approve command (ms) | Categorize command (ms) | Decline command (ms) | Undo command (ms) |")
+    print("|---|---|---|---|---|---|---|---|---|")
+    for size, archived, cold, capture, command in table:
+        print(f"| {size:,} | {archived:,} | {cold:.1f} | {capture['approve']:.1f} | {capture['categorize']:.1f} | "
+              f"{command['approve']:.0f} | {command['categorize']:.0f} | {command['decline']:.0f} | {command['undo']:.0f} |")
+    base = max(table[0][3]["approve"], table[0][3]["categorize"])
     for row in table[1:]:
-        worst = max(row[3], row[4])
+        worst = max(row[3]["approve"], row[3]["categorize"])
         if worst > ARGS.factor * base + ARGS.slack_ms:
             print(f"FAIL: the warm capture at {row[0]:,} ({worst:.1f} ms) is not within {ARGS.factor}x + "
                   f"{ARGS.slack_ms} ms of the one at {table[0][0]:,} ({base:.1f} ms)")
+            failed = True
+    for kind in KINDS:
+        small, large = table[0][4][kind], table[-1][4][kind]
+        flat = large <= ARGS.command_factor * small + ARGS.command_slack_ms
+        print(f"{kind} command: {small:.0f} ms at {table[0][0]:,}, {large:.0f} ms at {table[-1][0]:,}: "
+              f"{'flat' if flat else 'GROWS'}")
+        if ARGS.check_commands and not flat:
+            print(f"FAIL: the {kind} command at {table[-1][0]:,} is not within {ARGS.command_factor}x + "
+                  f"{ARGS.command_slack_ms} ms of the one at {table[0][0]:,}")
             failed = True
     print("FAIL: a capture fell back" if failed else "PASS: every capture was incremental and flat")
     return 1 if failed else 0

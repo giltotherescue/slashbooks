@@ -65,7 +65,7 @@ from .model import Entry, Open, Posting
 from .staging import StagingStore
 from .store import LedgerStore, default_store_path
 from .normalize import normalize_description
-from ..source_ids import feed_intake_index, feed_provider_meta, source_id_variants
+from ..source_ids import feed_intake_for, feed_provider_meta, source_id_variants
 from ..brand import product_name
 
 # ---------------------------------------------------------------------------
@@ -866,7 +866,7 @@ def _import_transactions_unlocked(
     source_ids_to_mark: list[str] = []
     source_ids_in_batch: set[str] = set()
     source_transactions_to_write: list[dict[str, Any]] = []
-    feed_intake = feed_intake_index(entity.path)
+    feed_intake = feed_intake_for(entity.path, [txn.get("id") for txn in normalized_txns if isinstance(txn, dict)])
 
     for txn in normalized_txns:
         source_id = str(txn.get("id") or "")
@@ -1610,14 +1610,16 @@ def reverse_and_correct(
 
 
 def _find_live_entry(store: LedgerStore, source_id: str) -> Entry:
-    """Find the current non-reversal entry for a source ID."""
-    entries = store.load_entries()
+    """Find the current non-reversal entry for a source ID.
+
+    Two indexed reads (the entries of this source ID, and the reversing entries), not a load of the whole ledger.
+    """
     # A BankSync row has two spellings (``abc`` and ``banksync:abc``); either finds it.
     spellings = source_id_variants(source_id)
-    if any(dict(entry.meta).get("reverses") in spellings for entry in entries):
+    if store.is_reversed(spellings):
         raise ValueError(f"Entry with source-id={source_id!r} has already been reversed")
     original: Entry | None = None
-    for entry in entries:
+    for entry in store.load_entries_by_source(spellings):
         if entry.source_id not in spellings or "reverses" in {key for key, _ in entry.meta}:
             continue
         original = entry

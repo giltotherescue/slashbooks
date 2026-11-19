@@ -305,6 +305,113 @@ def _read_feed_intake(entity_path: Any, chain_verified: bool = False) -> FeedInt
     return index
 
 
+#: The verified head lives in the lock file of the company folder. That file already exists, is never part of a bundle or
+#: a golden file list, and holds nothing else. A torn or foreign content reads as no head (one full check).
+VERIFIED_HEAD_FILE = ".books.lock"
+
+
+def _saved_head(root: Path) -> Any:
+    """The audit head that an earlier full or incremental check verified, or ``None``."""
+    import json
+    from .ledger.store import AuditHead
+    try:
+        saved = json.loads((root / VERIFIED_HEAD_FILE).read_text(encoding="utf-8"))
+        position, record_hash = saved["position"], saved["record_hash"]
+        if isinstance(position, int) and not isinstance(position, bool) and isinstance(record_hash, str):
+            return AuditHead(position, record_hash)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _save_head(root: Path, head: Any) -> None:
+    """Keep a verified head for the next command. A failed write only costs the next command a full check."""
+    import json
+    import os
+    try:
+        fd = os.open(root / VERIFIED_HEAD_FILE, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            os.ftruncate(fd, 0)
+            os.write(fd, json.dumps({"position": head.position, "record_hash": head.record_hash}).encode("utf-8"))
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+def _chain_is_sound(store: Any, root: Path) -> bool:
+    """True when the audit chain has no error, at a cost that follows the events added since the last check.
+
+    The first call (or a call after any doubt) verifies every link, as ``verify_audit_chain`` does, and keeps the head
+    that it verified in ``.books.lock``. Later calls verify only the events after that head
+    (``verify_audit_chain_since``), so a write does not read the whole chain. An event before the head cannot change
+    without a change of the head hash or of its own link, which the append-only triggers also stop. Every explicit check
+    (``books check``, ``feed_proof``) still verifies the whole chain.
+    """
+    saved = _saved_head(root)
+    if saved is not None:
+        result = store.verify_audit_chain_since(saved)
+        if not result.errors and result.head is not None:
+            if result.head != saved:
+                _save_head(root, result.head)
+            return True
+    if store.verify_audit_chain():
+        return False
+    head = store.verify_audit_chain_since(None)
+    if head.errors or head.head is None:
+        return False
+    _save_head(root, head.head)
+    return True
+
+
+_FEED_LOOKUP_ROWS = 40
+
+
+def feed_intake_for(entity_path: Any, source_ids: Any) -> FeedIntake:
+    """``feed_intake_index`` for the rows in *source_ids*: the same answer for them, at the cost of the new events.
+
+    A command that writes one entry needs the marks of one row. This checks the chain from the last verified head
+    (``_chain_is_sound``) and reads only the intake records that name one of the rows. The result holds only those rows.
+    """
+    import json
+    import sqlite3
+    from .ledger.store import LedgerStore, default_store_path
+
+    index: FeedIntake = {}
+    wanted = {str(value) for value in source_ids if value}
+    root = Path(entity_path)
+    path = default_store_path(root)
+    if not wanted or not path.is_file():
+        return index
+    if len(wanted) > _FEED_LOOKUP_ROWS:
+        return _read_feed_intake(entity_path)  # A batch reads every record once, as before.
+    try:
+        store = LedgerStore(path)
+        if not _chain_is_sound(store, root):
+            return index
+        with store.connection() as conn:
+            boundary_event, _ = intake_boundary(conn)
+            clauses = " OR ".join("instr(payload_json, ?) > 0" for _ in wanted)
+            keys = [json.dumps(value) for value in sorted(wanted)]
+            rows = conn.execute(
+                f"SELECT payload_json FROM audit_events WHERE type = ? AND id > ? AND ({clauses}) ORDER BY id",
+                (FEED_INTAKE_EVENT, boundary_event, *keys)).fetchall()
+    except sqlite3.DatabaseError:
+        return index
+    for (raw,) in rows:
+        try:
+            payload = json.loads(raw or "{}")
+        except ValueError:
+            continue
+        provider, digests = payload.get("provider"), payload.get("rows")
+        if not isinstance(provider, str) or not provider or not isinstance(digests, dict):
+            continue
+        for source_id, digest in digests.items():
+            if str(source_id) in wanted and isinstance(digest, str):
+                index.setdefault(str(source_id), {}).setdefault(provider, set()).add(digest)
+    return index
+
+
 def feed_provider_meta(index: FeedIntake, *txns: Any) -> tuple[tuple[str, str], ...]:
     """The ``feed-provider`` and ``feed-row-digest`` entry metadata for an entry made from *txns*.
 
