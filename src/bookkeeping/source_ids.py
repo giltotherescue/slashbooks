@@ -310,6 +310,7 @@ def _read_feed_intake(entity_path: Any, chain_verified: bool = False) -> FeedInt
 #: and it is never read or written through a link. A torn, foreign or missing content reads as no head (one full check).
 VERIFIED_HEAD_FILE = ".books-audit-head"
 _HEAD_FILE_LIMIT = 4096
+_STALE_TEMPORARY_SECONDS = 60
 
 
 def _saved_head(root: Path) -> Any:
@@ -346,12 +347,24 @@ def _save_head(root: Path, head: Any) -> None:
     """Keep a verified head for the next command. A failed write only costs the next command a full check.
 
     The head goes to a new temporary file (created, never opened through a link), which then replaces the head file.
-    A replace swaps the directory entry: a link at the head file is replaced, and its target is never written.
+    A replace swaps the directory entry: a link at the head file is replaced, and its target is never written. A
+    temporary file of the head that a stopped save left behind (older than ``_STALE_TEMPORARY_SECONDS``, so a save that
+    runs now keeps its own) is removed first. Removing a link removes the link only, never its target.
     """
     import json
     import os
     import secrets
+    import time
     target = root / VERIFIED_HEAD_FILE
+    try:
+        for stale in root.glob(f"{VERIFIED_HEAD_FILE}.*.tmp"):
+            try:
+                if time.time() - os.lstat(stale).st_mtime > _STALE_TEMPORARY_SECONDS:
+                    os.unlink(stale)
+            except OSError:
+                pass
+    except OSError:
+        pass
     temporary = root / f"{VERIFIED_HEAD_FILE}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
     data = json.dumps({"position": head.position, "record_hash": head.record_hash}).encode("utf-8")
     try:
@@ -375,8 +388,10 @@ def _chain_is_sound(store: Any, root: Path) -> bool:
     head that it verified in ``VERIFIED_HEAD_FILE``. Later calls verify only the events after that head
     (``verify_audit_chain_since``), so a write does not read the whole chain. The append-only triggers stop a change to
     an event before the head; a store without them gets the full check. An edit made with the triggers dropped and
-    then put back is not seen here; ``feed_intake_for`` re-hashes every record that it uses for this reason. Every
-    explicit check (``books check``, ``feed_proof``) still verifies the whole chain.
+    then put back is not seen by this function. ``feed_intake_for`` hashes again every record that it uses
+    (``_records_are_sound``), which catches an edit of that one record. A rewrite of two or more consecutive events
+    with the triggers dropped and put back can pass this lookup; ``books check`` and ``feed_proof``, which verify the
+    whole chain, catch it.
     """
     from .ledger.store import append_only_guard_problems
     saved = _saved_head(root)
@@ -400,8 +415,10 @@ def _records_are_sound(conn: Any, rows: list[Any]) -> bool:
     """Each intake record that a lookup uses is intact and still linked into the chain.
 
     For each record: its ``record_hash`` is the hash of its own fields, and the next event names that hash as its
-    ``prev_hash`` and has an intact hash too (or the record is the newest event). An edit of a record before the saved
-    head, with or without a new hash, fails one of these. Cost: one read for each record used.
+    ``prev_hash`` and has an intact hash too (or the record is the newest event). So an edit of one record, with or
+    without a new hash for it, fails one of these. A rewrite of two or more consecutive events with new hashes (which
+    needs the append-only triggers dropped and put back) can pass; ``books check`` and ``feed_proof`` verify the whole
+    chain and catch it. Cost: one read for each record used.
     """
     from .ledger.store import _hash_record
     for row in rows:
@@ -424,7 +441,9 @@ def feed_intake_for(entity_path: Any, source_ids: Any) -> FeedIntake:
     A command that writes one entry needs the marks of one row. This checks the chain from the last verified head
     (``_chain_is_sound``) and reads only the intake records that name one of the rows. Each record that it reads is
     hashed again and checked against the next event (``_records_are_sound``); any mismatch gives the full read, which
-    verifies the whole chain and gives no mark when it has an error. The result holds only those rows.
+    verifies the whole chain and gives no mark when it has an error. This catches an edit of one record. A rewrite of
+    two or more consecutive events, with the triggers dropped and put back, is left to ``books check`` and the feed
+    proof. The result holds only those rows.
     """
     import json
     import sqlite3

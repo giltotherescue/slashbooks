@@ -17,7 +17,7 @@ import time
 
 from .ledger.projections import render_store_ledger
 from .ledger import importer
-from .ledger.books_policy_check import RUNTIME_STATE_FILES
+from .ledger.books_policy_check import is_runtime_state
 from .ledger.store import (LedgerStore, has_ledger_audit_history, SCHEMA_VERSION, ACCRUAL_SCHEMA_VERSION, FINANCIAL_KIND_COLUMN,
                            _DDL, parse_catalog_schema)
 from .entity import resolve_basis
@@ -83,7 +83,7 @@ def _excluded(name):
     parts = PurePosixPath(name).parts
     if re.fullmatch(r"backups/ledger\.sqlite\.(?:schema-v1|schema-repair)\.[0-9a-f]{32}\.sqlite", name):
         return "runtime_state"
-    if name == ".books.lock" or name in ENGINE_METADATA_FILES or name in RUNTIME_STATE_FILES:
+    if name == ".books.lock" or name in ENGINE_METADATA_FILES or is_runtime_state(name):
         return "runtime_state"
     if name == ENGINE_ARTIFACTS_ROOT or name.startswith(ENGINE_ARTIFACTS_ROOT + "/"):
         return "derived_state"

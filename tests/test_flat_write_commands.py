@@ -266,6 +266,35 @@ class VerifiedHeadFileTests(unittest.TestCase):
             self.assertEqual((root / ".books.lock").read_bytes(), b"")
             self.assertEqual(workspace_digest(root, ignore_empty_lock=True), before)
 
+    def test_a_temporary_head_file_left_by_a_stop_is_runtime_state_and_is_removed(self) -> None:
+        import os
+        import time
+        from bookkeeping.hosted_migration import _excluded
+        from bookkeeping.ledger.books_policy_check import workspace_digest
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _company(tmp)
+            feed_intake_for(root, ["banksync:r1"])
+            before = (workspace_digest(root), workspace_digest(root, ignore_empty_lock=True))
+            crashed = root / f"{VERIFIED_HEAD_FILE}.4242.0a1b2c3d.tmp"
+            crashed.write_text('{"position": 1', encoding="utf-8")
+            old = time.time() - 3600
+            os.utime(crashed, (old, old))
+            fresh = root / f"{VERIFIED_HEAD_FILE}.4343.0e0f0a0b.tmp"  # a save that runs now keeps its own file
+            fresh.write_text("", encoding="utf-8")
+            self.assertEqual((workspace_digest(root), workspace_digest(root, ignore_empty_lock=True)), before)
+            self.assertEqual(_excluded(crashed.name), "runtime_state")
+            self.assertEqual(_excluded(".books-other.tmp"), "credentials")  # only the head's own temporary file
+            self.assertNotEqual(_excluded(f"staging/{crashed.name}"), "runtime_state")  # only at the root
+            # A new head is saved: the stale temporary file is removed, the fresh one stays.
+            store = LedgerStore(default_store_path(root))
+            with store.transaction() as conn:
+                store.append_audit_event("intent", {"session_id": "later", "description": "later", "entries": 0}, conn)
+            feed_intake_for(root, ["banksync:r1"])
+            self.assertFalse(crashed.exists())
+            self.assertTrue(fresh.exists())
+            self.assertEqual(json.loads((root / VERIFIED_HEAD_FILE).read_text(encoding="utf-8"))["position"],
+                             store.audit_head().position)
+
     def test_the_head_file_is_runtime_state_for_a_migration(self) -> None:
         from bookkeeping.hosted_migration import _excluded
         from bookkeeping.ledger.books_policy_check import RUNTIME_STATE_FILES
