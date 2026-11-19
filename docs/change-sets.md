@@ -282,6 +282,25 @@ time and the generation of the index file at the start and the end. If the index
 was deleted, restored or replaced during the command, the capture has no safe
 copy of the state before, so the change set is incomplete (`state_unreadable`).
 
+The capture holds the company write lock (the engine's own, re-entrant lock) from
+before its first read to after its last one, so no other engine writer runs
+during a capture. The triggers, the schema fingerprint and the file token are
+taken in one IMMEDIATE transaction before any read of the state. At the end the
+capture opens an IMMEDIATE transaction, reads the log and the changed rows, and
+drops the triggers in that transaction. The signatures that the next capture
+trusts are those taken when the files were read, and the token of the store file
+is the one after that transaction (its own commit moves the file change counter
+by one). A file that changes after it was read, or a store whose change counter
+does not follow, therefore shows in the next capture and in no receipt. The
+capture also checks that the file change counter did not go back and that it
+moved when the log has rows. A write helper that raises records no row delta,
+so the capture reads that file.
+
+Outside the threat model: a process that does not take the company lock and
+rewrites the header of the store file (the schema cookie or the change counter),
+for example one that drops a trigger, writes, recreates the identical trigger
+and sets the cookie back. The engine writers all take the lock.
+
 The log table and the triggers exist only while the command runs. They change no
 ledger row and no ledger trigger, and `append_only_guard_problems` does not see
 them. The next capture removes the log and the triggers of a command that was

@@ -23,6 +23,7 @@ full read of the books" means, and the engine tests check it after every write.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import hashlib
 import json
@@ -829,24 +830,41 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
         return
     run = None
     before: _Side | None = None
+    # One writer at a time: the capture holds the company write lock from before its first read to after its last one,
+    # so no other engine writer runs while it reads. The lock is re-entrant, so the command inside takes it again.
+    lock = contextlib.ExitStack()
+    locked = False
+    if incremental and holder.entity_path.is_dir():
+        try:
+            from .ledger.importer import _entity_write_lock
+            lock.enter_context(_entity_write_lock(holder.entity_path, repair=False))
+            locked = True
+        except (OSError, RuntimeError):
+            locked = False  # A folder that cannot be locked (read only): the capture reads in full below.
+    if incremental and not locked:
+        incremental = False
     try:
-        if incremental:
-            from . import change_capture
-            run = change_capture.start(holder.entity_path)
-        if run is None:
-            before = _take(holder.entity_path)
-    except Exception:  # noqa: BLE001 - any failure to read the state means that no change set can be complete
-        before = None
-        run = None
-    try:
-        yield holder
-    except BaseException:
-        holder.failed = True
-        holder.finalize_failed = holder.body_done
-        raise
+        try:
+            if incremental:
+                from . import change_capture
+                run = change_capture.start(holder.entity_path)
+            if run is None:
+                before = _take(holder.entity_path)
+        except Exception:  # noqa: BLE001 - any failure to read the state means that no change set can be complete
+            before = None
+            run = None
+        try:
+            yield holder
+        except BaseException:
+            holder.failed = True
+            holder.finalize_failed = holder.body_done
+            raise
+        finally:
+            holder.change_set = _finish(before, holder, run)
+            holder.path_report = (run.report if run is not None else
+                                  {"mode": "full-comparison", "fallbacks": [], "rebuilt": []})
     finally:
-        holder.change_set = _finish(before, holder, run)
-        holder.path_report = run.report if run is not None else {"mode": "full-comparison", "fallbacks": [], "rebuilt": []}
+        lock.close()
 
 
 def _finish(before: "_Side | None", holder: ChangeSetCapture, run: Any = None) -> dict[str, Any]:

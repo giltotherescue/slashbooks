@@ -583,6 +583,119 @@ class JournalTests(Fixture):
         self.seq._apply("teach", receipt.change_set)  # The reducer checks the digest against the disk.
 
 
+class RaceTests(Fixture):
+    """Writes that arrive between the steps of a capture. The capture holds the company lock and one store transaction."""
+
+    def test_another_writer_waits_while_a_capture_runs(self) -> None:
+        import threading
+        from bookkeeping.ledger.importer import _entity_write_lock
+        events: list[str] = []
+
+        def other_writer() -> None:
+            with _entity_write_lock(self.entity):
+                events.append("other writer ran")
+
+        thread = threading.Thread(target=other_writer)
+        with changeset.capture(self.entity):
+            thread.start()
+            thread.join(0.5)
+            self.assertTrue(thread.is_alive(), "a second writer ran during the capture")
+            self.assertEqual(events, [])
+        thread.join(5)
+        self.assertEqual(events, ["other writer ran"])
+
+    def test_the_command_inside_a_capture_takes_the_lock_again(self) -> None:
+        with changeset.capture(self.entity) as receipt:
+            run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002", "--category",
+                     "Income:Consulting", "--reasoning", "Payout."])
+        self.assertTrue(receipt.change_set["complete"])
+
+    def test_a_store_write_while_the_capture_reads_at_the_end_is_refused_by_the_store(self) -> None:
+        real = change_capture.Run._files
+        outcome: dict[str, str] = {}
+
+        def files_then_write(run, before, after):
+            real(run, before, after)
+            try:
+                with closing(sqlite3.connect(self.entity / "ledger.sqlite", timeout=0.1)) as conn:
+                    conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                    conn.commit()
+                outcome["write"] = "accepted"
+            except sqlite3.OperationalError as exc:
+                outcome["write"] = str(exc)
+
+        with mock.patch.object(change_capture.Run, "_files", files_then_write):
+            with changeset.capture(self.entity) as receipt:
+                pass
+        self.assertIn("locked", outcome["write"])
+        self.assertTrue(receipt.change_set["complete"])
+        self.assertEqual(receipt.change_set["bank_rows"], [])
+
+    def test_a_file_write_after_the_reads_shows_in_the_next_capture(self) -> None:
+        self.both(lambda: None)
+        path = self.entity / "staging" / "seen-ids.json"
+        real = change_capture.Run._files
+
+        def files_then_write(run, before, after):
+            real(run, before, after)
+            rows = json.loads(path.read_text(encoding="utf-8"))
+            path.write_text(json.dumps(rows + ["late-1"]), encoding="utf-8")
+
+        revision = self.seq.view["revision"]
+        with mock.patch.object(change_capture.Run, "_files", files_then_write):
+            with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision) as receipt:
+                pass
+        self.assertNotIn("late-1", receipt.change_set["staging"]["seen_ids"]["added"])
+        self.seq.view = changeset.read_view(self.entity, revision=revision)  # The host reads the books again.
+        later = self.both(lambda: None)
+        self.assertEqual(later["staging"]["seen_ids"]["added"], [], "the write was folded into the saved tokens")
+        # The capture that missed the write cannot be applied: its state.after is not the state of the books.
+        self.assertNotEqual(receipt.change_set["state"]["after"], later["state"]["before"])
+
+    def test_a_file_change_counter_that_does_not_fit_the_capture_gives_the_full_comparison(self) -> None:
+        real = change_capture.Run._sql
+        for label, counter in (("went back", 10 ** 9), ("did not move", None)):
+            with self.subTest(label):
+                def sql_with_counter(run, before, after, counter=counter):
+                    # The counter that the store showed at the start is made to disagree with the one at the end.
+                    run.counter_start = counter if counter is not None else run.counter_in_txn
+                    return real(run, before, after)
+
+                revision = self.seq.view["revision"]
+                args = {"books_revision": revision + 1, "base_revision": revision}
+                with changeset.capture(self.entity, incremental=False, **args) as full:
+                    with mock.patch.object(change_capture.Run, "_sql", sql_with_counter):
+                        with changeset.capture(self.entity, **args) as fast:
+                            with closing(sqlite3.connect(self.entity / "ledger.sqlite")) as conn:
+                                conn.execute("UPDATE source_transactions SET status = 'voided' WHERE id = 'cs-001'")
+                                conn.commit()
+                self.assertEqual(fast.change_set, full.change_set)
+                self.assertTrue(any("counter" in note for note in fast.path_report["fallbacks"]), fast.path_report)
+                self.seq._apply("counter", fast.change_set)
+
+    # Outside the threat model, and documented in docs/change-sets.md: a process that rewrites the header of the store
+    # file (the schema cookie or the change counter), or that drops a trigger, writes, recreates the identical trigger
+    # and resets the schema cookie, while it holds no engine lock. The capture holds the company write lock, so no
+    # engine writer does this.
+
+
+class JournalRaiseTests(Fixture):
+    def test_a_helper_write_that_raises_records_no_delta(self) -> None:
+        path = self.entity / "staging" / "seen-ids.json"
+        revision = self.seq.view["revision"]
+        with changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision) as receipt:
+            try:
+                with capture_log.writing(path, delta={"upsert": {"claimed-only": None}}):
+                    rows = json.loads(path.read_text(encoding="utf-8"))
+                    path.write_text(json.dumps(rows + ["actually-written"]), encoding="utf-8")
+                    raise RuntimeError("the helper failed after the write")
+            except RuntimeError:
+                pass
+        added = receipt.change_set["staging"]["seen_ids"]["added"]
+        self.assertEqual(added, ["actually-written"])
+        self.seq._apply("raised", receipt.change_set)
+
+
 class CostTests(Fixture):
     """After the first capture a write that goes through the helpers reads no full table.
 
