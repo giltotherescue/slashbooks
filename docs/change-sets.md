@@ -41,9 +41,20 @@ books --change-set-out change.json queue confirm --entity . --item src-123
   set.
 - A command for a remote company binding, and the `cloud` and `hosted`
   commands, reject `--change-set-out`.
-- `--change-set-revision N` is optional. The engine copies the integer `N` into
-  `books_revision`. The engine has no revision counter of its own. Its position
-  is the audit chain head, and `ledger.before` and `ledger.after` give it.
+- `--change-set-base-revision M` and `--change-set-revision N` are the revisions
+  of the host. The host owns the numbers: `M` is the revision of the host view
+  before the command, and `N` is the revision that the host gives to the result
+  (`N` must be greater than `M`). The engine copies them into `base_revision` and
+  `books_revision`. A change set without them cannot be applied by the reducer.
+  The engine has no revision counter of its own. Its position is the audit chain
+  head, and `ledger.before` and `ledger.after` give it.
+- The engine removes an old file at `PATH` before the command, so a document of
+  an earlier run is never read as the document of this run. If any step after
+  the command body fails (the read of the state after the command, the digest),
+  the change set has `"complete": false` (`finalize_failed`). If the write of
+  the file fails, the engine writes an incomplete change set (`write_failed`),
+  and if that also fails it removes the file. A host that finds no file does a
+  full read.
 - A host that runs the engine in a sandbox sends `--change-set-out
   @output/change.json`. The command contract (`remote_contract.command_spec`)
   lists `change_set_out` in `output_fields`.
@@ -53,7 +64,7 @@ A host that embeds the engine in Python wraps one command:
 ```python
 from bookkeeping import changeset, cli
 
-with changeset.capture(company_dir, books_revision=41) as receipt:
+with changeset.capture(company_dir, base_revision=40, books_revision=41) as receipt:
     code = cli.main(argv)
 document = receipt.change_set
 ```
@@ -67,6 +78,7 @@ document = receipt.change_set
 {
   "schema_version": 1,
   "kind": "books-change-set",
+  "base_revision": 40,
   "books_revision": 41,
   "complete": true,
   "reason": null,
@@ -102,8 +114,12 @@ document = receipt.change_set
     "pending": {"added": [], "updated": [], "removed": ["syn-001"]},
     "duplicates": {"added": [], "updated": [], "removed": []},
     "store_pending": {"added": [], "updated": [], "removed": []},
+    "context_history": {"added": [], "updated": [], "removed": []},
     "seen_ids": {"added": [], "removed": []}
   },
+  "documents": [
+    {"path": "staging/split-templates.json", "change": "updated", "content": {"halves": []}}
+  ],
   "review_queue": [
     {"id": "syn-001", "change": "updated", "status_before": "open", "status_after": "confirmed", "closed": true, "item": {"source_id": "syn-001", "status": "confirmed", "...": "..."}}
   ],
@@ -124,9 +140,9 @@ document = receipt.change_set
 |---|---|
 | `schema_version` | Always `1`. A new version changes the number. A reader that sees a number that it does not know must stop. |
 | `kind` | Always `books-change-set`. |
-| `books_revision` | The integer from `--change-set-revision`, or `null`. |
-| `complete` | `false` when a host must not apply the change set: the command failed after it changed something, or the engine could not read the state in full. `reason` is then `command_failed` or `state_unreadable`. A host does a full read. |
-| `state.before`, `state.after` | SHA-256 of the canonical JSON of the small tables (accounts, bank row index with payload hashes, review queue, staging, learned context) before and after the command. |
+| `base_revision`, `books_revision` | The integers from `--change-set-base-revision` and `--change-set-revision`, or `null`. |
+| `complete` | `false` when a host must not apply the change set: the command failed after it changed something, or the engine could not read the state in full. `reason` is then `command_failed`, `state_unreadable` (a file or an archive that cannot be read, or a state that cannot be read), `finalize_failed` (a step after the command body failed) or `write_failed`. A host does a full read. |
+| `state.before`, `state.after` | SHA-256 of the whole authoritative content before and after the command: a running hash over every ledger entry with its postings, balance assertion and audit event, and the hash of the canonical JSON of the accounts, the bank rows (status, time and the hash of the payload, computed from the payload), the review queue, the staging lists, the documents and the learned context. |
 | `changed` | `false` when nothing in the document changed. All lists are then empty and `ledger.before` equals `ledger.after`. |
 | `reset` | `true` when the ledger store is not an extension of the earlier store (for example a restore or a migration replaced it). The host clears its entries and balance assertions, then applies the lists. In that case `entries_added` and `balance_assertions_added` hold every row. |
 | `ledger.before`, `ledger.after` | The position of the books. `audit_event_id` and `record_hash` are the newest audit event (`null` when none). The three `max_*_id` values are the newest row ids. |
@@ -142,39 +158,52 @@ document = receipt.change_set
 | `staging.pending` | Rows that wait for a category (`staging/pending-categorization.json`): new rows (`added`), changed rows (`updated`, whole row) and ids that left the list (`removed`). |
 | `staging.duplicates` | The same three lists for duplicate candidates. The key is `source_id`. |
 | `staging.store_pending` | The same three lists for the intake store rows in `staging/pending.json`. |
+| `staging.context_history` | The same three lists for the rows of `staging/context-history.json`. The key is `source_id`. |
+| `documents` | Small files that the change set holds as a whole: `staging/split-templates.json`, `staging/source-id-aliases.json` and `learned-context/accrual-rules.json`. `change` is `created`, `updated` or `removed`. `content` is the whole file (`null` for a removed file). |
 | `staging.seen_ids` | Source ids that the intake store added to or removed from `staging/seen-ids.json`. |
 | `review_queue` | One row for each review item that was created, changed or removed. `id` is the item `source_id`. `change` is `created`, `updated` or `removed`. `status_before` is `null` for a created item. `status_after` is `null` for a removed item. `closed` is `true` when `status_after` is not an open status (`open`, `reopened`, `requires-reproposal`). `item` is the whole item (`null` for a removed item). |
 | `learned_context` | One row for each payee key whose learned context changed, with the whole `entry`. A taught category is in `entry.taught` (`id`, `category`, `at`, `by`). `change` is `created`, `updated` or `removed`. |
-| `audit` | The audit events that the command added: first id, last id, count, and for each event its id, type, time and record hash. All values are `null` or empty when none. |
+| `audit` | The audit events that the command added: first id, last id, count, and for each event the whole row: id, type, time, `prev_hash`, `record_hash` and `payload`. All values are `null` or empty when none. |
 
 Lists are sorted: entries by id, accounts by name, bank rows by source id,
 queue items by id, learned context by key, audit events by id.
 
 ## Apply a change set
 
-The host owns the revision number. Each change set carries the position of the
-engine before and after it: `ledger.before` and `ledger.after` (the audit chain
-head and the newest row ids) and `state.before` and `state.after` (the digest of
-the small tables). A host that applies change sets in order always has a view
-whose position and digest equal the `before` values of the next change set.
+The host owns the revision number. A change set applies only to the view that
+has its base revision. Each change set also carries the position of the engine
+before and after it: `ledger.before` and `ledger.after` (the audit chain head and
+the newest row ids) and `state.before` and `state.after` (the digest of the whole
+content). The revision is the first check, and the position and the digest are
+the second check. A view can return to an earlier position and digest (for
+example a taught category and its undo), so the position and the digest alone
+cannot tell a stale change set from a new one.
 
 The reference reducer `changeset.apply_change_set(view, change_set)` turns a
 host view into the next view. Start from `changeset.empty_view()`. It refuses
 the change set with `ChangeSetRefused` in these cases:
 
 - `complete` is `false`.
-- `ledger.before` is not the position of the view, or `state.before` is not the
-  digest of the view (`changeset.view_digest(view)`). This rejects a stale
-  replay, a skipped change set and a change set that arrives out of order. A
-  change set that only changes the review queue or learned context is also
-  refused when it is applied twice, because the digest changes.
+- `base_revision` is not the revision of the view (`view["revision"]`), or
+  `books_revision` is not greater than `base_revision`, or one of them is
+  missing. This rejects a stale replay, a skipped change set and a change set
+  that arrives out of order.
+- `ledger.before` is not the position of the view.
+- `state.before` is not the digest of the content of the view
+  (`changeset.view_digest(view)`). The reducer computes the digest from the
+  rows of the view, the ledger and audit rows included, and from the bank
+  payloads. It does not trust a stored hash. Two replicas whose rows differ do
+  not match.
+- The `payload_sha256` of a bank row is not the hash of its `row`.
 - After the apply, the position or the digest of the new view is not
   `ledger.after` or `state.after`.
 
-A refused change set means that the host does a full read (`read_view`) and
-starts again from that view. The reducer does not change the view that it
-gets. A host that keeps `state.after` of the last change set can compare it with
-the next `state.before` and does not have to compute the digest again.
+A refused change set means that the host does a full read
+(`changeset.read_view(company_dir, revision=N)`) and starts again from that view.
+The reducer does not change the view that it gets. A host that keeps
+`state.after` of the last change set can compare it with the next
+`state.before`, and can keep a running hash over its rows, instead of computing
+the digest again.
 
 The reducer works in this order:
 
@@ -196,13 +225,13 @@ set does not cover.
 
 ## Cost
 
-- The ledger entries, postings, balance assertions and audit events come from
-  row ids above the saved position. Their cost is the size of the change.
-- The accounts table, the source transaction list (`id`, `status`, time), the
-  review queue, the staging lists and the learned context are compared before
-  and after. Their cost grows with the number of rows in the company directory
-  that the command sees. A host that gives the engine a working set of rows
-  pays for that working set only.
+- The rows in a change set (entries, postings, balance assertions, audit
+  events) come from row ids above the saved position. Their size is the size of
+  the change.
+- The state digest covers the whole content, so the engine reads the whole
+  state before and after the command. Its cost grows with the size of the books.
+  A later change can keep the hash incrementally. The digest is the check of
+  correctness, and it comes first.
 - The review queue is read with the queue module (`queue.load_all_items`): the
   item files and the month archives in `review-queue/archive/`. The change set
   code has no archive reader of its own. The reader refuses a corrupt archive or
@@ -213,22 +242,36 @@ set does not cover.
   The engine never reads a bad archive as empty and never reads an unreadable
   item as a deletion. Moving a decided item into an archive is not a change.
   This part needs the queue archive of pull request #164.
-- The source transaction index reads every payload to hash it. Its cost grows
-  with the size of the table.
 
 ## Scope
 
-A change set is authoritative only for these parts of the company: the ledger
-(entries, postings, balance assertions, accounts, source transactions and the
-audit chain), the review queue, the staging lists
-(`pending-categorization.json`, `pending.json`, `seen-ids.json`,
-`duplicate-candidates.json`) and the learned context. Anything else is out of
-scope, and a host that needs it must keep reading it directly:
+A change set is authoritative only for these parts of the company:
+
+- The ledger: entries, postings, balance assertions, accounts, source
+  transactions (bank rows) and the audit chain.
+- The review queue (item files and month archives).
+- The staging lists: `staging/pending-categorization.json`,
+  `staging/pending.json`, `staging/seen-ids.json`,
+  `staging/duplicate-candidates.json` and `staging/context-history.json`.
+- The learned context: `learned-context/counterparties.json`.
+- The small documents: `staging/split-templates.json`,
+  `staging/source-id-aliases.json` and `learned-context/accrual-rules.json`.
+
+A file in `staging/` or `learned-context/` that is not in this list is not
+covered, and a test fails when one appears. Anything else is out of scope, and a
+host that needs it must keep reading it directly:
 
 - The accrual and business tables (`accrual_*`, `business_*`). The ledger entries
   that they post are listed.
-- Other files, such as reports, statements, `entity.json` and trust policy.
+- Configuration files that a settings command writes (`entity.json`,
+  `trust-policy.json`) and the business profile. A display row of the books does
+  not come from them.
+- Generated output: `reports/`, `ingestion/` and the lock file.
 - A command that has no company directory gives an empty change set.
+
+A file that is in scope and cannot be read (not valid JSON, a wrong shape, a
+corrupt archive) gives an incomplete change set (`state_unreadable`). The engine
+never reads it as empty.
 
 The host runs one writer for each company at a time. The engine does not
 separate its own writes from a write by another process during the same

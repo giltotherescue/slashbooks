@@ -28,7 +28,7 @@ import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 SCHEMA_VERSION = 1
 KIND = "books-change-set"
@@ -46,8 +46,15 @@ _CHUNK = 500
 # A file under these folders that is not in this list is not covered: ``test_changeset`` fails when one appears.
 COVERED_FILES = frozenset({
     "staging/pending-categorization.json", "staging/pending.json", "staging/seen-ids.json",
-    "staging/duplicate-candidates.json", "learned-context/counterparties.json",
+    "staging/duplicate-candidates.json", "staging/context-history.json", "staging/split-templates.json",
+    "staging/source-id-aliases.json", "learned-context/counterparties.json", "learned-context/accrual-rules.json",
 })
+# Files that the change set holds as a whole document (small files). The key is the path in the company directory.
+DOCUMENT_FILES = ("staging/split-templates.json", "staging/source-id-aliases.json",
+                  "learned-context/accrual-rules.json")
+_CONTEXT_FILE = "staging/context-history.json"
+_DOCUMENT_TYPES = {"staging/split-templates.json": dict, "staging/source-id-aliases.json": list,
+                   "learned-context/accrual-rules.json": dict}
 COVERED_FOLDERS = ("staging", "learned-context")
 QUEUE_ITEM_FOLDERS = ("review-queue", "review-queue/archive")
 
@@ -148,11 +155,17 @@ def _load_balances(conn: sqlite3.Connection, after_id: int) -> list[dict[str, An
 
 
 def _load_audit(conn: sqlite3.Connection, after_id: int) -> list[dict[str, Any]]:
-    return [
-        {"id": int(row["id"]), "type": str(row["type"]), "ts": str(row["ts"]), "record_hash": str(row["record_hash"])}
-        for row in conn.execute(
-            "SELECT id, type, ts, record_hash FROM audit_events WHERE id > ? ORDER BY id", (after_id,))
-    ]
+    events = []
+    for row in conn.execute(
+            "SELECT id, type, ts, payload_json, prev_hash, record_hash FROM audit_events WHERE id > ? ORDER BY id",
+            (after_id,)):
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except (ValueError, TypeError) as exc:
+            raise ChangeSetError(f"Audit event {row['id']} has a payload that is not JSON.") from exc
+        events.append({"id": int(row["id"]), "type": str(row["type"]), "ts": str(row["ts"]),
+                       "prev_hash": str(row["prev_hash"]), "record_hash": str(row["record_hash"]), "payload": payload})
+    return events
 
 
 def _load_accounts(conn: sqlite3.Connection) -> dict[int, dict[str, Any]]:
@@ -167,9 +180,16 @@ def _load_accounts(conn: sqlite3.Connection) -> dict[int, dict[str, Any]]:
 
 
 def _load_bank_index(conn: sqlite3.Connection) -> dict[str, tuple[str, str, str]]:
-    """Each source transaction as (status, imported_at, SHA-256 of the stored payload). A payload change shows."""
-    return {str(row[0]): (str(row[1]), str(row[2]), hashlib.sha256(str(row[3]).encode("utf-8")).hexdigest())
+    """Each source transaction as (status, imported_at, hash of the parsed payload). A payload change shows."""
+    return {str(row[0]): (str(row[1]), str(row[2]), _payload_hash(row[3]))
             for row in conn.execute("SELECT id, status, imported_at, payload_json FROM source_transactions")}
+
+
+def _payload_hash(text: Any) -> str:
+    try:
+        return payload_digest(json.loads(text))
+    except (ValueError, TypeError):
+        return "unreadable:" + hashlib.sha256(str(text).encode("utf-8")).hexdigest()
 
 
 def _bank_rows(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, dict[str, Any]]:
@@ -185,7 +205,7 @@ def _bank_rows(conn: sqlite3.Connection, ids: Sequence[str]) -> dict[str, dict[s
                 payload = None
             found[str(row["id"])] = {
                 "status": str(row["status"]), "imported_at": str(row["imported_at"]),
-                "payload_sha256": hashlib.sha256(str(row["payload_json"]).encode("utf-8")).hexdigest(), "row": payload}
+                "payload_sha256": _payload_hash(row["payload_json"]), "row": payload}
     return found
 
 
@@ -258,51 +278,121 @@ def load_queue(root: Path) -> dict[str, dict[str, Any]]:
     return items
 
 
+def _read_strict(path: Path) -> Any:
+    """The JSON value of a file. A missing file is ``None``. A file that cannot be read raises ``ChangeSetError``."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeError) as exc:
+        raise ChangeSetError(f"{path.name} cannot be read: {exc}") from exc
+    try:
+        return json.loads(text)
+    except ValueError as exc:
+        raise ChangeSetError(f"{path.name} is not valid JSON: {exc}") from exc
+
+
 def _load_keyed(path: Path, key: str) -> dict[str, dict[str, Any]]:
-    data = _read_json(path)
-    rows = [row for row in data if isinstance(row, dict) and row.get(key)] if isinstance(data, list) else []
-    return {str(row[key]): row for row in rows}
+    data = _read_strict(path)
+    if data is None:
+        return {}
+    if not isinstance(data, list):
+        raise ChangeSetError(f"{path.name} is not a JSON list.")
+    return {str(row[key]): row for row in data if isinstance(row, dict) and row.get(key)}
 
 
 def _load_ids(path: Path) -> list[str]:
-    data = _read_json(path)
-    return sorted(str(value) for value in data) if isinstance(data, list) else []
+    data = _read_strict(path)
+    if data is None:
+        return []
+    if not isinstance(data, list):
+        raise ChangeSetError(f"{path.name} is not a JSON list.")
+    return sorted(str(value) for value in data)
 
 
 def _load_learned(root: Path) -> dict[str, Any]:
-    data = _read_json(root / _LEARNED_FILE)
-    return {str(key): value for key, value in data.items()} if isinstance(data, dict) else {}
+    data = _read_strict(root / _LEARNED_FILE)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ChangeSetError(f"{_LEARNED_FILE} is not a JSON object.")
+    return {str(key): value for key, value in data.items()}
+
+
+def _load_context(root: Path) -> dict[str, dict[str, Any]]:
+    """The rows of ``staging/context-history.json`` by source id."""
+    data = _read_strict(root / _CONTEXT_FILE)
+    if data is None:
+        return {}
+    rows = data.get("rows") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise ChangeSetError(f"{_CONTEXT_FILE} has an unknown format.")
+    return {str(row["source_id"]): row for row in rows if isinstance(row, dict) and row.get("source_id")}
+
+
+def _load_documents(root: Path) -> dict[str, Any]:
+    """Each small whole-file document by path. A missing file is left out."""
+    found = {}
+    for name in DOCUMENT_FILES:
+        value = _read_strict(root / name)
+        if value is None:
+            continue
+        if not isinstance(value, _DOCUMENT_TYPES[name]):
+            raise ChangeSetError(f"{name} has an unexpected shape.")
+        found[name] = value
+    return found
+
+
+def canonical_hash(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def payload_digest(payload: Any) -> str:
+    """The hash of a bank row payload, computed from the payload (never read from storage)."""
+    return canonical_hash(payload)
+
+
+def _ledger_digest(entries: Iterable[Mapping[str, Any]], balances: Iterable[Mapping[str, Any]],
+                   events: Iterable[Mapping[str, Any]]) -> str:
+    """One running hash over the content of every ledger entry, posting, balance assertion and audit event, by id."""
+    h = hashlib.sha256()
+    for label, rows in (("entries", entries), ("balances", balances), ("audit", events)):
+        h.update(label.encode("utf-8") + b"\n")
+        for row in rows:
+            h.update(json.dumps(row, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n")
+    return h.hexdigest()
 
 
 @dataclass
 class _Side:
-    """The small tables of one company state, and the position of its ledger."""
+    """The tables of one company state, the content digest of its ledger, and its ledger position."""
 
     position: dict[str, Any]
     counts: tuple[int, int, int]
+    ledger_digest: str
     accounts: dict[int, dict[str, Any]]
     bank: dict[str, tuple[str, str, str]]
     queue: dict[str, dict[str, Any]]
     pending: dict[str, dict[str, Any]]
     duplicates: dict[str, dict[str, Any]]
     store_pending: dict[str, dict[str, Any]]
+    context: dict[str, dict[str, Any]]
+    documents: dict[str, Any]
     seen: list[str]
     learned: dict[str, Any]
 
     def digest(self) -> str:
         return _state_digest(
-            {row["name"]: row for row in self.accounts.values()},
-            {key: list(value) for key, value in self.bank.items()},
-            self.queue, self.pending, self.duplicates, self.store_pending, self.seen, self.learned)
+            ledger=self.ledger_digest,
+            accounts={row["name"]: row for row in self.accounts.values()},
+            bank={key: list(value) for key, value in self.bank.items()},
+            queue=self.queue, pending=self.pending, duplicates=self.duplicates, store_pending=self.store_pending,
+            context=self.context, documents=self.documents, seen=sorted(self.seen), learned=self.learned)
 
 
-def _state_digest(accounts: Mapping[str, Any], bank: Mapping[str, Any], queue: Mapping[str, Any],
-                  pending: Mapping[str, Any], duplicates: Mapping[str, Any], store_pending: Mapping[str, Any],
-                  seen: Sequence[str], learned: Mapping[str, Any]) -> str:
-    """SHA-256 of the small tables of a state. The engine and a host view compute it in the same way."""
-    body = {"accounts": accounts, "bank": bank, "queue": queue, "pending": pending, "duplicates": duplicates,
-            "store_pending": store_pending, "seen": sorted(seen), "learned": learned}
-    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+def _state_digest(**parts: Any) -> str:
+    """SHA-256 of the whole authoritative state. The engine and a host view compute it in the same way."""
+    return canonical_hash(parts)
 
 
 def _take(root: Path) -> _Side:
@@ -312,17 +402,20 @@ def _take(root: Path) -> _Side:
             position, counts = _position(conn), _counts(conn)
             accounts = _load_accounts(conn) if conn is not None else {}
             bank = _load_bank_index(conn) if conn is not None else {}
+            ledger = (_ledger_digest(_load_entries(conn, 0), _load_balances(conn, 0), _load_audit(conn, 0))
+                      if conn is not None else _ledger_digest((), (), ()))
         except sqlite3.DatabaseError as exc:
             raise ChangeSetError(f"The ledger store cannot be read: {exc}") from exc
     finally:
         if conn is not None:
             conn.close()
     return _Side(
-        position=position, counts=counts, accounts=accounts, bank=bank,
+        position=position, counts=counts, ledger_digest=ledger, accounts=accounts, bank=bank,
         queue=load_queue(root) if root.is_dir() else {},
         pending=_load_keyed(root / _PENDING_FILE, "id"),
         duplicates=_load_keyed(root / _DUPLICATES_FILE, "source_id"),
         store_pending=_load_keyed(root / _STORE_PENDING_FILE, "id"),
+        context=_load_context(root), documents=_load_documents(root),
         seen=_load_ids(root / _SEEN_FILE),
         learned=_load_learned(root),
     )
@@ -396,16 +489,18 @@ def _queue_rows(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[dic
     return rows
 
 
-_EMPTY_DIGEST = _state_digest({}, {}, {}, {}, {}, {}, [], {})
+_EMPTY_DIGEST = _state_digest(
+    ledger=_ledger_digest((), (), ()), accounts={}, bank={}, queue={}, pending={}, duplicates={}, store_pending={},
+    context={}, documents={}, seen=[], learned={})
 
 
 def _empty(books_revision: int | None, position: Mapping[str, Any] | None = None, digest: str | None = None,
-           *, complete: bool = True, reason: str | None = None) -> dict[str, Any]:
+           *, complete: bool = True, reason: str | None = None, base_revision: int | None = None) -> dict[str, Any]:
     position = dict(position or ZERO_POSITION)
     digest = digest or _EMPTY_DIGEST
     document: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION, "kind": KIND, "books_revision": books_revision,
-        "complete": complete, "reason": reason,
+        "base_revision": base_revision, "complete": complete, "reason": reason,
         "changed": False, "reset": False,
         "ledger": {"before": dict(position), "after": dict(position)},
         "state": {"before": digest, "after": digest},
@@ -415,7 +510,9 @@ def _empty(books_revision: int | None, position: Mapping[str, Any] | None = None
         "staging": {"pending": {"added": [], "updated": [], "removed": []},
                     "duplicates": {"added": [], "updated": [], "removed": []},
                     "store_pending": {"added": [], "updated": [], "removed": []},
+                    "context_history": {"added": [], "updated": [], "removed": []},
                     "seen_ids": {"added": [], "removed": []}},
+        "documents": [],
         "review_queue": [], "learned_context": [],
         "audit": {"first_event_id": None, "last_event_id": None, "count": 0, "events": []},
     }
@@ -429,24 +526,18 @@ def _fingerprint(document: Mapping[str, Any]) -> str:
 
 
 def _account_changes(before: Mapping[int, Mapping[str, Any]], after: Mapping[int, Mapping[str, Any]],
-                     events: Sequence[Mapping[str, Any]], conn: sqlite3.Connection | None) -> dict[str, list[Any]]:
+                     events: Sequence[Mapping[str, Any]]) -> dict[str, list[Any]]:
     opened = [dict(after[ident]) for ident in sorted(after, key=lambda i: after[i]["name"]) if ident not in before]
     removed = sorted(before[ident]["name"] for ident in before if ident not in after)
     renamed: list[dict[str, Any]] = []
     updated: list[dict[str, Any]] = []
     event_ids: dict[tuple[str, str], int] = {}
-    if conn is not None and any(before[i]["name"] != after[i]["name"] for i in before if i in after):
-        for event in events:
-            if event["type"] != "account-renamed":
-                continue
-            row = conn.execute("SELECT payload_json FROM audit_events WHERE id = ?", (event["id"],)).fetchone()
-            try:
-                payload = json.loads(row[0]) if row else {}
-            except (ValueError, TypeError):
-                payload = {}
-            for pair in payload.get("accounts") or []:
-                if isinstance(pair, list) and len(pair) == 2:
-                    event_ids[(str(pair[0]), str(pair[1]))] = int(event["id"])
+    for event in events:
+        if event["type"] != "account-renamed":
+            continue
+        for pair in (event["payload"] or {}).get("accounts") or []:
+            if isinstance(pair, list) and len(pair) == 2:
+                event_ids[(str(pair[0]), str(pair[1]))] = int(event["id"])
     for ident in sorted(before, key=lambda i: before[i]["name"]):
         if ident not in after:
             continue
@@ -459,12 +550,13 @@ def _account_changes(before: Mapping[int, Mapping[str, Any]], after: Mapping[int
     return {"opened": opened, "renamed": renamed, "updated": updated, "removed": removed}
 
 
-def _build(before: _Side, root: Path, books_revision: int | None, failed: bool = False) -> dict[str, Any]:
+def _build(before: _Side, root: Path, books_revision: int | None, failed: bool = False,
+           base_revision: int | None = None) -> dict[str, Any]:
     after = _take(root)
     conn = _connect_read_only(root / "ledger.sqlite") if root.is_dir() else None
     try:
         document = _empty(books_revision, before.position, before.digest(), complete=not failed,
-                          reason="command_failed" if failed else None)
+                          reason="command_failed" if failed else None, base_revision=base_revision)
         document["ledger"]["after"] = dict(after.position)
         document["state"]["after"] = after.digest()
         entries_after, postings_after, balances_after = after.counts
@@ -486,7 +578,7 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
                      or balances_after != balances_before + len(balances))
             if reset:
                 entries, balances, audit_floor = _load_entries(conn, 0), _load_balances(conn, 0), 0
-            events = _load_audit(conn, audit_floor)
+            events = _load_audit(conn, audit_floor)  # The whole rows, so a host can check the chain
             document["entries_added"] = entries
             document["balance_assertions_added"] = balances
             document["entries_reversed"] = _reversals(conn, entries)
@@ -495,7 +587,7 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
                 "last_event_id": events[-1]["id"] if events else None,
                 "count": len(events), "events": events,
             }
-            document["accounts"] = _account_changes(before.accounts, after.accounts, events, conn)
+            document["accounts"] = _account_changes(before.accounts, after.accounts, events)
             changed_ids = sorted(
                 key for key in set(before.bank) | set(after.bank) if before.bank.get(key) != after.bank.get(key))
             rows = _bank_rows(conn, [key for key in changed_ids if key in after.bank])
@@ -518,6 +610,11 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
         document["staging"]["duplicates"] = {"added": added, "updated": updated, "removed": removed}
         added, updated, removed = _diff_keyed(before.store_pending, after.store_pending)
         document["staging"]["store_pending"] = {"added": added, "updated": updated, "removed": removed}
+        added, updated, removed = _diff_keyed(before.context, after.context)
+        document["staging"]["context_history"] = {"added": added, "updated": updated, "removed": removed}
+        document["documents"] = [
+            {"path": row["key"], "change": row["change"], "content": copy.deepcopy(row["after"])}
+            for row in _list_changes(before.documents, after.documents, "documents")]
         document["staging"]["seen_ids"] = {
             "added": sorted(set(after.seen) - set(before.seen)), "removed": sorted(set(before.seen) - set(after.seen))}
         document["review_queue"] = _queue_rows(before.queue, after.queue)
@@ -531,6 +628,7 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
     document["changed"] = bool(
         document["reset"] or document["entries_added"] or document["balance_assertions_added"]
         or any(document["accounts"].values()) or document["bank_rows"] or document["review_queue"]
+        or document["documents"]
         or document["learned_context"] or document["audit"]["count"]
         or document["ledger"]["before"] != document["ledger"]["after"]
         or before.digest() != after.digest()
@@ -556,61 +654,86 @@ class ChangeSetCapture:
 
     entity_path: Path | None
     books_revision: int | None = None
+    base_revision: int | None = None
     change_set: dict[str, Any] = field(default_factory=dict)
     failed: bool = False
 
 
 @contextmanager
-def capture(entity_path: Path | str | None, *, books_revision: int | None = None) -> Iterator[ChangeSetCapture]:
+def capture(entity_path: Path | str | None, *, books_revision: int | None = None,
+            base_revision: int | None = None) -> Iterator[ChangeSetCapture]:
     """Compute the change set for the command that runs inside the block.
+
+    ``base_revision`` is the revision of the host view before the command. ``books_revision`` is the revision that the
+    host gives to the result. The host owns both numbers.
 
     Commands are not one transaction: a command that fails can leave some of its writes. When the block raises, or
     the caller sets ``failed``, the change set has ``complete: false`` and a host must do a full read instead of
-    applying it. If the state cannot be read in full before or after the command, the change set is also incomplete
-    (``reason``). The capture never stops the command itself. With ``entity_path=None`` the result is an empty change set.
+    applying it. If the state cannot be read in full before or after the command, or if any step after the command body
+    raises (the read after, the digest), the change set is also incomplete (``reason``). The capture never stops the
+    command itself. With ``entity_path=None`` the result is an empty change set.
     """
-    holder = ChangeSetCapture(Path(entity_path) if entity_path is not None else None, books_revision)
-    holder.change_set = _empty(books_revision)
+    holder = ChangeSetCapture(Path(entity_path) if entity_path is not None else None, books_revision, base_revision)
+    holder.change_set = _incomplete(books_revision, "not_finished", base_revision)  # A reader never sees a complete receipt early
     if holder.entity_path is None:
+        holder.change_set = _empty(books_revision, base_revision=base_revision)
         yield holder
         return
     try:
         before: _Side | None = _take(holder.entity_path)
-    except ChangeSetError:
+    except Exception:  # noqa: BLE001 - any failure to read the state means that no change set can be complete
         before = None
-    if before is not None:
-        holder.change_set = _empty(books_revision, before.position, before.digest())
     try:
         yield holder
     except BaseException:
         holder.failed = True
         raise
     finally:
-        holder.change_set = _finish(before, holder, books_revision)
+        holder.change_set = _finish(before, holder)
 
 
-def _finish(before: "_Side | None", holder: ChangeSetCapture, books_revision: int | None) -> dict[str, Any]:
+def _finish(before: "_Side | None", holder: ChangeSetCapture) -> dict[str, Any]:
+    """Build the change set. It never raises: any failure after the command body gives ``complete: false``."""
+    revision, base = holder.books_revision, holder.base_revision
     if before is None:
-        return _incomplete(books_revision, "state_unreadable")
+        return _incomplete(revision, "state_unreadable", base)
     try:
-        return _build(before, holder.entity_path, books_revision, holder.failed)  # type: ignore[arg-type]
+        return _build(before, holder.entity_path, revision, holder.failed, base)  # type: ignore[arg-type]
     except ChangeSetError:
-        return _incomplete(books_revision, "state_unreadable")
+        return _incomplete(revision, "state_unreadable", base)
+    except Exception:  # noqa: BLE001
+        return _incomplete(revision, "finalize_failed", base)
 
 
-def _incomplete(books_revision: int | None, reason: str) -> dict[str, Any]:
-    document = _empty(books_revision, complete=False, reason=reason)
+def _incomplete(books_revision: int | None, reason: str, base_revision: int | None = None) -> dict[str, Any]:
+    document = _empty(books_revision, complete=False, reason=reason, base_revision=base_revision)
     document["changed"] = True  # The host cannot tell: it must do a full read.
     document["fingerprint"] = _fingerprint(document)
     return document
 
 
-def write_document(path: Path, document: Mapping[str, Any]) -> None:
-    """Write the machine-readable change set for ``--change-set-out``."""
+def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     tmp.replace(path)
+
+
+def write_document(path: Path, document: Mapping[str, Any]) -> None:
+    """Write the machine-readable change set for ``--change-set-out``.
+
+    If the write fails, the function writes an incomplete change set (``write_failed``) so that a host never reads a
+    complete receipt that is not the real one. If that also fails, it removes the file and raises the first error.
+    """
+    try:
+        _atomic_write(path, json.dumps(document, indent=2, sort_keys=True) + "\n")
+    except Exception as first:
+        try:
+            fallback = _incomplete(document.get("books_revision"), "write_failed", document.get("base_revision"))
+            _atomic_write(path, json.dumps(fallback, indent=2, sort_keys=True) + "\n")
+        except Exception:
+            path.unlink(missing_ok=True)
+        raise first
 
 
 def entity_path_from_args(args: argparse.Namespace) -> Path | None:
@@ -623,43 +746,67 @@ def entity_path_from_args(args: argparse.Namespace) -> Path | None:
 # ---------------------------------------------------------------------------
 
 
-def empty_view() -> dict[str, Any]:
-    """The host view of a company with no books."""
+def empty_view(revision: int = 0) -> dict[str, Any]:
+    """The host view of a company with no books. ``revision`` is the revision that the host gives to this view."""
     return {
-        "position": dict(ZERO_POSITION),
+        "revision": revision, "position": dict(ZERO_POSITION),
         "entries": {}, "balance_assertions": {}, "accounts": {}, "bank_rows": {},
-        "staging": {"pending": {}, "duplicates": {}, "store_pending": {}, "seen_ids": []},
-        "review_queue": {}, "learned_context": {}, "audit_events": {},
+        "staging": {"pending": {}, "duplicates": {}, "store_pending": {}, "context_history": {}, "seen_ids": []},
+        "documents": {}, "review_queue": {}, "learned_context": {}, "audit_events": {},
     }
 
 
 def apply_change_set(view: dict[str, Any], change_set: Mapping[str, Any]) -> dict[str, Any]:
-    """Return the next host view. The input view does not change."""
+    """Return the next host view. The input view does not change.
+
+    The change set applies only if all of these hold, else ``ChangeSetRefused`` (the host does a full read):
+    it is complete; its ``base_revision`` is the revision of the view and its ``books_revision`` is greater; its
+    ``ledger.before`` is the position of the view; its ``state.before`` is the digest of the content of the view;
+    and the view after the apply has the position and the digest of ``ledger.after`` and ``state.after``.
+    """
     errors = validate(change_set)
     if errors:
         raise ValueError("Not a valid change set: " + "; ".join(errors[:3]))
     if not change_set["complete"]:
         raise ChangeSetRefused(f"The change set is not complete ({change_set['reason']}): do a full read.")
-    if change_set["ledger"]["before"] != view["position"]:
+    base, new_revision = change_set["base_revision"], change_set["books_revision"]
+    if not (_is_int(base) and _is_int(new_revision) and _is_int(view["revision"])
+            and base == view["revision"] and new_revision > base):
         raise ChangeSetRefused(
-            "The change set does not start at the position of the view (a stale, skipped or out-of-order change set): "
-            "do a full read.")
+            "The revisions do not follow the view: the base revision must be the revision of the view and the new "
+            "revision must be greater (a stale, skipped or out-of-order change set): do a full read.")
+    if change_set["ledger"]["before"] != view["position"]:
+        raise ChangeSetRefused("The change set does not start at the ledger position of the view: do a full read.")
     if change_set["state"]["before"] != view_digest(view):
-        raise ChangeSetRefused("The change set does not start at the state of the view: do a full read.")
+        raise ChangeSetRefused("The change set does not start at the content of the view: do a full read.")
+    for row in change_set["bank_rows"]:
+        if row["row"] is not None and row["payload_sha256"] != payload_digest(row["row"]):
+            raise ChangeSetRefused(f"The payload hash of bank row {row['source_id']} is wrong: do a full read.")
     new = _apply(view, change_set)
+    new["revision"] = new_revision
     if new["position"] != change_set["ledger"]["after"] or view_digest(new) != change_set["state"]["after"]:
         raise ChangeSetRefused("The view after the change set does not match the engine state: do a full read.")
     return new
 
 
 def view_digest(view: Mapping[str, Any]) -> str:
-    """The digest of the small tables of a host view. It equals ``state.after`` of the last change set that was applied."""
+    """The digest of the content of a host view (every part that a change set covers), computed from the rows.
+
+    It equals ``state.after`` of the last change set that was applied. The bank payload hashes are computed from the
+    payload rows, not read from the stored hash.
+    """
     staging = view["staging"]
+    ordered = lambda rows: [rows[key] for key in sorted(rows)]  # noqa: E731
     return _state_digest(
-        view["accounts"],
-        {key: [row["status"], row["imported_at"], row["payload_sha256"]] for key, row in view["bank_rows"].items()},
-        view["review_queue"], staging["pending"], staging["duplicates"], staging["store_pending"],
-        list(staging["seen_ids"]), view["learned_context"])
+        ledger=_ledger_digest(ordered(view["entries"]), ordered(view["balance_assertions"]),
+                              ordered(view["audit_events"])),
+        accounts=view["accounts"],
+        bank={key: [row["status"], row["imported_at"],
+                    payload_digest(row["row"]) if row["row"] is not None else row["payload_sha256"]]
+              for key, row in view["bank_rows"].items()},
+        queue=view["review_queue"], pending=staging["pending"], duplicates=staging["duplicates"],
+        store_pending=staging["store_pending"], context=staging["context_history"], documents=view["documents"],
+        seen=sorted(staging["seen_ids"]), learned=view["learned_context"])
 
 
 def _apply(view: Mapping[str, Any], change_set: Mapping[str, Any]) -> dict[str, Any]:
@@ -697,7 +844,13 @@ def _apply(view: Mapping[str, Any], change_set: Mapping[str, Any]) -> dict[str, 
                 "payload_sha256": row["payload_sha256"], "row": copy.deepcopy(row["row"])}
     seen = change_set["staging"]["seen_ids"]
     new["staging"]["seen_ids"] = sorted((set(new["staging"]["seen_ids"]) | set(seen["added"])) - set(seen["removed"]))
-    for name, key in (("pending", "id"), ("duplicates", "source_id"), ("store_pending", "id")):
+    for row in change_set["documents"]:
+        if row["change"] == "removed":
+            new["documents"].pop(row["path"], None)
+        else:
+            new["documents"][row["path"]] = copy.deepcopy(row["content"])
+    for name, key in (("pending", "id"), ("duplicates", "source_id"), ("store_pending", "id"),
+                      ("context_history", "source_id")):
         part = change_set["staging"][name]
         for row in (*part["added"], *part["updated"]):
             new["staging"][name][str(row[key])] = copy.deepcopy(row)
@@ -725,10 +878,10 @@ def _apply(view: Mapping[str, Any], change_set: Mapping[str, Any]) -> dict[str, 
     return new
 
 
-def read_view(entity_path: Path | str) -> dict[str, Any]:
-    """Read the whole books of a company into the host view shape."""
+def read_view(entity_path: Path | str, *, revision: int = 0) -> dict[str, Any]:
+    """Read the whole books of a company into the host view shape. ``revision`` is the revision that the host gives."""
     root = Path(entity_path)
-    view = empty_view()
+    view = empty_view(revision)
     conn = _connect_read_only(root / "ledger.sqlite")
     if conn is not None:
         try:
@@ -744,6 +897,8 @@ def read_view(entity_path: Path | str) -> dict[str, Any]:
     view["staging"]["pending"] = _load_keyed(root / _PENDING_FILE, "id")
     view["staging"]["duplicates"] = _load_keyed(root / _DUPLICATES_FILE, "source_id")
     view["staging"]["store_pending"] = _load_keyed(root / _STORE_PENDING_FILE, "id")
+    view["staging"]["context_history"] = _load_context(root)
+    view["documents"] = _load_documents(root)
     view["staging"]["seen_ids"] = _load_ids(root / _SEEN_FILE)
     view["review_queue"] = load_queue(root)
     view["learned_context"] = _load_learned(root)
@@ -756,9 +911,9 @@ def read_view(entity_path: Path | str) -> dict[str, Any]:
 
 
 _TOP_KEYS = {
-    "schema_version", "kind", "books_revision", "complete", "reason", "state", "changed", "reset", "ledger", "entries_added", "entries_reversed",
-    "balance_assertions_added", "accounts", "bank_rows", "staging", "review_queue", "learned_context", "audit",
-    "fingerprint",
+    "schema_version", "kind", "books_revision", "base_revision", "complete", "reason", "state", "changed", "reset", "ledger", "entries_added", "entries_reversed",
+    "balance_assertions_added", "accounts", "bank_rows", "staging", "documents", "review_queue", "learned_context",
+    "audit", "fingerprint",
 }
 
 
@@ -791,8 +946,9 @@ def validate(document: Any) -> list[str]:
         return errors
     if document["kind"] != KIND:
         errors.append(f"kind must be {KIND!r}")
-    if document["books_revision"] is not None and not _is_int(document["books_revision"]):
-        errors.append("books_revision must be an integer or null")
+    for name in ("books_revision", "base_revision"):
+        if document[name] is not None and not _is_int(document[name]):
+            errors.append(f"{name} must be an integer or null")
     for name in ("changed", "reset", "complete"):
         if not isinstance(document[name], bool):
             errors.append(f"{name} must be a boolean")
@@ -808,7 +964,7 @@ def validate(document: Any) -> list[str]:
     else:
         errors += _check_position(ledger["before"], "ledger.before") + _check_position(ledger["after"], "ledger.after")
     for name in ("entries_added", "entries_reversed", "balance_assertions_added", "bank_rows", "review_queue",
-                 "learned_context"):
+                 "learned_context", "documents"):
         if not isinstance(document[name], list):
             errors.append(f"{name} must be a list")
     if errors:
@@ -831,13 +987,18 @@ def validate(document: Any) -> list[str]:
             errors.append("bank_rows rows need a source_id and a change from " + ", ".join(BANK_ROW_CHANGES))
             break
     staging = document["staging"]
-    lists = ("pending", "duplicates", "store_pending")
+    lists = ("pending", "duplicates", "store_pending", "context_history")
     if (not isinstance(staging, dict) or set(staging) != {*lists, "seen_ids"}
             or not all(isinstance(staging[name], dict) and set(staging[name]) == {"added", "updated", "removed"}
                        and all(isinstance(staging[name][key], list) for key in staging[name]) for name in lists)
             or not isinstance(staging["seen_ids"], dict) or set(staging["seen_ids"]) != {"added", "removed"}
             or not all(isinstance(value, list) for value in staging["seen_ids"].values())):
-        errors.append("staging must have pending, duplicates and store_pending (added, updated, removed) and seen_ids (added, removed)")
+        errors.append("staging must have pending, duplicates, store_pending and context_history (added, updated, removed) "
+                      "and seen_ids (added, removed)")
+    for row in document["documents"]:
+        if not isinstance(row, dict) or row.get("change") not in LIST_CHANGES or row.get("path") not in DOCUMENT_FILES:
+            errors.append("documents rows need a path from DOCUMENT_FILES and a change")
+            break
     for row in document["review_queue"]:
         if (not isinstance(row, dict) or row.get("change") not in LIST_CHANGES or not isinstance(row.get("id"), str)
                 or not isinstance(row.get("closed"), bool)):

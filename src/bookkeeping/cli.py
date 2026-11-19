@@ -105,6 +105,7 @@ def _main(argv: list[str]) -> int:
     work_parser.add_argument("--work-out", type=Path)
     work_parser.add_argument("--change-set-out", type=Path)
     work_parser.add_argument("--change-set-revision", type=int)
+    work_parser.add_argument("--change-set-base-revision", type=int)
     work_args, command_argv = work_parser.parse_known_args(command_argv)
     args = parser.parse_args(command_argv)
 
@@ -118,13 +119,16 @@ def _main(argv: list[str]) -> int:
             return 1
         entity_path = work_module.entity_path_from_args(args)
         work_receipt = change_receipt = None
+        if work_args.change_set_out is not None:
+            work_args.change_set_out.unlink(missing_ok=True)  # A document of an earlier run must never look like this run
         try:
             with contextlib.ExitStack() as stack:
                 if work_args.work_out is not None:
                     work_receipt = stack.enter_context(work_module.capture(entity_path))
                 if work_args.change_set_out is not None:
                     change_receipt = stack.enter_context(changeset_module.capture(
-                        entity_path, books_revision=work_args.change_set_revision))
+                        entity_path, books_revision=work_args.change_set_revision,
+                        base_revision=work_args.change_set_base_revision))
                 code = _dispatch(args, command_argv, parser, answer_application)
                 if code != 0 and change_receipt is not None:
                     change_receipt.failed = True  # A failed command can leave some writes: the change set is incomplete.

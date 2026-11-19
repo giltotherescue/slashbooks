@@ -30,6 +30,7 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
     work_parser.add_argument("--work-out", type=Path)
     work_parser.add_argument("--change-set-out", type=Path)
     work_parser.add_argument("--change-set-revision", type=int)
+    work_parser.add_argument("--change-set-base-revision", type=int)
     work_args, argv = work_parser.parse_known_args(argv)
     if not argv:
         raise ContractError("Expected a bounded, nonempty argv array of strings.")
@@ -48,6 +49,7 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
     args.work_out = work_args.work_out
     args.change_set_out = work_args.change_set_out
     args.change_set_revision = work_args.change_set_revision
+    args.change_set_base_revision = work_args.change_set_base_revision
     levels, path = [], []
     while True:
         levels.append(parser)
@@ -166,6 +168,8 @@ def rewrite_paths(argv: list[str], replacements: dict[str, str]) -> list[str]:
         result.append("--change-set-out=" + render(args.change_set_out, "change_set_out"))
     if getattr(args, "change_set_revision", None) is not None:
         result.append(f"--change-set-revision={args.change_set_revision}")
+    if getattr(args, "change_set_base_revision", None) is not None:
+        result.append(f"--change-set-base-revision={args.change_set_base_revision}")
 
     for index, level in enumerate(levels):
         for action in level._actions:

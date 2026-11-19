@@ -112,26 +112,32 @@ class Sequence_:
         self.sets: dict[str, dict] = {}
         self.n = 0
 
+    def cap(self):
+        """A capture with the revisions that a host gives: the base is the revision of the view, and the next is one more."""
+        revision = self.view["revision"]
+        return changeset.capture(self.entity, books_revision=revision + 1, base_revision=revision)
+
     def _apply(self, name: str, document: dict) -> dict:
         self.test.assertEqual(changeset.validate(document), [], name)
         self.sets[name] = document
         self.view = changeset.apply_change_set(self.view, json.loads(json.dumps(document)))
-        full = changeset.read_view(self.entity)
+        full = changeset.read_view(self.entity, revision=self.view["revision"])
         self.test.assertEqual(self.view, full, f"{name}: the applied view differs from a full read")
         if self.entity.is_dir() and (self.entity / "ledger.sqlite").exists():
             self.test.assertEqual(view_summary(self.view), independent_view(self.entity), name)
         return document
 
-    def cli(self, name: str, *argv: str, expect: int = 0, revision: int | None = None) -> dict:
+    def cli(self, name: str, *argv: str, expect: int = 0) -> dict:
         self.n += 1
         out = self.root / f"cs-{self.n}.json"
-        extra = ["--change-set-revision", str(revision)] if revision is not None else []
+        revision = self.view["revision"]
+        extra = ["--change-set-base-revision", str(revision), "--change-set-revision", str(revision + 1)]
         code, stdout, stderr = run_cli(["--change-set-out", str(out), *extra, *argv])
         self.test.assertEqual(code, expect, f"{argv}: {stdout}{stderr}")
         return self._apply(name, json.loads(out.read_text(encoding="utf-8")))
 
     def api(self, name: str, call) -> dict:
-        with changeset.capture(self.entity) as receipt:
+        with self.cap() as receipt:
             call()
         return self._apply(name, receipt.change_set)
 
@@ -148,7 +154,7 @@ def scenario(test: unittest.TestCase, root: Path) -> Sequence_:
     seq.ingest("import", IMPORT)
     seq.cli("propose_1", "queue", "propose", "--entity", entity, "--source-id", "cs-001",
             "--category", "Expenses:Software", "--reasoning", "Monthly design tool.")
-    seq.cli("approve", "queue", "confirm", "--entity", entity, "--item", "cs-001", revision=7)
+    seq.cli("approve", "queue", "confirm", "--entity", entity, "--item", "cs-001")
     seq.cli("propose_3", "queue", "propose", "--entity", entity, "--source-id", "cs-003",
             "--category", "Expenses:Meals", "--reasoning", "Lunch.")
     seq.cli("decline", "queue", "withdraw", "--entity", entity, "--item", "cs-003")
@@ -202,7 +208,7 @@ class SequenceTests(unittest.TestCase):
 
     def test_approve_adds_the_entry_closes_the_item_and_removes_the_pending_row(self) -> None:
         document = self.seq.sets["approve"]
-        self.assertEqual(document["books_revision"], 7)
+        self.assertEqual(document["books_revision"], document["base_revision"] + 1)
         [entry] = document["entries_added"]
         self.assertEqual(entry["source_id"], "cs-001")
         self.assertEqual({p["account"] for p in entry["postings"]}, {CHECKING, "Expenses:Software"})
@@ -329,12 +335,12 @@ class OtherBehaviorTests(unittest.TestCase):
         self.assertTrue(document["entries_added"])  # The partial change is visible, but it never claims to be complete.
         with self.assertRaises(changeset.ChangeSetRefused):
             changeset.apply_change_set(self.seq.view, document)
-        self.seq.view = changeset.read_view(entity)  # The host does a full read.
+        self.seq.view = changeset.read_view(entity, revision=self.seq.view["revision"])  # The host does a full read.
         self.assertEqual(self.seq.view["position"], document["ledger"]["after"])
 
     def test_a_nonzero_exit_after_a_write_is_incomplete(self) -> None:
         entity = self.seq.entity
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             (entity / "staging" / "seen-ids.json").write_text('["x"]', encoding="utf-8")
             receipt.failed = True
         self.assertFalse(receipt.change_set["complete"])
@@ -358,7 +364,7 @@ class OtherBehaviorTests(unittest.TestCase):
 
     def test_a_bank_row_status_change_is_listed(self) -> None:
         entity = self.seq.entity
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             conn = sqlite3.connect(entity / "ledger.sqlite")
             try:
                 with conn:
@@ -368,7 +374,7 @@ class OtherBehaviorTests(unittest.TestCase):
                 conn.close()
         self.assertEqual(receipt.change_set["bank_rows"][0]["change"], "added")
         self.seq._apply("add_row", receipt.change_set)
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             conn = sqlite3.connect(entity / "ledger.sqlite")
             try:
                 with conn:
@@ -390,16 +396,16 @@ class OtherBehaviorTests(unittest.TestCase):
             finally:
                 conn.close()
 
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             write("INSERT INTO source_transactions (id, payload_json, status, imported_at) VALUES "
                   "('cs-p', '{\"memo\": \"one\"}', 'posted', '2026-10-01T00:00:00Z')")
         self.seq._apply("payload_added", receipt.change_set)
-        with changeset.capture(entity) as receipt:  # The same status and the same time. Only the payload differs.
+        with self.seq.cap() as receipt:  # The same status and the same time. Only the payload differs.
             write("UPDATE source_transactions SET payload_json = '{\"memo\": \"two\"}' WHERE id = 'cs-p'")
         [row] = receipt.change_set["bank_rows"]
         self.assertEqual((row["change"], row["status_before"], row["status_after"]), ("updated", "posted", "posted"))
         self.assertEqual(row["row"], {"memo": "two"})
-        self.assertEqual(row["payload_sha256"], hashlib.sha256(b'{"memo": "two"}').hexdigest())
+        self.assertEqual(row["payload_sha256"], changeset.payload_digest({"memo": "two"}))
         self.seq._apply("payload_changed", receipt.change_set)
 
     def test_stale_skipped_and_out_of_order_change_sets_are_refused(self) -> None:
@@ -439,7 +445,7 @@ class OtherBehaviorTests(unittest.TestCase):
 
     def test_the_store_pending_rows_and_seen_ids_are_covered(self) -> None:
         entity = self.seq.entity
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             (entity / "staging" / "pending.json").write_text(
                 json.dumps([{"id": "sp-1", "date": "2026-10-01", "amount": "-1.00"}]), encoding="utf-8")
             (entity / "staging" / "seen-ids.json").write_text(json.dumps(["cs-001", "sp-1"]), encoding="utf-8")
@@ -454,15 +460,185 @@ class OtherBehaviorTests(unittest.TestCase):
                 for p in (self.seq.entity / folder).rglob("*") if p.is_file()}
         self.assertLessEqual(seen, changeset.COVERED_FILES)
 
+    def test_a_stale_change_set_is_refused_after_a_cycle_that_returns_to_the_same_state(self) -> None:
+        company = load_entity(self.seq.entity)
+        self.seq.api("teach_a", lambda: queue.set_taught(company, "HARBOR CAFE", "Expenses:Meals", by="u1",
+                                                         by_name="Pat", ts="2026-10-16T10:00:00Z"))
+        view_a = copy.deepcopy(self.seq.view)
+        replace = self.seq.api("teach_b", lambda: queue.set_taught(company, "HARBOR CAFE", "Expenses:Fees", by="u1",
+                                                                   by_name="Pat", ts="2026-10-17T10:00:00Z"))
+        taught = queue.taught_for(company, "HARBOR CAFE")
+        self.seq.api("undo", lambda: queue.clear_taught(company, "HARBOR CAFE", taught["id"]))
+        # The undo restored the first instruction: the position and the digest equal those after the first write.
+        self.assertEqual(self.seq.view["position"], view_a["position"])
+        self.assertEqual(changeset.view_digest(self.seq.view), changeset.view_digest(view_a))
+        self.assertEqual(replace["state"]["before"], changeset.view_digest(self.seq.view))
+        with self.assertRaises(changeset.ChangeSetRefused):  # Only the revision tells them apart.
+            changeset.apply_change_set(self.seq.view, replace)
+        view_a["revision"] = 99
+        with self.assertRaises(changeset.ChangeSetRefused):
+            changeset.apply_change_set(view_a, replace)
+
+    def test_a_change_set_without_revisions_or_with_a_lower_new_revision_is_refused(self) -> None:
+        document = self.seq.sets["import"]
+        view = changeset.empty_view()
+        for base, new in ((None, 1), (0, None), (0, 0), (0, -1)):
+            doc = {**copy.deepcopy(document), "base_revision": base, "books_revision": new}
+            doc["fingerprint"] = changeset._fingerprint(doc)
+            with self.subTest(base=base, new=new):
+                with self.assertRaises(changeset.ChangeSetRefused):
+                    changeset.apply_change_set(view, doc)
+
+    def test_replica_content_that_differs_with_matching_hashes_is_refused(self) -> None:
+        entity = str(self.seq.entity)
+        self.seq.cli("propose", "queue", "propose", "--entity", entity, "--source-id", "cs-001",
+                     "--category", "Expenses:Software", "--reasoning", "Tool.")
+        self.seq.cli("approve", "queue", "confirm", "--entity", entity, "--item", "cs-001")
+        with self.seq.cap() as receipt:
+            conn = sqlite3.connect(self.seq.entity / "ledger.sqlite")
+            try:
+                with conn:
+                    conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) VALUES "
+                                 "('cs-r', '{\"memo\": \"one\"}', 'posted', '2026-10-01T00:00:00Z')")
+            finally:
+                conn.close()
+        self.seq._apply("bank", receipt.change_set)
+        with self.seq.cap() as receipt:
+            self.seq.cli  # The next change set is an ordinary one.
+            (self.seq.entity / "staging" / "seen-ids.json").write_text('["cs-001", "z"]', encoding="utf-8")
+        following = receipt.change_set
+        position = copy.deepcopy(self.seq.view["position"])
+        def corrupt_entry(view): next(iter(view["entries"].values()))["narration"] = "changed"
+        def corrupt_posting(view): next(iter(view["entries"].values()))["postings"][0]["amount"] = "9.99"
+        def corrupt_audit(view): next(iter(view["audit_events"].values()))["payload"] = {"forged": True}
+        def corrupt_bank_payload(view): view["bank_rows"]["cs-r"]["row"] = {"memo": "forged"}  # The stored hash stays.
+        def corrupt_queue(view): next(iter(view["review_queue"].values()))["status"] = "open"
+        for label, damage in (("entry", corrupt_entry), ("posting", corrupt_posting), ("audit", corrupt_audit),
+                              ("bank payload", corrupt_bank_payload), ("queue", corrupt_queue)):
+            view = copy.deepcopy(self.seq.view)
+            damage(view)
+            self.assertEqual(view["position"], position)
+            with self.subTest(label):
+                with self.assertRaises(changeset.ChangeSetRefused):
+                    changeset.apply_change_set(view, following)
+        self.seq._apply("seen", following)  # The undamaged view accepts it.
+
+    def test_a_bank_row_payload_hash_that_does_not_match_its_row_is_refused(self) -> None:
+        with self.seq.cap() as receipt:
+            conn = sqlite3.connect(self.seq.entity / "ledger.sqlite")
+            try:
+                with conn:
+                    conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) VALUES "
+                                 "('cs-h', '{\"a\": 1}', 'posted', '2026-10-01T00:00:00Z')")
+            finally:
+                conn.close()
+        document = copy.deepcopy(receipt.change_set)
+        document["bank_rows"][0]["row"] = {"a": 2}
+        document["fingerprint"] = changeset._fingerprint(document)
+        with self.assertRaises(changeset.ChangeSetRefused):
+            changeset.apply_change_set(self.seq.view, document)
+
+    def test_an_error_after_the_command_body_gives_an_incomplete_change_set(self) -> None:
+        entity = self.seq.entity
+        for label, target in (("build", mock.patch.object(changeset, "_build", side_effect=RuntimeError("x"))),
+                              ("digest", mock.patch.object(changeset._Side, "digest", side_effect=RuntimeError("x")))):
+            with self.subTest(label):
+                with target:
+                    with self.seq.cap() as receipt:
+                        (entity / "staging" / "seen-ids.json").write_text('["q"]', encoding="utf-8")
+                self.assertFalse(receipt.change_set["complete"])
+                self.assertEqual(receipt.change_set["reason"], "finalize_failed")
+                with self.assertRaises(changeset.ChangeSetRefused):
+                    changeset.apply_change_set(self.seq.view, receipt.change_set)
+
+    def test_a_failed_write_of_the_document_never_leaves_a_complete_receipt(self) -> None:
+        out = self.root / "w.json"
+        real = changeset._atomic_write
+        calls = []
+
+        def first_fails(path, text):
+            calls.append(1)
+            if len(calls) == 1:
+                raise OSError("disk full")
+            real(path, text)
+
+        argv = ["--change-set-out", str(out), "queue", "propose", "--entity", str(self.seq.entity), "--source-id",
+                "cs-001", "--category", "Expenses:Software", "--reasoning", "Tool."]
+        with mock.patch.object(changeset, "_atomic_write", first_fails):
+            with self.assertRaises(OSError):
+                run_cli(argv)
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertFalse(document["complete"])
+        self.assertEqual(document["reason"], "write_failed")
+        out.unlink()
+        with mock.patch.object(changeset, "_atomic_write", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                run_cli(["--change-set-out", str(out), "queue", "list", "--entity", str(self.seq.entity)])
+        self.assertFalse(out.exists())  # No file: the host sees no receipt and does a full read.
+
+    def test_a_document_of_an_earlier_run_is_removed_before_the_command(self) -> None:
+        out = self.root / "old.json"
+        out.write_text("{}", encoding="utf-8")
+        with mock.patch.object(cli, "_dispatch", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                run_cli(["--change-set-out", str(out), "queue", "list", "--entity", str(self.seq.entity)])
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(document["kind"], "books-change-set")  # The new document, never the old one
+
+    def test_a_corrupt_staging_or_learned_context_file_is_not_read_as_empty(self) -> None:
+        entity = self.seq.entity
+        targets = ("staging/pending-categorization.json", "staging/seen-ids.json", "staging/duplicate-candidates.json",
+                   "staging/pending.json", "staging/context-history.json", "staging/split-templates.json",
+                   "staging/source-id-aliases.json", "learned-context/counterparties.json",
+                   "learned-context/accrual-rules.json")
+        for name in targets:
+            path = entity / name
+            original = path.read_text(encoding="utf-8") if path.exists() else None
+            for bad in ("{broken", '"a string"'):
+                with self.subTest(name=name, bad=bad):
+                    with self.seq.cap() as receipt:
+                        path.parent.mkdir(exist_ok=True)
+                        path.write_text(bad, encoding="utf-8")
+                    self.assertFalse(receipt.change_set["complete"])
+                    self.assertEqual(receipt.change_set["reason"], "state_unreadable")
+                    with self.assertRaises(changeset.ChangeSetError):
+                        changeset.read_view(entity)
+            if original is None:
+                path.unlink()
+            else:
+                path.write_text(original, encoding="utf-8")
+
+    def test_split_templates_accrual_rules_aliases_and_context_history_are_covered(self) -> None:
+        entity = self.seq.entity
+        company = load_entity(entity)
+        with self.seq.cap() as receipt:
+            queue.save_split_template(company, "halves", ["Expenses:Software=10.00", "Expenses:Meals=-10.00"])
+            (entity / "staging" / "source-id-aliases.json").write_text('[{"from": "a", "to": "b"}]', encoding="utf-8")
+            (entity / "learned-context").mkdir(exist_ok=True)
+            (entity / "learned-context" / "accrual-rules.json").write_text('{"version": 1, "rules": []}', encoding="utf-8")
+            (entity / "staging" / "context-history.json").write_text(json.dumps(
+                {"schema_version": 1, "rows": [{"source_id": "ctx-1", "status": "context-only"}]}), encoding="utf-8")
+        change = receipt.change_set
+        self.assertEqual({row["path"] for row in change["documents"]},
+                         {"staging/split-templates.json", "staging/source-id-aliases.json",
+                          "learned-context/accrual-rules.json"})
+        self.assertEqual([row["source_id"] for row in change["staging"]["context_history"]["added"]], ["ctx-1"])
+        self.seq._apply("files", change)
+        with self.seq.cap() as receipt:
+            (entity / "staging" / "source-id-aliases.json").unlink()
+        self.assertEqual([(r["path"], r["change"]) for r in receipt.change_set["documents"]],
+                         [("staging/source-id-aliases.json", "removed")])
+        self.seq._apply("files_removed", receipt.change_set)
+
     def test_duplicate_candidates_are_listed(self) -> None:
         entity = self.seq.entity
         path = entity / "staging" / "duplicate-candidates.json"
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             path.write_text(json.dumps([{"source_id": "d-1", "status": "duplicate-candidate", "date": "2026-10-01"}]),
                             encoding="utf-8")
         self.assertEqual([r["source_id"] for r in receipt.change_set["staging"]["duplicates"]["added"]], ["d-1"])
         self.seq._apply("dup_added", receipt.change_set)
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             path.write_text("[]", encoding="utf-8")
         self.assertEqual(receipt.change_set["staging"]["duplicates"]["removed"], ["d-1"])
         self.seq._apply("dup_removed", receipt.change_set)
@@ -483,7 +659,7 @@ class OtherBehaviorTests(unittest.TestCase):
     @unittest.skipUnless(hasattr(queue, "load_all_items"), "needs the strict queue archive reader of the queue module")
     def test_archived_queue_items_are_read_and_a_move_is_not_a_change(self) -> None:
         path, archive, raw = self._archive_one()
-        with changeset.capture(self.seq.entity) as receipt:
+        with self.seq.cap() as receipt:
             archive.mkdir(exist_ok=True)
             (archive / "2026-10.json").write_text(
                 json.dumps({"version": 1, "items": {"cs-001.json": raw}}), encoding="utf-8")
@@ -504,7 +680,7 @@ class OtherBehaviorTests(unittest.TestCase):
         for bad in ("{not json", json.dumps({"version": 2, "items": {}}), json.dumps({"version": 1, "items": []})):
             with self.subTest(bad=bad[:20]):
                 (archive / "2026-10.json").write_text(good, encoding="utf-8")
-                with changeset.capture(self.seq.entity) as receipt:
+                with self.seq.cap() as receipt:
                     (archive / "2026-10.json").write_text(bad, encoding="utf-8")
                 self.assertFalse(receipt.change_set["complete"])
                 self.assertEqual(receipt.change_set["reason"], "state_unreadable")
@@ -524,7 +700,7 @@ class OtherBehaviorTests(unittest.TestCase):
 
     def test_an_unreadable_item_file_is_not_a_deletion(self) -> None:
         path, archive, raw = self._archive_one()
-        with changeset.capture(self.seq.entity) as receipt:
+        with self.seq.cap() as receipt:
             path.write_text("{broken", encoding="utf-8")
         self.assertFalse(receipt.change_set["complete"])
         self.assertEqual(receipt.change_set["reason"], "state_unreadable")
@@ -553,7 +729,7 @@ class OtherBehaviorTests(unittest.TestCase):
         self.seq.cli("approve", "queue", "confirm", "--entity", str(entity), "--item", "cs-001")
         other = self.root / "other"
         run_cli(["entity", "init", str(other), "--name", "Other Studio"])
-        with changeset.capture(entity) as receipt:
+        with self.seq.cap() as receipt:
             (entity / "ledger.sqlite").write_bytes((other / "ledger.sqlite").read_bytes())
         self.assertTrue(receipt.change_set["reset"])
         self.seq._apply("reset", receipt.change_set)
