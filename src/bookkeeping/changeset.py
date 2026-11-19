@@ -28,6 +28,7 @@ import copy
 import hashlib
 import json
 import sqlite3
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -793,6 +794,31 @@ class ChangeSetCapture:
 
 
 @contextmanager
+def company_write_lock(entity_path: Path | str) -> Iterator[bool]:
+    """Hold the engine's company write lock. Re-entrant: a command inside the block takes it again without waiting.
+
+    The lock is the engine's own (``ledger.importer._entity_write_lock``). It is held for the context, not for a file
+    descriptor, so a writer in the same context (the same thread of control) passes through it. It does not repair
+    ``entity.json``. Yields ``True`` when the lock is held. Yields ``False`` when the folder cannot be locked (it is
+    read only, or a shared read lock is held): the caller must then not rely on it.
+    """
+    from .ledger.importer import _entity_write_lock
+    manager = _entity_write_lock(Path(entity_path), repair=False)
+    try:
+        manager.__enter__()
+    except (OSError, RuntimeError):
+        yield False
+        return
+    try:
+        yield True
+    except BaseException:
+        if not manager.__exit__(*sys.exc_info()):
+            raise
+    else:
+        manager.__exit__(None, None, None)
+
+
+@contextmanager
 def capture(entity_path: Path | str | None, *, books_revision: int | None = None,
             base_revision: int | None = None, incremental: bool = True) -> Iterator[ChangeSetCapture]:
     """Compute the change set for the command that runs inside the block.
@@ -835,12 +861,7 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
     lock = contextlib.ExitStack()
     locked = False
     if incremental and holder.entity_path.is_dir():
-        try:
-            from .ledger.importer import _entity_write_lock
-            lock.enter_context(_entity_write_lock(holder.entity_path, repair=False))
-            locked = True
-        except (OSError, RuntimeError):
-            locked = False  # A folder that cannot be locked (read only): the capture reads in full below.
+        locked = lock.enter_context(company_write_lock(holder.entity_path))
     if incremental and not locked:
         incremental = False
     try:

@@ -315,9 +315,9 @@ class Index:
         self.generation = self.meta("generation")
 
     def identity(self) -> tuple[Any, ...]:
-        """The identity of the index file (inode and change time) and the generation id that it holds."""
+        """The identity of the index file (inode, change time and header change counter) and its generation id."""
         status = os.stat(self.path)
-        return (status.st_ino, status.st_ctime_ns, self.generation)
+        return (status.st_ino, status.st_ctime_ns, self.generation, sqlite_counter(self.path))
 
     def close(self) -> None:
         try:
@@ -434,6 +434,20 @@ def _total_key(section: str, key: str, value: Any) -> str:
 # ---------------------------------------------------------------------------
 # Signatures
 # ---------------------------------------------------------------------------
+
+
+def sqlite_counter(path: Path) -> int | None:
+    """The file change counter of a SQLite file (header bytes 24 to 27). It moves with every write transaction.
+
+    The change time of a file moves in steps of a millisecond on some file systems, so two writes can share it. The
+    counter does not.
+    """
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(28)
+    except OSError:
+        return None
+    return int.from_bytes(head[24:28], "big") if len(head) == 28 and head[:16] == b"SQLite format 3\x00" else None
 
 
 def _db_token(ledger: Path) -> Any:
@@ -918,7 +932,7 @@ class Run:
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.
         status = os.stat(self.index.path)
-        self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation)
+        self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation, sqlite_counter(self.index.path))
         self.journal = capture_log.begin(self.root, {**self.start_signatures, **_archive_signatures(self.root)})
 
     def close_wconn(self) -> None:
@@ -957,7 +971,8 @@ class Run:
             status = os.stat(root / INDEX_NAME)
         except OSError:
             raise ChangeSetError("The index was removed during the command.") from None
-        if (status.st_ino, status.st_ctime_ns) != self.identity[:2]:
+        if (status.st_ino, status.st_ctime_ns, sqlite_counter(root / INDEX_NAME)) != (
+                self.identity[0], self.identity[1], self.identity[3]):
             raise ChangeSetError("The index was changed during the command.")
         self.index = Index(root)
         if self.index.generation != self.identity[2]:

@@ -604,6 +604,27 @@ class RaceTests(Fixture):
         thread.join(5)
         self.assertEqual(events, ["other writer ran"])
 
+    def test_company_write_lock_is_re_entrant_and_blocks_another_thread(self) -> None:
+        import threading
+        from bookkeeping.ledger.importer import _entity_write_lock
+        seen: list[str] = []
+        with changeset.company_write_lock(self.entity) as held:
+            self.assertTrue(held)
+            with _entity_write_lock(self.entity):  # The command inside takes it again without waiting.
+                with changeset.company_write_lock(self.entity) as inner:
+                    self.assertTrue(inner)
+            thread = threading.Thread(target=lambda: seen.append("ran") if _entity_write_lock(self.entity).__enter__() is None else None)
+            thread.daemon = True
+            thread.start()
+            thread.join(0.3)
+            self.assertEqual(seen, [])
+        thread.join(3)
+
+    def test_the_index_counter_is_part_of_its_identity(self) -> None:
+        self.both(lambda: None)
+        self.assertIsInstance(change_capture.sqlite_counter(self.entity / change_capture.INDEX_NAME), int)
+        self.assertIsNone(change_capture.sqlite_counter(self.entity / "entity.json"))
+
     def test_the_command_inside_a_capture_takes_the_lock_again(self) -> None:
         with changeset.capture(self.entity) as receipt:
             run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "cs-002", "--category",
