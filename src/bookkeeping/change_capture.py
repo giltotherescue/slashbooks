@@ -726,10 +726,11 @@ def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: 
         if arch is not None:
             new_rows[str(arch[0])] = json.loads(arch[1])
     touched = {sid for sid in (*old_ids.values(), *new_ids.values()) if sid is not None}
+    affected_set = set(affected)  # Built once: a set built for each source id made a large first build quadratic.
     for sid in touched:  # Another unchanged name with the same source id makes the result depend on the file order.
         holders = {str(r[0]) for r in conn.execute("SELECT name FROM item_files WHERE source_id = ?", (sid,))}
         holders |= {str(r[0]) for r in conn.execute("SELECT name FROM archive_items WHERE source_id = ?", (sid,))}
-        if holders - set(affected):
+        if holders - affected_set:
             raise _Slow()
     old_rows = index.lookup("queue", sorted(touched))
     index.apply("queue", old_rows, new_rows)
