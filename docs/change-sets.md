@@ -34,8 +34,11 @@ books --change-set-out change.json queue confirm --entity . --item src-123
   command is not one transaction, so a failed command can leave some of its
   writes. A change set of a failed command that left a change has
   `"complete": false`. A host never applies it and never publishes it. The host
-  does a full read (`read_view`). A failed command that changed nothing gives a
-  complete, empty change set.
+  does a full read (`read_view`). A failed command is always incomplete (`command_failed`),
+  also when the books show no change, because the command can have written
+  something that the change set does not cover. An error in a step after the
+  command body, such as the work events with `--work-out`, gives
+  `finalize_failed`, also when nothing changed.
 - A read-only command gives a change set with `"changed": false` and empty
   lists. A command that has no company directory also gives that empty change
   set.
@@ -48,8 +51,10 @@ books --change-set-out change.json queue confirm --entity . --item src-123
   `books_revision`. A change set without them cannot be applied by the reducer.
   The engine has no revision counter of its own. Its position is the audit chain
   head, and `ledger.before` and `ledger.after` give it.
-- The engine removes an old file at `PATH` before it checks the command, so an
-  invalid command never leaves the receipt of an earlier run. With `--work-out`
+- The engine removes an old file at `PATH` before it converts or checks any
+  option (it finds the path with a plain scan of the arguments), so a command
+  with an invalid option or an invalid command never leaves the receipt of an
+  earlier run. With `--work-out`
   also set, an error in the work events or in their file (after an ingest, for
   example) makes the change set incomplete.
 - The engine removes an old file at `PATH` before the command, so a document of
@@ -202,11 +207,13 @@ the change set with `ChangeSetRefused` in these cases:
   (`changeset.view_digest(view)`). The reducer computes the digest from the
   rows of the view, the ledger and audit rows included, and from the bank
   payloads. It does not trust a stored hash. Two replicas whose rows differ do
-  not match.
+  not match. Each key of a map in the view must be the id of its row (the
+  entry id, the account name, the source id, and so on). If a key is not the id
+  of its row, the view is damaged and the reducer refuses.
 - The `payload_sha256` of a bank row is not the hash of its `row`, or the `row`
   of a bank row that was not removed is null or not an object. A stored hash never
-  stands in for a payload. The engine stores a payload that is not a JSON object
-  as `{"unreadable_payload_text": TEXT}`, so every bank row has an object.
+  stands in for a payload. A stored payload that is not a JSON object makes the
+  state unreadable (`state_unreadable`), so every bank row has an object.
 - After the apply, the position or the digest of the new view is not
   `ledger.after` or `state.after`.
 
@@ -246,9 +253,9 @@ part that it cannot prove.
 |---|---|---|
 | Ledger entries, postings, balance assertions, audit events | Row ids above the saved position. The digest adds the hash of each new row to the saved total. | A broken audit chain gives `reset`. A reset, an account rename (it relabels posted rows), an audit chain that moved back, and a store without the append-only triggers make the capture read the whole ledger for the digest. |
 | Accounts and source transactions (`bank_rows`) | A log table and triggers in `ledger.sqlite`, added before the command and removed after. They fire for every connection and write only the key of each written row to the log. The capture reads only those rows. | The capture reads both tables in full when the log is not the log of this run (the store was replaced, the triggers were changed or dropped, the store could not take them). |
-| Review queue items and month archives | One `stat` for each item file and each archive file. The capture reads the files that differ from the saved copy. A decided item that moves into an archive is not a change. | Two names with one source id, an unfinished group journal, or a file name that does not follow its source id: the capture reads the whole queue. |
-| `seen-ids.json`, `pending-categorization.json` | The engine's write helpers journal the ids that they add or remove (`capture_log.writing`). The capture does not read the file. | A write that is not in the journal, or that left another file signature than the last journaled write: the capture reads the file. |
-| `pending.json`, `duplicate-candidates.json`, `context-history.json`, the documents, learned context | The signature of the file. A changed file is read and compared with the saved copy. | None needed. |
+| Review queue items and month archives | One `stat` for each item file and each archive file. The capture reads the item files that differ from the saved copy. The helper that writes an archive journals the names that it changed, so the capture does not read the archive. A decided item that moves into an archive is not a change. | Two names with one source id, an unfinished group journal, or a file name that does not follow its source id: the capture reads the whole queue. |
+| `seen-ids.json`, `pending-categorization.json`, learned context | The engine's write helpers journal the ids that they add or remove (`capture_log.writing`). The capture does not read the file. | A write that is not in the journal, or that left another file signature than the last journaled write: the capture reads the file. |
+| `pending.json`, `duplicate-candidates.json`, `context-history.json`, the documents | The signature of the file. A changed file is read and compared with the saved copy. | None needed. |
 | `state.before`, `state.after` | Totals that the saved copy keeps for each section (count and sum of row hashes). | A part whose signature is not the signature at the end of the last capture is read in full once. |
 
 The saved copy is the file `.change-capture.sqlite` in the company folder. It
@@ -259,6 +266,21 @@ command reads the books in full. A command that runs without `--change-set-out`
 does not update the file. The next capture then notices the changed signatures
 and reads the changed parts in full once. The file has no authority: a person can
 delete it. It holds copies of company rows, so it is as private as the folder.
+
+The log is append-only for the capture. Its rows have numbers (`AUTOINCREMENT`),
+and triggers refuse an edit or a delete. At the end the capture checks that the
+log table is the table that it made (token and root page), that every capture
+trigger is present with its exact text, and that the numbers run from 1 to the
+number in `sqlite_sequence` without a gap. Any fault gives a full read of the
+accounts and the source transactions.
+
+A file signature is the modification time, the size, the inode and the change
+time. The change time cannot be set back, so an edit of the same length with the
+old modification time restored still shows. The index holds a random generation
+id that changes at each capture, and the capture checks the inode, the change
+time and the generation of the index file at the start and the end. If the index
+was deleted, restored or replaced during the command, the capture has no safe
+copy of the state before, so the change set is incomplete (`state_unreadable`).
 
 The log table and the triggers exist only while the command runs. They change no
 ledger row and no ledger trigger, and `append_only_guard_problems` does not see
@@ -312,10 +334,26 @@ host that needs it must keep reading it directly:
 - Generated output: `reports/`, `ingestion/` and the lock file.
 - A command that has no company directory gives an empty change set.
 
-A file that is in scope and cannot be read (not valid JSON, a wrong shape, a
-member that is null or of the wrong type or has no key, a corrupt archive) gives an incomplete change set (`state_unreadable`). The engine
-never reads it as empty.
+A file that is in scope and cannot be read gives an incomplete change set
+(`state_unreadable`). The engine never reads it as empty. These cases are all
+unreadable: a file that is not valid JSON, JSON `null` (a file that is absent is
+an empty state, but a file that holds `null` is not), a wrong top-level shape, a
+member that is null, of the wrong type or without its key, an object with the
+same key twice, two rows with the same key in a keyed list, a
+`staging/context-history.json` with a schema version that the engine does not
+support, a corrupt review queue archive, and a stored bank payload that is not a
+JSON object, and a ledger store that was there before the command and is missing
+after it (the change set is not a list of removals: the host reads again). A failed command
+with no company directory is also incomplete (`command_failed`).
 
 The host runs one writer for each company at a time. The engine does not
 separate its own writes from a write by another process during the same
 command.
+
+## Benchmark
+
+`python3 benchmarks/bench_change_capture.py --sizes 1000,10000,50000` builds
+companies with decided items in many month archives, times the capture of one
+approve and one categorize, prints the path of each capture (`incremental`, or
+each part that it read in full and why), and exits with 1 when a capture fell
+back or when the time grows with the size of the books.

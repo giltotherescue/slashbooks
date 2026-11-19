@@ -78,7 +78,7 @@ LEDGER_SECTIONS = ("entries", "balances", "audit")
 EXTRA_FILES = {"reports/reconciliation.json": "recon"}
 _QUEUE_FOLDER = changeset._QUEUE_DIR
 #: The sections whose helpers journal the rows that they change, so the file is not read after the command.
-DELTA_SECTIONS = frozenset({"pending", "seen"})
+DELTA_SECTIONS = frozenset({"pending", "seen", "learned"})
 
 
 def _canon(value: Any) -> str:
@@ -97,7 +97,7 @@ def _trigger_sql() -> dict[str, str]:
     def note(tag: str, *keys: str) -> str:
         return f"INSERT INTO {LOG_TABLE} (tbl, key) VALUES " + ", ".join(f"('{tag}', {key})" for key in keys) + ";"
 
-    conflicts = "INSERT INTO " + LOG_TABLE + " SELECT 'a', id FROM accounts WHERE {cond};"
+    conflicts = "INSERT INTO " + LOG_TABLE + " (tbl, key) SELECT 'a', id FROM accounts WHERE {cond};"
     return {
         f"{TRIGGER_PREFIX}st_i": trigger("st_i", "INSERT", "source_transactions", note("s", "NEW.id")),
         f"{TRIGGER_PREFIX}st_u": trigger("st_u", "UPDATE", "source_transactions", note("s", "OLD.id", "NEW.id")),
@@ -111,6 +111,12 @@ def _trigger_sql() -> dict[str, str]:
             "ac_bu", "UPDATE", "accounts",
             conflicts.format(cond="(id = NEW.id OR name = NEW.name) AND id != OLD.id"), "BEFORE"),
         f"{TRIGGER_PREFIX}ac_d": trigger("ac_d", "DELETE", "accounts", note("a", "OLD.id")),
+        # The log is append-only for the capture: an edit or a delete is refused, and the checks at the end
+        # (numbers without a gap, sqlite_sequence) show a row that was removed in another way.
+        f"{TRIGGER_PREFIX}log_u": trigger(
+            "log_u", "UPDATE", LOG_TABLE, "SELECT RAISE(ABORT, 'the capture log is append-only');", "BEFORE"),
+        f"{TRIGGER_PREFIX}log_d": trigger(
+            "log_d", "DELETE", LOG_TABLE, "SELECT RAISE(ABORT, 'the capture log is append-only');", "BEFORE"),
     }
 
 
@@ -152,9 +158,11 @@ def install_triggers(ledger: Path) -> str | None:
                 conn.execute("ROLLBACK")
                 return None
             token = secrets.token_hex(16)
-            conn.execute(f"CREATE TABLE {CTL_TABLE} (token TEXT NOT NULL)")
-            conn.execute(f"INSERT INTO {CTL_TABLE} (token) VALUES (?)", (token,))
-            conn.execute(f"CREATE TABLE {LOG_TABLE} (tbl TEXT NOT NULL, key TEXT NOT NULL)")
+            conn.execute(f"CREATE TABLE {LOG_TABLE} (seq INTEGER PRIMARY KEY AUTOINCREMENT, "
+                         "tbl TEXT NOT NULL, key TEXT NOT NULL)")
+            rootpage = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = ?", (LOG_TABLE,)).fetchone()[0]
+            conn.execute(f"CREATE TABLE {CTL_TABLE} (token TEXT NOT NULL, log_rootpage INTEGER NOT NULL)")
+            conn.execute(f"INSERT INTO {CTL_TABLE} (token, log_rootpage) VALUES (?, ?)", (token, int(rootpage)))
             for sql in _trigger_sql().values():
                 conn.execute(sql)
             conn.execute("COMMIT")
@@ -197,21 +205,38 @@ def remove_triggers(ledger: Path) -> bool:
         conn.close()
 
 
-def _logged_keys(conn: sqlite3.Connection, token: str | None) -> tuple[list[int], list[str]] | None:
-    """The keys that the triggers logged, or ``None`` when the log cannot be trusted (it is not the log of this run)."""
+class LogUntrusted(Exception):
+    """The capture log cannot be trusted. The reason is the text of the exception."""
+
+
+def _logged_keys(conn: sqlite3.Connection, token: str | None) -> tuple[list[int], list[str]]:
+    """The keys that the triggers logged. Raises ``LogUntrusted`` when the log is not the intact log of this run.
+
+    The log is intact when it is the log table that this run made (token and root page), every capture trigger is
+    present with its exact text, and its row numbers run from 1 to the last number without a gap and equal the number
+    in ``sqlite_sequence``. A removed or changed row, a dropped trigger or a replaced table gives one of these faults.
+    """
     if token is None:
-        return None
+        raise LogUntrusted("no log was installed")
     try:
-        row = conn.execute(f"SELECT token FROM {CTL_TABLE}").fetchall()
-        if [r[0] for r in row] != [token]:
-            return None
+        row = conn.execute(f"SELECT token, log_rootpage FROM {CTL_TABLE}").fetchall()
+        if len(row) != 1 or row[0][0] != token:
+            raise LogUntrusted("the run token is not the token of this run")
         found = {str(name): _norm(sql) for name, sql in conn.execute(
             "SELECT name, sql FROM sqlite_master WHERE type = 'trigger'") if str(name).startswith(TRIGGER_PREFIX)}
         if found != {name: _norm(sql) for name, sql in _trigger_sql().items()}:
-            return None
+            raise LogUntrusted("a capture trigger is missing or was changed")
+        page = conn.execute("SELECT rootpage FROM sqlite_master WHERE name = ?", (LOG_TABLE,)).fetchone()
+        if page is None or int(page[0]) != int(row[0][1]):
+            raise LogUntrusted("the log table was replaced")
+        count, low, high = conn.execute(f"SELECT COUNT(*), COALESCE(MIN(seq), 0), COALESCE(MAX(seq), 0) FROM {LOG_TABLE}").fetchone()
+        sequence = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = ?", (LOG_TABLE,)).fetchone()
+        last = int(sequence[0]) if sequence else 0
+        if count != high or (count and low != 1) or high != last:
+            raise LogUntrusted("the log has a gap or its sequence does not match")
         rows = conn.execute(f"SELECT DISTINCT tbl, key FROM {LOG_TABLE}").fetchall()
-    except sqlite3.Error:
-        return None
+    except sqlite3.Error as exc:
+        raise LogUntrusted(f"the log cannot be read: {exc}") from exc
     return ([int(key) for tbl, key in rows if tbl == "a"], [str(key) for tbl, key in rows if tbl == "s"])
 
 
@@ -252,6 +277,16 @@ class Index:
             except (ValueError, KeyError, TypeError, IndexError):
                 self.wipe()
         self.begin_write = False
+        # A random id that changes with every commit. A capture checks that the index that it opened at the end is the
+        # index that it left at the start: a deleted, restored or replaced index has another id.
+        if self.meta("generation") is None:
+            self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('generation', ?)", (secrets.token_hex(8),))
+        self.generation = self.meta("generation")
+
+    def identity(self) -> tuple[Any, ...]:
+        """The identity of the index file (inode and change time) and the generation id that it holds."""
+        status = os.stat(self.path)
+        return (status.st_ino, status.st_ctime_ns, self.generation)
 
     def close(self) -> None:
         try:
@@ -290,6 +325,8 @@ class Index:
 
     def commit(self) -> None:
         self.set_meta_totals()
+        self.generation = secrets.token_hex(8)
+        self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('generation', ?)", (self.generation,))
         if self.begin_write:
             self.conn.execute("COMMIT")
             self.begin_write = False
@@ -414,7 +451,7 @@ def _db_token(ledger: Path) -> Any:
         return ["unreadable", status.st_size, status.st_mtime_ns]
     if head[18] == 2 or head[19] == 2:  # WAL: the header counter does not move, so the index never trusts it.
         return ["wal", time.time_ns()]
-    return [int.from_bytes(head[24:28], "big"), status.st_size, status.st_mtime_ns]
+    return [int.from_bytes(head[24:28], "big"), status.st_size, status.st_mtime_ns, status.st_ctime_ns]
 
 
 def _has_archive(root: Path) -> bool:
@@ -436,7 +473,7 @@ def _wait_for_tick(signatures: Mapping[str, Any], newest: int = 0) -> None:
     """
     for name, value in signatures.items():
         if name != "sql" and isinstance(value, list) and value:
-            newest = max(newest, int(value[0]))
+            newest = max(newest, int(value[0]), int(value[-1]))
     wait = newest + _TICK_NS - time.time_ns()
     if wait > 0:
         time.sleep(min(wait, _TICK_NS) / 1e9)
@@ -510,7 +547,7 @@ def _read_file_section(root: Path, relative: str) -> dict[str, Any]:
         return changeset._load_context(root)
     if relative in changeset.DOCUMENT_FILES:
         value = changeset._load_document(root, relative)
-        return {} if value is None else {relative: value}
+        return {} if value is changeset._MISSING else {relative: value}
     return changeset._load_learned(root)
 
 
@@ -543,12 +580,12 @@ def _sweep(root: Path, folder: str = _QUEUE_FOLDER) -> dict[str, str]:
                     status = entry.stat()
                 except OSError:
                     continue
-                found[entry.name] = f"{status.st_mtime_ns}:{status.st_size}:{status.st_ino}"
+                found[entry.name] = f"{status.st_mtime_ns}:{status.st_size}:{status.st_ino}:{status.st_ctime_ns}"
     return found
 
 
 def _newest(sweep: Mapping[str, str]) -> int:
-    return max((int(sig.split(":", 1)[0]) for sig in sweep.values()), default=0)
+    return max((max(int(sig.split(":")[0]), int(sig.split(":")[-1])) for sig in sweep.values()), default=0)
 
 
 def _archive_reader() -> Any:
@@ -582,7 +619,8 @@ class _Slow(Exception):
     """The queue cannot be updated from the changed files alone: read the whole queue."""
 
 
-def _sync_queue(index: Index, root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def _sync_queue(index: Index, root: Path, journal: "capture_log.Session | None" = None,
+                note: Any = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Make the index hold the review queue as it is on disk. Returns the old and the new rows of the changed ids.
 
     After a full read the rows are every row.
@@ -596,11 +634,14 @@ def _sync_queue(index: Index, root: Path) -> tuple[dict[str, Any], dict[str, Any
                       if archive_sweep.get(name) != saved_archive.get(name))
     if not names and not archives:
         return {}, {}
+    note = note or (lambda reason: None)
     if _has_group_journal(root):
+        note("queue:unfinished group journal")
         return _queue_in_full(index, root, sweep, archive_sweep)
     try:
-        return _sync_queue_names(index, root, names, archives, sweep, archive_sweep)
-    except _Slow:
+        return _sync_queue_names(index, root, names, archives, sweep, archive_sweep, journal)
+    except _Slow as exc:
+        note(f"queue:{exc or 'a name that cannot be proved unique'}")
         return _queue_in_full(index, root, sweep, archive_sweep)
 
 
@@ -624,8 +665,24 @@ def _queue_in_full(index: Index, root: Path, sweep: Mapping[str, str],
     return old_rows, _queue_by_source(files)
 
 
+def saved_archive_names(conn: sqlite3.Connection) -> set[str]:
+    return {str(n) for (n,) in conn.execute("SELECT name FROM archive_files")}
+
+
+def _archive_delta(journal: "capture_log.Session | None", root: Path, archive: str) -> tuple[dict[str, Any], set[str]] | None:
+    """The names that a helper wrote to or removed from an archive, if it journaled them and nothing else wrote the file."""
+    if journal is None:
+        return None
+    relative = f"{changeset._ARCHIVE_DIR}/{archive}"
+    log = journal.files.get(relative)
+    if log is None or not log.chain_ok or not log.exact or log.last_after != capture_log.signature(root / relative):
+        return None
+    return dict(log.upsert), set(log.remove)
+
+
 def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: Sequence[str],
-                      sweep: Mapping[str, str], archive_sweep: Mapping[str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
+                      sweep: Mapping[str, str], archive_sweep: Mapping[str, str],
+                      journal: "capture_log.Session | None" = None) -> tuple[dict[str, Any], dict[str, Any]]:
     from .queue import _sanitize_filename
     reader = _archive_reader()
     if archives and reader is None:
@@ -639,35 +696,59 @@ def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: 
             found.extend(conn.execute(sql.format(",".join("?" for _ in chunk)), chunk).fetchall())
         return found
 
-    # The archives that changed: read them (a bad archive raises), and find every name that they touch.
-    new_archive_rows: list[tuple[str, str, str, str]] = []
+    # The archives that changed: read each one (a bad archive raises) and compare it with the saved rows of that archive.
+    # Only a name whose item is new, gone or different is affected; the other names of the archive cost one comparison.
+    deletes: list[tuple[str]] = []
+    inserts: list[tuple[str, str, str, str]] = []
+    archive_names: set[str] = set()
     for archive in archives:
-        if archive not in archive_sweep:
-            continue
-        try:
-            items = reader(root / changeset._ARCHIVE_DIR / archive)
-        except (ValueError, OSError) as exc:
-            raise ChangeSetError(f"The review queue cannot be read: {exc}") from exc
-        for name, item in items.items():
-            if isinstance(item, dict) and "source_id" in item:
-                new_archive_rows.append((str(name), archive, str(item["source_id"]), _canon(item)))
-    old_archive_names = [str(r[0]) for r in rows("SELECT name FROM archive_items WHERE archive IN ({})", archives)] \
-        if archives else []
-    affected = sorted(set(names) | set(old_archive_names) | {row[0] for row in new_archive_rows})
+        delta = _archive_delta(journal, root, archive) if archive in archive_sweep or archive in saved_archive_names(conn) else None
+        current: dict[str, tuple[str, str]] = {}
+        if delta is not None:
+            # A helper journaled the names that it changed: cost grows with them, not with the archive.
+            upserts, removes = delta
+            for name, item in upserts.items():
+                if not isinstance(item, dict) or "source_id" not in item:
+                    raise _Slow("an archive row without a source id")
+                current[str(name)] = (str(item["source_id"]), _canon(item))
+            watch = sorted(set(upserts) | removes)
+            saved_items = {}
+            for start in range(0, len(watch), _CHUNK):
+                chunk = watch[start:start + _CHUNK]
+                saved_items.update({str(n): (str(sid), str(value)) for n, sid, value in conn.execute(
+                    f"SELECT name, source_id, value FROM archive_items WHERE archive = ? AND name IN "
+                    f"({','.join('?' for _ in chunk)})", [archive, *chunk])})
+            candidates = set(watch)
+        else:
+            saved_items = {str(n): (str(sid), str(value)) for n, sid, value in conn.execute(
+                "SELECT name, source_id, value FROM archive_items WHERE archive = ?", (archive,))}
+            if archive in archive_sweep:
+                try:
+                    items = reader(root / changeset._ARCHIVE_DIR / archive)
+                except (ValueError, OSError) as exc:
+                    raise ChangeSetError(f"The review queue cannot be read: {exc}") from exc
+                for name, item in items.items():
+                    if isinstance(item, dict) and "source_id" in item:
+                        current[str(name)] = (str(item["source_id"]), _canon(item))
+            candidates = set(saved_items) | set(current)
+        for name in candidates:
+            if saved_items.get(name) != current.get(name):
+                archive_names.add(name)
+                if name in saved_items:
+                    deletes.append((name,))
+                if name in current:
+                    inserts.append((name, archive, *current[name]))
+    affected = sorted(set(names) | archive_names)
     # The effective source id of each affected name before: its item file, else its archive entry.
     old_top = {str(n): str(sid) for n, sid in rows("SELECT name, source_id FROM item_files WHERE name IN ({})", affected)}
     old_arch = {str(n): str(sid) for n, sid in rows("SELECT name, source_id FROM archive_items WHERE name IN ({})", affected)}
     old_ids = {name: old_top.get(name, old_arch.get(name)) for name in affected}
-    # Apply the archive changes to the saved archive rows.
-    for archive in archives:
-        conn.execute("DELETE FROM archive_items WHERE archive = ?", (archive,))
-        conn.execute("DELETE FROM archive_files WHERE name = ?", (archive,))
-    for name, archive, sid, value in new_archive_rows:
-        other = conn.execute("SELECT archive FROM archive_items WHERE name = ?", (name,)).fetchone()
-        if other is not None:
-            raise _Slow()  # Two archives hold one file name: the later one wins in a full read.
-        conn.execute("INSERT INTO archive_items (name, archive, source_id, value) VALUES (?, ?, ?, ?)",
-                     (name, archive, sid, value))
+    conn.executemany("DELETE FROM archive_items WHERE name = ?", deletes)
+    try:
+        conn.executemany("INSERT INTO archive_items (name, archive, source_id, value) VALUES (?, ?, ?, ?)", inserts)
+    except sqlite3.IntegrityError:
+        raise _Slow() from None  # Two archives hold one file name: the later one wins in a full read.
+    conn.executemany("DELETE FROM archive_files WHERE name = ?", [(a,) for a in archives])
     conn.executemany("INSERT OR REPLACE INTO archive_files (name, sig) VALUES (?, ?)",
                      [(a, archive_sweep[a]) for a in archives if a in archive_sweep])
     # The item files that changed.
@@ -704,11 +785,11 @@ def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: 
         if arch is not None:
             new_rows[str(arch[0])] = json.loads(arch[1])
     touched = {sid for sid in (*old_ids.values(), *new_ids.values()) if sid is not None}
-    affected_names = set(affected)  # Once: a set for each source id made a build from nothing quadratic.
+    affected_set = set(affected)  # Built once: a set built for each source id made a large first build quadratic.
     for sid in touched:  # Another unchanged name with the same source id makes the result depend on the file order.
         holders = {str(r[0]) for r in conn.execute("SELECT name FROM item_files WHERE source_id = ?", (sid,))}
         holders |= {str(r[0]) for r in conn.execute("SELECT name FROM archive_items WHERE source_id = ?", (sid,))}
-        if holders - affected_names:
+        if holders - affected_set:
             raise _Slow()
     old_rows = index.lookup("queue", sorted(touched))
     index.apply("queue", old_rows, new_rows)
@@ -770,12 +851,14 @@ def start(root: Path) -> "Handle | None":
         signatures = _signatures(root)
         _wait_for_tick(signatures, _newest(_sweep(root)))
         signatures = _signatures(root)
+        rebuilt: list[str] = []
         for group, current in signatures.items():
             if index.token(group) != current:
                 _rebuild(index, root, group)
                 index.set_token(group, current)
+                rebuilt.append(group)
         index.start_write()
-        _sync_queue(index, root)
+        _sync_queue(index, root, None, lambda reason: rebuilt.append(reason))
         index.commit()
     except ChangeSetError:
         index.close()
@@ -794,6 +877,7 @@ def start(root: Path) -> "Handle | None":
         if conn is not None:
             conn.close()
     run = Run(root, index, signatures, position, index.digest(), index.counts() or (0, 0, 0), bool(problems))
+    run.report["rebuilt"] = rebuilt
     run.begin()
     handle = run.new_handle()
     with _ACTIVE_LOCK:
@@ -832,6 +916,8 @@ class Run:
         self.journal: capture_log.Session | None = None
         self.cleaned = False
         self.ledger_full_read = False
+        #: Which path this capture took: ``fallbacks`` lists each part that was read in full, and why.
+        self.report: dict[str, Any] = {"mode": "incremental", "fallbacks": [], "rebuilt": []}
         self.closed = False
         self.handles: list["Handle"] = []
 
@@ -892,8 +978,13 @@ class Run:
 
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.
+        status = os.stat(self.index.path)
+        self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation)
         self.token = install_triggers(self.root / "ledger.sqlite")
         self.journal = capture_log.begin(self.root, self.start_signatures)
+
+    def note(self, reason: str) -> None:
+        self.report["fallbacks"].append(reason)
 
     def close(self) -> None:
         if self.closed:
@@ -914,7 +1005,7 @@ class Run:
     # -- finish ---------------------------------------------------------------
 
     def finish(self, handle: "Handle", failed: bool, books_revision: int | None, base_revision: int | None = None,
-               probe: Any = None) -> dict[str, Any]:
+               probe: Any = None, reason: str = "command_failed") -> dict[str, Any]:
         """Build the document of one capture. Only the last handle to finish saves the index and removes the log.
 
         An earlier handle reads the same index and the same log, and then rolls its index changes back, so the
@@ -928,7 +1019,7 @@ class Run:
         if last:
             capture_log.end(journal)  # Later writes (the cleanup below) are not part of the command.
         try:
-            return self._finish(handle, last, journal, failed, books_revision, base_revision, probe)
+            return self._finish(handle, last, journal, failed, books_revision, base_revision, probe, reason)
         except BaseException:
             if not handle.committed:
                 try:
@@ -938,9 +1029,18 @@ class Run:
             raise
 
     def _finish(self, handle: "Handle", last: bool, journal: capture_log.Session, failed: bool,
-                books_revision: int | None, base_revision: int | None, probe: Any) -> dict[str, Any]:
+                books_revision: int | None, base_revision: int | None, probe: Any,
+                reason: str = "command_failed") -> dict[str, Any]:
         root = self.root
+        try:
+            status = os.stat(root / INDEX_NAME)
+        except OSError:
+            raise ChangeSetError("The index was removed during the command.") from None
+        if (status.st_ino, status.st_ctime_ns) != self.identity[:2]:
+            raise ChangeSetError("The index was changed during the command.")
         self.index = Index(root)
+        if self.index.generation != self.identity[2]:
+            raise ChangeSetError("The index was replaced during the command.")
         self.index.start_write()
         index = self.index
         before = changeset._Side(self.position, self.counts, {}, {}, {}, {}, {}, {}, {}, {}, [], {}, self.digest)
@@ -963,6 +1063,8 @@ class Run:
             if conn is not None:
                 conn.close()
         after.counts = real_counts
+        before.ledger_present = self.start_signatures["sql"] is not None
+        after.ledger_present = (root / "ledger.sqlite").is_file()
         before.counts = self.counts if real_counts is not None else None
         ledger_full = bool(slow_sql or problems or self.guard_problems_before)
         if conn is None:
@@ -975,7 +1077,7 @@ class Run:
             self._ledger_totals(document, before, after, ledger_full)
             return index.digest()
 
-        document = changeset._build(before, after, root, books_revision, failed, base_revision, after_digest)
+        document = changeset._build(before, after, root, books_revision, failed, base_revision, after_digest, reason)
         if not last:
             index.close()  # Rolls back: the index keeps the state before the command for the next handle.
             return document
@@ -995,6 +1097,11 @@ class Run:
         self.cleaned = remove_triggers(root / "ledger.sqlite")
         for group, current in _signatures(root).items():
             index.set_token(group, current)
+        try:
+            if os.stat(root / INDEX_NAME).st_ino != self.identity[0]:
+                raise ChangeSetError("The index was replaced during the command.")
+        except OSError:
+            raise ChangeSetError("The index was removed during the command.") from None
         index.commit()
         handle.committed = True
         index.close()
@@ -1017,6 +1124,8 @@ class Run:
         rewound = (after.position["audit_event_id"] or 0) < (before.position["audit_event_id"] or 0)
         if full or document["reset"] or renamed or rewound:
             self.ledger_full_read = True
+            self.note("ledger:" + ("reset" if document["reset"] else "rename" if renamed else
+                                   "audit chain moved back" if rewound else "store without the append-only triggers or log"))
             for name, total in ledger_totals(self.root / "ledger.sqlite").items():
                 index.set_total(name, total)
             index.replace_sources(_read_sources(self.root / "ledger.sqlite"))
@@ -1036,15 +1145,17 @@ class Run:
         root, index = self.root, self.index
         ledger = root / "ledger.sqlite"
         conn = changeset._connect_read_only(ledger) if ledger.is_file() else None
-        keys = _logged_keys(conn, self.token) if conn is not None else None
         try:
             if conn is None:
                 if self.start_signatures["sql"] is None:
                     return False  # No store before, none after.
+                self.note("sql:store removed")
                 return self._sql_full(before, after, conn)
-            if keys is None:
+            try:
+                account_ids, bank_ids = _logged_keys(conn, self.token)
+            except LogUntrusted as exc:
+                self.note(f"sql:{exc}")
                 return self._sql_full(before, after, conn)
-            account_ids, bank_ids = keys
             old_accounts = index.lookup("accounts", [str(key) for key in account_ids])
             old_bank = index.lookup("bank", bank_ids)
             new_accounts: dict[str, Any] = {}
@@ -1095,7 +1206,7 @@ class Run:
     # -- review queue -----------------------------------------------------------
 
     def _queue(self, before: "changeset._Side", after: "changeset._Side") -> None:
-        old_rows, new_rows = _sync_queue(self.index, self.root)
+        old_rows, new_rows = _sync_queue(self.index, self.root, self.journal, self.note)
         before.queue, after.queue = old_rows, new_rows
 
     # -- staging files and learned context ----------------------------------------
@@ -1121,6 +1232,7 @@ class Run:
                 old_rows = index.lookup("documents", [relative])
                 new_rows = _read_file_section(root, relative)
             else:
+                self.report.setdefault("files_read", []).append(relative)
                 old_rows = index.section(section)
                 new_rows = _read_file_section(root, relative)
             if section == "seen":
@@ -1170,8 +1282,8 @@ class Handle:
         self.committed = False
 
     def finish(self, failed: bool, books_revision: int | None, base_revision: int | None = None,
-               probe: Any = None) -> dict[str, Any]:
-        return self.run.finish(self, failed, books_revision, base_revision, probe)
+               reason: str = "command_failed", probe: Any = None) -> dict[str, Any]:
+        return self.run.finish(self, failed, books_revision, base_revision, probe, reason)
 
     def close(self) -> None:
         self.run.release(self)
