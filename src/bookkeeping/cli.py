@@ -162,7 +162,8 @@ def _main(argv: list[str]) -> int:
             # Also when the command raises: a failed command can leave writes, and the host needs the document.
             try:
                 if work_receipt is not None:
-                    work_module.write_document(work_args.work_out, work_receipt.events)
+                    work_module.write_document(work_args.work_out, work_receipt.events,
+                                               complete=work_receipt.complete, reason=work_receipt.reason)
             except BaseException:
                 if change_receipt is not None:
                     change_receipt.change_set = changeset_module.incomplete(

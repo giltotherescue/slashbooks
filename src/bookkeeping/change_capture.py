@@ -252,6 +252,10 @@ class Index:
         self.path = root / INDEX_NAME
         self.conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
         self.conn.execute("PRAGMA synchronous = NORMAL")
+        names = {str(row[0]) for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        # An index that has its other tables but not the source ids lost them (a dropped table must not be created
+        # again empty and then be trusted): the tokens are wiped below, so every part is read in full.
+        dropped = "meta" in names and "ledger_sources" not in names
         self.conn.executescript(
             "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;"
             "CREATE TABLE IF NOT EXISTS rows (section TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,"
@@ -265,7 +269,7 @@ class Index:
             "CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive);"
             "CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id);"
             "CREATE TABLE IF NOT EXISTS ledger_sources (source_id TEXT PRIMARY KEY) WITHOUT ROWID;")
-        if self.meta("version") != str(INDEX_VERSION):
+        if dropped or self.meta("version") != str(INDEX_VERSION):
             self.wipe()
         self.totals: dict[str, list[int]] = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
         saved = self.meta("totals")
@@ -344,12 +348,27 @@ class Index:
         """Make the index hold exactly the source ids of the ledger entries."""
         self.start_write()
         self.conn.execute("DELETE FROM ledger_sources")
+        self._set_source_count(0)
         self.add_sources(source_ids)
 
     def add_sources(self, source_ids: Iterable[str]) -> None:
         self.start_write()
-        self.conn.executemany("INSERT OR IGNORE INTO ledger_sources (source_id) VALUES (?)",
-                              ((str(value),) for value in source_ids if value))
+        cursor = self.conn.executemany("INSERT OR IGNORE INTO ledger_sources (source_id) VALUES (?)",
+                                       ((str(value),) for value in source_ids if value))
+        self._set_source_count((self.source_count() or 0) + max(cursor.rowcount, 0))
+
+    def source_count(self) -> int | None:
+        raw = self.meta("sources_count")
+        return int(raw) if raw is not None else None
+
+    def _set_source_count(self, count: int) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('sources_count', ?)", (str(count),))
+
+    def sources_intact(self) -> bool:
+        """True when the table holds as many ids as the last write stored (a dropped or emptied table does not)."""
+        stored = self.source_count()
+        actual = int(self.conn.execute("SELECT COUNT(*) FROM ledger_sources").fetchone()[0])
+        return stored is not None and stored == actual
 
     def sources_present(self, source_ids: Iterable[str]) -> set[str]:
         """The ids among ``source_ids`` that a ledger entry holds (one lookup for each id)."""
@@ -852,6 +871,8 @@ def start(root: Path) -> "Handle | None":
         _wait_for_tick(signatures, _newest(_sweep(root)))
         signatures = _signatures(root)
         rebuilt: list[str] = []
+        if not index.sources_intact():
+            index.set_token("sql", "sources-invalid")  # The saved source ids do not match their count: build them again.
         for group, current in signatures.items():
             if index.token(group) != current:
                 _rebuild(index, root, group)
@@ -974,7 +995,14 @@ class Run:
             self.index.close()
         except sqlite3.Error:
             pass
-        return Index(self.root)
+        try:
+            index = Index(self.root)
+        except sqlite3.Error as exc:
+            raise ChangeSetError(f"The saved index cannot be read: {exc}") from exc
+        if index.identity() != self.identity:
+            index.close()
+            raise ChangeSetError("The saved index is not the index of this command (it was removed, replaced or changed).")
+        return index
 
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.

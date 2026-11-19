@@ -20,6 +20,7 @@ It is additive and is not part of the fingerprint.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -200,10 +201,7 @@ def _load_new_entries(path: Path, entries_after: int) -> tuple[EntryRow, ...]:
     if conn is None:
         return ()
     try:
-        try:
-            return _load_entries(conn, entries_after)
-        except sqlite3.DatabaseError:
-            return ()
+        return _load_entries(conn, entries_after)  # An error passes up: no event is ever left out silently.
     finally:
         conn.close()
 
@@ -734,6 +732,8 @@ class WorkCapture:
     entity_path: Path | None
     events: list[dict[str, Any]] = field(default_factory=list)
     path: str = "none"
+    complete: bool = True
+    reason: str | None = None
 
 
 @contextmanager
@@ -781,7 +781,12 @@ def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iter
         _observations.reset(token)
         try:
             if run is not None:
-                holder.events, holder.path = _finish_incremental(run, root, observations)
+                try:
+                    holder.events, holder.path = _finish_incremental(run, root, observations)
+                except Exception as exc:  # noqa: BLE001
+                    holder.events, holder.path, holder.complete = [], "failed", False
+                    holder.reason = "state_unreadable" if isinstance(exc, (OSError, ValueError)) else "finalize_failed"
+                    raise  # A host also sees the error; the receipt (and ``--work-out``) say that it is incomplete.
             else:
                 assert before is not None
                 after = take_snapshot(root, entries_after=before.max_entry_id)
@@ -876,7 +881,8 @@ def _events_from_saved(run: Any, root: Path, observations: Mapping[str, int]) ->
         )
     finally:
         index.close()
-    after = take_snapshot(root, entries_after=saved.max_entry_id)
+    # The new entries are read strictly: the lenient snapshot reader would turn a locked ledger into "no entries".
+    after = dataclasses.replace(take_snapshot(root), entries=_load_new_entries(root / "ledger.sqlite", saved.max_entry_id))
     return work_events(saved, after, observations=observations)
 
 
@@ -891,9 +897,16 @@ def entity_path_from_args(args: argparse.Namespace) -> Path | None:
     return None
 
 
-def write_document(path: Path, events: Sequence[Mapping[str, Any]]) -> None:
-    """Write the machine-readable work document for ``--work-out``."""
-    document = {"schema_version": SCHEMA_VERSION, "work": list(events)}
+def write_document(path: Path, events: Sequence[Mapping[str, Any]], *, complete: bool = True,
+                   reason: str | None = None) -> None:
+    """Write the machine-readable work document for ``--work-out``.
+
+    An incomplete capture writes ``"complete": false`` and a ``reason``, with no events. A complete document has
+    neither field, so it is the same as before.
+    """
+    document: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "work": list(events)}
+    if not complete:
+        document.update({"complete": False, "reason": reason or "finalize_failed"})
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")

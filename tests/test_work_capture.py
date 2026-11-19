@@ -434,5 +434,140 @@ class SharedRunTests(Fixture):
         self.assertFalse([name for name in names if name.startswith(change_capture.TRIGGER_PREFIX)])
 
 
+class FailureTests(Fixture):
+    """When the books cannot be read the receipt says so. It is never an empty receipt that looks complete."""
+
+    def propose(self) -> None:
+        run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                 "--category", "Expenses:Software", "--reasoning", "Hosting."])
+
+    def test_a_locked_ledger_gives_the_saved_read_once_and_the_same_events(self) -> None:
+        real = work._load_new_entries
+        calls = []
+
+        def flaky(path, after):
+            calls.append(1)
+            if len(calls) == 1:
+                raise sqlite3.OperationalError("database is locked")
+            return real(path, after)
+
+        with work.capture(self.entity, incremental=False) as full:
+            with mock.patch.object(work, "_load_new_entries", flaky), work.capture(self.entity) as fast:
+                self.propose()
+        self.assertEqual(fast.path, "saved")
+        self.assertTrue(fast.complete)
+        self.assertEqual(fast.events, full.events)
+
+    def test_a_ledger_that_cannot_be_read_twice_gives_an_incomplete_receipt_and_no_commit(self) -> None:
+        self.both(lambda: None, nonempty=False)  # Index is current.
+        with mock.patch.object(work, "_load_new_entries", side_effect=sqlite3.OperationalError("database is locked")):
+            with self.assertRaises(sqlite3.Error), work.capture(self.entity) as receipt:
+                self.propose()
+        self.assertEqual((receipt.complete, receipt.path, receipt.events), (False, "failed", []))
+        self.assertEqual(receipt.reason, "finalize_failed")
+        with closing(sqlite3.connect(self.entity / change_capture.INDEX_NAME)) as conn:
+            saved = conn.execute("SELECT COUNT(*) FROM rows WHERE section = 'queue' AND key = 'syn-004'").fetchone()[0]
+        self.assertEqual(saved, 0)  # The new state of the command was not saved.
+        # The index was not committed: the next capture finds the files changed and still gives the right events.
+        events = self.both(lambda: run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-005",
+                                            "--category", "Expenses:Software", "--reasoning", "Office."]))
+        self.assertEqual(self.kinds(events), ["categorized"])
+
+    def test_the_cli_writes_complete_false_for_an_incomplete_capture(self) -> None:
+        out = self.root / "incomplete.json"
+        with mock.patch.object(work, "_load_new_entries", side_effect=sqlite3.OperationalError("locked")):
+            with self.assertRaises(sqlite3.Error):
+                run_cli(["--work-out", str(out), "queue", "propose", "--entity", str(self.entity),
+                         "--source-id", "syn-004", "--category", "Expenses:Software", "--reasoning", "x."])
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual((document["complete"], document["work"]), (False, []))
+        self.assertIn("reason", document)
+        self.books.run("queue", "propose", "--entity", str(self.entity), "--source-id", "syn-005",
+                       "--category", "Expenses:Software", "--reasoning", "x.")  # A complete document has no new fields
+
+    def probe_failure(self):
+        return mock.patch.object(work, "_events_from_probe", side_effect=RuntimeError("boom"))
+
+    def test_a_deleted_index_gives_an_incomplete_receipt_not_an_empty_one(self) -> None:
+        def action() -> None:
+            self.propose()
+            (self.entity / change_capture.INDEX_NAME).unlink()
+
+        with self.probe_failure(), self.assertRaises(Exception), work.capture(self.entity) as receipt:
+            action()
+        self.assertEqual((receipt.complete, receipt.path, receipt.events), (False, "failed", []))
+
+    def test_a_replaced_index_gives_an_incomplete_receipt(self) -> None:
+        other = self.root / "other-index.sqlite"
+
+        def action() -> None:
+            self.propose()
+            path = self.entity / change_capture.INDEX_NAME
+            shutil.copy(path, other)
+            path.unlink()
+            shutil.copy(other, path)  # Same content, new file: another inode.
+
+        with self.probe_failure(), self.assertRaises(Exception), work.capture(self.entity) as receipt:
+            action()
+        self.assertEqual((receipt.complete, receipt.path), (False, "failed"))
+
+    def test_a_changed_index_gives_an_incomplete_receipt(self) -> None:
+        def action() -> None:
+            self.propose()
+            with closing(sqlite3.connect(self.entity / change_capture.INDEX_NAME)) as conn:
+                conn.execute("DELETE FROM rows WHERE section = 'pending'")
+                conn.commit()
+
+        with self.probe_failure(), self.assertRaises(Exception), work.capture(self.entity) as receipt:
+            action()
+        self.assertEqual((receipt.complete, receipt.path), (False, "failed"))
+
+    def test_an_index_that_was_not_touched_still_gives_the_saved_read(self) -> None:
+        with self.probe_failure(), work.capture(self.entity) as receipt:
+            self.propose()
+        self.assertEqual((receipt.complete, receipt.path), (True, "saved"))
+        self.assertEqual(self.kinds(receipt.events), ["categorized"])
+
+
+class SourceTableTests(Fixture):
+    """A ledger source table that was dropped, emptied or changed is built again, never trusted."""
+
+    def known_pending_row(self) -> list:
+        row = {"id": "syn-001", "date": "2026-10-01", "amount": "-54.99", "description": "DESIGN TOOL MONTHLY",
+               "accountName": "Operating Checking", "accountType": "checking"}
+        return json.loads(self.pending_path.read_text(encoding="utf-8")) + [row]
+
+    def damage(self, sql: str) -> None:
+        with closing(sqlite3.connect(self.entity / change_capture.INDEX_NAME)) as conn:
+            conn.execute(sql)
+            conn.commit()
+
+    def check(self, sql: str) -> None:
+        self.both(lambda: None, nonempty=False)
+        self.damage(sql)
+        rows = self.known_pending_row()
+        events = self.both(lambda: self.pending_path.write_text(json.dumps(rows), encoding="utf-8"), nonempty=False)
+        self.assertEqual(events, [])  # syn-001 is in the ledger: it is no new source.
+
+    def test_a_dropped_table(self) -> None:
+        self.check("DROP TABLE ledger_sources")
+
+    def test_an_emptied_table(self) -> None:
+        self.check("DELETE FROM ledger_sources")
+
+    def test_a_table_with_one_id_removed(self) -> None:
+        self.check("DELETE FROM ledger_sources WHERE source_id = 'syn-001'")
+
+    def test_the_stored_count_follows_the_table(self) -> None:
+        self.both(lambda: run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                                   "--category", "Expenses:Software", "--reasoning", "x."]), nonempty=False)
+        self.books.run("queue", "confirm", "--entity", str(self.entity), "--item", "syn-004")
+        index = change_capture.Index(self.entity)
+        try:
+            self.assertTrue(index.sources_intact())
+        finally:
+            index.close()
+
+
 if __name__ == "__main__":
     unittest.main()
