@@ -273,6 +273,9 @@ def _append_only_guard_ddl() -> dict[str, str]:
     pending = (
         "EXISTS (SELECT 1 FROM audit_events e, json_each(json_extract(e.payload_json, '$.accounts')) pair "
         f"WHERE e.id = (SELECT MAX(id) FROM audit_events) AND e.type = '{RENAME_EVENT_TYPE}' "
+        "AND json_type(e.payload_json, '$.accounts') = 'array' AND json_type(pair.value) = 'array' "
+        "AND json_array_length(pair.value) = 2 AND json_type(pair.value, '$[0]') = 'text' "
+        "AND json_type(pair.value, '$[1]') = 'text' "
         "AND json_extract(pair.value, '$[0]') = OLD.account AND json_extract(pair.value, '$[1]') = NEW.account)"
     )
     refuse = "SELECT RAISE(ABORT, '{}');"
@@ -326,9 +329,22 @@ def _append_only_guard_ddl() -> dict[str, str]:
     }
 
 
+def _normal_sql(sql: str) -> str:
+    return " ".join(sql.replace(" IF NOT EXISTS", "", 1).split())
+
+
 def install_append_only_guard(conn: sqlite3.Connection) -> None:
-    """Install the append-only triggers. Safe to repeat; it changes no row, no content digest and no seal."""
-    for sql in _append_only_guard_ddl().values():
+    """Install the current append-only triggers. Safe to repeat; it changes no row, no content digest and no seal.
+
+    A trigger of the same name with other SQL (from an older engine build, or edited) is dropped and created
+    again, so a store that this engine opens for writing always has the current rules.
+    """
+    found = {str(row[0]): str(row[1]) for row in conn.execute("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")}
+    for name, sql in _append_only_guard_ddl().items():
+        if name in found:
+            if _normal_sql(found[name]) == _normal_sql(sql):
+                continue
+            conn.execute(f'DROP TRIGGER "{name}"')
         conn.execute(sql)
 
 
@@ -340,10 +356,9 @@ def append_only_guard_problems(conn: sqlite3.Connection) -> list[str]:
     }
     problems = []
     for name, sql in _append_only_guard_ddl().items():
-        expected = sql.replace(" IF NOT EXISTS", "", 1)
         if name not in found:
             problems.append(f"Append-only trigger {name} is missing.")
-        elif " ".join(found[name].split()) != " ".join(expected.split()):
+        elif _normal_sql(found[name]) != _normal_sql(sql):
             problems.append(f"Append-only trigger {name} was changed.")
     return problems
 
@@ -1084,7 +1099,7 @@ class LedgerStore:
             return None
         return PostingMark(int(row[0]), hashlib.sha256(_json(list(tuple(row))).encode("utf-8")).hexdigest())
 
-    def check_new_postings(self, after: PostingMark | int) -> PostingCheck:
+    def check_new_postings(self, after: PostingMark) -> PostingCheck:
         """Check the postings added after a saved watermark; return the errors and the next watermark.
 
         The only foreign key of the ledger tables is ``postings.entry_id``. The append-only triggers refuse a
@@ -1095,15 +1110,16 @@ class LedgerStore:
         ``after`` is the ``PostingMark`` of an earlier error-free check (or of ``posting_watermark()``). The
         mark holds a posting id and a hash of that posting row and its entry. The check gives an error and no
         watermark when that posting is missing or its hash differs, so a restore to another file, or a relabel of
-        old rows, forces the full check. A plain integer is accepted only for old callers: it is not anchored,
-        and the check only refuses an id above the newest posting id.
+        old rows, forces the full check. A plain integer raises ``TypeError``: it is not anchored to a file.
 
         The next watermark is built from the last row that the check read, in the same read transaction, so a
         posting that a concurrent writer adds later is checked next time. Cost: the number of new postings, each
         with one primary key read. The full ``PRAGMA foreign_key_check`` stays the check for a scheduled run.
         """
-        mark = after if isinstance(after, PostingMark) else PostingMark(int(after), "")
-        anchored = isinstance(after, PostingMark)
+        if not isinstance(after, PostingMark):
+            raise TypeError("check_new_postings needs a PostingMark from posting_watermark() or an earlier check; "
+                            "a plain posting id is not anchored to this file")
+        mark = after
         with self.connection() as conn:
             conn.execute("BEGIN")
             try:
@@ -1112,7 +1128,7 @@ class LedgerStore:
                     return PostingCheck([f"Posting watermark {mark.position} is above the newest posting "
                                          f"({newest}); the file is not the one that the watermark came from. "
                                          "Run the full check"], None)
-                if anchored and mark.position > 0:
+                if mark.position > 0:
                     current = self._posting_mark(conn, mark.position)
                     if current is None or current.row_hash != mark.row_hash:
                         return PostingCheck([f"Posting {mark.position}: the watermark row is missing or changed; "
@@ -1129,7 +1145,7 @@ class LedgerStore:
                 conn.rollback()
         return PostingCheck(errors, None if errors else last)
 
-    def new_posting_foreign_key_errors(self, after: PostingMark | int) -> list[str]:
+    def new_posting_foreign_key_errors(self, after: PostingMark) -> list[str]:
         """Return only the errors of ``check_new_postings``."""
         return self.check_new_postings(after).errors
 
