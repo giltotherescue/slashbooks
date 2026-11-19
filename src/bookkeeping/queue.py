@@ -1159,10 +1159,9 @@ def compact_closed_items(entity: Entity) -> dict[str, int]:
                     target.unlink()
                     written += 1
                 continue
-            payload = _archive_bytes(dict(sorted(items.items())))
-            if month in current and target.read_bytes() == payload:
-                continue
-            _replace_group_destination(target, payload)
+            if month in current and items == current[month]:
+                continue  # nothing changed in this month: no bytes are built and no file is written
+            _replace_group_destination(target, _archive_bytes(dict(sorted(items.items()))))
             written += 1
         for name in closed:
             (q_dir / name).unlink()
