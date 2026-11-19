@@ -312,8 +312,10 @@ def _capture_state(capture: Capture, kind: str, root: Path, work: Path) -> None:
             for table in TABLES:
                 capture.data(f"state/accrual_{table}", list_records(store, table))
 
-        # Company directory: every small text file, except the SQLite database, its backups and the lock.
-        skipped = {".books.lock", "ledger.sqlite"}
+        # Company directory: every small text file, except the SQLite database, its backups, the lock and the runtime
+        # state of the engine (the saved audit head, which holds an event position and hash, not books content).
+        from bookkeeping.ledger.books_policy_check import RUNTIME_STATE_FILES
+        skipped = {".books.lock", "ledger.sqlite", *RUNTIME_STATE_FILES}
         names = sorted(str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()
                        and str(p.relative_to(root)) not in skipped and not str(p.relative_to(root)).startswith("backups/")
                        and not p.name.endswith(("-wal", "-shm")))

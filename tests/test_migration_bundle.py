@@ -378,8 +378,12 @@ class MigrationBundleTests(unittest.TestCase):
                       for table in bundle.TABLES}
         _, loaded = self.export()
         self.assertEqual(self.snapshot(), before)
-        self.assertEqual(loaded["manifest"]["excluded"], {"runtime_state": 1})
-        self.assertEqual(set(loaded["files"]), set(before) - {".books.lock"})
+        # Runtime state stays out of a bundle: the lock and the saved audit head (``source_ids.VERIFIED_HEAD_FILE``).
+        from bookkeeping.source_ids import VERIFIED_HEAD_FILE
+        runtime = {".books.lock", VERIFIED_HEAD_FILE} & set(before)
+        self.assertIn(VERIFIED_HEAD_FILE, runtime)
+        self.assertEqual(loaded["manifest"]["excluded"], {"runtime_state": len(runtime)})
+        self.assertEqual(set(loaded["files"]), set(before) - runtime)
         restored = self.root.parent / "restored"
         for name, data in loaded["files"].items():
             if name != "ledger.sqlite":

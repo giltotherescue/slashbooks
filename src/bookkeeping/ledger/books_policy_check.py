@@ -565,11 +565,24 @@ def request_digest(request_document: Any) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+#: Root files that hold engine runtime state only (``source_ids.VERIFIED_HEAD_FILE``). They are never books content.
+RUNTIME_STATE_FILES = frozenset({".books-audit-head"})
+#: The temporary file that a save of a runtime file writes before it replaces the file. A stop can leave one behind.
+_RUNTIME_STATE_TEMPORARY = re.compile(r"\.books-audit-head\.[^/]*\.tmp")
+
+
+def is_runtime_state(relative: str) -> bool:
+    """Whether a root-relative POSIX path is engine runtime state: a ``RUNTIME_STATE_FILES`` file or its temporary file."""
+    return relative in RUNTIME_STATE_FILES or _RUNTIME_STATE_TEMPORARY.fullmatch(relative) is not None
+
+
 def workspace_digest(entity_dir: Path | str, *, ignore_empty_lock: bool = False) -> str:
     """SHA-256 of a workspace: the UTF-8 lines ``<sha256 of the file>  <relative POSIX path>\\n`` of every
     regular file, sorted by path (the format of ``sha256sum``). Empty folders do not count. A symbolic link or
-    any other special file is refused. The optional normalization omits only the empty
-    root engine lock file, which a caller may create when taking the workspace lock."""
+    any other special file is refused. The root runtime files of the engine (``is_runtime_state``: the saved
+    audit head and a temporary file of it that a stop left) are never part of the digest: a write command may create or change them without any change to the
+    books. The optional normalization also omits the empty root engine lock file, which a caller may create when
+    taking the workspace lock."""
     root = Path(entity_dir)
     if not root.is_dir() or root.is_symlink():
         raise ValueError(f"{root} is not a workspace folder")
@@ -584,7 +597,7 @@ def workspace_digest(entity_dir: Path | str, *, ignore_empty_lock: bool = False)
                 if not path.is_file():
                     raise ValueError(f"The workspace has a special file: {relative!r}")
                 contents = path.read_bytes()
-                if ignore_empty_lock and relative == ".books.lock" and not contents:
+                if is_runtime_state(relative) or ignore_empty_lock and relative == ".books.lock" and not contents:
                     continue
                 lines.append(f"{hashlib.sha256(contents).hexdigest()}  {relative}\n")
     return hashlib.sha256("".join(sorted(lines, key=lambda line: line[66:])).encode("utf-8")).hexdigest()

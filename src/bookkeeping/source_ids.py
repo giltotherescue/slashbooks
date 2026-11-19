@@ -305,6 +305,189 @@ def _read_feed_intake(entity_path: Any, chain_verified: bool = False) -> FeedInt
     return index
 
 
+#: The verified head is runtime state in a file of its own in the company folder. It is not the lock file (a lock that
+#: holds state changes the workspace digest), it is excluded from the workspace digest and from a migration bundle,
+#: and it is never read or written through a link. A torn, foreign or missing content reads as no head (one full check).
+VERIFIED_HEAD_FILE = ".books-audit-head"
+_HEAD_FILE_LIMIT = 4096
+_STALE_TEMPORARY_SECONDS = 60
+
+
+def _saved_head(root: Path) -> Any:
+    """The audit head that an earlier full or incremental check verified, or ``None``.
+
+    The file is opened without following a link and must be a small regular file. Anything else is no head.
+    """
+    import json
+    import os
+    import stat
+    from .ledger.store import AuditHead
+    path = root / VERIFIED_HEAD_FILE
+    try:
+        if stat.S_ISLNK(os.lstat(path).st_mode):
+            return None
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > _HEAD_FILE_LIMIT:
+                return None
+            data = os.read(fd, _HEAD_FILE_LIMIT + 1)
+        finally:
+            os.close(fd)
+        saved = json.loads(data.decode("utf-8"))
+        position, record_hash = saved["position"], saved["record_hash"]
+        if isinstance(position, int) and not isinstance(position, bool) and isinstance(record_hash, str):
+            return AuditHead(position, record_hash)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _save_head(root: Path, head: Any) -> None:
+    """Keep a verified head for the next command. A failed write only costs the next command a full check.
+
+    The head goes to a new temporary file (created, never opened through a link), which then replaces the head file.
+    A replace swaps the directory entry: a link at the head file is replaced, and its target is never written. A
+    temporary file of the head that a stopped save left behind (older than ``_STALE_TEMPORARY_SECONDS``, so a save that
+    runs now keeps its own) is removed first. Removing a link removes the link only, never its target.
+    """
+    import json
+    import os
+    import secrets
+    import time
+    target = root / VERIFIED_HEAD_FILE
+    try:
+        for stale in root.glob(f"{VERIFIED_HEAD_FILE}.*.tmp"):
+            try:
+                if time.time() - os.lstat(stale).st_mtime > _STALE_TEMPORARY_SECONDS:
+                    os.unlink(stale)
+            except OSError:
+                pass
+    except OSError:
+        pass
+    temporary = root / f"{VERIFIED_HEAD_FILE}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+    data = json.dumps({"position": head.position, "record_hash": head.record_hash}).encode("utf-8")
+    try:
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+        os.replace(temporary, target)
+    except OSError:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+
+
+def _chain_is_sound(store: Any, root: Path) -> bool:
+    """True when the audit chain has no error, at a cost that follows the events added since the last check.
+
+    The first call (or a call after any doubt) verifies every link once, as ``verify_audit_chain`` does, and keeps the
+    head that it verified in ``VERIFIED_HEAD_FILE``. Later calls verify only the events after that head
+    (``verify_audit_chain_since``), so a write does not read the whole chain. The append-only triggers stop a change to
+    an event before the head; a store without them gets the full check. An edit made with the triggers dropped and
+    then put back is not seen by this function. ``feed_intake_for`` hashes again every record that it uses
+    (``_records_are_sound``), which catches an edit of that one record. A rewrite of two or more consecutive events
+    with the triggers dropped and put back can pass this lookup; ``books check`` and ``feed_proof``, which verify the
+    whole chain, catch it.
+    """
+    from .ledger.store import append_only_guard_problems
+    saved = _saved_head(root)
+    if saved is not None:
+        with store.connection() as conn:
+            guarded = not append_only_guard_problems(conn)
+        if guarded:
+            result = store.verify_audit_chain_since(saved)
+            if not result.errors and result.head is not None:
+                if result.head != saved:
+                    _save_head(root, result.head)
+                return True
+    full = store.verify_audit_chain_since(None)  # one pass over every link, and the head that it verified
+    if full.errors or full.head is None:
+        return False
+    _save_head(root, full.head)
+    return True
+
+
+def _records_are_sound(conn: Any, rows: list[Any]) -> bool:
+    """Each intake record that a lookup uses is intact and still linked into the chain.
+
+    For each record: its ``record_hash`` is the hash of its own fields, and the next event names that hash as its
+    ``prev_hash`` and has an intact hash too (or the record is the newest event). So an edit of one record, with or
+    without a new hash for it, fails one of these. A rewrite of two or more consecutive events with new hashes (which
+    needs the append-only triggers dropped and put back) can pass; ``books check`` and ``feed_proof`` verify the whole
+    chain and catch it. Cost: one read for each record used.
+    """
+    from .ledger.store import _hash_record
+    for row in rows:
+        if _hash_record(row["type"], row["ts"], row["payload_json"], row["prev_hash"]) != row["record_hash"]:
+            return False
+        after = conn.execute("SELECT type, ts, payload_json, prev_hash, record_hash FROM audit_events WHERE id > ? "
+                             "ORDER BY id LIMIT 1", (row["id"],)).fetchone()
+        if after is not None and (after["prev_hash"] != row["record_hash"] or _hash_record(
+                after["type"], after["ts"], after["payload_json"], after["prev_hash"]) != after["record_hash"]):
+            return False
+    return True
+
+
+_FEED_LOOKUP_ROWS = 40
+
+
+def feed_intake_for(entity_path: Any, source_ids: Any) -> FeedIntake:
+    """``feed_intake_index`` for the rows in *source_ids*: the same answer for them, at the cost of the new events.
+
+    A command that writes one entry needs the marks of one row. This checks the chain from the last verified head
+    (``_chain_is_sound``) and reads only the intake records that name one of the rows. Each record that it reads is
+    hashed again and checked against the next event (``_records_are_sound``); any mismatch gives the full read, which
+    verifies the whole chain and gives no mark when it has an error. This catches an edit of one record. A rewrite of
+    two or more consecutive events, with the triggers dropped and put back, is left to ``books check`` and the feed
+    proof. The result holds only those rows.
+    """
+    import json
+    import sqlite3
+    from .ledger.store import LedgerStore, default_store_path
+
+    index: FeedIntake = {}
+    wanted = {str(value) for value in source_ids if value}
+    root = Path(entity_path)
+    path = default_store_path(root)
+    if not wanted or not path.is_file():
+        return index
+    if len(wanted) > _FEED_LOOKUP_ROWS:
+        return _read_feed_intake(entity_path)  # A batch reads every record once, as before.
+    try:
+        store = LedgerStore(path)
+        if not _chain_is_sound(store, root):
+            return index
+        with store.connection() as conn:
+            boundary_event, _ = intake_boundary(conn)
+            clauses = " OR ".join("instr(payload_json, ?) > 0" for _ in wanted)
+            keys = [json.dumps(value) for value in sorted(wanted)]
+            rows = conn.execute(
+                "SELECT id, type, ts, payload_json, prev_hash, record_hash FROM audit_events "
+                f"WHERE type = ? AND id > ? AND ({clauses}) ORDER BY id",
+                (FEED_INTAKE_EVENT, boundary_event, *keys)).fetchall()
+            sound = _records_are_sound(conn, rows)
+    except sqlite3.DatabaseError:
+        return index
+    if not sound:
+        return _read_feed_intake(entity_path)  # The full check, which gives no mark when the chain has an error.
+    for row in rows:
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except ValueError:
+            continue
+        provider, digests = payload.get("provider"), payload.get("rows")
+        if not isinstance(provider, str) or not provider or not isinstance(digests, dict):
+            continue
+        for source_id, digest in digests.items():
+            if str(source_id) in wanted and isinstance(digest, str):
+                index.setdefault(str(source_id), {}).setdefault(provider, set()).add(digest)
+    return index
+
+
 def feed_provider_meta(index: FeedIntake, *txns: Any) -> tuple[tuple[str, str], ...]:
     """The ``feed-provider`` and ``feed-row-digest`` entry metadata for an entry made from *txns*.
 

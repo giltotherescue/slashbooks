@@ -183,6 +183,13 @@ def install_atomic(ledger: Path) -> tuple[str | None, tuple[int, str] | None, An
             if present != {"source_transactions", "accounts"}:
                 conn.execute("ROLLBACK")
                 return None, None, file_token
+            # The indexes that the command would add when it opens the store for writing: added now, so the schema
+            # does not change during the command (an index changes no row and no digest).
+            ledger_tables = {str(row[0]) for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('entries', 'audit_events')")}
+            if ledger_tables == {"entries", "audit_events"}:
+                from .ledger.store import ensure_write_indexes
+                ensure_write_indexes(conn)
             token = secrets.token_hex(16)
             conn.execute(f"CREATE TABLE {LOG_TABLE} (seq INTEGER PRIMARY KEY AUTOINCREMENT, "
                          "tbl TEXT NOT NULL, key TEXT NOT NULL)")

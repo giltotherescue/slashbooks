@@ -93,7 +93,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional, Sequence, TYPE_CHECKING
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .ledger.model import Entry
@@ -101,7 +101,7 @@ from functools import wraps
 
 from . import capture_log
 from .entity import Entity, load_entity
-from .source_ids import feed_intake_index, feed_provider_meta, source_id_variants
+from .source_ids import feed_intake_for, feed_intake_index, feed_provider_meta, source_id_variants
 from .ledger.normalize import normalize_description
 from .brand import product_name
 
@@ -816,34 +816,79 @@ def _archive_files(entity: Entity) -> list[Path]:
     return sorted(directory.glob("*.json")) if directory.is_dir() else []
 
 
+def _decided_later(candidate: dict, current: dict) -> bool:
+    """Whether *candidate* is the later decision of an item that two archives hold.
+
+    The later ``updated_at`` wins; on a tie the archive read later (the later month) wins. An engine writes an item into
+    one archive only; two copies are left only by an interrupted or older move, and a full compact keeps this copy.
+    """
+    return str(candidate.get("updated_at") or "") >= str(current.get("updated_at") or "")
+
+
 def _archived_items(entity: Entity, *, strict: bool = False) -> tuple[dict[str, dict], list[tuple[Path, Exception]]]:
     """Every decided item that sits in an archive, by file name, and the archives that could not be read.
 
     With ``strict`` an unreadable archive raises. A read that lists the queue reports it instead (see list_queue_items).
+    A name in two archives gives its later decision (``_decided_later``), the same copy that ``_archived_item`` gives.
     """
     found: dict[str, dict] = {}
     broken: list[tuple[Path, Exception]] = []
     for path in _archive_files(entity):
         try:
-            found.update(copy.deepcopy(_read_archive_file(path)))
+            items = _read_archive_file(path)
         except (ValueError, OSError) as exc:
             if strict:
                 raise ValueError(str(exc)) from exc
             broken.append((path, exc))
-    return found, broken
+            continue
+        for name, item in items.items():
+            if name not in found or _decided_later(item, found[name]):
+                found[name] = item
+    return copy.deepcopy(found), broken
 
 
 def _archived_item(entity: Entity, item_id: str) -> Optional[dict]:
     """A copy of the decided item of this id from an archive, or None.
 
-    An archive that cannot be read raises ValueError: a lookup never treats a broken archive as "not there".
+    An archive that cannot be read raises ValueError: a lookup never treats a broken archive as "not there". A name in
+    two archives gives its later decision, as the lists do.
     """
     name = _item_path(entity, item_id).name
+    found: Optional[dict] = None
     for path in _archive_files(entity):
         items = _read_archive_file(path)
-        if name in items:
-            return copy.deepcopy(items[name])
-    return None
+        if name in items and (found is None or _decided_later(items[name], found)):
+            found = items[name]
+    return copy.deepcopy(found) if found is not None else None
+
+
+#: A move after a command looks for the names that it archives in the other archives with a byte search. More names
+#: than this read every archive instead.
+_NAME_SEARCH_LIMIT = 8
+
+
+def _archives_naming(entity: Entity, names: Iterable[str], skip: set[str]) -> Optional[set[str]]:
+    """The months (archive stems) not in *skip* whose bytes contain one of *names* as an item key.
+
+    ``_archive_bytes`` writes each key as ``json.dumps(name)`` followed by ``:``. A value can never hold that text,
+    because a quote inside a JSON string is escaped, so a miss is exact for an archive that the engine wrote. A hit
+    in another place only costs a read of that archive. ``None`` means "read every archive" (too many names).
+    """
+    names = sorted(set(names))
+    if len(names) > _NAME_SEARCH_LIMIT:
+        return None
+    needles = [json.dumps(name).encode("ascii") + b":" for name in names]
+    found: set[str] = set()
+    for path in _archive_files(entity):
+        if path.stem in skip:
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue  # left to the next full run, as an unreadable archive of an untouched month is
+        if any(needle in data for needle in needles):
+            found.add(path.stem)
+    return found
 
 
 def _item_exists(entity: Entity, item_id: str) -> bool:
@@ -1136,7 +1181,7 @@ def _save_item_group(entity: Entity, items: list[dict]) -> None:
         _remove_group_transaction(transaction)
 
 
-def compact_closed_items(entity: Entity) -> dict[str, int]:
+def compact_closed_items(entity: Entity, *, full: bool = True) -> dict[str, int]:
     """Move every decided item (confirmed or corrected) from its own file into the archive of its month.
 
     A company that reviews every bank row keeps one small file for each row, and a file never leaves the folder. This
@@ -1149,10 +1194,18 @@ def compact_closed_items(entity: Entity) -> dict[str, int]:
     written before any item file is removed, so an interrupted run loses nothing and the next run finishes the work.
     A file that is not valid JSON, and the quarantine folder, are left as they are.
 
+    With ``full=False`` (the move after a queue command) only some archives are parsed and written: the months of the
+    item files, and any other archive whose bytes name an item that moves now (a byte search, ``_archives_naming``).
+    So the cost follows the item files and their months, not the number of decided items in all months, and an item
+    decided again in another month leaves its old archive. An archive that cannot be read in an untouched month is
+    left to the next full run (``books queue compact``). A full run also keeps only the later decision of a name that
+    two archives hold (``_decided_later``), which every read already gives.
+
     Returns the counts ``archived`` (files moved), ``files_removed`` and ``archives_written``.
     """
     with _queue_mutation(entity):
-        _archived_items(entity, strict=True)  # an archive that cannot be read stops the move before anything is written
+        if full:
+            _archived_items(entity, strict=True)  # an archive that cannot be read stops the move before anything is written
         directory = _archive_dir(entity)
         q_dir = _queue_dir(entity)
         loose: dict[str, dict] = {}
@@ -1174,11 +1227,30 @@ def compact_closed_items(entity: Entity) -> dict[str, int]:
                   if item.get("status") in CLOSED_QUEUE_STATUSES and name not in uncanonical}
         # What each archive holds now, and what it should hold.
         current: dict[str, dict[str, dict]] = {}
+        receiving: Optional[set[str]] = None
+        if not full:
+            # The months that receive an item, the months of the other item files (a stale entry of an item that is
+            # open again), and every other archive that holds a name that moves now: an item decided again on a date
+            # in another month must leave its old archive, or two archives would hold it.
+            receiving = {_item_month(item) for item in loose.values()}
+            others = _archives_naming(entity, closed, receiving) if closed else set()
+            receiving = None if others is None else receiving | others
         for path in _archive_files(entity):
-            current[path.stem] = dict(_read_archive_file(path))
+            if receiving is None or path.stem in receiving:
+                current[path.stem] = dict(_read_archive_file(path))
         wanted = {month: {name: item for name, item in items.items() if name not in loose} for month, items in current.items()}
         for name, item in closed.items():
             wanted.setdefault(_item_month(item), {})[name] = item
+        if full:
+            # A name in two archives (left by an older or interrupted move) stays only with its later decision.
+            keep: dict[str, str] = {}
+            for month in sorted(wanted):
+                for name, item in wanted[month].items():
+                    if name not in keep or _decided_later(item, wanted[keep[name]][name]):
+                        keep[name] = month
+            for month, items in wanted.items():
+                for name in [name for name in items if keep[name] != month]:
+                    del items[name]
         written = 0
         for month, items in sorted(wanted.items()):
             target = directory / _archive_name(month)
@@ -2195,7 +2267,7 @@ def _write_split_entry(entity: Entity, txn: dict, item: dict, session_id: str,
             ("source-id", source_id),
             ("import-session", session_id),
             ("review-workflow", "split"),
-            *feed_provider_meta(feed_intake_index(entity.path), txn),
+            *feed_provider_meta(feed_intake_for(entity.path, [txn.get("id")]), txn),
         ),
         tags=(f"import-{session_id}", "reviewed-split"),
         postings=(Posting(account=bank_account, amount=amount, currency=entity.currency), *allocations),
@@ -2853,7 +2925,7 @@ def confirm_transfer(entity: Entity, item_id: str, session_id: str, ts: Optional
     from .ledger.model import Entry, Open, Posting
     pair_id = _transfer_item_id(source_ids)
     common_meta = (("transfer-pair-id", pair_id), ("import-session", session_id), ("review-workflow", "transfer-pair"))
-    feed_intake = feed_intake_index(entity.path)  # One read and one chain check for the whole command.
+    feed_intake = feed_intake_for(entity.path, source_ids)  # The rows of this command only.
     if _txn_date(first) == _txn_date(second):
         entries = [Entry(
             date=_txn_date(first),
@@ -3063,7 +3135,7 @@ def _write_confirmed_entry(
     meta: list[tuple[str, str]] = [
         ("source-id", source_id),
         ("import-session", session_id),
-        *feed_provider_meta(feed_intake_index(entity.path), txn),
+        *feed_provider_meta(feed_intake_for(entity.path, [txn.get("id")]), txn),
     ]
     if accrual_treatment:
         meta.append(("accrual-treatment", accrual_treatment))
@@ -3974,7 +4046,7 @@ def run(args: Any) -> int:
     if code == 0 and getattr(args, "command", None) == "queue" and getattr(args, "queue_command", None) in _COMPACTS_AFTER:
         # The command is done and committed. A failed move leaves the item files where they are, so it never fails the command.
         try:
-            compact_closed_items(load_entity(args.entity))
+            compact_closed_items(load_entity(args.entity), full=False)
         except (OSError, ValueError) as exc:
             print(f"Warning: decided review items were not archived: {exc}", file=sys.stderr)
     return code
