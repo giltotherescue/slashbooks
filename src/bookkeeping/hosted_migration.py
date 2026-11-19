@@ -303,7 +303,7 @@ def _schema(sql):
                 "unsupported_schema")
         require(not sql.execute("SELECT 1 FROM sqlite_master WHERE type='view'").fetchone(), "unsupported_schema")
         # Only the engine's own append-only triggers are allowed, with the exact SQL that the engine installs or an
-        # earlier SQL that refuses the same writes (``accepted_guard_sql``).
+        # equivalent SQL that refuses the same writes (``accepted_guard_sql``).
         from .ledger.store import accepted_guard_sql
         allowed = accepted_guard_sql()
         for name, ddl in sql.execute("SELECT name, sql FROM sqlite_master WHERE type='trigger'"):

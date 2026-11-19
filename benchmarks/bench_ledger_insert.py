@@ -7,8 +7,9 @@ Run it from a checkout of the engine, and again with ``--src`` of another checko
     python3 benchmarks/bench_ledger_insert.py --sizes 5000,50000 --work /some/folder --src ../other/src
 
 For each size it builds a synthetic company once (posted bank rows with learned payees) in ``--work`` and keeps it
-there for the next run. Each measure runs on a fresh copy, so one run does not change the next. Opening the copy for
-writing installs the append-only triggers of the engine under test.
+there for the next run. Each measure runs on a fresh copy, so one run does not change the next. The copy keeps the
+append-only trigger text of the engine that built it when the engine under test accepts that text as valid, so use one
+``--work`` folder for each engine whose installed trigger text differs.
 
 * ``insert``: ``LedgerStore.insert_entries`` of 1,000 entries in one transaction (rolled back), time per entry.
 * ``exists``: ``LedgerStore.source_exists`` for an id that is not there and for one that is, time per call.

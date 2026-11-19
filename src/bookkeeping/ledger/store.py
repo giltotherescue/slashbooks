@@ -249,6 +249,21 @@ REWRITE_EVENT_TYPES = frozenset({RENAME_EVENT_TYPE})
 _SOURCE_ID_INDEX_WHERE = "source_id IS NOT NULL AND source_id != ''"
 
 
+def _entries_no_overwrite(*, indexed: bool) -> str:
+    """The SQL of ``entries_append_only_no_overwrite``, in its scan form or its index form.
+
+    Both forms refuse exactly the same writes. The index form repeats the condition of the partial index
+    ``entries_source_id_unique`` in the ``source_id`` lookup, so SQLite finds the row by the index. The scan form
+    reads every entry for each insert. A row whose ``source_id`` equals a ``NEW.source_id`` that is not NULL and not
+    empty always meets the index condition, so the extra condition removes no match.
+    """
+    lookup = "source_id = NEW.source_id" + (f" AND {_SOURCE_ID_INDEX_WHERE}" if indexed else "")
+    return ("CREATE TRIGGER IF NOT EXISTS entries_append_only_no_overwrite BEFORE INSERT ON entries "
+            "WHEN EXISTS (SELECT 1 FROM entries WHERE id = NEW.id) OR (NEW.source_id IS NOT NULL AND NEW.source_id != '' "
+            f"AND EXISTS (SELECT 1 FROM entries WHERE {lookup})) "
+            "BEGIN SELECT RAISE(ABORT, 'entries rows are append-only: no replace'); END")
+
+
 def _key_guards() -> dict[str, str]:
     """Triggers that keep the row id of each posted table above every earlier id.
 
@@ -262,18 +277,16 @@ def _key_guards() -> dict[str, str]:
     """
     guards = {}
     for table in ("entries", "postings", "balance_assertions", "audit_events"):
-        duplicate = f"EXISTS (SELECT 1 FROM {table} WHERE id = NEW.id)"
         if table == "entries":
-            # The lookup repeats the condition of the partial index ``entries_source_id_unique``. Without it SQLite
-            # cannot use that index and reads every entry for each insert. A row that has ``NEW.source_id`` (not
-            # NULL, not empty) always meets the condition, so the trigger refuses the same writes as before.
-            duplicate += (" OR (NEW.source_id IS NOT NULL AND NEW.source_id != '' "
-                          "AND EXISTS (SELECT 1 FROM entries WHERE source_id = NEW.source_id "
-                          f"AND {_SOURCE_ID_INDEX_WHERE}))")
-        guards[f"{table}_append_only_no_overwrite"] = (
-            f"CREATE TRIGGER IF NOT EXISTS {table}_append_only_no_overwrite BEFORE INSERT ON {table} "
-            f"WHEN {duplicate} BEGIN SELECT RAISE(ABORT, '{table} rows are append-only: no replace'); END"
-        )
+            # The scan form for now: an engine that is already released replaces any other text, so the index form
+            # can be installed only after an engine that accepts it (``_EQUIVALENT_GUARD_SQL``) is released.
+            guards["entries_append_only_no_overwrite"] = _entries_no_overwrite(indexed=False)
+        else:
+            guards[f"{table}_append_only_no_overwrite"] = (
+                f"CREATE TRIGGER IF NOT EXISTS {table}_append_only_no_overwrite BEFORE INSERT ON {table} "
+                f"WHEN EXISTS (SELECT 1 FROM {table} WHERE id = NEW.id) "
+                f"BEGIN SELECT RAISE(ABORT, '{table} rows are append-only: no replace'); END"
+            )
         guards[f"{table}_append_only_ascending"] = (
             f"CREATE TRIGGER IF NOT EXISTS {table}_append_only_ascending AFTER INSERT ON {table} "
             f"WHEN NEW.id < 1 OR EXISTS (SELECT 1 FROM {table} WHERE id > NEW.id) "
@@ -362,19 +375,14 @@ def _normal_sql(sql: str) -> str:
     return " ".join(sql.replace(" IF NOT EXISTS", "", 1).split())
 
 
-#: Earlier SQL of an append-only trigger that refuses exactly the same writes as the current SQL, only slower.
-#: ``append_only_guard_problems`` and the hosted migration check accept it, so a store that an earlier engine wrote
-#: keeps its fast checks until its next write. ``install_append_only_guard`` always replaces it with the current SQL.
-#: Only a text whose rules are the same may be listed here; a test runs every refused and allowed insert against both.
+#: Other SQL of an append-only trigger that refuses exactly the same writes as the SQL that this engine installs.
+#: ``append_only_guard_problems``, the hosted migration check and ``install_append_only_guard`` accept it as valid and
+#: leave it in place, so a store can move between engines that install one text or the other without a reinstall
+#: or a schema change. Only a text whose rules are the same may be listed here; a test runs every refused and allowed
+#: insert against both.
 _EQUIVALENT_GUARD_SQL: dict[str, tuple[str, ...]] = {
-    # Up to 0.9.x development builds: the source_id lookup did not repeat the partial index condition, so each
-    # insert of an entry read every entry.
-    "entries_append_only_no_overwrite": (
-        "CREATE TRIGGER IF NOT EXISTS entries_append_only_no_overwrite BEFORE INSERT ON entries "
-        "WHEN EXISTS (SELECT 1 FROM entries WHERE id = NEW.id) OR (NEW.source_id IS NOT NULL AND NEW.source_id != '' "
-        "AND EXISTS (SELECT 1 FROM entries WHERE source_id = NEW.source_id)) "
-        "BEGIN SELECT RAISE(ABORT, 'entries rows are append-only: no replace'); END",
-    ),
+    # The index form, which a later engine installs. Accepted now, so that a rollback from that engine is safe.
+    "entries_append_only_no_overwrite": (_entries_no_overwrite(indexed=True),),
 }
 
 
@@ -391,17 +399,20 @@ def _triggers(conn: sqlite3.Connection) -> dict[str, str]:
 
 
 def append_only_guard_outdated(conn: sqlite3.Connection) -> bool:
-    """Whether a trigger is missing or has other SQL than the current SQL. Cost: a fixed number of catalog rows."""
+    """Whether a trigger is missing or has SQL that is not accepted (``accepted_guard_sql``). Cost: a fixed number of
+    catalog rows. A trigger with an accepted text is never replaced."""
     found = _triggers(conn)
-    return any(name not in found or _normal_sql(found[name]) != _normal_sql(sql)
-               for name, sql in _append_only_guard_ddl().items())
+    return any(name not in found or _normal_sql(found[name]) not in accepted
+               for name, accepted in accepted_guard_sql().items())
 
 
 def install_append_only_guard(conn: sqlite3.Connection) -> None:
-    """Install the current append-only triggers. Safe to repeat; it changes no row, no content digest and no seal.
+    """Install the append-only triggers that are missing or changed. Safe to repeat; it changes no row, no content
+    digest and no seal.
 
-    A trigger of the same name with other SQL (from an older engine build, or edited) is dropped and created
-    again, so a store that this engine opens for writing always has the current rules. All changes are made in one
+    A trigger of the same name with SQL that is not accepted (edited, or from an older engine build) is dropped and
+    created again. A trigger with an accepted text (``accepted_guard_sql``) stays as it is, so this engine and an
+    engine that installs the equivalent text never replace each other's trigger. All changes are made in one
     transaction: no other connection sees a store with a trigger dropped and not yet created again, and a stop
     leaves the old triggers. Without an open transaction this function starts one (``BEGIN IMMEDIATE``, so it reads
     the catalog under the database write lock) and commits it; inside a transaction of the caller it commits nothing.
@@ -413,9 +424,10 @@ def install_append_only_guard(conn: sqlite3.Connection) -> None:
         conn.execute("BEGIN IMMEDIATE")
     try:
         found = _triggers(conn)  # Again, under the write lock: another writer can have installed them meanwhile.
+        accepted = accepted_guard_sql()
         for name, sql in _append_only_guard_ddl().items():
             if name in found:
-                if _normal_sql(found[name]) == _normal_sql(sql):
+                if _normal_sql(found[name]) in accepted[name]:
                     continue
                 conn.execute(f'DROP TRIGGER "{name}"')
             conn.execute(sql)
@@ -430,7 +442,7 @@ def install_append_only_guard(conn: sqlite3.Connection) -> None:
 def append_only_guard_problems(conn: sqlite3.Connection) -> list[str]:
     """Return what is missing or changed in the append-only triggers. Cost: a fixed number of catalog rows.
 
-    A trigger with an earlier SQL text that refuses the same writes (``_EQUIVALENT_GUARD_SQL``) is not a problem.
+    A trigger with an equivalent SQL text that refuses the same writes (``_EQUIVALENT_GUARD_SQL``) is not a problem.
     """
     found = _triggers(conn)
     problems = []
@@ -664,7 +676,7 @@ class LedgerStore:
             self._upgrade_append_only_guard()
 
     def _initialize(self) -> bool:
-        """Create the store or bring an older one up to date. Returns whether its append-only triggers are outdated."""
+        """Create the store or bring an older one up to date. Returns whether an append-only trigger is missing or changed."""
         with self.connection() as conn:
             if self.schema_version(conn) is not None:
                 columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
@@ -696,17 +708,17 @@ class LedgerStore:
             return False
 
     def _upgrade_append_only_guard(self) -> None:
-        """Replace missing or outdated append-only triggers of an existing store, one time, under the write lock.
+        """Install the missing or changed append-only triggers of an existing store, under the write lock.
 
         The triggers are schema, not books: ``content_digest`` does not read them, so the audit chain and the seal
         stay valid and no audit event is written. The entity write lock keeps every other engine writer out, and
         ``install_append_only_guard`` makes the change in one ``BEGIN IMMEDIATE`` transaction, so no connection sees a
         store without a trigger. It checks the catalog again under both locks, so a second process does nothing.
+        A trigger with an accepted text is never replaced.
 
         A caller that holds the shared read lock (no writer can run then) or a folder without a lock file goes on with
-        the database lock alone. A store that cannot be written keeps its triggers: an earlier trigger text
-        (``_EQUIVALENT_GUARD_SQL``) refuses the same writes, and a missing trigger stays a problem for
-        ``append_only_guard_problems``, as before.
+        the database lock alone. A store that cannot be written keeps its triggers, and a missing or changed trigger
+        stays a problem for ``append_only_guard_problems``, as before.
         """
         from .importer import _entity_write_lock
         with ExitStack() as stack:
