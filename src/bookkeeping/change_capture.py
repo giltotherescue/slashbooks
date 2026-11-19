@@ -43,6 +43,7 @@ import json
 import os
 import secrets
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -53,7 +54,7 @@ from .changeset import ChangeSetError
 from .ledger.store import REWRITE_EVENT_TYPES
 
 INDEX_NAME = ".change-capture.sqlite"
-INDEX_VERSION = 3
+INDEX_VERSION = 4
 LOG_TABLE = "_books_capture_log"
 CTL_TABLE = "_books_capture_ctl"
 TRIGGER_PREFIX = "_books_capture_"
@@ -72,6 +73,9 @@ FILE_SECTIONS = {
     **{name: "documents" for name in changeset.DOCUMENT_FILES},
 }
 LEDGER_SECTIONS = ("entries", "balances", "audit")
+#: Files that the change set does not cover but that work events read (``bookkeeping.work``). The index keeps their
+#: rows in the same way, outside the digest totals.
+EXTRA_FILES = {"reports/reconciliation.json": "recon"}
 _QUEUE_FOLDER = changeset._QUEUE_DIR
 #: The sections whose helpers journal the rows that they change, so the file is not read after the command.
 DELTA_SECTIONS = frozenset({"pending", "seen"})
@@ -234,7 +238,8 @@ class Index:
             "CREATE TABLE IF NOT EXISTS archive_items (name TEXT PRIMARY KEY, archive TEXT NOT NULL,"
             " source_id TEXT NOT NULL, value TEXT NOT NULL) WITHOUT ROWID;"
             "CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive);"
-            "CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id);")
+            "CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id);"
+            "CREATE TABLE IF NOT EXISTS ledger_sources (source_id TEXT PRIMARY KEY) WITHOUT ROWID;")
         if self.meta("version") != str(INDEX_VERSION):
             self.wipe()
         self.totals: dict[str, list[int]] = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
@@ -274,7 +279,7 @@ class Index:
         return tuple(json.loads(raw)) if raw else None  # type: ignore[return-value]
 
     def wipe(self) -> None:
-        self.conn.executescript("DELETE FROM meta; DELETE FROM rows; DELETE FROM item_files; DELETE FROM archive_files; DELETE FROM archive_items;")
+        self.conn.executescript("DELETE FROM meta; DELETE FROM rows; DELETE FROM item_files; DELETE FROM archive_files; DELETE FROM archive_items; DELETE FROM ledger_sources;")
         self.conn.execute("INSERT INTO meta (key, value) VALUES ('version', ?)", (str(INDEX_VERSION),))
         self.totals = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
 
@@ -295,6 +300,40 @@ class Index:
 
     def digest(self) -> str:
         return changeset.digest_from_totals(self.totals)
+
+    # -- ledger source ids and extra rows ------------------------------------
+
+    def replace_sources(self, source_ids: Iterable[str]) -> None:
+        """Make the index hold exactly the source ids of the ledger entries."""
+        self.start_write()
+        self.conn.execute("DELETE FROM ledger_sources")
+        self.add_sources(source_ids)
+
+    def add_sources(self, source_ids: Iterable[str]) -> None:
+        self.start_write()
+        self.conn.executemany("INSERT OR IGNORE INTO ledger_sources (source_id) VALUES (?)",
+                              ((str(value),) for value in source_ids if value))
+
+    def sources_present(self, source_ids: Iterable[str]) -> set[str]:
+        """The ids among ``source_ids`` that a ledger entry holds (one lookup for each id)."""
+        wanted = sorted({str(value) for value in source_ids if value})
+        found: set[str] = set()
+        for start in range(0, len(wanted), _CHUNK):
+            chunk = wanted[start:start + _CHUNK]
+            marks = ",".join("?" for _ in chunk)
+            found.update(str(row[0]) for row in self.conn.execute(
+                f"SELECT source_id FROM ledger_sources WHERE source_id IN ({marks})", chunk))
+        return found
+
+    def all_sources(self) -> frozenset[str]:
+        return frozenset(str(row[0]) for row in self.conn.execute("SELECT source_id FROM ledger_sources"))
+
+    def replace_extra(self, name: str, rows: Mapping[str, Any]) -> None:
+        """Make the index hold exactly ``rows`` for a section that has no digest total."""
+        self.start_write()
+        self.conn.execute("DELETE FROM rows WHERE section = ?", (name,))
+        self.conn.executemany("INSERT INTO rows (section, key, value) VALUES (?, ?, ?)",
+                              ((name, str(key), _canon(value)) for key, value in rows.items()))
 
     # -- rows ---------------------------------------------------------------
 
@@ -384,7 +423,7 @@ def _has_archive(root: Path) -> bool:
 
 def _signatures(root: Path) -> dict[str, Any]:
     result: dict[str, Any] = {"sql": _db_token(root / "ledger.sqlite")}
-    for relative in FILE_SECTIONS:
+    for relative in (*FILE_SECTIONS, *EXTRA_FILES):
         result[relative] = capture_log.signature(root / relative)
     return result
 
@@ -437,6 +476,26 @@ def ledger_totals(ledger: Path) -> dict[str, list[int]]:
             raise ChangeSetError(f"The ledger store cannot be read: {exc}") from exc
     finally:
         conn.close()
+
+
+def _read_sources(ledger: Path) -> list[str]:
+    """The source id of every ledger entry that has one: a read in full."""
+    conn = changeset._connect_read_only(ledger)
+    if conn is None:
+        return []
+    try:
+        try:
+            return [str(row[0]) for row in conn.execute(
+                "SELECT source_id FROM entries WHERE source_id IS NOT NULL AND source_id != ''")]
+        except sqlite3.DatabaseError as exc:
+            raise ChangeSetError(f"The ledger store cannot be read: {exc}") from exc
+    finally:
+        conn.close()
+
+
+def _read_extra(root: Path, relative: str) -> dict[str, Any]:
+    from . import work
+    return work.load_reconciliations(root / relative)
 
 
 def _read_file_section(root: Path, relative: str) -> dict[str, Any]:
@@ -645,10 +704,11 @@ def _sync_queue_names(index: Index, root: Path, names: Sequence[str], archives: 
         if arch is not None:
             new_rows[str(arch[0])] = json.loads(arch[1])
     touched = {sid for sid in (*old_ids.values(), *new_ids.values()) if sid is not None}
+    affected_names = set(affected)  # Once: a set for each source id made a build from nothing quadratic.
     for sid in touched:  # Another unchanged name with the same source id makes the result depend on the file order.
         holders = {str(r[0]) for r in conn.execute("SELECT name FROM item_files WHERE source_id = ?", (sid,))}
         holders |= {str(r[0]) for r in conn.execute("SELECT name FROM archive_items WHERE source_id = ?", (sid,))}
-        if holders - set(affected):
+        if holders - affected_names:
             raise _Slow()
     old_rows = index.lookup("queue", sorted(touched))
     index.apply("queue", old_rows, new_rows)
@@ -665,6 +725,9 @@ def _rebuild(index: Index, root: Path, group: str) -> None:
         for name, total in ledger_totals(root / "ledger.sqlite").items():
             index.set_total(name, total)
         index.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('counts', ?)", (_canon(list(counts)),))
+        index.replace_sources(_read_sources(root / "ledger.sqlite"))
+    elif group in EXTRA_FILES:
+        index.replace_extra(EXTRA_FILES[group], _read_extra(root, group))
     elif FILE_SECTIONS[group] == "documents":
         index.apply("documents", index.lookup("documents", [group]), _read_file_section(root, group))
     else:
@@ -676,10 +739,29 @@ def _rebuild(index: Index, root: Path, group: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def start(root: Path) -> "Run | None":
-    """Prepare the capture before a command. ``None`` means that the incremental capture is not possible here."""
+_ACTIVE: dict[tuple[int, str], "Run"] = {}
+_ACTIVE_LOCK = threading.Lock()
+
+
+def _active_key(root: Path) -> tuple[int, str]:
+    return threading.get_ident(), os.path.realpath(root)
+
+
+def start(root: Path) -> "Handle | None":
+    """Prepare the capture before a command. ``None`` means that the incremental capture is not possible here.
+
+    A second capture of the same company in the same thread (a change set inside a work capture, or the reverse) joins
+    the run that is active: the triggers, the log and the journal are installed one time, and each capture gets its own
+    handle. The index changes only when the last handle finishes, so each capture compares with the state that the
+    index saved before the outermost command. A capture can join only while nothing has changed since the run started;
+    otherwise ``start`` returns ``None`` and the caller reads in full.
+    """
     if not root.is_dir():
         return None
+    with _ACTIVE_LOCK:
+        active = _ACTIVE.get(_active_key(root))
+    if active is not None and not active.closed:
+        return active.join()
     try:
         index = Index(root)
     except (sqlite3.Error, OSError):
@@ -713,7 +795,10 @@ def start(root: Path) -> "Run | None":
             conn.close()
     run = Run(root, index, signatures, position, index.digest(), index.counts() or (0, 0, 0), bool(problems))
     run.begin()
-    return run
+    handle = run.new_handle()
+    with _ACTIVE_LOCK:
+        _ACTIVE[_active_key(root)] = run
+    return handle
 
 
 def _real_counts(root: Path) -> tuple[int, int, int]:
@@ -748,6 +833,62 @@ class Run:
         self.cleaned = False
         self.ledger_full_read = False
         self.closed = False
+        self.handles: list["Handle"] = []
+
+    def new_handle(self) -> "Handle":
+        handle = Handle(self)
+        self.handles.append(handle)
+        return handle
+
+    def join(self) -> "Handle | None":
+        """A handle for a second capture, or ``None`` when the run cannot show what it changed from now on."""
+        if self.closed or self.token is None or self.journal is None or all(h.done for h in self.handles):
+            return None
+        try:
+            current = _signatures(self.root)
+            if any(current[group] != value for group, value in self.start_signatures.items() if group != "sql"):
+                return None
+            if any(log.writes for log in self.journal.files.values()):
+                return None
+            if not self._queue_unchanged():
+                return None
+            conn = changeset._connect_read_only(self.root / "ledger.sqlite")
+            try:
+                if conn is None or changeset._position(conn) != self.position:
+                    return None
+                if _logged_keys(conn, self.token) != ([], []):
+                    return None
+            finally:
+                if conn is not None:
+                    conn.close()
+        except (sqlite3.Error, OSError):
+            return None
+        return self.new_handle()
+
+    def _queue_unchanged(self) -> bool:
+        """True when no review item file or archive differs from the signatures that the index saved at the start."""
+        if _has_group_journal(self.root):
+            return False
+        index = Index(self.root)
+        try:
+            saved = {str(name): str(sig) for name, sig in index.conn.execute("SELECT name, sig FROM item_files")}
+            saved_archive = {str(name): str(sig) for name, sig in index.conn.execute("SELECT name, sig FROM archive_files")}
+        finally:
+            index.close()
+        return _sweep(self.root) == saved and _sweep(self.root, changeset._ARCHIVE_DIR) == saved_archive
+
+    def release(self, handle: "Handle") -> None:
+        handle.released = True
+        if all(h.released for h in self.handles):
+            self.close()
+
+    def saved_index(self) -> Index:
+        """The index as it was saved before the command (any open change is rolled back)."""
+        try:
+            self.index.close()
+        except sqlite3.Error:
+            pass
+        return Index(self.root)
 
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.
@@ -758,6 +899,9 @@ class Run:
         if self.closed:
             return
         self.closed = True
+        with _ACTIVE_LOCK:
+            if _ACTIVE.get(_active_key(self.root)) is self:
+                del _ACTIVE[_active_key(self.root)]
         if self.journal is not None:
             capture_log.end(self.journal)
         if not self.cleaned:
@@ -769,10 +913,33 @@ class Run:
 
     # -- finish ---------------------------------------------------------------
 
-    def finish(self, failed: bool, books_revision: int | None, base_revision: int | None = None) -> dict[str, Any]:
+    def finish(self, handle: "Handle", failed: bool, books_revision: int | None, base_revision: int | None = None,
+               probe: Any = None) -> dict[str, Any]:
+        """Build the document of one capture. Only the last handle to finish saves the index and removes the log.
+
+        An earlier handle reads the same index and the same log, and then rolls its index changes back, so the
+        capture that finishes later still compares with the state before the command. ``probe`` is called with the
+        old and new rows of the queue and staging files, before the ledger totals change (see ``Probe``).
+        """
+        handle.done = True
+        last = all(h.done for h in self.handles)
         root, journal = self.root, self.journal
         assert journal is not None
-        capture_log.end(journal)  # Later writes (the cleanup below) are not part of the command.
+        if last:
+            capture_log.end(journal)  # Later writes (the cleanup below) are not part of the command.
+        try:
+            return self._finish(handle, last, journal, failed, books_revision, base_revision, probe)
+        except BaseException:
+            if not handle.committed:
+                try:
+                    self.index.close()  # Rolls back the open transaction, so the next capture can write.
+                except sqlite3.Error:
+                    pass
+            raise
+
+    def _finish(self, handle: "Handle", last: bool, journal: capture_log.Session, failed: bool,
+                books_revision: int | None, base_revision: int | None, probe: Any) -> dict[str, Any]:
+        root = self.root
         self.index = Index(root)
         self.index.start_write()
         index = self.index
@@ -781,6 +948,9 @@ class Run:
         slow_sql = self._sql(before, after)
         self._queue(before, after)
         self._files(before, after)
+        extras = self._extras()
+        if probe is not None:
+            probe(Probe(index, before, after, extras, self.position))
         # Position and counts of the ledger after the command.
         conn = changeset._connect_read_only(root / "ledger.sqlite")
         try:
@@ -798,6 +968,7 @@ class Run:
         if conn is None:
             for name in LEDGER_SECTIONS:
                 index.set_total(name, [0, 0])
+            index.replace_sources(())
         after.digest_value = index.digest()
 
         def after_digest(document: dict[str, Any]) -> str:
@@ -805,6 +976,9 @@ class Run:
             return index.digest()
 
         document = changeset._build(before, after, root, books_revision, failed, base_revision, after_digest)
+        if not last:
+            index.close()  # Rolls back: the index keeps the state before the command for the next handle.
+            return document
         # Save the counts for the next capture.
         if real_counts is not None:
             counts = real_counts
@@ -822,6 +996,7 @@ class Run:
         for group, current in _signatures(root).items():
             index.set_token(group, current)
         index.commit()
+        handle.committed = True
         index.close()
         return document
 
@@ -844,7 +1019,9 @@ class Run:
             self.ledger_full_read = True
             for name, total in ledger_totals(self.root / "ledger.sqlite").items():
                 index.set_total(name, total)
+            index.replace_sources(_read_sources(self.root / "ledger.sqlite"))
             return
+        index.add_sources(entry["source_id"] for entry in document["entries_added"])
         for entry in document["entries_added"]:
             index.add_total("entries", str(entry["id"]), entry)
         for row in document["balance_assertions_added"]:
@@ -955,3 +1132,51 @@ class Run:
                 setattr(before, section, old_rows)
                 setattr(after, section, new_rows)
             index.apply(section, old_rows, new_rows)
+
+    # -- files that only work events read -------------------------------------------
+
+    def _extras(self) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+        """Update the rows of the extra files that changed. Returns the old and the new rows of each section."""
+        found: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+        for relative, section in EXTRA_FILES.items():
+            if capture_log.signature(self.root / relative) == self.start_signatures[relative]:
+                continue
+            old_rows, new_rows = self.index.section(section), _read_extra(self.root, relative)
+            self.index.replace_extra(section, new_rows)
+            found[section] = (old_rows, new_rows)
+        return found
+
+
+class Probe:
+    """What a capture can read from a finishing run before the ledger totals change.
+
+    ``before`` and ``after`` hold the old and new rows of the queue and staging files that changed (see ``_Side``).
+    ``index`` is the index in the transaction of this finish: the staging and queue sections already hold the new rows,
+    and ``ledger_sources`` still holds the ledger as it was before the command.
+    """
+
+    def __init__(self, index: Index, before: "changeset._Side", after: "changeset._Side",
+                 extras: Mapping[str, tuple[dict[str, Any], dict[str, Any]]], position: Mapping[str, Any]) -> None:
+        self.index, self.before, self.after, self.extras, self.position = index, before, after, extras, position
+
+
+class Handle:
+    """One capture's view of a (shared) run. It has the same ``finish`` and ``close`` as a run of one capture."""
+
+    def __init__(self, run: Run) -> None:
+        self.run = run
+        self.done = False
+        self.released = False
+        self.committed = False
+
+    def finish(self, failed: bool, books_revision: int | None, base_revision: int | None = None,
+               probe: Any = None) -> dict[str, Any]:
+        return self.run.finish(self, failed, books_revision, base_revision, probe)
+
+    def close(self) -> None:
+        self.run.release(self)
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "run":
+            raise AttributeError(name)
+        return getattr(self.run, name)

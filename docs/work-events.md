@@ -62,7 +62,19 @@ with work.capture(company_dir) as receipt:
 events = receipt.events
 ```
 
-`work.capture` writes no file. It reads `ledger.sqlite` in read-only mode.
+`work.capture` writes no work file. It reads `ledger.sqlite` in read-only mode.
+
+### Cost of a capture
+
+The cost of a capture depends on the rows that the command changed, not on the number of transactions in the books.
+`work.capture` uses the capture of change sets (`bookkeeping.change_capture`): the saved copy of the small tables in
+`.change-capture.sqlite` in the company folder (it also keeps the source ID of each ledger entry and the reconciliation
+records), a log of the rows that the command writes, and file signatures. A capture and a change set capture of the same
+command share one run. The first capture of a company, and the first capture after a command that ran without a capture,
+read the books in full once to build the index. `work.capture(company_dir, incremental=False)` takes two full snapshots
+instead and gives the same events. The receipt field `path` tells which way was used: `incremental`, `saved` (the new
+state was read in full and compared with the saved copy after the incremental read failed) or `full`. The script
+`benchmarks/bench_work_capture.py` times the capture at three sizes.
 
 ## Event shape
 

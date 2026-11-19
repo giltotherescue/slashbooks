@@ -31,7 +31,7 @@ from pathlib import Path
 import re
 import sqlite3
 import sys
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 SCHEMA_VERSION = 1
 
@@ -189,37 +189,55 @@ def _load_ledger(path: Path, entries_after: int | None) -> tuple[int, frozenset[
             return 0, frozenset(), ()
         if entries_after is None:
             return max_id, source_ids, ()
-        rows = conn.execute(
-            "SELECT id, date, source_id, metadata_json FROM entries WHERE id > ? ORDER BY id",
-            (entries_after,),
-        ).fetchall()
-        posting_accounts: dict[int, list[str]] = {}
-        posting_amounts: dict[int, list[str]] = {}
-        for posting in conn.execute(
-            "SELECT entry_id, account, amount FROM postings WHERE entry_id > ? ORDER BY entry_id, id",
-            (entries_after,),
-        ):
-            posting_accounts.setdefault(int(posting[0]), []).append(str(posting[1]))
-            posting_amounts.setdefault(int(posting[0]), []).append(str(posting[2]))
-        entries: list[EntryRow] = []
-        for row in rows:
-            try:
-                meta = {str(k): str(v) for k, v in json.loads(row["metadata_json"] or "[]")}
-            except (ValueError, TypeError):
-                meta = {}
-            accounts = tuple(posting_accounts.get(int(row["id"]), ()))
-            entries.append(EntryRow(
-                id=int(row["id"]),
-                date=str(row["date"] or ""),
-                source_id=str(row["source_id"] or ""),
-                paired_source_id=meta.get("paired-source-id", ""),
-                meta=meta,
-                accounts=accounts,
-                amounts=tuple(posting_amounts.get(int(row["id"]), ())),
-            ))
-        return max_id, source_ids, tuple(entries)
+        return max_id, source_ids, _load_entries(conn, entries_after)
     finally:
         conn.close()
+
+
+def _load_new_entries(path: Path, entries_after: int) -> tuple[EntryRow, ...]:
+    """The entry rows with an ID above ``entries_after``. The cost depends on the new rows only."""
+    conn = _connect_read_only(path)
+    if conn is None:
+        return ()
+    try:
+        try:
+            return _load_entries(conn, entries_after)
+        except sqlite3.DatabaseError:
+            return ()
+    finally:
+        conn.close()
+
+
+def _load_entries(conn: sqlite3.Connection, entries_after: int) -> tuple[EntryRow, ...]:
+    rows = conn.execute(
+        "SELECT id, date, source_id, metadata_json FROM entries WHERE id > ? ORDER BY id",
+        (entries_after,),
+    ).fetchall()
+    posting_accounts: dict[int, list[str]] = {}
+    posting_amounts: dict[int, list[str]] = {}
+    for posting in conn.execute(
+        "SELECT entry_id, account, amount FROM postings WHERE entry_id > ? ORDER BY entry_id, id",
+        (entries_after,),
+    ):
+        posting_accounts.setdefault(int(posting[0]), []).append(str(posting[1]))
+        posting_amounts.setdefault(int(posting[0]), []).append(str(posting[2]))
+    entries: list[EntryRow] = []
+    for row in rows:
+        try:
+            meta = {str(k): str(v) for k, v in json.loads(row["metadata_json"] or "[]")}
+        except (ValueError, TypeError):
+            meta = {}
+        accounts = tuple(posting_accounts.get(int(row["id"]), ()))
+        entries.append(EntryRow(
+            id=int(row["id"]),
+            date=str(row["date"] or ""),
+            source_id=str(row["source_id"] or ""),
+            paired_source_id=meta.get("paired-source-id", ""),
+            meta=meta,
+            accounts=accounts,
+            amounts=tuple(posting_amounts.get(int(row["id"]), ())),
+        ))
+    return tuple(entries)
 
 
 def _queue_item(raw: Any) -> dict | None:
@@ -295,6 +313,29 @@ def _in_window(value: str, window: tuple[str, str] | None) -> bool:
     return bool(day) and window[0] <= day <= window[1]
 
 
+def load_reconciliations(path: Path, window: tuple[str, str] | None = None) -> dict[str, dict[str, Any]]:
+    """The reconciliation records of a file, reduced to the fields that work events compare, by record ID."""
+    records: dict[str, dict[str, Any]] = {}
+    for record in _load_list(path):
+        record_id = str(record.get("record_id") or f"{record.get('account')}@{record.get('as_of')}")
+        if _in_window(str(record.get("as_of") or ""), window):
+            records[record_id] = {name: record.get(name) for name in _RECONCILIATION_FIELDS}
+    return records
+
+
+def _duplicate_rows(items: Iterable[Mapping[str, Any]],
+                    window: tuple[str, str] | None = None) -> dict[str, dict[str, str]]:
+    return {
+        str(item.get("source_id")): {
+            "status": str(item.get("status") or ""),
+            "date": str(item.get("date") or "")[:10],
+            "account": str(item.get("account") or ""),
+        }
+        for item in items
+        if item.get("source_id") and _in_window(str(item.get("date") or ""), window)
+    }
+
+
 def take_snapshot(
     entity_path: Path | str,
     *,
@@ -322,20 +363,8 @@ def take_snapshot(
         key: item for key, item in _load_queue(root / "review-queue").items()
         if _in_window(item["date"], window)
     }
-    reconciliations = {}
-    for record in _load_list(root / "reports" / "reconciliation.json"):
-        record_id = str(record.get("record_id") or f"{record.get('account')}@{record.get('as_of')}")
-        if _in_window(str(record.get("as_of") or ""), window):
-            reconciliations[record_id] = {name: record.get(name) for name in _RECONCILIATION_FIELDS}
-    duplicates = {
-        str(item.get("source_id")): {
-            "status": str(item.get("status") or ""),
-            "date": str(item.get("date") or "")[:10],
-            "account": str(item.get("account") or ""),
-        }
-        for item in _load_list(root / "staging" / "duplicate-candidates.json")
-        if item.get("source_id") and _in_window(str(item.get("date") or ""), window)
-    }
+    reconciliations = load_reconciliations(root / "reports" / "reconciliation.json", window)
+    duplicates = _duplicate_rows(_load_list(root / "staging" / "duplicate-candidates.json"), window)
     if window is not None:
         entries = tuple(entry for entry in entries if _in_window(entry.date, window))
     mappings = config.get("bank_account_mappings")
@@ -516,12 +545,17 @@ def work_events(
     *,
     derived: bool = False,
     observations: Mapping[str, int] | None = None,
+    known: Callable[[str], bool] | None = None,
 ) -> list[dict[str, Any]]:
     """Return the work events for the change from *before* to *after*.
 
     The result is deterministic: the same two snapshots always give the same
     events, in the same order, with the same fingerprints. An unchanged state
     gives an empty list.
+
+    ``known`` tells whether a source ID was in the books before the change (a ledger entry or a pending
+    transaction). By default it is computed from *before*. The incremental capture passes a function that asks the
+    saved index, so that *before* and *after* hold only the rows that the command changed.
     """
     observations = observations or {}
 
@@ -561,10 +595,12 @@ def work_events(
     events: list[dict[str, Any]] = []
 
     # imported: sources that arrived in the books state during this change.
-    known = set(before.entry_source_ids) | set(before.pending)
+    if known is None:
+        known_ids = set(before.entry_source_ids) | set(before.pending)
+        known = known_ids.__contains__
     arrived: dict[str, tuple[str, str]] = {}
     for source_id, txn in after.pending.items():
-        if source_id not in known:
+        if not known(source_id):
             arrived[source_id] = (str(txn.get("date") or "")[:10], _source_account(after, txn))
     # Queue corrections post a staged source; ledger corrections (correction-of)
     # post a replacement of an entry that already existed, which is no import.
@@ -573,7 +609,7 @@ def work_events(
     ]
     for entry in sorted(arrivals, key=lambda row: row.id):
         for source_id in (entry.source_id, entry.paired_source_id):
-            if source_id and source_id not in known:
+            if source_id and not known(source_id):
                 arrived[source_id] = (entry.date, entry.accounts[0] if entry.accounts else "")
     if arrived:
         events.append(_event(
@@ -676,26 +712,32 @@ def work_events(
 # ---------------------------------------------------------------------------
 
 
-_observations: ContextVar[dict[str, int] | None] = ContextVar("work_observations", default=None)
+# One dictionary for each capture that is active, so that a capture inside another capture does not hide facts from it.
+_observations: ContextVar[tuple[dict[str, int], ...]] = ContextVar("work_observations", default=())
 
 
 def observe_import(duplicates_skipped: int) -> None:
     """Record engine import facts that leave no state change (no-op outside a capture)."""
-    current = _observations.get()
-    if current is not None:
+    for current in _observations.get():
         current["duplicates_skipped"] = current.get("duplicates_skipped", 0) + int(duplicates_skipped)
 
 
 @dataclass
 class WorkCapture:
-    """Result holder for :func:`capture`; ``events`` is set when the block exits."""
+    """Result holder for :func:`capture`; ``events`` is set when the block exits.
+
+    ``path`` says how the events were found: ``incremental`` (from the rows that the command changed),
+    ``saved`` (the new state read in full and compared with the saved copy of the old state, after the incremental
+    read failed), or ``full`` (two full snapshots).
+    """
 
     entity_path: Path | None
     events: list[dict[str, Any]] = field(default_factory=list)
+    path: str = "none"
 
 
 @contextmanager
-def capture(entity_path: Path | str | None) -> Iterator[WorkCapture]:
+def capture(entity_path: Path | str | None, *, incremental: bool = True) -> Iterator[WorkCapture]:
     """Compute the work events for the command that runs inside the block.
 
     A host wraps one engine command::
@@ -708,20 +750,134 @@ def capture(entity_path: Path | str | None) -> Iterator[WorkCapture]:
     command can still change state (for example a partial import). The host
     decides whether it commits them. With ``entity_path=None`` the result is
     always an empty list.
+
+    By default the cost of the capture depends on the rows that the command changed, not on the size of the books.
+    It uses the capture of ``bookkeeping.change_capture`` (a saved copy of the small tables in
+    ``.change-capture.sqlite``, a log of the rows that the command writes, and file signatures), and it shares the
+    run with a change set capture of the same command. If that is not possible (the folder cannot hold the index,
+    a file cannot be read) it reads the books in full before and after the command. ``incremental=False`` forces that
+    full comparison. Both ways give the same events.
     """
     holder = WorkCapture(Path(entity_path) if entity_path is not None else None)
     if holder.entity_path is None:
         yield holder
         return
-    before = take_snapshot(holder.entity_path)
+    root = holder.entity_path
+    run = None
+    before: Snapshot | None = None
+    if incremental and root.is_dir():
+        try:
+            from . import change_capture
+            run = change_capture.start(root)
+        except Exception:  # noqa: BLE001 - a part that the strict reader refuses is read in full below
+            run = None
+    if run is None:
+        before = take_snapshot(root)
     observations: dict[str, int] = {}
-    token = _observations.set(observations)
+    token = _observations.set((*_observations.get(), observations))
     try:
         yield holder
     finally:
         _observations.reset(token)
-        after = take_snapshot(holder.entity_path, entries_after=before.max_entry_id)
-        holder.events = work_events(before, after, observations=observations)
+        try:
+            if run is not None:
+                holder.events, holder.path = _finish_incremental(run, root, observations)
+            else:
+                assert before is not None
+                after = take_snapshot(root, entries_after=before.max_entry_id)
+                holder.events = work_events(before, after, observations=observations)
+                holder.path = "full"
+        finally:
+            if run is not None:
+                run.close()
+
+
+def _work_queue(rows: Mapping[str, Any]) -> dict[str, dict]:
+    items = {}
+    for raw in rows.values():
+        item = _queue_item(raw)
+        if item is not None:
+            items[item["id"]] = item
+    return items
+
+
+def _truthy_id(rows: Mapping[str, Any]) -> dict[str, dict]:
+    return {str(key): row for key, row in rows.items() if isinstance(row, dict) and row.get("id")}
+
+
+def _finish_incremental(run: Any, root: Path, observations: Mapping[str, int]) -> tuple[list[dict[str, Any]], str]:
+    found: dict[str, list[dict[str, Any]]] = {}
+
+    def probe(state: Any) -> None:
+        found["events"] = _events_from_probe(state, root, observations)
+
+    try:
+        run.finish(False, None, None, probe=probe)
+    except Exception:  # noqa: BLE001
+        if "events" in found:
+            return found["events"], "incremental"  # The events do not depend on the part that failed.
+        if run.committed:
+            raise
+        return _events_from_saved(run, root, observations), "saved"
+    return found["events"], "incremental"
+
+
+def _events_from_probe(state: Any, root: Path, observations: Mapping[str, int]) -> list[dict[str, Any]]:
+    index, old_side, new_side = state.index, state.before, state.after
+    max_id = int(state.position["max_entry_id"])
+    entries = _load_new_entries(root / "ledger.sqlite", max_id)
+    old_pending, new_pending = _truthy_id(old_side.pending), _truthy_id(new_side.pending)
+    candidates = {source for entry in entries for source in (entry.source_id, entry.paired_source_id) if source}
+    candidates |= {key for key in new_pending if key not in old_pending}
+    in_ledger = index.sources_present(candidates)  # The ledger before the command: the index changes it later.
+    memo: dict[str, bool] = {}
+
+    def pending_before(source_id: str) -> bool:
+        if source_id in old_pending:
+            return True
+        if source_id in new_pending:
+            return False
+        # A row that the command did not touch is the same in the index (which already holds the new rows).
+        return bool(index.lookup("pending", [source_id]).get(source_id))
+
+    def known(source_id: str) -> bool:
+        if source_id not in memo:
+            memo[source_id] = source_id in in_ledger or pending_before(source_id)
+        return memo[source_id]
+
+    old_recon, new_recon = state.extras.get("recon", ({}, {}))
+    config = _read_json(root / "entity.json") if new_pending else None
+    config = config if isinstance(config, dict) else {}
+    mappings, csv_mappings = config.get("bank_account_mappings"), config.get("csv_account_mappings")
+    before = Snapshot(
+        max_entry_id=max_id, pending=old_pending, queue=_work_queue(old_side.queue),
+        reconciliations=old_recon, duplicates=_duplicate_rows(old_side.duplicates.values()),
+    )
+    after = Snapshot(
+        entries=entries, pending=new_pending, queue=_work_queue(new_side.queue),
+        reconciliations=new_recon, duplicates=_duplicate_rows(new_side.duplicates.values()),
+        account_mappings=mappings if isinstance(mappings, dict) else {},
+        csv_mappings=csv_mappings if isinstance(csv_mappings, dict) else {},
+    )
+    return work_events(before, after, observations=observations, known=known)
+
+
+def _events_from_saved(run: Any, root: Path, observations: Mapping[str, int]) -> list[dict[str, Any]]:
+    """The incremental read failed: compare the saved copy of the old state with a full read of the new state."""
+    index = run.saved_index()
+    try:
+        saved = Snapshot(
+            max_entry_id=int(run.position["max_entry_id"]),
+            entry_source_ids=index.all_sources(),
+            pending=_truthy_id(index.section("pending")),
+            queue=_work_queue(index.section("queue")),
+            reconciliations=index.section("recon"),
+            duplicates=_duplicate_rows(index.section("duplicates").values()),
+        )
+    finally:
+        index.close()
+    after = take_snapshot(root, entries_after=saved.max_entry_id)
+    return work_events(saved, after, observations=observations)
 
 
 def entity_path_from_args(args: argparse.Namespace) -> Path | None:
