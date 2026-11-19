@@ -281,6 +281,16 @@ class Index:
         self.trusted = False
         self.sealed_identity: tuple[Any, ...] | None = None
         self.conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+        try:
+            self._setup(root, exclusive)
+        except BaseException:
+            try:
+                self.conn.close()  # No leaked connection (and no lock) when the open fails.
+            except sqlite3.Error:
+                pass
+            raise
+
+    def _setup(self, root: Path, exclusive: bool) -> None:
         # Never WAL: in WAL mode a committed write can leave the main file as it was, and the file signature below would
         # not show it. In this mode every committed write changes the main file and its change counter.
         self.conn.execute("PRAGMA journal_mode = DELETE")
@@ -332,9 +342,11 @@ class Index:
         self.generation = self.meta("generation")
 
     def identity(self) -> tuple[Any, ...]:
-        """The identity of the index file (inode and change time) and the generation id that it holds."""
+        """The identity of the index file: inode, change time, the generation id that it holds and the change counter of
+        its header. The change time has the resolution of a clock tick, so two writes in one tick can leave it as it was:
+        the counter grows with every committed write."""
         status = os.stat(self.path)
-        return (status.st_ino, status.st_ctime_ns, self.generation)
+        return (status.st_ino, status.st_ctime_ns, self.generation, _header_counter(self.path))
 
     def close(self) -> None:
         try:
@@ -392,7 +404,7 @@ class Index:
                 if _header_counter(self.path) == (before + 1) % (1 << 32):
                     stamp = _index_stamp(root)
                     status = os.stat(self.path)  # The identity that the finish compares with, taken under the same lock.
-                    self.sealed_identity = (status.st_ino, status.st_ctime_ns, self.generation)
+                    self.sealed_identity = (status.st_ino, status.st_ctime_ns, self.generation, _header_counter(self.path))
                 _write_stamp(root, stamp)
                 self.sealed = stamp is not None
             finally:
@@ -1219,13 +1231,16 @@ class Run:
             raise ChangeSetError("The index was changed during the command.")
         self.index = Index(root)
         self.index.start_write()  # From here no other connection can write the index: check it under this lock.
+        self.index.generation = self.index.meta("generation")  # Read again under the lock.
         try:
-            status = os.stat(root / INDEX_NAME)
+            now = self.index.identity()
         except OSError:
             raise ChangeSetError("The index was removed during the command.") from None
-        if (status.st_ino, status.st_ctime_ns) != self.identity[:2]:
+        if now[:2] != self.identity[:2]:
             raise ChangeSetError("The index was changed during the command.")
-        if self.index.generation != self.identity[2]:
+        if now[3] != self.identity[3]:
+            raise ChangeSetError("The index was written during the command.")
+        if now[2] != self.identity[2]:
             raise ChangeSetError("The index was replaced during the command.")
         index = self.index
         before = changeset._Side(self.position, self.counts, {}, {}, {}, {}, {}, {}, {}, {}, [], {}, self.digest)

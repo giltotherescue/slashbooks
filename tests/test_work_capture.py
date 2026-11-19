@@ -752,6 +752,69 @@ class IndexLockTests(IndexSealTests):
         self.assertEqual((receipt.complete, receipt.events), (False, []))
         self.wrong_id_check()
 
+    def test_a_write_in_the_same_clock_tick_is_found_by_the_change_counter(self) -> None:
+        """Simulate a file system whose change time has not moved: inode, ctime and generation stay equal."""
+        import os
+        import types
+        self.both(lambda: None, nonempty=False)
+        real_stat = os.stat
+        frozen: list[int] = []
+
+        def stat(path, *args, **kwargs):
+            status = real_stat(path, *args, **kwargs)
+            if not str(path).endswith(change_capture.INDEX_NAME):
+                return status
+            if not frozen:
+                frozen.append(status.st_ctime_ns)
+            return types.SimpleNamespace(st_ino=status.st_ino, st_size=status.st_size, st_mtime_ns=status.st_mtime_ns,
+                                         st_ctime_ns=frozen[0], st_mode=status.st_mode)
+
+        with mock.patch.object(change_capture.os, "stat", stat):
+            with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+                self.assertEqual(self.other_write(), "written")
+        self.assertTrue(frozen)
+        self.assertEqual((receipt.complete, receipt.events), (False, []))
+        self.wrong_id_check()
+
+    def test_the_saved_read_also_checks_the_change_counter(self) -> None:
+        import os
+        import types
+        self.both(lambda: None, nonempty=False)
+        real_stat = os.stat
+        frozen: list[int] = []
+
+        def stat(path, *args, **kwargs):
+            status = real_stat(path, *args, **kwargs)
+            if not str(path).endswith(change_capture.INDEX_NAME):
+                return status
+            if not frozen:
+                frozen.append(status.st_ctime_ns)
+            return types.SimpleNamespace(st_ino=status.st_ino, st_size=status.st_size, st_mtime_ns=status.st_mtime_ns,
+                                         st_ctime_ns=frozen[0], st_mode=status.st_mode)
+
+        with mock.patch.object(change_capture.os, "stat", stat), \
+                mock.patch.object(work, "_events_from_probe", side_effect=RuntimeError("boom")):
+            with self.assertRaises(Exception), work.capture(self.entity) as receipt:
+                self.assertEqual(self.other_write(), "written")
+        self.assertEqual((receipt.complete, receipt.path), (False, "failed"))
+
+    def test_an_index_that_cannot_be_opened_leaks_no_connection(self) -> None:
+        opened: list[sqlite3.Connection] = []
+        real = sqlite3.connect
+
+        def connect(*args, **kwargs):
+            conn = real(*args, **kwargs)
+            opened.append(conn)
+            return conn
+
+        with mock.patch.object(change_capture.sqlite3, "connect", connect), \
+                mock.patch.object(change_capture, "stamp_matches", side_effect=sqlite3.OperationalError("locked")):
+            with self.assertRaises(sqlite3.OperationalError):
+                change_capture.Index(self.entity, exclusive=True)
+        self.assertTrue(opened)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            opened[0].execute("SELECT 1")  # Closed.
+
     def test_stray_side_files_are_removed_and_the_next_capture_is_warm(self) -> None:
         self.both(lambda: None, nonempty=False)
         path = self.entity / change_capture.INDEX_NAME
