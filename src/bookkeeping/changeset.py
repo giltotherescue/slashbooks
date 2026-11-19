@@ -6,7 +6,9 @@ changes a change set.
 
 Ledger rows are append-only, so the new entries, postings, balance assertions and audit events come from row ids
 above the saved position. The smaller tables (accounts, bank rows, review queue, staging, learned context) are
-compared by key.
+compared by key. ``capture`` reads only the rows that the command changed (see ``bookkeeping.change_capture``): its
+cost grows with the size of the change, not with the size of the books. ``capture(..., incremental=False)`` compares
+two full reads of the books instead, and gives the same document.
 
 A host wraps one command::
 
@@ -239,7 +241,15 @@ def _queue_item(raw: Any) -> dict[str, Any] | None:
 
 
 def load_queue(root: Path) -> dict[str, dict[str, Any]]:
-    """Every review item by ``source_id``: item files and month archives, read with the queue module.
+    """Every review item by ``source_id``, read in full. See ``load_queue_files``."""
+    items: dict[str, dict[str, Any]] = {}
+    for _, item in sorted(load_queue_files(root).items()):
+        items[str(item["source_id"])] = item
+    return items
+
+
+def load_queue_files(root: Path) -> dict[str, dict[str, Any]]:
+    """Every review item by file name: item files and month archives, read with the queue module.
 
     The archive reader is the one of the queue module (``queue.load_all_items``): it refuses a corrupt archive or a
     version it does not know, and it reads item files before archives, so an item that a compaction moves during the
@@ -271,10 +281,10 @@ def load_queue(root: Path) -> dict[str, dict[str, Any]]:
     if unread:
         raise ChangeSetError("A review item file cannot be read: " + ", ".join(sorted(unread)[:3]))
     items: dict[str, dict[str, Any]] = {}
-    for _, raw in sorted(named.items()):
+    for name, raw in sorted(named.items()):
         item = _queue_item(raw)
         if item is not None:
-            items[str(item["source_id"])] = item
+            items[name] = item
     return items
 
 
@@ -307,7 +317,7 @@ def _load_ids(path: Path) -> list[str]:
         return []
     if not isinstance(data, list):
         raise ChangeSetError(f"{path.name} is not a JSON list.")
-    return sorted(str(value) for value in data)
+    return sorted({str(value) for value in data})
 
 
 def _load_learned(root: Path) -> dict[str, Any]:
@@ -352,24 +362,65 @@ def payload_digest(payload: Any) -> str:
     return canonical_hash(payload)
 
 
-def _ledger_digest(entries: Iterable[Mapping[str, Any]], balances: Iterable[Mapping[str, Any]],
-                   events: Iterable[Mapping[str, Any]]) -> str:
-    """One running hash over the content of every ledger entry, posting, balance assertion and audit event, by id."""
-    h = hashlib.sha256()
-    for label, rows in (("entries", entries), ("balances", balances), ("audit", events)):
-        h.update(label.encode("utf-8") + b"\n")
-        for row in rows:
-            h.update(json.dumps(row, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n")
-    return h.hexdigest()
+DIGEST_SECTIONS = ("entries", "balances", "audit", "accounts", "bank", "queue", "pending", "duplicates",
+                   "store_pending", "context", "documents", "seen", "learned")
+DIGEST_VERSION = 3
+_MODULUS = 1 << 512
+
+
+def row_hash(section: str, key: str, value: Any) -> int:
+    """The hash of one row of one section, as an integer. A row of the same content always gives the same hash."""
+    body = json.dumps([section, key, value], sort_keys=True, separators=(",", ":"))
+    return int.from_bytes(hashlib.sha512(body.encode("utf-8")).digest(), "big")
+
+
+def digest_from_totals(totals: Mapping[str, Sequence[int]]) -> str:
+    """The digest of a state from its totals: for each section, the number of rows and the sum of the row hashes.
+
+    The sum is taken modulo 2**512, so it does not depend on the order of the rows, and a row can be added or removed
+    without a read of the other rows. The digest covers the content of every row of every section. A change of one
+    row is a change of the digest.
+    """
+    body = {"version": DIGEST_VERSION,
+            "sections": {name: [int(totals[name][0]), format(int(totals[name][1]) % _MODULUS, "0128x")]
+                         for name in DIGEST_SECTIONS}}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def section_total(name: str, rows: Iterable[tuple[str, Any]]) -> list[int]:
+    """The total (count and hash sum) of the rows ``(key, value)`` of one section."""
+    count = total = 0
+    for key, value in rows:
+        count += 1
+        total += row_hash(name, key, value)
+    return [count, total % _MODULUS]
+
+
+def _state_digest(**parts: Any) -> str:
+    """The digest of the whole authoritative state, from its rows. The engine and a host view compute it alike.
+
+    Each part is a mapping of row key to row (``seen`` is a list of ids). ``accounts`` is keyed by account name.
+    """
+    totals = {}
+    for name in DIGEST_SECTIONS:
+        rows = parts[name]
+        items = ((str(key), None) for key in rows) if name == "seen" else ((str(k), v) for k, v in rows.items())
+        totals[name] = section_total(name, items)
+    return digest_from_totals(totals)
 
 
 @dataclass
 class _Side:
-    """The tables of one company state, the content digest of its ledger, and its ledger position."""
+    """The tables of one company state and its ledger position.
+
+    A side of a full read holds every row. A side of an incremental capture holds only the rows that the command may
+    have changed: the same keys on both sides, so a key that is missing on one side was added or removed. ``digest``
+    is the digest of the whole state. ``counts`` is ``None`` when the caller has shown by another check that no
+    earlier ledger row changed.
+    """
 
     position: dict[str, Any]
-    counts: tuple[int, int, int]
-    ledger_digest: str
+    counts: tuple[int, int, int] | None
     accounts: dict[int, dict[str, Any]]
     bank: dict[str, tuple[str, str, str]]
     queue: dict[str, dict[str, Any]]
@@ -380,19 +431,17 @@ class _Side:
     documents: dict[str, Any]
     seen: list[str]
     learned: dict[str, Any]
+    digest: str = ""
+    ledger: tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None = None  # entries, balances, audit by id (full read)
 
-    def digest(self) -> str:
+    def full_digest(self) -> str:
+        entries, balances, events = self.ledger or ({}, {}, {})
         return _state_digest(
-            ledger=self.ledger_digest,
+            entries=entries, balances=balances, audit=events,
             accounts={row["name"]: row for row in self.accounts.values()},
             bank={key: list(value) for key, value in self.bank.items()},
             queue=self.queue, pending=self.pending, duplicates=self.duplicates, store_pending=self.store_pending,
-            context=self.context, documents=self.documents, seen=sorted(self.seen), learned=self.learned)
-
-
-def _state_digest(**parts: Any) -> str:
-    """SHA-256 of the whole authoritative state. The engine and a host view compute it in the same way."""
-    return canonical_hash(parts)
+            context=self.context, documents=self.documents, seen=self.seen, learned=self.learned)
 
 
 def _take(root: Path) -> _Side:
@@ -402,15 +451,16 @@ def _take(root: Path) -> _Side:
             position, counts = _position(conn), _counts(conn)
             accounts = _load_accounts(conn) if conn is not None else {}
             bank = _load_bank_index(conn) if conn is not None else {}
-            ledger = (_ledger_digest(_load_entries(conn, 0), _load_balances(conn, 0), _load_audit(conn, 0))
-                      if conn is not None else _ledger_digest((), (), ()))
+            ledger = (({str(e["id"]): e for e in _load_entries(conn, 0)},
+                       {str(b["id"]): b for b in _load_balances(conn, 0)},
+                       {str(v["id"]): v for v in _load_audit(conn, 0)}) if conn is not None else ({}, {}, {}))
         except sqlite3.DatabaseError as exc:
             raise ChangeSetError(f"The ledger store cannot be read: {exc}") from exc
     finally:
         if conn is not None:
             conn.close()
-    return _Side(
-        position=position, counts=counts, ledger_digest=ledger, accounts=accounts, bank=bank,
+    side = _Side(
+        position=position, counts=counts, ledger=ledger, accounts=accounts, bank=bank,
         queue=load_queue(root) if root.is_dir() else {},
         pending=_load_keyed(root / _PENDING_FILE, "id"),
         duplicates=_load_keyed(root / _DUPLICATES_FILE, "source_id"),
@@ -419,6 +469,9 @@ def _take(root: Path) -> _Side:
         seen=_load_ids(root / _SEEN_FILE),
         learned=_load_learned(root),
     )
+    side.digest = side.full_digest()
+    side.ledger = None  # The rows are not needed after the digest.
+    return side
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +543,7 @@ def _queue_rows(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[dic
 
 
 _EMPTY_DIGEST = _state_digest(
-    ledger=_ledger_digest((), (), ()), accounts={}, bank={}, queue={}, pending={}, duplicates={}, store_pending={},
+    entries={}, balances={}, audit={}, accounts={}, bank={}, queue={}, pending={}, duplicates={}, store_pending={},
     context={}, documents={}, seen=[], learned={})
 
 
@@ -550,17 +603,20 @@ def _account_changes(before: Mapping[int, Mapping[str, Any]], after: Mapping[int
     return {"opened": opened, "renamed": renamed, "updated": updated, "removed": removed}
 
 
-def _build(before: _Side, root: Path, books_revision: int | None, failed: bool = False,
-           base_revision: int | None = None) -> dict[str, Any]:
-    after = _take(root)
+def _build(before: _Side, after: _Side, root: Path, books_revision: int | None, failed: bool = False,
+           base_revision: int | None = None, after_digest: Any = None) -> dict[str, Any]:
+    """The change set from two sides. A side may hold only the rows that the command may have changed (``_Side``).
+
+    ``after_digest`` is a function of the document so far (entries, balance assertions, audit events, accounts) that
+    returns the digest after the command. An incremental capture needs it, because the new ledger rows are the
+    rows that update its totals. Without it the digest of ``after`` is used.
+    """
     conn = _connect_read_only(root / "ledger.sqlite") if root.is_dir() else None
     try:
-        document = _empty(books_revision, before.position, before.digest(), complete=not failed,
+        document = _empty(books_revision, before.position, before.digest, complete=not failed,
                           reason="command_failed" if failed else None, base_revision=base_revision)
         document["ledger"]["after"] = dict(after.position)
-        document["state"]["after"] = after.digest()
-        entries_after, postings_after, balances_after = after.counts
-        entries_before, postings_before, balances_before = before.counts
+        document["state"]["after"] = after.digest
         entry_floor = before.position["max_entry_id"]
         balance_floor = before.position["max_balance_assertion_id"]
         audit_floor = before.position["audit_event_id"] or 0
@@ -572,10 +628,14 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
                    if audit_floor else None)
             chain_broken = bool(audit_floor) and row is not None and str(row[0]) != before.position["record_hash"]
             posting_count = sum(len(entry["postings"]) for entry in entries)
-            reset = (chain_broken
-                     or entries_after != entries_before + len(entries)
-                     or postings_after != postings_before + posting_count
-                     or balances_after != balances_before + len(balances))
+            counts_differ = False
+            if before.counts is not None and after.counts is not None:
+                entries_before, postings_before, balances_before = before.counts
+                entries_after, postings_after, balances_after = after.counts
+                counts_differ = (entries_after != entries_before + len(entries)
+                                 or postings_after != postings_before + posting_count
+                                 or balances_after != balances_before + len(balances))
+            reset = chain_broken or counts_differ
             if reset:
                 entries, balances, audit_floor = _load_entries(conn, 0), _load_balances(conn, 0), 0
             events = _load_audit(conn, audit_floor)  # The whole rows, so a host can check the chain
@@ -588,6 +648,9 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
                 "count": len(events), "events": events,
             }
             document["accounts"] = _account_changes(before.accounts, after.accounts, events)
+            document["reset"] = reset
+            if after_digest is not None:
+                document["state"]["after"] = after_digest(document)
             changed_ids = sorted(
                 key for key in set(before.bank) | set(after.bank) if before.bank.get(key) != after.bank.get(key))
             rows = _bank_rows(conn, [key for key in changed_ids if key in after.bank])
@@ -631,7 +694,7 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
         or document["documents"]
         or document["learned_context"] or document["audit"]["count"]
         or document["ledger"]["before"] != document["ledger"]["after"]
-        or before.digest() != after.digest()
+        or document["state"]["before"] != document["state"]["after"]
         or any(document["staging"][name][part] for name in document["staging"] for part in document["staging"][name]))
     if failed and not document["changed"]:
         # The command failed and left nothing: the state is the state before, so the change set is complete.
@@ -661,7 +724,7 @@ class ChangeSetCapture:
 
 @contextmanager
 def capture(entity_path: Path | str | None, *, books_revision: int | None = None,
-            base_revision: int | None = None) -> Iterator[ChangeSetCapture]:
+            base_revision: int | None = None, incremental: bool = True) -> Iterator[ChangeSetCapture]:
     """Compute the change set for the command that runs inside the block.
 
     ``base_revision`` is the revision of the host view before the command. ``books_revision`` is the revision that the
@@ -672,6 +735,12 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
     applying it. If the state cannot be read in full before or after the command, or if any step after the command body
     raises (the read after, the digest), the change set is also incomplete (``reason``). The capture never stops the
     command itself. With ``entity_path=None`` the result is an empty change set.
+
+    By default the capture reads only the rows that the command changed (``bookkeeping.change_capture``). It keeps a
+    saved copy of the small tables in ``.change-capture.sqlite`` in the company folder, and it lists the changed rows
+    with a log that it adds to ``ledger.sqlite`` while the command runs and removes after. When it cannot do that (the
+    folder cannot be written) it reads the books in full before and after the command. ``incremental=False`` forces
+    that full comparison. Both ways give the same document.
     """
     holder = ChangeSetCapture(Path(entity_path) if entity_path is not None else None, books_revision, base_revision)
     holder.change_set = _incomplete(books_revision, "not_finished", base_revision)  # A reader never sees a complete receipt early
@@ -679,30 +748,43 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
         holder.change_set = _empty(books_revision, base_revision=base_revision)
         yield holder
         return
+    run = None
+    before: _Side | None = None
     try:
-        before: _Side | None = _take(holder.entity_path)
+        if incremental:
+            from . import change_capture
+            run = change_capture.start(holder.entity_path)
+        if run is None:
+            before = _take(holder.entity_path)
     except Exception:  # noqa: BLE001 - any failure to read the state means that no change set can be complete
         before = None
+        run = None
     try:
         yield holder
     except BaseException:
         holder.failed = True
         raise
     finally:
-        holder.change_set = _finish(before, holder)
+        holder.change_set = _finish(before, holder, run)
 
 
-def _finish(before: "_Side | None", holder: ChangeSetCapture) -> dict[str, Any]:
+def _finish(before: "_Side | None", holder: ChangeSetCapture, run: Any = None) -> dict[str, Any]:
     """Build the change set. It never raises: any failure after the command body gives ``complete: false``."""
     revision, base = holder.books_revision, holder.base_revision
-    if before is None:
-        return _incomplete(revision, "state_unreadable", base)
     try:
-        return _build(before, holder.entity_path, revision, holder.failed, base)  # type: ignore[arg-type]
+        if run is not None:
+            return run.finish(holder.failed, revision, base)
+        if before is None:
+            return _incomplete(revision, "state_unreadable", base)
+        return _build(before, _take(holder.entity_path), holder.entity_path,  # type: ignore[arg-type]
+                      revision, holder.failed, base)
     except ChangeSetError:
         return _incomplete(revision, "state_unreadable", base)
     except Exception:  # noqa: BLE001
         return _incomplete(revision, "finalize_failed", base)
+    finally:
+        if run is not None:
+            run.close()
 
 
 def _incomplete(books_revision: int | None, reason: str, base_revision: int | None = None) -> dict[str, Any]:
@@ -796,17 +878,17 @@ def view_digest(view: Mapping[str, Any]) -> str:
     payload rows, not read from the stored hash.
     """
     staging = view["staging"]
-    ordered = lambda rows: [rows[key] for key in sorted(rows)]  # noqa: E731
     return _state_digest(
-        ledger=_ledger_digest(ordered(view["entries"]), ordered(view["balance_assertions"]),
-                              ordered(view["audit_events"])),
+        entries={str(key): row for key, row in view["entries"].items()},
+        balances={str(key): row for key, row in view["balance_assertions"].items()},
+        audit={str(key): row for key, row in view["audit_events"].items()},
         accounts=view["accounts"],
         bank={key: [row["status"], row["imported_at"],
                     payload_digest(row["row"]) if row["row"] is not None else row["payload_sha256"]]
               for key, row in view["bank_rows"].items()},
         queue=view["review_queue"], pending=staging["pending"], duplicates=staging["duplicates"],
         store_pending=staging["store_pending"], context=staging["context_history"], documents=view["documents"],
-        seen=sorted(staging["seen_ids"]), learned=view["learned_context"])
+        seen=staging["seen_ids"], learned=view["learned_context"])
 
 
 def _apply(view: Mapping[str, Any], change_set: Mapping[str, Any]) -> dict[str, Any]:

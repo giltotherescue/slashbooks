@@ -99,6 +99,7 @@ if TYPE_CHECKING:
     from .ledger.model import Entry
 from functools import wraps
 
+from . import capture_log
 from .entity import Entity, load_entity
 from .source_ids import feed_intake_index, feed_provider_meta, source_id_variants
 from .ledger.normalize import normalize_description
@@ -1566,8 +1567,9 @@ def _remove_from_pending_categorization(entity: Entity, source_id: str, *, stric
             return
         updated = [item for item in data if str(item.get("id", "")) != source_id]
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(str(tmp), str(path))
+        with capture_log.writing(path, delta={"remove": [source_id]}):
+            tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(str(tmp), str(path))
 
 
 def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[str]) -> None:
@@ -1585,8 +1587,9 @@ def _remove_many_from_pending_categorization(entity: Entity, source_ids: list[st
             raise ValueError("Pending categorization must contain a JSON list.")
         updated = [item for item in data if str(item.get("id", "")) not in wanted]
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(str(tmp), str(path))
+        with capture_log.writing(path, delta={"remove": sorted(wanted)}):
+            tmp.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(str(tmp), str(path))
 
 
 def _set_pending_hold_reason(entity: Entity, source_ids: list[str], reason: str) -> None:
@@ -1597,15 +1600,16 @@ def _set_pending_hold_reason(entity: Entity, source_ids: list[str], reason: str)
             return
         wanted = {str(source_id) for source_id in source_ids}
         data = json.loads(path.read_text(encoding="utf-8"))
-        changed = False
+        changed: dict[str, dict] = {}
         for item in data:
             if str(item.get("id", "")) in wanted and item.get("review_hold_reason") != reason:
                 item["review_hold_reason"] = reason
-                changed = True
+                changed[str(item["id"])] = item
         if changed:
             tmp = path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            os.replace(str(tmp), str(path))
+            with capture_log.writing(path, delta={"upsert": changed}):
+                tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                os.replace(str(tmp), str(path))
 
 
 def _document_hash(value: Any) -> str:
