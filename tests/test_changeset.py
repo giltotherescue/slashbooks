@@ -313,10 +313,27 @@ class OtherBehaviorTests(unittest.TestCase):
         with_set = run_cli(["--change-set-out", str(self.root / "x.json"), *argv])
         self.assertEqual(plain, with_set)
 
-    def test_a_failed_command_that_changed_nothing_is_complete_and_empty(self) -> None:
-        document = self.seq.cli("fail", "queue", "confirm", "--entity", str(self.seq.entity), "--item", "missing",
-                                expect=1)
-        self.assertTrue(document["complete"])
+    def test_a_failed_command_is_incomplete_also_when_nothing_changed(self) -> None:
+        out = self.root / "fail.json"
+        code, _, _ = run_cli(["--change-set-out", str(out), "queue", "confirm", "--entity", str(self.seq.entity),
+                              "--item", "missing"])
+        self.assertEqual(code, 1)
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertFalse(document["complete"])
+        self.assertEqual(document["reason"], "command_failed")
+        self.assertFalse(document["changed"])
+        with self.assertRaises(changeset.ChangeSetRefused):
+            changeset.apply_change_set(self.seq.view, document)
+
+    def test_a_work_events_failure_in_a_command_that_writes_nothing_is_a_finalize_failure(self) -> None:
+        out = self.root / "fin.json"
+        with mock.patch("bookkeeping.work.work_events", side_effect=RuntimeError("finalize")):
+            with self.assertRaises(RuntimeError):
+                run_cli(["--work-out", str(self.root / "w.json"), "--change-set-out", str(out), "queue", "list",
+                         "--entity", str(self.seq.entity)])
+        document = json.loads(out.read_text(encoding="utf-8"))
+        self.assertFalse(document["complete"])
+        self.assertEqual(document["reason"], "finalize_failed")
         self.assertFalse(document["changed"])
 
     def test_a_command_that_fails_after_a_write_is_incomplete_and_the_reducer_refuses_it(self) -> None:
@@ -651,17 +668,27 @@ class OtherBehaviorTests(unittest.TestCase):
         damaged = copy.deepcopy(self.seq.view)
         damaged["bank_rows"]["cs-n"]["row"] = None
         self.assertNotEqual(changeset.view_digest(damaged), changeset.view_digest(self.seq.view))
-        # A payload that is JSON null or not an object is stored as an object, so a full read and the engine agree.
-        with self.seq.cap() as receipt:
-            conn = sqlite3.connect(self.seq.entity / "ledger.sqlite")
-            try:
-                with conn:
-                    conn.execute("INSERT INTO source_transactions (id, payload_json, status, imported_at) VALUES "
-                                 "('cs-null', 'null', 'posted', '2026-10-01T00:00:00Z')")
-            finally:
-                conn.close()
-        self.assertEqual(receipt.change_set["bank_rows"][0]["row"], {"unreadable_payload_text": "null"})
-        self.seq._apply("null_payload", receipt.change_set)
+        # A stored payload that is not a JSON object is unreadable state. It never collides with a real object.
+        for text in ("null", "[]", "not json", '{"unreadable_payload_text": "null"'):
+            with self.subTest(payload=text):
+                with self.seq.cap() as receipt:
+                    conn = sqlite3.connect(self.seq.entity / "ledger.sqlite")
+                    try:
+                        with conn:
+                            conn.execute("INSERT OR REPLACE INTO source_transactions (id, payload_json, status, "
+                                         "imported_at) VALUES ('cs-bad', ?, 'posted', '2026-10-01T00:00:00Z')", (text,))
+                    finally:
+                        conn.close()
+                self.assertFalse(receipt.change_set["complete"])
+                self.assertEqual(receipt.change_set["reason"], "state_unreadable")
+                with self.assertRaises(changeset.ChangeSetError):
+                    changeset.read_view(self.seq.entity)
+        conn = sqlite3.connect(self.seq.entity / "ledger.sqlite")
+        try:
+            with conn:
+                conn.execute("DELETE FROM source_transactions WHERE id = 'cs-bad'")
+        finally:
+            conn.close()
 
     def test_an_ingest_that_fails_to_finalize_never_leaves_a_complete_receipt(self) -> None:
         path = self.root / "second.json"
@@ -684,6 +711,18 @@ class OtherBehaviorTests(unittest.TestCase):
             self.assertFalse(document["complete"])
             self.assertTrue(document["changed"])  # The ingest wrote its rows before the failure.
 
+    def test_malformed_global_options_never_leave_an_earlier_receipt(self) -> None:
+        for argv in (["--change-set-revision", "bad"], ["--change-set-base-revision", "x"], ["--product-name"],
+                     ["--answer-reply-watermark", "z"], ["--change-set-revision"], ["--work-out"]):
+            for form in (["--change-set-out", "{}"], ["--change-set-out={}"]):
+                out = self.root / "old2.json"
+                out.write_text(json.dumps({"complete": True}), encoding="utf-8")
+                with self.subTest(argv=argv, form=form[0]):
+                    flag = [part.format(out) for part in form]
+                    with self.assertRaises(SystemExit):
+                        run_cli([*flag, *argv, "queue", "list", "--entity", str(self.seq.entity)])
+                    self.assertFalse(out.exists())
+
     def test_an_invalid_command_never_leaves_an_earlier_receipt(self) -> None:
         out = self.root / "old.json"
         out.write_text(json.dumps({"complete": True}), encoding="utf-8")
@@ -691,38 +730,92 @@ class OtherBehaviorTests(unittest.TestCase):
             run_cli(["--change-set-out", str(out), "queue", "no-such-command"])
         self.assertFalse(out.exists())
 
-    def test_null_and_malformed_members_of_a_strict_file_are_not_read(self) -> None:
-        entity = self.seq.entity
-        cases = {
-            "staging/pending-categorization.json": ["[null]", "[1]", '[{"no_id": 1}]', '[{"id": null}]'],
-            "staging/duplicate-candidates.json": ["[null]", '[{"id": "x"}]'],
-            "staging/pending.json": ["[[]]", '[{"id": ""}]'],
-            "staging/seen-ids.json": ["[null]", "[1]", '[""]'],
-            "staging/context-history.json": ['{"schema_version": 1, "rows": [null]}',
-                                             '{"schema_version": 1, "rows": [{"status": "x"}]}', "null"],
-            "staging/split-templates.json": ['{"a": null}', '{"a": {}}', "null"],
-            "staging/source-id-aliases.json": ["[null]", "[1]"],
-            "learned-context/counterparties.json": ['{"k": null}', '{"k": []}'],
-            "learned-context/accrual-rules.json": ['{"rules": null}', '{"rules": [], "receipts": 1}'],
+    VALID_FILES = {
+        "staging/pending-categorization.json": [{"id": "p1", "date": "2026-10-01", "amount": "-1.00"}],
+        "staging/duplicate-candidates.json": [{"source_id": "d1", "status": "duplicate-candidate"}],
+        "staging/pending.json": [{"id": "sp1", "date": "2026-10-01"}],
+        "staging/seen-ids.json": ["cs-001", "cs-002"],
+        "staging/context-history.json": {"schema_version": 1, "rows": [{"source_id": "c1", "status": "context-only"}]},
+        "staging/split-templates.json": {"halves": [{"account": "Expenses:Meals", "amount": "1.00"}]},
+        "staging/source-id-aliases.json": [{"source_id": "a1", "status": "confirmed-distinct"}],
+        "learned-context/counterparties.json": {"K": {"canonical_category": "", "confirmed_count": 0}},
+        "learned-context/accrual-rules.json": {"version": 1, "rules": [], "receipts": []},
+    }
+
+    def _write_valid_files(self) -> None:
+        with self.seq.cap() as receipt:
+            for name, value in self.VALID_FILES.items():
+                path = self.seq.entity / name
+                path.parent.mkdir(exist_ok=True)
+                path.write_text(json.dumps(value), encoding="utf-8")
+        self.assertTrue(receipt.change_set["complete"])
+        self.seq._apply("valid_files", receipt.change_set)
+
+    def test_every_strict_file_refuses_null_a_wrong_version_and_a_duplicate_from_a_valid_state(self) -> None:
+        self._write_valid_files()
+        bad = {
+            "staging/pending-categorization.json": ["null", "[null]", "{}", '[{"id": "p1"}, {"id": "p1"}]'],
+            "staging/duplicate-candidates.json": ["null", "[null]", '[{"source_id": "d1"}, {"source_id": "d1"}]'],
+            "staging/pending.json": ["null", "[[]]", '[{"id": "sp1"}, {"id": "sp1"}]'],
+            "staging/seen-ids.json": ["null", "[null]", '["a", "a"]'],
+            "staging/context-history.json": [
+                "null", '{"schema_version": 999, "rows": []}', '{"schema_version": 1}',
+                '{"schema_version": 1, "rows": [{"source_id": "c1"}, {"source_id": "c1"}]}',
+                '{"schema_version": 1, "rows": [], "extra": 1}'],
+            "staging/split-templates.json": ["null", '{"a": null}', '{"a": {}}', '{"a": [], "a": []}'],
+            "staging/source-id-aliases.json": ["null", "[null]", "{}"],
+            "learned-context/counterparties.json": ["null", '{"k": null}', '{"k": {}, "k": {}}'],
+            "learned-context/accrual-rules.json": ["null", '{"rules": null}', '{"rules": [], "rules": []}'],
         }
-        for name, bads in cases.items():
-            path = entity / name
-            original = path.read_text(encoding="utf-8") if path.exists() else None
-            for bad in bads:
-                with self.subTest(name=name, bad=bad):
-                    if bad == "null":
-                        # JSON null is the same as no file for a list. A document that must be an object is refused.
-                        if name not in ("staging/context-history.json",):
-                            continue
+        self.assertEqual(set(bad), set(self.VALID_FILES))
+        for name, variants in bad.items():
+            path = self.seq.entity / name
+            valid = path.read_text(encoding="utf-8")
+            for text in variants:
+                with self.subTest(name=name, bad=text):
                     with self.seq.cap() as receipt:
-                        path.parent.mkdir(exist_ok=True)
-                        path.write_text(bad, encoding="utf-8")
-                    self.assertFalse(receipt.change_set["complete"], (name, bad))
+                        path.write_text(text, encoding="utf-8")
+                    self.assertFalse(receipt.change_set["complete"], (name, text))
                     self.assertEqual(receipt.change_set["reason"], "state_unreadable")
-            if original is None:
-                path.unlink()
-            else:
-                path.write_text(original, encoding="utf-8")
+                    with self.assertRaises(changeset.ChangeSetError):
+                        changeset.read_view(self.seq.entity)
+                    path.write_text(valid, encoding="utf-8")
+        # A missing file is still an empty state, not an error.
+        with self.seq.cap() as receipt:
+            (self.seq.entity / "staging" / "pending.json").unlink()
+        self.assertTrue(receipt.change_set["complete"])
+        self.assertEqual(receipt.change_set["staging"]["store_pending"]["removed"], ["sp1"])
+        self.seq._apply("file_removed", receipt.change_set)
+
+    def test_a_replica_key_that_is_not_the_id_of_its_row_is_refused(self) -> None:
+        entity = str(self.seq.entity)
+        self.seq.cli("propose", "queue", "propose", "--entity", entity, "--source-id", "cs-001",
+                     "--category", "Expenses:Software", "--reasoning", "Tool.")
+        self.seq.cli("approve", "queue", "confirm", "--entity", entity, "--item", "cs-001")
+        self.seq.cli("reverse", "ledger", "reverse", "--entity", entity, "--source-id", "cs-001")
+        self._write_valid_files()
+        view = self.seq.view
+        for label, path in (("entries", ("entries",)), ("audit", ("audit_events",)),
+                            ("queue", ("review_queue",)), ("pending", ("staging", "pending")),
+                            ("duplicates", ("staging", "duplicates")), ("store_pending", ("staging", "store_pending")),
+                            ("accounts", ("accounts",)), ("context", ("staging", "context_history"))):
+            damaged = copy.deepcopy(view)
+            table = damaged
+            for part in path:
+                table = table[part]
+            self.assertTrue(table, label)
+            key = sorted(table, key=str)[0]
+            table[f"moved-{key}"] = table.pop(key)  # The same row under another key
+            with self.subTest(label):
+                with self.assertRaises(changeset.ChangeSetRefused):
+                    changeset.view_digest(damaged)
+        self.assertEqual(changeset.view_digest(view), self.seq.sets["valid_files"]["state"]["after"])
+        # Swapping the rows of two keys is refused too.
+        damaged = copy.deepcopy(view)
+        ids = sorted(damaged["entries"])
+        damaged["entries"][ids[0]], damaged["entries"][ids[1]] = damaged["entries"][ids[1]], damaged["entries"][ids[0]]
+        with self.assertRaises(changeset.ChangeSetRefused):
+            changeset.view_digest(damaged)
 
     def test_duplicate_candidates_are_listed(self) -> None:
         entity = self.seq.entity

@@ -188,12 +188,14 @@ def _load_bank_index(conn: sqlite3.Connection) -> dict[str, tuple[str, str, str]
 
 
 def _payload_doc(text: Any) -> dict[str, Any]:
-    """A stored payload as an object. Text that is not a JSON object is wrapped, never dropped or read as null."""
+    """A stored payload. The engine writes an object. Anything else raises ``ChangeSetError`` (``state_unreadable``)."""
     try:
         value = json.loads(text)
-    except (ValueError, TypeError):
-        value = None
-    return value if isinstance(value, dict) else {"unreadable_payload_text": str(text)}
+    except (ValueError, TypeError) as exc:
+        raise ChangeSetError("A source transaction has a payload that is not JSON.") from exc
+    if not isinstance(value, dict):
+        raise ChangeSetError("A source transaction has a payload that is not a JSON object.")
+    return value
 
 
 def _payload_hash(text: Any) -> str:
@@ -283,46 +285,69 @@ def load_queue(root: Path) -> dict[str, dict[str, Any]]:
     return items
 
 
+_MISSING = object()
+
+
+def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    keys = [key for key, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("an object has a key twice")
+    return dict(pairs)
+
+
 def _read_strict(path: Path) -> Any:
-    """The JSON value of a file. A missing file is ``None``. A file that cannot be read raises ``ChangeSetError``."""
+    """The JSON value of a file. A missing file is ``_MISSING``. JSON ``null`` is a value, never a missing file.
+
+    A file that cannot be read, is not valid JSON, or has an object with the same key twice raises ``ChangeSetError``.
+    """
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return None
+        return _MISSING
     except (OSError, UnicodeError) as exc:
         raise ChangeSetError(f"{path.name} cannot be read: {exc}") from exc
     try:
-        return json.loads(text)
+        return json.loads(text, object_pairs_hook=_no_duplicate_keys)
     except ValueError as exc:
         raise ChangeSetError(f"{path.name} is not valid JSON: {exc}") from exc
 
 
+def _unique(rows: list[Any], key: str, name: str) -> dict[str, Any]:
+    found: dict[str, Any] = {}
+    for row in rows:
+        ident = str(row[key])
+        if ident in found:
+            raise ChangeSetError(f"{name} has the {key} {ident!r} twice.")
+        found[ident] = row
+    return found
+
+
 def _load_keyed(path: Path, key: str) -> dict[str, dict[str, Any]]:
     data = _read_strict(path)
-    if data is None:
+    if data is _MISSING:
         return {}
     if not isinstance(data, list):
         raise ChangeSetError(f"{path.name} is not a JSON list.")
     for row in data:
         if not isinstance(row, dict) or not isinstance(row.get(key), (str, int)) or row.get(key) in ("", None):
             raise ChangeSetError(f"{path.name} has a row that is not an object with a {key}.")
-    return {str(row[key]): row for row in data}
+    return _unique(data, key, path.name)
 
 
 def _load_ids(path: Path) -> list[str]:
     data = _read_strict(path)
-    if data is None:
+    if data is _MISSING:
         return []
     if not isinstance(data, list):
         raise ChangeSetError(f"{path.name} is not a JSON list.")
-    if not all(isinstance(value, str) and value for value in data):
-        raise ChangeSetError(f"{path.name} has a member that is not a non-empty string.")
+    if not all(isinstance(value, str) and value for value in data) or len(set(data)) != len(data):
+        raise ChangeSetError(f"{path.name} has a member that is not a non-empty string, or a member twice.")
     return sorted(data)
 
 
 def _load_learned(root: Path) -> dict[str, Any]:
     data = _read_strict(root / _LEARNED_FILE)
-    if data is None:
+    if data is _MISSING:
         return {}
     if not isinstance(data, dict):
         raise ChangeSetError(f"{_LEARNED_FILE} is not a JSON object.")
@@ -332,24 +357,25 @@ def _load_learned(root: Path) -> dict[str, Any]:
 
 
 def _load_context(root: Path) -> dict[str, dict[str, Any]]:
-    """The rows of ``staging/context-history.json`` by source id."""
+    """The rows of ``staging/context-history.json`` by source id. The schema version must be the supported one."""
+    from .context_history import SCHEMA_VERSION as supported
     data = _read_strict(root / _CONTEXT_FILE)
-    if data is None:
+    if data is _MISSING:
         return {}
     rows = data.get("rows") if isinstance(data, dict) else None
-    if not isinstance(rows, list):
-        raise ChangeSetError(f"{_CONTEXT_FILE} has an unknown format.")
+    if not isinstance(rows, list) or data.get("schema_version") != supported or set(data) != {"schema_version", "rows"}:
+        raise ChangeSetError(f"{_CONTEXT_FILE} has an unknown format or schema version.")
     if not all(isinstance(row, dict) and isinstance(row.get("source_id"), str) and row["source_id"] for row in rows):
         raise ChangeSetError(f"{_CONTEXT_FILE} has a row that is not an object with a source_id.")
-    return {row["source_id"]: row for row in rows}
+    return _unique(rows, "source_id", _CONTEXT_FILE)
 
 
 def _load_documents(root: Path) -> dict[str, Any]:
-    """Each small whole-file document by path. A missing file is left out."""
+    """Each small whole-file document by path. A missing file is left out. JSON null is refused."""
     found = {}
     for name in DOCUMENT_FILES:
         value = _read_strict(root / name)
-        if value is None:
+        if value is _MISSING:
             continue
         if not isinstance(value, _DOCUMENT_TYPES[name]):
             raise ChangeSetError(f"{name} has an unexpected shape.")
@@ -571,12 +597,12 @@ def _account_changes(before: Mapping[int, Mapping[str, Any]], after: Mapping[int
 
 
 def _build(before: _Side, root: Path, books_revision: int | None, failed: bool = False,
-           base_revision: int | None = None) -> dict[str, Any]:
+           base_revision: int | None = None, reason: str = "command_failed") -> dict[str, Any]:
     after = _take(root)
     conn = _connect_read_only(root / "ledger.sqlite") if root.is_dir() else None
     try:
         document = _empty(books_revision, before.position, before.digest(), complete=not failed,
-                          reason="command_failed" if failed else None, base_revision=base_revision)
+                          reason=reason if failed else None, base_revision=base_revision)
         document["ledger"]["after"] = dict(after.position)
         document["state"]["after"] = after.digest()
         entries_after, postings_after, balances_after = after.counts
@@ -653,9 +679,8 @@ def _build(before: _Side, root: Path, books_revision: int | None, failed: bool =
         or document["ledger"]["before"] != document["ledger"]["after"]
         or before.digest() != after.digest()
         or any(document["staging"][name][part] for name in document["staging"] for part in document["staging"][name]))
-    if failed and not document["changed"]:
-        # The command failed and left nothing: the state is the state before, so the change set is complete.
-        document["complete"], document["reason"] = True, None
+    # A failed command is always incomplete, also when the diff shows no change: the command can have written
+    # something that the change set does not cover.
     document["fingerprint"] = _fingerprint(document)
     return document
 
@@ -677,6 +702,10 @@ class ChangeSetCapture:
     base_revision: int | None = None
     change_set: dict[str, Any] = field(default_factory=dict)
     failed: bool = False
+    #: A caller sets this after the command body ends without an error. An error after that point is a failure of a
+    #: step after the command (for example the work events), and the reason is ``finalize_failed``.
+    body_done: bool = False
+    finalize_failed: bool = False
 
 
 @contextmanager
@@ -707,6 +736,7 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
         yield holder
     except BaseException:
         holder.failed = True
+        holder.finalize_failed = holder.body_done
         raise
     finally:
         holder.change_set = _finish(before, holder)
@@ -718,7 +748,8 @@ def _finish(before: "_Side | None", holder: ChangeSetCapture) -> dict[str, Any]:
     if before is None:
         return incomplete(revision, "state_unreadable", base)
     try:
-        return _build(before, holder.entity_path, revision, holder.failed, base)  # type: ignore[arg-type]
+        return _build(before, holder.entity_path, revision, holder.failed, base,  # type: ignore[arg-type]
+                      "finalize_failed" if holder.finalize_failed else "command_failed")
     except ChangeSetError:
         return incomplete(revision, "state_unreadable", base)
     except Exception:  # noqa: BLE001
@@ -814,6 +845,23 @@ def apply_change_set(view: dict[str, Any], change_set: Mapping[str, Any]) -> dic
     return new
 
 
+def _check_keys(view: Mapping[str, Any]) -> None:
+    """Each key of a map in the view must be the id of its row. Else the view is damaged: ``ChangeSetRefused``."""
+    staging = view["staging"]
+    for label, rows, field in (
+            ("entries", view["entries"], "id"), ("balance_assertions", view["balance_assertions"], "id"),
+            ("audit_events", view["audit_events"], "id"), ("accounts", view["accounts"], "name"),
+            ("review_queue", view["review_queue"], "source_id"), ("pending", staging["pending"], "id"),
+            ("duplicates", staging["duplicates"], "source_id"), ("store_pending", staging["store_pending"], "id"),
+            ("context_history", staging["context_history"], "source_id")):
+        for key, row in rows.items():
+            if not isinstance(row, dict) or str(row.get(field)) != str(key):
+                raise ChangeSetRefused(f"A key of {label} is not the {field} of its row: do a full read.")
+    for path in view["documents"]:
+        if path not in DOCUMENT_FILES:
+            raise ChangeSetRefused("The view has a document that is not covered: do a full read.")
+
+
 def view_digest(view: Mapping[str, Any]) -> str:
     """The digest of the content of a host view (every part that a change set covers), computed from the rows.
 
@@ -821,7 +869,8 @@ def view_digest(view: Mapping[str, Any]) -> str:
     payload rows, not read from the stored hash.
     """
     staging = view["staging"]
-    ordered = lambda rows: [rows[key] for key in sorted(rows)]  # noqa: E731
+    _check_keys(view)
+    ordered = lambda rows: sorted(rows.values(), key=lambda row: int(row["id"]))  # noqa: E731
     return _state_digest(
         ledger=_ledger_digest(ordered(view["entries"]), ordered(view["balance_assertions"]),
                               ordered(view["audit_events"])),
