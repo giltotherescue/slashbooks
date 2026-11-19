@@ -20,6 +20,10 @@ Test coverage:
 
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import json
 import os
 import sqlite3
@@ -1962,6 +1966,7 @@ class TestRegressionEffectiveSourceEntries(unittest.TestCase):
                     "source-replacement",
                 ),
             ).lastrowid
+            drop_append_only_guard(conn)
             conn.execute(
                 "UPDATE entries SET metadata_json = ? WHERE id = ?",
                 ('[["correction-of", "source-original"]]', corrected_id),

@@ -17,6 +17,10 @@ Covers all U4 test scenarios from the plan:
   - Categorizer routes uncategorized to pending-categorization list.
 """
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import hashlib
 import json
 import os
@@ -856,13 +860,16 @@ class TestReadOnlyStoreIntegrity(unittest.TestCase):
     def test_stale_seal_after_balanced_content_change(self) -> None:
         self._import()
         with self._store.transaction() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount = ? WHERE amount = ?", ("999.99", "10.00"))
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount = ? WHERE amount = ?", ("-999.99", "-10.00"))
         self._assert_equivalent("halt", "does not match the latest sealed digest")
 
     def test_missing_seal(self) -> None:
         self._import()
         with self._store.transaction() as conn:
+            drop_append_only_guard(conn)
             conn.execute("DELETE FROM audit_events WHERE type = ?", ("ledger-store-sealed",))
         self._assert_equivalent("incomplete-write", "no sealed write")
 
@@ -917,6 +924,7 @@ class TestReadOnlyStoreIntegrity(unittest.TestCase):
     def test_broken_audit_chain(self) -> None:
         self._import()
         with self._store.transaction() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE audit_events SET record_hash = ? WHERE id = 1", ("bad",))
         self._assert_equivalent("halt", "audit chain is broken")
 
@@ -998,6 +1006,7 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
         )
         store = LedgerStore(default_store_path(self._entity.path))
         with store.connection() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE audit_events SET payload_json = ? WHERE id = 1", ('{"tampered":true}',))
             conn.commit()
         result = check_integrity(self._entity)
@@ -1013,7 +1022,9 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
         )
         store = LedgerStore(default_store_path(self._entity.path))
         with store.connection() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount = ? WHERE amount = ?", ("999.99", "10.00"))
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount = ? WHERE amount = ?", ("-999.99", "-10.00"))
             conn.commit()
 
@@ -1032,6 +1043,7 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
         )
         store = LedgerStore(default_store_path(self._entity.path))
         with store.connection() as conn:
+            drop_append_only_guard(conn)
             conn.execute("DELETE FROM audit_events WHERE type = ?", ("ledger-store-sealed",))
             conn.commit()
 
@@ -1050,6 +1062,7 @@ class TestAtomicWriteAndIntegrity(unittest.TestCase):
         )
         store = LedgerStore(default_store_path(self._entity.path))
         with store.connection() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE audit_events SET record_hash = ? WHERE id = 1", ("bad",))
             conn.commit()
         result = check_integrity(self._entity)
@@ -1596,6 +1609,7 @@ class TestAuditChainIntegrity(unittest.TestCase):
             count = conn.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0]
             self.assertGreater(count, 2)
             mid = count // 2
+            drop_append_only_guard(conn)
             conn.execute("UPDATE audit_events SET payload_json = ? WHERE id = ?", ('{"tampered":true}', mid))
             conn.commit()
 

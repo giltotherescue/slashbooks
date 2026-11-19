@@ -207,3 +207,43 @@ with private evidence instead of creating a replacement write.
 
 See [local books and online books](cloud.md) for ongoing remote commands and
 file-update rules. Existing local-only onboarding remains unchanged.
+
+## Checks for each write
+
+A host that runs the engine for each write can check the change, not the whole book. Each check below costs
+time in proportion to the rows that the write added. Run the full checks on a schedule.
+
+| Guarantee | Per write | Scheduled |
+| --- | --- | --- |
+| No posted row was rewritten or deleted | The append-only triggers refuse it in the database. `append_only_guard_problems(conn)` reads a fixed number of catalog rows to confirm that the triggers are in place. | `content_digest` against the seal (`check_store_integrity`) |
+| The audit chain is whole | `verify_audit_chain_since(None)` once, then `verify_audit_chain_since(head)` after each write; keep the returned `head` only when `errors` is empty. | `verify_audit_chain()` from the first event |
+| New postings name an existing entry | `posting_watermark()` before the first write, then `check_new_postings(mark)` after each write; keep its `watermark` for the next write. | `PRAGMA foreign_key_check` |
+| The file is not corrupt | No cheap check exists. | `PRAGMA integrity_check` |
+
+The incremental chain check does not read events at or before the head that the host passes. A change
+below that head is stopped by the triggers. A person with direct access to the database file can drop a
+trigger, so a scheduled run still needs the full checks. The seal digest also needs a read of the whole ledger,
+so the per-write check cannot replace it. `PRAGMA integrity_check` and `PRAGMA quick_check` read every page, so
+they have no incremental form.
+
+The triggers also refuse a replace (`REPLACE INTO`, `INSERT OR REPLACE`, an upsert) and any new row with an id that is
+not above every earlier id. So a saved head or watermark cannot skip a new row. Each check takes its new
+checkpoint from the rows that it read in one read transaction. A row that another writer adds later is
+checked by the next call.
+
+### When an incremental check can stand in for the full check
+
+- Use a head or a watermark only if an error-free check on the same file returned it. Never make one up and
+  never reuse one after a restore, a copy or a migration. `check_new_postings` gives an error, and no watermark, when
+  the watermark is above the newest posting id, or when the posting row that it names is missing or changed. The
+  watermark holds the posting id and a hash of that row and of its entry. Even so, reset both checkpoints with the
+  full checks after any restore.
+- The append-only triggers must be present the whole time. Run `append_only_guard_problems` with each check.
+- `meta`, `accounts` and `source_transactions` have no triggers. `books entity account-rename` relabels posted
+  rows. The relabel is allowed only while its hash-chained `account-renamed` event is the newest audit event,
+  and that event names the exact old and new account. When a new `account-renamed` event is in the links that
+  `verify_audit_chain_since` reads, the result has `full_check_required=True` and no head. Run the full checks
+  (`verify_audit_chain`, the seal digest in `check_store_integrity`), then call `verify_audit_chain_since(None)`
+  for a new head, and reset the posting watermark with `posting_watermark()`.
+- The incremental checks never cover the seal digest, `PRAGMA integrity_check`, `meta`, `accounts` or
+  `source_transactions`. Run those on a schedule.

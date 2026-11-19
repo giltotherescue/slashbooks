@@ -5,6 +5,10 @@ transaction with the audit event ``account-renamed`` and a new seal. Amounts do 
 """
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from datetime import date
 from decimal import Decimal
 import json
@@ -700,6 +704,7 @@ class AccountRenameTests(unittest.TestCase):
     def test_invalid_ledger_integrity_is_refused(self):
         self.post(OFFICE, "10.00", "s1")
         with self.store.transaction() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount='1.00' WHERE account=?", (OFFICE,))
         self.assert_refused("ledger_integrity")
 

@@ -692,6 +692,16 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
             if (head[0] if head else "none") != body["audit_head"]:
                 raise AccountRenameError("stale_preview", "The company changed after the preview.", "Run the preview again.")
             before = _balances(conn, [b for b, _ in pairs])
+            # The event comes first. The append-only triggers allow a relabel of posted rows only while this event
+            # is the newest audit event and names the old and new account (``ledger.store``).
+            store.append_audit_event(EVENT, {
+                "from": old, "to": new, "accounts": [list(pair) for pair in pairs],
+                "postings": effects["postings_relabelled"], "balance_assertions": effects["balance_assertions_relabelled"],
+                "files": effects["files"], "display_name_cleared": effects["display_name_cleared"],
+                # Staged rows that this account holds now. Their IDs can hash the old name, so the event keeps a
+                # durable owner for them (``source_ids.RowIds``).
+                "pending_source_ids": effects["pending_source_ids"],
+                "request_hash": body["request_hash"], "plan_hash": body["plan_hash"]}, conn)
             record = store.load_open_date_provenance(conn)
             for old_name, new_name in pairs:
                 conn.execute("UPDATE accounts SET name=? WHERE name=?", (new_name, old_name))
@@ -710,14 +720,6 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
             if after != expected:
                 raise AccountRenameError("balance_changed", "A balance changed during the rename, so nothing was written.",
                                          "Report this problem; the ledger was not changed.")
-            store.append_audit_event(EVENT, {
-                "from": old, "to": new, "accounts": [list(pair) for pair in pairs],
-                "postings": effects["postings_relabelled"], "balance_assertions": effects["balance_assertions_relabelled"],
-                "files": effects["files"], "display_name_cleared": effects["display_name_cleared"],
-                # Staged rows that this account holds now. Their IDs can hash the old name, so the event keeps a
-                # durable owner for them (``source_ids.RowIds``).
-                "pending_source_ids": effects["pending_source_ids"],
-                "request_hash": body["request_hash"], "plan_hash": body["plan_hash"]}, conn)
             # The pending record blocks every ledger writer from the old names until the files name the new one.
             store.set_meta(RENAME_PENDING_KEY, json.dumps({"from": old, "to": new, "accounts": [list(p) for p in pairs],
                                                            "files": effects["files"]}, sort_keys=True), conn)

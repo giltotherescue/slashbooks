@@ -1,4 +1,8 @@
 """Synthetic full-TB cutover, failure atomicity, and portable state proofs."""
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from copy import deepcopy
 from datetime import date
 from decimal import Decimal
@@ -454,6 +458,7 @@ class AccrualMigrationTests(unittest.TestCase):
         material, immaterial = compare._compare_tb(self.entity, self.exports, date(2026, 6, 30), Decimal("100"), Decimal("1"))
         self.assertEqual((material, immaterial), ([], []))
         with self.store.transaction() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET account='Assets:Bank:Wrong' WHERE account='Assets:Bank:Checking'")
         material, immaterial = compare._compare_tb(self.entity, self.exports, date(2026, 6, 30), Decimal("100"), Decimal("1"))
         self.assertEqual({d.account for d in material}, {"Assets:Bank:Checking", "Assets:Bank:Wrong"})

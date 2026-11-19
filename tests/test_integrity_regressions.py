@@ -1,4 +1,8 @@
 """Synthetic regression proofs for policy, recovery, and source bookkeeping."""
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
@@ -212,6 +216,7 @@ class IntegrityRegressions(unittest.TestCase):
             tieout_fixtures.post(company, BANK, '2026-01-01', '100', other='Equity:Opening-Balances')
             store = LedgerStore(company / 'ledger.sqlite')
             with store.transaction() as conn:
+                drop_append_only_guard(conn)
                 conn.execute('UPDATE entries SET source_id=?, metadata_json=?', ('opening', json.dumps([
                     ['source-id', 'opening'], ['import-source', 'quickbooks-opening']])))
             tieout_fixtures.post(company, BANK, '2026-01-15', '-20', other='Expenses:Software')

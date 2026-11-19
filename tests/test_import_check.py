@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from contextlib import redirect_stdout
 from datetime import date
 from decimal import Decimal
@@ -215,6 +219,7 @@ class ImportCheckTests(unittest.TestCase):
         self.assertEqual(import_check.check_import(self.entity, sid, ts=TS)["books_digest"], before)
         import sqlite3
         with sqlite3.connect(self.entity / "ledger.sqlite") as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount = '99.00' WHERE rowid = 1")
         self.assertNotEqual(import_check.check_import(self.entity, sid, ts=TS)["books_digest"], before)
 
