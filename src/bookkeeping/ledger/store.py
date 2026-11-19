@@ -218,6 +218,93 @@ CREATE INDEX IF NOT EXISTS audit_events_type_idx
 _GENESIS_PREV = "0" * 64
 
 
+def _append_only_guard_ddl() -> dict[str, str]:
+    """Return the engine's append-only triggers, keyed by trigger name.
+
+    The database refuses a rewrite of posted rows, so a host does not need to compare the whole ledger before and
+    after a write to find one. The legitimate paths stay open:
+
+    * ``books entity account-rename`` may change ``postings.account`` and ``balance_assertions.account`` while its
+      pending-rename record is in ``meta``. It changes no other column.
+    * ``_discard_last_audit_event`` may delete the newest ``feed-intake`` event.
+    * A correction writes a reversing entry and a replacement entry. It never edits the original entry.
+
+    A new audit event must name the current newest record hash as ``prev_hash``, so a link can only be appended
+    to the head of the chain.
+    """
+    pending = f"EXISTS (SELECT 1 FROM meta WHERE key = '{RENAME_PENDING_KEY}')"
+    refuse = "SELECT RAISE(ABORT, '{}');"
+    return {
+        "entries_append_only_update": (
+            "CREATE TRIGGER IF NOT EXISTS entries_append_only_update BEFORE UPDATE ON entries "
+            "BEGIN " + refuse.format("posted entries are append-only") + " END"
+        ),
+        "entries_append_only_delete": (
+            "CREATE TRIGGER IF NOT EXISTS entries_append_only_delete BEFORE DELETE ON entries "
+            "BEGIN " + refuse.format("posted entries are append-only") + " END"
+        ),
+        "postings_append_only_update": (
+            "CREATE TRIGGER IF NOT EXISTS postings_append_only_update BEFORE UPDATE ON postings "
+            "WHEN OLD.id IS NOT NEW.id OR OLD.entry_id IS NOT NEW.entry_id OR OLD.amount IS NOT NEW.amount "
+            "OR OLD.currency IS NOT NEW.currency OR OLD.metadata_json IS NOT NEW.metadata_json "
+            f"OR (OLD.account IS NOT NEW.account AND NOT {pending}) "
+            "BEGIN " + refuse.format("posted postings are append-only") + " END"
+        ),
+        "postings_append_only_delete": (
+            "CREATE TRIGGER IF NOT EXISTS postings_append_only_delete BEFORE DELETE ON postings "
+            "BEGIN " + refuse.format("posted postings are append-only") + " END"
+        ),
+        "balance_assertions_append_only_update": (
+            "CREATE TRIGGER IF NOT EXISTS balance_assertions_append_only_update BEFORE UPDATE ON balance_assertions "
+            "WHEN OLD.id IS NOT NEW.id OR OLD.date IS NOT NEW.date OR OLD.amount IS NOT NEW.amount "
+            "OR OLD.currency IS NOT NEW.currency "
+            f"OR (OLD.account IS NOT NEW.account AND NOT {pending}) "
+            "BEGIN " + refuse.format("balance assertions are append-only") + " END"
+        ),
+        "balance_assertions_append_only_delete": (
+            "CREATE TRIGGER IF NOT EXISTS balance_assertions_append_only_delete BEFORE DELETE ON balance_assertions "
+            "BEGIN " + refuse.format("balance assertions are append-only") + " END"
+        ),
+        "audit_events_append_only_update": (
+            "CREATE TRIGGER IF NOT EXISTS audit_events_append_only_update BEFORE UPDATE ON audit_events "
+            "BEGIN " + refuse.format("audit events are append-only") + " END"
+        ),
+        "audit_events_append_only_delete": (
+            "CREATE TRIGGER IF NOT EXISTS audit_events_append_only_delete BEFORE DELETE ON audit_events "
+            f"WHEN NOT (OLD.type = '{_DISCARDABLE_AUDIT_TYPE}' AND OLD.id = (SELECT MAX(id) FROM audit_events)) "
+            "BEGIN " + refuse.format("audit events are append-only") + " END"
+        ),
+        "audit_events_chain_head": (
+            "CREATE TRIGGER IF NOT EXISTS audit_events_chain_head BEFORE INSERT ON audit_events "
+            "WHEN NEW.prev_hash IS NOT COALESCE("
+            f"(SELECT record_hash FROM audit_events ORDER BY id DESC LIMIT 1), '{_GENESIS_PREV}') "
+            "BEGIN " + refuse.format("an audit event must extend the newest record") + " END"
+        ),
+    }
+
+
+def install_append_only_guard(conn: sqlite3.Connection) -> None:
+    """Install the append-only triggers. Safe to repeat; it changes no row, no content digest and no seal."""
+    for sql in _append_only_guard_ddl().values():
+        conn.execute(sql)
+
+
+def append_only_guard_problems(conn: sqlite3.Connection) -> list[str]:
+    """Return what is missing or changed in the append-only triggers. Cost: a fixed number of catalog rows."""
+    found = {
+        str(row[0]): str(row[1])
+        for row in conn.execute("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")
+    }
+    problems = []
+    for name, sql in _append_only_guard_ddl().items():
+        expected = sql.replace(" IF NOT EXISTS", "", 1)
+        if name not in found:
+            problems.append(f"Append-only trigger {name} is missing.")
+        elif " ".join(found[name].split()) != " ".join(expected.split()):
+            problems.append(f"Append-only trigger {name} was changed.")
+    return problems
+
+
 @dataclass(frozen=True)
 class StoreCounts:
     accounts: int = 0
@@ -287,6 +374,34 @@ def has_ledger_audit_history(conn: sqlite3.Connection) -> bool:
                         tuple(sorted(NON_LEDGER_EVENT_TYPES))).fetchone() is not None
 
 
+@dataclass(frozen=True)
+class AuditHead:
+    """A position in the audit chain: the event id and its record hash."""
+
+    position: int
+    record_hash: str
+
+
+@dataclass(frozen=True)
+class AuditChainCheck:
+    """Result of an incremental chain check. ``head`` is the new verified head, or ``None`` after an error."""
+
+    errors: list[str]
+    head: AuditHead | None
+
+
+def _verify_links(rows: Any, prev: str) -> list[str]:
+    errors: list[str] = []
+    for row in rows:
+        if row["prev_hash"] != prev:
+            errors.append(f"Audit event {row['id']}: expected prev={prev}, got {row['prev_hash']}")
+        expected = _hash_record(row["type"], row["ts"], row["payload_json"], row["prev_hash"])
+        if row["record_hash"] != expected:
+            errors.append(f"Audit event {row['id']}: record hash mismatch")
+        prev = row["record_hash"]
+    return errors
+
+
 class LedgerStore:
     """SQLite-backed canonical ledger store."""
 
@@ -347,11 +462,13 @@ class LedgerStore:
                 # writing; a store that cannot be written (read only) keeps working without it.
                 try:
                     conn.execute("CREATE INDEX IF NOT EXISTS audit_events_type_idx ON audit_events(type, id)")
+                    install_append_only_guard(conn)
                     conn.commit()
                 except sqlite3.OperationalError:
                     pass
                 return
             conn.executescript(_DDL)
+            install_append_only_guard(conn)
             for sql in (
                 "ALTER TABLE entries ADD COLUMN session TEXT",
                 "ALTER TABLE entries ADD COLUMN late_arrival INTEGER NOT NULL DEFAULT 0",
@@ -819,23 +936,73 @@ class LedgerStore:
             )
             return cursor.rowcount == 1
 
+    def audit_head(self, conn: sqlite3.Connection | None = None) -> AuditHead | None:
+        """Return the newest audit event as a position and hash, or ``None`` for an empty chain. Cost: one index read."""
+        if conn is None:
+            with self.connection() as tx:
+                return self.audit_head(tx)
+        row = conn.execute("SELECT id, record_hash FROM audit_events ORDER BY id DESC LIMIT 1").fetchone()
+        return AuditHead(int(row[0]), str(row[1])) if row else None
+
     def verify_audit_chain(self) -> list[str]:
-        errors: list[str] = []
-        prev = _GENESIS_PREV
+        """Verify every link from the first event. Cost grows with the whole chain: use it for scheduled checks."""
         with self.connection() as conn:
-            rows = conn.execute(
+            return _verify_links(conn.execute(
                 "SELECT id, type, ts, payload_json, prev_hash, record_hash FROM audit_events ORDER BY id"
-            ).fetchall()
-        for row in rows:
-            if row["prev_hash"] != prev:
-                errors.append(
-                    f"Audit event {row['id']}: expected prev={prev}, got {row['prev_hash']}"
+            ), _GENESIS_PREV)
+
+    def verify_audit_chain_since(self, verified: AuditHead | None) -> AuditChainCheck:
+        """Verify only the links after a head that an earlier check already verified.
+
+        The caller passes the head from its last good check (``AuditChainCheck.head`` or ``audit_head``). The
+        check proves that this head is still in the chain with the same hash. Then it checks each later event:
+        its ``prev_hash``, and its ``record_hash``. Cost: one index read, plus the number of new events. With
+        ``verified=None`` it verifies the whole chain.
+
+        This check does not read events at or before ``verified``. A change to those events is the job of the
+        append-only triggers (``append_only_guard_problems``) and of the scheduled ``verify_audit_chain``.
+        If the verified head is gone or has another hash, the result has an error and the caller must run the
+        full check.
+        """
+        if verified is None:
+            errors = self.verify_audit_chain()
+            return AuditChainCheck(errors, self.audit_head())
+        with self.connection() as conn:
+            row = conn.execute("SELECT record_hash FROM audit_events WHERE id = ?", (verified.position,)).fetchone()
+            if row is None or str(row[0]) != verified.record_hash:
+                return AuditChainCheck(
+                    [f"Audit event {verified.position}: the verified head is not in the chain; run the full check"],
+                    None,
                 )
-            expected = _hash_record(row["type"], row["ts"], row["payload_json"], row["prev_hash"])
-            if row["record_hash"] != expected:
-                errors.append(f"Audit event {row['id']}: record hash mismatch")
-            prev = row["record_hash"]
-        return errors
+            errors = _verify_links(conn.execute(
+                "SELECT id, type, ts, payload_json, prev_hash, record_hash FROM audit_events "
+                "WHERE id > ? ORDER BY id", (verified.position,)
+            ), verified.record_hash)
+            return AuditChainCheck(errors, self.audit_head(conn) if not errors else None)
+
+    def posting_watermark(self, conn: sqlite3.Connection | None = None) -> int:
+        """Return the newest posting id (0 if none). A host saves it before a write. Cost: one index read."""
+        if conn is None:
+            with self.connection() as tx:
+                return self.posting_watermark(tx)
+        return int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM postings").fetchone()[0])
+
+    def new_posting_foreign_key_errors(self, after_posting_id: int, conn: sqlite3.Connection | None = None) -> list[str]:
+        """Return the postings added after ``after_posting_id`` that name an entry that does not exist.
+
+        This is the only foreign key that the ledger tables have. Its parent rows cannot be deleted while the
+        append-only triggers are in place, so an existing posting cannot become an orphan. Only a new posting
+        can be one. Cost: the number of new postings, each with one primary key read. The full
+        ``PRAGMA foreign_key_check`` stays the check for a scheduled run.
+        """
+        if conn is None:
+            with self.connection() as tx:
+                return self.new_posting_foreign_key_errors(after_posting_id, tx)
+        rows = conn.execute(
+            "SELECT p.id, p.entry_id FROM postings p LEFT JOIN entries e ON e.id = p.entry_id "
+            "WHERE p.id > ? AND e.id IS NULL ORDER BY p.id", (after_posting_id,)
+        ).fetchall()
+        return [f"Posting {row[0]}: entry {row[1]} does not exist" for row in rows]
 
     def load_opens(self, conn: sqlite3.Connection | None = None) -> list[Open]:
         if conn is None:

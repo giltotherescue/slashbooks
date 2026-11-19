@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from contextlib import closing
 from copy import deepcopy
 from datetime import date
@@ -150,8 +154,10 @@ class MigrationBundleTests(unittest.TestCase):
                 (self.root / "ledger.sqlite").write_bytes(original)
                 with self.store.transaction() as sql:
                     if change == "stale-content":
+                        drop_append_only_guard(sql)
                         sql.execute("UPDATE entries SET narration='Changed synthetic narration'")
                     elif change == "missing-seal":
+                        drop_append_only_guard(sql)
                         sql.execute("DELETE FROM audit_events WHERE type='ledger-store-sealed'")
                     elif change == "missing-digest":
                         self.store.append_audit_event("ledger-store-sealed", {}, sql)
@@ -797,6 +803,7 @@ class MigrationBundleTests(unittest.TestCase):
                 path = self.root.parent / "tampered.sqlite"
                 path.write_bytes(loaded["files"]["ledger.sqlite"])
                 with closing(sqlite3.connect(path)) as sql, sql:
+                    drop_append_only_guard(sql)
                     sql.execute(query)
                 files = {**loaded["files"], "ledger.sqlite": path.read_bytes()}
                 manifest = deepcopy(loaded["manifest"])

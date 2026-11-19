@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import json
 import os
 import sys
@@ -887,6 +891,7 @@ class TestAccountAddSealing(unittest.TestCase):
                     if damage == "digest":
                         conn.execute("UPDATE accounts SET open_date='2025-01-01' WHERE name='Expenses:Original'")
                     elif damage == "chain":
+                        drop_append_only_guard(conn)
                         conn.execute("UPDATE audit_events SET record_hash=? WHERE id=(SELECT max(id) FROM audit_events)", ("0" * 64,))
                     else:
                         store.append_audit_event("intent", {"description": "Synthetic incomplete write"}, conn)

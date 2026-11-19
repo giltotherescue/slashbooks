@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import json
 import shutil
 import sqlite3
@@ -140,6 +144,7 @@ class CompareCategoriesTests(unittest.TestCase):
                 "INSERT INTO entries (date, narration, payee, source_id) VALUES (?, ?, ?, ?)",
                 ("2026-01-04", "Corrected", "Cafe", "t-meals-fixed"),
             ).lastrowid
+            drop_append_only_guard(conn)
             conn.execute(
                 "UPDATE entries SET metadata_json = ? WHERE id = ?",
                 ('[["correction-of", "t-meals"]]', new_id),

@@ -207,3 +207,21 @@ with private evidence instead of creating a replacement write.
 
 See [local books and online books](cloud.md) for ongoing remote commands and
 file-update rules. Existing local-only onboarding remains unchanged.
+
+## Checks for each write
+
+A host that runs the engine for each write can check the change, not the whole book. Each check below costs
+time in proportion to the rows that the write added. Run the full checks on a schedule.
+
+| Guarantee | Per write | Scheduled |
+| --- | --- | --- |
+| No posted row was rewritten or deleted | The append-only triggers refuse it in the database. `append_only_guard_problems(conn)` reads a fixed number of catalog rows to confirm that the triggers are in place. | `content_digest` against the seal (`check_store_integrity`) |
+| The audit chain is whole | `audit_head()` before the write, then `verify_audit_chain_since(head)` after it. | `verify_audit_chain()` from the first event |
+| New postings name an existing entry | `posting_watermark()` before the write, then `new_posting_foreign_key_errors(mark)` after it. | `PRAGMA foreign_key_check` |
+| The file is not corrupt | No cheap check exists. | `PRAGMA integrity_check` |
+
+The incremental chain check does not read events at or before the head that the host passes. A change
+below that head is stopped by the triggers. A person with direct access to the database file can drop a
+trigger, so a scheduled run still needs the full checks. The seal digest also needs a read of the whole ledger,
+so the per-write check cannot replace it. `PRAGMA integrity_check` and `PRAGMA quick_check` read every page, so
+they have no incremental form.

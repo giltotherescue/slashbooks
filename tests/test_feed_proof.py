@@ -5,6 +5,10 @@ All data is synthetic.
 
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import contextlib
 from contextlib import redirect_stdout
 from datetime import date
@@ -451,6 +455,7 @@ class FeedProofTests(unittest.TestCase):
 
     def test_an_unreadable_posting_blocks_the_account(self):
         with LedgerStore(self.company / "ledger.sqlite").connection() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount='not a number' WHERE account=? AND amount='-200.00'", (CHECKING,))
             conn.commit()
         [row] = self.proof([reading("1250.00")]).values()
@@ -1132,6 +1137,7 @@ class FeedProofTests(unittest.TestCase):
         digest = _row_digest(json.loads(staging.read_text())[0])
         forged = json.dumps({"provider": "banksync", "rows": {"x2": digest}})
         with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            drop_append_only_guard(conn)
             conn.execute("INSERT INTO audit_events (type, ts, payload_json, prev_hash, record_hash) "
                          "VALUES ('feed-intake', '2026-08-02T00:00:00Z', ?, 'bogus', 'bogus')", (forged,))
             conn.commit()
@@ -1147,6 +1153,7 @@ class FeedProofTests(unittest.TestCase):
         delivered = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds].count("source")
         self.assertGreaterEqual(delivered, 1)
         with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE audit_events SET record_hash = 'bogus' WHERE type = 'feed-intake'")
             conn.commit()
         after = [kind for _, kind, _ in _load_books(self.company, [CHECKING])[CHECKING].kinds].count("source")
@@ -1210,6 +1217,7 @@ class FeedProofTests(unittest.TestCase):
         before = path.stat()
         with contextlib.closing(sqlite3.connect(path)) as conn:
             conn.execute("PRAGMA journal_mode=DELETE")
+            drop_append_only_guard(conn)
             conn.execute("UPDATE audit_events SET record_hash = substr(record_hash, 1, length(record_hash) - 1) || "
                          f"CASE substr(record_hash, -1) WHEN '0' THEN '1' ELSE '0' END WHERE {where}")
             conn.commit()
@@ -1379,10 +1387,12 @@ class IntakeOnlyFeedIngestTests(unittest.TestCase):
         self.assertEqual(self.add_account("Expenses:A")[0], 0)
         # An entry that no ledger audit event covers: the guard refuses, with or without an intake record.
         with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            drop_append_only_guard(conn)
             conn.execute("DELETE FROM audit_events")
             conn.commit()
         post(self.company, CHECKING, "2026-08-03", "5.00", other="Expenses:A", source=False)
         with contextlib.closing(sqlite3.connect(self.company / "ledger.sqlite")) as conn:
+            drop_append_only_guard(conn)
             conn.execute("DELETE FROM audit_events")
             conn.commit()
         code, text = self.add_account("Expenses:B")
@@ -1669,6 +1679,7 @@ class ProofRequiresIntakeTests(unittest.TestCase):
         with contextlib.closing(sqlite3.connect(store.path)) as conn:
             raw, = conn.execute("SELECT metadata_json FROM entries WHERE source_id = 'plaid:r1'").fetchone()
             meta = [[k, ("0" * 64 if k == "feed-row-digest" else v)] for k, v in json.loads(raw)]
+            drop_append_only_guard(conn)
             conn.execute("UPDATE entries SET metadata_json = ? WHERE source_id = 'plaid:r1'", (json.dumps(meta),))
             conn.commit()
         with store.transaction() as conn:  # Seal the edit, so only the digest check can refuse it.

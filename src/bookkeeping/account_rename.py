@@ -692,6 +692,9 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
             if (head[0] if head else "none") != body["audit_head"]:
                 raise AccountRenameError("stale_preview", "The company changed after the preview.", "Run the preview again.")
             before = _balances(conn, [b for b, _ in pairs])
+            # The pending record is written first: the append-only triggers allow a posting account change only while it exists. It blocks every ledger writer from the old names until the files name the new one.
+            store.set_meta(RENAME_PENDING_KEY, json.dumps({"from": old, "to": new, "accounts": [list(p) for p in pairs],
+                                                           "files": effects["files"]}, sort_keys=True), conn)
             record = store.load_open_date_provenance(conn)
             for old_name, new_name in pairs:
                 conn.execute("UPDATE accounts SET name=? WHERE name=?", (new_name, old_name))
@@ -718,9 +721,6 @@ def apply(entity_path: Path | str, old: str, new: str, plan_hash: str | None = N
                 # durable owner for them (``source_ids.RowIds``).
                 "pending_source_ids": effects["pending_source_ids"],
                 "request_hash": body["request_hash"], "plan_hash": body["plan_hash"]}, conn)
-            # The pending record blocks every ledger writer from the old names until the files name the new one.
-            store.set_meta(RENAME_PENDING_KEY, json.dumps({"from": old, "to": new, "accounts": [list(p) for p in pairs],
-                                                           "files": effects["files"]}, sort_keys=True), conn)
             _seal(store, conn, SESSION)
         written = _write_files(root, context["plans"])
         _finish(store, old, new, written)

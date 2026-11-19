@@ -7,6 +7,10 @@ produces the same tax outputs as before, byte for byte. The golden harness
 """
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from datetime import date
 from decimal import Decimal
 import json
@@ -471,6 +475,7 @@ class ReviewRegressions(CashViewFixture):
     def test_schedule_tax_change_refuses_unsealed_ledger(self):
         self.schedule("ins", "prepaid", PREPAID, INSURANCE, "1200.00", "2026-01-01", "2026-12-31", "equal_month", BANK)
         with self.store.transaction(immediate=True) as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount='999.00' WHERE account=?", (PREPAID,))
         before = self.store.content_digest()
         with self.assertRaises(JournalError) as caught:
@@ -533,6 +538,7 @@ class ReviewRegressions(CashViewFixture):
         self.item("inv", "receivable", AR, "100.00", "2026-01-01", "Synthetic", counter=SERVICES)
         self.cash_filer()
         with self.store.transaction(immediate=True) as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount='90.00' WHERE account=?", (AR,))
         with self.assertRaisesRegex(CashViewError, "trial balance"):
             self.handoff()

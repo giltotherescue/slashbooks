@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from contextlib import closing, redirect_stdout, redirect_stderr
 from datetime import date
 from decimal import Decimal
@@ -138,6 +142,7 @@ class MigrationPreflightTests(unittest.TestCase):
                             ("DELETE FROM audit_events", "audit_history_missing")):
             with self.subTest(code=code):
                 with self.store.transaction() as sql:
+                    drop_append_only_guard(sql)
                     sql.execute(query)
                 result = self.assess()
                 self.assertIn(code, result["blockers"])
@@ -157,7 +162,9 @@ class MigrationPreflightTests(unittest.TestCase):
             sql.execute("INSERT INTO postings(entry_id,account,amount) VALUES (999,'Assets:Bank','1.00')")
         self.assertIn("sqlite_foreign_keys", self.assess()["blockers"])
         with closing(sqlite3.connect(self.root / "ledger.sqlite")) as sql, sql:
+            drop_append_only_guard(sql)
             sql.execute("DELETE FROM postings WHERE entry_id=999")
+            drop_append_only_guard(sql)
             sql.execute("UPDATE postings SET amount='1.00' WHERE amount='9876.54'")
             # Keep this fixture focused on semantic validation, not a stale seal.
             sql.row_factory = sqlite3.Row

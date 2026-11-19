@@ -1,6 +1,10 @@
 """Synthetic regression proofs for schema transitions and atomic support writes."""
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 from datetime import date
 from decimal import Decimal
 import json
@@ -94,6 +98,7 @@ class AccrualStoreTests(unittest.TestCase):
     def test_tampered_or_unsealed_populated_store_cannot_upgrade(self) -> None:
         self.post_cash()
         with self.store.transaction() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE postings SET amount='999.00' WHERE id=1")
         before = self.store.get_meta("schema_version")
         with self.assertRaisesRegex(ValueError, "Cannot upgrade"):

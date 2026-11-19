@@ -10,6 +10,10 @@ Synthetic company: a QuickBooks cutover on S = 2026-03-15 through the real ``qb 
 """
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import dataclasses
 import json
 import os
@@ -247,7 +251,9 @@ class TrustedCheckTests(shared.Company):
         conn = sqlite3.connect(self.path / "ledger.sqlite")
         try:
             with conn:
+                drop_append_only_guard(conn)
                 conn.execute("DELETE FROM postings")
+                drop_append_only_guard(conn)
                 conn.execute("DELETE FROM entries")
         finally:
             conn.close()
@@ -435,6 +441,7 @@ class TrustedCheckTests(shared.Company):
         conn = sqlite3.connect(self.path / "ledger.sqlite")
         try:
             with conn:
+                drop_append_only_guard(conn)
                 for statement, values in statements:
                     conn.execute(statement, values)
         finally:

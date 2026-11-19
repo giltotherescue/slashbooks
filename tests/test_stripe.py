@@ -1,6 +1,10 @@
 """Synthetic processor clearing, explicit mapping and immutable-source proofs."""
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import copy
 import json
 import sys
@@ -427,6 +431,7 @@ class StripeTests(unittest.TestCase):
             self.store.append_audit_event('test-event', dict(note='Original.'), conn)
         self.assertEqual(self.store.verify_audit_chain(), [])
         with self.store.transaction() as conn:
+            drop_append_only_guard(conn)
             conn.execute("UPDATE audit_events SET payload_json = REPLACE(payload_json, 'Original.', 'Changed.')")
         self.assertTrue(self.store.verify_audit_chain())
         before = len(self.store.load_audit_events())

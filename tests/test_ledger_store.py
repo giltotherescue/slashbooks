@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from tamper_support import drop_append_only_guard  # noqa: E402
 import tempfile
 import unittest
 import sqlite3
@@ -158,6 +162,7 @@ class LedgerStoreTests(unittest.TestCase):
 
             self.assertEqual(store.verify_audit_chain(), [])
             with store.connection() as conn:
+                drop_append_only_guard(conn)
                 conn.execute(
                     "UPDATE audit_events SET payload_json = ? WHERE id = 1",
                     ('{"session_id":"changed"}',),
