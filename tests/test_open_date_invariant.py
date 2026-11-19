@@ -376,8 +376,8 @@ class OpenDateInvariantTests(unittest.TestCase):
             self.assertNotIn(claim, message)
 
     def test_group_confirmation_refuses_a_member_that_changes_after_the_check(self) -> None:
-        # The check and the writes run under one company lock. The writes are separate ledger transactions:
-        # a member that is refused at its write stays in review, and the members before it stay recorded.
+        # The check and the write run under one company lock. The categorized members are one ledger transaction:
+        # a member that is refused at the write keeps the whole group in review, and nothing is recorded.
         savings = "Assets:Bank:Savings"
         add_account(self.path, savings, open_date="2026-01-01")
         config = json.loads((self.path / "entity.json").read_text(encoding="utf-8"))
@@ -402,7 +402,8 @@ class OpenDateInvariantTests(unittest.TestCase):
             queue.confirm_group(self.entity, FEES, "person-review")
         self.assertEqual((caught.exception.code, caught.exception.account), ("source_catalog_conflict", savings))
         self.assertEqual(sorted(checked), ["on-s", "savings-jan10"])
-        self.assertEqual(self.posted(), {"on-s"})
+        self.assertEqual(self.posted(), set())
+        self.assert_held("on-s")
         self.assert_held("savings-jan10")
 
     # -- intake and saved-rule parity ---------------------------------------------

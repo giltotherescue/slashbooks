@@ -117,6 +117,8 @@ _ARCHIVE_DIR = "review-queue/archive"
 CLOSED_QUEUE_STATUSES = frozenset({"confirmed", "corrected"})
 _ARCHIVE_VERSION = 1
 _LEARNED_CONTEXT_FILE = "learned-context/counterparties.json"
+# Company files other than queue items that a group journal may change with the items (``_save_item_group``).
+_GROUP_JOURNAL_FILES = frozenset({_LEARNED_CONTEXT_FILE})
 _PENDING_CATEGORIZATION_FILE = "staging/pending-categorization.json"
 STRIPE_CLEANUP_HOLD_REASON = "cleanup_needs_review"
 _DUPLICATE_CANDIDATES_FILE = "duplicate-candidates.json"
@@ -323,10 +325,10 @@ def _refuse_item_before_open(entity: Entity, item: dict) -> None:
     """Refuse a queue item whose entry would post to an account before its open date (``ledger.open_dates``).
 
     The ledger write checks this too. A group confirmation calls this for every member first, under the same
-    company lock as the writes, so one early member stops the whole group before any write. The writes are
-    separate ledger transactions: a member that the ledger write refuses later stays in review, and the
-    members before it stay recorded. A row that is no longer staged is left to the confirmation's own
-    evidence check.
+    company lock as the writes, so one early member stops the whole group before any write. The categorized
+    members are then written in one ledger transaction (``_confirm_many``); a split or a transfer pair in the
+    group is a separate ledger transaction after it. A row that is no longer staged is left to the
+    confirmation's own evidence check.
     """
     from .ledger.importer import _ledger_account_for_txn, raise_open_conflict
     from .ledger.open_dates import first_posting_conflict
@@ -1035,7 +1037,7 @@ def _load_group_transaction(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Queue group transaction '{path.name}' is unreadable.") from exc
     entries = manifest.get("entries") if isinstance(manifest, dict) else None
-    if (not isinstance(manifest, dict) or manifest.get("schema_version") != 1
+    if (not isinstance(manifest, dict) or manifest.get("schema_version") not in (1, 2)
             or not isinstance(entries, list) or not entries):
         raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
     for entry in entries:
@@ -1046,6 +1048,19 @@ def _load_group_transaction(path: Path) -> dict[str, Any]:
                 or any(Path(name).name != name for name in names)
                 or not str(entry["destination"]).endswith(".json")
                 or not isinstance(entry.get("source_id"), str) or not entry["source_id"]
+                or not isinstance(entry.get("old_exists"), bool)
+                or not all(isinstance(entry.get(key), str)
+                           and re.fullmatch(r"[0-9a-f]{64}", entry[key])
+                           for key in ("new_sha256", "old_sha256"))):
+            raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
+    # Version 2 adds "files", other company files that change in the same commit (``_save_item_group``).
+    files = manifest.get("files", [])
+    if not isinstance(files, list) or (manifest["schema_version"] == 1 and "files" in manifest):
+        raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
+    for entry in files:
+        if (not isinstance(entry, dict) or entry.get("path") not in _GROUP_JOURNAL_FILES
+                or not all(isinstance(entry.get(key), str) and Path(entry[key]).name == entry[key]
+                           for key in ("new_file", "old_file"))
                 or not isinstance(entry.get("old_exists"), bool)
                 or not all(isinstance(entry.get(key), str)
                            and re.fullmatch(r"[0-9a-f]{64}", entry[key])
@@ -1101,6 +1116,18 @@ def _recover_group_journals_unlocked(entity: Entity) -> None:
             elif destination.exists():
                 destination.unlink()
                 _fsync_directory(destination.parent)
+        for entry in manifest.get("files", []):
+            destination = entity.path / entry["path"]
+            with capture_log.writing(destination):
+                if committed:
+                    payload = _transaction_payload(transaction, entry["new_file"], entry["new_sha256"])
+                    _replace_group_destination(destination, payload)
+                elif entry["old_exists"]:
+                    payload = _transaction_payload(transaction, entry["old_file"], entry["old_sha256"])
+                    _replace_group_destination(destination, payload)
+                elif destination.exists():
+                    destination.unlink()
+                    _fsync_directory(destination.parent)
         _remove_group_transaction(transaction)
 
 
@@ -1140,8 +1167,14 @@ def _group_recovery_view(
     return source_ids, files, diagnostic
 
 
-def _save_item_group(entity: Entity, items: list[dict]) -> None:
-    """Durably commit a proposal group for recovery after process death."""
+def _save_item_group(entity: Entity, items: list[dict],
+                     files: Sequence[tuple[str, bytes, Mapping[str, Any] | None]] = ()) -> None:
+    """Durably commit a proposal group for recovery after process death.
+
+    ``files`` holds other company files, as (path in the company folder, new bytes, change set delta), that change in
+    the same commit: the items and the files change together or not at all. Each path is one of
+    ``_GROUP_JOURNAL_FILES``.
+    """
     with _queue_mutation(entity):
         root = _group_transaction_root(entity)
         root.mkdir(parents=True, exist_ok=True)
@@ -1166,7 +1199,28 @@ def _save_item_group(entity: Entity, items: list[dict]) -> None:
                 "old_sha256": hashlib.sha256(old_payload).hexdigest(),
                 "old_exists": destination.exists(),
             })
-        manifest = {"schema_version": 1, "entries": entries}
+        extra: list[dict[str, Any]] = []
+        for index, (relative, new_payload, _) in enumerate(files):
+            if relative not in _GROUP_JOURNAL_FILES:
+                raise ValueError(f"A queue group cannot change '{relative}'.")
+            destination = entity.path / relative
+            old_payload = destination.read_bytes() if destination.exists() else b""
+            new_file = f"file-new-{index}.json"
+            old_file = f"file-old-{index}.json"
+            _write_fsynced(transaction / new_file, new_payload)
+            _write_fsynced(transaction / old_file, old_payload)
+            extra.append({
+                "path": relative,
+                "new_file": new_file,
+                "new_sha256": hashlib.sha256(new_payload).hexdigest(),
+                "old_file": old_file,
+                "old_sha256": hashlib.sha256(old_payload).hexdigest(),
+                "old_exists": destination.exists(),
+            })
+        # Version 2 adds "files". An engine that reads only version 1 stops at such a journal and changes nothing.
+        manifest: dict[str, Any] = {"schema_version": 2 if extra else 1, "entries": entries}
+        if extra:
+            manifest["files"] = extra
         _write_fsynced(
             transaction / "manifest.json",
             (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode(),
@@ -1178,6 +1232,10 @@ def _save_item_group(entity: Entity, items: list[dict]) -> None:
         for entry in entries:
             payload = _transaction_payload(transaction, entry["new_file"], entry["new_sha256"])
             _replace_group_destination(_queue_dir(entity) / entry["destination"], payload)
+        for entry, (_, _, delta) in zip(extra, files):
+            payload = _transaction_payload(transaction, entry["new_file"], entry["new_sha256"])
+            with capture_log.writing(entity.path / entry["path"], delta=delta):
+                _replace_group_destination(entity.path / entry["path"], payload)
         _remove_group_transaction(transaction)
 
 
@@ -3101,13 +3159,44 @@ def _write_confirmed_entry(
     This reuses the importer's ``_atomic_ledger_write`` directly rather than
     duplicating ledger-write logic.
     """
-    from decimal import Decimal as D
-    from datetime import date as _date
-    from .ledger.model import Entry, Open, Posting
     from .ledger.staging import StagingStore
-    from .ledger.importer import _atomic_ledger_write, _get_existing_opens, _ledger_account_for_txn
+    from .ledger.importer import _atomic_ledger_write, _get_existing_opens
 
     staging = StagingStore(entity.staging_dir)
+    source_id = str(txn.get("id") or "")
+    entry, needed_accounts = _confirmed_entry(entity, txn, category, session_id, accrual_treatment)
+    new_opens = _new_opens_for(_get_existing_opens(entity), [needed_accounts])
+
+    _atomic_ledger_write(
+        entity=entity,
+        new_opens=new_opens,
+        new_entries=[entry],
+        session_id=session_id,
+        ts=ts,
+        intent_description=f"queue confirm source_id={source_id!r} category={category!r}",
+        source_transactions=[dict(txn)],
+        finalization_receipt=finalization_receipt,
+    )
+
+    staging.bulk_mark_seen([source_id])
+
+
+def _confirmed_entry(
+    entity: Entity,
+    txn: dict,
+    category: str,
+    session_id: str,
+    accrual_treatment: str | None,
+    intake: Any = None,
+) -> tuple[Any, set[str]]:
+    """The Entry for one confirmed source row, and the accounts that it posts to.
+
+    ``intake`` is a feed intake index (``feed_intake_for``) that holds this row; without it, the row's own is read.
+    """
+    from decimal import Decimal as D
+    from datetime import date as _date
+    from .ledger.model import Entry, Posting
+    from .ledger.importer import _ledger_account_for_txn
 
     source_id = str(txn.get("id") or "")
     if not _require_accrual_cash_treatment(entity, {"source_id": source_id}, accrual_treatment, txn):
@@ -3132,10 +3221,12 @@ def _write_confirmed_entry(
         txn, entity.entity_config.get("bank_account_mappings"),
         entity.entity_config.get("csv_account_mappings"),
     )
+    if intake is None:
+        intake = feed_intake_for(entity.path, [txn.get("id")])
     meta: list[tuple[str, str]] = [
         ("source-id", source_id),
         ("import-session", session_id),
-        *feed_provider_meta(feed_intake_for(entity.path, [txn.get("id")]), txn),
+        *feed_provider_meta(intake, txn),
     ]
     if accrual_treatment:
         meta.append(("accrual-treatment", accrual_treatment))
@@ -3151,27 +3242,22 @@ def _write_confirmed_entry(
         tags=(f"import-{session_id}",),
         postings=(bank_posting, category_posting),
     )
+    return entry, {bank_account, category}
 
-    existing_opens = _get_existing_opens(entity)
-    needed_accounts = {bank_account, category}
-    new_opens = [
-        Open(date=_date(2000, 1, 1), account=acc)
-        for acc in sorted(needed_accounts)
-        if acc not in existing_opens
-    ]
 
-    _atomic_ledger_write(
-        entity=entity,
-        new_opens=new_opens,
-        new_entries=[entry],
-        session_id=session_id,
-        ts=ts,
-        intent_description=f"queue confirm source_id={source_id!r} category={category!r}",
-        source_transactions=[dict(txn)],
-        finalization_receipt=finalization_receipt,
-    )
+def _new_opens_for(existing_opens: Any, needed: Sequence[set[str]]) -> list[Any]:
+    """The Open directives for the accounts that a list of entries needs, in the order that one write per entry gives."""
+    from datetime import date as _date
+    from .ledger.model import Open
 
-    staging.bulk_mark_seen([source_id])
+    opened = set(existing_opens)
+    new_opens = []
+    for accounts in needed:
+        for account in sorted(accounts):
+            if account not in opened:
+                opened.add(account)
+                new_opens.append(Open(date=_date(2000, 1, 1), account=account))
+    return new_opens
 
 
 # ---------------------------------------------------------------------------
@@ -3198,6 +3284,19 @@ def _update_learned_context(
         # Standing authority is not another independent human confirmation.
         return
     ctx = load_learned_context(entity)
+    if _apply_learned_update(ctx, counterparty_key, category, corrected, note, operation_hash):
+        _save_learned_context(entity, ctx, counterparty_key)
+
+
+def _apply_learned_update(
+    ctx: dict[str, dict],
+    counterparty_key: str,
+    category: str,
+    corrected: bool,
+    note: str = "",
+    operation_hash: str = "",
+) -> bool:
+    """Apply one confirm or correct to *ctx* in memory. Returns False when *operation_hash* was already applied."""
     entry = ctx.get(counterparty_key, {
         "canonical_category": category,
         "confirmed_count": 0,
@@ -3206,7 +3305,7 @@ def _update_learned_context(
         "notes": "",
     })
     if operation_hash and entry.get("last_operation_hash") == operation_hash:
-        return
+        return False
 
     if corrected:
         entry["canonical_category"] = category
@@ -3228,7 +3327,7 @@ def _update_learned_context(
     ctx[counterparty_key] = entry
     if operation_hash:
         ctx[counterparty_key]["last_operation_hash"] = operation_hash
-    _save_learned_context(entity, ctx, counterparty_key)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -3437,7 +3536,185 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
         _forbid_self_approval(checked)
         _refuse_item_above_ask_first(entity, checked)
         _refuse_item_before_open(entity, checked)
-    return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
+    from .preparation_runtime import active_preparation_identity
+    items = [_load_item(entity, item_id) for item_id in item_ids]
+    if active_preparation_identity() or _shares_a_source_row(items):
+        # Two members that name one bank row (``abc`` and ``banksync:abc``): one ``confirm`` for each, in order, as
+        # before. The first posts the row and the next one is refused as a row that is already posted.
+        return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
+    # The members that ``confirm`` would post as one categorized entry each are written together: one ledger
+    # transaction and one seal for all of them. A split, a transfer pair and a member whose source is already posted
+    # (a confirm that stopped after its ledger write) keep the path of one ``confirm`` each, after the batch.
+    posted = _posted_source_ids(entity, [str(item["source_id"]) for item in items])
+    batch: list[dict] = []
+    others: list[str] = []
+    for item_id, item in zip(item_ids, items):
+        if item.get("proposal_type") in {"split", "transfer-pair"} or str(item["source_id"]) in posted:
+            others.append(item_id)
+        else:
+            batch.append(item)
+    done = {str(item["source_id"]): item
+            for item in _confirm_many(entity, batch, session_id, ts=ts, accrual_treatment=accrual_treatment)}
+    for item_id in others:
+        done[item_id] = confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment)
+    return [done[item_id] for item_id in item_ids]
+
+
+@contextmanager
+def _naming_item(item_id: str):
+    """Name the item in a plain ``ValueError`` that refuses a group, so the message says which row stops it.
+
+    A typed refusal (self-approval, ask-first, an open date, a preparation denial) keeps its type, code and message.
+    """
+    try:
+        yield
+    except ValueError as exc:
+        if type(exc) is not ValueError:
+            raise
+        raise ValueError(f"Queue item '{item_id}': {exc}") from exc
+
+
+def _shares_a_source_row(items: list[dict]) -> bool:
+    """True when two items name the same source row under any spelling (``source_id_variants``)."""
+    owner: dict[str, int] = {}
+    for index, item in enumerate(items):
+        for source_id in item.get("source_ids") or [item.get("source_id")]:
+            for variant in source_id_variants(source_id):
+                if owner.setdefault(variant, index) != index:
+                    return True
+    return False
+
+
+def _posted_source_ids(entity: Entity, source_ids: list[str]) -> set[str]:
+    """The IDs in *source_ids* that the ledger holds under any spelling: ``LedgerStore.source_exists`` for each, on one
+    connection and through the ``source_id`` index."""
+    from .ledger.store import LedgerStore, default_store_path
+
+    path = default_store_path(entity.path)
+    if not path.exists():
+        return set()
+    posted: set[str] = set()
+    with LedgerStore(path).connection() as conn:
+        for source_id in source_ids:
+            for variant in source_id_variants(source_id):
+                # The partial unique index on entries.source_id serves the query only with its own condition, which
+                # a non-empty ID meets; an empty ID keeps the plain query.
+                if variant:
+                    sql = ("SELECT 1 FROM entries WHERE source_id = ? AND source_id IS NOT NULL AND source_id != '' "
+                           "UNION ALL SELECT 1 FROM source_transactions WHERE id = ? LIMIT 1")
+                else:
+                    sql = ("SELECT 1 FROM entries WHERE source_id = ? "
+                           "UNION ALL SELECT 1 FROM source_transactions WHERE id = ? LIMIT 1")
+                if conn.execute(sql, (variant, variant)).fetchone() is not None:
+                    posted.add(source_id)
+                    break
+    return posted
+
+
+def _feed_intake_for_rows(entity: Entity, source_ids: list[Any]) -> dict:
+    """``feed_intake_for`` of many rows, asked in parts small enough for its lookup from the last verified head.
+
+    Each part gives the answer that ``feed_intake_for`` gives for one row of it, which is what one ``confirm`` for each
+    row reads; one call with more rows than the lookup takes would read and verify every record instead.
+    """
+    from .source_ids import _FEED_LOOKUP_ROWS
+
+    index: dict = {}
+    for start in range(0, len(source_ids), _FEED_LOOKUP_ROWS):
+        index.update(feed_intake_for(entity.path, source_ids[start:start + _FEED_LOOKUP_ROWS]))
+    return index
+
+
+def _confirm_many(entity: Entity, items: list[dict], session_id: str, ts: Optional[str] = None, *,
+                  learn: bool = True, accrual_treatment: str | None = None) -> list[dict]:
+    """Confirm categorized items whose sources are not posted yet: what ``confirm`` does for each, in one ledger write.
+
+    Every check of ``confirm`` runs for every item before the write, so one refusal writes nothing. The entries, one
+    ``queue-finalization-intent`` receipt for each item and one seal go into one SQLite transaction: after a stop, the
+    ledger holds all of them or none. The seen ids and the staged rows then change in one write each, and the learned
+    context and the item files change in one group commit (``_save_item_group``). A stop before that commit is finished
+    by the next confirm of each item (``_recover_finalization``). The result is the same as one ``confirm`` for each
+    item in turn.
+    """
+    from .ledger.importer import _atomic_ledger_write, _get_existing_opens
+    from .ledger.staging import StagingStore
+
+    if not items:
+        return []
+    completed_at = ts or _now_iso()
+    prepared: list[tuple[dict, dict, str, dict]] = []
+    for item in items:
+        item_id = str(item.get("source_id") or "")
+        _forbid_self_approval(item)
+        _refuse_item_above_ask_first(entity, item)
+        if item.get("proposal_type") in {"split", "transfer-pair"}:
+            raise ValueError(f"Queue item '{item_id}' needs its own confirmation.")
+        with _naming_item(item_id):
+            _require_accrual_cash_treatment(entity, item, accrual_treatment)
+        if item.get("status") not in ("open", "reopened"):
+            raise ValueError(
+                f"Queue item '{item_id}' has status '{item.get('status')}'; "
+                "only 'open' or 'reopened' items can be confirmed."
+            )
+        category = str(item.get("proposed_category") or "")
+        if not category:
+            raise ValueError(f"Queue item '{item_id}' has no proposed_category.")
+        source_id = str(item["source_id"])
+        with _naming_item(item_id):
+            if item.get("proposal_type") == "related-entity":
+                _validate_related_entity_proposal(entity, item)
+            txn, = _live_proposal_sources(entity, item, [source_id])
+            if item.get("proposal_type") == "intercompany":
+                _validate_intercompany_treatment(txn, category, item.get("related_entity_treatment", ""))
+            receipt = _finalization_receipt(item, [txn], session_id, "confirmed", category, completed_at, learn=learn)
+        prepared.append((item, txn, category, receipt))
+
+    intake = _feed_intake_for_rows(entity, [txn.get("id") for _, txn, _, _ in prepared])
+    built = []
+    for item, txn, category, _ in prepared:
+        with _naming_item(str(item["source_id"])):
+            built.append(_confirmed_entry(entity, txn, category, session_id, accrual_treatment, intake))
+    source_ids = [str(item["source_id"]) for item, _, _, _ in prepared]
+    categories = sorted({category for _, _, category, _ in prepared})
+    _atomic_ledger_write(
+        entity=entity,
+        new_opens=_new_opens_for(_get_existing_opens(entity), [needed for _, needed in built]),
+        new_entries=[entry for entry, _ in built],
+        session_id=session_id,
+        ts=ts,
+        intent_description=f"queue confirm-group items={len(prepared)} category={', '.join(categories)!r}",
+        source_transactions=[dict(txn) for _, txn, _, _ in prepared],
+        finalization_receipts=[receipt for _, _, _, receipt in prepared],
+    )
+    StagingStore(entity.staging_dir).bulk_mark_seen(source_ids)
+    _remove_many_from_pending_categorization(entity, source_ids)
+
+    # The learned context changes in the same group commit as the item files. A stop before that commit leaves the
+    # items open with their sources posted, and the next confirm of each applies its own receipt once
+    # (``_recover_finalization``); the context never counts one confirmation twice.
+    from .preparation_runtime import is_preparation
+    files: list[tuple[str, bytes, Mapping[str, Any] | None]] = []
+    if learn and not is_preparation():
+        ctx = load_learned_context(entity)
+        changed: list[str] = []
+        for item, _, category, receipt in prepared:
+            # Related-entity policies remain explicit for every item (see ``confirm``).
+            if item.get("proposal_type") in {"related-entity", "intercompany"}:
+                continue
+            cp_key = str(item.get("counterparty") or _counterparty_key(item.get("description", ""), ""))
+            if _apply_learned_update(ctx, cp_key, category, corrected=False,
+                                     operation_hash=str(receipt["operation_hash"])) and cp_key not in changed:
+                changed.append(cp_key)
+        if changed:
+            files.append((_LEARNED_CONTEXT_FILE, (json.dumps(ctx, indent=2, sort_keys=True) + "\n").encode("utf-8"),
+                          {"upsert": {name: ctx[name] for name in changed}}))
+
+    for item, _, category, _ in prepared:
+        item["status"] = "confirmed"
+        item["confirmed_category"] = category
+        item["updated_at"] = completed_at
+    _save_item_group(entity, [item for item, _, _, _ in prepared], files)
+    return [item for item, _, _, _ in prepared]
 
 
 # ---------------------------------------------------------------------------

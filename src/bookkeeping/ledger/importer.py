@@ -236,6 +236,7 @@ def _atomic_ledger_write(
     adopt_currency: str | None = None,
     allow_earlier_open_dates: bool = False,
     history_receipt: dict[str, Any] | None = None,
+    finalization_receipts: Sequence[dict[str, Any]] = (),
 ) -> str:
     with _entity_write_lock(entity.path):
         return _atomic_ledger_write_unlocked(
@@ -247,6 +248,7 @@ def _atomic_ledger_write(
             intent_description=intent_description,
             source_transactions=source_transactions,
             finalization_receipt=finalization_receipt,
+            finalization_receipts=finalization_receipts,
             history_receipt=history_receipt,
             supporting_mutations=supporting_mutations,
             expected_digest=expected_digest,
@@ -380,8 +382,12 @@ def _atomic_ledger_write_unlocked(
     source_status: str = "posted",
     allow_earlier_open_dates: bool = False,
     history_receipt: dict[str, Any] | None = None,
+    finalization_receipts: Sequence[dict[str, Any]] = (),
 ) -> str:
     """Execute the store-backed atomic-write protocol and return seal hash.
+
+    ``finalization_receipts`` holds one queue finalization receipt for each item of a grouped confirm; each is written
+    as its own ``queue-finalization-intent`` event, as ``finalization_receipt`` is for one item.
 
     ``adopt_currency`` makes a company with no entries take that currency in the same
     transaction as the entries (ledger meta, account catalog, audit event); entity.json
@@ -443,9 +449,10 @@ def _atomic_ledger_write_unlocked(
         refuse_claimed_transfer_change(conn, new_entries)
         from ..preparation_runtime import record_preparation
         record_preparation(entity, store, conn, new_entries, source_transactions, ts)
-        if finalization_receipt is not None:
+        receipts = ([finalization_receipt] if finalization_receipt is not None else []) + list(finalization_receipts)
+        for receipt in receipts:
             store.append_audit_event(
-                "queue-finalization-intent", finalization_receipt, conn, ts=ts
+                "queue-finalization-intent", receipt, conn, ts=ts
             )
         store.append_audit_event(
             "intent",
