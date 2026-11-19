@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 from datetime import date
 import json
 import os
@@ -50,6 +51,7 @@ from bookkeeping.accrual import cli as accrual_module
 from bookkeeping import business as business_module
 from bookkeeping import statement_import as statement_import_module
 from bookkeeping import work as work_module
+from bookkeeping import changeset as changeset_module
 from bookkeeping.connectors import csvsource as csvsource_module
 from bookkeeping.ledger import migrate as ledger_migrate_module
 from bookkeeping.reports import statements as statements_module
@@ -62,8 +64,30 @@ from bookkeeping import taxmap as taxmap_module
 from bookkeeping import brand as brand_module
 
 
+def _invalidate_change_set_file(argv: list[str]) -> None:
+    """Remove the file of ``--change-set-out`` before any option is converted or checked.
+
+    This is a plain scan of the arguments, with no conversion that can fail, so a command with an invalid option never
+    leaves the receipt of an earlier run.
+    """
+    for index, value in enumerate(argv):
+        if value == "--":
+            return
+        path = None
+        if value == "--change-set-out" and index + 1 < len(argv):
+            path = argv[index + 1]
+        elif value.startswith("--change-set-out="):
+            path = value.split("=", 1)[1]
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
     command_argv = list(sys.argv[1:] if argv is None else argv)
+    _invalidate_change_set_file(command_argv)
     name_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
     name_parser.add_argument("--product-name")
     name_args, command_argv = name_parser.parse_known_args(command_argv)
@@ -101,19 +125,52 @@ def _main(argv: list[str]) -> int:
         }
     work_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
     work_parser.add_argument("--work-out", type=Path)
+    work_parser.add_argument("--change-set-out", type=Path)
+    work_parser.add_argument("--change-set-revision", type=int)
+    work_parser.add_argument("--change-set-base-revision", type=int)
     work_args, command_argv = work_parser.parse_known_args(command_argv)
     args = parser.parse_args(command_argv)
 
-    if work_args.work_out is not None:
+    if work_args.work_out is not None or work_args.change_set_out is not None:
         if args.command in {"cloud", "hosted"} or remote_module.is_bound(args):
+            option = "--work-out" if work_args.work_out is not None else "--change-set-out"
             print(json.dumps({"error": {
                 "code": "WORK_OUTPUT_LOCAL_ONLY",
-                "message": "--work-out applies to commands that change local books.",
+                "message": f"{option} applies to commands that change local books.",
             }}), file=sys.stderr)
             return 1
-        with work_module.capture(work_module.entity_path_from_args(args)) as receipt:
-            code = _dispatch(args, command_argv, parser, answer_application)
-        work_module.write_document(work_args.work_out, receipt.events)
+        entity_path = work_module.entity_path_from_args(args)
+        work_receipt = change_receipt = None
+        code = 1
+        try:
+            with contextlib.ExitStack() as stack:
+                # The change set is the outer capture: an error in any inner step (the work events after an
+                # ingest, for example) passes through it and makes the receipt incomplete.
+                if work_args.change_set_out is not None:
+                    change_receipt = stack.enter_context(changeset_module.capture(
+                        entity_path, books_revision=work_args.change_set_revision,
+                        base_revision=work_args.change_set_base_revision))
+                if work_args.work_out is not None:
+                    work_receipt = stack.enter_context(work_module.capture(entity_path))
+                code = _dispatch(args, command_argv, parser, answer_application)
+                if change_receipt is not None:
+                    if code != 0:
+                        change_receipt.failed = True  # A failed command can leave some writes: the change set is incomplete.
+                    else:
+                        change_receipt.body_done = True  # An error after this point is a failure of a later step.
+        finally:
+            # Also when the command raises: a failed command can leave writes, and the host needs the document.
+            try:
+                if work_receipt is not None:
+                    work_module.write_document(work_args.work_out, work_receipt.events)
+            except BaseException:
+                if change_receipt is not None:
+                    change_receipt.change_set = changeset_module.incomplete(
+                        work_args.change_set_revision, "finalize_failed", work_args.change_set_base_revision)
+                raise
+            finally:
+                if change_receipt is not None:
+                    changeset_module.write_document(work_args.change_set_out, change_receipt.change_set)
         return code
     return _dispatch(args, command_argv, parser, answer_application)
 

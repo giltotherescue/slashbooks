@@ -28,6 +28,9 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
     work_parser = argparse.ArgumentParser(prog="books", add_help=False, allow_abbrev=False)
     work_parser.error = _error
     work_parser.add_argument("--work-out", type=Path)
+    work_parser.add_argument("--change-set-out", type=Path)
+    work_parser.add_argument("--change-set-revision", type=int)
+    work_parser.add_argument("--change-set-base-revision", type=int)
     work_args, argv = work_parser.parse_known_args(argv)
     if not argv:
         raise ContractError("Expected a bounded, nonempty argv array of strings.")
@@ -44,6 +47,9 @@ def parse_command(argv: list[str]) -> tuple[argparse.Namespace, list[Any], tuple
     prepare(parser)
     args = parser.parse_args(argv)
     args.work_out = work_args.work_out
+    args.change_set_out = work_args.change_set_out
+    args.change_set_revision = work_args.change_set_revision
+    args.change_set_base_revision = work_args.change_set_base_revision
     levels, path = [], []
     while True:
         levels.append(parser)
@@ -70,6 +76,8 @@ def command_spec(argv: list[str]) -> dict[str, Any]:
     outputs = [name for name in ("output", "output_dir", "report_dir") if hasattr(args, name)]
     if args.work_out is not None:
         outputs.append("work_out")
+    if getattr(args, "change_set_out", None) is not None:
+        outputs.append("change_set_out")
     if path == ("ledger", "snapshot"):
         inputs.append("store")
     elif path == ("ledger", "migrate"):
@@ -156,6 +164,12 @@ def rewrite_paths(argv: list[str], replacements: dict[str, str]) -> list[str]:
 
     if args.work_out is not None:
         result.append("--work-out=" + render(args.work_out, "work_out"))
+    if getattr(args, "change_set_out", None) is not None:
+        result.append("--change-set-out=" + render(args.change_set_out, "change_set_out"))
+    if getattr(args, "change_set_revision", None) is not None:
+        result.append(f"--change-set-revision={args.change_set_revision}")
+    if getattr(args, "change_set_base_revision", None) is not None:
+        result.append(f"--change-set-base-revision={args.change_set_base_revision}")
 
     for index, level in enumerate(levels):
         for action in level._actions:
