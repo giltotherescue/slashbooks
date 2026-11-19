@@ -581,6 +581,8 @@ class NoOverwriteTriggerUsesTheIndexTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         store = _CountingStore(Path(tmp.name) / "ledger.sqlite")
         store.initialize()
+        with store.connection() as conn:
+            _use_trigger(conn, INDEXED_NO_OVERWRITE)  # A fast seed, whatever the trigger under test.
         with store.transaction() as conn:
             conn.executemany("INSERT INTO entries (date, narration, source_id) VALUES (?, 'seed', ?)",
                              [(DATE, f"seed-{i}") for i in range(rows)])
