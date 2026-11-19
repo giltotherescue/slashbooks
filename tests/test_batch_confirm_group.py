@@ -371,6 +371,25 @@ class BatchConfirmGroupTests(unittest.TestCase):
         self.assert_refused_without_a_write(ValueError, "^Queue item 'row-02': .*source evidence")
 
 
+from test_accrual_schedules import AccrualFixture, EXPENSE  # noqa: E402
+
+
+class AccrualRefusalTests(AccrualFixture):
+    def test_an_accrual_row_without_a_treatment_refuses_the_group_and_names_the_item(self) -> None:
+        from bookkeeping.ledger.importer import import_transactions
+        rows = [{"id": f"bank-{number}", "date": "2026-01-15", "amount": f"-{100 + number}.00", "accountId": "checking",
+                 "accountName": "Checking", "accountType": "checking", "description": f"Synthetic vendor {number}"}
+                for number in range(3)]
+        import_transactions(self.entity, rows, "intake")
+        propose_group(self.entity, [row["id"] for row in rows], EXPENSE, "Synthetic group")
+        files_before = company_files(self.entity)
+        digest_before = self.store.content_digest()
+        with self.assertRaisesRegex(ValueError, "^Queue item 'bank-0': Accrual bank activity needs an explicit treatment"):
+            confirm_group(self.entity, EXPENSE, SESSION)
+        self.assertEqual(self.store.content_digest(), digest_before)
+        self.assertEqual(company_files(self.entity), files_before)
+
+
 class FeedMarkTests(unittest.TestCase):
     """Rows from a connected feed keep their ``feed-provider`` and ``feed-row-digest`` marks, also past the 40 rows
     that one intake lookup takes."""

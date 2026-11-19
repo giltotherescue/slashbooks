@@ -3560,6 +3560,20 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
     return [done[item_id] for item_id in item_ids]
 
 
+@contextmanager
+def _naming_item(item_id: str):
+    """Name the item in a plain ``ValueError`` that refuses a group, so the message says which row stops it.
+
+    A typed refusal (self-approval, ask-first, an open date, a preparation denial) keeps its type, code and message.
+    """
+    try:
+        yield
+    except ValueError as exc:
+        if type(exc) is not ValueError:
+            raise
+        raise ValueError(f"Queue item '{item_id}': {exc}") from exc
+
+
 def _shares_a_source_row(items: list[dict]) -> bool:
     """True when two items name the same source row under any spelling (``source_id_variants``)."""
     owner: dict[str, int] = {}
@@ -3635,7 +3649,8 @@ def _confirm_many(entity: Entity, items: list[dict], session_id: str, ts: Option
         _refuse_item_above_ask_first(entity, item)
         if item.get("proposal_type") in {"split", "transfer-pair"}:
             raise ValueError(f"Queue item '{item_id}' needs its own confirmation.")
-        _require_accrual_cash_treatment(entity, item, accrual_treatment)
+        with _naming_item(item_id):
+            _require_accrual_cash_treatment(entity, item, accrual_treatment)
         if item.get("status") not in ("open", "reopened"):
             raise ValueError(
                 f"Queue item '{item_id}' has status '{item.get('status')}'; "
@@ -3645,22 +3660,20 @@ def _confirm_many(entity: Entity, items: list[dict], session_id: str, ts: Option
         if not category:
             raise ValueError(f"Queue item '{item_id}' has no proposed_category.")
         source_id = str(item["source_id"])
-        try:
+        with _naming_item(item_id):
             if item.get("proposal_type") == "related-entity":
                 _validate_related_entity_proposal(entity, item)
             txn, = _live_proposal_sources(entity, item, [source_id])
             if item.get("proposal_type") == "intercompany":
                 _validate_intercompany_treatment(txn, category, item.get("related_entity_treatment", ""))
             receipt = _finalization_receipt(item, [txn], session_id, "confirmed", category, completed_at, learn=learn)
-        except ValueError as exc:
-            if type(exc) is not ValueError:
-                raise  # A typed refusal keeps its type and code.
-            raise ValueError(f"Queue item '{item_id}': {exc}") from exc  # Name the row that stops the group.
         prepared.append((item, txn, category, receipt))
 
     intake = _feed_intake_for_rows(entity, [txn.get("id") for _, txn, _, _ in prepared])
-    built = [_confirmed_entry(entity, txn, category, session_id, accrual_treatment, intake)
-             for _, txn, category, _ in prepared]
+    built = []
+    for item, txn, category, _ in prepared:
+        with _naming_item(str(item["source_id"])):
+            built.append(_confirmed_entry(entity, txn, category, session_id, accrual_treatment, intake))
     source_ids = [str(item["source_id"]) for item, _, _, _ in prepared]
     categories = sorted({category for _, _, category, _ in prepared})
     _atomic_ledger_write(
