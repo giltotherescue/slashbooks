@@ -1037,7 +1037,7 @@ def _load_group_transaction(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Queue group transaction '{path.name}' is unreadable.") from exc
     entries = manifest.get("entries") if isinstance(manifest, dict) else None
-    if (not isinstance(manifest, dict) or manifest.get("schema_version") != 1
+    if (not isinstance(manifest, dict) or manifest.get("schema_version") not in (1, 2)
             or not isinstance(entries, list) or not entries):
         raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
     for entry in entries:
@@ -1053,8 +1053,9 @@ def _load_group_transaction(path: Path) -> dict[str, Any]:
                            and re.fullmatch(r"[0-9a-f]{64}", entry[key])
                            for key in ("new_sha256", "old_sha256"))):
             raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
+    # Version 2 adds "files", other company files that change in the same commit (``_save_item_group``).
     files = manifest.get("files", [])
-    if not isinstance(files, list):
+    if not isinstance(files, list) or (manifest["schema_version"] == 1 and "files" in manifest):
         raise ValueError(f"Queue group transaction '{path.name}' is invalid.")
     for entry in files:
         if (not isinstance(entry, dict) or entry.get("path") not in _GROUP_JOURNAL_FILES
@@ -1216,7 +1217,8 @@ def _save_item_group(entity: Entity, items: list[dict],
                 "old_sha256": hashlib.sha256(old_payload).hexdigest(),
                 "old_exists": destination.exists(),
             })
-        manifest = {"schema_version": 1, "entries": entries}
+        # Version 2 adds "files". An engine that reads only version 1 stops at such a journal and changes nothing.
+        manifest: dict[str, Any] = {"schema_version": 2 if extra else 1, "entries": entries}
         if extra:
             manifest["files"] = extra
         _write_fsynced(
@@ -3535,12 +3537,14 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
         _refuse_item_above_ask_first(entity, checked)
         _refuse_item_before_open(entity, checked)
     from .preparation_runtime import active_preparation_identity
-    if active_preparation_identity():
+    items = [_load_item(entity, item_id) for item_id in item_ids]
+    if active_preparation_identity() or _shares_a_source_row(items):
+        # Two members that name one bank row (``abc`` and ``banksync:abc``): one ``confirm`` for each, in order, as
+        # before. The first posts the row and the next one is refused as a row that is already posted.
         return [confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment) for item_id in item_ids]
     # The members that ``confirm`` would post as one categorized entry each are written together: one ledger
     # transaction and one seal for all of them. A split, a transfer pair and a member whose source is already posted
     # (a confirm that stopped after its ledger write) keep the path of one ``confirm`` each, after the batch.
-    items = [_load_item(entity, item_id) for item_id in item_ids]
     posted = _posted_source_ids(entity, [str(item["source_id"]) for item in items])
     batch: list[dict] = []
     others: list[str] = []
@@ -3554,6 +3558,17 @@ def confirm_group(entity: Entity, category: str, session_id: str, ts: Optional[s
     for item_id in others:
         done[item_id] = confirm(entity, item_id, session_id, ts=ts, accrual_treatment=accrual_treatment)
     return [done[item_id] for item_id in item_ids]
+
+
+def _shares_a_source_row(items: list[dict]) -> bool:
+    """True when two items name the same source row under any spelling (``source_id_variants``)."""
+    owner: dict[str, int] = {}
+    for index, item in enumerate(items):
+        for source_id in item.get("source_ids") or [item.get("source_id")]:
+            for variant in source_id_variants(source_id):
+                if owner.setdefault(variant, index) != index:
+                    return True
+    return False
 
 
 def _posted_source_ids(entity: Entity, source_ids: list[str]) -> set[str]:
@@ -3629,13 +3644,18 @@ def _confirm_many(entity: Entity, items: list[dict], session_id: str, ts: Option
         category = str(item.get("proposed_category") or "")
         if not category:
             raise ValueError(f"Queue item '{item_id}' has no proposed_category.")
-        if item.get("proposal_type") == "related-entity":
-            _validate_related_entity_proposal(entity, item)
         source_id = str(item["source_id"])
-        txn, = _live_proposal_sources(entity, item, [source_id])
-        if item.get("proposal_type") == "intercompany":
-            _validate_intercompany_treatment(txn, category, item.get("related_entity_treatment", ""))
-        receipt = _finalization_receipt(item, [txn], session_id, "confirmed", category, completed_at, learn=learn)
+        try:
+            if item.get("proposal_type") == "related-entity":
+                _validate_related_entity_proposal(entity, item)
+            txn, = _live_proposal_sources(entity, item, [source_id])
+            if item.get("proposal_type") == "intercompany":
+                _validate_intercompany_treatment(txn, category, item.get("related_entity_treatment", ""))
+            receipt = _finalization_receipt(item, [txn], session_id, "confirmed", category, completed_at, learn=learn)
+        except ValueError as exc:
+            if type(exc) is not ValueError:
+                raise  # A typed refusal keeps its type and code.
+            raise ValueError(f"Queue item '{item_id}': {exc}") from exc  # Name the row that stops the group.
         prepared.append((item, txn, category, receipt))
 
     intake = _feed_intake_for_rows(entity, [txn.get("id") for _, txn, _, _ in prepared])

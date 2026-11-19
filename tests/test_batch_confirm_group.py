@@ -214,6 +214,59 @@ class BatchConfirmGroupTests(unittest.TestCase):
         self.assertEqual({k: v for k, v in after.items() if k.startswith("review-queue/")},
                          {k: v for k, v in before.items() if k.startswith("review-queue/")})
 
+    def test_a_group_journal_with_files_is_version_2_and_a_version_1_journal_cannot_hold_files(self) -> None:
+        self.group(3)
+        seen = []
+        real = queue_module._remove_group_transaction
+
+        def read_then_remove(path):
+            seen.append(json.loads((path / "manifest.json").read_text(encoding="utf-8")))
+            return real(path)
+
+        with patch.object(queue_module, "_remove_group_transaction", read_then_remove):
+            confirm_group(self.entity, CATEGORY, SESSION, ts=TS)
+        self.assertEqual([(m["schema_version"], [f["path"] for f in m.get("files", [])]) for m in seen],
+                         [(2, ["learned-context/counterparties.json"])])
+        journal = Path(self.tmp.name) / "journal"
+        journal.mkdir()
+        manifest = dict(seen[0], schema_version=1)
+        (journal / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "is invalid"):
+            queue_module._load_group_transaction(journal)
+        (journal / "manifest.json").write_text(json.dumps(seen[0]), encoding="utf-8")
+        self.assertEqual(queue_module._load_group_transaction(journal)["schema_version"], 2)
+        # A group without other files (a proposal group) keeps version 1.
+        _add_pending_categorization(self.entity, "late-1", "Late vendor")
+        _add_pending_categorization(self.entity, "late-2", "Late vendor")
+        seen.clear()
+        with patch.object(queue_module, "_remove_group_transaction", read_then_remove):
+            propose_group(self.entity, ["late-1", "late-2"], CATEGORY, "r")
+        self.assertEqual([(m["schema_version"], "files" in m) for m in seen], [(1, False)])
+
+    def test_two_spellings_of_one_bank_row_post_it_once_as_one_confirm_for_each_does(self) -> None:
+        _add_pending_categorization(self.entity, "abc", "Vendor A", amount="-10.00")
+        _add_pending_categorization(self.entity, "banksync:abc", "Vendor A", amount="-10.00")
+        _add_pending_categorization(self.entity, "xyz", "Vendor X", amount="-11.00")
+        propose_group(self.entity, ["abc", "banksync:abc", "xyz"], CATEGORY, "r")
+        ids = [item["source_id"] for item in queue_module.list_queue_items(self.entity, status="open")]
+        self.assertEqual(ids, ["abc", "banksync:abc", "xyz"])
+        before = self.copy("before")
+        with self.assertRaises(ValueError) as one_by_one:
+            self.one_by_one(before, ids)
+
+        with self.assertRaises(ValueError) as batch:
+            confirm_group(self.entity, CATEGORY, SESSION, ts=TS)
+
+        self.assertEqual(str(batch.exception), str(one_by_one.exception))
+        self.assertEqual(store_of(self.entity).content_digest(), store_of(before).content_digest())
+        self.assertEqual(company_files(self.entity), company_files(before))
+        self.assertEqual(store_of(self.entity).load_audit_events(), store_of(before).load_audit_events())
+        with store_of(self.entity).connection() as conn:
+            posted = [row[0] for row in conn.execute("SELECT source_id FROM entries")]
+        self.assertEqual(posted, ["abc"])
+        self.assertEqual([read_queue_item(self.entity, i)["status"] for i in ids], ["confirmed", "open", "open"])
+        self.assertEqual(check_store_integrity(store_of(self.entity)).status, "ok")
+
     def test_a_group_journal_cannot_name_another_company_file(self) -> None:
         with self.assertRaisesRegex(ValueError, "cannot change"):
             queue_module._save_item_group(self.entity, [], [("entity.json", b"{}", None)])
@@ -306,7 +359,7 @@ class BatchConfirmGroupTests(unittest.TestCase):
         rows = json.loads(path.read_text(encoding="utf-8"))
         rows[3]["description"] = "Changed after the proposal"
         path.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
-        self.assert_refused_without_a_write(ValueError, "Staged source evidence changed")
+        self.assert_refused_without_a_write(ValueError, "^Queue item 'row-03': Staged source evidence changed")
         self.assertEqual([read_queue_item(self.entity, i)["status"] for i in ids], ["open"] * len(ids))
 
     def test_a_changed_proposal_refuses_the_whole_group(self) -> None:
@@ -315,7 +368,7 @@ class BatchConfirmGroupTests(unittest.TestCase):
         item = json.loads(item_path.read_text(encoding="utf-8"))
         item["source_hashes"] = {ids[2]: "0" * 64}
         item_path.write_text(json.dumps(item, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        self.assert_refused_without_a_write(ValueError, "source evidence")
+        self.assert_refused_without_a_write(ValueError, "^Queue item 'row-02': .*source evidence")
 
 
 class FeedMarkTests(unittest.TestCase):
