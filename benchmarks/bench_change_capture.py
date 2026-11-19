@@ -196,7 +196,7 @@ def main() -> int:
             print(f"FAIL: the {kind} command at {table[-1][0]:,} is not within {ARGS.command_factor}x + "
                   f"{ARGS.command_slack_ms} ms of the one at {table[0][0]:,}")
             failed = True
-    print("FAIL: a capture fell back" if failed else "PASS: every capture was incremental and flat")
+    print("FAIL: see the lines above" if failed else "PASS: every capture was incremental and flat")
     return 1 if failed else 0
 
 
