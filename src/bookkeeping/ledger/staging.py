@@ -46,6 +46,7 @@ from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from .. import capture_log
 from ..source_ids import source_id_variants
 from .normalize import normalize_description
 
@@ -58,12 +59,16 @@ def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _atomic_write_json(path: Path, data: Any) -> None:
-    """Write *data* as JSON to *path* atomically via a sibling .tmp file."""
+def _atomic_write_json(path: Path, data: Any, delta: dict | None = None) -> None:
+    """Write *data* as JSON to *path* atomically via a sibling .tmp file.
+
+    *delta* names the rows that the write changed, for a change set capture (``capture_log.writing``).
+    """
     tmp = path.with_suffix(path.suffix + ".tmp")
     text = json.dumps(data, indent=2, sort_keys=True) + "\n"
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(str(tmp), str(path))
+    with capture_log.writing(path, delta=delta):
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(str(tmp), str(path))
 
 
 def _correlation_key(txn: dict) -> tuple:
@@ -111,6 +116,9 @@ class StagingStore:
         # Load state into memory.
         self._pending: list[dict] = self._load_pending()
         self._seen: set[str] = self._load_seen()
+        # The signature of seen-ids.json that this store last read or wrote. A write that finds another signature
+        # replaces rows that this store never saw, so it cannot name its added ids as the change.
+        self._seen_signature = capture_log.signature(self._seen_path)
 
     # ------------------------------------------------------------------
     # Orphaned .tmp detection
@@ -162,8 +170,12 @@ class StagingStore:
     def _save_pending(self) -> None:
         _atomic_write_json(self._pending_path, self._pending)
 
-    def _save_seen(self) -> None:
-        _atomic_write_json(self._seen_path, sorted(self._seen))
+    def _save_seen(self, added: list[str] | None = None) -> None:
+        delta = None
+        if added is not None and capture_log.active() and capture_log.signature(self._seen_path) == self._seen_signature:
+            delta = {"upsert": {str(source_id): None for source_id in added}}
+        _atomic_write_json(self._seen_path, sorted(self._seen), delta)
+        self._seen_signature = capture_log.signature(self._seen_path)
 
     # ------------------------------------------------------------------
     # Pending operations
@@ -305,13 +317,15 @@ class StagingStore:
 
     def mark_seen(self, source_id: str) -> None:
         """Record that *source_id* has been imported into the ledger."""
+        added = [] if source_id in self._seen else [source_id]
         self._seen.add(source_id)
-        self._save_seen()
+        self._save_seen(added)
 
     def bulk_mark_seen(self, source_ids: list[str]) -> None:
         """Mark multiple source IDs as seen in a single write."""
+        added = sorted({source_id for source_id in source_ids if source_id not in self._seen})
         self._seen.update(source_ids)
-        self._save_seen()
+        self._save_seen(added)
 
     def is_seen(self, source_id: str) -> bool:
         """Return True when *source_id* has already been imported."""

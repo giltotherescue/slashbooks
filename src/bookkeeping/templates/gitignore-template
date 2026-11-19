@@ -8,3 +8,4 @@ hosted-receipts/
 cache*.sqlite
 staging/*.tmp
 *.tmp
+.change-capture.sqlite*
