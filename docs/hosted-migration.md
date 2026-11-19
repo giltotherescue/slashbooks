@@ -230,3 +230,19 @@ The triggers also refuse a replace (`REPLACE INTO`, `INSERT OR REPLACE`, an upse
 not above every earlier id. So a saved head or watermark cannot skip a new row. Each check takes its new
 checkpoint from the rows that it read in one read transaction. A row that another writer adds later is
 checked by the next call.
+
+### When an incremental check can stand in for the full check
+
+- Use a head or a watermark only if an error-free check on the same file returned it. Never make one up and
+  never reuse one after a restore, a copy or a migration. `check_new_postings` gives an error for a watermark
+  above the newest posting id. A restored file with more postings than the saved watermark cannot be caught this
+  way: reset both checkpoints with the full checks after any restore.
+- The append-only triggers must be present the whole time. Run `append_only_guard_problems` with each check.
+- `meta`, `accounts` and `source_transactions` have no triggers. `books entity account-rename` relabels posted
+  rows. The relabel is allowed only while its hash-chained `account-renamed` event is the newest audit event,
+  and that event names the exact old and new account. When a new `account-renamed` event is in the links that
+  `verify_audit_chain_since` reads, the result has `full_check_required=True` and no head. Run the full checks
+  (`verify_audit_chain`, the seal digest in `check_store_integrity`), then call `verify_audit_chain_since(None)`
+  for a new head, and reset the posting watermark with `posting_watermark()`.
+- The incremental checks never cover the seal digest, `PRAGMA integrity_check`, `meta`, `accounts` or
+  `source_transactions`. Run those on a schedule.

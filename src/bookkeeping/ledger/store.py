@@ -218,6 +218,12 @@ CREATE INDEX IF NOT EXISTS audit_events_type_idx
 _GENESIS_PREV = "0" * 64
 
 
+#: The audit event that unlocks a relabel of posted rows (``account_rename.EVENT``). A check that sees it among new
+#: events cannot rely on the append-only triggers for the rows that it relabels.
+RENAME_EVENT_TYPE = "account-renamed"
+REWRITE_EVENT_TYPES = frozenset({RENAME_EVENT_TYPE})
+
+
 def _key_guards() -> dict[str, str]:
     """Triggers that keep the row id of each posted table above every earlier id.
 
@@ -253,15 +259,22 @@ def _append_only_guard_ddl() -> dict[str, str]:
     The database refuses a rewrite of posted rows, so a host does not need to compare the whole ledger before and
     after a write to find one. The legitimate paths stay open:
 
-    * ``books entity account-rename`` may change ``postings.account`` and ``balance_assertions.account`` while its
-      pending-rename record is in ``meta``. It changes no other column.
+    * ``books entity account-rename`` may change ``postings.account`` and ``balance_assertions.account`` from an old
+      name to a new name when the newest audit event is its ``account-renamed`` event for exactly that pair. It
+      writes the event in the same transaction, before the UPDATE statements. It changes no other column.
     * ``_discard_last_audit_event`` may delete the newest ``feed-intake`` event.
     * A correction writes a reversing entry and a replacement entry. It never edits the original entry.
 
     A new audit event must name the current newest record hash as ``prev_hash``, so a link can only be appended
     to the head of the chain.
     """
-    pending = f"EXISTS (SELECT 1 FROM meta WHERE key = '{RENAME_PENDING_KEY}')"
+    # A rename is allowed only when the newest audit event is a hash-chained ``account-renamed`` event that
+    # names exactly this old and new account. ``meta`` is not protected, so a record there proves nothing.
+    pending = (
+        "EXISTS (SELECT 1 FROM audit_events e, json_each(json_extract(e.payload_json, '$.accounts')) pair "
+        f"WHERE e.id = (SELECT MAX(id) FROM audit_events) AND e.type = '{RENAME_EVENT_TYPE}' "
+        "AND json_extract(pair.value, '$[0]') = OLD.account AND json_extract(pair.value, '$[1]') = NEW.account)"
+    )
     refuse = "SELECT RAISE(ABORT, '{}');"
     return {
         "entries_append_only_update": (
@@ -418,6 +431,10 @@ class AuditChainCheck:
 
     errors: list[str]
     head: AuditHead | None
+    #: True when a new event may have relabelled posted rows (an ``account-renamed`` event). The incremental check
+    #: cannot vouch for those rows, so it returns no head. Run the full checks (``verify_audit_chain``, the seal
+    #: digest in ``check_store_integrity``), then call ``verify_audit_chain_since(None)`` to take a new head.
+    full_check_required: bool = False
 
 
 @dataclass(frozen=True)
@@ -999,7 +1016,9 @@ class LedgerStore:
 
         The new head is the last event that this check read, in the same read transaction. An event that a
         concurrent writer adds after the read is not in the head, so the next check verifies it. After any
-        error the result has no head, and the caller must run the full check.
+        error the result has no head, and the caller must run the full check. A new ``account-renamed`` event also
+        gives no head and ``full_check_required=True``: that event unlocks a relabel of posted rows that no
+        incremental check sees.
 
         The check does not read events at or before ``verified``. The append-only triggers stop a change to
         them (``append_only_guard_problems`` confirms the triggers), and the scheduled ``verify_audit_chain``
@@ -1017,14 +1036,19 @@ class LedgerStore:
                                                 "chain; run the full check"], None)
                     position, prev = verified.position, verified.record_hash
                 errors: list[str] = []
+                rewrite = False
                 head = AuditHead(position, prev) if verified is not None else None
                 for row in conn.execute(
                     "SELECT id, type, ts, payload_json, prev_hash, record_hash FROM audit_events "
                     "WHERE id > ? ORDER BY id", (position,)
                 ):
                     errors.extend(_verify_links([row], prev))
+                    if row["type"] in REWRITE_EVENT_TYPES:
+                        rewrite = True
                     prev = row["record_hash"]
                     head = AuditHead(int(row["id"]), str(row["record_hash"]))
+                if rewrite and verified is not None:
+                    return AuditChainCheck(errors, None, full_check_required=True)
                 return AuditChainCheck(errors, None if errors else head)
             finally:
                 conn.rollback()
@@ -1047,12 +1071,21 @@ class LedgerStore:
         triggers also keep each new posting id above every earlier id, so a saved watermark cannot skip a new
         posting. The watermark is the highest posting id in the same read transaction as the check, so a posting
         that a concurrent writer adds later is checked next time. After an error the watermark is ``None``.
+        A watermark above the newest posting id is an error, because it cannot come from this file (a restore
+        from an older backup, or a made-up value). A saved watermark that is below the newest id is not provably
+        from this file: use only a watermark from an error-free check of the same file, and reset it (run the full
+        ``PRAGMA foreign_key_check``, then ``posting_watermark()``) when the audit check fails or after a restore.
         Cost: the number of new postings, each with one primary key read. The full
         ``PRAGMA foreign_key_check`` stays the check for a scheduled run.
         """
         with self.connection() as conn:
             conn.execute("BEGIN")
             try:
+                newest = int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM postings").fetchone()[0])
+                if after_posting_id > newest or after_posting_id < 0:
+                    return PostingCheck([f"Posting watermark {after_posting_id} is above the newest posting "
+                                         f"({newest}); the file is not the one that the watermark came from. "
+                                         "Run the full check"], None)
                 rows = conn.execute(
                     "SELECT p.id, p.entry_id, e.id IS NULL FROM postings p LEFT JOIN entries e ON e.id = p.entry_id "
                     "WHERE p.id > ? ORDER BY p.id", (after_posting_id,)

@@ -139,12 +139,38 @@ class AppendOnlyTriggerTests(StoreCase):
         self.refused("INSERT INTO audit_events (type, ts, payload_json, prev_hash, record_hash) "
                      "VALUES ('x', '2026-01-01T00:00:00Z', '{}', ?, ?)", "1" * 64, "2" * 64)
 
-    def test_the_account_of_a_posting_can_change_only_while_a_rename_is_pending(self) -> None:
+    def rename_event(self, *pairs: tuple[str, str]) -> None:
+        with self.store.transaction() as conn:
+            self.store.append_audit_event("account-renamed", {"accounts": [list(p) for p in pairs]}, conn)
+
+    def test_a_meta_record_does_not_unlock_a_relabel(self) -> None:
         from bookkeeping.ledger.store import RENAME_PENDING_KEY
         with self.store.transaction() as conn:
             self.store.set_meta(RENAME_PENDING_KEY, "{}", conn)
+            conn.execute("INSERT INTO balance_assertions (date, account, amount) VALUES ('2026-02-01', 'Expenses:Software', '1')")
+        self.refused("UPDATE postings SET account = 'Expenses:Other'")
+        self.refused("UPDATE balance_assertions SET account = 'Expenses:Other'")
+
+    def test_a_relabel_needs_the_newest_event_to_name_exactly_this_pair(self) -> None:
+        self.rename_event(("Expenses:Software", "Expenses:Other"))
+        self.refused("UPDATE postings SET account = 'Expenses:Different' WHERE account = 'Expenses:Software'")
+        self.refused("UPDATE postings SET account = 'Expenses:Other', amount = '99' WHERE account = 'Expenses:Software'")
+        with self.store.transaction() as conn:
             conn.execute("UPDATE postings SET account = 'Expenses:Other' WHERE account = 'Expenses:Software'")
-        self.refused("UPDATE postings SET amount = '99.00'")  # Only the account may change, even then.
+        # Once another event is the newest, the same relabel is refused again.
+        self.write("later")
+        self.refused("UPDATE postings SET account = 'Expenses:Third' WHERE account = 'Expenses:Other'")
+        self.rename_event(("Expenses:Other", "Expenses:Third"))
+        self.refused("UPDATE postings SET account = 'Expenses:Software' WHERE account = 'Expenses:Other'")
+
+    def test_an_incremental_check_that_sees_a_rename_event_requires_the_full_check(self) -> None:
+        head = self.store.verify_audit_chain_since(None).head
+        self.rename_event(("Expenses:Software", "Expenses:Other"))
+        result = self.store.verify_audit_chain_since(head)
+        self.assertEqual((result.errors, result.head, result.full_check_required), ([], None, True))
+        again = self.store.verify_audit_chain_since(None)  # The full path takes a new head.
+        self.assertEqual((again.errors, again.full_check_required), ([], False))
+        self.assertIsNotNone(again.head)
 
     def test_the_correction_path_still_works(self) -> None:
         # A correction reverses and replaces: it adds entries and never edits the original.
@@ -274,6 +300,29 @@ class CheckpointTests(StoreCase):
             conn.commit()
         failed = self.store.check_new_postings(result.watermark)
         self.assertEqual((len(failed.errors), failed.watermark), (1, None))
+
+
+class WatermarkAnchorTests(StoreCase):
+    def test_a_watermark_above_the_newest_posting_is_an_error(self) -> None:
+        for name in "abc":
+            self.write(name)  # Six postings.
+        self.assertEqual(self.store.posting_watermark(), 6)
+        for bad in (10000, 7, -1):
+            result = self.store.check_new_postings(bad)
+            self.assertEqual((len(result.errors), result.watermark), (1, None), bad)
+        self.assertEqual(self.store.check_new_postings(6).errors, [])
+
+    def test_a_restore_from_an_older_backup_is_caught_by_the_saved_watermark(self) -> None:
+        for name in "abcdefg":
+            self.write(name)
+        saved = self.store.check_new_postings(0).watermark  # 14
+        older = LedgerStore(Path(self.tmp.name) / "older.sqlite")
+        older.initialize()
+        with older.transaction() as conn:
+            older.insert_opens([Open(date(2000, 1, 1), "Assets:Bank:Checking", ("USD",)),
+                                Open(date(2000, 1, 1), "Expenses:Software", ("USD",))], conn)
+            older.insert_entries([_entry("a")], conn)
+        self.assertTrue(older.check_new_postings(saved).errors)
 
 
 class NewPostingForeignKeyTests(StoreCase):
