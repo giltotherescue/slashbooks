@@ -815,6 +815,22 @@ class IndexLockTests(IndexSealTests):
         with self.assertRaises(sqlite3.ProgrammingError):
             opened[0].execute("SELECT 1")  # Closed.
 
+    def test_the_saved_read_holds_the_index_lock_from_the_identity_check_to_the_end(self) -> None:
+        results: list[str] = []
+        real = change_capture.Index.all_sources
+
+        def all_sources(index):
+            results.append(self.other_write())  # A write while the saved copy is read must be refused.
+            return real(index)
+
+        with mock.patch.object(work, "_events_from_probe", side_effect=RuntimeError("boom")), \
+                mock.patch.object(change_capture.Index, "all_sources", all_sources):
+            with work.capture(self.entity) as receipt:
+                run_cli(["queue", "propose", "--entity", str(self.entity), "--source-id", "syn-004",
+                         "--category", "Expenses:Software", "--reasoning", "x."])
+        self.assertEqual(results, ["database is locked"])
+        self.assertEqual((receipt.complete, receipt.path), (True, "saved"))
+
     def test_stray_side_files_are_removed_and_the_next_capture_is_warm(self) -> None:
         self.both(lambda: None, nonempty=False)
         path = self.entity / change_capture.INDEX_NAME

@@ -1188,7 +1188,14 @@ class Run:
             index = Index(self.root)
         except sqlite3.Error as exc:
             raise ChangeSetError(f"The saved index cannot be read: {exc}") from exc
-        if index.identity() != self.identity:
+        try:
+            index.start_write()  # A write lock held until the caller closes the index: no write between check and read.
+            index.generation = index.meta("generation")
+            same = index.identity() == self.identity
+        except (sqlite3.Error, OSError):
+            index.close()
+            raise ChangeSetError("The saved index cannot be read.") from None
+        if not same:
             index.close()
             raise ChangeSetError("The saved index is not the index of this command (it was removed, replaced or changed).")
         return index
