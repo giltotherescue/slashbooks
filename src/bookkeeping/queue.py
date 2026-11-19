@@ -80,6 +80,7 @@ Learned-context schema (learned-context/counterparties.json)
 }
 """
 
+import copy
 import hashlib
 import json
 import os
@@ -761,26 +762,45 @@ _ARCHIVE_CACHE: dict[tuple[str, int, int, int], dict[str, dict]] = {}
 
 
 def _read_archive_file(path: Path) -> dict[str, dict]:
-    """The items of one archive file. Raises ValueError when the file is not a valid archive."""
-    info = path.stat()
-    key = (str(path), info.st_mtime_ns, info.st_size, info.st_ino)
-    cached = _ARCHIVE_CACHE.get(key)
-    if cached is not None:
-        return cached
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise ValueError(f"Queue archive {path.name} is unreadable: {exc}") from exc
-    items = document.get("items") if isinstance(document, dict) else None
-    if (not isinstance(document, dict) or set(document) != {"version", "items"} or document["version"] != _ARCHIVE_VERSION
-            or not isinstance(items, dict)
-            or not all(isinstance(name, str) and _ARCHIVE_ITEM_NAME.fullmatch(name) and isinstance(value, dict)
-                       and "source_id" in value and "status" in value for name, value in items.items())):
-        raise ValueError(f"Queue archive {path.name} is not valid.")
-    if len(_ARCHIVE_CACHE) > 256:
-        _ARCHIVE_CACHE.clear()
-    _ARCHIVE_CACHE[key] = items
-    return items
+    """The items of one archive file. Raises ValueError when the file is not a valid archive.
+
+    The returned dictionary is shared through the cache: a caller never changes it and never returns it to a caller of its own
+    (use ``_archived_items`` and ``_archived_item``, which return copies). The bytes are read between two checks of the file
+    signature. A file that changes while it is read (a writer replaced it) is read again, and a file that keeps changing is
+    refused, so a read never uses a half-written or mixed state.
+    """
+    for _ in range(3):
+        try:
+            with path.open("rb") as handle:
+                before = os.fstat(handle.fileno())
+                data = handle.read()
+                after = os.fstat(handle.fileno())
+            current = path.stat()
+        except OSError as exc:
+            raise ValueError(f"Queue archive {path.name} is unreadable: {exc}") from exc
+        signature = (before.st_mtime_ns, before.st_size, before.st_ino)
+        if signature != (after.st_mtime_ns, after.st_size, after.st_ino) or len(data) != before.st_size \
+                or signature != (current.st_mtime_ns, current.st_size, current.st_ino):
+            continue
+        key = (str(path), *signature)
+        cached = _ARCHIVE_CACHE.get(key)
+        if cached is not None:
+            return cached
+        try:
+            document = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise ValueError(f"Queue archive {path.name} is unreadable: {exc}") from exc
+        items = document.get("items") if isinstance(document, dict) else None
+        if (not isinstance(document, dict) or set(document) != {"version", "items"} or document["version"] != _ARCHIVE_VERSION
+                or not isinstance(items, dict)
+                or not all(isinstance(name, str) and _ARCHIVE_ITEM_NAME.fullmatch(name) and isinstance(value, dict)
+                           and "source_id" in value and "status" in value for name, value in items.items())):
+            raise ValueError(f"Queue archive {path.name} is not valid.")
+        if len(_ARCHIVE_CACHE) > 256:
+            _ARCHIVE_CACHE.clear()
+        _ARCHIVE_CACHE[key] = items
+        return items
+    raise ValueError(f"Queue archive {path.name} changed while it was read.")
 
 
 def _archive_files(entity: Entity) -> list[Path]:
@@ -797,7 +817,7 @@ def _archived_items(entity: Entity, *, strict: bool = False) -> tuple[dict[str, 
     broken: list[tuple[Path, Exception]] = []
     for path in _archive_files(entity):
         try:
-            found.update(_read_archive_file(path))
+            found.update(copy.deepcopy(_read_archive_file(path)))
         except (ValueError, OSError) as exc:
             if strict:
                 raise ValueError(str(exc)) from exc
@@ -806,15 +826,15 @@ def _archived_items(entity: Entity, *, strict: bool = False) -> tuple[dict[str, 
 
 
 def _archived_item(entity: Entity, item_id: str) -> Optional[dict]:
-    """The decided item of this id from an archive, or None. An unreadable archive is skipped here."""
+    """A copy of the decided item of this id from an archive, or None.
+
+    An archive that cannot be read raises ValueError: a lookup never treats a broken archive as "not there".
+    """
     name = _item_path(entity, item_id).name
     for path in _archive_files(entity):
-        try:
-            items = _read_archive_file(path)
-        except (ValueError, OSError):
-            continue
+        items = _read_archive_file(path)
         if name in items:
-            return items[name]
+            return copy.deepcopy(items[name])
     return None
 
 
@@ -1163,6 +1183,11 @@ def compact_closed_items(entity: Entity) -> dict[str, int]:
                 continue  # nothing changed in this month: no bytes are built and no file is written
             _replace_group_destination(target, _archive_bytes(dict(sorted(items.items()))))
             written += 1
+        # The archives are on disk (each file and its folder were synced when it was written). Sync the archive folder and
+        # the queue folder too, which holds the entry of a new archive folder, before any item file is removed.
+        if written:
+            _fsync_directory(directory)
+            _fsync_directory(q_dir)
         for name in closed:
             (q_dir / name).unlink()
         if closed or written:
@@ -1174,17 +1199,20 @@ def load_all_items(entity: Entity) -> dict[str, dict]:
     """Every readable queue item by file name: the files and the archives, a file winning over an archive entry.
 
     One read for a caller that needs the whole queue more than once. Unreadable files are left out and never moved.
-    The quarantine folder is not part of the queue.
+    The quarantine folder is not part of the queue. An archive that cannot be read raises ValueError (never an empty queue).
+    Files are read first and archives second, so an item that moves into an archive during the read is not missed.
     """
-    found, _ = _archived_items(entity)
+    found: dict[str, dict] = {}
     q_dir = _queue_dir(entity)
     if q_dir.is_dir():
         for path in sorted(q_dir.glob("*.json")):
             try:
-                item = _load_item_from_path(entity, path, quarantine_on_error=False)
+                found[path.name] = _load_item_from_path(entity, path, quarantine_on_error=False)
             except (OSError, ValueError):
                 continue
-            found[path.name] = item
+    archived, _ = _archived_items(entity, strict=True)
+    for name, item in archived.items():
+        found.setdefault(name, item)
     return dict(sorted(found.items()))
 
 
@@ -1200,22 +1228,27 @@ def list_queue_items(entity: Entity, status: Optional[str] = None) -> list[dict]
     if recovery is not None and recovery_ids is None:
         return [recovery]
     named: list[tuple[str, dict]] = []
+    loose: set[str] = set()  # the files seen in this read, whatever their status: a file is newer than an archive entry
     if q_dir.exists():
+        # Files first, archives second. A move writes the archive before it removes a file, so an item that leaves its file
+        # during this read is found in the archive that is read after it, and is never missed.
         for p in sorted(q_dir.glob("*.json")):
             if p.name in recovery_files:
                 continue
+            loose.add(p.name)
             try:
                 item = _load_item_from_path(entity, p, quarantine_on_error=False)
                 if (status is None or item.get("status") == status
                         or status == "actionable" and item.get("status") in ACTIONABLE_QUEUE_STATUSES):
                     named.append((p.name, item))
-            except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError) as exc:
+            except FileNotFoundError:
+                loose.discard(p.name)  # moved into an archive after it was listed
+            except (json.JSONDecodeError, ValueError, OSError) as exc:
                 # Corruption is always visible, even through an open-status
                 # filter, so a review read cannot report a falsely empty queue.
                 named.append((p.name, _corruption_diagnostic(p, exc)))
     # Decided items that were moved into month archives (compact_closed_items). A file is newer than an archive entry.
     archived, broken = _archived_items(entity)
-    loose = {p.name for p in q_dir.glob("*.json")} if q_dir.exists() else set()
     for name, item in archived.items():
         if name in loose or name in recovery_files:
             continue

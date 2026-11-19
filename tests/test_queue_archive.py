@@ -189,6 +189,97 @@ class ArchiveTests(unittest.TestCase):
         self.assertIn("row-2.json", decided_files(self.entity))
         self.assertNotIn("row-2.json", queue._archived_items(self.entity)[0])
 
+    def test_a_caller_that_changes_a_returned_item_does_not_change_the_next_read(self):
+        queue.compact_closed_items(self.entity)
+        first = queue.read_queue_item(self.entity, "row-3")
+        first["status"] = "open"
+        first["confirmed_category"] = "Expenses:Changed"
+        loaded = queue._load_item(self.entity, "row-3")
+        loaded["status"] = "withdrawn"
+        listed = [i for i in queue.list_queue_items(self.entity) if i["source_id"] == "row-3"][0]
+        listed["status"] = "open"
+        everything = queue.load_all_items(self.entity)
+        everything["row-3.json"]["status"] = "open"
+        again = queue.read_queue_item(self.entity, "row-3")
+        self.assertEqual((again["status"], again["confirmed_category"]), ("confirmed", "Expenses:Software"))
+        self.assertEqual(queue.list_queue_items(self.entity, status="confirmed").__len__(), ROWS)
+        # A saved edit survives: confirmed items that a caller loaded and wrote again as a file keep the new content.
+        edit = queue._load_item(self.entity, "row-4")
+        edit["reasoning"] = "Edited by a person"
+        queue._save_item(self.entity, edit)
+        queue.compact_closed_items(self.entity)
+        self.assertEqual(queue.read_queue_item(self.entity, "row-4")["reasoning"], "Edited by a person")
+        self.assertEqual(queue.read_queue_item(self.entity, "row-5")["reasoning"], "Synthetic service")
+
+    def test_a_lookup_in_an_archive_that_cannot_be_read_fails_and_is_never_not_found(self):
+        queue.compact_closed_items(self.entity)
+        (self.entity.path / "review-queue" / "archive" / "2026-02.json").write_text("{not json", encoding="utf-8")
+        with self.assertRaises(ValueError):
+            queue.read_queue_item(self.entity, "row-1")
+        with self.assertRaises(ValueError):
+            queue._load_item(self.entity, "row-1")
+        with self.assertRaises(ValueError):
+            queue.load_all_items(self.entity)
+
+    def test_an_archive_that_changes_while_it_is_read_is_read_again_and_one_that_keeps_changing_is_refused(self):
+        queue.compact_closed_items(self.entity)
+        path = self.entity.path / "review-queue" / "archive" / "2026-01.json"
+        real = queue.os.fstat
+        calls = []
+
+        class Changed:
+            def __init__(self, base):
+                self.st_mtime_ns, self.st_size, self.st_ino = base.st_mtime_ns + 1, base.st_size, base.st_ino
+
+        def flaky(descriptor, every=False):
+            base = real(descriptor)
+            calls.append(1)
+            return Changed(base) if (every or len(calls) == 2) else base
+
+        queue._ARCHIVE_CACHE.clear()
+        with patch.object(queue.os, "fstat", flaky):
+            self.assertTrue(queue._read_archive_file(path))   # the second check differs once, so it reads again
+        self.assertGreaterEqual(len(calls), 4)
+        queue._ARCHIVE_CACHE.clear()
+        with patch.object(queue.os, "fstat", lambda d: flaky(d, every=True)):
+            with self.assertRaisesRegex(ValueError, "changed while it was read"):
+                queue._read_archive_file(path)
+
+    def test_an_item_that_moves_into_an_archive_during_a_listing_is_listed_one_time(self):
+        real = queue._load_item_from_path
+        moved = []
+
+        def race(entity, path, **kwargs):
+            if path.name == "row-1.json" and not moved:
+                moved.append(queue.compact_closed_items(entity))   # a writer moves the files, then this read finds row-1 gone
+                raise FileNotFoundError(path)
+            return real(entity, path, **kwargs)
+
+        with patch.object(queue, "_load_item_from_path", race):
+            listed = queue.list_queue_items(self.entity)
+        self.assertEqual(moved[0]["archived"], ROWS)
+        self.assertEqual(sorted(i["source_id"] for i in listed), sorted(f"row-{n}" for n in range(ROWS + 2)))
+        self.assertEqual(len([i for i in listed if i["source_id"] == "row-1"]), 1)
+
+    def test_the_archive_and_its_folders_are_synced_before_any_item_file_is_removed(self):
+        events = []
+        real_sync, real_unlink = queue._fsync_directory, Path.unlink
+
+        def sync(path):
+            events.append(("sync", path.name))
+            return real_sync(path)
+
+        def unlink(self_path, *args, **kwargs):
+            events.append(("unlink", self_path.name))
+            return real_unlink(self_path, *args, **kwargs)
+
+        with patch.object(queue, "_fsync_directory", sync), patch.object(Path, "unlink", unlink):
+            queue.compact_closed_items(self.entity)
+        first_unlink = next(i for i, e in enumerate(events) if e[0] == "unlink")
+        before = [name for kind, name in events[:first_unlink] if kind == "sync"]
+        self.assertIn("archive", before, "the archive folder")
+        self.assertIn("review-queue", before, "the queue folder that holds the entry of a new archive folder")
+
     def test_load_all_items_returns_files_and_archives_with_files_first(self):
         queue.compact_closed_items(self.entity)
         every = queue.load_all_items(self.entity)
