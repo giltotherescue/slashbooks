@@ -107,6 +107,9 @@ def _main(argv: list[str]) -> int:
     work_parser.add_argument("--change-set-revision", type=int)
     work_parser.add_argument("--change-set-base-revision", type=int)
     work_args, command_argv = work_parser.parse_known_args(command_argv)
+    if work_args.change_set_out is not None:
+        # Before any check of the command: an invalid command never leaves the receipt of an earlier run.
+        work_args.change_set_out.unlink(missing_ok=True)
     args = parser.parse_args(command_argv)
 
     if work_args.work_out is not None or work_args.change_set_out is not None:
@@ -119,25 +122,33 @@ def _main(argv: list[str]) -> int:
             return 1
         entity_path = work_module.entity_path_from_args(args)
         work_receipt = change_receipt = None
-        if work_args.change_set_out is not None:
-            work_args.change_set_out.unlink(missing_ok=True)  # A document of an earlier run must never look like this run
+        code = 1
         try:
             with contextlib.ExitStack() as stack:
-                if work_args.work_out is not None:
-                    work_receipt = stack.enter_context(work_module.capture(entity_path))
+                # The change set is the outer capture: an error in any inner step (the work events after an
+                # ingest, for example) passes through it and makes the receipt incomplete.
                 if work_args.change_set_out is not None:
                     change_receipt = stack.enter_context(changeset_module.capture(
                         entity_path, books_revision=work_args.change_set_revision,
                         base_revision=work_args.change_set_base_revision))
+                if work_args.work_out is not None:
+                    work_receipt = stack.enter_context(work_module.capture(entity_path))
                 code = _dispatch(args, command_argv, parser, answer_application)
                 if code != 0 and change_receipt is not None:
                     change_receipt.failed = True  # A failed command can leave some writes: the change set is incomplete.
         finally:
             # Also when the command raises: a failed command can leave writes, and the host needs the document.
-            if work_receipt is not None:
-                work_module.write_document(work_args.work_out, work_receipt.events)
-            if change_receipt is not None:
-                changeset_module.write_document(work_args.change_set_out, change_receipt.change_set)
+            try:
+                if work_receipt is not None:
+                    work_module.write_document(work_args.work_out, work_receipt.events)
+            except BaseException:
+                if change_receipt is not None:
+                    change_receipt.change_set = changeset_module.incomplete(
+                        work_args.change_set_revision, "finalize_failed", work_args.change_set_base_revision)
+                raise
+            finally:
+                if change_receipt is not None:
+                    changeset_module.write_document(work_args.change_set_out, change_receipt.change_set)
         return code
     return _dispatch(args, command_argv, parser, answer_application)
 
