@@ -348,10 +348,11 @@ review hold (`PreparationDenied`) with the same code.
 
 `confirm-group` checks every item before the first write, and it holds the
 company write lock from that check to the last write. If an item is early, the
-command writes nothing. The writes are separate ledger transactions. If the
-ledger write refuses an item after the check (for example because a change
-outside the company lock moved an open date), that item stays in review and the
-items before it stay recorded.
+command writes nothing. The categorized items are one ledger transaction with
+one seal. If the ledger write refuses an item after the check (for example
+because a change outside the company lock moved an open date), or the write
+stops, no item of the group is recorded and every item stays in review. A split
+or a transfer pair in the group is its own ledger transaction after that one.
 
 At import, a row that a learned category would post goes to Review instead,
 with `review_hold_reason` set to the code.
