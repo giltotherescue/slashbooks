@@ -44,6 +44,7 @@ import json
 import os
 import secrets
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -54,7 +55,9 @@ from .changeset import ChangeSetError
 from .ledger.store import REWRITE_EVENT_TYPES
 
 INDEX_NAME = ".change-capture.sqlite"
-INDEX_VERSION = 3
+#: The signature of the index file after the last capture. An edit of the index between two captures changes it.
+SIGNATURE_NAME = ".change-capture.sqlite.sig"
+INDEX_VERSION = 4
 LOG_TABLE = "_books_capture_log"
 CTL_TABLE = "_books_capture_ctl"
 TRIGGER_PREFIX = "_books_capture_"
@@ -73,6 +76,9 @@ FILE_SECTIONS = {
     **{name: "documents" for name in changeset.DOCUMENT_FILES},
 }
 LEDGER_SECTIONS = ("entries", "balances", "audit")
+#: Files that the change set does not cover but that work events read (``bookkeeping.work``). The index keeps their
+#: rows in the same way, outside the digest totals.
+EXTRA_FILES = {"reports/reconciliation.json": "recon"}
 _QUEUE_FOLDER = changeset._QUEUE_DIR
 _MISSING_SIG = ["unsafe"]  # A signature that no file has: used when a file was not read.
 #: The sections whose helpers journal the rows that they change, so the file is not read after the command.
@@ -280,23 +286,58 @@ def _logged_keys(conn: sqlite3.Connection, token: str | None,
 class Index:
     """``.change-capture.sqlite``: the rows of the small tables as the last capture saw them, and their totals."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, exclusive: bool = False) -> None:
+        """Open the index. With ``exclusive`` the open takes an exclusive lock first and keeps it (the caller commits or
+        rolls back): the check of the saved signature, the removal of stray side files and the build of missing tables
+        then happen while no other SQLite connection can write the file. ``trusted`` tells whether the file is the file
+        that the last capture sealed."""
         self.path = root / INDEX_NAME
+        self.trusted = False
+        self.sealed_identity: tuple[Any, ...] | None = None
         self.conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+        try:
+            self._setup(root, exclusive)
+        except BaseException:
+            try:
+                self.conn.close()  # No leaked connection (and no lock) when the open fails.
+            except sqlite3.Error:
+                pass
+            raise
+
+    def _setup(self, root: Path, exclusive: bool) -> None:
+        # Never WAL: in WAL mode a committed write can leave the main file as it was, and the file signature below would
+        # not show it. In this mode every committed write changes the main file and its change counter.
+        self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.execute("PRAGMA synchronous = NORMAL")
-        self.conn.executescript(
-            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;"
-            "CREATE TABLE IF NOT EXISTS rows (section TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,"
-            " PRIMARY KEY (section, key)) WITHOUT ROWID;"
-            "CREATE TABLE IF NOT EXISTS item_files (name TEXT PRIMARY KEY, source_id TEXT NOT NULL, sig TEXT NOT NULL)"
-            " WITHOUT ROWID;"
-            "CREATE INDEX IF NOT EXISTS item_files_source ON item_files (source_id);"
-            "CREATE TABLE IF NOT EXISTS archive_files (name TEXT PRIMARY KEY, sig TEXT NOT NULL) WITHOUT ROWID;"
-            "CREATE TABLE IF NOT EXISTS archive_items (name TEXT PRIMARY KEY, archive TEXT NOT NULL,"
-            " source_id TEXT NOT NULL, value TEXT NOT NULL) WITHOUT ROWID;"
-            "CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive);"
-            "CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id);")
-        if self.meta("version") != str(INDEX_VERSION):
+        self.begin_write = False
+        if exclusive:
+            self.conn.execute("BEGIN EXCLUSIVE")
+            self.begin_write = True
+            self.trusted = stamp_matches(root)
+            # With the exclusive lock in the delete-journal mode no live connection can own a side file: a stray one
+            # (a file that a WAL connection left) is removed, so that the next capture can trust the index again.
+            for suffix in ("-wal", "-shm"):
+                try:
+                    os.unlink(str(self.path) + suffix)
+                except OSError:
+                    pass
+        names = {str(row[0]) for row in self.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        # An index that has its other tables but not the source ids lost them (a dropped table must not be created
+        # again empty and then be trusted): the tokens are wiped below, so every part is read in full.
+        dropped = "meta" in names and "ledger_sources" not in names
+        for statement in (
+            'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE TABLE IF NOT EXISTS rows (section TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (section, key)) WITHOUT ROWID',
+            'CREATE TABLE IF NOT EXISTS item_files (name TEXT PRIMARY KEY, source_id TEXT NOT NULL, sig TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE INDEX IF NOT EXISTS item_files_source ON item_files (source_id)',
+            'CREATE TABLE IF NOT EXISTS archive_files (name TEXT PRIMARY KEY, sig TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE TABLE IF NOT EXISTS archive_items (name TEXT PRIMARY KEY, archive TEXT NOT NULL, source_id TEXT NOT NULL, value TEXT NOT NULL) WITHOUT ROWID',
+            'CREATE INDEX IF NOT EXISTS archive_items_archive ON archive_items (archive)',
+            'CREATE INDEX IF NOT EXISTS archive_items_source ON archive_items (source_id)',
+            'CREATE TABLE IF NOT EXISTS ledger_sources (source_id TEXT PRIMARY KEY) WITHOUT ROWID',
+        ):
+            self.conn.execute(statement)
+        if dropped or (exclusive and not self.trusted) or self.meta("version") != str(INDEX_VERSION):
             self.wipe()
         self.totals: dict[str, list[int]] = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
         saved = self.meta("totals")
@@ -307,7 +348,7 @@ class Index:
                                for name in changeset.DIGEST_SECTIONS}
             except (ValueError, KeyError, TypeError, IndexError):
                 self.wipe()
-        self.begin_write = False
+        self.sealed = False
         # A random id that changes with every commit. A capture checks that the index that it opened at the end is the
         # index that it left at the start: a deleted, restored or replaced index has another id.
         if self.meta("generation") is None:
@@ -345,7 +386,8 @@ class Index:
         return tuple(json.loads(raw)) if raw else None  # type: ignore[return-value]
 
     def wipe(self) -> None:
-        self.conn.executescript("DELETE FROM meta; DELETE FROM rows; DELETE FROM item_files; DELETE FROM archive_files; DELETE FROM archive_items;")
+        for table in ("meta", "rows", "item_files", "archive_files", "archive_items", "ledger_sources"):
+            self.conn.execute(f"DELETE FROM {table}")
         self.conn.execute("INSERT INTO meta (key, value) VALUES ('version', ?)", (str(INDEX_VERSION),))
         self.totals = {name: [0, 0] for name in changeset.DIGEST_SECTIONS}
 
@@ -355,12 +397,32 @@ class Index:
             self.begin_write = True
 
     def commit(self) -> None:
+        """Save the changes and seal the index: the signature that the next capture trusts is taken under an exclusive
+        lock, and only when the file holds exactly this commit (the change counter is one above the counter that the
+        transaction saw). A write by another process between the commit and the seal therefore leaves no signature."""
+        self.start_write()
         self.set_meta_totals()
         self.generation = secrets.token_hex(8)
         self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('generation', ?)", (self.generation,))
-        if self.begin_write:
-            self.conn.execute("COMMIT")
-            self.begin_write = False
+        before = sqlite_counter(self.path) or 0  # A new file has no header yet: its first commit makes counter 1.
+        self.conn.execute("COMMIT")
+        self.begin_write = False
+        self.sealed = False
+        root = self.path.parent
+        stamp = None
+        try:
+            self.conn.execute("BEGIN EXCLUSIVE")
+            try:
+                if sqlite_counter(self.path) == (before + 1) % (1 << 32):
+                    stamp = _index_stamp(root)
+                    status = os.stat(self.path)  # The identity that the finish compares with, taken under the same lock.
+                    self.sealed_identity = (status.st_ino, status.st_ctime_ns, self.generation, sqlite_counter(self.path))
+                _write_stamp(root, stamp)
+                self.sealed = stamp is not None
+            finally:
+                self.conn.execute("ROLLBACK")
+        except sqlite3.Error:
+            _write_stamp(root, None)
 
     def set_meta_totals(self) -> None:
         body = {name: [count, format(total % changeset._MODULUS, "x")] for name, (count, total) in self.totals.items()}
@@ -368,6 +430,55 @@ class Index:
 
     def digest(self) -> str:
         return changeset.digest_from_totals(self.totals)
+
+    # -- ledger source ids and extra rows ------------------------------------
+
+    def replace_sources(self, source_ids: Iterable[str]) -> None:
+        """Make the index hold exactly the source ids of the ledger entries."""
+        self.start_write()
+        self.conn.execute("DELETE FROM ledger_sources")
+        self._set_source_count(0)
+        self.add_sources(source_ids)
+
+    def add_sources(self, source_ids: Iterable[str]) -> None:
+        self.start_write()
+        cursor = self.conn.executemany("INSERT OR IGNORE INTO ledger_sources (source_id) VALUES (?)",
+                                       ((str(value),) for value in source_ids if value))
+        self._set_source_count((self.source_count() or 0) + max(cursor.rowcount, 0))
+
+    def source_count(self) -> int | None:
+        raw = self.meta("sources_count")
+        return int(raw) if raw is not None else None
+
+    def _set_source_count(self, count: int) -> None:
+        self.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('sources_count', ?)", (str(count),))
+
+    def sources_intact(self) -> bool:
+        """True when the table holds as many ids as the last write stored (a dropped or emptied table does not)."""
+        stored = self.source_count()
+        actual = int(self.conn.execute("SELECT COUNT(*) FROM ledger_sources").fetchone()[0])
+        return stored is not None and stored == actual
+
+    def sources_present(self, source_ids: Iterable[str]) -> set[str]:
+        """The ids among ``source_ids`` that a ledger entry holds (one lookup for each id)."""
+        wanted = sorted({str(value) for value in source_ids if value})
+        found: set[str] = set()
+        for start in range(0, len(wanted), _CHUNK):
+            chunk = wanted[start:start + _CHUNK]
+            marks = ",".join("?" for _ in chunk)
+            found.update(str(row[0]) for row in self.conn.execute(
+                f"SELECT source_id FROM ledger_sources WHERE source_id IN ({marks})", chunk))
+        return found
+
+    def all_sources(self) -> frozenset[str]:
+        return frozenset(str(row[0]) for row in self.conn.execute("SELECT source_id FROM ledger_sources"))
+
+    def replace_extra(self, name: str, rows: Mapping[str, Any]) -> None:
+        """Make the index hold exactly ``rows`` for a section that has no digest total."""
+        self.start_write()
+        self.conn.execute("DELETE FROM rows WHERE section = ?", (name,))
+        self.conn.executemany("INSERT INTO rows (section, key, value) VALUES (?, ?, ?)",
+                              ((name, str(key), _canon(value)) for key, value in rows.items()))
 
     # -- rows ---------------------------------------------------------------
 
@@ -471,7 +582,7 @@ def _has_archive(root: Path) -> bool:
 
 def _signatures(root: Path) -> dict[str, Any]:
     result: dict[str, Any] = {"sql": _db_token(root / "ledger.sqlite")}
-    for relative in FILE_SECTIONS:
+    for relative in (*FILE_SECTIONS, *EXTRA_FILES):
         result[relative] = capture_log.signature(root / relative)
     return result
 
@@ -536,6 +647,26 @@ def ledger_totals(ledger: Path) -> dict[str, list[int]]:
             raise ChangeSetError(f"The ledger store cannot be read: {exc}") from exc
     finally:
         conn.close()
+
+
+def _read_sources(ledger: Path) -> list[str]:
+    """The source id of every ledger entry that has one: a read in full."""
+    conn = changeset._connect_read_only(ledger)
+    if conn is None:
+        return []
+    try:
+        try:
+            return [str(row[0]) for row in conn.execute(
+                "SELECT source_id FROM entries WHERE source_id IS NOT NULL AND source_id != ''")]
+        except sqlite3.DatabaseError as exc:
+            raise ChangeSetError(f"The ledger store cannot be read: {exc}") from exc
+    finally:
+        conn.close()
+
+
+def _read_extra(root: Path, relative: str) -> dict[str, Any]:
+    from . import work
+    return work.load_reconciliations(root / relative)
 
 
 def _read_file_section(root: Path, relative: str) -> dict[str, Any]:
@@ -816,6 +947,9 @@ def _rebuild(index: Index, root: Path, group: str) -> None:
         for name, total in ledger_totals(root / "ledger.sqlite").items():
             index.set_total(name, total)
         index.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('counts', ?)", (_canon(list(counts)),))
+        index.replace_sources(_read_sources(root / "ledger.sqlite"))
+    elif group in EXTRA_FILES:
+        index.replace_extra(EXTRA_FILES[group], _read_extra(root, group))
     elif FILE_SECTIONS[group] == "documents":
         index.apply("documents", index.lookup("documents", [group]), _read_file_section(root, group))
     else:
@@ -827,19 +961,76 @@ def _rebuild(index: Index, root: Path, group: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def start(root: Path) -> "Run | None":
+_ACTIVE: dict[tuple[int, str], "Run"] = {}
+_ACTIVE_LOCK = threading.Lock()
+
+
+def _index_stamp(root: Path) -> list[Any] | None:
+    """The identity of the index file and of its side files, as one value that a later capture compares."""
+    path = root / INDEX_NAME
+    try:
+        status = os.stat(path)
+    except OSError:
+        return None
+    side = [os.path.exists(str(path) + suffix) for suffix in ("-wal", "-shm", "-journal")]
+    return [status.st_ino, status.st_size, status.st_mtime_ns, status.st_ctime_ns, sqlite_counter(path), side]
+
+
+def _write_stamp(root: Path, stamp: list[Any] | None) -> None:
+    path = root / SIGNATURE_NAME
+    try:
+        if stamp is None:
+            path.unlink(missing_ok=True)
+            return
+        tmp = path.with_name(path.name + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(stamp))
+            handle.flush()
+            os.fsync(handle.fileno())
+        tmp.replace(path)  # Atomic: a reader sees the old signature or the new one.
+    except OSError:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass  # Without a signature the next capture reads every part in full: safe.
+
+
+def stamp_matches(root: Path) -> bool:
+    """True when the index file is the file that the last capture left: same inode, size, times, change counter, and
+    no ``-wal``, ``-shm`` or ``-journal`` file."""
+    try:
+        saved = json.loads((root / SIGNATURE_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    current = _index_stamp(root)
+    return current is not None and saved == current and not any(current[5])
+
+
+def _active_key(root: Path) -> tuple[int, str]:
+    return threading.get_ident(), os.path.realpath(root)
+
+
+def start(root: Path) -> "Handle | None":
     """Prepare the capture before a command. ``None`` means that the incremental capture is not possible here.
 
-    The caller holds the company write lock, so no engine writer runs until the capture ends. The triggers are
-    installed first, in one transaction that also takes the schema fingerprint and the file token; every read of the
-    state comes after it.
+    A second capture of the same company in the same thread (a change set inside a work capture, or the reverse) joins
+    the run that is active: the triggers, the log and the journal are installed one time, and each capture gets its own
+    handle. The index changes only when the last handle finishes, so each capture compares with the state that the
+    index saved before the outermost command. A capture can join only while nothing has changed since the run started;
+    otherwise ``start`` returns ``None`` and the caller reads in full. The caller holds the company write lock, so no
+    engine writer runs until the capture ends.
     """
     if not root.is_dir():
         return None
+    with _ACTIVE_LOCK:
+        active = _ACTIVE.get(_active_key(root))
+    if active is not None and not active.closed:
+        return active.join()
     try:
-        index = Index(root)
+        index = Index(root, exclusive=True)  # The signature check below happens under the exclusive lock.
     except (sqlite3.Error, OSError):
         return None  # The folder cannot hold the index: the caller compares two full reads.
+    trusted = index.trusted
     ledger = root / "ledger.sqlite"
     token = fingerprint = None
     try:
@@ -855,6 +1046,8 @@ def start(root: Path) -> "Run | None":
             if counter_start is not None and expected is not None and counter_start != expected:
                 token = None  # The install was not the only write: the log cannot be trusted.
         rebuilt: list[str] = []
+        if not trusted and not index.sources_intact():
+            index.set_token("sql", "sources-invalid")  # The saved source ids do not match their count: build them again.
         for group, current in signatures.items():
             if index.token(group) != current:
                 _rebuild(index, root, group)
@@ -863,6 +1056,11 @@ def start(root: Path) -> "Run | None":
         index.start_write()
         _sync_queue(index, root, None, lambda reason: rebuilt.append(reason))
         index.commit()
+        if not index.sealed:
+            index.close()
+            if token is not None:
+                remove_triggers(ledger)
+            return None  # Another process wrote the index at the moment of the commit: compare two full reads.
         conn = changeset._connect_read_only(ledger)
         try:
             position = changeset._position(conn)
@@ -886,7 +1084,10 @@ def start(root: Path) -> "Run | None":
     run.report["rebuilt"] = rebuilt
     run.token, run.schema, run.counter_start = token, fingerprint, counter_start
     run.begin()
-    return run
+    handle = run.new_handle()
+    with _ACTIVE_LOCK:
+        _ACTIVE[_active_key(root)] = run
+    return handle
 
 
 def _real_counts(root: Path) -> tuple[int, int, int]:
@@ -928,11 +1129,82 @@ class Run:
         #: Which path this capture took: ``fallbacks`` lists each part that was read in full, and why.
         self.report: dict[str, Any] = {"mode": "incremental", "fallbacks": [], "rebuilt": []}
         self.closed = False
+        self.handles: list["Handle"] = []
+
+    def new_handle(self) -> "Handle":
+        handle = Handle(self)
+        self.handles.append(handle)
+        return handle
+
+    def join(self) -> "Handle | None":
+        """A handle for a second capture, or ``None`` when the run cannot show what it changed from now on."""
+        if self.closed or self.token is None or self.journal is None or all(h.done for h in self.handles):
+            return None
+        try:
+            current = _signatures(self.root)
+            if any(current[group] != value for group, value in self.start_signatures.items() if group != "sql"):
+                return None
+            if any(log.writes for log in self.journal.files.values()):
+                return None
+            if not self._queue_unchanged():
+                return None
+            conn = changeset._connect_read_only(self.root / "ledger.sqlite")
+            try:
+                if conn is None or changeset._position(conn) != self.position:
+                    return None
+                if _logged_keys(conn, self.token) != ([], []):
+                    return None
+            finally:
+                if conn is not None:
+                    conn.close()
+        except (sqlite3.Error, OSError):
+            return None
+        return self.new_handle()
+
+    def _queue_unchanged(self) -> bool:
+        """True when no review item file or archive differs from the signatures that the index saved at the start."""
+        if _has_group_journal(self.root):
+            return False
+        index = Index(self.root)
+        try:
+            saved = {str(name): str(sig) for name, sig in index.conn.execute("SELECT name, sig FROM item_files")}
+            saved_archive = {str(name): str(sig) for name, sig in index.conn.execute("SELECT name, sig FROM archive_files")}
+        finally:
+            index.close()
+        return _sweep(self.root) == saved and _sweep(self.root, changeset._ARCHIVE_DIR) == saved_archive
+
+    def release(self, handle: "Handle") -> None:
+        handle.released = True
+        if all(h.released for h in self.handles):
+            self.close()
+
+    def saved_index(self) -> Index:
+        """The index as it was saved before the command (any open change is rolled back)."""
+        try:
+            self.index.close()
+        except sqlite3.Error:
+            pass
+        try:
+            index = Index(self.root)
+        except sqlite3.Error as exc:
+            raise ChangeSetError(f"The saved index cannot be read: {exc}") from exc
+        try:
+            index.start_write()  # A write lock held until the caller closes the index: no write between check and read.
+            index.generation = index.meta("generation")
+            same = index.identity() == self.identity
+        except (sqlite3.Error, OSError):
+            index.close()
+            raise ChangeSetError("The saved index cannot be read.") from None
+        if not same:
+            index.close()
+            raise ChangeSetError("The saved index is not the index of this command (it was removed, replaced or changed).")
+        return index
 
     def begin(self) -> None:
         self.index.close()  # No file stays open during the command.
-        status = os.stat(self.index.path)
-        self.identity = (status.st_ino, status.st_ctime_ns, self.index.generation, sqlite_counter(self.index.path))
+        if self.index.sealed_identity is None:
+            raise ChangeSetError("The index was not sealed.")
+        self.identity = self.index.sealed_identity
         self.journal = capture_log.begin(self.root, {**self.start_signatures, **_archive_signatures(self.root)})
 
     def close_wconn(self) -> None:
@@ -950,6 +1222,9 @@ class Run:
         if self.closed:
             return
         self.closed = True
+        with _ACTIVE_LOCK:
+            if _ACTIVE.get(_active_key(self.root)) is self:
+                del _ACTIVE[_active_key(self.root)]
         if self.journal is not None:
             capture_log.end(self.journal)
         self.close_wconn()
@@ -962,11 +1237,35 @@ class Run:
 
     # -- finish ---------------------------------------------------------------
 
-    def finish(self, failed: bool, books_revision: int | None, base_revision: int | None = None,
-               reason: str = "command_failed") -> dict[str, Any]:
+    def finish(self, handle: "Handle", failed: bool, books_revision: int | None, base_revision: int | None = None,
+               probe: Any = None, reason: str = "command_failed") -> dict[str, Any]:
+        """Build the document of one capture. Only the last handle to finish saves the index and removes the log.
+
+        An earlier handle reads the same index and the same log, and then rolls its index changes back, so the
+        capture that finishes later still compares with the state before the command. ``probe`` is called with the
+        old and new rows of the queue and staging files, before the ledger totals change (see ``Probe``).
+        """
+        handle.done = True
+        last = all(h.done for h in self.handles)
         root, journal = self.root, self.journal
         assert journal is not None
-        capture_log.end(journal)  # Later writes (the cleanup below) are not part of the command.
+        if last:
+            capture_log.end(journal)  # Later writes (the cleanup below) are not part of the command.
+        try:
+            return self._finish(handle, last, journal, failed, books_revision, base_revision, probe, reason)
+        except BaseException:
+            if not handle.committed:
+                self.close_wconn()
+                try:
+                    self.index.close()  # Rolls back the open transaction, so the next capture can write.
+                except sqlite3.Error:
+                    pass
+            raise
+
+    def _finish(self, handle: "Handle", last: bool, journal: capture_log.Session, failed: bool,
+                books_revision: int | None, base_revision: int | None, probe: Any,
+                reason: str = "command_failed") -> dict[str, Any]:
+        root = self.root
         try:
             status = os.stat(root / INDEX_NAME)
         except OSError:
@@ -975,9 +1274,18 @@ class Run:
                 self.identity[0], self.identity[1], self.identity[3]):
             raise ChangeSetError("The index was changed during the command.")
         self.index = Index(root)
-        if self.index.generation != self.identity[2]:
+        self.index.start_write()  # From here no other connection can write the index: check it under this lock.
+        self.index.generation = self.index.meta("generation")  # Read again under the lock.
+        try:
+            now = self.index.identity()
+        except OSError:
+            raise ChangeSetError("The index was removed during the command.") from None
+        if now[:2] != self.identity[:2]:
+            raise ChangeSetError("The index was changed during the command.")
+        if now[3] != self.identity[3]:
+            raise ChangeSetError("The index was written during the command.")
+        if now[2] != self.identity[2]:
             raise ChangeSetError("The index was replaced during the command.")
-        self.index.start_write()
         index = self.index
         # Hold the write lock of the store from the first read to the removal of the log: a write after the reads
         # cannot be folded into the signatures that the next capture trusts.
@@ -998,6 +1306,9 @@ class Run:
         slow_sql = self._sql(before, after)
         self._queue(before, after)
         self._files(before, after)
+        extras = self._extras()
+        if probe is not None:
+            probe(Probe(index, before, after, extras, self.position))
         # Position and counts of the ledger after the command.
         conn = changeset._connect_read_only(root / "ledger.sqlite")
         try:
@@ -1017,6 +1328,7 @@ class Run:
         if conn is None:
             for name in LEDGER_SECTIONS:
                 index.set_total(name, [0, 0])
+            index.replace_sources(())
         after.digest_value = index.digest()
 
         def after_digest(document: dict[str, Any]) -> str:
@@ -1024,6 +1336,10 @@ class Run:
             return index.digest()
 
         document = changeset._build(before, after, root, books_revision, failed, base_revision, after_digest, reason)
+        if not last:
+            self.close_wconn()  # Releases the write lock of the store: the handle that finishes last takes it again.
+            index.close()  # Rolls back: the index keeps the state before the command for the next handle.
+            return document
         # Save the counts for the next capture.
         if real_counts is not None:
             counts = real_counts
@@ -1061,6 +1377,7 @@ class Run:
         except OSError:
             raise ChangeSetError("The index was removed during the command.") from None
         index.commit()
+        handle.committed = True
         index.close()
         return document
 
@@ -1085,7 +1402,9 @@ class Run:
                                    "audit chain moved back" if rewound else "store without the append-only triggers or log"))
             for name, total in ledger_totals(self.root / "ledger.sqlite").items():
                 index.set_total(name, total)
+            index.replace_sources(_read_sources(self.root / "ledger.sqlite"))
             return
+        index.add_sources(entry["source_id"] for entry in document["entries_added"])
         for entry in document["entries_added"]:
             index.add_total("entries", str(entry["id"]), entry)
         for row in document["balance_assertions_added"]:
@@ -1206,3 +1525,51 @@ class Run:
                 setattr(before, section, old_rows)
                 setattr(after, section, new_rows)
             index.apply(section, old_rows, new_rows)
+
+    # -- files that only work events read -------------------------------------------
+
+    def _extras(self) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+        """Update the rows of the extra files that changed. Returns the old and the new rows of each section."""
+        found: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+        for relative, section in EXTRA_FILES.items():
+            if capture_log.signature(self.root / relative) == self.start_signatures[relative]:
+                continue
+            old_rows, new_rows = self.index.section(section), _read_extra(self.root, relative)
+            self.index.replace_extra(section, new_rows)
+            found[section] = (old_rows, new_rows)
+        return found
+
+
+class Probe:
+    """What a capture can read from a finishing run before the ledger totals change.
+
+    ``before`` and ``after`` hold the old and new rows of the queue and staging files that changed (see ``_Side``).
+    ``index`` is the index in the transaction of this finish: the staging and queue sections already hold the new rows,
+    and ``ledger_sources`` still holds the ledger as it was before the command.
+    """
+
+    def __init__(self, index: Index, before: "changeset._Side", after: "changeset._Side",
+                 extras: Mapping[str, tuple[dict[str, Any], dict[str, Any]]], position: Mapping[str, Any]) -> None:
+        self.index, self.before, self.after, self.extras, self.position = index, before, after, extras, position
+
+
+class Handle:
+    """One capture's view of a (shared) run. It has the same ``finish`` and ``close`` as a run of one capture."""
+
+    def __init__(self, run: Run) -> None:
+        self.run = run
+        self.done = False
+        self.released = False
+        self.committed = False
+
+    def finish(self, failed: bool, books_revision: int | None, base_revision: int | None = None,
+               reason: str = "command_failed", probe: Any = None) -> dict[str, Any]:
+        return self.run.finish(self, failed, books_revision, base_revision, probe, reason)
+
+    def close(self) -> None:
+        self.run.release(self)
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "run":
+            raise AttributeError(name)
+        return getattr(self.run, name)

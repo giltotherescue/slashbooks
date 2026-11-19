@@ -62,7 +62,19 @@ with work.capture(company_dir) as receipt:
 events = receipt.events
 ```
 
-`work.capture` writes no file. It reads `ledger.sqlite` in read-only mode.
+`work.capture` writes no work file. It reads `ledger.sqlite` in read-only mode.
+
+### Cost of a capture
+
+The cost of a capture depends on the rows that the command changed, not on the number of transactions in the books.
+`work.capture` uses the capture of change sets (`bookkeeping.change_capture`): the saved copy of the small tables in
+`.change-capture.sqlite` in the company folder (it also keeps the source ID of each ledger entry and the reconciliation
+records), a log of the rows that the command writes, and file signatures. A capture and a change set capture of the same
+command share one run. The first capture of a company, and the first capture after a command that ran without a capture,
+read the books in full once to build the index. `work.capture(company_dir, incremental=False)` takes two full snapshots
+instead and gives the same events. The receipt field `path` tells which way was used: `incremental`, `saved` (the new
+state was read in full and compared with the saved copy after the incremental read failed) or `full`. The index is trusted without a scan only when its file is the file that the last capture left (after its last commit the capture takes the inode, size, times and change counter under an exclusive lock and saves them in `.change-capture.sqlite.sig`; the index never uses WAL mode, and a `-wal`, `-shm` or `-journal` file makes it untrusted and a stray `-wal` or `-shm` file is removed when the index is built again). The capture opens the index with an exclusive lock, checks the signature, seals and takes the identity of the file in that one hold, and the finish checks the identity under a write lock before it saves. A process that writes the bytes of `.change-capture.sqlite` without SQLite locking is outside this protection: the capture assumes that every writer of the file uses SQLite; otherwise the index is built again. If no way can read the books (a ledger that stays locked, an index that the command removed or replaced), the receipt has `complete` false, `path` `failed` and no events, `--work-out` writes `"complete": false` and a `reason`, and the error is raised: a host must not take that as "no work". The script
+`benchmarks/bench_work_capture.py` times the capture at three sizes.
 
 ## Event shape
 
