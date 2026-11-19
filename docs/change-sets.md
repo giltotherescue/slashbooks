@@ -291,7 +291,9 @@ member that is null, of the wrong type or without its key, an object with the
 same key twice, two rows with the same key in a keyed list, a
 `staging/context-history.json` with a schema version that the engine does not
 support, a corrupt review queue archive, and a stored bank payload that is not a
-JSON object.
+JSON object, and a ledger store that was there before the command and is missing
+after it (the change set is not a list of removals: the host reads again). A failed command
+with no company directory is also incomplete (`command_failed`).
 
 The host runs one writer for each company at a time. The engine does not
 separate its own writes from a write by another process during the same

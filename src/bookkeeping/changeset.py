@@ -415,6 +415,7 @@ class _Side:
 
     position: dict[str, Any]
     counts: tuple[int, int, int]
+    ledger_present: bool
     ledger_digest: str
     accounts: dict[int, dict[str, Any]]
     bank: dict[str, tuple[str, str, str]]
@@ -456,7 +457,7 @@ def _take(root: Path) -> _Side:
         if conn is not None:
             conn.close()
     return _Side(
-        position=position, counts=counts, ledger_digest=ledger, accounts=accounts, bank=bank,
+        position=position, counts=counts, ledger_present=conn is not None, ledger_digest=ledger, accounts=accounts, bank=bank,
         queue=load_queue(root) if root.is_dir() else {},
         pending=_load_keyed(root / _PENDING_FILE, "id"),
         duplicates=_load_keyed(root / _DUPLICATES_FILE, "source_id"),
@@ -599,6 +600,9 @@ def _account_changes(before: Mapping[int, Mapping[str, Any]], after: Mapping[int
 def _build(before: _Side, root: Path, books_revision: int | None, failed: bool = False,
            base_revision: int | None = None, reason: str = "command_failed") -> dict[str, Any]:
     after = _take(root)
+    if before.ledger_present and not after.ledger_present:
+        # A ledger that was there before the command is gone. That is not a set of removals: a host must read again.
+        raise ChangeSetError("The ledger store is missing after the command.")
     conn = _connect_read_only(root / "ledger.sqlite") if root.is_dir() else None
     try:
         document = _empty(books_revision, before.position, before.digest(), complete=not failed,
@@ -725,8 +729,18 @@ def capture(entity_path: Path | str | None, *, books_revision: int | None = None
     holder = ChangeSetCapture(Path(entity_path) if entity_path is not None else None, books_revision, base_revision)
     holder.change_set = incomplete(books_revision, "not_finished", base_revision)  # A reader never sees a complete receipt early
     if holder.entity_path is None:
-        holder.change_set = _empty(books_revision, base_revision=base_revision)
-        yield holder
+        try:
+            yield holder
+        except BaseException:
+            holder.failed = True
+            holder.finalize_failed = holder.body_done
+            raise
+        finally:
+            # No company directory: nothing to compare. A failed command is still never a complete receipt.
+            holder.change_set = (
+                incomplete(books_revision, "finalize_failed" if holder.finalize_failed else "command_failed",
+                           base_revision)
+                if holder.failed else _empty(books_revision, base_revision=base_revision))
         return
     try:
         before: _Side | None = _take(holder.entity_path)
