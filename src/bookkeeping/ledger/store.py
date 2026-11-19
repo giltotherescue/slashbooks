@@ -221,9 +221,21 @@ CREATE INDEX IF NOT EXISTS audit_events_type_idx
 
 _GENESIS_PREV = "0" * 64
 
-#: Finds the entries that reverse another entry without a read of every entry (``LedgerStore.reversal_targets``).
+#: Finds the entries that reverse another entry without a read of every entry (``LedgerStore.is_reversed``).
 _REVERSES_INDEX_SQL = ("CREATE INDEX IF NOT EXISTS entries_reverses_idx ON entries(id) "
                        "WHERE instr(metadata_json, '\"reverses\"') > 0")
+
+
+def ensure_write_indexes(conn: sqlite3.Connection) -> None:
+    """Create the indexes that a writer adds to an older store. An index changes no row, no seal and no digest.
+
+    ``LedgerStore.initialize`` runs this when a store is opened for writing. The change set capture runs it too, in
+    the transaction that installs its log and before it takes the schema fingerprint (``change_capture.install_atomic``),
+    so the first command of a newer engine on an older store does not change the schema during a capture. Raises
+    ``sqlite3.OperationalError`` for a store that cannot be written.
+    """
+    conn.execute("CREATE INDEX IF NOT EXISTS audit_events_type_idx ON audit_events(type, id)")
+    conn.execute(_REVERSES_INDEX_SQL)
 
 
 #: The audit event that unlocks a relabel of posted rows (``account_rename.EVENT``). A check that sees it among new
@@ -401,11 +413,13 @@ def _table_json(conn: sqlite3.Connection, table: str, sql: str) -> str:
     """The text of ``json.dumps([dict(row) for row in conn.execute(sql)], separators=(",", ":"), sort_keys=True)``.
 
     *sql* is ``SELECT <columns> FROM <table> ORDER BY <order>``. SQLite writes each row with ``json_object`` (keys in
-    sorted order, compact). The text is the same as the one from ``json.dumps`` when every value is text, an integer
-    or null, and the text is ASCII without DEL: ``json.dumps`` escapes any other character. A BLOB makes
-    ``json_object`` fail. A column with text affinity holds only text, so only the other columns are checked for a
-    real number, in the same pass. For any other data the rows are read and written by ``json.dumps``, so the result
-    never differs.
+    sorted order, compact). The text of a row is the same as the one from ``json.dumps`` when every value is text, an
+    integer or null, and the text is ASCII without DEL: ``json.dumps`` escapes any other character. A column with text
+    affinity holds only text, so only the other columns are checked for a real number, in the same pass. Each row that
+    fails one of these tests (one non-ASCII description, one real number) is read again by its rowid and written by
+    ``json.dumps``; the other rows keep the text of SQLite. So one such row costs one row, not the whole table, and the
+    result never differs. A BLOB makes ``json_object`` fail, and a table without a rowid cannot be read again by
+    rowid: then every row is read and written by ``json.dumps``.
     """
     try:
         head, order = sql.split(" ORDER BY ", 1)
@@ -416,14 +430,29 @@ def _table_json(conn: sqlite3.Connection, table: str, sql: str) -> str:
                    if "INT" in declared.get(name, "") or not any(k in declared.get(name, "") for k in ("CHAR", "CLOB", "TEXT"))]
         pairs = ",".join(f"'{name}',{name}" for name in sorted(columns))
         mixed = " OR ".join(f"typeof({name}) NOT IN {_SAFE_TYPES}" for name in checked)
-        select = f"SELECT json_object({pairs})" + (f", {mixed}" if mixed else "") + f" FROM {table} ORDER BY {order}"
+        select = (f"SELECT json_object({pairs}), rowid" + (f", {mixed}" if mixed else "")
+                  + f" FROM {table} ORDER BY {order}")
         rows = conn.execute(select).fetchall()
-        if not mixed or not any(row[1] for row in rows):
-            text = ",".join([row[0] for row in rows])
-            if text.isascii() and "\x7f" not in text:
-                return "[" + text + "]"
+        texts = [row[0] for row in rows]
+        text = ",".join(texts)
+        if (not mixed or not any(row[2] for row in rows)) and text.isascii() and "\x7f" not in text:
+            return "[" + text + "]"
+        bad = [i for i, row in enumerate(rows) if (mixed and row[2]) or not row[0].isascii() or "\x7f" in row[0]]
+        exact: dict[int, str] = {}
+        rowids = [rows[i][1] for i in bad]
+        for start in range(0, len(rowids), 500):
+            chunk = rowids[start:start + 500]
+            for found in conn.execute(f"SELECT rowid AS _books_rowid, {', '.join(columns)} FROM {table} "
+                                      f"WHERE rowid IN ({','.join('?' for _ in chunk)})", chunk):
+                value = dict(found)
+                rowid = value.pop("_books_rowid")
+                exact[rowid] = _json(value)
+        if len(exact) == len(set(rowids)):
+            for i in bad:
+                texts[i] = exact[rows[i][1]]
+            return "[" + ",".join(texts) + "]"
     except sqlite3.OperationalError:
-        pass  # No JSON functions in this SQLite build, or a BLOB value.
+        pass  # No JSON functions in this SQLite build, a BLOB value, or no rowid.
     return _json([dict(row) for row in conn.execute(sql).fetchall()])
 
 
@@ -580,8 +609,7 @@ class LedgerStore:
                 # An index changes no content and no seal. An older store gets it the first time it is opened for
                 # writing; a store that cannot be written (read only) keeps working without it.
                 try:
-                    conn.execute("CREATE INDEX IF NOT EXISTS audit_events_type_idx ON audit_events(type, id)")
-                    conn.execute(_REVERSES_INDEX_SQL)
+                    ensure_write_indexes(conn)
                     install_append_only_guard(conn)
                     conn.commit()
                 except sqlite3.OperationalError:
