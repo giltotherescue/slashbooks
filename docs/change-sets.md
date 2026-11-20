@@ -50,6 +50,9 @@ books --change-set-out change.json queue confirm --entity . --item src-123
 - A command that changes no row of `ledger.sqlite` leaves that file byte for
   byte the same. The capture adds nothing to the file in that case (see Cost).
   So two identical runs of a command that changes nothing leave the same bytes.
+  The same is true without `--change-set-out`, on the plain command line and
+  with `--work-out`. The test `tests/test_noop_writes.py` runs every mutating
+  command two times in both ways and compares the bytes.
   The rule for a host: when a complete change set has `"changed": false`, the
   books did not change, and `ledger.sqlite` has the bytes that it had before the
   command. The capture's own files, `.change-capture.sqlite` and
