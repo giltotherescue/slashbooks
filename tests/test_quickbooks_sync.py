@@ -564,6 +564,51 @@ class QuickBooksSyncTests(unittest.TestCase):
         result = sync.sync_import(self.entity, self.write())
         self.assertTrue(result["comparison_ready"])
 
+    def beginning_balance_ledger(self):
+        path = FIXTURE.parent / "general_ledger_beginning_balance.json"
+        self.snapshot["reports"]["GeneralLedger"] = json.loads(path.read_text())
+        return self.snapshot["reports"]["GeneralLedger"]
+
+    def test_beginning_balance_rows_are_balances_not_activity(self):
+        self.beginning_balance_ledger()
+        result = sync.sync_import(self.entity, self.write())
+        self.assertEqual(result["coverage"]["GeneralLedger"]["status"], "ready", result["coverage"])
+        self.assertTrue(result["reference_complete"])
+        self.assertTrue(result["comparison_ready"])
+        reference = self.entity_path / result["reference_path"]
+        ledger = qb.parse_general_ledger(reference / "GeneralLedger.qbo.json")
+        self.assertEqual(ledger, qb.parse_general_ledger(reference / "TransactionDetail.qbo.json"))
+        # Only the four dated activity rows; the two non-zero opening rows are not transactions.
+        self.assertEqual([(t.account, t.txn_date, t.amount) for t in ledger.transactions], [
+            ("Checking", date(2026, 1, 15), Decimal("-20.00")),
+            ("Checking", date(2026, 1, 20), Decimal("15.00")),
+            ("Software", date(2026, 1, 15), Decimal("20.00")),
+            ("Software", date(2026, 1, 20), Decimal("-15.00"))])
+        self.assertEqual(sum(t.amount for t in ledger.transactions), Decimal("0.00"))
+        checking = [t for t in ledger.transactions if t.account == "Checking"]
+        self.assertEqual(sum(t.amount for t in checking), Decimal("-5.00"))
+        # The opening balance comes from the opening Trial Balance, and with the activity it gives
+        # the running balance QuickBooks prints on the last Checking row.
+        opening = qb.parse_trial_balance(reference / "OpeningTrialBalance.qbo.json")
+        opening_checking = next(e.debit - e.credit for e in opening.entries if e.full_name == "Checking")
+        self.assertEqual(opening_checking, Decimal("100.00"))
+        self.assertEqual(opening_checking + sum(t.amount for t in checking), checking[-1].balance)
+
+    def test_other_text_in_a_general_ledger_date_cell_still_blocks(self):
+        report = self.beginning_balance_ledger()
+        checking = report["Rows"]["Row"][0]["Rows"]["Row"]
+        # A typed row cannot be a balance row, even with the balance label.
+        checking[1]["ColData"][0]["value"] = "Beginning Balance"
+        result = sync.sync_import(self.entity, self.write())
+        self.assertEqual(result["coverage"]["GeneralLedger"]["status"], "blocked")
+        self.assertIn("isoformat", result["coverage"]["GeneralLedger"]["reason"])
+        # Any other label in an untyped row is not recognized either.
+        checking[1]["ColData"][0]["value"] = "2026-01-15"
+        checking[0]["ColData"][0]["value"] = "Opening"
+        result = sync.sync_import(self.entity, self.write())
+        self.assertEqual(result["coverage"]["GeneralLedger"]["status"], "blocked")
+        self.assertIn("isoformat", result["coverage"]["GeneralLedger"]["reason"])
+
     def test_complete_accrual_source_is_retained_but_opening_is_blocked(self):
         self.snapshot["accounting_basis"] = "Accrual"
         for report in self.snapshot["reports"].values():

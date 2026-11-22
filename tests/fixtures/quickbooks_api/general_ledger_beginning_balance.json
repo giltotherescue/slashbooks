@@ -1,0 +1,455 @@
+{
+  "Header": {
+    "ReportName": "GeneralLedger",
+    "ReportBasis": "Cash",
+    "StartPeriod": "2026-01-01",
+    "EndPeriod": "2026-01-31",
+    "Currency": "USD"
+  },
+  "Columns": {
+    "Column": [
+      {
+        "ColType": "tx_date",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "tx_date"
+          }
+        ]
+      },
+      {
+        "ColType": "tx_type",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "tx_type"
+          }
+        ]
+      },
+      {
+        "ColType": "doc_num",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "doc_num"
+          }
+        ]
+      },
+      {
+        "ColType": "name",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "name"
+          }
+        ]
+      },
+      {
+        "ColType": "memo",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "memo"
+          }
+        ]
+      },
+      {
+        "ColType": "split_acc",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "split_acc"
+          }
+        ]
+      },
+      {
+        "ColType": "amount",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "amount"
+          }
+        ]
+      },
+      {
+        "ColType": "running_bal",
+        "MetaData": [
+          {
+            "Name": "ColKey",
+            "Value": "running_bal"
+          }
+        ]
+      }
+    ]
+  },
+  "Rows": {
+    "Row": [
+      {
+        "type": "Section",
+        "Header": {
+          "ColData": [
+            {
+              "value": "Checking",
+              "id": "1"
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            }
+          ]
+        },
+        "Rows": {
+          "Row": [
+            {
+              "type": "Data",
+              "ColData": [
+                {
+                  "value": "Beginning Balance"
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": "100.00"
+                }
+              ]
+            },
+            {
+              "type": "Data",
+              "ColData": [
+                {
+                  "value": "2026-01-15"
+                },
+                {
+                  "value": "Expense"
+                },
+                {
+                  "value": "1"
+                },
+                {
+                  "value": "Example Software"
+                },
+                {
+                  "value": "Software subscription"
+                },
+                {
+                  "value": "Software"
+                },
+                {
+                  "value": "-20.00"
+                },
+                {
+                  "value": "80.00"
+                }
+              ]
+            },
+            {
+              "type": "Data",
+              "ColData": [
+                {
+                  "value": "2026-01-20"
+                },
+                {
+                  "value": "Deposit"
+                },
+                {
+                  "value": "2"
+                },
+                {
+                  "value": "Example Customer"
+                },
+                {
+                  "value": "Refund of overcharge"
+                },
+                {
+                  "value": "Software"
+                },
+                {
+                  "value": "15.00"
+                },
+                {
+                  "value": "95.00"
+                }
+              ]
+            }
+          ]
+        },
+        "Summary": {
+          "ColData": [
+            {
+              "value": "Total for Checking"
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": "-5.00"
+            },
+            {
+              "value": ""
+            }
+          ]
+        }
+      },
+      {
+        "type": "Section",
+        "Header": {
+          "ColData": [
+            {
+              "value": "Opening Equity",
+              "id": "2"
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            }
+          ]
+        },
+        "Rows": {
+          "Row": [
+            {
+              "type": "Data",
+              "ColData": [
+                {
+                  "value": "Beginning Balance"
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": ""
+                },
+                {
+                  "value": "-100.00"
+                }
+              ]
+            }
+          ]
+        },
+        "Summary": {
+          "ColData": [
+            {
+              "value": "Total for Opening Equity"
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            }
+          ]
+        }
+      },
+      {
+        "type": "Section",
+        "Header": {
+          "ColData": [
+            {
+              "value": "Software",
+              "id": "3"
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            }
+          ]
+        },
+        "Rows": {
+          "Row": [
+            {
+              "type": "Data",
+              "ColData": [
+                {
+                  "value": "2026-01-15"
+                },
+                {
+                  "value": "Expense"
+                },
+                {
+                  "value": "1"
+                },
+                {
+                  "value": "Example Software"
+                },
+                {
+                  "value": "Software subscription"
+                },
+                {
+                  "value": "Checking"
+                },
+                {
+                  "value": "20.00"
+                },
+                {
+                  "value": "20.00"
+                }
+              ]
+            },
+            {
+              "type": "Data",
+              "ColData": [
+                {
+                  "value": "2026-01-20"
+                },
+                {
+                  "value": "Deposit"
+                },
+                {
+                  "value": "2"
+                },
+                {
+                  "value": "Example Customer"
+                },
+                {
+                  "value": "Refund of overcharge"
+                },
+                {
+                  "value": "Checking"
+                },
+                {
+                  "value": "-15.00"
+                },
+                {
+                  "value": "5.00"
+                }
+              ]
+            }
+          ]
+        },
+        "Summary": {
+          "ColData": [
+            {
+              "value": "Total for Software"
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": ""
+            },
+            {
+              "value": "5.00"
+            },
+            {
+              "value": ""
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
