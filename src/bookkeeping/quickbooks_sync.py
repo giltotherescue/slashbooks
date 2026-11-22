@@ -285,6 +285,18 @@ def _explicit_empty_report(report: dict) -> bool:
     return True
 
 
+def _is_beginning_balance_row(values: dict[str, str]) -> bool:
+    """QuickBooks writes "Beginning Balance" in the date cell of each account's opening row.
+
+    That row restates the balance carried in from before the report period; it is not
+    activity, and the opening balance itself comes from the opening Trial Balance and
+    Balance Sheet. Only this exact label on a row with no transaction type is a balance
+    row, so any other text in the date cell of an activity row still fails to parse.
+    """
+    return (values.get("date", "").strip().casefold() == "beginning balance"
+            and not values.get("type", "").strip())
+
+
 def parse_reference(path: Path, expected: str):
     """Read typed API reference JSON directly into the existing report models."""
     payload = _load(path)
@@ -381,7 +393,7 @@ def parse_reference(path: Path, expected: str):
                     if len(cells) != len(columns):
                         raise ValueError("General Ledger row does not match columns")
                     values = {k: str(cells[i].get("value", "")) for k, i in indices.items()}
-                    if values.get("date"):
+                    if values.get("date") and not _is_beginning_balance_row(values):
                         txn_date = date.fromisoformat(values["date"])
                         if not (date.fromisoformat(start) <= txn_date <= end_date):
                             raise ValueError("General Ledger transaction outside report period")

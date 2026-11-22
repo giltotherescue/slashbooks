@@ -551,6 +551,55 @@ class HistoryTests(unittest.TestCase):
         self.assertFalse(sync_transactions(self.entity,self.path,apply=True,plan_hash=plan['plan_hash'])['applied'])
         self.assertEqual(store.content_digest(),before)
 
+    def add_beginning_balance_rows(self):
+        """Give the January Checking and Capital partitions QuickBooks's opening rows and a running balance."""
+        def mutate(raw, opening):
+            raw['Columns']['Column'].append(column('rbal_nat_amount','Balance'))
+            section=raw['Rows']['Row'][0]
+            running=opening
+            for row in section['Rows']['Row']:
+                cells=row['ColData'];running+=Decimal(cells[2]['value'])-Decimal(cells[3]['value'])
+                cells.append({'value':str(running)})
+            section['Rows']['Row'].insert(0,{'type':'Data','ColData':[{'value':'Beginning Balance'},{'value':''},
+                {'value':''},{'value':''},{'value':''},{'value':str(opening)}]})
+        for account,opening in (('1',Decimal(1000)),('7',Decimal(-1000))):
+            item=next(i for i in self.manifest['files'] if i['kind']=='general_ledger'
+                      and i['account_id']==account and i['from']=='2026-01-01')
+            path=self.source/item['path'];raw=json.loads(path.read_text());mutate(raw,opening)
+            path.write_text(json.dumps(raw));item['sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
+        self.write()
+
+    def test_beginning_balance_rows_are_balances_not_activity(self):
+        self.add_beginning_balance_rows()
+        # The same totals as the plain fixture (see the idempotence test for each basis): the opening
+        # trial balance carries the 1,000, so the opening rows add nothing.
+        entries,income,assets={'Accrual':(14,80,1096),'Cash':(10,88,1101)}[self.basis]
+        result=self.apply();self.assertEqual(result['recorded_entries'],entries)
+        self.assertTrue(all(c['balanced'] and c['statement_agrees'] for c in result['controls']))
+        from bookkeeping.reports.statements import profit_and_loss,balance_sheet
+        view=self.basis.lower()
+        pnl=profit_and_loss(self.entity.path,date(2026,1,1),date(2026,2,28),basis=view)
+        bs=balance_sheet(self.entity.path,date(2026,2,28),view=view)
+        self.assertEqual(pnl.totals['net_income'],Decimal(income))
+        self.assertEqual(bs.totals['total_assets'],Decimal(assets))
+        self.assertEqual(bs.totals['total_liabilities_and_equity'],Decimal(assets))
+
+    def test_beginning_balance_label_on_an_activity_row_still_refuses(self):
+        self.add_beginning_balance_rows()
+        def relabel(raw):
+            rows=raw['Rows']['Row'][0]['Rows']['Row']
+            self.assertTrue(rows[1]['ColData'][1]['value'])
+            dates.append(rows[1]['ColData'][0]['value']);rows[1]['ColData'][0]['value']='Beginning Balance'
+        dates=[];self.mutate_file('general_ledger',relabel)
+        with self.assertRaisesRegex(ValueError,'isoformat'):
+            sync_transactions(self.entity,self.path)
+        def money_on_opening(raw):
+            rows=raw['Rows']['Row'][0]['Rows']['Row']
+            rows[1]['ColData'][0]['value']=dates[0];rows[0]['ColData'][2]['value']='1000'
+        self.mutate_file('general_ledger',money_on_opening)
+        with self.assertRaisesRegex(ValueError,'Undated GL monetary row'):
+            sync_transactions(self.entity,self.path)
+
     def test_report_float_and_nonfinite_values_refuse_without_posting(self):
         store=LedgerStore(default_store_path(self.entity.path));before=store.content_digest()
         self.mutate_file('general_ledger',lambda r:r['Rows']['Row'][0]['Rows']['Row'][0]['ColData'][2].update(value=0.10000000000000000001))

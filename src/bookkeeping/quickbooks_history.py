@@ -362,7 +362,11 @@ def _plan(entity, path):
             if len(cells) != len(raw['Columns']['Column']):
                 raise ValueError('Malformed GL row width')
             day_text = cells[cols['date']].get('value', '')
-            if not day_text:
+            # QuickBooks labels each account's opening row "Beginning Balance" in the date cell. With no
+            # transaction type it is a balance row like an undated one; the opening trial balance carries it.
+            beginning = (str(day_text).strip().casefold() == 'beginning balance'
+                         and not str(cells[cols['type']].get('value') or '').strip())
+            if not day_text or beginning:
                 # Beginning balances and totals are never activity.
                 if any(_money(cells[cols[k]].get('value')) for k in ('debit','credit')):
                     raise ValueError('Undated GL monetary row is unsupported')
