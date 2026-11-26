@@ -1433,7 +1433,7 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.assertEqual(before, self.files())
         reverse_and_correct(self.entity, 'reviewed', Entry(date=date(2026, 1, 15), narration='fixed',
                             meta=(('source-id', 'fixed-1'),), postings=postings), 'test')
-        with self.assertRaisesRegex(ValueError, 'already used'):
+        with self.assertRaisesRegex(ValueError, 'another spelling'):
             reverse_and_correct(self.entity, 'fixed-1', Entry(date=date(2026, 1, 15), narration='again',
                                 meta=(('source-id', 'banksync:reviewed'),), postings=postings), 'test')
 
@@ -1479,9 +1479,36 @@ class RecheckThreeFindingTests(RecheckFixture):
         plan = self.stage(); self.assertEqual(([], []), (plan['uncategorized'], plan['unresolved']))
         before = plan['source_capture_digests'][SALE]
         self.interrupted_apply()
+        unchanged = copy.deepcopy(self.raw)
         self.raw['invoices'][0]['total_taxes'] = [{'amount': 100}]
         self.assertNotEqual(before, self.plan()['source_capture_digests'][SALE])
         self.assertEqual(['cleanup_needs_review'], [row['reason'] for row in self.apply()['needs_review']])
+        self.raw = unchanged  # The same evidence is fingerprinted (never the unavailable marker) and recovers.
+        self.assertEqual([], self.apply()['needs_review'])
+
+    def test_unavailable_fingerprint_never_cleans_up_an_older_posting(self):
+        from unittest.mock import patch
+        from bookkeeping import stripe
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        from datetime import date
+        plan = self.stage(); action = self.action(plan)
+        # Posted by an older engine without a receipt: cleanup checks the saved source and policy digests.
+        entry = Entry(date=date.fromisoformat(action['normalized_source']['date']), narration='older', meta=(
+            ('source-id', SALE), ('stripe-authority', action['authority_id']), ('stripe-policy-digest', plan['policy_digest']),
+            ('stripe-source-digest', stripe._digest(action['normalized_source']))),
+            postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
+        _atomic_ledger_write(self.entity, [], [entry], 'older', None, 'older Stripe sale', [action['normalized_source']])
+        with patch.object(stripe, '_source_capture_digest', side_effect=TypeError):
+            self.assertEqual(['cleanup_needs_review'], [row['reason'] for row in self.apply()['needs_review']])
+        self.assertEqual([], self.apply()['needs_review'])
+
+    def test_refund_linked_to_another_charges_sale_is_held(self):
+        self.new_movement('ch_other'); self.stage(); self.apply()
+        self.assertEqual('ch_other', dict(self.entry(self.SECOND).meta)['stripe-charge'])
+        self.raw = base.evidence(); self.full_flow(); self.refund_only()
+        self.raw['charges'][0]['balance_transaction'] = 'txn_second'  # The other charge's sale movement.
+        self.assertHeld(self.plan(), 'sale_movement_unverified', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
     def test_unavailable_fingerprint_is_never_evidence(self):
         from unittest.mock import patch

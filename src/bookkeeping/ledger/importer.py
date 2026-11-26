@@ -1543,13 +1543,13 @@ def reverse_and_correct(
         _refuse_entries_above_ask_first(entity, original, corrected_entry)
         replacement_id = corrected_entry.source_id
         if replacement_id:
-            # A replacement under another spelling of the original (``abc`` -> ``banksync:abc``), or of any source
-            # the ledger already holds, would be hidden by the original's reversal and orphan its postings.
+            # A replacement that is, or is another spelling of, a source the ledger already holds (the entry it
+            # corrects included: ``abc`` -> ``banksync:abc``) would be hidden by a reversal and orphan its postings.
             spellings = source_id_variants(replacement_id)
-            if spellings & source_id_variants(original_source_id) or spellings & source_id_variants(original.source_id or ""):
-                raise ValueError("The replacement source ID is another spelling of the entry it corrects; choose a fresh correction ID.")
-            if any(store.source_exists(value) for value in sorted(spellings)) or store.is_reversed(spellings):
-                raise ValueError("The replacement source ID (or another spelling of it) is already used in the ledger; choose a fresh correction ID.")
+            if (spellings & source_id_variants(original_source_id) or any(store.source_exists(value) for value in sorted(spellings))
+                    or store.is_reversed(spellings)):
+                raise ValueError("The replacement source ID is already in the ledger, or is another spelling of a source "
+                                 "that is (such as abc and banksync:abc); choose a fresh correction ID.")
             from ..queue import list_duplicate_candidates
             reserved = {str(row.get("id") or "") for row in
                         [*_load_pending_categorization(entity), *staging.get_pending()]}
