@@ -10,11 +10,12 @@ def engine_owned_accounts() -> frozenset[str]:
     """Starter catalogs, accrual starters, Stripe accounts and accounts that reports and comparisons name."""
     from .compare import _PASSTHROUGH_CATEGORY
     from .entity import _ACCRUAL_STARTER_ACCOUNTS, _STARTER_ACCOUNTS
-    from .stripe import STRIPE_ACCOUNTS
+    from .stripe import STRIPE_ACCOUNTS, STRIPE_HOLDING_ACCOUNT
     from .taxview import ADJUSTMENT_ACCOUNT, DERIVED_ACCOUNTS
     names = {account for accounts in _STARTER_ACCOUNTS.values() for account in accounts}
     names.update(_ACCRUAL_STARTER_ACCOUNTS)
     names.update(STRIPE_ACCOUNTS.values())
+    names.add(STRIPE_HOLDING_ACCOUNT)
     names.update(DERIVED_ACCOUNTS.values())
     names.update((ADJUSTMENT_ACCOUNT, _PASSTHROUGH_CATEGORY))
     return frozenset(names)
@@ -31,9 +32,10 @@ def rename_protected_accounts() -> frozenset[str]:
     """
     from .compare import _PASSTHROUGH_CATEGORY
     from .entity import _ACCRUAL_STARTER_ACCOUNTS, _STARTER_ACCOUNTS
-    from .stripe import STRIPE_ACCOUNTS
+    from .stripe import STRIPE_ACCOUNTS, STRIPE_HOLDING_ACCOUNT
     from .taxview import ADJUSTMENT_ACCOUNT, DERIVED_ACCOUNTS
     named = set(_ACCRUAL_STARTER_ACCOUNTS) | set(STRIPE_ACCOUNTS.values()) | set(DERIVED_ACCOUNTS.values())
+    named.add(STRIPE_HOLDING_ACCOUNT)
     named.update((ADJUSTMENT_ACCOUNT, _PASSTHROUGH_CATEGORY))
     free = {account for accounts in _STARTER_ACCOUNTS.values() for account in accounts
             if account.split(":")[0] in ("Income", "Expenses") and account not in named}
