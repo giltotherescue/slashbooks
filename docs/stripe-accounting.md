@@ -60,6 +60,49 @@ Supported postings are:
 | Minimum payout balance hold/release or Connect reserve | Processor balance moves to/from the explicitly approved reserved-balance asset account; no income or expense |
 | Payout | Processor balance decreases; payout transit increases by the amount sent; any payout fee is a separate expense |
 | Exact captured bank arrival | Bank balance increases; payout transit decreases; no income |
+| Sale, refund or dispute whose identity is uncertain | Processor balance moves by net and fees are expense, as usual; the gross goes to `Income:Uncategorized:Stripe` ("Uncategorized Stripe activity") for review |
+| Held sale or refund that later evidence proves | A separate reclassification entry moves the amount from `Income:Uncategorized:Stripe` to the approved revenue or refund account |
+
+### Which invoice a charge belongs to
+
+The engine reads every place Stripe names a charge's invoice: `charge.invoice`,
+`payment_intent.invoice` (captured, or expanded on the charge, a Checkout session
+or an invoice payment), a modern invoice payment, a Checkout session's `invoice`,
+and inline or expanded invoice objects. Copies of one object (an expanded balance
+transaction source and a captured charge, an inline and a captured invoice) are
+combined: a copy may add fields or invoice lines the other leaves out, but the
+copies must agree on every field the engine reads, including nested lines,
+taxes, discounts and metadata. Accounting checks run on the combined result.
+
+The identity is uncertain, and the movement posts to the holding account with a
+`review_reason`, when references name different objects, a named invoice, charge,
+refund or payment intent is not in the evidence, two Checkout sessions claim one
+payment, an expanded object has no ID, copies disagree, or a document is
+explicitly from the other live/test mode. A refund or dispute follows its sale:
+the same evidence, including the sale movement's expanded source in the same
+cohort, and the sale's posted treatment. While the sale sits in the holding
+account and does not move in the same batch, its refunds and disputes are held
+with `sale_in_holding`. A refund that names another payment intent than its
+charge is held with `refund_reference_conflict`. Disputes always post to the
+holding account, because no approved policy names a dispute account.
+
+A known sale whose allocation is not complete (a missing revenue rule, tax,
+discount, proration, partial payment, truncated lines) or a movement that has
+not settled stays unposted in `unresolved`, as before.
+
+### Correcting a held posting
+
+Do not edit, delete or re-import the held entry. When the evidence later proves
+the sale (for example the missing charge or invoice is captured), capture a cohort
+that contains the held movement and apply it. The plan then has an action with
+`kind: "reclassification"`, `source_id: "stripe-reclassify:<account>:<balance
+transaction>"` and `reclassifies: "<held source ID>"`. It moves the gross from
+`Income:Uncategorized:Stripe` to the approved accounts, dated on the held entry's
+date (or the first day after the closed period). The new entry carries
+`stripe-reclassifies` metadata. Its source ID can be posted only once, so a
+repeat apply, a re-import or a retry after an interruption adds nothing. A refund
+held with `sale_in_holding` moves the same way once its sale has moved (in the
+same batch or an earlier one). Disputes are not reclassified.
 
 Bank matching requires the original bank source ID/digest, payout ID, exact
 currency/amount and approved current bank mapping. A bank arrival can occur after
@@ -77,9 +120,10 @@ when absent; see [company currency](company-currency.md)). The policy `currency`
 must be the company currency. A Stripe account stays single-currency: balance
 transactions in more than one currency, or in another currency than a company
 with entries, stop the stage with `unsupported_currency`. A company with no
-entries takes the Stripe balance currency. Disputes, FX, unsupported balance types, unsettled
+entries takes the Stripe balance currency. FX, unsupported balance types, unsettled
 charges/refunds, incomplete lines, partial/multiple invoice payments and
-unsupported tax, shipping, discounts, credits or prorations remain held.
+unsupported tax, shipping, discounts, credits or prorations remain held unposted.
+Disputes and sales of uncertain identity post to the holding account instead.
 Refunds must also pass the original sale's evidence checks; mixed-line refunds
 need explicit allocation and are held. Clearing roles are not available bank
 cash. This is cash-basis processor bookkeeping, not deferred revenue, tax
@@ -150,8 +194,11 @@ posted without a receipt is cleaned up only when its saved source digest, its po
 digest and its staged row all match the current plan; if they do not match, it gets
 the same reason.
 
-`stripe_apply` returns the held rows. `unresolved` lists every held row as
-`{source_id, reason}`, and `needs_review` lists only the cleanup rows as
+`stripe_apply` returns the held rows. `unresolved` lists every row held unposted as
+`{source_id, reason}`. Rows posted to the holding account are not in `unresolved`:
+they are posted (counted in `posted`) and listed in `uncategorized` as
+`{source_id, reason}`, and reclassifications in `reclassified` as
+`{source_id, reclassification_id}`. Review both lists. `needs_review` lists only the cleanup rows as
 `{source_id, reason: "cleanup_needs_review", detail}`; `held` is the length of
 `unresolved`. Each cleanup row also gets `review_hold_reason: "cleanup_needs_review"`
 in Review. If a person proposes a category for it, the confirm is refused with a
