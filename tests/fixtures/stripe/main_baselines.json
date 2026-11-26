@@ -1,0 +1,476 @@
+{
+ "checkout": {
+  "actions": [
+   {
+    "authority_id": "one",
+    "kind": "charge",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "97.00",
+     "currency": "USD",
+     "date": "2026-01-15",
+     "description": "Stripe charge txn_sale",
+     "id": "stripe:acct_test:txn_sale",
+     "pending": false,
+     "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "97.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Services",
+      "amount": "-100.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Expenses:Payment-Fees",
+      "amount": "3.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "eef4b0af4a376d945e1651fbafd0788546e6cff060aa9c43b3921edbac66a053",
+    "source_id": "stripe:acct_test:txn_sale"
+   }
+  ],
+  "evidence_digest": "30ceb4c2e0d5b9bfda7c1dcbab2e4f065d27006935a552ffb64faa60f827b926",
+  "ledger_digest": "181c6cdd57c1074eb1297e3a79a4b9be589f883aa55a86c3483892d4871990f0",
+  "next_cursor": null,
+  "no_effect": [],
+  "normalized_sources": [
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "97.00",
+    "currency": "USD",
+    "date": "2026-01-15",
+    "description": "Stripe charge txn_sale",
+    "id": "stripe:acct_test:txn_sale",
+    "pending": false,
+    "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+   }
+  ],
+  "policy_digest": "68761a371c3095eb10b2cddc8929b380801333ca9be949c77d9967d1a5dda001",
+  "skipped": [],
+  "source_capture_digests": {
+   "stripe:acct_test:txn_sale": "617ad420fee7c59ab75ddba58c64533302faf0deb79e0651e55ee27aec9b61e5"
+  },
+  "unresolved": []
+ },
+ "expanded": {
+  "actions": [
+   {
+    "authority_id": "services",
+    "kind": "charge",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "97.00",
+     "currency": "USD",
+     "date": "2026-01-15",
+     "description": "Stripe charge txn_sale",
+     "id": "stripe:acct_test:txn_sale",
+     "pending": false,
+     "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "97.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Services",
+      "amount": "-100.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Expenses:Payment-Fees",
+      "amount": "3.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "eef4b0af4a376d945e1651fbafd0788546e6cff060aa9c43b3921edbac66a053",
+    "source_id": "stripe:acct_test:txn_sale"
+   }
+  ],
+  "evidence_digest": "ceb950446075e7d3c980b21b5f949c0c858d2c233807437bdf83857cd0c4f605",
+  "ledger_digest": "181c6cdd57c1074eb1297e3a79a4b9be589f883aa55a86c3483892d4871990f0",
+  "next_cursor": null,
+  "no_effect": [],
+  "normalized_sources": [
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "97.00",
+    "currency": "USD",
+    "date": "2026-01-15",
+    "description": "Stripe charge txn_sale",
+    "id": "stripe:acct_test:txn_sale",
+    "pending": false,
+    "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+   }
+  ],
+  "policy_digest": "65d9eb86b99826e3b70468596d3f1242b40fc95f8c560f9b14da687a671941f8",
+  "skipped": [],
+  "source_capture_digests": {
+   "stripe:acct_test:txn_sale": "bebabeb2b98afc3675349c11d1ded5b0f92ed358b1d3b3f545edb35f82700416"
+  },
+  "unresolved": []
+ },
+ "full": {
+  "actions": [
+   {
+    "authority_id": "payout-transit-policy",
+    "kind": "payout",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "-77.00",
+     "currency": "USD",
+     "date": "2026-01-17",
+     "description": "Stripe payout txn_payout",
+     "id": "stripe:acct_test:txn_payout",
+     "pending": false,
+     "stripe_financial_digest": "663211a3842e4be102d558489f9d1ace3e4962fe304a7f10a45b899367c16431"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "-77.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Assets:Transfers:Stripe",
+      "amount": "77.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "d4e76a4ab3cae3c590c040e94cb3321aa0ac7c15ff8f75524f935da7460825e8",
+    "source_id": "stripe:acct_test:txn_payout"
+   },
+   {
+    "authority_id": "refund-account-policy",
+    "kind": "refund",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "-20.00",
+     "currency": "USD",
+     "date": "2026-01-16",
+     "description": "Stripe refund txn_refund",
+     "id": "stripe:acct_test:txn_refund",
+     "pending": false,
+     "stripe_financial_digest": "8923036674c1cbbf0847e36c557c5461efdd797b48b66c721df102e3ad26192e"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "-20.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Refunds",
+      "amount": "20.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "301a96905f062df9563f23dd7f9f4506b75d4aee373b4b0470679c6386718f71",
+    "source_id": "stripe:acct_test:txn_refund"
+   },
+   {
+    "authority_id": "services",
+    "kind": "charge",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "97.00",
+     "currency": "USD",
+     "date": "2026-01-15",
+     "description": "Stripe charge txn_sale",
+     "id": "stripe:acct_test:txn_sale",
+     "pending": false,
+     "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "97.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Services",
+      "amount": "-100.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Expenses:Payment-Fees",
+      "amount": "3.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "eef4b0af4a376d945e1651fbafd0788546e6cff060aa9c43b3921edbac66a053",
+    "source_id": "stripe:acct_test:txn_sale"
+   }
+  ],
+  "evidence_digest": "c33003dde8986486f30a23ed0d5eaa706f3e9104f5a710745c7a31c030248da8",
+  "ledger_digest": "181c6cdd57c1074eb1297e3a79a4b9be589f883aa55a86c3483892d4871990f0",
+  "next_cursor": null,
+  "no_effect": [],
+  "normalized_sources": [
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "-77.00",
+    "currency": "USD",
+    "date": "2026-01-17",
+    "description": "Stripe payout txn_payout",
+    "id": "stripe:acct_test:txn_payout",
+    "pending": false,
+    "stripe_financial_digest": "663211a3842e4be102d558489f9d1ace3e4962fe304a7f10a45b899367c16431"
+   },
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "-20.00",
+    "currency": "USD",
+    "date": "2026-01-16",
+    "description": "Stripe refund txn_refund",
+    "id": "stripe:acct_test:txn_refund",
+    "pending": false,
+    "stripe_financial_digest": "8923036674c1cbbf0847e36c557c5461efdd797b48b66c721df102e3ad26192e"
+   },
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "97.00",
+    "currency": "USD",
+    "date": "2026-01-15",
+    "description": "Stripe charge txn_sale",
+    "id": "stripe:acct_test:txn_sale",
+    "pending": false,
+    "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+   }
+  ],
+  "policy_digest": "65d9eb86b99826e3b70468596d3f1242b40fc95f8c560f9b14da687a671941f8",
+  "skipped": [],
+  "source_capture_digests": {
+   "stripe:acct_test:txn_payout": "0767c61d85e9ec3b07182c13ca91169c822daa39e7f1ad4977b991766c82c26f",
+   "stripe:acct_test:txn_refund": "bba183050f425525b62eb60c6d854f1a4ba0ac7be419f1788197d23f0f46be28",
+   "stripe:acct_test:txn_sale": "bebabeb2b98afc3675349c11d1ded5b0f92ed358b1d3b3f545edb35f82700416"
+  },
+  "unresolved": []
+ },
+ "invoice": {
+  "actions": [
+   {
+    "authority_id": "one,two",
+    "kind": "charge",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "97.00",
+     "currency": "USD",
+     "date": "2026-01-15",
+     "description": "Stripe charge txn_sale",
+     "id": "stripe:acct_test:txn_sale",
+     "pending": false,
+     "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "97.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Services",
+      "amount": "-60.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Subscriptions",
+      "amount": "-40.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Expenses:Payment-Fees",
+      "amount": "3.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "eef4b0af4a376d945e1651fbafd0788546e6cff060aa9c43b3921edbac66a053",
+    "source_id": "stripe:acct_test:txn_sale"
+   }
+  ],
+  "evidence_digest": "297c44f38a3e5aa30323603452b6264c522738d411260f73313e5c8114842748",
+  "ledger_digest": "181c6cdd57c1074eb1297e3a79a4b9be589f883aa55a86c3483892d4871990f0",
+  "next_cursor": null,
+  "no_effect": [],
+  "normalized_sources": [
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "97.00",
+    "currency": "USD",
+    "date": "2026-01-15",
+    "description": "Stripe charge txn_sale",
+    "id": "stripe:acct_test:txn_sale",
+    "pending": false,
+    "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+   }
+  ],
+  "policy_digest": "1587507e2001e58d8a80fabbd2351381f0b6dba3fa0410d036eae4aa6363e3fe",
+  "skipped": [],
+  "source_capture_digests": {
+   "stripe:acct_test:txn_sale": "04a70f8bdcdf80550a2d86017538a45e76ed9f9a6d4ff92c5cae6a134120682e"
+  },
+  "unresolved": []
+ },
+ "invoice_payment": {
+  "actions": [
+   {
+    "authority_id": "one,two",
+    "kind": "charge",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "97.00",
+     "currency": "USD",
+     "date": "2026-01-15",
+     "description": "Stripe charge txn_sale",
+     "id": "stripe:acct_test:txn_sale",
+     "pending": false,
+     "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "97.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Services",
+      "amount": "-60.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Subscriptions",
+      "amount": "-40.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Expenses:Payment-Fees",
+      "amount": "3.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "eef4b0af4a376d945e1651fbafd0788546e6cff060aa9c43b3921edbac66a053",
+    "source_id": "stripe:acct_test:txn_sale"
+   }
+  ],
+  "evidence_digest": "bf9b1c947a184667f13e7468cd76983ce2ab116749a481320403f0a81f443850",
+  "ledger_digest": "181c6cdd57c1074eb1297e3a79a4b9be589f883aa55a86c3483892d4871990f0",
+  "next_cursor": null,
+  "no_effect": [],
+  "normalized_sources": [
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "97.00",
+    "currency": "USD",
+    "date": "2026-01-15",
+    "description": "Stripe charge txn_sale",
+    "id": "stripe:acct_test:txn_sale",
+    "pending": false,
+    "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+   }
+  ],
+  "policy_digest": "1587507e2001e58d8a80fabbd2351381f0b6dba3fa0410d036eae4aa6363e3fe",
+  "skipped": [],
+  "source_capture_digests": {
+   "stripe:acct_test:txn_sale": "e15f850a769eaf4c9e2beed66b567b319cc6b2e991a76ec832378b8234beebaf"
+  },
+  "unresolved": []
+ },
+ "plain": {
+  "actions": [
+   {
+    "authority_id": "services",
+    "kind": "charge",
+    "normalized_source": {
+     "accountId": "acct_test",
+     "accountName": "Stripe processor balance",
+     "accountType": "processor",
+     "amount": "97.00",
+     "currency": "USD",
+     "date": "2026-01-15",
+     "description": "Stripe charge txn_sale",
+     "id": "stripe:acct_test:txn_sale",
+     "pending": false,
+     "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+    },
+    "postings": [
+     {
+      "account": "Assets:Processors:Stripe",
+      "amount": "97.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Income:Services",
+      "amount": "-100.00",
+      "currency": "USD"
+     },
+     {
+      "account": "Expenses:Payment-Fees",
+      "amount": "3.00",
+      "currency": "USD"
+     }
+    ],
+    "source_digest": "eef4b0af4a376d945e1651fbafd0788546e6cff060aa9c43b3921edbac66a053",
+    "source_id": "stripe:acct_test:txn_sale"
+   }
+  ],
+  "evidence_digest": "a3084f460eebb9eb375b1aeb05eb84e4466476ef22863dbd50706cb6f500e785",
+  "ledger_digest": "181c6cdd57c1074eb1297e3a79a4b9be589f883aa55a86c3483892d4871990f0",
+  "next_cursor": null,
+  "no_effect": [],
+  "normalized_sources": [
+   {
+    "accountId": "acct_test",
+    "accountName": "Stripe processor balance",
+    "accountType": "processor",
+    "amount": "97.00",
+    "currency": "USD",
+    "date": "2026-01-15",
+    "description": "Stripe charge txn_sale",
+    "id": "stripe:acct_test:txn_sale",
+    "pending": false,
+    "stripe_financial_digest": "16087f7a8e6901569b5ebcdd00af4ea2b45a2b0f207fb4f43e63f4ea3bd25f09"
+   }
+  ],
+  "policy_digest": "65d9eb86b99826e3b70468596d3f1242b40fc95f8c560f9b14da687a671941f8",
+  "skipped": [],
+  "source_capture_digests": {
+   "stripe:acct_test:txn_sale": "bebabeb2b98afc3675349c11d1ded5b0f92ed358b1d3b3f545edb35f82700416"
+  },
+  "unresolved": []
+ }
+}

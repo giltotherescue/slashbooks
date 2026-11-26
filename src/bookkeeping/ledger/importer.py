@@ -1533,7 +1533,7 @@ def reverse_and_correct(
     # _atomic_ledger_write below takes the same lock again; the lock is reentrant in one context.
     with _entity_write_lock(entity.path):
         from .corrections import _require_unmanaged_entry
-        _require_unmanaged_entry(entity, original_source_id)
+        _require_unmanaged_entry(entity, original_source_id, correcting=True)
         staging = StagingStore(entity.staging_dir)
 
         store = _ensure_ledger_store(entity)
@@ -1542,7 +1542,18 @@ def reverse_and_correct(
         from ..queue import _refuse_entries_above_ask_first
         _refuse_entries_above_ask_first(entity, original, corrected_entry)
         replacement_id = corrected_entry.source_id
+        if not replacement_id:
+            # A replacement without its own source ID cannot be followed as the original's successor: the original
+            # would look truly reversed and whatever it claimed (a Stripe charge or invoice) free to book again.
+            raise ValueError("A correction needs its own replacement source ID; choose a fresh correction ID.")
         if replacement_id:
+            # A replacement that is, or is another spelling of, a source the ledger already holds (the entry it
+            # corrects included: ``abc`` -> ``banksync:abc``) would be hidden by a reversal and orphan its postings.
+            spellings = source_id_variants(replacement_id)
+            if (spellings & source_id_variants(original_source_id) or any(store.source_exists(value) for value in sorted(spellings))
+                    or store.is_reversed(spellings)):
+                raise ValueError("The replacement source ID is already in the ledger, or is another spelling of a source "
+                                 "that is (such as abc and banksync:abc); choose a fresh correction ID.")
             from ..queue import list_duplicate_candidates
             reserved = {str(row.get("id") or "") for row in
                         [*_load_pending_categorization(entity), *staging.get_pending()]}

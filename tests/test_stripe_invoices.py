@@ -462,6 +462,52 @@ class StripeInvoiceTests(unittest.TestCase):
         self.assertEqual(changed["actions"], [])
         self.assertEqual(changed["unresolved"][0]["reason"], "changed_invoice_payment_source")
 
+    def settled_then_new_stripe_movement(self):
+        """Import one paid invoice, then plan the clearing engine on a later, unrelated Stripe charge movement."""
+        from bookkeeping.stripe import stripe_plan
+        self.company("cash")
+        packet = self.packet(payments=[(10000, 300)])
+        self.apply(self.request(packet))
+        transit, refunds = "Assets:Transfers:Synthetic", "Income:Reviewed-Refunds"
+        for account in (transit, refunds):
+            add_account(self.root, account, open_date="2000-01-01")
+        config = json.loads((self.root / "entity.json").read_text())
+        config.setdefault("bank_account_mappings", {})["acct_synthetic"] = BANK
+        (self.root / "entity.json").write_text(json.dumps(config)); self.entity = load_entity(self.root)
+        policy = {"version": 1, "enabled": True, "stripe_account_id": "acct_synthetic", "livemode": False, "currency": "USD",
+            "clearing_account": BANK, "payout_transit_account": transit, "fee_account": FEE, "refund_account": refunds, "revenue_rules": []}
+        charge = dict(deepcopy(packet["charges"][0]), id="ch_later", balance_transaction="txn_later")
+        for key in ("invoice", "payment_intent"):
+            charge.pop(key, None)
+        movement = dict(deepcopy(packet["balance_transactions"][0]), id="txn_later", source="ch_later")
+        captured = {"source": "stripe", "account": {"id": "acct_synthetic", "livemode": False}, "coverage": {"complete": True},
+            "balanceTransactions": [*deepcopy(packet["balance_transactions"]), movement], "charges": [*packet["charges"], charge]}
+        return stripe_plan(self.entity, captured, policy)
+
+    def test_invoice_settlement_metadata_proves_the_entry_is_not_legacy_stripe(self):
+        # PR 177 round 7 (decision 2b): the settlement entry carries structured metadata, so a later Stripe movement
+        # of the same account is planned instead of blocked; the settled movement itself is still skipped.
+        planned = self.settled_then_new_stripe_movement()
+        settlement = next(entry for entry in self.store.load_entries() if entry.source_id == "stripe:acct_synthetic:txn_synthetic0")
+        meta = dict(settlement.meta)
+        self.assertEqual(("invoice_settlement", "acct_synthetic"), (meta["stripe-kind"], meta["stripe-account"]))
+        self.assertTrue(meta["stripe-invoice"].startswith("in_"))
+        self.assertNotIn("legacy_stripe_entries_present", [row["reason"] for row in planned["unresolved"]])
+        self.assertEqual("invoice_settlement_recorded", planned["skipped"][0]["reason"])
+        # Past the block, the ordinary rules decide it (this company maps no revenue rule).
+        self.assertEqual([dict(source_id="stripe:acct_synthetic:txn_later", reason="missing_revenue_mapping")], planned["unresolved"])
+
+    def test_settlement_without_engine_metadata_still_blocks_new_stripe_movements(self):
+        # Decision 2: a settlement-id or a stripe: source ID is text, not proof; without the structured metadata
+        # (an earlier release's settlement) the ledger holds a Stripe entry the engine did not write.
+        with patch("bookkeeping.stripe._invoice_settlement_meta", return_value=()):
+            planned = self.settled_then_new_stripe_movement()
+        settlement = next(entry for entry in self.store.load_entries() if entry.source_id == "stripe:acct_synthetic:txn_synthetic0")
+        self.assertIn("settlement-id", dict(settlement.meta))
+        self.assertNotIn("stripe-kind", dict(settlement.meta))
+        self.assertEqual([], planned["actions"])
+        self.assertEqual([dict(source_id="stripe:acct_synthetic:txn_later", reason="legacy_stripe_entries_present")], planned["unresolved"])
+
     def test_local_credit_absent_from_provider_packet_cannot_restore_collectible_balance(self):
         original = self.ordinary_invoice_and_payment(gross=0)
         source = self.request(self.packet())

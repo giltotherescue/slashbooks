@@ -96,12 +96,65 @@ def is_managed_entry(entry: Entry, source_id: str, owned: set[str]) -> bool:
     return bool(metadata.get("accrual-intent") or metadata.get("accrual-opening") or source_id_variants(source_id) & owned)
 
 
-def _require_unmanaged_entry(entity: Any, source_id: str) -> None:
-    """Keep financial/supporting lineage on the reviewed accrual domain route."""
+def _require_unmanaged_entry(entity: Any, source_id: str, *, correcting: bool = False) -> None:
+    """Keep financial/supporting lineage on the reviewed accrual domain route.
+
+    Checks run on the entry the ID resolves to, under its canonical source ID. A provider-qualified ID (such as
+    ``stripe:acct:txn``) has exactly one spelling: an alias that resolves to it (``banksync:stripe:...``) is
+    refused, so the reversal records the canonical ID and every guard below sees the real entry.
+    """
     store = _ensure_ledger_store(entity)
     original = _find_live_entry(store, source_id)
-    if is_managed_entry(original, source_id, managed_source_ids(store)):
+    canonical = original.source_id or source_id
+    if canonical != source_id and ":" in canonical and not canonical.startswith("banksync:"):
+        raise ValueError(f"{source_id} is another spelling of {canonical}; use {canonical}.")
+    if is_managed_entry(original, canonical, managed_source_ids(store)):
         raise ValueError(MANAGED_ENTRY_MESSAGE)
+    _refuse_entry_with_live_stripe_move(store, canonical, correcting=correcting)
+
+
+def _live_lineage(store: Any, source_id: str, entries: list[Entry]) -> str | None:
+    """The live entry that carries *source_id* forward: itself, or a correction of it (followed to the end)."""
+    try:
+        _find_live_entry(store, source_id)
+        return source_id
+    except ValueError:
+        pass
+    spellings = source_id_variants(source_id)
+    for entry in entries:
+        meta = dict(entry.meta)
+        if entry.source_id and meta.get("correction-of") in spellings:
+            if source_id_variants(entry.source_id) & spellings:
+                # A correction under another spelling of its predecessor (written before such corrections were
+                # refused): the lineage is ambiguous, so it never counts as unwound.
+                return entry.source_id
+            live = _live_lineage(store, entry.source_id, entries)
+            if live:
+                return live
+    return None
+
+
+def _refuse_entry_with_live_stripe_move(store: Any, source_id: str, *, correcting: bool = False) -> None:
+    """A Stripe entry moved out of the holding account cannot be reversed or corrected on its own.
+
+    The move depends on the original's postings; reversing only the original would leave the move's revenue and
+    its holding-account debit behind. Reverse the move first, then the original. The move counts as live while it
+    or any correction of it is live, so correcting the move cannot hide it. A move itself can be reversed, but not
+    replaced: a replacement would keep the dependency under a source ID the original no longer names.
+    """
+    from ..stripe import STRIPE_RECLASSIFY_PREFIX
+    if source_id.startswith(STRIPE_RECLASSIFY_PREFIX):
+        if correcting:
+            raise ValueError(f"{source_id} moves a Stripe entry out of uncategorized Stripe activity and cannot be "
+                             "replaced. Reverse it, then correct the original entry it moved.")
+        return
+    if not source_id.startswith("stripe:"):
+        return
+    moved = STRIPE_RECLASSIFY_PREFIX + source_id[len("stripe:"):]
+    live = _live_lineage(store, moved, store.load_entries())
+    if live:
+        raise ValueError(f"{source_id} was moved out of uncategorized Stripe activity by {live}. "
+                         f"Reverse {live} first, then reverse or correct {source_id}.")
 
 
 def run(args: argparse.Namespace) -> int:
