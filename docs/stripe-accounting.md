@@ -78,13 +78,37 @@ The identity is uncertain, and the movement posts to the holding account with a
 `review_reason`, when references name different objects, a named invoice, charge,
 refund or payment intent is not in the evidence, two Checkout sessions claim one
 payment, an expanded object has no ID, copies disagree, or a document is
-explicitly from the other live/test mode. A refund or dispute follows its sale:
-the same evidence, including the sale movement's expanded source in the same
-cohort, and the sale's posted treatment. While the sale sits in the holding
-account and does not move in the same batch, its refunds and disputes are held
-with `sale_in_holding`. A refund that names another payment intent than its
-charge is held with `refund_reference_conflict`. Disputes always post to the
-holding account, because no approved policy names a dispute account.
+explicitly from the other live/test mode.
+
+Invoice payments count in both shapes, `payment.type: "payment_intent"` and
+`payment.type: "charge"`, and are checked together. An invoice belongs to one
+charge: an invoice whose `charge` or `payment_intent` names another object, a
+payment intent whose `latest_charge` is another charge, an invoice or payment
+intent in another currency, and an invoice that another payment also claims (a
+second charge that is not failed, a succeeded payment intent, a paid invoice
+payment, or a Checkout session with another payment intent) are held
+(`invoice_reference_conflict`, `payment_intent_reference_conflict`,
+`invoice_currency_conflict`, `invoice_claimed_by_another_payment`). A line's
+price, its pricing details, `price_id`, `product_id`, the captured price and
+the captured product must name the same objects; a contradiction is held with
+`price_reference_conflict` or `product_reference_conflict`. Revenue rules read
+the same combined payment intent that resolved the invoice. Copies may word
+descriptive text differently (`description`, statement descriptors, receipt and
+hosted URLs, `footer`); amounts, taxes, discounts, selectors, identity and line
+completeness must still agree.
+
+A refund or dispute follows its sale: the same evidence, including the sale
+movement's expanded source in the same cohort and the refund's own expanded
+payment intent, and the sale's posted treatment. A refund needs a verified sale
+movement (the charge's `balance_transaction`, or the one sale movement of the
+charge in the cohort); without one it is held with `sale_movement_unverified`.
+While the sale sits in the holding account, its refunds and disputes are held
+with `sale_in_holding`. The plan decides that on its final actions: a refund is
+released only by a live move of its sale in the ledger or by a sale move that
+the same batch accepts after every source check. A refund whose sale this batch
+posts to the holding account is held too. A refund that names another payment
+intent than its charge is held with `refund_reference_conflict`. Disputes always
+post to the holding account, because no approved policy names a dispute account.
 
 A known sale whose allocation is not complete (a missing revenue rule, tax,
 discount, proration, partial payment, truncated lines) or a movement that has
@@ -103,6 +127,15 @@ date (or the first day after the closed period). The new entry carries
 repeat apply, a re-import or a retry after an interruption adds nothing. A refund
 held with `sale_in_holding` moves the same way once its sale has moved (in the
 same batch or an earlier one). Disputes are not reclassified.
+
+A move needs the same authority as a new posting: the held movement must be
+unchanged, the account must not need accrual treatment, and neither the net nor
+the gross may be above the ask-first limit. Otherwise the plan proposes no move
+and the entry stays in the holding account for a person.
+
+An original entry that has a live move cannot be reversed or corrected on its
+own (`books ledger reverse`, `books ledger correct`): reverse the
+`stripe-reclassify:` entry first, then the original.
 
 Bank matching requires the original bank source ID/digest, payout ID, exact
 currency/amount and approved current bank mapping. A bank arrival can occur after

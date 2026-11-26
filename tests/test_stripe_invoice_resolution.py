@@ -8,6 +8,7 @@ its refunds and its disputes post to "Uncategorized Stripe activity" with a revi
 from __future__ import annotations
 
 import copy
+import json
 import sys
 import unittest
 from decimal import Decimal
@@ -62,6 +63,14 @@ class StripeFixture(unittest.TestCase):
         self.assertEqual(reason, action['review_reason'])
         self.assertEqual('uncategorized-stripe-activity', action['authority_id'])
         self.assertIn(dict(source_id=sid, reason=reason), plan['uncategorized'])
+
+    def hold_sale(self):
+        self.charge = self.raw['charges'].pop()
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.original = self.store.load_entries()[0]
+
+    def entry(self, source_id):
+        return next(entry for entry in self.store.load_entries() if entry.source_id == source_id)
 
     def invoice_without_charge_reference(self):
         """The two-line invoice fixture, reachable only through the payment intent pi_one."""
@@ -432,14 +441,6 @@ class ReclassificationTests(StripeFixture):
     RECLASS = 'stripe-reclassify:acct_test:txn_sale'
     REFUND_RECLASS = 'stripe-reclassify:acct_test:txn_refund'
 
-    def hold_sale(self):
-        self.charge = self.raw['charges'].pop()
-        self.stage(); self.assertEqual(1, self.apply()['posted'])
-        self.original = self.store.load_entries()[0]
-
-    def entry(self, source_id):
-        return next(entry for entry in self.store.load_entries() if entry.source_id == source_id)
-
     def test_sale_moves_out_of_the_holding_account_once_new_evidence_proves_it(self):
         from bookkeeping.ledger.importer import check_integrity
         self.hold_sale()
@@ -528,6 +529,333 @@ class ReclassificationTests(StripeFixture):
         self.raw['balanceTransactions'] = []; self.dispute()
         self.stage(); self.apply()
         self.assertEqual([], self.plan()['actions'])
+
+
+class MainCompatibilityTests(StripeFixture):
+    """Sales that posted on main post the same way: every plan field but plan_digest matches main's golden plan
+    (tests/fixtures/stripe/main_baselines.json, captured from main with the same synthetic shapes)."""
+
+    GOLDEN = json.loads((Path(__file__).resolve().parent / 'fixtures' / 'stripe' / 'main_baselines.json').read_text())
+
+    def shape(self, name):
+        if name == 'full':
+            self.full_flow()
+        if name in ('invoice', 'invoice_payment'):
+            self.invoice()
+        if name == 'invoice_payment':
+            self.invoice_without_charge_reference()
+            self.raw['invoicePayments'] = [dict(id='inpay', payment=dict(type='payment_intent', payment_intent='pi_one'),
+                invoice='in_one', amount_paid=10000, amount_requested=10000, currency='usd', livemode=False, status='paid')]
+        if name == 'expanded':
+            self.raw['balanceTransactions'][0]['source'] = copy.deepcopy(self.raw['charges'][0])
+        if name == 'checkout':
+            self.raw['charges'][0]['payment_intent'] = 'pi_one'
+            self.raw['checkoutSessions'] = [dict(id='cs', payment_intent='pi_one', status='complete', payment_status='paid',
+                currency='usd', amount_total=10000, amount_subtotal=10000, line_items=dict(has_more=False,
+                data=[dict(id='li', amount_total=10000, amount_subtotal=10000, currency='usd', price='price_one')]))]
+            self.policy['revenue_rules'] = [dict(id='one', match={'price_id': 'price_one'}, category=base.INCOME)]
+
+    def test_main_shapes_keep_every_plan_field_and_capture_digest(self):
+        for name, golden in self.GOLDEN.items():
+            with self.subTest(name):
+                self.setUp(); self.shape(name)
+                plan = self.plan()
+                self.assertTrue(golden['actions'])
+                self.assertEqual(golden, {key: plan[key] for key in golden})
+                self.assertEqual(([], []), (plan['uncategorized'], plan['reclassified']))
+
+
+class RecheckOneFindingTests(StripeFixture):
+    """One test for each finding of the PR 177 recheck (reproducers from its review; synthetic data)."""
+
+    RECLASS = 'stripe-reclassify:acct_test:txn_sale'
+
+    def actions(self, plan=None):
+        plan = plan or self.plan()
+        return [(row['source_id'], row['authority_id'], row.get('review_reason')) for row in plan['actions']], plan['unresolved']
+
+    def held_refund_with_restored_charge(self):
+        """The sale sits in holding; its refund was posted later, held with sale_in_holding. Returns the sale movement."""
+        self.hold_sale()
+        self.raw['charges'] = [self.charge]
+        self.full_flow()
+        movement = self.raw['balanceTransactions'].pop(0)
+        self.stage(); self.apply()
+        self.assertEqual('sale_in_holding', dict(self.entry(REFUND).meta)['stripe-review'])
+        return movement
+
+    def interrupted_apply(self):
+        from unittest.mock import patch
+        from bookkeeping import stripe
+        with patch.object(stripe.StagingStore, 'bulk_mark_seen', side_effect=OSError), self.assertRaises(OSError):
+            self.apply()
+
+    # Refunds leave holding only behind a sale move the batch accepts, linked by a verified movement.
+
+    def test_rejected_sale_move_does_not_release_its_held_refund(self):
+        movement = self.held_refund_with_restored_charge()
+        movement['created'] += 86400
+        self.raw['balanceTransactions'].append(movement)
+        plan = self.plan()
+        self.assertEqual(([], [dict(source_id=SALE, reason='changed_source')]), self.actions(plan))
+        self.assertEqual([], plan['reclassified'])
+        self.apply()
+        self.assertEqual(Decimal('-80'), self.balances()[HOLDING])
+        self.assertNotIn(base.REFUNDS, self.balances())
+
+    def test_refund_without_a_verified_sale_movement_stays_in_holding(self):
+        self.hold_sale()
+        self.raw['charges'] = [self.charge]
+        self.full_flow()
+        self.raw['balanceTransactions'].pop(0)
+        del self.charge['balance_transaction']
+        plan = self.stage()
+        self.assertHeld(plan, 'sale_movement_unverified', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        self.apply()
+        self.assertEqual(Decimal('-80'), self.balances()[HOLDING])
+        self.assertNotIn(base.REFUNDS, self.balances())
+
+    def test_refund_merges_its_own_expanded_payment_intent(self):
+        self.full_flow()
+        self.raw['charges'][0]['payment_intent'] = dict(id='pi_one')
+        self.raw['refunds'][0]['payment_intent'] = dict(id='pi_one', invoice='in_missing')
+        self.assertHeld(self.plan(), 'missing_invoice_evidence', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    def test_refund_finds_a_charge_expanded_only_on_the_sale_movement(self):
+        self.full_flow()
+        self.raw['balanceTransactions'][0]['source'] = self.raw['charges'].pop()
+        self.stage(); self.apply()
+        self.assertEqual({base.CLEARING: Decimal('0'), base.INCOME: Decimal('-100'), base.FEES: Decimal('3'),
+                          base.REFUNDS: Decimal('20'), base.TRANSIT: Decimal('77')}, self.balances())
+        self.assertEqual(([], []), self.actions())
+
+    def test_fresh_refund_follows_a_sale_that_this_batch_posts_to_holding(self):
+        # The refund carries a complete charge copy; the sale movement names a charge the evidence lacks.
+        self.full_flow()
+        charge = self.raw['charges'].pop()
+        refund_bt = next(bt for bt in self.raw['balanceTransactions'] if bt['id'] == 'txn_refund')
+        refund_bt['source'] = dict(self.raw['refunds'][0], charge=charge)
+        plan = self.plan()
+        self.assertHeld(plan, 'missing_charge_evidence')
+        self.assertHeld(plan, 'sale_in_holding', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    # A move needs the same authority as a fresh posting.
+
+    def test_move_above_the_ask_first_limit_waits_for_a_person(self):
+        self.hold_sale()
+        self.raw['charges'] = [self.charge]
+        self.entity.trust_policy['ask_first_above'] = '50.00'
+        result = self.apply()
+        self.assertEqual((0, []), (result['posted'], result['reclassified']))
+        self.assertEqual(Decimal('-100'), self.balances()[HOLDING])
+        self.entity.trust_policy['ask_first_above'] = '500.00'
+        self.assertEqual([dict(source_id=SALE, reclassification_id=self.RECLASS)], self.apply()['reclassified'])
+
+    def test_move_waits_while_the_account_needs_accrual_treatment(self):
+        from unittest.mock import patch
+        from bookkeeping import stripe
+        self.hold_sale()
+        self.raw['charges'] = [self.charge]
+        with patch('bookkeeping.accrual.treatment.treatment_checker', return_value=lambda row: True):
+            self.assertEqual([], stripe.stripe_plan(self.entity, self.raw, self.policy)['reclassified'])
+
+    # The cleanup receipt binds exactly what the resolver read.
+
+    def test_receipt_binds_the_payment_intent_of_an_id_only_expanded_charge(self):
+        self.raw['balanceTransactions'][0]['source'] = {'id': 'ch_sale'}
+        self.raw['charges'][0]['payment_intent'] = 'pi_one'
+        self.raw['paymentIntents'] = [dict(id='pi_one', metadata={})]
+        self.stage()
+        before = self.plan()['source_capture_digests'][SALE]
+        self.interrupted_apply()
+        self.raw['paymentIntents'][0]['invoice'] = 'in_missing'
+        self.assertNotEqual(before, self.plan()['source_capture_digests'][SALE])
+        self.assertEqual(['cleanup_needs_review'], [row['reason'] for row in self.apply()['needs_review']])
+
+    def test_receipt_binds_competing_sale_movements(self):
+        first = self.raw['balanceTransactions'][0]
+        before = self.plan()['source_capture_digests'][SALE]
+        self.stage()
+        self.interrupted_apply()
+        self.raw['balanceTransactions'].append(dict(first, id='txn_duplicate'))
+        self.assertNotEqual(before, self.plan()['source_capture_digests'][SALE])
+        self.stage()
+        self.assertEqual(['cleanup_needs_review'], [row['reason'] for row in self.apply()['needs_review']])
+
+    def test_unchanged_evidence_recovers_after_an_interrupted_apply(self):
+        self.raw['balanceTransactions'][0]['source'] = {'id': 'ch_sale'}
+        self.raw['charges'][0]['payment_intent'] = 'pi_one'
+        self.raw['paymentIntents'] = [dict(id='pi_one', metadata={})]
+        self.stage()
+        self.interrupted_apply()
+        self.assertEqual([], self.apply()['needs_review'])
+
+    # Every invoice payment shape counts, and an invoice belongs to one charge.
+
+    def test_charge_type_invoice_payment_names_the_invoice(self):
+        self.raw['invoicePayments'] = [dict(id='inpay_one', payment=dict(type='charge', charge='ch_sale'),
+            invoice='in_missing', amount_paid=10000, amount_requested=10000, currency='usd', livemode=False, status='paid')]
+        self.assertHeld(self.plan(), 'missing_invoice_evidence')
+
+    def test_charge_type_invoice_payment_resolves_the_exact_invoice(self):
+        self.invoice(); self.raw['charges'][0].pop('invoice')
+        self.raw['invoicePayments'] = [dict(id='inpay_one', payment=dict(type='charge', charge='ch_sale'),
+            invoice='in_one', amount_paid=10000, amount_requested=10000, currency='usd', livemode=False, status='paid')]
+        self.assertRevenue(self.plan())
+        self.raw['invoicePayments'].append(dict(self.raw['invoicePayments'][0], id='inpay_two',
+            payment=dict(type='payment_intent', payment_intent='pi_one')))
+        self.raw['charges'][0]['payment_intent'] = 'pi_one'
+        self.assertEqual('partial_or_multiple_invoice_payments', self.plan()['unresolved'][0]['reason'])
+
+    def test_payment_intent_whose_latest_charge_is_another_charge_is_held(self):
+        self.raw['charges'][0]['payment_intent'] = dict(id='pi_one', latest_charge='ch_other')
+        self.assertHeld(self.plan(), 'payment_intent_reference_conflict')
+        self.raw['charges'][0]['payment_intent'] = dict(id='pi_one', latest_charge='ch_sale')
+        self.assertEqual({base.CLEARING: '97.00', base.INCOME: '-100.00', base.FEES: '3.00'}, self.postings(self.plan()))
+
+    def test_invoice_naming_another_charge_or_payment_intent_is_held(self):
+        for field, value in (('charge', 'ch_different'), ('payment_intent', 'pi_different')):
+            with self.subTest(field):
+                self.setUp(); self.invoice()
+                self.raw['invoices'][0][field] = value
+                self.assertHeld(self.plan(), 'invoice_reference_conflict')
+        self.setUp(); self.invoice(); self.raw['invoices'][0]['charge'] = 'ch_sale'
+        self.assertRevenue(self.plan())
+
+    def test_invoice_in_another_currency_is_held(self):
+        self.invoice()
+        self.raw['invoices'][0]['currency'] = 'eur'
+        self.assertHeld(self.plan(), 'invoice_currency_conflict')
+
+    def test_two_charges_claiming_one_invoice_never_post_it_twice(self):
+        self.invoice()
+        self.raw['balanceTransactions'].append(dict(self.raw['balanceTransactions'][0], id='txn_extra', source='ch_extra'))
+        self.raw['charges'].append(dict(self.raw['charges'][0], id='ch_extra', balance_transaction='txn_extra'))
+        self.stage(); self.apply()
+        self.assertEqual({base.CLEARING: Decimal('194'), HOLDING: Decimal('-200'), base.FEES: Decimal('6')}, self.balances())
+        (entry,) = [entry for entry in self.store.load_entries() if entry.source_id == SALE]
+        self.assertEqual('invoice_claimed_by_another_payment', dict(entry.meta)['stripe-review'])
+
+    def test_failed_charge_naming_the_invoice_does_not_compete(self):
+        self.invoice()
+        self.raw['charges'].append(dict(self.raw['charges'][0], id='ch_failed', status='failed', paid=False,
+                                        balance_transaction=None))
+        self.assertRevenue(self.plan())
+
+    def test_subscription_checkout_session_without_a_payment_intent_does_not_compete(self):
+        self.invoice()
+        self.raw['checkoutSessions'] = [dict(id='cs_sub', mode='subscription', invoice='in_one', payment_intent=None,
+                                             status='complete', payment_status='paid')]
+        self.assertRevenue(self.plan())
+
+    def test_paid_invoice_payment_for_another_intent_competes(self):
+        self.invoice()
+        self.raw['invoicePayments'] = [dict(id='inpay_x', payment=dict(type='payment_intent', payment_intent='pi_other'),
+            invoice='in_one', amount_paid=10000, amount_requested=10000, currency='usd', livemode=False, status='paid')]
+        self.assertHeld(self.plan(), 'invoice_claimed_by_another_payment')
+
+    # Allocation reads the same merged objects that resolution accepted.
+
+    def test_allocation_uses_the_payment_intent_expanded_on_checkout(self):
+        self.invoice()
+        self.raw['charges'][0]['payment_intent'] = 'pi_one'
+        self.raw['checkoutSessions'] = [dict(id='cs', invoice='in_one', payment_intent=dict(id='pi_one', metadata={'kind': 'plan'}))]
+        self.policy['revenue_rules'].append(dict(id='intent_rule', match={'metadata': {
+            'object': 'payment_intent', 'key': 'kind', 'value': 'plan'}}, category='Income:Subscriptions'))
+        expected = ([], [dict(source_id=SALE, reason='ambiguous_revenue_mapping')])
+        self.assertEqual(expected, self.actions())
+        self.raw['paymentIntents'] = [self.raw['checkoutSessions'][0]['payment_intent']]
+        self.assertEqual(expected, self.actions())
+
+    def test_line_price_and_captured_price_naming_different_products_hold(self):
+        self.invoice()
+        self.raw['prices'] = [dict(id='price_two', product='prod_other')]
+        self.assertHeld(self.plan(), 'price_reference_conflict')
+        self.raw['prices'] = [dict(id='price_two', product='prod_two')]
+        self.assertRevenue(self.plan())
+
+    def test_line_price_references_that_disagree_hold(self):
+        self.invoice()
+        self.raw['invoices'][0]['lines']['data'][1]['price_id'] = 'price_elsewhere'
+        self.assertHeld(self.plan(), 'price_reference_conflict')
+        self.setUp(); self.invoice()
+        self.raw['invoices'][0]['lines']['data'][1]['product_id'] = 'prod_elsewhere'
+        self.assertHeld(self.plan(), 'product_reference_conflict')
+
+    def test_captured_product_metadata_conflict_holds(self):
+        self.invoice()
+        line = self.raw['invoices'][0]['lines']['data'][1]
+        line['price']['product'] = dict(id='prod_two', metadata={'tier': 'a'})
+        self.raw['products'] = [dict(id='prod_two', metadata={'tier': 'b'})]
+        self.assertHeld(self.plan(), 'product_reference_conflict')
+
+    # Copies of an invoice may word a line differently; amounts, tax and selectors stay strict.
+
+    def test_line_description_difference_keeps_mains_allocation(self):
+        self.invoice()
+        captured = self.raw['invoices'][0]
+        captured['lines']['data'][0]['description'] = 'revised'
+        inline = copy.deepcopy(captured)
+        inline['lines']['data'][0]['description'] = 'initial'
+        self.raw['charges'][0]['invoice'] = inline
+        self.assertRevenue(self.plan())
+        for field, value in (('amount', 5000), ('price', {'id': 'price_other'})):
+            with self.subTest(field):
+                changed = copy.deepcopy(inline)
+                changed['lines']['data'][1][field] = value
+                self.raw['charges'][0]['invoice'] = changed
+                self.assertHeld(self.plan(), 'invoice_reference_conflict')
+        changed = copy.deepcopy(inline)  # Tax on one copy is kept, so the sale waits for tax review.
+        changed['lines']['data'][1]['tax_amounts'] = [{'amount': 1}]
+        self.raw['charges'][0]['invoice'] = changed
+        plan = self.plan()
+        self.assertEqual([], plan['actions'])
+        self.assertEqual('tax_discount_or_credit_requires_review', plan['unresolved'][0]['reason'])
+
+    # An original with a live move cannot be reversed or corrected on its own.
+
+    def test_original_with_a_live_move_refuses_reversal_and_correction(self):
+        from bookkeeping.ledger.importer import reverse_and_correct, reverse_entry
+        from bookkeeping.ledger.model import Entry, Posting
+        self.hold_sale(); self.raw['charges'] = [self.charge]; self.apply()
+        before = self.files()
+        with self.assertRaisesRegex(ValueError, 'Reverse stripe-reclassify:acct_test:txn_sale first'):
+            reverse_entry(self.entity, SALE, 'test')
+        corrected = Entry(date=self.original.date, narration='x', meta=(('source-id', 'fix-1'),),
+                          postings=(Posting(base.CLEARING, Decimal('97'), 'USD'), Posting(base.INCOME, Decimal('-97'), 'USD')))
+        with self.assertRaisesRegex(ValueError, 'Reverse stripe-reclassify'):
+            reverse_and_correct(self.entity, SALE, corrected, 'test')
+        self.assertEqual(before, self.files())
+        # Reversing the move first, then the original, leaves nothing behind.
+        reverse_entry(self.entity, self.RECLASS, 'test')
+        reverse_entry(self.entity, SALE, 'test')
+        self.assertEqual(set(), {account for account, amount in self.balances().items() if amount})
+        self.assertEqual(([], []), self.actions())
+
+    def test_rollback_and_retry_post_every_entry_once(self):
+        from unittest.mock import patch
+        self.hold_sale(); self.raw['charges'] = [self.charge]; self.full_flow(); self.stage()
+        before = self.store.content_digest()
+        with patch.object(type(self.store), 'insert_source_transactions', side_effect=OSError), self.assertRaises(OSError):
+            self.apply()
+        self.assertEqual(before, self.store.content_digest())
+        self.assertEqual([self.original], self.store.load_entries())
+        self.assertEqual((3, 0), (self.apply()['posted'], self.apply()['posted']))
+
+
+class ReviewProbeTests(StripeFixture):
+    """The round-one review probe not already covered by ReviewFindingTests (synthetic data)."""
+
+    def test_later_cohort_refund_and_its_held_sale_leave_holding_together(self):
+        self.hold_sale()
+        self.raw['charges'].append(self.charge)
+        self.full_flow(); self.stage()
+        self.assertEqual(3, self.apply()['posted'])
+        self.assertEqual({base.CLEARING: Decimal('0'), HOLDING: Decimal('0'), base.FEES: Decimal('3'),
+                          base.INCOME: Decimal('-100'), base.REFUNDS: Decimal('20'), base.TRANSIT: Decimal('77')},
+                         self.balances())
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual(1, sum(item.account == HOLDING for item in self.store.load_opens()))
 
 
 if __name__ == '__main__':

@@ -102,6 +102,25 @@ def _require_unmanaged_entry(entity: Any, source_id: str) -> None:
     original = _find_live_entry(store, source_id)
     if is_managed_entry(original, source_id, managed_source_ids(store)):
         raise ValueError(MANAGED_ENTRY_MESSAGE)
+    _refuse_entry_with_live_stripe_move(store, source_id)
+
+
+def _refuse_entry_with_live_stripe_move(store: Any, source_id: str) -> None:
+    """A Stripe entry moved out of the holding account cannot be reversed or corrected on its own.
+
+    The move depends on the original's postings; reversing only the original would leave the move's revenue and
+    its holding-account debit behind. Reverse the move first, then the original.
+    """
+    from ..stripe import STRIPE_RECLASSIFY_PREFIX
+    if not source_id.startswith("stripe:"):
+        return
+    moved = STRIPE_RECLASSIFY_PREFIX + source_id[len("stripe:"):]
+    try:
+        _find_live_entry(store, moved)
+    except ValueError:
+        return  # No move, or the move is already reversed.
+    raise ValueError(f"{source_id} was moved out of uncategorized Stripe activity by {moved}. "
+                     f"Reverse {moved} first, then reverse or correct {source_id}.")
 
 
 def run(args: argparse.Namespace) -> int:
