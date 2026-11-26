@@ -208,9 +208,14 @@ unproven (`ownership_unproven`, unresolved).
 **One owner map before anything posts.** Before any entry is proposed, the plan
 builds one map from every movement ID to its owners: each balance transaction,
 charge, payment intent, invoice, refund, payout and dispute balance transaction,
-for every kind of movement in the batch (posting or unresolved) and every
-durable reservation in the ledger (the claims above, and the dispute IDs and
-movements an earlier build recorded). A sale owns every charge, payment intent
+for every kind of movement in the supplied capture (posting, unresolved or with
+no financial effect) and every durable reservation in the ledger (the claims
+above, the IDs a verified no-effect source reserved, and the dispute IDs and
+movements an earlier build recorded). Ownership is decided over the whole
+capture before any paging: every validated row claims its IDs whichever page it
+falls on, and only then is the result restricted to the page that `limit` and
+`after_source_id` select. The same capture gives every row the same ownership
+decision for every `limit` and cursor. A sale owns every charge, payment intent
 and invoice reachable in its closure; a refund owns its refund ID; a payout its
 payout ID; a dispute owns every balance transaction its document lists. An ID
 with two owners makes every batch claimant unresolved with no entry, whichever
@@ -221,8 +226,10 @@ order the movements came in: `charge_claimed_by_another_movement`,
 `duplicate_payout_movement` or `movement_claimed_by_another_owner` (for example
 a fee movement that a dispute lists, or one balance transaction two disputes
 list). A movement that is unresolved for any other reason still reserves its IDs
-in this map for that batch. That reservation is not durable: a later batch does
-not see it, because nothing was written.
+in this map for that capture. That reservation is not durable: a later capture
+does not see it, because nothing was written. A refund may still post only when
+its sale is booked in the ledger or approved on the same page (the same write);
+a refund paged before its sale stays unresolved until the sale is booked.
 
 A sale needs a charge identity: a sale balance transaction whose `source` is
 missing or null stays unresolved (`sale_identity_unverified`).
@@ -235,9 +242,10 @@ refund over its sale's cap always reports `refund_exceeds_booked_sale`.
 
 No historical proof. Rule IDs, authority text, postings and saved digests are
 never read to decide what an entry was. Only structured metadata written by
-this engine version proves an entry is outside the block: a known kind
-(`stripe-kind` of `sale`, `refund`, `dispute`, `other` or `invoice_settlement`)
-and the Stripe account (`stripe-account`) that the entry's own source ID names.
+this engine version proves an entry is outside the block: the engine version
+(`stripe-engine-version` of `1`), a known kind (`stripe-kind` of `sale`,
+`refund`, `dispute`, `other` or `invoice_settlement`) and the Stripe account
+(`stripe-account`) that the entry's own source ID names.
 That exempts (a) another Stripe account's entries this engine wrote, which still
 reserve every charge, payment intent and invoice they name, and (b) the invoice
 engine's settlement of an open invoice by a Stripe movement, which also records
@@ -251,8 +259,13 @@ Stripe movement for that ledger stays unresolved with no journal entry
 includes fees and payouts. Movements already posted are still skipped and their
 interrupted cleanup still runs. A later cutover tool will lift this; there is no
 backfill. Ledgers written by earlier, unreleased builds of this change (before
-entries recorded `stripe-account`) count as legacy too: they block new Stripe
-movements, so re-create any test books built with them.
+entries recorded `stripe-engine-version`) count as legacy too, even when their
+entries carry `stripe-kind` and `stripe-account`: for example a paid payout an
+earlier build recorded as `other` without `stripe-payout`. Historical ownership
+is not reconstructed. A zero payout an earlier build verified with no financial
+effect, whose saved source records no reserved IDs, counts as legacy the same
+way. They block new Stripe movements, so re-create any test books built with
+them.
 
 A refund posts only when it is keyed to a sale this engine booked. Its sale is
 found through the charge's `balance_transaction` (or the one sale movement of
@@ -285,8 +298,11 @@ it is absent, a payout or not a sale this engine wrote
 **The cap is never skipped.** The refundable amount is the booked sale's gross,
 keyed by its sale movement (`stripe-sale`), minus every refund already posted
 against that movement or its recorded charge (held by an earlier build,
-corrected or reversed alike) and every refund of it proposed in this batch,
-including refund rows that are unresolved for another reason. A credit back
+corrected or reversed alike) and every refund of it in the supplied capture,
+including refund rows that are unresolved for another reason (an invalid
+status, a closed period, a legacy ledger). A refund's link to its charge and
+sale is recorded before any posting check, so an early refusal never hides a
+claim from the cap. A credit back
 never raises it. Any refund over the cap stays unresolved with
 `refund_exceeds_booked_sale`, and that reason replaces any other the row had, so
 the cap shows even when the row has an earlier problem.
@@ -303,19 +319,34 @@ more than one invoice line stays unresolved with
 
 **Disputes never post.** Every dispute movement (funds withdrawn, reinstated,
 or a dispute fee) stays unresolved with `dispute_needs_review`, with no entry
-and no cash movement; no approved policy names a dispute account. Its dispute
-ID and the balance transactions its document lists still enter the owner map,
-so another movement that claims one of them stays unresolved too. Dispute
+and no cash movement; no approved policy names a dispute account. A dispute
+link always wins over the balance transaction's type: a movement of any type
+(a `stripe_fee` included) whose source is a dispute, or that any dispute
+document lists in `balance_transactions`, is a dispute movement. A source is a
+dispute when it says so (`object` of `dispute`, or a `du_` or `dp_` ID, as a
+bare ID, an ID wrapper or a full copy) or when any copy of that ID anywhere in
+the capture is a dispute. Dispute documents are collected from every place
+they appear: the top-level `disputes` array, a movement's expanded source, or
+expanded inside any other object. Its dispute ID and the balance transactions
+its document lists still enter the owner map, so another movement that claims
+one of them stays unresolved too. A fee with no dispute link still posts to the
+fee account. Dispute
 entries an earlier build wrote (with `stripe-dispute` and
 `stripe-dispute-movements`) stay durable reservations of the movements they
 recorded; the engine no longer writes that metadata.
 
 **Payouts are reserved by payout ID.** Each paid payout movement records its
 payout ID (`stripe-payout`). A payout ID already recorded never posts again
-(`payout_already_recorded`), and two movements of one payout in a batch both
-stay unposted (`duplicate_payout_movement`). Payout entries written by round-8
-or earlier builds lack this metadata, so they do not reserve their payout ID;
-their movement source ID still prevents the same movement from posting twice.
+(`payout_already_recorded`), and two movements of one payout in a capture both
+stay unposted (`duplicate_payout_movement`). A paid zero payout accepted with no
+financial effect reserves its payout ID too: its saved source records the IDs
+it reserves (`stripe_no_effect_claims`), and it takes part in the same owner
+map. A later capture that books the same payout through another movement stays
+unresolved (`payout_already_recorded`), and a zero payout whose payout another
+movement in the same capture claims is not accepted. Payout entries written by
+earlier builds of this change lack `stripe-engine-version`, so a ledger that
+holds one is blocked as legacy (see "No historical proof"): no new Stripe
+movement posts on it, so an unreserved payout ID can never post a second time.
 
 
 Revenue authority comes from one checked path. A plain charge (no invoice or
@@ -512,5 +543,7 @@ conflicts with its already-recorded original transfer. Discovery exposes bounded
 
 A paid zero-value payout with matching evidence and no fees is retained as a
 source with status `no_financial_effect`. It creates no journal entry and returns
-`no_financial_effect` separately from `posted`. Replays verify the source and
-evidence before finishing queue cleanup; changed evidence remains held.
+`no_financial_effect` separately from `posted`. Its saved source reserves its
+payout ID (`stripe_no_effect_claims`) like a posted payout entry, so another
+movement of that payout stays unresolved. Replays verify the source and
+evidence before finishing queue cleanup; changed evidence stays unresolved.

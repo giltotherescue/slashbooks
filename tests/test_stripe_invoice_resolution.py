@@ -27,6 +27,7 @@ HOLDING = STRIPE_HOLDING_ACCOUNT
 SALE = 'stripe:acct_test:txn_sale'
 REFUND = 'stripe:acct_test:txn_refund'
 DISPUTE = 'stripe:acct_test:txn_dispute'
+VERSION = ('stripe-engine-version', '1')  # Round 10 (decision 3): what proves this engine version wrote an entry.
 
 
 class StripeFixture(unittest.TestCase):
@@ -98,7 +99,9 @@ class StripeFixture(unittest.TestCase):
         amounts = [(base.CLEARING, Decimal(bt['net']) / 100), (HOLDING, Decimal(-bt['amount']) / 100)]
         if bt['fee']:
             amounts.append((base.FEES, Decimal(bt['fee']) / 100))
-        engine = () if legacy else (('stripe-review', reason), ('stripe-account', 'acct_test'), *meta)
+        # Round 10 (decision 3): only entries that record the current engine version are engine-written; these
+        # simulate this engine's own held entries, so the guards that still protect such entries stay tested.
+        engine = () if legacy else (('stripe-review', reason), ('stripe-account', 'acct_test'), VERSION, *meta)
         entry = Entry(date=date.fromisoformat(normalized['date']), narration=normalized['description'], meta=(
             ('source-id', sid), ('import-session', 'stripe-approved'), ('stripe-policy-digest', plan['policy_digest']),
             ('stripe-authority', 'uncategorized-stripe-activity'), ('stripe-source-digest', _digest(normalized)),
@@ -2074,7 +2077,8 @@ class RecheckFourFindingTests(RecheckFixture):
         self.stage(); self.apply()
         entry = Entry(date=date(2026, 1, 16), narration='Stripe dispute', postings=(
             Posting(base.CLEARING, Decimal('-5'), 'USD'), Posting(HOLDING, Decimal('5'), 'USD')),
-            meta=(('source-id', 'stripe:acct_test:txn_dispute'), ('stripe-kind', 'dispute'), ('stripe-account', 'acct_test')))
+            meta=(('source-id', 'stripe:acct_test:txn_dispute'), ('stripe-kind', 'dispute'), ('stripe-account', 'acct_test'),
+                  VERSION))
         _atomic_ledger_write(self.entity, [], [entry], 'dispute', None, 'dispute')
         self.full_flow(); self.refund_only()
         self.assertHeld(self.plan(), 'ownership_unproven', sid=REFUND, amount='20.00', fee=None, net='-20.00')
@@ -2450,23 +2454,26 @@ class RoundSevenDecisionTests(RecheckFixture):
         for kind in ('sale', 'refund', 'dispute', 'other'):
             with self.subTest(kind):
                 self.setUp()
-                self.foreign((('stripe-kind', kind), ('stripe-account', 'acct_other'), ('stripe-charge', 'ch_elsewhere')))
+                self.foreign((('stripe-kind', kind), ('stripe-account', 'acct_other'), VERSION, ('stripe-charge', 'ch_elsewhere')))
                 self.assertEqual('services', self.action(self.plan(), SALE)['authority_id'])
                 self.stage(); self.assertEqual(1, self.apply()['posted'])
 
     def test_another_accounts_claims_still_reserve_their_ids(self):
-        self.foreign((('stripe-kind', 'sale'), ('stripe-account', 'acct_other'), ('stripe-charge', 'ch_sale')))
+        self.foreign((('stripe-kind', 'sale'), ('stripe-account', 'acct_other'), VERSION, ('stripe-charge', 'ch_sale')))
         self.assertUnresolved(self.plan(), 'charge_claimed_by_another_movement')
 
     def test_text_prefixes_or_missing_metadata_still_block(self):
         cases = dict(
             no_metadata=(),
-            kind_without_account=(('stripe-kind', 'sale'),),
-            account_without_kind=(('stripe-account', 'acct_other'),),
-            unknown_kind=(('stripe-kind', 'payout'), ('stripe-account', 'acct_other')),
-            account_disagrees_with_source=(('stripe-kind', 'sale'), ('stripe-account', 'acct_third')),
+            kind_without_account=(('stripe-kind', 'sale'), VERSION),
+            account_without_kind=(('stripe-account', 'acct_other'), VERSION),
+            unknown_kind=(('stripe-kind', 'payout'), ('stripe-account', 'acct_other'), VERSION),
+            account_disagrees_with_source=(('stripe-kind', 'sale'), ('stripe-account', 'acct_third'), VERSION),
             settlement_id_text_only=(('settlement-id', 'stripe-payment-abc'),),
-            settlement_without_invoice=(('stripe-kind', 'invoice_settlement'), ('stripe-account', 'acct_other')),
+            settlement_without_invoice=(('stripe-kind', 'invoice_settlement'), ('stripe-account', 'acct_other'), VERSION),
+            # Round 10 (decision 3): kind and account without this engine version were written by a parent build.
+            parent_build_without_version=(('stripe-kind', 'sale'), ('stripe-account', 'acct_other')),
+            other_version=(('stripe-kind', 'other'), ('stripe-account', 'acct_other'), ('stripe-engine-version', '0')),
         )
         for name, meta in cases.items():
             with self.subTest(name):
@@ -2847,7 +2854,8 @@ class RoundNineScopeTests(RecheckFixture):
         self.dispute(balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_fee'}])
         self.raw['balanceTransactions'].append(fee)
         plan = self.plan()
-        self.assertUnresolved(plan, 'movement_claimed_by_another_owner', sid='stripe:acct_test:txn_fee')
+        # Round 10 (decision 2): a movement any dispute document lists is a dispute movement, whatever its type.
+        self.assertUnresolved(plan, 'dispute_needs_review', sid='stripe:acct_test:txn_fee')
         self.assertUnresolved(plan, 'dispute_needs_review', sid=DISPUTE)
         # Durably: a dispute entry an earlier build wrote reserves the movements it recorded.
         self.setUp(); self.dispute(); self.stage()
@@ -2920,6 +2928,196 @@ class RoundNineScopeTests(RecheckFixture):
         self.assertEqual(0, self.apply()['posted'])
         self.assertNotIn(HOLDING, {item.account for item in self.store.load_opens()})
         self.assertEqual({}, self.balances())
+
+
+
+class RoundTenDecisionTests(RecheckFixture):
+    """One regression for each case of PR 177 recheck 7 (probes7.py), under Clozy's round-10 decisions: ownership
+    over the whole cohort before paging, a dispute link wins over the type, parent-build entries are legacy, no-effect
+    sources reserve their IDs, and every known refund claim counts toward the cap. Every case ends with nothing
+    posted that the decisions refuse; ordinary postings and exact retries still work."""
+
+    PAYOUT = 'stripe:acct_test:txn_payout'
+    add_refund = RecheckFourFindingTests.add_refund
+
+    def payout_only(self):
+        self.full_flow()
+        payout = self.raw['balanceTransactions'].pop()
+        self.raw['balanceTransactions'] = [payout]
+        return payout
+
+    def pages(self, limit, start=''):
+        """Stage and apply the whole capture page by page; returns ``{source_id: reason}`` for unresolved rows."""
+        unresolved, cursor = {}, start
+        while True:
+            plan = self.stage(limit=limit, after_source_id=cursor)
+            applied = self.apply(limit=limit, after_source_id=cursor)
+            unresolved.update({row['source_id']: row['reason'] for row in applied['unresolved']})
+            self.assertEqual(plan['next_cursor'], applied['next_cursor'])
+            if not applied['next_cursor']:
+                return unresolved
+            cursor = applied['next_cursor']
+
+    # Decision 1: payout_pages.
+    def test_payout_pages(self):
+        for rival in ('txn_arival', 'txn_zrival'):  # The rival on either side of the page boundary.
+            for limit in (1, 2, 50):
+                for start in ('', 'stripe:acct_test:txn_m'):  # From the start, or from a cursor between them.
+                    with self.subTest(rival=rival, limit=limit, start=start):
+                        self.setUp()
+                        payout = self.payout_only()
+                        self.raw['balanceTransactions'].append(dict(payout, id=rival))
+                        whole = {row['source_id']: row['reason'] for row in self.plan()['unresolved']}
+                        self.assertEqual('duplicate_payout_movement', whole[self.PAYOUT])
+                        self.assertEqual('missing_or_failed_payout', whole['stripe:acct_test:' + rival])
+                        seen = self.pages(limit, start)
+                        self.assertEqual({sid: whole[sid] for sid in seen}, seen)  # Every page agrees with the whole.
+                        self.assertEqual({}, self.balances())  # Nothing posted on any page.
+
+    def test_payout_pages_ordinary_control(self):
+        # The same paging posts an ordinary sale and payout exactly once, whatever the limit; a retry posts nothing.
+        for limit in (1, 2, 50):
+            with self.subTest(limit=limit):
+                self.setUp()
+                self.full_flow()
+                self.raw['balanceTransactions'] = [row for row in self.raw['balanceTransactions'] if row['type'] != 'refund']
+                self.raw['refunds'] = []
+                self.assertEqual({}, self.pages(limit))
+                self.assertEqual({base.CLEARING: Decimal('20.00'), base.INCOME: Decimal('-100.00'),
+                                  base.FEES: Decimal('3.00'), base.TRANSIT: Decimal('77.00')}, self.balances())
+                self.assertEqual({}, self.pages(limit))
+                self.assertEqual(Decimal('77.00'), self.balances()[base.TRANSIT])
+
+    # Decision 2: fee_dispute_source.
+    def fee(self, source):
+        self.raw['charges'] = []
+        self.raw['balanceTransactions'] = [dict(id='txn_fee', created=1768521600, amount=-1500, fee=0, net=-1500,
+                                                currency='usd', status='available', type='stripe_fee', source=source)]
+
+    def test_fee_dispute_source(self):
+        doc = dict(id='dp_one', object='dispute', currency='usd', balance_transactions=['txn_fee'])
+        shapes = dict(
+            expanded_only=lambda: self.fee(copy.deepcopy(doc)),
+            with_top_level_copy=lambda: (self.fee(copy.deepcopy(doc)), self.raw.__setitem__('disputes', [copy.deepcopy(doc)])),
+            bare_id=lambda: self.fee('dp_one'),
+            id_wrapper=lambda: self.fee({'id': 'du_one'}),
+            object_only=lambda: self.fee({'id': 'zz_one', 'object': 'dispute'}),
+            # The source ID has no dispute prefix, but a copy elsewhere in the capture shows it is a dispute.
+            copy_elsewhere=lambda: (self.fee('zz_one'), self.raw.__setitem__('disputes', [dict(doc, id='zz_one', balance_transactions=[])]))
+            ,
+            # No source link at all: a dispute expanded only inside another object lists the movement.
+            listed_inside_wrapper=lambda: (self.fee(None), self.raw.__setitem__('payouts', [dict(
+                id='po_x', amount=0, currency='usd', status='paid', balance_transaction='txn_none',
+                related=dict(copy.deepcopy(doc), id='dp_two'))])),
+        )
+        for name, build in shapes.items():
+            with self.subTest(name):
+                self.setUp(); build()
+                self.assertUnresolved(self.stage(), 'dispute_needs_review', sid='stripe:acct_test:txn_fee')
+                self.assertEqual(0, self.apply()['posted'])
+                self.assertEqual({}, self.balances())
+
+    def test_fee_dispute_source_standalone_fee_control(self):
+        self.fee(None)
+        self.assertEqual('fee-account-policy', self.action(self.stage(), 'stripe:acct_test:txn_fee')['authority_id'])
+        self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual({base.CLEARING: Decimal('-15.00'), base.FEES: Decimal('15.00')}, self.balances())
+        self.assertEqual(0, self.apply()['posted'])
+
+    # Decision 3: prior_paid_payout.
+    def parent_payout_entry(self, *meta):
+        """The paid payout entry a parent build of this engine wrote: kind and account, no engine version."""
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        entry = Entry(date=date(2026, 1, 17), narration='Stripe payout', meta=(
+            ('source-id', self.PAYOUT), ('stripe-kind', 'other'), ('stripe-account', 'acct_test'), *meta),
+            postings=(Posting(base.CLEARING, Decimal('-77'), 'USD'), Posting(base.TRANSIT, Decimal('77'), 'USD')))
+        _atomic_ledger_write(self.entity, [], [entry], 'parent', None, 'parent-build payout')
+
+    def test_prior_paid_payout(self):
+        for meta in ((), (('stripe-payout', 'po_one'),)):  # Round 8 (no payout ID) and round 9 (payout ID) alike.
+            with self.subTest(meta=meta):
+                self.setUp()
+                payout = self.payout_only()
+                self.parent_payout_entry(*meta)
+                payout['id'] = 'txn_second'; self.raw['payouts'][0]['balance_transaction'] = 'txn_second'
+                self.assertUnresolved(self.stage(), 'legacy_stripe_entries_present', sid='stripe:acct_test:txn_second')
+                self.assertEqual(0, self.apply()['posted'])
+                self.assertEqual({base.CLEARING: Decimal('-77'), base.TRANSIT: Decimal('77')}, self.balances())
+
+    def test_prior_paid_payout_current_entries_carry_the_engine_version(self):
+        self.full_flow(); self.raw['balanceTransactions'].append(dict(
+            id='txn_fee', created=1768521600, amount=-500, fee=0, net=-500, currency='usd', status='available',
+            type='stripe_fee', source=None))
+        self.stage(); self.assertEqual(4, self.apply()['posted'])  # Sale, refund, fee and payout.
+        for entry in self.store.load_entries():
+            self.assertEqual('1', dict(entry.meta)['stripe-engine-version'], entry.source_id)
+        self.assertEqual(0, self.apply()['posted'])  # An exact retry: the ledger is not legacy to its own engine.
+        self.assertEqual({base.CLEARING: Decimal('-5.00'), base.INCOME: Decimal('-100.00'), base.FEES: Decimal('8.00'),
+                          base.REFUNDS: Decimal('20.00'), base.TRANSIT: Decimal('77.00')}, self.balances())
+
+    def test_prior_zero_payout_record_without_claims_is_legacy(self):
+        # A no-effect source an earlier build verified recorded no claims, so it proves nothing about its payout.
+        payout = self.payout_only(); payout.update(amount=0, net=0); self.raw['payouts'][0]['amount'] = 0
+        self.stage(); self.assertEqual(1, self.apply()['no_financial_effect'])
+        from bookkeeping.ledger.store import LedgerStore, default_store_path
+        store = LedgerStore(default_store_path(self.entity.path))
+        with store.connection() as conn:
+            row = json.loads(conn.execute('SELECT payload_json FROM source_transactions WHERE id=?', (self.PAYOUT,)).fetchone()[0])
+            self.assertEqual([['payout', 'po_one']], row.pop('stripe_no_effect_claims'))
+            conn.execute('UPDATE source_transactions SET payload_json=? WHERE id=?', (json.dumps(row), self.PAYOUT))
+            conn.commit()
+        payout.update(id='txn_second', amount=-7700, net=-7700)
+        self.raw['payouts'][0].update(amount=7700, balance_transaction='txn_second')
+        self.assertUnresolved(self.stage(), 'legacy_stripe_entries_present', sid='stripe:acct_test:txn_second')
+        self.assertEqual(0, self.apply()['posted'])
+
+    # Decision 4: zero_payout_replay.
+    def test_zero_payout_replay(self):
+        payout = self.payout_only(); payout.update(amount=0, net=0); self.raw['payouts'][0]['amount'] = 0
+        self.stage(); self.assertEqual(1, self.apply()['no_financial_effect'])
+        replay = self.stage()  # The exact capture again: already recorded, nothing unresolved.
+        self.assertEqual([], replay['unresolved']); self.assertTrue(replay['no_effect'][0]['already_recorded'])
+        payout.update(id='txn_second', amount=-7700, net=-7700)
+        self.raw['payouts'][0].update(amount=7700, balance_transaction='txn_second')
+        self.assertUnresolved(self.stage(), 'payout_already_recorded', sid='stripe:acct_test:txn_second')
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual({}, self.balances())
+
+    def test_zero_payout_replay_same_batch_rival(self):
+        # In one capture, a zero payout and another movement of the same payout: neither is accepted.
+        payout = self.payout_only(); payout.update(amount=0, net=0); self.raw['payouts'][0]['amount'] = 0
+        self.raw['balanceTransactions'].append(dict(payout, id='txn_rival', amount=-7700, net=-7700))
+        plan = self.stage()
+        self.assertEqual([], plan['no_effect'])
+        self.assertUnresolved(plan, 'duplicate_payout_movement', sid=self.PAYOUT)
+        self.assertIn('stripe:acct_test:txn_rival', {row['source_id'] for row in plan['unresolved']})
+        applied = self.apply()
+        self.assertEqual((0, 0), (applied['posted'], applied['no_financial_effect']))
+
+    # Decision 5: cap_early_unresolved.
+    def test_cap_early_unresolved(self):
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        before = self.balances()
+        self.add_refund('re_ok', 'txn_ok', 7000); self.add_refund('re_bad', 'txn_bad', 7000)
+        self.raw['balanceTransactions'][-1]['status'] = 'invalid'
+        plan = self.stage()
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid='stripe:acct_test:txn_ok')
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid='stripe:acct_test:txn_bad')  # Cap precedence.
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual(before, self.balances())
+
+    def test_cap_early_unresolved_within_cap_control(self):
+        # Within the cap the valid refund posts once and the invalid one keeps its own reason.
+        self.stage(); self.apply()
+        self.add_refund('re_ok', 'txn_ok', 3000); self.add_refund('re_bad', 'txn_bad', 7000)
+        self.raw['balanceTransactions'][-1]['status'] = 'invalid'
+        plan = self.stage()
+        self.assertEqual('refund-account-policy', self.action(plan, 'stripe:acct_test:txn_ok')['authority_id'])
+        self.assertUnresolved(plan, 'invalid_balance_status', sid='stripe:acct_test:txn_bad')
+        self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual(Decimal('30.00'), self.balances()[base.REFUNDS])
 
 
 if __name__ == '__main__':

@@ -205,10 +205,15 @@ _CLAIM_REASONS = dict(charge='charge_claimed_by_another_movement',
 # or ``other``) is how the engine later knows what an entry was; an entry without it (written by an earlier
 # release) proves nothing about what it was or owned. Names, rule IDs and postings are never read for that.
 _KIND_META = 'stripe-kind'
-# The Stripe account an entry's movement belongs to, written beside its kind. Together they are the only proof that
-# an entry was written by this engine version: a Stripe entry missing either (or with a kind not listed below) is
-# legacy, whatever its source ID, text or postings say.
+# The Stripe account an entry's movement belongs to, written beside its kind. With the engine version below they are
+# the only proof that an entry was written by this engine version: a Stripe entry missing any of them (or with a kind
+# not listed below) is legacy, whatever its source ID, text or postings say.
 _ACCOUNT_META = 'stripe-account'
+# The engine version that wrote an entry (round 10, decision 3). Kind and account alone are not proof: the parent
+# builds of this change wrote them too (a paid payout as ``other`` with no ``stripe-payout``), and nothing recovers
+# what those entries owned. Only an entry that also records this exact version is outside the legacy block.
+_ENGINE_META = 'stripe-engine-version'
+_ENGINE_VERSION = '1'
 # ``invoice_settlement`` is the invoice engine's settlement of an open invoice by a Stripe movement
 # (stripe_invoices); the clearing engine never posts that movement itself (see claim_of in stripe_plan).
 _ENGINE_KINDS = frozenset({'sale', 'refund', 'dispute', 'other', 'invoice_settlement'})
@@ -219,12 +224,15 @@ _REFUND_META = 'stripe-refund'  # The refund's own provider ID: one refund posts
 _DISPUTE_META = 'stripe-dispute'
 _DISPUTE_MOVEMENTS_META = 'stripe-dispute-movements'
 _PAYOUT_META = 'stripe-payout'  # A payout entry's own payout ID: one paid payout books once, whatever its movement.
+# On the saved source of a no-effect movement: the ``[kind, ID]`` pairs it reserves (round 10, decision 4).
+_NO_EFFECT_CLAIMS = 'stripe_no_effect_claims'
 _CLOSURE_META = 'stripe-closure'  # Digest of the evidence that decided a sale's revenue (see _Resolver.allocations).
 
 
 def _invoice_settlement_meta(account, invoice):
     """Structured metadata stripe_invoices writes on its settlement entry for a Stripe movement of *account*."""
-    return ((_KIND_META, 'invoice_settlement'), (_ACCOUNT_META, account), (_OWNERSHIP_META['invoice'], invoice))
+    return ((_KIND_META, 'invoice_settlement'), (_ACCOUNT_META, account), (_ENGINE_META, _ENGINE_VERSION),
+            (_OWNERSHIP_META['invoice'], invoice))
 
 
 class _Hold(ValueError):
@@ -421,6 +429,7 @@ class _Capture:
         self.forms, self.refs, self.back, self.referrers, self.kinds, self.types = {}, {}, {}, {}, {}, {}
         self.ref_kinds = {}  # ID -> the kinds the link fields naming it imply (for IDs held only as references).
         self.dispute_docs = []  # Every copy of every dispute, top level or expanded (see stripe_plan's owner map).
+        self.dispute_ids = set()  # Every ID any copy, in any array or wrapper, shows is a dispute (round 10, decision 2).
         for name in _CAPTURE_ARRAYS:
             for doc in (objects.get(name) or {}).values():
                 if _is_document(doc):  # A row with only its ID is a reference, never a copy (see _is_document).
@@ -433,6 +442,7 @@ class _Capture:
                     self.add(doc, name)
         self.conflicted = frozenset(ident for ident, forms in self.forms.items() if len(forms) > 1)
         self.cache = {}
+        self._dispute_bts = None
 
     def add(self, doc, kind):
         ident, refs = doc['id'], []
@@ -443,8 +453,11 @@ class _Capture:
         self.kinds.setdefault(ident, set()).add(kind)
         if kind == 'balanceTransactions':
             self.types.setdefault(ident, set()).add(doc.get('type'))
-        if kind == 'disputes':
+        if kind == 'disputes' or _is_dispute(doc):
+            # A dispute is a dispute wherever it appears: top level, or expanded as a fee's source, inside a charge
+            # or in any other wrapper. Every copy names movements for the owner map (round 10, decision 2).
             self.dispute_docs.append(doc)
+            self.dispute_ids.add(ident)
         mine = self.refs.setdefault(ident, set())
         for field, target in refs:
             if target == ident:
@@ -481,6 +494,8 @@ class _Capture:
         if key == 'source':
             if kind != 'balanceTransactions':
                 return 'sources'
+            if _is_dispute(value):
+                return 'disputes'  # An expanded dispute is a dispute whatever the movement's type says.
             movement = owner.get('type')
             if movement in _SALE_KINDS:
                 return 'charges'
@@ -492,6 +507,32 @@ class _Capture:
         if key in _LINK_KINDS:
             return _LINK_KINDS[key]
         return _OBJECT_KINDS.get((value or {}).get('object'), 'objects')
+
+    def dispute_bts(self):
+        """Every balance transaction ID any copy of any dispute lists, with the disputes that list it."""
+        if self._dispute_bts is None:
+            found = {}
+            for doc in self.dispute_docs:
+                for row in doc.get('balance_transactions') if isinstance(doc.get('balance_transactions'), list) else []:
+                    if _ref_id(row):
+                        found.setdefault(_ref_id(row), set()).add(doc['id'])
+            self._dispute_bts = found
+        return self._dispute_bts
+
+    def dispute_source(self, bt):
+        """The dispute ID movement *bt*'s own source names, or None. The source counts as a dispute when it says so
+        (``object=dispute`` or a ``du_``/``dp_`` ID, as a string, an ID wrapper or a full copy) or when any copy of
+        that ID anywhere in the capture is a dispute."""
+        source = bt.get('source')
+        ident = _ref_id(source)
+        if _is_dispute(source) or (ident and ident in self.dispute_ids):
+            return ident or 'dispute'
+        return None
+
+    def dispute_movement(self, bt):
+        """Whether movement *bt* is a dispute movement, whatever its type (round 10, decision 2): its source is a
+        dispute (see dispute_source), or any dispute document in the capture lists it in ``balance_transactions``."""
+        return bool(self.dispute_source(bt)) or bt.get('id') in self.dispute_bts()
 
     def closure(self, start):
         if start not in self.cache:
@@ -1464,6 +1505,8 @@ class _LedgerClaims:
                 return False
             meta = dict(entry.meta)
             kind, owner = meta.get(_KIND_META), meta.get(_ACCOUNT_META)
+            if meta.get(_ENGINE_META) != _ENGINE_VERSION:
+                return False  # Written by an earlier build (round 10, decision 3): legacy, never interpreted.
             if kind not in _ENGINE_KINDS or not owner or ':' in owner or not any(
                     value.startswith(f'stripe:{owner}:') for value in source_id_variants(entry.source_id)):
                 return False
@@ -1626,6 +1669,10 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
     all_ids = sorted(sid for sid in validated if sid > after_source_id)
     selected = all_ids[:limit]
     result['next_cursor'] = selected[-1] if len(all_ids) > limit else None
+    # Ownership is decided over the whole supplied cohort, before any paging (round 10, decision 1): every validated
+    # movement is classified and claims its IDs, whatever page it is on; only then is the result restricted to the
+    # page. The same capture gives the same decision for every row whatever the limit or cursor.
+    page = frozenset(selected)
     from .accrual.store import load_record
     from .accrual.items import _find_live_entry
     claims = {}
@@ -1645,6 +1692,20 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
 
     prefix = f"stripe:{account}:"
     ledger = _LedgerClaims(all_entries, reversed_ids, prefix)
+    # A source recorded with no financial effect (a paid zero payout) has no entry, so its saved source is its durable
+    # reservation (round 10, decision 4): the IDs it claimed when it was verified. One an earlier build recorded
+    # names no claims; like that build's entries, it is legacy (decision 3).
+    no_effect_claims = {}
+    for saved_id, row in sorted(saved.items()):
+        if not isinstance(row, dict) or not row.get('stripe_no_effect_capture_digest'):
+            continue
+        recorded = row.get(_NO_EFFECT_CLAIMS)
+        if not isinstance(recorded, list):
+            ledger.legacy_present = True
+            continue
+        for pair in recorded:
+            if isinstance(pair, list) and len(pair) == 2 and all(isinstance(part, str) for part in pair):
+                no_effect_claims.setdefault(tuple(pair), set()).add(saved_id)
     resolver = _Resolver(policy, bts, objects)
     capture = resolver.capture
 
@@ -1680,17 +1741,21 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         action = next((row for row in result['actions'] if row['source_id'] == sid), None)
         if action is not None:
             to_unresolved(action, reason)
+        elif any(row['source_id'] == sid for row in result['no_effect']):
+            result['no_effect'] = [row for row in result['no_effect'] if row['source_id'] != sid]
+            result['unresolved'].append(dict(source_id=sid, reason=reason))
         elif not any(row['source_id'] == sid for row in result['unresolved']):
             result['unresolved'].append(dict(source_id=sid, reason=reason))
 
     def owner_map():
         """One owner for every ID, decided before anything posts (round 9, cut 1).
 
-        Every movement this batch proposes or leaves unresolved, and every durable reservation in the ledger, claims
-        the IDs it owns: its balance transaction; a sale every charge, payment intent and invoice in its fingerprinted
+        Every movement of the whole supplied capture (round 10, decision 1: every page, not only this one) that is
+        proposed, unresolved or accepted with no financial effect, and every durable reservation (ledger entries and
+        verified no-effect sources), claims the IDs it owns: its balance transaction; a sale every charge, payment intent and invoice in its fingerprinted
         closure (at any depth); a refund its refund ID; a payout its payout ID; a dispute its dispute ID and every
-        balance transaction any copy of it lists (whatever that movement's type). An ID with two owners leaves every
-        claimant in this batch unresolved with no entry.
+        balance transaction any copy of it lists (whatever that movement's type), and a movement whose source is a
+        dispute is that dispute's. An ID with two owners leaves every claimant in the capture unresolved with no entry.
         """
         owners = {}
 
@@ -1704,19 +1769,23 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             for value, roots in index.items():
                 for root in roots:
                     claim((name, value), ('ledger', root))
+        for key, sources in no_effect_claims.items():
+            for value in sources:
+                claim(key, ('ledger', value))  # A verified no-effect source (round 10, decision 4).
         for dispute, movements in ledger.dispute_movements.items():
             for value in movements:
                 claim(('bt', value), ('dispute', dispute))
-        for doc in capture.dispute_docs:
-            for row in doc.get('balance_transactions') if isinstance(doc.get('balance_transactions'), list) else []:
-                if _ref_id(row):
-                    claim(('bt', _ref_id(row)), ('dispute', doc['id']))
-        claimants = [row['source_id'] for row in result['actions'] + result['unresolved'] if row['source_id'] in validated]
+        for movement_id, listed_by in capture.dispute_bts().items():
+            for dispute in listed_by:
+                claim(('bt', movement_id), ('dispute', dispute))
+        claimants = [row['source_id'] for row in result['actions'] + result['unresolved'] + result['no_effect']
+                     if row['source_id'] in validated]
         for sid in claimants:
             bt = validated[sid][0]
             kind, source = bt.get('type'), _ref_id(bt.get('source'))
-            if kind == 'adjustment' and _is_dispute(bt.get('source')) and source:
-                claim(('bt', bt['id']), ('dispute', source))
+            dispute = capture.dispute_source(bt)
+            if dispute:
+                claim(('bt', bt['id']), ('dispute', dispute))  # A dispute link wins over the type (decision 2).
             else:
                 claim(('bt', bt['id']), sid)
             if kind in _SALE_KINDS:
@@ -1727,16 +1796,21 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                 claim(('refund', source), sid)
             elif kind == 'payout' and source:
                 claim(('payout', source), sid)
+        def same(owner):
+            # A source's own durable record (its no-effect reservation, or its entry when it changed) is not a rival.
+            return owner[1] if isinstance(owner, tuple) and owner[0] == 'ledger' else owner
+
         batch, order = set(claimants), ('charge', 'payment_intent', 'invoice', 'refund', 'payout', 'bt')
         for key in sorted(owners, key=lambda key: (order.index(key[0]), key[1])):
             found = owners[key]
-            if len(found) < 2:
+            if len({same(owner) for owner in found}) < 2:
                 continue
             hit = {owner for owner in found if owner in batch}
             if key[0] == 'bt' and prefix + key[1] in batch:
                 hit.add(prefix + key[1])  # A movement whose own ID two disputes (or a dispute and another owner) claim.
             for sid in sorted(hit):
-                durable = {owner[1] for owner in found - {sid} if isinstance(owner, tuple) and owner[0] == 'ledger'}
+                durable = {owner[1] for owner in found - {sid}
+                           if isinstance(owner, tuple) and owner[0] == 'ledger' and owner[1] != sid}
                 if key[0] in _OWNED_KINDS:
                     reason = 'ownership_unproven' if durable & ledger.anonymous else _CLAIM_REASONS[key[0]]
                 elif key[0] == 'refund':
@@ -1754,7 +1828,9 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         record = ledger.sales.get(sale) if sale else None
         if record is not None:
             return record, set(record['charge']), record['gross']
-        action = next((row for row in result['actions'] if row['source_id'] == prefix + str(sale)), None)
+        # Booked in the same write: an approved sale action on this page (a sale on another page is not yet booked).
+        action = next((row for row in result['actions'] if row['source_id'] == prefix + str(sale)
+                       and row['source_id'] in page), None)
         sale_bt = movement(action)
         if sale_bt is not None and sale_bt.get('type') in _SALE_KINDS and _ref_id(sale_bt.get('source')):
             return None, {_ref_id(sale_bt['source'])}, Decimal(_amount(sale_bt['amount']))
@@ -1848,7 +1924,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             if action['source_id'] not in validated:
                 continue
             bt = movement(action)
-            meta = {_KIND_META: 'other', _ACCOUNT_META: account}
+            meta = {_KIND_META: 'other', _ACCOUNT_META: account, _ENGINE_META: _ENGINE_VERSION}
             raw = validated[action['source_id']][0]
             if raw.get('type') == 'payout' and _ref_id(raw.get('source')):
                 meta[_PAYOUT_META] = _ref_id(raw['source'])  # One paid payout books once (round 9, cut 8).
@@ -1872,7 +1948,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                         meta[_REFUND_META] = _ref_id(bt['source'])
             result['entry_links'][action['source_id']] = sorted([key, value] for key, value in meta.items())
 
-    for sid in selected:
+    for sid in sorted(validated):  # The whole cohort (decision 1); the result is restricted to the page below.
         bt, normalized = validated[sid]
         # Invoice imports own exact processor cash events in both book views.
         # Never turn an imported AR settlement back into another cash sale.
@@ -1920,6 +1996,14 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             result['skipped'].append(dict(source_id=sid, reason='already_posted'))
             continue
         result['normalized_sources'].append(normalized)
+        if bt.get('type') in _REFUND_KINDS and _identity_movement(bt):
+            # Record a refund's claim on its sale before any posting check (round 10, decision 5): every known refund
+            # of a sale counts toward its cap, including one unresolved for another reason (an invalid status).
+            resolver.trace = []
+            try:
+                resolver.refund(bt)
+            except (ValueError, KeyError, TypeError, AttributeError, ArithmeticError):
+                pass
         try:
             if ledger.legacy_present:
                 # No historical proof: a ledger with any Stripe entry this engine did not write gets no new Stripe
@@ -1944,6 +2028,10 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             if queue.txn_is_above_ask_first(entity, normalized) or (
                     bt.get('amount') and queue.txn_is_above_ask_first(entity, {**normalized, 'amount': _amount(bt['amount'])})):
                 raise ValueError('above_ask_first_amount')
+            if capture.dispute_movement(bt):
+                # A dispute link always wins over the movement's type (round 10, decision 2): a fee or any other
+                # movement whose source is a dispute, or that any dispute document lists, is a dispute movement.
+                raise ValueError('dispute_needs_review')
             kind = bt.get('type')
             source_id = _object_id(bt.get('source'))
             source = bt.get('source') if isinstance(bt.get('source'), dict) else None
@@ -1993,8 +2081,11 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                         previous_effect = (saved.get(sid) or {}).get('stripe_no_effect_capture_digest')
                         if sid in saved and previous_effect != fingerprint:
                             raise ValueError('changed_no_effect_evidence')
+                        # Its saved source durably reserves its IDs (round 10, decision 4).
+                        reserved = [['payout', source_id]] if _ref_id(source_id) else []
                         result['no_effect'].append(dict(source_id=sid, already_recorded=bool(previous_effect),
-                            normalized_source={**normalized, 'stripe_no_effect_capture_digest': fingerprint}))
+                            normalized_source={**normalized, 'stripe_no_effect_capture_digest': fingerprint,
+                                               _NO_EFFECT_CLAIMS: reserved}))
                         continue
                     postings.append((policy['payout_transit_account'], -bt['amount']))
                     if bt['fee']:
@@ -2024,6 +2115,12 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             result['unresolved'].append(dict(source_id=sid, reason=str(exc)))
     owner_map()
     follow_sales()
+    # Restrict to the page only now, after ownership and the cap were decided over the whole cohort (decision 1).
+    for name in ('actions', 'no_effect', 'unresolved', 'skipped', 'uncategorized'):
+        result[name] = [row for row in result[name] if row['source_id'] in page]
+    result['normalized_sources'] = [row for row in result['normalized_sources'] if row['id'] in page]
+    result['source_capture_digests'] = {key: value for key, value in result['source_capture_digests'].items()
+                                        if key in page}
     link_entries()
     # Match bank arrivals separately: a payout may have posted to transit in a
     # previous cohort/month before its real bank deposit arrived.
