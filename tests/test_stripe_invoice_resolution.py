@@ -2482,5 +2482,184 @@ class RoundSevenDecisionTests(RecheckFixture):
         self.assertUnresolved(self.plan(), 'conflicting_object_copies')
 
 
+class RoundEightDecisionTests(RecheckFixture):
+    """PR 177 round 8: Clozy's two launch decisions on the round-7 open questions.
+
+    1. The booked-sale cap applies to held refunds too: a sale_changed_since_booking refund that, with every refund
+       already posted, held or proposed for its sale, exceeds the booked gross stays unresolved with no entry and
+       no cash movement (refund_exceeds_booked_sale). Dispute credits never raise the cap.
+    2. Each dispute reserves its own dispute ID and movements: a replayed dispute is caught by ID, and a held
+       dispute no longer makes later refunds ownership_unproven. Disputes still post only to holding.
+    """
+
+    TWO = RecheckFourFindingTests.TWO
+    NEXT = 'stripe:acct_test:txn_next'
+    REPLAY = 'stripe:acct_test:txn_replay'
+    add_refund = RecheckFourFindingTests.add_refund
+    refund_only = RecheckThreeFindingTests.refund_only
+
+    def booked_with_refund(self, amount):
+        """Book the sale with a first refund of *amount* (minor units) in the same batch; later batches lack the
+        sale's movement, so a later refund holds as sale_changed_since_booking (round 7, decision 1)."""
+        self.full_flow()
+        self.raw['refunds'][0]['amount'] = amount
+        self.raw['balanceTransactions'][1].update(amount=-amount, net=-amount)
+        self.stage(); self.apply()
+
+    def posted_dispute(self, **changes):
+        self.stage(); self.apply()
+        self.raw['balanceTransactions'] = []; self.dispute(**changes)
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+
+    def replay(self, bt_id='txn_replay', **changes):
+        self.raw['balanceTransactions'] = []; self.dispute(**changes)
+        self.raw['balanceTransactions'][0]['id'] = bt_id
+
+    def assertNothingPosts(self):
+        before = self.balances(); self.stage(); self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual(before, self.balances())
+
+    # Decision 1: the cap applies to held refunds.
+    def test_prior_dispute_and_refund_probe_stays_unresolved(self):
+        # Recheck-5 probe prior_dispute_and_refund (round 7 held it, moving 45.01 into holding): 55.00 refunded,
+        # a 75.00 dispute credit, then 45.01 more on a 100.00 sale. The credit never raises the cap.
+        self.booked_with_refund(5500)
+        self.raw['balanceTransactions'] = []; self.dispute(); self.raw['balanceTransactions'][0].update(amount=7500, fee=0, net=7500)
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.raw['balanceTransactions'] = []; self.add_refund('re_remainder', 'txn_next', 4501)
+        self.assertUnresolved(self.plan(), 'refund_exceeds_booked_sale', sid=self.NEXT)
+        self.assertNothingPosts()
+        self.assertNotIn(self.NEXT, {entry.source_id for entry in self.store.load_entries()})
+
+    def test_held_refund_within_the_cap_still_holds(self):
+        self.booked_with_refund(5500)
+        self.raw['balanceTransactions'] = []; self.add_refund('re_remainder', 'txn_next', 4500)
+        self.assertHeld(self.plan(), 'sale_changed_since_booking', sid=self.NEXT, amount='45.00', fee=None, net='-45.00')
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+
+    def test_an_earlier_held_refund_counts_against_a_later_held_refund(self):
+        self.booked_with_refund(2000)
+        self.raw['balanceTransactions'] = []; self.add_refund('re_two', 'txn_two', 6000)
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual('sale_changed_since_booking', dict(self.entry(self.TWO).meta)['stripe-review'])
+        self.raw['balanceTransactions'] = []; self.add_refund('re_remainder', 'txn_next', 2001)
+        self.assertUnresolved(self.plan(), 'refund_exceeds_booked_sale', sid=self.NEXT)
+        self.assertNothingPosts()
+
+    def test_held_refunds_proposed_together_count_against_each_other(self):
+        self.booked_with_refund(2000)
+        self.raw['balanceTransactions'] = []
+        self.add_refund('re_two', 'txn_two', 4000); self.add_refund('re_remainder', 'txn_next', 4001)
+        plan = self.plan()
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid=self.TWO)
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid=self.NEXT)
+        self.assertNothingPosts()
+
+    def test_replayed_held_refund_id_never_posts_again(self):
+        self.booked_with_refund(2000)
+        self.raw['balanceTransactions'] = []; self.add_refund('re_two', 'txn_two', 1000)
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.raw['balanceTransactions'] = []; self.raw['refunds'] = []; self.add_refund('re_two', 'txn_next', 1000)
+        self.assertUnresolved(self.plan(), 'refund_already_recorded', sid=self.NEXT)
+        self.assertNothingPosts()
+
+    # Decision 2: disputes reserve their own ID and movements.
+    def test_dispute_entry_reserves_its_id_movements_and_direction(self):
+        self.posted_dispute(balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_listed'}])
+        meta = dict(self.entry(DISPUTE).meta)
+        self.assertEqual(('dispute', 'du_one', 'txn_dispute txn_listed', 'debit', 'dispute_requires_review'),
+                         (meta['stripe-kind'], meta['stripe-dispute'], meta['stripe-dispute-movements'],
+                          meta['stripe-dispute-flow'], meta['stripe-review']))
+        self.assertTrue(all(p.account in (base.CLEARING, HOLDING, base.FEES) for p in self.entry(DISPUTE).postings))
+
+    def test_replayed_dispute_id_with_a_new_movement_never_posts(self):
+        cases = dict(unlisted=dict(balance_transactions=None),
+                     listed_by_the_replay=dict(balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_replay'}]))
+        for name, changes in cases.items():
+            with self.subTest(name):
+                self.setUp(); self.posted_dispute()
+                self.replay(**changes)
+                if changes['balance_transactions'] is None:
+                    del self.raw['disputes'][0]['balance_transactions']
+                self.assertUnresolved(self.plan(), 'dispute_already_recorded', sid=self.REPLAY)
+                self.assertNothingPosts()
+
+    def test_replayed_dispute_without_its_document_is_caught_by_id(self):
+        self.posted_dispute()
+        self.replay(); self.raw['disputes'] = []
+        self.assertUnresolved(self.plan(), 'dispute_already_recorded', sid=self.REPLAY)
+        self.assertNothingPosts()
+
+    def test_the_same_dispute_movement_again_is_already_posted(self):
+        self.posted_dispute()
+        self.replay(bt_id='txn_dispute')
+        plan = self.plan()
+        self.assertIn(dict(source_id=DISPUTE, reason='already_posted'), plan['skipped'])
+        self.assertIsNone(self.action(plan, DISPUTE))
+
+    def test_a_movement_the_dispute_listed_when_recorded_is_not_a_replay(self):
+        # The dispute named txn_listed among its own movements when it was first recorded: Stripe vouches for it.
+        self.posted_dispute(balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_listed'}])
+        self.replay(bt_id='txn_listed', balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_listed'}])
+        listed = 'stripe:acct_test:txn_listed'
+        self.assertHeld(self.plan(), 'dispute_requires_review', sid=listed, amount='100.00', fee='15.00', net='-115.00')
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+
+    def test_a_reinstatement_still_posts_to_holding_once(self):
+        # The other direction (funds reinstated after a won dispute) is not a replay; a second one is.
+        self.posted_dispute()
+        self.replay(bt_id='txn_won', balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_won'}])
+        self.raw['balanceTransactions'][0].update(amount=10000, fee=0, net=10000)
+        won = 'stripe:acct_test:txn_won'
+        self.assertHeld(self.plan(), 'dispute_requires_review', sid=won, amount='-100.00', fee=None, net='100.00')
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual('credit', dict(self.entry(won).meta)['stripe-dispute-flow'])
+        self.replay(balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_won'}, {'id': 'txn_replay'}])
+        self.raw['balanceTransactions'][0].update(amount=10000, fee=0, net=10000)
+        self.assertUnresolved(self.plan(), 'dispute_already_recorded', sid=self.REPLAY)
+        self.assertNothingPosts()
+
+    def test_a_movement_another_dispute_recorded_never_posts_under_this_one(self):
+        self.posted_dispute(balance_transactions=[{'id': 'txn_dispute'}, {'id': 'txn_replay'}])
+        self.replay(id='du_two', balance_transactions=[{'id': 'txn_replay'}])
+        self.raw['balanceTransactions'][0]['source'] = 'du_two'
+        self.assertUnresolved(self.plan(), 'dispute_reference_conflict', sid=self.REPLAY)
+        self.assertNothingPosts()
+
+    def test_two_movements_of_one_dispute_in_a_batch_need_the_dispute_to_list_them(self):
+        self.stage(); self.apply()
+        self.raw['balanceTransactions'] = []; self.dispute(); del self.raw['disputes'][0]['balance_transactions']
+        self.raw['balanceTransactions'].append(dict(self.raw['balanceTransactions'][0], id='txn_replay'))
+        plan = self.plan()
+        self.assertUnresolved(plan, 'duplicate_dispute_movement', sid=DISPUTE)
+        self.assertUnresolved(plan, 'duplicate_dispute_movement', sid=self.REPLAY)
+        self.assertNothingPosts()
+        # Both listed by the dispute itself: each posts to holding once.
+        self.raw['disputes'][0]['balance_transactions'] = [{'id': 'txn_dispute'}, {'id': 'txn_replay'}]
+        self.assertEqual([(DISPUTE, 'uncategorized-stripe-activity', 'dispute_requires_review'),
+                          (self.REPLAY, 'uncategorized-stripe-activity', 'dispute_requires_review')], self.actions()[0])
+
+    def test_a_dispute_movement_without_its_dispute_id_never_posts(self):
+        # Nothing can reserve a dispute with no ID, so nothing proves it was not already booked.
+        self.stage(); self.apply()
+        self.raw['balanceTransactions'] = []; self.dispute(); self.raw['balanceTransactions'][0]['source'] = {'object': 'dispute'}
+        self.assertUnresolved(self.plan(), 'dispute_identity_unverified', sid=DISPUTE)
+        self.assertNothingPosts()
+
+    def test_held_chargeless_dispute_leaves_later_refunds_to_their_own_sales(self):
+        # Round 7 flagged every later refund ownership_unproven; the dispute's own ID now reserves it instead.
+        self.stage(); self.apply(); sale = copy.deepcopy(self.raw['balanceTransactions'])
+        self.raw['balanceTransactions'] = []; self.dispute(); del self.raw['disputes'][0]['charge']
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        meta = dict(self.entry(DISPUTE).meta)
+        self.assertEqual(('missing_dispute_charge_evidence', 'du_one'), (meta['stripe-review'], meta['stripe-dispute']))
+        self.assertNotIn('stripe-refund-of', meta)
+        self.raw['balanceTransactions'] = sale; del self.raw['disputes']
+        self.full_flow(); self.refund_only()
+        plan = self.plan()
+        self.assertEqual({base.CLEARING: '-20.00', base.REFUNDS: '20.00'}, self.postings(plan, REFUND))
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+
+
 if __name__ == '__main__':
     unittest.main()

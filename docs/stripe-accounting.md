@@ -215,7 +215,9 @@ Stripe movement for that ledger stays unresolved with no journal entry
 (`legacy_stripe_entries_present`), and so does the bank arrival of a payout. That
 includes fees and payouts. Movements already posted are still skipped and their
 interrupted cleanup still runs. A later cutover tool will lift this; there is no
-backfill.
+backfill. Ledgers written by earlier, unreleased builds of this change (before
+entries recorded `stripe-account`) count as legacy too: they block new Stripe
+movements, so re-create any test books built with them.
 
 A refund posts to the refund account only behind narrow proof of its sale, found
 through the charge's `balance_transaction` (or the one sale movement of the
@@ -238,7 +240,10 @@ holding account for review. That happens only after the refund itself is proven
 unique (below): its own refund ID is present, no ledger entry recorded it, no
 other captured movement carries it, and its movement was never posted. The held
 entry records that refund ID, so the refund can never post twice; a refund that
-cannot be proven unique stays unresolved with no entry. A capture that contradicts the sale is checked first
+cannot be proven unique stays unresolved with no entry. The held refund is also
+capped like a posted one (below), against the booked sale's gross: if it would
+exceed it, it stays unresolved (`refund_exceeds_booked_sale`) with no entry and
+no cash movement. A capture that contradicts the sale is checked first
 and rejects either proof: the sale movement changed, is refused or is no longer
 available (`sale_not_posted`, `sale_movement_changed`). Anything else posts the
 refund to the holding account with a reason: the sale is held
@@ -252,16 +257,31 @@ captured movements with the same refund ID both stay unposted
 (`duplicate_refund_movement`). The refundable amount is the sale's booked gross
 minus every refund and dispute already posted (held, corrected or reversed alike)
 or proposed in this batch for the charge; a credit back, such as a won dispute,
-never raises it. A refund over that stays unresolved with
+never raises it. A refund over that, posted or held, stays unresolved with
 `refund_exceeds_booked_sale`. A held refund whose charge is not recorded (for
 example, its refund document was missing) does not block other refunds: its
 entry reserves its own refund ID and the ledger its movement, so the same refund
 captured again, with or without a charge, never posts, and a refund with a
-different ID is judged on its own sale. A dispute entry that does not record its
-charge still makes every later refund unproven (`ownership_unproven`), because
-what it consumed cannot be attributed and nothing reserves it. A refund of a sale with more than one invoice line
+different ID is judged on its own sale. A refund of a sale with more than one invoice line
 stays unresolved with `mixed_line_refund_requires_allocation`. Disputes always
 post to the holding account, because no approved policy names a dispute account.
+
+A dispute movement posts once too. Each dispute entry records its own dispute ID
+(`stripe-dispute`, a `du_` or `dp_` ID), the movements it was recorded with
+(`stripe-dispute-movements`: its own balance transaction plus every one the
+dispute document listed) and its direction (`stripe-dispute-flow`: `debit` when
+funds are withdrawn, `credit` when reinstated). A movement with a recorded
+dispute ID that is not among its recorded movements, in a direction already
+recorded, is a replay and stays unresolved with no entry
+(`dispute_already_recorded`); a reinstatement in the other direction may follow
+once. A movement that another dispute recorded as its own stays unresolved
+(`dispute_reference_conflict`), as do two captured movements of one dispute in
+one direction that the dispute document does not list
+(`duplicate_dispute_movement`) and a dispute movement with no dispute ID
+(`dispute_identity_unverified`). Because each dispute reserves its own ID, a held
+dispute whose charge is not recorded no longer makes later refunds or disputes
+unproven. Only a refund or dispute entry that records neither its charge nor its
+own ID (written by an earlier build) still does (`ownership_unproven`).
 
 Revenue authority comes from one checked path. A plain charge (no invoice or
 Checkout session) is mapped only by metadata rules; a plain charge that carries a
