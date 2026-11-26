@@ -84,9 +84,10 @@ copies of one ID are not byte-identical in that form, every movement whose
 closure reaches that ID stays unresolved with no journal entry
 (`conflicting_object_copies`), so the order copies are merged in can never
 matter. A row or expansion with only an ID (`{"id": "in_..."}`) is a reference,
-not a copy. A wrapper from another live/test mode or currency (for example a
-dispute in other books that expands the charge) never supplies the copies it
-expands; a same-books wrapper does.
+not a copy. A wrapper in another currency never supplies the copies it
+expands; a same-books wrapper does. A wrapper from the other live/test mode (for
+example a dispute in other books that expands the charge) makes every movement
+whose closure reaches it unresolved (`livemode_mismatch`, see below).
 
 #### Capture contract for connectors
 
@@ -149,7 +150,17 @@ The identity is uncertain, and the movement stays unresolved with a reason and
 no entry, when references name different objects, a named invoice, charge,
 refund or payment intent is not in the evidence, two Checkout sessions claim one
 payment, an expanded object has no ID, copies disagree, or a document is
-explicitly from the other live/test mode. An expansion that carries only an ID
+explicitly from the other live/test mode.
+
+**Test and live mode never mix.** A movement whose balance transaction, or any
+object in its closure (the payout, refund, charge, invoice, price, product,
+transfer or any other linked document, at any depth, including a wrapper from
+other books), states a `livemode` different from the policy's Stripe account
+mode, or whose copies of one object disagree on `livemode`, is unresolved
+(`livemode_mismatch`) with no entry. This is checked before the copy-equality
+check. Its IDs still enter the owner map. A copy that leaves `livemode` out
+states nothing. This covers payouts in both shapes (expanded, or an ID wrapper
+with the document in `payouts`), zero payouts included. An expansion that carries only an ID
 (`{"id": "pi_..."}`) is a reference, not the document: it never stands in for an
 object the evidence does not hold, whichever copy (the charge, a refund, a
 dispute) names it. Every relationship used must also be in the policy currency
@@ -227,9 +238,25 @@ order the movements came in: `charge_claimed_by_another_movement`,
 a fee movement that a dispute lists, or one balance transaction two disputes
 list). A movement that is unresolved for any other reason still reserves its IDs
 in this map for that capture. That reservation is not durable: a later capture
-does not see it, because nothing was written. A refund may still post only when
-its sale is booked in the ledger or approved on the same page (the same write);
-a refund paged before its sale stays unresolved until the sale is booked.
+does not see it, because nothing was written.
+
+**Every veto is decided over the whole capture.** Like ownership, every
+cohort-level veto is evaluated over the whole supplied capture before paging
+restricts which rows post. A known bank-income conflict for any bound payout
+(for example `bank_source_already_posted_requires_review`, see bank matching
+below) blocks every page: no page posts any action, for every `limit` and
+cursor direction, and every page reports the conflict.
+
+**A refund that arrived before its sale.** A refund may post only when its sale
+is booked in the ledger or approved on the same page (the same write). A refund
+left unresolved only because its sale was not booked yet (`sale_not_posted` or
+`sale_movement_unverified` while the sale is on another page or in a later
+capture) may post once on a later run, after the sale is booked, but only if
+every check passes on that run: the same booked sale, its one stored charge and
+an unchanged sale fingerprint, the cap counting every claim (below), and its
+own refund ID owned by nobody else. A refund unresolved for any other reason
+stays unresolved: booking the sale lifts nothing else. The engine keeps no
+record of earlier unresolved reasons; every run checks everything again.
 
 A sale needs a charge identity: a sale balance transaction whose `source` is
 missing or null stays unresolved (`sale_identity_unverified`).
@@ -300,9 +327,13 @@ keyed by its sale movement (`stripe-sale`), minus every refund already posted
 against that movement or its recorded charge (held by an earlier build,
 corrected or reversed alike) and every refund of it in the supplied capture,
 including refund rows that are unresolved for another reason (an invalid
-status, a closed period, a legacy ledger). A refund's link to its charge and
-sale is recorded before any posting check, so an early refusal never hides a
-claim from the cap. A credit back
+status, a pending or failed refund document, a changed source, a closed period,
+a legacy ledger). A refund's attribution (its charge and sale) is extracted
+separately from its eligibility and before any posting check, so an early
+refusal never hides a claim from the cap. Each identifiable claim counts once: a
+refund ID the ledger already recorded counts there and not again from the
+capture, two captured movements of one refund ID are one claim, and a refund
+document that says another movement carries it is that movement's claim. A credit back
 never raises it. Any refund over the cap stays unresolved with
 `refund_exceeds_booked_sale`, and that reason replaces any other the row had, so
 the cap shows even when the row has an earlier problem.
@@ -325,12 +356,31 @@ link always wins over the balance transaction's type: a movement of any type
 document lists in `balance_transactions`, is a dispute movement. A source is a
 dispute when it says so (`object` of `dispute`, or a `du_` or `dp_` ID, as a
 bare ID, an ID wrapper or a full copy) or when any copy of that ID anywhere in
-the capture is a dispute. Dispute documents are collected from every place
-they appear: the top-level `disputes` array, a movement's expanded source, or
-expanded inside any other object. Its dispute ID and the balance transactions
+the capture is a dispute, including a typed reference that is not a full copy
+(a `disputes` row or an expanded `{"id": ..., "object": "dispute"}` that carries
+only its ID and type). Such a reference is type evidence only: it never joins
+the copy-equality check or the fingerprint. Dispute documents are collected from
+every place they appear: the top-level `disputes` array, a movement's expanded
+source, or expanded inside any other object. Its dispute ID and the balance transactions
 its document lists still enter the owner map, so another movement that claims
 one of them stays unresolved too. A fee with no dispute link still posts to the
-fee account. Dispute
+fee account.
+
+**Connect platform dispute fees (launch scope).** A Connect platform can pay the
+dispute fee for a connected account's dispute. Stripe attributes that fee to the
+dispute in fee-attribution data (`incurred_by`, `incurred_by_type`) rather than
+in the movement's own `source`, so the movement need not name the dispute. For
+launch, a movement that shows any sign of being a dispute fee without itself
+identifying the dispute is unresolved with `dispute_needs_review` and is never
+booked as a standalone fee. Signs are a `reporting_category` of `dispute`,
+`dispute_reversal` or `dispute_fee`; an `incurred_by_type` of `dispute` or an
+`incurred_by` dispute reference, on the movement or on any `fee_details` row; a
+`fee_details` type that names a dispute; and, for `stripe_fee` and
+`stripe_fx_fee` movements, the word "dispute" in the movement's own description
+or fee-detail descriptions. Text can only refuse a fee, never choose an account.
+A connector that wants these fees booked must first capture itemized attribution
+that names the connected-account dispute; such a fee is still a dispute movement
+and stays unresolved until disputes are supported. Dispute
 entries an earlier build wrote (with `stripe-dispute` and
 `stripe-dispute-movements`) stay durable reservations of the movements they
 recorded; the engine no longer writes that metadata.
@@ -389,7 +439,9 @@ Bank matching requires the original bank source ID/digest, payout ID, exact
 currency/amount and approved current bank mapping. A bank arrival can occur after
 the payout in another period. An old net bank deposit already booked as income
 blocks application until a normal audited correction resolves it; the engine
-does not clone the source or reverse an already reversed entry. When managed
+does not clone the source or reverse an already reversed entry. That block is
+decided over the whole supplied capture: whichever page the bound payout is on,
+no page of that capture posts anything, and every page reports the conflict. When managed
 Stripe accounting exists, the hosted routine planner holds positive bank credits
 with a Stripe label as suspected payouts. A label is suspicion, not proof of a
 specific payout; unrelated approved routine items can continue.

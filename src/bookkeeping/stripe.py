@@ -434,6 +434,10 @@ class _Capture:
             for doc in (objects.get(name) or {}).values():
                 if _is_document(doc):  # A row with only its ID is a reference, never a copy (see _is_document).
                     self.add(doc, name)
+                elif name == 'disputes' or _is_dispute(doc):
+                    # Round 11 (decision 4): an ID-only row still carries type evidence. It is no copy (it never
+                    # joins fingerprint equality), but its ID is a dispute wherever a movement names it.
+                    self.dispute_ids.add(doc['id'])
         connect = objects.get('connectEvidence') or {}
         for name in ('transfers', 'transferReversals'):
             rows = connect.get(name) if isinstance(connect, dict) else None
@@ -478,6 +482,8 @@ class _Capture:
             refs.append((key, target))
             if _is_document(value):
                 self.add(value, self.link_kind(key, owner, kind, value))
+            elif _is_dispute(value):
+                self.dispute_ids.add(target)  # A typed reference (``{'id', 'object': 'dispute'}``) is type evidence.
             return target
         if isinstance(value, str) and value and key in _LINK_FIELDS:
             refs.append((key, value))
@@ -559,6 +565,19 @@ class _Capture:
 
     def conflicts(self, start):
         return sorted(self.closure(start) & self.conflicted)
+
+    def mode_mismatch(self, start, mode):
+        """Whether movement *start* or any object in its closure states a ``livemode`` other than *mode* (the books'
+        Stripe account mode), or copies of one object disagree on it (round 11, decision 2). Test and live never mix:
+        such a movement is unresolved (``livemode_mismatch``). A copy that leaves the field out states nothing."""
+        modes = self.__dict__.setdefault('_modes', {})
+        for ident in self.closure(start):
+            if ident not in modes:
+                modes[ident] = frozenset(json.dumps(value) for value in (
+                    json.loads(form).get('livemode') for form in self.forms.get(ident, ())) if value is not None)
+            if modes[ident] and modes[ident] != {json.dumps(mode)}:
+                return True
+        return False
 
     def hashed(self, start, sale=False):
         """The IDs whose copies the fingerprint of movement *start* binds: its whole closure, less (for a sale) its
@@ -1144,6 +1163,23 @@ class _Resolver:
         link['closure'] = found
         return charge, found, _minor(charge.get('amount'))
 
+    def attribute(self, bt):
+        """Record which charge and sale refund movement *bt* claims, apart from whether it may post (round 11,
+        decision 3). Every identifiable claim counts toward its sale's cap, whatever later refuses it: a pending or
+        failed refund document, a changed source, a wrong status. A refund document that says another movement
+        carries it is that movement's claim, not this one's."""
+        if bt['id'] in self.links and (self.links[bt['id']].get('charge') or self.links[bt['id']].get('sale')):
+            return
+        try:
+            _, docs = _docs([bt.get('source')], self.refunds, 'refund')
+            if not _ref_id(bt.get('source')) or not docs:
+                return
+            if any(_ref_id(doc.get('balance_transaction')) not in (None, bt['id']) for doc in docs):
+                return
+            self.follow(bt, docs, 'refund', 'missing_refund_charge_evidence')
+        except (ValueError, KeyError, TypeError, AttributeError, ArithmeticError):
+            pass  # follow records the charge (and the sale when known) before any check refuses.
+
     def refund(self, bt):
         if not _ref_id(bt.get('source')):
             # Without the refund's own ID nothing proves it was not already booked by another movement.
@@ -1208,6 +1244,34 @@ def _is_dispute(source):
     identity = _object_id(source)
     return ((isinstance(source, dict) and source.get('object') == 'dispute')
             or (isinstance(identity, str) and identity.startswith(('du_', 'dp_'))))
+
+
+_FEE_KINDS = frozenset({'stripe_fee', 'stripe_fx_fee'})
+_DISPUTE_CATEGORIES = frozenset({'dispute', 'dispute_reversal', 'dispute_fee'})
+
+
+def _dispute_fee_signal(bt):
+    """Whether movement *bt* shows it is a dispute fee without itself naming the dispute (round 11, decision 5).
+
+    A Connect platform can pay a connected account's dispute fee; Stripe attributes such a fee to the dispute in
+    fee-attribution data (``incurred_by``, ``incurred_by_type``) rather than in the movement's own ``source``. For
+    launch the engine never books one as a standalone fee: any structured sign of a dispute (a dispute reporting
+    category, a fee attributed to a dispute, a fee detail of a dispute type) and, for a fee movement, the word
+    "dispute" in its own description or fee details leave it unresolved (``dispute_needs_review``). Text only ever
+    refuses; it never decides an account."""
+    if bt.get('reporting_category') in _DISPUTE_CATEGORIES or bt.get('incurred_by_type') == 'dispute':
+        return True
+    if _is_dispute(bt.get('incurred_by')):
+        return True
+    details = bt.get('fee_details') if isinstance(bt.get('fee_details'), list) else []
+    for row in details:
+        if isinstance(row, dict) and (row.get('incurred_by_type') == 'dispute' or _is_dispute(row.get('incurred_by'))
+                                      or 'dispute' in str(row.get('type') or '').lower()):
+            return True
+    if bt.get('type') in _FEE_KINDS:
+        text = [bt.get('description')] + [row.get('description') for row in details if isinstance(row, dict)]
+        return any('dispute' in value.lower() for value in text if isinstance(value, str))
+    return False
 
 
 def _identity_movement(bt):
@@ -1844,10 +1908,19 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         if gross is None:
             return None
         sale, aliases = link.get('sale'), charges | {link.get('charge')}
-        used = ledger.consumed_for(sale, aliases) + sum(
-            (Decimal(_amount(-other['amount'])) for other in proposed if other is not bt and (
-                (resolver.links.get(other['id']) or {}).get('sale') == sale
-                or (resolver.links.get(other['id']) or {}).get('charge') in aliases)), Decimal(0))
+        # Each identifiable claim counts once (round 11, decision 3): a refund ID the ledger already recorded counts
+        # there, and two captured movements of one refund ID (or of this refund's own ID) are one claim.
+        counted, others = {_ref_id(bt.get('source'))} - {None}, Decimal(0)
+        for other in proposed:
+            other_link = resolver.links.get(other['id']) or {}
+            if other is bt or not (other_link.get('sale') == sale or other_link.get('charge') in aliases):
+                continue
+            refund_id = _ref_id(other.get('source'))
+            if refund_id and (refund_id in counted or refund_id in ledger.refunds):
+                continue
+            counted.add(refund_id)
+            others += Decimal(_amount(-other['amount']))
+        used = ledger.consumed_for(sale, aliases) + others
         return used + Decimal(_amount(-bt['amount'])) > gross
 
     def refund_reason(bt, proposed):
@@ -1903,7 +1976,8 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         The cap is never skipped (cut 4): every refund movement the resolver reached counts as proposed, and one the
         resolver or the owner map already refused still reports ``refund_exceeds_booked_sale`` when it would exceed
         its known booked sale."""
-        rows = [row['source_id'] for row in result['actions'] + result['unresolved'] if row['source_id'] in validated]
+        rows = [row['source_id'] for row in result['actions'] + result['unresolved']
+                if row['source_id'] in validated and row['source_id'] not in posted]  # A posted one counts from the ledger.
         proposed = [bt for bt in (validated[sid][0] for sid in dict.fromkeys(rows))
                     if bt.get('type') in _REFUND_KINDS and bt['id'] in resolver.links]
         for bt in proposed:
@@ -1970,6 +2044,13 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             # no effect without a fingerprint stays unresolved instead. The marker is never evidence: cleanup of
             # a posted source whose fingerprint is unavailable needs review (see _recover_stripe_cleanup).
             result['source_capture_digests'][sid] = _unavailable_fingerprint(sid)
+        if bt.get('type') in _REFUND_KINDS and _identity_movement(bt) and sid not in posted:
+            # Record a refund's claim on its sale before any posting check (round 10, decision 5; round 11, decision
+            # 3): every identifiable refund of a sale counts toward its cap once, including one unresolved for another
+            # reason (an invalid status, a pending refund document, a changed source). A posted one counts from the
+            # ledger instead.
+            resolver.trace = []
+            resolver.attribute(bt)
         if sid in reversed_ids:
             result['skipped'].append(dict(source_id=sid, reason='reversed')); continue
         if changed(sid):
@@ -1996,19 +2077,15 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             result['skipped'].append(dict(source_id=sid, reason='already_posted'))
             continue
         result['normalized_sources'].append(normalized)
-        if bt.get('type') in _REFUND_KINDS and _identity_movement(bt):
-            # Record a refund's claim on its sale before any posting check (round 10, decision 5): every known refund
-            # of a sale counts toward its cap, including one unresolved for another reason (an invalid status).
-            resolver.trace = []
-            try:
-                resolver.refund(bt)
-            except (ValueError, KeyError, TypeError, AttributeError, ArithmeticError):
-                pass
         try:
             if ledger.legacy_present:
                 # No historical proof: a ledger with any Stripe entry this engine did not write gets no new Stripe
                 # journal entry at all (no holding entry, no cash movement) until a cutover is recorded.
                 raise ValueError('legacy_stripe_entries_present')
+            if capture.mode_mismatch(bt['id'], policy['livemode']):
+                # Test and live never mix (round 11, decision 2): the movement or any object linked to it states the
+                # other mode, or its copies disagree. No entry; the owner map still reserves its IDs.
+                raise ValueError('livemode_mismatch')
             if capture.conflicts(bt['id']):
                 raise ValueError('conflicting_object_copies')  # One copy per object or nothing (see _Capture).
             if not policy['enabled']:
@@ -2028,9 +2105,10 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             if queue.txn_is_above_ask_first(entity, normalized) or (
                     bt.get('amount') and queue.txn_is_above_ask_first(entity, {**normalized, 'amount': _amount(bt['amount'])})):
                 raise ValueError('above_ask_first_amount')
-            if capture.dispute_movement(bt):
+            if capture.dispute_movement(bt) or _dispute_fee_signal(bt):
                 # A dispute link always wins over the movement's type (round 10, decision 2): a fee or any other
-                # movement whose source is a dispute, or that any dispute document lists, is a dispute movement.
+                # movement whose source is a dispute, or that any dispute document lists, is a dispute movement. So is
+                # a platform-side dispute fee that does not name its connected-account dispute (round 11, decision 5).
                 raise ValueError('dispute_needs_review')
             kind = bt.get('type')
             source_id = _object_id(bt.get('source'))
@@ -2115,22 +2193,18 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             result['unresolved'].append(dict(source_id=sid, reason=str(exc)))
     owner_map()
     follow_sales()
-    # Restrict to the page only now, after ownership and the cap were decided over the whole cohort (decision 1).
-    for name in ('actions', 'no_effect', 'unresolved', 'skipped', 'uncategorized'):
-        result[name] = [row for row in result[name] if row['source_id'] in page]
-    result['normalized_sources'] = [row for row in result['normalized_sources'] if row['id'] in page]
-    result['source_capture_digests'] = {key: value for key, value in result['source_capture_digests'].items()
-                                        if key in page}
-    link_entries()
-    # Match bank arrivals separately: a payout may have posted to transit in a
-    # previous cohort/month before its real bank deposit arrived.
-    for sid in selected:
+    # Match bank arrivals separately: a payout may have posted to transit in a previous cohort/month before its real
+    # bank deposit arrived. Every veto is decided over the whole supplied cohort, like ownership (round 11, decision
+    # 1): a known bank conflict on any payout, on any page, blocks every page for every limit and cursor.
+    bank_rows, bank_conflict = [], None
+    for sid in sorted(validated):
         bt, normalized = validated[sid]
         payout = _object_id(bt.get('source'))
         if bt.get('type') != 'payout' or payout not in by_payout:
             continue
-        result['source_capture_digests'][by_payout[payout]['bank_source_id']] = _digest({
-            'payout_capture': result['source_capture_digests'][sid], 'binding': by_payout[payout]})
+        bank_sid = by_payout[payout]['bank_source_id']
+        bank_rows.append((sid, 'digest', bank_sid, _digest({
+            'payout_capture': result['source_capture_digests'][sid], 'binding': by_payout[payout]})))
         original = saved.get(sid)
         already_applied = (sid in posted and sid not in reversed_ids and original
                            and original.get('stripe_financial_digest') == normalized['stripe_financial_digest']
@@ -2138,24 +2212,37 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         if not any(row['source_id'] == sid for row in result['actions']) and not already_applied:
             continue
         if ledger.legacy_present:
-            result['unresolved'].append(dict(source_id=by_payout[payout]['bank_source_id'],
-                                             reason='legacy_stripe_entries_present'))
+            bank_rows.append((sid, 'unresolved', bank_sid, 'legacy_stripe_entries_present'))
             continue
         try:
             if not policy['enabled']:
                 raise ValueError('policy_disabled')
             action = _bank_action(by_payout[payout], payout, bt['amount'], pending, posted, owned, opens, entity, cutoff,
                                   policy['payout_transit_account'], saved, entries, reversed_ids)
-            if action:
-                result['actions'].append(action)
-            else:
-                result['skipped'].append(dict(source_id=by_payout[payout]['bank_source_id'], reason='already_posted'))
+            bank_rows.append((sid, 'action', bank_sid, action) if action else (sid, 'skipped', bank_sid, 'already_posted'))
         except (ValueError, KeyError, TypeError, ArithmeticError) as exc:
-            result['actions'] = []  # Prior bank income must be corrected first.
-            result['uncategorized'] = []
-            result['entry_links'] = {}
-            result['unresolved'].append(dict(source_id=by_payout[payout]['bank_source_id'], reason=str(exc)))
+            bank_conflict = dict(source_id=bank_sid, reason=str(exc))  # Prior bank income must be corrected first.
             break
+    # Restrict to the page only now, after ownership, the cap and every veto were decided over the whole cohort.
+    for name in ('actions', 'no_effect', 'unresolved', 'skipped', 'uncategorized'):
+        result[name] = [row for row in result[name] if row['source_id'] in page]
+    result['normalized_sources'] = [row for row in result['normalized_sources'] if row['id'] in page]
+    result['source_capture_digests'] = {key: value for key, value in result['source_capture_digests'].items()
+                                        if key in page}
+    link_entries()
+    for sid, what, bank_sid, value in bank_rows:
+        if sid not in page:
+            continue
+        if what == 'digest':
+            result['source_capture_digests'][bank_sid] = value
+        elif what == 'action':
+            result['actions'].append(value)
+        else:
+            result[what].append(dict(source_id=bank_sid, reason=value))
+    if bank_conflict is not None:
+        # The conflict is reported on every page, and no page posts anything, whichever page its payout is on.
+        result['actions'], result['uncategorized'], result['entry_links'] = [], [], {}
+        result['unresolved'].append(bank_conflict)
     missing = set(by_payout) - {_object_id(bt.get('source')) for bt in bts.values() if bt.get('type') == 'payout'}
     if missing:
         raise ValueError('Bank binding refers to a payout absent from captured evidence.')

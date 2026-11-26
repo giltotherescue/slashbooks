@@ -415,7 +415,7 @@ class ReviewFindingTests(StripeFixture):
                 ('charge', lambda raw: raw.update(paymentIntents=[dict(id='pi_one', invoice='in_one')]) or raw['charges'][0].update(livemode=True))]:
             with self.subTest(name):
                 self.setUp(); self.invoice_without_charge_reference(); change(self.raw)
-                self.assertHeld(self.plan(), 'livemode_conflict')
+                self.assertHeld(self.plan(), 'livemode_mismatch')  # Round 11 (decision 2): test and live never mix.
 
     def test_refund_naming_another_payment_intent_than_its_charge_is_held(self):
         self.full_flow()
@@ -1669,7 +1669,7 @@ class RecheckThreeFindingTests(RecheckFixture):
                 self.setUp(); self.invoice()
                 self.policy['revenue_rules'][1:] = [dict(id='catalog', match={'product_id': 'prod_two'}, category='Income:Subscriptions')]
                 change(self.raw)
-                self.assertHeld(self.plan(), 'livemode_conflict')
+                self.assertHeld(self.plan(), 'livemode_mismatch')  # Round 11 (decision 2).
         self.setUp(); self.invoice(); self.raw['products'] = [dict(id='prod_two', currency='eur')]
         self.assertHeld(self.plan(), 'product_currency_conflict')
 
@@ -1906,6 +1906,12 @@ class RecheckFourFindingTests(RecheckFixture):
         self.full_flow(); self.raw['charges'][0]['price'] = dict(id='price_test', currency='eur', livemode=True)
         self.policy['revenue_rules'] = [dict(id='price', match={'price_id': 'price_test'}, category='Income:Subscriptions')]
         plan = self.plan()
+        # Round 11 (decision 2): the live-mode price copy is the first reason; the same price in the books' mode
+        # still holds the plain charge for launch.
+        self.assertHeld(plan, 'livemode_mismatch')
+        self.assertHeld(plan, 'livemode_mismatch', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        self.raw['charges'][0]['price'].update(currency='usd', livemode=False)
+        plan = self.plan()
         self.assertHeld(plan, 'plain_charge_price_unsupported')
         self.assertHeld(plan, 'plain_charge_price_unsupported', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
@@ -1973,7 +1979,8 @@ class RecheckFourFindingTests(RecheckFixture):
         self.raw['paymentIntents'] = [dict(id='pi_one', invoice='in_one', livemode=False, currency='usd')]
         plan = self.plan()
         self.assertIsNone(self.action(plan))
-        self.assertEqual([dict(source_id=SALE, reason='missing_revenue_mapping')], plan['unresolved'])
+        # Round 11 (decision 2): a live-mode refund linked to the sale makes it livemode_mismatch (it never posted).
+        self.assertEqual([dict(source_id=SALE, reason='livemode_mismatch')], plan['unresolved'])
         # Round 9 (cut 6): the same follower in the policy's mode and currency links the invoice, but a sale's
         # fingerprint leaves its refunds out, so a sale that depends on one is unresolved (it used to post revenue).
         self.raw['refunds'][0].update(currency='usd', livemode=False)
@@ -2315,8 +2322,9 @@ class RecheckFiveFindingTests(RecheckFixture):
         self.full_flow(); charge = self.raw['charges'].pop()
         self.raw['disputes'] = [dict(id='du_foreign', livemode=True, currency='eur', charge=charge)]
         plan = self.plan()
-        self.assertHeld(plan, 'missing_charge_evidence')
-        self.assertHeld(plan, 'missing_refund_charge_evidence', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        # Round 11 (decision 2): the other-mode wrapper reaches both movements, so test and live would mix.
+        self.assertHeld(plan, 'livemode_mismatch')
+        self.assertHeld(plan, 'livemode_mismatch', sid=REFUND, amount='20.00', fee=None, net='-20.00')
         self.stage(); self.apply()
         balances = self.balances()
         self.assertNotIn(base.INCOME, balances); self.assertNotIn(base.REFUNDS, balances)
@@ -2515,6 +2523,8 @@ class RoundSevenDecisionTests(RecheckFixture):
         self.full_flow()
         self.raw['disputes'] = [dict(id='du_elsewhere', livemode=True, currency='usd', status='lost',
                                      charge=dict(copy.deepcopy(self.raw['charges'][0]), description='Edited text'))]
+        self.assertUnresolved(self.plan(), 'livemode_mismatch')  # Round 11 (decision 2): checked before copies.
+        self.raw['disputes'][0]['livemode'] = False
         self.assertUnresolved(self.plan(), 'conflicting_object_copies')
 
 
@@ -3119,6 +3129,306 @@ class RoundTenDecisionTests(RecheckFixture):
         self.assertEqual(0, self.apply()['posted'])
         self.assertEqual(Decimal('30.00'), self.balances()[base.REFUNDS])
 
+
+
+class RoundElevenDecisionTests(RecheckFixture):
+    """One regression for each case of PR 177 recheck 8 (probes8.py), under Clozy's round-11 decisions: every veto is
+    decided over the whole cohort, test and live mode never mix, a refund that arrived before its sale posts later
+    only when every check passes, every identifiable refund claim counts once toward the cap, a typed dispute
+    reference is type evidence, and a platform dispute fee that does not name its dispute is never a standalone fee.
+    Ordinary sale, refund, fee and payout (full and ID-only) postings and exact retries still work."""
+
+    PAYOUT = 'stripe:acct_test:txn_payout'
+    FEE = 'stripe:acct_test:txn_fee'
+    add_refund = RecheckFourFindingTests.add_refund
+    fee = RoundTenDecisionTests.fee
+
+    def run_pages(self, limit, start='', **kwargs):
+        """Stage and apply page by page from *start*; returns every unresolved row seen, page by page."""
+        seen, cursor = [], start
+        while True:
+            plan = self.stage(limit=limit, after_source_id=cursor, **kwargs)
+            applied = self.apply(limit=limit, after_source_id=cursor, **kwargs)
+            self.assertEqual(plan['next_cursor'], applied['next_cursor'])
+            seen.append(applied['unresolved'])
+            if not applied['next_cursor']:
+                return seen
+            cursor = applied['next_cursor']
+
+    # Decision 3 (P2): changed_claim and pending_refund_document. Known claims never leave the cap.
+    def test_changed_claim(self):
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.add_refund('re_bad', 'txn_bad', 7000); self.stage()  # Staged, never posted.
+        self.raw['balanceTransactions'][-1].update(net=-7100, amount=-7100); self.raw['refunds'][-1]['amount'] = 7100
+        self.add_refund('re_good', 'txn_good', 7000)
+        plan = self.stage()
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid='stripe:acct_test:txn_bad')  # $71 + $70 > $100.
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid='stripe:acct_test:txn_good')
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertNotIn(base.REFUNDS, self.balances())
+
+    def test_pending_refund_document(self):
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.add_refund('re_bad', 'txn_bad', 7000); self.raw['refunds'][-1]['status'] = 'pending'
+        self.add_refund('re_good', 'txn_good', 7000)
+        plan = self.stage()
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid='stripe:acct_test:txn_bad')
+        self.assertUnresolved(plan, 'refund_exceeds_booked_sale', sid='stripe:acct_test:txn_good')
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertNotIn(base.REFUNDS, self.balances())
+
+    def test_claims_within_the_cap_still_post_once(self):
+        # Control: the pending claim counts, but $30 + $70 fits the $100 sale, so the settled refund posts once.
+        self.stage(); self.apply()
+        self.add_refund('re_bad', 'txn_bad', 3000); self.raw['refunds'][-1]['status'] = 'pending'
+        self.add_refund('re_good', 'txn_good', 7000)
+        plan = self.stage()
+        self.assertUnresolved(plan, 'missing_or_unsettled_refund', sid='stripe:acct_test:txn_bad')
+        self.assertEqual('refund-account-policy', self.action(plan, 'stripe:acct_test:txn_good')['authority_id'])
+        self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual(Decimal('70.00'), self.balances()[base.REFUNDS])
+
+    def test_one_refund_id_is_one_claim(self):
+        # Two movements of one refund ID are one claim: neither posts (owner map), and neither doubles the cap.
+        self.stage(); self.apply()
+        self.add_refund('re_one', 'txn_one', 6000)
+        self.raw['balanceTransactions'].append(dict(self.raw['balanceTransactions'][-1], id='txn_copy'))
+        self.add_refund('re_two', 'txn_two', 4000)
+        plan = self.stage()
+        self.assertEqual('duplicate_refund_movement',
+                         {row['source_id']: row['reason'] for row in plan['unresolved']}['stripe:acct_test:txn_one'])
+        self.assertEqual('refund-account-policy', self.action(plan, 'stripe:acct_test:txn_two')['authority_id'])
+
+    # Decision 1 (P1): bank_conflict_page. A known bank conflict blocks every page.
+    def bank_conflict(self):
+        bindings = self.full_flow()
+        from bookkeeping import queue
+        queue.propose(self.entity, 'bank-original', base.INCOME, 'old deposit')
+        queue.confirm(self.entity, 'bank-original', 'old')
+        self.raw['balanceTransactions'][0]['id'] = 'txn_a_sale'; self.raw['charges'][0]['balance_transaction'] = 'txn_a_sale'
+        return bindings
+
+    def test_bank_conflict_page(self):
+        for limit in (1, 2, 50):
+            for start in ('', 'stripe:acct_test:txn_b', 'stripe:acct_test:txn_q'):  # Before, between, after the payout.
+                with self.subTest(limit=limit, start=start):
+                    self.setUp(); bindings = self.bank_conflict()
+                    before = self.balances()
+                    whole = stripe_plan(self.entity, self.raw, self.policy, bank_matches=bindings)
+                    self.assertEqual([], whole['actions'])
+                    conflict = dict(source_id='bank-original', reason='bank_source_already_posted_requires_review')
+                    self.assertIn(conflict, whole['unresolved'])
+                    for page in self.run_pages(limit, start, bank_matches=bindings):
+                        self.assertIn(conflict, page)  # Every page reports it ...
+                    self.assertEqual(before, self.balances())  # ... and no page posts anything.
+                    self.assertEqual({BANK_ACCOUNT: Decimal('77.00'), base.INCOME: Decimal('-77.00')}, self.balances())
+
+    def test_bank_match_pages_ordinary_control(self):
+        # Without the old income, paging posts the sale, refund, payout and bank arrival once; a retry posts nothing.
+        for limit in (1, 2, 50):
+            with self.subTest(limit=limit):
+                self.setUp(); bindings = self.full_flow()
+                self.run_pages(limit, bank_matches=bindings)
+                # txn_refund sorts before txn_sale: on small pages the refund waits for a later pass (decision 3).
+                self.run_pages(limit, bank_matches=bindings)
+                expected = {base.CLEARING: Decimal('0.00'), base.INCOME: Decimal('-100.00'), base.FEES: Decimal('3.00'),
+                            base.REFUNDS: Decimal('20.00'), base.TRANSIT: Decimal('0.00'), BANK_ACCOUNT: Decimal('77.00')}
+                self.assertEqual(expected, self.balances())
+                self.run_pages(limit, bank_matches=bindings)
+                self.assertEqual(expected, self.balances())
+
+    # Decision 2 (P1): payout_wrong_mode. Test and live never mix.
+    def live_payout(self, shape='bare'):
+        self.full_flow()
+        self.raw['charges'] = []; self.raw['refunds'] = []
+        self.raw['balanceTransactions'] = [self.raw['balanceTransactions'][-1]]
+        self.raw['account']['livemode'] = self.policy['livemode'] = True
+        self.raw['payouts'][0]['livemode'] = True
+        if shape == 'expanded':
+            self.raw['balanceTransactions'][0]['source'] = self.raw['payouts'].pop()
+        elif shape == 'wrapper':
+            self.raw['balanceTransactions'][0]['source'] = dict(id='po_one', object='payout')
+        return self.raw['balanceTransactions'][0]
+
+    def payout_doc(self, bt):
+        return bt['source'] if isinstance(bt['source'], dict) and len(bt['source']) > 2 else self.raw['payouts'][0]
+
+    def test_payout_wrong_mode(self):
+        for shape in ('bare', 'wrapper', 'expanded'):
+            for zero in (False, True):
+                with self.subTest(shape=shape, zero=zero):
+                    self.setUp(); bt = self.live_payout(shape); doc = self.payout_doc(bt)
+                    doc['livemode'] = False
+                    if zero:
+                        bt.update(amount=0, net=0); doc['amount'] = 0
+                    self.assertUnresolved(self.stage(), 'livemode_mismatch', sid=self.PAYOUT)
+                    applied = self.apply()
+                    self.assertEqual((0, 0), (applied['posted'], applied['no_financial_effect']))
+                    self.assertEqual({}, self.balances())
+
+    def test_payout_mode_controls(self):
+        # The same payout in the books' mode posts once in every shape; an exact retry posts nothing.
+        for shape in ('bare', 'wrapper', 'expanded'):
+            with self.subTest(shape=shape):
+                self.setUp(); self.live_payout(shape)
+                self.assertEqual('payout-transit-policy', self.action(self.stage(), self.PAYOUT)['authority_id'])
+                self.assertEqual(1, self.apply()['posted'])
+                self.assertEqual(0, self.apply()['posted'])
+                self.assertEqual({base.CLEARING: Decimal('-77.00'), base.TRANSIT: Decimal('77.00')}, self.balances())
+
+    def test_movement_or_linked_object_in_the_other_mode(self):
+        for name, change in [
+                ('movement', lambda: self.raw['balanceTransactions'][0].update(livemode=True)),
+                ('charge', lambda: self.raw['charges'][0].update(livemode=True)),
+                ('refund', lambda: self.raw['refunds'][0].update(livemode=True)),
+                ('copies_disagree', lambda: self.raw['refunds'][0].update(charge=dict(
+                    copy.deepcopy(self.raw['charges'][0]), livemode=True))),
+                ('not_a_boolean', lambda: self.raw['charges'][0].update(livemode='false'))]:
+            with self.subTest(name):
+                self.setUp(); self.full_flow(); self.raw['balanceTransactions'].pop(); change()
+                plan = self.stage()
+                self.assertUnresolved(plan, 'livemode_mismatch')
+                self.assertUnresolved(plan, 'livemode_mismatch', sid=REFUND)
+                self.assertEqual(0, self.apply()['posted'])
+                self.assertEqual({}, self.balances())
+
+    def test_mismatched_sale_still_reserves_its_ids(self):
+        # A livemode_mismatch sale keeps its IDs in the owner map: a rival sale of the same charge is refused.
+        self.raw['balanceTransactions'][0]['livemode'] = True
+        self.raw['balanceTransactions'].append(dict(self.raw['balanceTransactions'][0], id='txn_rival', livemode=False))
+        plan = self.plan()
+        self.assertUnresolved(plan, 'livemode_mismatch')
+        self.assertIn('stripe:acct_test:txn_rival', {row['source_id'] for row in plan['unresolved']})
+        self.assertEqual([], plan['actions'])
+
+    # Decision 3: refund_before_sale. Booking the sale lifts only that reason.
+    def test_refund_before_sale(self):
+        # txn_refund sorts before txn_sale: with limit=1 the refund's page comes before its sale is booked.
+        self.full_flow(); self.raw['balanceTransactions'].pop()
+        self.stage(limit=1)
+        first = self.apply(limit=1)
+        self.assertEqual((0, [dict(source_id=REFUND, reason='sale_movement_unverified')]),
+                         (first['posted'], first['unresolved']))
+        self.stage(limit=1, after_source_id=REFUND)
+        self.assertEqual(1, self.apply(limit=1, after_source_id=REFUND)['posted'])  # The sale.
+        self.stage(limit=1)
+        self.assertEqual(1, self.apply(limit=1)['posted'])  # The refund, now behind its booked sale, once.
+        self.assertEqual(0, self.apply(limit=1)['posted'])
+        self.assertEqual(0, self.apply(limit=1, after_source_id=REFUND)['posted'])
+        self.assertEqual({base.CLEARING: Decimal('77.00'), base.INCOME: Decimal('-100.00'), base.FEES: Decimal('3.00'),
+                          base.REFUNDS: Decimal('20.00')}, self.balances())
+
+    def test_refund_before_sale_with_another_reason_stays_unresolved(self):
+        for name, change in [
+                ('over_cap', lambda: self.add_refund('re_two', 'txn_two', 9000)),
+                ('invalid_status', lambda: self.raw['balanceTransactions'][1].update(status='invalid')),
+                ('unsettled', lambda: self.raw['refunds'][0].update(status='pending'))]:
+            with self.subTest(name):
+                self.setUp(); self.full_flow(); self.raw['balanceTransactions'].pop()
+                self.raw['balanceTransactions'][0]['id'] = 'txn_z_sale'
+                self.raw['charges'][0]['balance_transaction'] = 'txn_z_sale'
+                change()
+                self.stage(limit=1); self.apply(limit=1)
+                self.stage(limit=50, after_source_id='stripe:acct_test:txn_y')
+                self.assertEqual(1, self.apply(limit=50, after_source_id='stripe:acct_test:txn_y')['posted'])  # The sale.
+                plan = self.stage()
+                self.assertIn(REFUND, {row['source_id'] for row in plan['unresolved']})
+                self.assertEqual(0, self.apply()['posted'])
+                self.assertNotIn(base.REFUNDS, self.balances())
+
+    # parent_zero: a parent build's zero-payout record without claims is legacy (round 10, decision 3).
+    def test_parent_zero_payout_record_blocks_an_unrelated_sale(self):
+        self.full_flow()
+        sale = copy.deepcopy(self.raw['balanceTransactions'][0])
+        payout = self.raw['balanceTransactions'].pop()
+        self.raw['balanceTransactions'] = [dict(payout, amount=0, net=0)]; self.raw['payouts'][0]['amount'] = 0
+        self.stage(); self.assertEqual(1, self.apply()['no_financial_effect'])
+        from bookkeeping.ledger.store import LedgerStore, default_store_path
+        store = LedgerStore(default_store_path(self.entity.path))
+        with store.connection() as conn:
+            row = json.loads(conn.execute('SELECT payload_json FROM source_transactions WHERE id=?', (self.PAYOUT,)).fetchone()[0])
+            row.pop('stripe_no_effect_claims')  # As the parent build recorded it.
+            conn.execute('UPDATE source_transactions SET payload_json=? WHERE id=?', (json.dumps(row), self.PAYOUT))
+            conn.commit()
+        self.raw['balanceTransactions'] = [sale]
+        self.assertUnresolved(self.stage(), 'legacy_stripe_entries_present')
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual({}, self.balances())
+
+    # nested_dispute: a dispute that lists the fee refuses it; the same dispute without the fee does not.
+    def test_nested_dispute(self):
+        self.fee(dict(id='opaque_wrapper', detail=dict(id='opaque_dispute', object='dispute',
+                                                       balance_transactions=['txn_fee'])))
+        self.assertUnresolved(self.stage(), 'dispute_needs_review', sid=self.FEE)
+        self.assertEqual(0, self.apply()['posted'])
+        self.raw['balanceTransactions'][0]['source']['detail']['balance_transactions'] = []
+        self.assertEqual('fee-account-policy', self.action(self.stage(), self.FEE)['authority_id'])
+        self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual({base.CLEARING: Decimal('-15.00'), base.FEES: Decimal('15.00')}, self.balances())
+
+    # Decision 4 (P2): typed_reference_elsewhere. A typed reference is type evidence, not a copy.
+    def test_typed_reference_elsewhere(self):
+        for name, build in [
+                ('full_copy', lambda: self.raw.__setitem__('disputes', [dict(id='opaque_one', object='dispute', status='lost')])),
+                ('id_and_type_only', lambda: self.raw.__setitem__('disputes', [dict(id='opaque_one', object='dispute')])),
+                ('untyped_disputes_row', lambda: self.raw.__setitem__('disputes', [dict(id='opaque_one')])),
+                ('nested_typed_reference', lambda: self.raw.__setitem__('payouts', [dict(
+                    id='po_x', amount=0, currency='usd', status='paid', balance_transaction='txn_none',
+                    related=dict(id='opaque_one', object='dispute'))]))]:
+            with self.subTest(name):
+                self.setUp(); self.fee('opaque_one'); build()
+                self.assertUnresolved(self.stage(), 'dispute_needs_review', sid=self.FEE)
+                self.assertEqual(0, self.apply()['posted'])
+                self.assertEqual({}, self.balances())
+
+    def test_typed_reference_is_not_a_copy(self):
+        # An ID-only typed row does not join copy equality: the fee's fingerprint is the same with or without it.
+        self.fee(None)
+        digest = self.plan()['source_capture_digests'][self.FEE]
+        self.raw['disputes'] = [dict(id='opaque_other', object='dispute')]
+        plan = self.plan()
+        self.assertEqual(digest, plan['source_capture_digests'][self.FEE])
+        self.assertEqual('fee-account-policy', self.action(plan, self.FEE)['authority_id'])
+
+    # Decision 5: a platform dispute fee that does not name its dispute is never a standalone fee.
+    def test_platform_dispute_fee_without_its_dispute(self):
+        for name, fields in [
+                ('reporting_category', dict(reporting_category='dispute')),
+                ('incurred_by_type', dict(incurred_by_type='dispute')),
+                ('incurred_by', dict(incurred_by='du_connected')),
+                ('fee_detail_attribution', dict(fee_details=[dict(amount=1500, type='stripe_fee', incurred_by_type='dispute')])),
+                ('fee_detail_type', dict(fee_details=[dict(amount=1500, type='dispute_fee')])),
+                ('description', dict(description='Dispute fee for connected account')),
+                ('fee_detail_description', dict(fee_details=[dict(amount=1500, type='stripe_fee', description='Dispute fee')]))]:
+            with self.subTest(name):
+                self.setUp(); self.fee(None); self.raw['balanceTransactions'][0].update(fields)
+                self.assertUnresolved(self.stage(), 'dispute_needs_review', sid=self.FEE)
+                self.assertEqual(0, self.apply()['posted'])
+                self.assertEqual({}, self.balances())
+
+    def test_ordinary_fee_with_attribution_still_posts(self):
+        self.fee(None)
+        self.raw['balanceTransactions'][0].update(reporting_category='fee', description='Billing usage fee',
+                                                  fee_details=[dict(amount=1500, type='stripe_fee', description='Billing')])
+        self.assertEqual('fee-account-policy', self.action(self.stage(), self.FEE)['authority_id'])
+        self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual({base.CLEARING: Decimal('-15.00'), base.FEES: Decimal('15.00')}, self.balances())
+
+    def test_ordinary_flow_control(self):
+        # Sale, refund, standalone fee and payout post once on a fresh ledger; an exact retry posts nothing.
+        self.full_flow(); self.raw['balanceTransactions'].append(dict(
+            id='txn_fee', created=1768521600, amount=-500, fee=0, net=-500, currency='usd', status='available',
+            type='stripe_fee', source=None))
+        self.stage(); self.assertEqual(4, self.apply()['posted'])
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual({base.CLEARING: Decimal('-5.00'), base.INCOME: Decimal('-100.00'), base.FEES: Decimal('8.00'),
+                          base.REFUNDS: Decimal('20.00'), base.TRANSIT: Decimal('77.00')}, self.balances())
+
+
+BANK_ACCOUNT = base.BANK
 
 if __name__ == '__main__':
     unittest.main()
