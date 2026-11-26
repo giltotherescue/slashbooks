@@ -206,8 +206,20 @@ _CLAIM_REASONS = dict(charge='charge_claimed_by_another_movement',
 # or ``other``) is how the engine later knows what an entry was; an entry without it (written by an earlier
 # release) proves nothing about what it was or owned. Names, rule IDs and postings are never read for that.
 _KIND_META = 'stripe-kind'
+# The Stripe account an entry's movement belongs to, written beside its kind. Together they are the only proof that
+# an entry was written by this engine version: a Stripe entry missing either (or with a kind not listed below) is
+# legacy, whatever its source ID, text or postings say.
+_ACCOUNT_META = 'stripe-account'
+# ``invoice_settlement`` is the invoice engine's settlement of an open invoice by a Stripe movement
+# (stripe_invoices); the clearing engine never posts that movement itself (see claim_of in stripe_plan).
+_ENGINE_KINDS = frozenset({'sale', 'refund', 'dispute', 'other', 'invoice_settlement'})
 _REFUND_META = 'stripe-refund'  # The refund's own provider ID: one refund posts once, whatever its movement.
 _CLOSURE_META = 'stripe-closure'  # Digest of the evidence that decided a sale's revenue (see _Resolver.allocations).
+
+
+def _invoice_settlement_meta(account, invoice):
+    """Structured metadata stripe_invoices writes on its settlement entry for a Stripe movement of *account*."""
+    return ((_KIND_META, 'invoice_settlement'), (_ACCOUNT_META, account), (_OWNERSHIP_META['invoice'], invoice))
 
 
 class _Hold(ValueError):
@@ -378,6 +390,11 @@ class _Capture:
     and each object expanded inside it (in a link field such as ``charge`` or ``source``) replaced by its ID and kept
     as a copy of its own. Copies of one ID that are not byte-identical in that form make the ID ``conflicted``: every
     movement whose closure reaches it stays unresolved, so the order copies are merged in can never matter.
+
+    **The connector's contract** (docs/stripe-accounting.md, "Capture contract for connectors"): every copy of one
+    ID, top level or expanded at any depth (in any wrapper, other books included), carries the same fields with the
+    same typed values, descriptive text byte for byte; an object is sent either in full or as its ID only (a string,
+    ``{'id': ...}`` or ``{'id': ..., 'object': ...}``), never as a partial projection; every copy comes from one read.
 
     **Closures and their full hash.** A movement's closure is every object reachable from it through link fields,
     forwards, and backwards through the references that name a charge, payment intent, invoice, movement or transfer
@@ -1412,6 +1429,21 @@ class _LedgerClaims:
         def stripe(source):
             return bool(source) and any(value.startswith('stripe:') for value in source_id_variants(source))
 
+        def engine_written(entry):
+            """Whether structured metadata proves this engine version wrote *entry* (the root of a Stripe lineage):
+            a known kind and the Stripe account its own source ID names. Its account's own sales, refunds, disputes
+            and other movements count, as does another account's entry of any known kind and the invoice engine's
+            settlement entry (which also names its invoice). Another account's entries are outside this import's
+            lineage, so they never block it; they still reserve every ID they name. Nothing else does: no text, prefix or missing field."""
+            if entry is None:
+                return False
+            meta = dict(entry.meta)
+            kind, owner = meta.get(_KIND_META), meta.get(_ACCOUNT_META)
+            if kind not in _ENGINE_KINDS or not owner or ':' in owner or not any(
+                    value.startswith(f'stripe:{owner}:') for value in source_id_variants(entry.source_id)):
+                return False
+            return kind != 'invoice_settlement' or bool(meta.get(_OWNERSHIP_META['invoice']))
+
         def root_of(entry):
             """``(root label, root entry or None)``: the entry a lineage starts from, or the ID it names."""
             seen, current = set(), entry
@@ -1434,7 +1466,7 @@ class _LedgerClaims:
             meta = dict(entry.meta)
             root, root_entry = root_of(entry)
             root = root or f'#entry-{index}'
-            if stripe(root) and (root_entry is None or not dict(root_entry.meta).get(_KIND_META)):
+            if stripe(root) and not engine_written(root_entry):
                 self.legacy_present = True  # A Stripe lineage this engine did not start.
             if root.startswith(prefix) and root_entry is not None:
                 roots[root] = root_entry
@@ -1456,8 +1488,12 @@ class _LedgerClaims:
                             Decimal(0))
                 if charge:
                     self.consumed[charge] = self.consumed.get(charge, Decimal(0)) + gross
-                elif gross:
-                    self.refunds_unproven = True  # Consumed some charge's revenue, but which one is not recorded.
+                elif gross and not (kind == 'refund' and meta.get(_REFUND_META)):
+                    # Consumed some charge's revenue, but which one is not recorded. A refund that names its own
+                    # refund ID needs no such flag: ``refunds`` reserves that ID (and the ledger its movement), so the
+                    # same refund captured again, with a charge or without, never posts; other refunds are judged
+                    # on their own sales.
+                    self.refunds_unproven = True
                 continue
             if kind != 'sale':
                 continue
@@ -1641,9 +1677,10 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
         payment intent and invoice, whose closure hash the refund's capture reproduces. (b) One live sale entry
         this engine wrote, never corrected or reversed, whose recorded charge, payment intents and invoices equal
         the refund's current closure and whose recorded full closure hash (``stripe-closure``) the current capture
-        reproduces exactly; otherwise the refund is unresolved with no entry. A current capture that contradicts the
-        sale (changed, refused, not available) rejects either proof first. Anything else holds: a corrected sale,
-        any correction lineage, a held sale.
+        reproduces exactly; otherwise it holds as ``sale_changed_since_booking`` (only after follow_sales proved
+        the refund itself unique and unbooked; a refund it cannot prove unique stays unresolved with no entry).
+        A current capture that contradicts the sale (changed, refused, not available) rejects either proof first.
+        Anything else holds: a corrected sale, any correction lineage, a held sale.
         """
         link = resolver.links.get(bt['id']) or {}
         charge, sale = link.get('charge'), link.get('sale')
@@ -1666,11 +1703,14 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
                 return 'hold', 'sale_corrected', None
             if record['held']:
                 return 'hold', 'sale_in_holding', None
+            # The sale's closure changed since it was booked (its links or its full hash). follow_sales has already
+            # proven this refund unique (its own ID, captured once, never booked, its movement never posted), and
+            # its held entry reserves that ID: cash moves, contra-revenue waits in the holding account.
             if (record['charge'], record['payment_intent'], record['invoice']) != (
                     ids['charge'], ids['payment_intent'], ids['invoice']):
-                return 'unresolved', 'sale_links_changed', None
+                return 'hold', 'sale_changed_since_booking', None
             if not record['closure'] or record['closure'] != link.get('sale_closure_digest'):
-                return 'unresolved', 'sale_evidence_changed', None
+                return 'hold', 'sale_changed_since_booking', None
             gross = record['gross']
         elif sale_sid in posted:
             return 'hold', 'sale_movement_unverified', None  # The movement's entry is not a sale this engine wrote.
@@ -1743,7 +1783,7 @@ def stripe_plan(entity, evidence, policy, *, bank_matches=None, closed_through=N
             if action['source_id'] not in validated:
                 continue
             bt = movement(action)
-            meta = {_KIND_META: 'other'}
+            meta = {_KIND_META: 'other', _ACCOUNT_META: account}
             if bt is not None:
                 link = resolver.links.get(bt['id']) or {}
                 if bt.get('type') in _SALE_KINDS:

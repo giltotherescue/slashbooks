@@ -84,6 +84,41 @@ not a copy. A wrapper from another live/test mode or currency (for example a
 dispute in other books that expands the charge) never supplies the copies it
 expands; a same-books wrapper does.
 
+#### Capture contract for connectors
+
+The connector that builds the capture (for Clozy, the Worker) must meet this
+contract, or the movements that reach a mismatched object stay unresolved:
+
+- **Which copies.** Every object with an `id` and at least one other field is a
+  copy: each row of a top-level array (`balanceTransactions`, `charges`,
+  `refunds`, `invoices`, `payouts`, `disputes`, `prices`, `products`,
+  `paymentIntents`, `invoicePayments`, `checkoutSessions`) and each object
+  expanded inside another at any depth (in `charge`, `latest_charge`,
+  `payment_intent`, `invoice`, `balance_transaction`, `price`, `product`,
+  `source` or `transfer`, including inside lists such as invoice lines). Each
+  top-level array holds one row per ID (a repeated ID rejects the whole
+  capture). Expansions inside a wrapper from another mode or currency are
+  copies too: that wrapper never lends evidence, but its copies must still
+  agree.
+- **Which fields.** All of them. Every copy of one ID must carry the same set of
+  fields with the same values and JSON types, after replacing each nested
+  expanded object by its ID. Key order does not matter; a missing field differs
+  from `null`, `1` from `1.0`, and `"1"` from `1`. `metadata` compares exactly as
+  given, key for key.
+- **Descriptive text.** Descriptions, statement descriptors, receipt numbers,
+  names and every other text field count like any other field: they must be
+  byte-identical in every copy. Do not trim, translate, redact or truncate text
+  in one copy only; redact the same way everywhere or not at all.
+- **Partial expansions.** Send an object either in full (identical to its other
+  copies) or as an ID only (a string ID, or `{"id": ...}` with nothing else).
+  `{"id": ..., "object": ...}` is still an ID only. Never send a projection with
+  a subset of fields, such as `{"id": ..., "amount": ...}`, beside the full
+  object.
+- **One fetch per object.** Take every copy of one object from the same API
+  read (or expand it from the same response). Two reads taken at different times
+  may differ (a status, an amount refunded, an updated `metadata` key) and then
+  conflict.
+
 The engine resolves first and decides after. For each movement it gathers one
 closure of everything the evidence says about the charge: every copy of the
 charge (captured, expanded on a balance transaction, a refund, a dispute, an
@@ -165,9 +200,17 @@ another movement (`refund_reference_conflict`), and a dispute that lists other
 movements (`dispute_reference_conflict`).
 
 No historical proof. Rule IDs, authority text, postings and saved digests are
-never read to decide what an entry was. When the ledger holds any Stripe entry
-this engine did not write (written by an earlier release, imported, or a
-correction of a Stripe movement whose original is not this engine's), every new
+never read to decide what an entry was. Only structured metadata written by
+this engine version proves an entry is outside the block: a known kind
+(`stripe-kind` of `sale`, `refund`, `dispute`, `other` or `invoice_settlement`)
+and the Stripe account (`stripe-account`) that the entry's own source ID names.
+That exempts (a) another Stripe account's entries this engine wrote, which still
+reserve every charge, payment intent and invoice they name, and (b) the invoice
+engine's settlement of an open invoice by a Stripe movement, which also records
+its invoice (`stripe-invoice`). When the ledger holds any other Stripe entry
+(written by an earlier release, imported, with a `settlement-id` or Stripe source
+ID but no such metadata, or a correction of a Stripe movement whose original is
+not this engine's), every new
 Stripe movement for that ledger stays unresolved with no journal entry
 (`legacy_stripe_entries_present`), and so does the bank arrival of a payout. That
 includes fees and payouts. Movements already posted are still skipped and their
@@ -189,8 +232,13 @@ disputes of the charge, and movements only they name, are left out. It is the
 same hash the sale's finalization receipt binds as its capture digest. So a later
 refund cohort must carry the original sale's balance transaction (top level or
 expanded on the charge) and the rest of the sale's evidence unchanged. Otherwise
-the refund stays unresolved with no entry (`sale_links_changed`,
-`sale_evidence_changed`). A capture that contradicts the sale is checked first
+the sale changed since it was booked, and the refund posts as a held entry
+(`sale_changed_since_booking`): cash moves and the contra-revenue waits in the
+holding account for review. That happens only after the refund itself is proven
+unique (below): its own refund ID is present, no ledger entry recorded it, no
+other captured movement carries it, and its movement was never posted. The held
+entry records that refund ID, so the refund can never post twice; a refund that
+cannot be proven unique stays unresolved with no entry. A capture that contradicts the sale is checked first
 and rejects either proof: the sale movement changed, is refused or is no longer
 available (`sale_not_posted`, `sale_movement_changed`). Anything else posts the
 refund to the holding account with a reason: the sale is held
@@ -205,9 +253,13 @@ captured movements with the same refund ID both stay unposted
 minus every refund and dispute already posted (held, corrected or reversed alike)
 or proposed in this batch for the charge; a credit back, such as a won dispute,
 never raises it. A refund over that stays unresolved with
-`refund_exceeds_booked_sale`. A refund or dispute entry that does not record its
-charge makes every later refund unproven (`ownership_unproven`), because what it
-consumed cannot be attributed. A refund of a sale with more than one invoice line
+`refund_exceeds_booked_sale`. A held refund whose charge is not recorded (for
+example, its refund document was missing) does not block other refunds: its
+entry reserves its own refund ID and the ledger its movement, so the same refund
+captured again, with or without a charge, never posts, and a refund with a
+different ID is judged on its own sale. A dispute entry that does not record its
+charge still makes every later refund unproven (`ownership_unproven`), because
+what it consumed cannot be attributed and nothing reserves it. A refund of a sale with more than one invoice line
 stays unresolved with `mixed_line_refund_requires_allocation`. Disputes always
 post to the holding account, because no approved policy names a dispute account.
 

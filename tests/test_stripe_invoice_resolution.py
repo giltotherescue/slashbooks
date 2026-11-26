@@ -73,6 +73,15 @@ class StripeFixture(unittest.TestCase):
         self.assertNotIn(sid, {row['source_id'] for row in plan['uncategorized']})
         self.assertNotIn(sid, plan['entry_links'])
 
+    def assertSaleChanged(self, plan, sid=REFUND, amount='20.00'):
+        """Round 7 (decision 1): a unique, never-booked refund whose sale changed since it was booked is held:
+        cash moves, contra-revenue waits in the holding account, and its entry reserves its own refund ID."""
+        self.assertHeld(plan, 'sale_changed_since_booking', sid=sid, amount=amount, fee=None, net='-' + amount)
+        self.assertNotIn(dict(source_id=sid, reason='sale_changed_since_booking'), plan['unresolved'])
+        links = dict(map(tuple, plan['entry_links'][sid]))
+        self.assertEqual(('refund', 'acct_test'), (links['stripe-kind'], links['stripe-account']))
+        self.assertEqual('re_one', links['stripe-refund'])
+
     def hold_sale(self):
         self.charge = self.raw['charges'].pop()
         self.stage(); self.assertEqual(1, self.apply()['posted'])
@@ -1179,9 +1188,9 @@ class AdversarialInvariantTests(RecheckFixture):
         self.assertEqual(([], []), (result['needs_review'], result['uncategorized']))
         self.full_flow(); self.raw['invoices'][0]['lines']['data'] = [dict(self.raw['invoices'][0]['lines']['data'][0], amount=10000)]
         self.raw['invoices'][0]['lines']['data'][0].pop('pricing'); self.raw['invoices'][0]['lines']['data'][0]['price'] = 'price_one'
-        # Round 6 (rule 5): the capture no longer reproduces the booked two-line sale's full closure hash, so the
-        # refund is unresolved with no entry (round 5 held it; round 4 left it unresolved; it used to post).
-        self.assertUnresolved(self.plan(), 'sale_evidence_changed', sid=REFUND)
+        # The capture no longer reproduces the booked two-line sale's full closure hash. Round 7 (decision 1): the
+        # unique refund holds (round 6 left it unresolved; round 5 held it; round 4 left it unresolved).
+        self.assertSaleChanged(self.plan())
 
     def test_held_sale_owns_the_invoice_it_names(self):
         # Round 4 (replaces "a moved sale claims its invoice"): a held sale owns what it names meanwhile.
@@ -1451,7 +1460,7 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.full_flow(); self.refund_only()
         self.assertIn(dict(source_id=REFUND, reason='mixed_line_refund_requires_allocation'), self.plan()['unresolved'])
         self.raw['invoices'] = []; del self.raw['charges'][0]['invoice']
-        self.assertUnresolved(self.plan(), 'sale_links_changed', sid=REFUND)  # Round 6 (rule 5).
+        self.assertSaleChanged(self.plan())  # Round 7 (decision 1); round 6 left it unresolved.
         self.stage(); self.apply()
         self.assertNotIn(base.REFUNDS, self.balances())
 
@@ -1459,8 +1468,8 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.invoice(); self.stage(); self.apply()
         self.full_flow(); self.refund_only()
         self.raw['invoices'][0]['lines']['data'] = [dict(self.raw['invoices'][0]['lines']['data'][0], amount=10000)]
-        # Round 6 (rule 5): the one-line capture does not reproduce the booked sale's full closure hash: unresolved.
-        self.assertUnresolved(self.plan(), 'sale_evidence_changed', sid=REFUND)
+        # The one-line capture does not reproduce the booked sale's full closure hash. Round 7 (decision 1): held.
+        self.assertSaleChanged(self.plan())
 
     # P1 correction_chain_alias: an alias-equivalent replacement is refused; ambiguous old lineage stays live.
     def test_alias_equivalent_replacement_is_refused(self):
@@ -1553,7 +1562,7 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.assertEqual('ch_other', dict(self.entry(self.SECOND).meta)['stripe-charge'])
         self.raw = base.evidence(); self.full_flow(); self.refund_only()
         self.raw['charges'][0]['balance_transaction'] = 'txn_second'  # The other charge's sale movement.
-        self.assertUnresolved(self.plan(), 'sale_links_changed', sid=REFUND)  # Round 6 (rule 5).
+        self.assertSaleChanged(self.plan())  # Round 7 (decision 1); round 6 left it unresolved.
 
     def test_unavailable_fingerprint_is_never_evidence(self):
         from unittest.mock import patch
@@ -1920,7 +1929,7 @@ class RecheckFourFindingTests(RecheckFixture):
         self.assertEqual('pi_booked', dict(self.entry(SALE).meta)['stripe-payment-intent'])
         self.full_flow(); self.refund_only()
         self.raw['charges'][0]['payment_intent'] = dict(id='pi_other', status='succeeded')
-        self.assertUnresolved(self.plan(), 'sale_links_changed', sid=REFUND)  # Round 6 (rule 5).
+        self.assertSaleChanged(self.plan())  # Round 7 (decision 1); round 6 left it unresolved.
 
     def test_cross_cohort_refund_of_an_unchanged_engine_sale_posts(self):
         # Rule 1(b) control: a live, never-corrected sale this engine wrote, with matching links and closure digest.
@@ -1932,7 +1941,7 @@ class RecheckFourFindingTests(RecheckFixture):
     def test_refund_holds_when_the_sale_evidence_changed_since_it_was_booked(self):
         self.stage(); self.apply(); self.full_flow(); self.refund_only()
         self.raw['charges'][0]['metadata'] = {'stream': 'service', 'note': 'edited'}
-        self.assertUnresolved(self.plan(), 'sale_evidence_changed', sid=REFUND)  # Round 6 (rule 5).
+        self.assertSaleChanged(self.plan())  # Round 7 (decision 1); round 6 left it unresolved.
 
     # P2 foreign_follower (rule 5): a referring document in another mode or currency is not imported.
     def test_foreign_refund_never_links_a_sale_to_an_invoice(self):
@@ -2000,14 +2009,52 @@ class RecheckFourFindingTests(RecheckFixture):
         self.assertUnresolved(plan, 'charge_claimed_by_another_movement', sid=self.SECOND)  # Round 6 (rule 2).
         self.assertHeld(plan, 'sale_not_posted', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
-    def test_held_refund_of_an_unrecorded_charge_makes_later_refunds_unproven(self):
-        # It consumed some charge's revenue, but the ledger does not say which: no cap can be proved.
+    def held_chargeless_refund(self):
+        """Book the sale, then hold its refund re_one with no refund document (so no charge is recorded)."""
         self.stage(); self.apply()
         self.full_flow(); self.refund_only(); self.raw['refunds'] = []
-        self.stage(); self.apply()
-        self.assertEqual('missing_refund_evidence', dict(self.entry(REFUND).meta)['stripe-review'])
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        meta = dict(self.entry(REFUND).meta)
+        self.assertEqual(('missing_refund_evidence', 're_one'), (meta['stripe-review'], meta['stripe-refund']))
+        self.assertNotIn('stripe-refund-of', meta)
+
+    def test_held_chargeless_refund_leaves_other_refunds_to_their_own_sales(self):
+        # Round 7 (decision 4; round 4-6 held every later refund as ownership_unproven): a refund with a different
+        # ID and a proven sale is judged on its own and posts to contra-revenue.
+        self.held_chargeless_refund()
         self.raw['balanceTransactions'] = []; self.add_refund('re_two', 'txn_two', 1000)
-        self.assertHeld(self.plan(), 'ownership_unproven', sid=self.TWO, amount='10.00', fee=None, net='-10.00')
+        plan = self.plan()
+        self.assertEqual({base.CLEARING: '-10.00', base.REFUNDS: '10.00'}, self.postings(plan, self.TWO))
+        self.assertEqual('refund-account-policy', self.action(plan, self.TWO)['authority_id'])
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.assertEqual(Decimal('10.00'), self.balances()[base.REFUNDS])
+
+    def test_reserved_refund_id_returning_with_a_charge_never_posts_again(self):
+        # Round 7 (decision 4): the held entry reserves re_one; the same refund captured later on another movement,
+        # now with its charge, is caught by its ID: unresolved, no entry, nothing moves.
+        self.held_chargeless_refund()
+        self.raw['balanceTransactions'] = []; self.add_refund('re_one', 'txn_two', 2000)
+        self.assertUnresolved(self.plan(), 'refund_already_recorded', sid=self.TWO)
+        before = self.balances(); self.stage(); self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual(before, self.balances())
+        # The same movement captured again, with its charge, is simply already posted.
+        self.full_flow(); self.refund_only()
+        plan = self.plan()
+        self.assertIn(dict(source_id=REFUND, reason='already_posted'), plan['skipped'])
+        self.assertIsNone(self.action(plan, REFUND))
+
+    def test_chargeless_dispute_still_makes_later_refunds_unproven(self):
+        # Decision 4 covers refunds, which carry their own ID. A posted dispute entry with Income gross and no
+        # recorded charge has no such reservation, so later refunds still cannot prove a cap.
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        self.stage(); self.apply()
+        entry = Entry(date=date(2026, 1, 16), narration='Stripe dispute', postings=(
+            Posting(base.CLEARING, Decimal('-5'), 'USD'), Posting(HOLDING, Decimal('5'), 'USD')),
+            meta=(('source-id', 'stripe:acct_test:txn_dispute'), ('stripe-kind', 'dispute'), ('stripe-account', 'acct_test')))
+        _atomic_ledger_write(self.entity, [], [entry], 'dispute', None, 'dispute')
+        self.full_flow(); self.refund_only()
+        self.assertHeld(self.plan(), 'ownership_unproven', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
     def test_refund_fingerprint_binds_its_sale_leaving_the_capture(self):
         self.full_flow(); first = self.plan()['source_capture_digests'][REFUND]
@@ -2309,9 +2356,13 @@ class RecheckFiveFindingTests(RecheckFixture):
                 unchanged = self.plan()
                 self.assertEqual('refund-account-policy', self.action(unchanged, REFUND)['authority_id'])  # Control.
                 change(self)
-                self.assertUnresolved(self.plan(), 'sale_evidence_changed', sid=REFUND)
-                before = self.balances(); self.nothing_new(before)
-                self.assertNotIn(base.REFUNDS, self.balances())
+                self.assertSaleChanged(self.plan())
+                before = self.balances(); self.stage(); self.assertEqual(1, self.apply()['posted'])
+                after = self.balances()
+                self.assertNotIn(base.REFUNDS, after)  # Contra-revenue waits; only cash moved.
+                self.assertEqual(before.get(HOLDING, Decimal(0)) + Decimal('20.00'), after[HOLDING])
+                self.assertEqual('re_one', dict(self.entry(REFUND).meta)['stripe-refund'])
+                self.nothing_new(after)  # Posted once.
                 self.assertEqual(meta, dict(self.entry(SALE).meta))
 
     # P2 capture_top_level (rule 5): the movement's own extra fields are bound.
@@ -2347,6 +2398,83 @@ class RecheckFiveFindingTests(RecheckFixture):
         self.full_flow(); self.stage(); self.apply(); reverse_entry(self.entity, REFUND, 'review')
         self.refund_only(); self.raw['balanceTransactions'][0]['id'] = 'txn_again'; self.raw['refunds'][0]['balance_transaction'] = 'txn_again'
         self.assertUnresolved(self.plan(), 'refund_already_recorded', sid='stripe:acct_test:txn_again')
+
+
+class RoundSevenDecisionTests(RecheckFixture):
+    """PR 177 round 7: the four launch decisions on the round-6 open questions.
+
+    Decision 1 (later refunds) and decision 4 (chargeless held refunds) are pinned in RecheckThree/Four/Five tests
+    (assertSaleChanged; held_chargeless_refund). Decision 2(b) is pinned in test_stripe_invoices. Here: decision 2(a),
+    the exact metadata that exempts another account's entry from the legacy block, and the copy contract (3).
+    """
+
+    def foreign(self, meta, source='stripe:acct_other:txn_elsewhere'):
+        """Write one Stripe entry with *meta* (beyond its source ID), as another importer would have."""
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        entry = Entry(date=date(2026, 1, 10), narration='Stripe elsewhere', meta=(('source-id', source), *meta),
+                      postings=(Posting(base.CLEARING, Decimal('5'), 'USD'), Posting(base.INCOME, Decimal('-5'), 'USD')))
+        _atomic_ledger_write(self.entity, [], [entry], 'elsewhere', None, 'Stripe elsewhere')
+
+    def test_another_accounts_engine_entry_never_blocks_this_import(self):
+        # Decision 2(a): structured metadata names another Stripe account, and the entry's own source ID agrees.
+        for kind in ('sale', 'refund', 'dispute', 'other'):
+            with self.subTest(kind):
+                self.setUp()
+                self.foreign((('stripe-kind', kind), ('stripe-account', 'acct_other'), ('stripe-charge', 'ch_elsewhere')))
+                self.assertEqual('services', self.action(self.plan(), SALE)['authority_id'])
+                self.stage(); self.assertEqual(1, self.apply()['posted'])
+
+    def test_another_accounts_claims_still_reserve_their_ids(self):
+        self.foreign((('stripe-kind', 'sale'), ('stripe-account', 'acct_other'), ('stripe-charge', 'ch_sale')))
+        self.assertUnresolved(self.plan(), 'charge_claimed_by_another_movement')
+
+    def test_text_prefixes_or_missing_metadata_still_block(self):
+        cases = dict(
+            no_metadata=(),
+            kind_without_account=(('stripe-kind', 'sale'),),
+            account_without_kind=(('stripe-account', 'acct_other'),),
+            unknown_kind=(('stripe-kind', 'payout'), ('stripe-account', 'acct_other')),
+            account_disagrees_with_source=(('stripe-kind', 'sale'), ('stripe-account', 'acct_third')),
+            settlement_id_text_only=(('settlement-id', 'stripe-payment-abc'),),
+            settlement_without_invoice=(('stripe-kind', 'invoice_settlement'), ('stripe-account', 'acct_other')),
+        )
+        for name, meta in cases.items():
+            with self.subTest(name):
+                self.setUp(); self.foreign(meta)
+                plan = self.plan()
+                self.assertEqual([], plan['actions'])
+                self.assertUnresolved(plan, 'legacy_stripe_entries_present')
+
+    def test_this_accounts_entry_needs_its_account_too(self):
+        # The same account's sale with a kind but no account (a pre-round-7 build of this branch) proves nothing.
+        self.foreign((('stripe-kind', 'sale'),), source='stripe:acct_test:txn_elsewhere')
+        self.assertUnresolved(self.plan(), 'legacy_stripe_entries_present')
+
+    def test_this_accounts_entries_carry_their_account(self):
+        self.full_flow(); self.stage(); self.apply()
+        for entry in self.store.load_entries():
+            if entry.source_id and entry.source_id.startswith('stripe:'):
+                self.assertEqual('acct_test', dict(entry.meta)['stripe-account'], entry.source_id)
+
+    def test_partial_expansion_conflicts_but_an_id_only_reference_does_not(self):
+        # Decision 3 (Worker contract): a partial copy of an object conflicts with its full copy; an ID-only
+        # reference is not a copy at all.
+        self.full_flow(); expected = self.plan()['source_capture_digests']
+        for reference in ('ch_sale', dict(id='ch_sale'), dict(id='ch_sale', object='charge')):
+            self.raw['refunds'][0]['charge'] = reference
+            self.assertEqual(expected, self.plan()['source_capture_digests'])
+        self.raw['refunds'][0]['charge'] = dict(id='ch_sale', amount=self.raw['charges'][0]['amount'])
+        self.assertUnresolved(self.plan(), 'conflicting_object_copies')
+        self.raw['refunds'][0]['charge'] = dict(copy.deepcopy(self.raw['charges'][0]), description='Edited text')
+        self.assertUnresolved(self.plan(), 'conflicting_object_copies')
+
+    def test_copies_inside_another_books_wrapper_must_still_agree(self):
+        # Decision 3 (Worker contract): a wrapper from another mode lends no evidence, but its copies still count.
+        self.full_flow()
+        self.raw['disputes'] = [dict(id='du_elsewhere', livemode=True, currency='usd', status='lost',
+                                     charge=dict(copy.deepcopy(self.raw['charges'][0]), description='Edited text'))]
+        self.assertUnresolved(self.plan(), 'conflicting_object_copies')
 
 
 if __name__ == '__main__':

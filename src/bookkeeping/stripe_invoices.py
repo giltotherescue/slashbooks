@@ -592,7 +592,7 @@ def effect(entity, payload):
             sources[row["payment_id"]] = row
         if set(sources) != {p["id"] for p in paid}:
             _hold("payment_source_mapping_required")
-        from .stripe import _financial
+        from .stripe import _financial, _invoice_settlement_meta
         from .reports.cashview import _cumulative
         for payment in paid:
             mapping, balance = sources[payment["id"]], payment["balance"]
@@ -651,7 +651,11 @@ def effect(entity, payload):
                 "allocations": [{"item_id": doc["item_id"], "amount": _usd(payment["gross"])}], "evidence_ids": [evidence.record_id]}, pending_mutations=mutations)
             if replay:
                 _hold("payment_source_already_claimed")
-            entries.extend(settlement_entries); mutations.extend(settlement_mutations)
+            # Structured metadata (never text) tells the Stripe clearing engine this settlement is the invoice
+            # engine's own entry for this account's movement, not an earlier or hand-written Stripe entry.
+            entries.extend(replace(entry, meta=(*entry.meta, *_invoice_settlement_meta(source["account_id"], invoice["id"])))
+                           if entry.source_id == sid else entry for entry in settlement_entries)
+            mutations.extend(settlement_mutations)
             record = {"id": pid, "party_id": party["id"], "date": payment["date"], "currency": "USD", "direction": "receive",
                       "gross_amount": _usd(payment["gross"]), "cash_amount": _usd(payment["gross"]), "federal_withholding": "0.00",
                       "fee_amount": _usd(payment["fee"]), "payment_method": "unknown", "source": settlement_source,
