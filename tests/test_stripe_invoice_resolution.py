@@ -473,10 +473,11 @@ class HeldEntryTests(StripeFixture):
         reverse_and_correct(self.entity, SALE, corrected, 'review')
         self.assertEqual({base.CLEARING: Decimal('97'), HOLDING: Decimal('0'), base.FEES: Decimal('3'),
                           base.INCOME: Decimal('-100')}, self.balances())
-        # Its later refund follows the live correction: the sale is out of holding and booked one revenue line.
+        # Round 5 (rule 1): a corrected sale never proves a refund; its later refund holds for the same person
+        # (it used to post to contra-revenue behind the live correction).
         self.raw['charges'] = [self.charge]; self.full_flow()
         self.raw['balanceTransactions'].pop(0)
-        self.assertEqual({base.CLEARING: '-20.00', base.REFUNDS: '20.00'}, self.postings(self.plan(), REFUND))
+        self.assertHeld(self.plan(), 'sale_corrected', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
     def test_held_refund_stays_held_after_its_sale_evidence_arrives(self):
         self.hold_sale()
@@ -1124,13 +1125,14 @@ class AdversarialInvariantTests(RecheckFixture):
         self.raw = first
         self.assertHeld(self.stage(), 'invoice_claimed_by_another_payment')
 
-    def test_reversed_claim_frees_the_invoice(self):
+    def test_reversed_claim_keeps_the_invoice_reserved(self):
+        # Round 5 (rule 3): a claim is a reservation; a true reversal no longer frees the invoice (it used to).
         from bookkeeping.ledger.importer import reverse_entry
         self.invoice(); self.stage(); self.apply()
         reverse_entry(self.entity, SALE, 'test')
         self.raw['charges'][0].update(id='ch_second', balance_transaction='txn_second')
         self.raw['balanceTransactions'][0].update(id='txn_second', source='ch_second')
-        self.assertRevenue(self.stage(), sid='stripe:acct_test:txn_second')
+        self.assertHeld(self.stage(), 'invoice_claimed_by_another_payment', sid='stripe:acct_test:txn_second')
 
     def test_claim_survives_an_interrupted_apply_and_never_blocks_its_own_sale(self):
         self.invoice(); self.stage()
@@ -1139,9 +1141,10 @@ class AdversarialInvariantTests(RecheckFixture):
         self.assertEqual(([], []), (result['needs_review'], result['uncategorized']))
         self.full_flow(); self.raw['invoices'][0]['lines']['data'] = [dict(self.raw['invoices'][0]['lines']['data'][0], amount=10000)]
         self.raw['invoices'][0]['lines']['data'][0].pop('pricing'); self.raw['invoices'][0]['lines']['data'][0]['price'] = 'price_one'
-        # Round 4: the booked sale has two revenue lines, so the refund's allocation is not proven (it used to post).
+        # Round 5: the capture no longer reproduces the evidence that decided the booked two-line sale (its closure
+        # digest), so the refund holds (round 4 left it unresolved; it used to post).
         actions, unresolved = self.actions()
-        self.assertEqual(([dict(source_id=REFUND, reason='mixed_line_refund_requires_allocation')], []),
+        self.assertEqual(([], [(REFUND, 'uncategorized-stripe-activity', 'sale_evidence_changed')]),
                          (unresolved, [row for row in actions if row[0] == REFUND]))
 
     def test_held_sale_owns_the_invoice_it_names(self):
@@ -1305,12 +1308,13 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.apply()
         self.assertEqual(Decimal('-100'), self.balances()[base.INCOME])
 
-    def test_true_reversal_releases_the_charge_and_intent(self):
+    def test_true_reversal_keeps_the_charge_and_intent_reserved(self):
+        # Round 5 (rule 3): a reversed sale's claims stay reserved; the second movement holds (it used to post).
         from bookkeeping.ledger.importer import reverse_entry
         self.raw['paymentIntents'] = [dict(id='pi_one', status='succeeded')]; self.raw['charges'][0]['payment_intent'] = 'pi_one'
         self.stage(); self.apply(); reverse_entry(self.entity, SALE, 'test')
         self.new_movement('ch_sale')
-        self.assertEqual({base.CLEARING: '97.00', base.INCOME: '-100.00', base.FEES: '3.00'}, self.postings(self.plan(), self.SECOND))
+        self.assertHeld(self.plan(), 'charge_claimed_by_another_movement', sid=self.SECOND)
 
     # P1 refund_released_by_payout / refund_changed_charge / unrelated_legacy_sale_releases.
     def test_held_refund_is_never_released_later(self):
@@ -1393,7 +1397,7 @@ class RecheckThreeFindingTests(RecheckFixture):
         from bookkeeping.ledger.importer import reverse_entry
         self.stage(); self.apply(); reverse_entry(self.entity, SALE, 'test')
         self.full_flow(); self.refund_only()
-        self.assertHeld(self.plan(), 'sale_movement_unverified', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        self.assertHeld(self.plan(), 'sale_corrected', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
     def test_refund_without_its_sale_is_held(self):
         self.full_flow(); self.refund_only()  # Absent from the ledger and the batch (an earlier cutover).
@@ -1407,7 +1411,7 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.full_flow(); self.refund_only()
         self.assertIn(dict(source_id=REFUND, reason='mixed_line_refund_requires_allocation'), self.plan()['unresolved'])
         self.raw['invoices'] = []; del self.raw['charges'][0]['invoice']
-        self.assertHeld(self.plan(), 'sale_invoice_unverified', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        self.assertHeld(self.plan(), 'sale_links_changed', sid=REFUND, amount='20.00', fee=None, net='-20.00')
         self.stage(); self.apply()
         self.assertNotIn(base.REFUNDS, self.balances())
 
@@ -1415,7 +1419,8 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.invoice(); self.stage(); self.apply()
         self.full_flow(); self.refund_only()
         self.raw['invoices'][0]['lines']['data'] = [dict(self.raw['invoices'][0]['lines']['data'][0], amount=10000)]
-        self.assertIn(dict(source_id=REFUND, reason='mixed_line_refund_requires_allocation'), self.plan()['unresolved'])
+        # Round 5: the one-line capture does not reproduce the booked sale's closure digest, so the refund holds.
+        self.assertHeld(self.plan(), 'sale_evidence_changed', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
     # P1 correction_chain_alias: an alias-equivalent replacement is refused; ambiguous old lineage stays live.
     def test_alias_equivalent_replacement_is_refused(self):
@@ -1508,7 +1513,7 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.assertEqual('ch_other', dict(self.entry(self.SECOND).meta)['stripe-charge'])
         self.raw = base.evidence(); self.full_flow(); self.refund_only()
         self.raw['charges'][0]['balance_transaction'] = 'txn_second'  # The other charge's sale movement.
-        self.assertHeld(self.plan(), 'sale_movement_unverified', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        self.assertHeld(self.plan(), 'sale_links_changed', sid=REFUND, amount='20.00', fee=None, net='-20.00')
 
     def test_unavailable_fingerprint_is_never_evidence(self):
         from unittest.mock import patch
@@ -1608,6 +1613,367 @@ class RecheckThreeFindingTests(RecheckFixture):
         self.stage(); self.apply()
         meta = dict(self.entry(SALE).meta)
         self.assertEqual(('ch_sale', 'pi_one', 'in_one'), (meta['stripe-charge'], meta['stripe-payment-intent'], meta['stripe-invoice']))
+
+
+class RecheckFourFindingTests(RecheckFixture):
+    """One test for each finding of PR 177 recheck 4 (its variants4.py reproducers), under the round-5 rules:
+    refunds post only behind narrow proof of their sale, once, within its gross; claims are permanent reservations
+    read from the whole lineage; kinds are proved from this engine's metadata, never names; one fully checked
+    authority path; and fingerprints bind the whole closure. Every case must end held, unresolved or refused."""
+
+    SECOND = RecheckThreeFindingTests.SECOND
+    TWO = 'stripe:acct_test:txn_two'
+    new_movement = RecheckThreeFindingTests.new_movement
+    refund_only = RecheckThreeFindingTests.refund_only
+
+    def legacy_sale(self, authority=None):
+        """The current sale as an earlier release posted it: its postings and saved source, no engine metadata."""
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        from datetime import date
+        action = self.action(self.plan())
+        entry = Entry(date=date.fromisoformat(action['normalized_source']['date']), narration='older sale',
+                      meta=(('source-id', SALE), ('stripe-authority', authority or action['authority_id'])),
+                      postings=tuple(Posting(p['account'], Decimal(p['amount']), p['currency']) for p in action['postings']))
+        _atomic_ledger_write(self.entity, [], [entry], 'main', None, 'legacy Stripe sale', [action['normalized_source']])
+
+    def other_charge(self, charge='ch_two', movement='txn_two'):
+        self.raw['charges'][0].update(id=charge, balance_transaction=movement)
+        self.raw['balanceTransactions'][0].update(id=movement, source=charge)
+
+    def plant_anonymous_correction(self, source_id=SALE):
+        """The reversal and source-less replacement an older writer could leave (the writer now refuses one)."""
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        entry = self.entry(source_id)
+        reversal = Entry(date=entry.date, narration='Reversal', flag='*', postings=tuple(
+            Posting(p.account, -p.amount, p.currency) for p in entry.postings), meta=tuple(
+            (k, v) for k, v in entry.meta if k not in ('source-id', 'import-session')) + (('reverses', source_id),))
+        replacement = Entry(date=entry.date, narration='Reviewed', meta=(('correction-of', source_id),), postings=entry.postings)
+        _atomic_ledger_write(self.entity, [], [reversal, replacement], 'older-writer', None, 'anonymous correction')
+
+    # P1 legacy_authority (rule 4): a rule ID that looks like a transfer never decides what an older entry was.
+    def test_older_sale_whose_rule_ids_look_like_transfers_still_holds_a_new_claimant(self):
+        self.invoice()
+        self.policy['revenue_rules'][0]['id'] = 'transfer-rule:services'
+        self.policy['revenue_rules'][1]['id'] = 'transfer-rule:subscriptions'
+        self.legacy_sale()
+        self.assertTrue(dict(self.entry(SALE).meta)['stripe-authority'].startswith('transfer-rule:'))
+        self.other_charge(); self.stage()
+        self.assertHeld(self.plan(), 'ownership_unproven', sid=self.TWO)
+        self.apply()
+        self.assertEqual((Decimal('-60'), Decimal('-40'), Decimal('-100')),
+                         tuple(self.balances()[name] for name in (base.INCOME, 'Income:Subscriptions', HOLDING)))
+
+    def test_older_entry_of_unproven_kind_holds_every_new_sale(self):
+        # No structured metadata says what the older entry was and its movement is not captured: nothing is backfilled.
+        self.legacy_sale(authority='payout-transit-policy')
+        self.other_charge()
+        self.assertHeld(self.plan(), 'ownership_unproven', sid=self.TWO)
+
+    def test_older_sale_proven_by_its_captured_movement_reserves_only_its_charge(self):
+        self.legacy_sale()
+        self.raw['balanceTransactions'].append(dict(self.raw['balanceTransactions'][0], id='txn_two', source='ch_two'))
+        self.raw['charges'].append(dict(self.raw['charges'][0], id='ch_two', balance_transaction='txn_two'))
+        plan = self.plan()
+        self.assertEqual({base.CLEARING: '97.00', base.INCOME: '-100.00', base.FEES: '3.00'}, self.postings(plan, self.TWO))
+        self.assertIn(dict(source_id=SALE, reason='already_posted'), plan['skipped'])
+
+    def test_older_fee_proven_by_its_captured_movement_owns_nothing(self):
+        from bookkeeping.ledger.importer import _atomic_ledger_write
+        from bookkeeping.ledger.model import Entry, Posting
+        from datetime import date
+        self.raw['balanceTransactions'].append({'id': 'txn_fee', 'created': 1768435200, 'amount': -500, 'fee': 0,
+                                                'net': -500, 'currency': 'usd', 'status': 'available', 'type': 'stripe_fee'})
+        fee = self.action(self.plan(), 'stripe:acct_test:txn_fee')
+        _atomic_ledger_write(self.entity, [], [Entry(date=date(2026, 1, 15), narration='older fee', meta=(
+            ('source-id', fee['source_id']), ('stripe-authority', 'fee-account-policy')), postings=tuple(
+            Posting(p['account'], Decimal(p['amount']), p['currency']) for p in fee['postings']))],
+            'main', None, 'legacy Stripe fee', [fee['normalized_source']])
+        self.full_flow()
+        plan = self.plan()
+        self.assertEqual({base.CLEARING: '97.00', base.INCOME: '-100.00', base.FEES: '3.00'}, self.postings(plan))
+        self.assertEqual({base.CLEARING: '-20.00', base.REFUNDS: '20.00'}, self.postings(plan, REFUND))
+
+    def test_every_entry_this_engine_writes_records_its_kind(self):
+        self.full_flow(); self.stage(); self.apply()
+        kinds = {entry.source_id: dict(entry.meta).get('stripe-kind') for entry in self.store.load_entries()
+                 if entry.source_id.startswith('stripe:')}
+        self.assertEqual({SALE: 'sale', REFUND: 'refund', 'stripe:acct_test:txn_payout': 'other'}, kinds)
+
+    # P1 anonymous_correction (rule 3): the writer refuses a source-less replacement; an existing one is unproven.
+    def test_writer_refuses_a_replacement_without_a_source_id(self):
+        from bookkeeping.ledger.importer import reverse_and_correct
+        from bookkeeping.ledger.model import Entry
+        self.invoice(); self.stage(); self.apply(); entry = self.entry(SALE)
+        with self.assertRaisesRegex(ValueError, 'its own replacement source ID'):
+            reverse_and_correct(self.entity, SALE, Entry(date=entry.date, narration='Reviewed', postings=entry.postings), 'review')
+        self.assertEqual([entry], self.store.load_entries())
+
+    def test_existing_anonymous_successor_holds_everything_it_touches(self):
+        self.invoice(); self.stage(); self.apply()
+        self.plant_anonymous_correction()
+        self.other_charge(); self.stage()
+        self.assertHeld(self.plan(), 'ownership_unproven', sid=self.TWO)
+        self.apply()
+        self.assertEqual(Decimal('-100'), self.balances()[HOLDING])
+
+    def test_refund_of_an_anonymously_corrected_sale_holds(self):
+        self.stage(); self.apply(); self.plant_anonymous_correction()
+        self.full_flow(); self.refund_only()
+        self.assertHeld(self.plan(), 'sale_corrected', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    # P1 manual_resolution_adds_invoice (rule 3): a live correction adds its own claims; the root's stay.
+    def test_claims_a_correction_adds_are_reserved(self):
+        from bookkeeping.ledger.importer import reverse_and_correct
+        from bookkeeping.ledger.model import Entry, Posting
+        self.hold_sale(); original = self.entry(SALE)
+        self.raw['charges'] = [self.charge]; self.invoice()
+        reverse_and_correct(self.entity, SALE, Entry(date=original.date, narration='Reviewed invoice in_one', meta=(
+            ('source-id', 'reviewed-sale'), ('stripe-invoice', 'in_one')), postings=tuple(
+            Posting('Income:Services' if p.account == HOLDING else p.account, p.amount, p.currency)
+            for p in original.postings)), 'review')
+        self.other_charge(); self.stage()
+        self.assertHeld(self.plan(), 'invoice_claimed_by_another_payment', sid=self.TWO)
+        self.apply()
+        self.assertEqual((Decimal('-100'), Decimal('-100')), (self.balances()[base.INCOME], self.balances()[HOLDING]))
+
+    def test_claims_are_read_from_every_correction_in_the_lineage(self):
+        from bookkeeping.ledger.importer import reverse_and_correct
+        from bookkeeping.ledger.model import Entry
+        self.stage(); self.apply(); original = self.entry(SALE)
+        reverse_and_correct(self.entity, SALE, Entry(date=original.date, narration='first', meta=(
+            ('source-id', 'fix-1'), ('stripe-invoice', 'in_first')), postings=original.postings), 'review')
+        reverse_and_correct(self.entity, 'fix-1', Entry(date=original.date, narration='second', meta=(
+            ('source-id', 'fix-2'),), postings=original.postings), 'review')
+        self.invoice(); self.raw['charges'][0]['invoice'] = 'in_first'; self.raw['invoices'][0]['id'] = 'in_first'
+        self.other_charge()
+        self.assertHeld(self.plan(), 'invoice_claimed_by_another_payment', sid=self.TWO)
+
+    # P1 refund_without_cash_sale (rule 1): a corrected sale is never proof, whatever its live postings say.
+    def test_refund_of_a_sale_corrected_into_a_noncash_adjustment_holds(self):
+        from bookkeeping.ledger.importer import reverse_and_correct
+        from bookkeeping.ledger.model import Entry, Posting
+        self.stage(); self.apply(); entry = self.entry(SALE)
+        reverse_and_correct(self.entity, SALE, Entry(date=entry.date, narration='Noncash adjustment', meta=(
+            ('source-id', 'correction'),), postings=(Posting(base.FEES, Decimal('100'), 'USD'),
+                                                     Posting(base.REFUNDS, Decimal('-100'), 'USD'))), 'review')
+        self.full_flow(); self.refund_only(); self.stage()
+        self.assertHeld(self.plan(), 'sale_corrected', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        self.apply()
+        self.assertEqual(Decimal('-100'), self.balances()[base.REFUNDS])
+
+    # P1 dispute_offsets_refunds (rule 2): a dispute credit never raises what may be refunded.
+    def add_refund(self, refund_id, movement, amount):
+        refund = dict(id=refund_id, status='succeeded', amount=amount, currency='usd', balance_transaction=movement, charge='ch_sale')
+        bt = dict(id=movement, created=1768521600, amount=-amount, fee=0, net=-amount, currency='usd', status='available',
+                  type='refund', source=refund_id)
+        self.raw.setdefault('refunds', [])
+        self.raw['refunds'].append(refund); self.raw['balanceTransactions'].append(bt)
+
+    def test_dispute_credit_in_the_same_batch_never_offsets_refunds(self):
+        self.full_flow(); self.raw['refunds'] = []; self.raw['balanceTransactions'].pop(1)
+        self.add_refund('re_one', 'txn_refund', 8000); self.add_refund('re_two', 'txn_two', 8000)
+        self.dispute(); self.raw['balanceTransactions'][-1].update(amount=10000, net=10000, fee=0)
+        _, unresolved = self.actions()
+        self.assertEqual([dict(source_id=REFUND, reason='refund_exceeds_booked_sale'),
+                          dict(source_id=self.TWO, reason='refund_exceeds_booked_sale')], unresolved)
+        self.stage(); self.apply()
+        self.assertNotIn(base.REFUNDS, self.balances())
+
+    def test_dispute_credit_in_an_earlier_batch_never_offsets_a_later_refund(self):
+        self.full_flow(); self.raw['refunds'] = []; self.raw['balanceTransactions'].pop(1)
+        self.add_refund('re_one', 'txn_refund', 8000); self.stage(); self.apply()
+        self.assertEqual(Decimal('80'), self.balances()[base.REFUNDS])
+        self.raw['balanceTransactions'] = []; self.dispute()
+        self.raw['balanceTransactions'][-1].update(amount=10000, net=10000, fee=0)
+        self.stage(); self.assertEqual(1, self.apply()['posted'])
+        self.raw['balanceTransactions'] = []; self.add_refund('re_two', 'txn_two', 8000)
+        self.assertIn(dict(source_id=self.TWO, reason='refund_exceeds_booked_sale'), self.plan()['unresolved'])
+
+    def test_held_refunds_count_against_the_cap(self):
+        # A refund held in an earlier batch consumed part of the sale too.
+        self.stage(); self.apply()
+        self.full_flow(); self.refund_only(); self.raw['refunds'][0]['amount'] = 8000
+        self.raw['balanceTransactions'][0].update(amount=-8000, net=-8000)
+        self.raw['charges'][0]['metadata'] = {'stream': 'service', 'note': 'edited'}  # Holds it: the sale's evidence changed.
+        self.stage(); self.apply()
+        self.assertEqual('sale_evidence_changed', dict(self.entry(REFUND).meta)['stripe-review'])
+        self.raw['charges'][0]['metadata'] = {'stream': 'service'}
+        self.raw['balanceTransactions'] = []; self.add_refund('re_two', 'txn_two', 8000)
+        self.assertIn(dict(source_id=self.TWO, reason='refund_exceeds_booked_sale'), self.plan()['unresolved'])
+
+    # P1 duplicate_refund (rule 2): one refund ID posts once, whatever movement carries it.
+    def test_refund_id_already_posted_never_posts_again(self):
+        self.full_flow(); self.stage(); self.apply()
+        self.assertEqual('re_one', dict(self.entry(REFUND).meta)['stripe-refund'])
+        self.raw['balanceTransactions'] = [dict(self.raw['balanceTransactions'][1], id='txn_replacement')]
+        self.raw['refunds'][0]['balance_transaction'] = 'txn_replacement'
+        plan = self.stage()
+        self.assertEqual(([], [dict(source_id='stripe:acct_test:txn_replacement', reason='refund_already_recorded')]),
+                         self.actions(plan))
+        self.assertEqual(0, self.apply()['posted'])
+        self.assertEqual(Decimal('20'), self.balances()[base.REFUNDS])
+
+    def test_two_movements_of_one_refund_in_a_batch_never_post(self):
+        self.full_flow()
+        self.raw['balanceTransactions'].append(dict(self.raw['balanceTransactions'][1], id='txn_copy'))
+        _, unresolved = self.actions()
+        self.assertEqual({REFUND, 'stripe:acct_test:txn_copy'},
+                         {row['source_id'] for row in unresolved if row['reason'] == 'duplicate_refund_movement'})
+
+    # P1 plain_price_receipt and P2 plain_charge_price (rule 5): plain-charge price selectors hold for launch.
+    def test_plain_charge_price_selector_holds_its_sale_and_refund(self):
+        self.full_flow(); self.raw['charges'][0]['price'] = dict(id='price_test', currency='eur', livemode=True)
+        self.policy['revenue_rules'] = [dict(id='price', match={'price_id': 'price_test'}, category='Income:Subscriptions')]
+        plan = self.plan()
+        self.assertHeld(plan, 'plain_charge_price_unsupported')
+        self.assertHeld(plan, 'plain_charge_price_unsupported', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    def test_changed_plain_charge_selector_sends_cleanup_to_review(self):
+        from bookkeeping import stripe
+        self.raw['charges'][0]['price_id'] = 'price_one'
+        self.policy['revenue_rules'] = [dict(id=key, match={'price_id': key}, category=account) for key, account in
+                                        [('price_one', base.INCOME), ('price_two', 'Income:Subscriptions')]]
+        self.assertHeld(self.plan(), 'plain_charge_price_unsupported')
+        before = self.stage()['source_capture_digests'][SALE]
+        self.interrupted_apply()
+        self.raw['charges'][0]['price_id'] = 'price_two'
+        self.assertNotEqual(before, self.plan()['source_capture_digests'][SALE])
+        self.assertEqual([SALE], [row['source_id'] for row in self.apply()['needs_review']])
+        # The fingerprint binds a document field the projection leaves out (the selector) by full content.
+        bt = self.raw['balanceTransactions'][0]
+        objects = dict(charges={c['id']: c for c in self.raw['charges']}, refunds={}, invoices={}, payouts={}, prices={},
+                       products={}, paymentIntents={}, invoicePayments={}, checkoutSessions={}, disputes={},
+                       balanceTransactions={bt['id']: bt}, connectEvidence={})
+        digest = stripe._source_capture_digest(bt, objects, self.policy)
+        self.raw['charges'][0]['price_id'] = 'price_three'
+        self.assertNotEqual(digest, stripe._source_capture_digest(bt, objects, self.policy))
+
+    # P2 changed_booked_sale_in_batch (rule 1): a capture that contradicts the booked sale rejects it as proof.
+    def test_refund_holds_when_the_captured_sale_movement_changed(self):
+        self.stage(); self.apply(); self.full_flow()
+        self.raw['balanceTransactions'][0].update(amount=5000, net=4700)
+        plan = self.plan()
+        self.assertIn(dict(source_id=SALE, reason='changed_source'), plan['unresolved'])
+        self.assertHeld(plan, 'sale_not_posted', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    def test_refund_holds_when_the_captured_booked_sale_is_no_longer_available(self):
+        self.stage(); self.apply(); self.full_flow()
+        self.raw['balanceTransactions'][0]['status'] = 'invalid'
+        plan = self.plan()
+        self.assertIn(dict(source_id=SALE, reason='already_posted'), plan['skipped'])
+        self.assertHeld(plan, 'sale_movement_changed', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    # P2 booked_intent_replaced (rule 1): recorded links must equal the refund's current closure exactly.
+    def test_refund_holds_when_its_capture_names_another_payment_intent(self):
+        self.raw['charges'][0]['payment_intent'] = dict(id='pi_booked', status='succeeded')
+        self.stage(); self.apply()
+        self.assertEqual('pi_booked', dict(self.entry(SALE).meta)['stripe-payment-intent'])
+        self.full_flow(); self.refund_only()
+        self.raw['charges'][0]['payment_intent'] = dict(id='pi_other', status='succeeded')
+        self.assertHeld(self.plan(), 'sale_links_changed', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    def test_cross_cohort_refund_of_an_unchanged_engine_sale_posts(self):
+        # Rule 1(b) control: a live, never-corrected sale this engine wrote, with matching links and closure digest.
+        self.stage(); self.apply()
+        self.assertIn('stripe-closure', dict(self.entry(SALE).meta))
+        self.full_flow(); self.refund_only()
+        self.assertEqual({base.CLEARING: '-20.00', base.REFUNDS: '20.00'}, self.postings(self.plan(), REFUND))
+
+    def test_refund_holds_when_the_sale_evidence_changed_since_it_was_booked(self):
+        self.stage(); self.apply(); self.full_flow(); self.refund_only()
+        self.raw['charges'][0]['metadata'] = {'stream': 'service', 'note': 'edited'}
+        self.assertHeld(self.plan(), 'sale_evidence_changed', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    # P2 foreign_follower (rule 5): a referring document in another mode or currency is not imported.
+    def test_foreign_refund_never_links_a_sale_to_an_invoice(self):
+        self.invoice(); del self.raw['charges'][0]['invoice']
+        self.raw['refunds'] = [dict(id='re_other', charge='ch_sale', payment_intent='pi_one', currency='eur', livemode=True)]
+        self.raw['paymentIntents'] = [dict(id='pi_one', invoice='in_one', livemode=False, currency='usd')]
+        plan = self.plan()
+        self.assertIsNone(self.action(plan))
+        self.assertEqual([dict(source_id=SALE, reason='missing_revenue_mapping')], plan['unresolved'])
+        # The same follower in the policy's mode and currency still links the invoice.
+        self.raw['refunds'][0].update(currency='usd', livemode=False)
+        self.assertRevenue(self.plan())
+
+    # P2 conflicting_intent_copies (rule 5): copies that disagree on status invalidate the closure.
+    def test_payment_intent_copies_that_disagree_on_status_hold(self):
+        self.full_flow(); self.raw['charges'][0]['payment_intent'] = dict(id='pi_one', status='canceled')
+        self.raw['paymentIntents'] = [dict(id='pi_one', status='succeeded', metadata={'plan': 'renewal'})]
+        self.policy['revenue_rules'] = [dict(id='renewal', match={'metadata': dict(object='payment_intent', key='plan',
+                                                                                    value='renewal')}, category='Income:Subscriptions')]
+        plan = self.plan()
+        self.assertHeld(plan, 'payment_intent_reference_conflict')
+        self.assertHeld(plan, 'payment_intent_reference_conflict', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        self.raw['charges'][0]['payment_intent'] = 'pi_one'; self.raw['paymentIntents'][0]['status'] = 'canceled'
+        self.assertHeld(self.plan(), 'payment_intent_not_succeeded')
+
+    # P2 sale_status_retry (rule 6): the refund's fingerprint binds its sale's status.
+    def test_changed_sale_status_sends_refund_cleanup_to_review(self):
+        self.full_flow(); first = self.stage()['source_capture_digests'][REFUND]
+        self.interrupted_apply(); self.raw['balanceTransactions'][0]['status'] = 'invalid'
+        plan = self.plan()
+        self.assertNotEqual(first, plan['source_capture_digests'][REFUND])
+        self.assertEqual({SALE, REFUND}, {row['source_id'] for row in self.apply()['needs_review']})
+
+    def test_incomplete_fingerprint_is_unavailable(self):
+        from bookkeeping import stripe
+        self.invoice(); self.raw['invoices'][0]['total_taxes'] = [{'amount': 100}]
+        plan = self.plan()
+        self.assertEqual([dict(source_id=SALE, reason='tax_discount_or_credit_requires_review')], plan['unresolved'])
+        self.assertEqual(stripe._unavailable_fingerprint(SALE), plan['source_capture_digests'][SALE])
+
+    # Same-batch answer (rule 1a): only an approved sale action with the same charge, intent and invoice proves.
+    def test_same_batch_sale_proves_its_refund_only_when_approved_and_identical(self):
+        self.full_flow()
+        self.assertEqual({base.CLEARING: '-20.00', base.REFUNDS: '20.00'}, self.postings(self.plan(), REFUND))
+        rows = self.raw['balanceTransactions']; charge = self.raw['charges'][0]
+        charge['payment_intent'] = dict(id='pi_one', status='succeeded')
+        rows.append(dict(rows[0], id='txn_two', source='ch_two'))
+        self.raw['charges'].append(dict(charge, id='ch_two', balance_transaction='txn_two'))
+        self.assertHeld(self.plan(), 'payment_intent_reference_conflict', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        rows.pop(); self.raw['charges'].pop(); rows[0]['status'] = 'invalid'
+        self.assertHeld(self.plan(), 'sale_not_posted', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+        rows[0]['status'] = 'available'; charge['invoice'] = 'missing'
+        self.assertHeld(self.plan(), 'missing_invoice_evidence', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    def test_same_batch_duplicate_of_a_booked_charge_proves_nothing(self):
+        self.stage(); self.apply(); self.full_flow()
+        self.raw['balanceTransactions'][0]['id'] = 'txn_second'; self.raw['charges'][0]['balance_transaction'] = 'txn_second'
+        plan = self.plan()
+        self.assertHeld(plan, 'charge_claimed_by_another_movement', sid=self.SECOND)
+        self.assertHeld(plan, 'sale_in_holding', sid=REFUND, amount='20.00', fee=None, net='-20.00')
+
+    def test_held_refund_of_an_unrecorded_charge_makes_later_refunds_unproven(self):
+        # It consumed some charge's revenue, but the ledger does not say which: no cap can be proved.
+        self.stage(); self.apply()
+        self.full_flow(); self.refund_only(); self.raw['refunds'] = []
+        self.stage(); self.apply()
+        self.assertEqual('missing_refund_evidence', dict(self.entry(REFUND).meta)['stripe-review'])
+        self.raw['balanceTransactions'] = []; self.add_refund('re_two', 'txn_two', 1000)
+        self.assertHeld(self.plan(), 'ownership_unproven', sid=self.TWO, amount='10.00', fee=None, net='-10.00')
+
+    def test_refund_fingerprint_binds_its_sale_leaving_the_capture(self):
+        self.full_flow(); first = self.plan()['source_capture_digests'][REFUND]
+        self.raw['balanceTransactions'].pop(0)
+        self.assertNotEqual(first, self.plan()['source_capture_digests'][REFUND])
+
+    # Clozy Worker contract: no new top-level keys in stage, plan, action or apply.
+    def test_worker_keys_are_unchanged(self):
+        from bookkeeping import stripe
+        del self.raw['charges'][:]
+        staged = stripe.stripe_stage(self.entity, self.raw, self.policy)
+        plan = staged['plan']; applied = self.apply()
+        self.assertEqual(['duplicates', 'plan', 'staged'], sorted(staged))
+        self.assertEqual(['actions', 'entry_links', 'evidence_digest', 'ledger_digest', 'next_cursor', 'no_effect',
+                          'normalized_sources', 'plan_digest', 'policy_digest', 'skipped', 'source_capture_digests',
+                          'uncategorized', 'unresolved'], sorted(plan))
+        self.assertEqual(['authority_id', 'kind', 'normalized_source', 'postings', 'review_reason', 'source_digest',
+                          'source_id'], sorted(plan['actions'][0]))
+        self.assertEqual(['held', 'needs_review', 'next_cursor', 'no_financial_effect', 'plan_digest', 'posted', 'skipped',
+                          'uncategorized', 'unresolved'], sorted(applied))
 
 
 if __name__ == '__main__':

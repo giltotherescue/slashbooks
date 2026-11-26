@@ -1542,6 +1542,10 @@ def reverse_and_correct(
         from ..queue import _refuse_entries_above_ask_first
         _refuse_entries_above_ask_first(entity, original, corrected_entry)
         replacement_id = corrected_entry.source_id
+        if not replacement_id:
+            # A replacement without its own source ID cannot be followed as the original's successor: the original
+            # would look truly reversed and whatever it claimed (a Stripe charge or invoice) free to book again.
+            raise ValueError("A correction needs its own replacement source ID; choose a fresh correction ID.")
         if replacement_id:
             # A replacement that is, or is another spelling of, a source the ledger already holds (the entry it
             # corrects included: ``abc`` -> ``banksync:abc``) would be hidden by a reversal and orphan its postings.

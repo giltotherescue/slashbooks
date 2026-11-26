@@ -123,48 +123,77 @@ descriptive text differently (`description`, statement descriptors, receipt and
 hosted URLs, `footer`); amounts, taxes, discounts, selectors, identity and line
 completeness must still agree.
 
-Ownership is durable. Every new Stripe sale entry, held or not, records what it
-owns as entry metadata, in the same transaction as the entry: `stripe-charge`
-(the charge), `stripe-payment-intent` and `stripe-invoice` (every payment intent
-and invoice its evidence names, space-separated). Before a sale posts as revenue,
-the plan checks those claims across every cohort. A sale whose charge, payment
-intent or invoice a live ledger entry already owns is held
+Claims are reservations. Every Stripe entry this engine writes records its kind
+as entry metadata (`stripe-kind`: `sale`, `refund`, `dispute` or `other`), in the
+same transaction as the entry. A sale entry, held or not, also records what it
+claims: `stripe-charge` (the charge), `stripe-payment-intent` and
+`stripe-invoice` (every payment intent and invoice its evidence names,
+space-separated). Once any ledger entry names a charge, payment intent or invoice
+in that metadata (a live, held, corrected or reversed entry, a reversal or a
+correction), it stays reserved for good. Before a sale posts as revenue, the plan
+checks every such claim across every cohort and the whole correction lineage: a
+sale that names a reserved charge, payment intent or invoice is held
 (`charge_claimed_by_another_movement`,
 `payment_intent_claimed_by_another_payment`,
 `invoice_claimed_by_another_payment`), and so are sales in one batch that share
-one. Claims follow corrections: a sale that was reversed and replaced keeps its
-claims while the replacement is live, whatever the replacement posts; only a true
-reversal (no live correction) releases them. A correction filed under another
-spelling of its predecessor's ID is ambiguous and keeps the claims too.
+one. A correction never frees a claim, and a correction that names one adds its
+own. A lineage with a correction that has no source ID (the writer now refuses
+one; an older writer could leave one) makes everything it names unproven
+(`ownership_unproven`).
 
-Sales posted by earlier releases record no ownership, and missing metadata never
-means unowned. The engine derives an older sale's charge only when the cohort
-contains its balance transaction unchanged (it matches the saved financial
-digest); the payment intents and invoices an older sale owned are never known.
-So while the ledger holds an older Stripe sale, a new sale is held with
-`ownership_unproven` when an older sale's charge cannot be derived, or when the
-new sale has a payment intent or an invoice. An exact replay of an older sale
-still posts nothing. There is no backfill.
+Kinds are proved, never inferred. Rule IDs, authority text and postings are never
+read to decide what an entry was. Entries written by earlier releases record no
+kind: the engine knows what one was only when the cohort contains its balance
+transaction unchanged (it matches the saved financial digest). A proven older
+fee, payout, reserve or transfer movement owns nothing; a proven older sale
+reserves its charge, but the payment intents and invoices it owned are never
+known. Any other older entry makes ownership unproven. So while the ledger holds
+an older Stripe entry whose kind cannot be proven, every new sale and every
+refund is held with `ownership_unproven`; with only proven older sales, a new
+sale is held when it names a payment intent or an invoice, and a refund of an
+older sale is held. An exact replay of an older entry still posts nothing. There
+is no backfill.
 
-A refund posts to the refund account only on positive evidence of its sale: a
-live (following corrections), non-holding sale posting of exactly the refund's
-charge, found through the charge's `balance_transaction` (or the one sale
-movement of the charge in the cohort). The sale entry's recorded charge must
-match, and so must its recorded invoice when it recorded one; an older sale's
-charge is derived as above. The booked sale must have exactly one revenue line
-that covers the refund: a refund of a two-line booked sale stays unresolved with
-`mixed_line_refund_requires_allocation`, whatever the refund's own capture shows,
-and a refund larger than the booked line stays unresolved with
-`refund_exceeds_booked_sale`. A sale this batch posts as revenue counts too,
-because it is written in the same transaction; its links and postings are checked
-the same way. Anything else posts the refund to the holding account with a
-reason: the sale is held (`sale_in_holding`), this plan refuses it
-(`sale_not_posted`), it is absent, reversed or another charge's, the link is a
-payout (`sale_movement_unverified`), the recorded invoice differs
-(`sale_invoice_unverified`), or an older sale cannot be proven
-(`ownership_unproven`). A refund that names another payment intent than its
-charge is held with `refund_reference_conflict`. Disputes always post to the
-holding account, because no approved policy names a dispute account.
+A refund posts to the refund account only behind narrow proof of its sale, found
+through the charge's `balance_transaction` (or the one sale movement of the
+charge in the cohort). Either (a) this batch has an approved (not held) sale
+action with the same charge, payment intents and invoice, or (b) the ledger has
+one live sale entry this engine wrote, never corrected or reversed, whose
+recorded charge, payment intents and invoices equal the refund's current
+evidence exactly, and whose recorded evidence digest (`stripe-closure`: the
+charge, payment intent, invoice or Checkout session and allocation that decided
+the sale) the refund's capture reproduces. A capture that contradicts the sale is
+checked first and rejects either proof: the sale movement changed, is refused or
+is no longer available (`sale_not_posted`, `sale_movement_changed`). Anything
+else posts the refund to the holding account with a reason: the sale is held
+(`sale_in_holding`), corrected or reversed in any way (`sale_corrected`), its
+links or evidence changed (`sale_links_changed`, `sale_evidence_changed`), it is
+absent, a payout or not a sale this engine wrote (`sale_movement_unverified`), or
+it was written by an earlier release (`ownership_unproven`). A refund that names
+another payment intent than its charge is held with `refund_reference_conflict`.
+
+A refund posts once. Each refund entry records its own provider ID
+(`stripe-refund`); a refund ID that any ledger entry already recorded never posts
+again, whatever movement carries it (`refund_already_recorded`), and two
+movements in one batch with the same refund ID both stay unposted
+(`duplicate_refund_movement`). The refundable amount is the sale's booked gross
+minus every refund and dispute already posted (held, corrected or reversed alike)
+or proposed in this batch for the charge; a credit back, such as a won dispute,
+never raises it. A refund over that stays unresolved with
+`refund_exceeds_booked_sale`. A refund or dispute entry that does not record its
+charge makes every later refund unproven (`ownership_unproven`), because what it
+consumed cannot be attributed. A refund of a sale with more than one invoice line
+stays unresolved with `mixed_line_refund_requires_allocation`. Disputes always
+post to the holding account, because no approved policy names a dispute account.
+
+Revenue authority comes from one checked path. A plain charge (no invoice or
+Checkout session) is mapped only by metadata rules; a plain charge that carries a
+price or product selector (`price`, `price_id`, `product_id` and the like) is held
+with `plain_charge_price_unsupported`, because only invoice and session lines pass
+the catalog's mode, currency and copy checks. A refund, dispute or Checkout
+session in another mode or currency never adds evidence to a sale's closure. Copies
+of one payment intent must agree on its status, and a payment intent that did not
+succeed holds (`payment_intent_not_succeeded`).
 
 A known sale whose allocation is not complete (a missing revenue rule, tax,
 discount, proration, partial payment, truncated lines) or a movement that has
@@ -179,9 +208,10 @@ evidence, then correct it through the ordinary ledger correction path
 (`books ledger correct`), which reverses the held entry and writes the reviewed
 replacement in one audited write. Capturing the missing evidence later changes
 nothing: the held movement is already posted and is skipped as `already_posted`.
-After the correction, the replacement carries the sale forward: it keeps the
-sale's claims, and a later refund of that charge follows it (once the replacement
-is out of the holding account and books one revenue line).
+The correction needs its own replacement source ID (the writer refuses one
+without). The sale's claims stay reserved after the correction, and the
+replacement adds any it names. A refund of a corrected sale is never posted
+automatically: it is held with `sale_corrected` for the same person.
 
 Ledger corrections refuse a replacement ID that is another spelling of the entry
 it corrects or of any source the ledger already holds (for example `abc` and
@@ -277,9 +307,14 @@ additional movements: recovery compares the original movement's referenced
 authority objects, not the whole capture. Changes to that source's charge,
 invoice, refund, payout or other relevant authority evidence still block cleanup. The
 fingerprint reads the same resolved objects as allocation (an expanded price inside
-pricing details included), and a refund's fingerprint also binds its sale movement's
-financial identity whenever that differs from what the books recorded. Evidence that
-cannot be fingerprinted is never a match: a new movement stays unresolved with
+pricing details included) and binds every document in the closure by its whole
+content: a document with a field outside the fixed projection (a charge's price
+selector, a payment intent's status) is bound in full. A refund's fingerprint also
+binds its sale movement: its financial identity whenever that differs from what the
+books recorded, its status when it is not `available`, any other field it carries,
+and its absence from the capture. A resolution that stops early (an unsettled or
+unallocated sale) has an incomplete fingerprint, which counts as unavailable. Evidence
+that cannot be fingerprinted is never a match: a new movement stays unresolved with
 `capture_fingerprint_unavailable`, and cleanup of a posted one needs review. Changed or
 unproven evidence requires reconciliation before cleanup. This holds the one row, not the batch: the
 row is reported as unresolved with the reason `cleanup_needs_review`, it stays in
